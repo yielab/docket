@@ -1,0 +1,1352 @@
+#!/usr/bin/env bash
+# rack — OpenClaw project agent manager
+#
+# Lifecycle commands:
+#   rack list                  List all project agents
+#   rack add                   Add a new project agent (interactive)
+#   rack info   [id]           Detailed status of one project
+#   rack delete [id]           Remove agent and optionally its workspace
+#   rack reset  [id]           Clear memory, reset heartbeat (keep identity)
+#   rack repair [id]           Fix permissions, routing, missing files
+#
+# Telegram commands:
+#   rack wire   [id]           Wire or update a Telegram group binding
+#   rack unwire [id]           Remove Telegram binding
+#
+# Utility commands:
+#   rack logs   [id]           View memory logs and gateway entries
+#   rack edit   [id]           Open workspace files in $EDITOR
+#   rack model  [id] [model]   View or change the model for a project
+#   rack doctor                System-wide health check
+#
+# Usage:  rack <command> [agent-id]
+#         rack                 (shows list)
+
+set -euo pipefail
+
+# ─── Debug mode (export DEBUG=1 or pass --debug) ─────────────────────────────
+DEBUG="${DEBUG:-0}"
+
+# ─── Paths ────────────────────────────────────────────────────────────────────
+OPENCLAW_DIR="$HOME/.openclaw"
+PROJECTS_DIR="$OPENCLAW_DIR/workspaces/projects"
+CONFIG_FILE="$OPENCLAW_DIR/openclaw.json"
+LOG_FILE="/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log"
+SITES_DIR="$HOME/Sites"
+DEFAULT_MODEL="anthropic/claude-sonnet-4-6"
+META_FILE=".rack-meta.json"  # stored inside each project workspace
+
+# ─── Colors ───────────────────────────────────────────────────────────────────
+RED='\033[0;31m';  GREEN='\033[0;32m';  YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BLUE='\033[0;34m';  BOLD='\033[1m';  DIM='\033[2m'; RESET='\033[0m'
+TICK="${GREEN}✓${RESET}"; CROSS="${RED}✗${RESET}"; WARN="${YELLOW}⚠${RESET}"; ARROW="${CYAN}→${RESET}"
+
+dbg()        { [[ "$DEBUG" == "1" ]] && echo -e "${DIM}[dbg] $*${RESET}" >&2 || true; }
+info()       { echo -e "${ARROW} $*"; }
+success()    { echo -e "${TICK} $*"; }
+warn()       { echo -e "${WARN} $*"; }
+error()      { echo -e "${CROSS} ${RED}Error:${RESET} $*" >&2; exit 1; }
+fail()       { echo -e "${CROSS} $*" >&2; }        # print error without exiting
+error_hint() {                                      # error with a hint line
+  echo -e "${CROSS} ${RED}Error:${RESET} $1" >&2
+  echo -e "  ${DIM}Hint: $2${RESET}" >&2
+  exit 1
+}
+header()     { echo -e "\n${BOLD}$*${RESET}"; }
+dim()        { echo -e "${DIM}$*${RESET}"; }
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+slugify() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
+}
+
+# List project agent IDs (agents whose workspace is under $PROJECTS_DIR)
+project_ids() {
+  if [[ ! -d "$PROJECTS_DIR" ]]; then echo ""; return; fi
+  for dir in "$PROJECTS_DIR"/*/; do
+    [[ -d "$dir" ]] && basename "$dir"
+  done
+}
+
+# Read a field from the project's .rack-meta.json
+meta_get() {
+  local id="$1" field="$2" default="${3:-}"
+  local meta="$PROJECTS_DIR/$id/$META_FILE"
+  if [[ -f "$meta" ]]; then
+    python3 -c "import json; d=json.load(open('$meta')); print(d.get('$field','$default'))" 2>/dev/null || echo "$default"
+  else
+    echo "$default"
+  fi
+}
+
+# Write/update a field in .rack-meta.json
+meta_set() {
+  local id="$1" field="$2" value="$3"
+  local meta="$PROJECTS_DIR/$id/$META_FILE"
+  python3 - "$meta" "$field" "$value" <<'PY'
+import json, sys, os
+path, field, value = sys.argv[1], sys.argv[2], sys.argv[3]
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+data[field] = value
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+PY
+  chmod 600 "$meta"
+}
+
+# Get Telegram group ID bound to an agent (empty if none)
+get_tg_binding() {
+  local id="$1"
+  python3 - "$CONFIG_FILE" "$id" <<'PY' 2>/dev/null || echo ""
+import json, sys
+config = json.load(open(sys.argv[1]))
+for b in config.get("bindings", []):
+    if b.get("agentId") == sys.argv[2]:
+        print(b.get("match", {}).get("peer", {}).get("id", ""))
+        sys.exit(0)
+PY
+}
+
+# Append or replace binding in openclaw.json
+upsert_binding() {
+  local agent_id="$1" group_id="$2"
+  python3 - "$CONFIG_FILE" "$agent_id" "$group_id" <<'PY'
+import json, sys
+path, agent_id, group_id = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    config = json.load(f)
+bindings = [b for b in config.get("bindings", [])
+            if not (b.get("agentId") == agent_id or
+                    b.get("match",{}).get("peer",{}).get("id") == group_id)]
+bindings.append({"agentId": agent_id,
+                 "match": {"channel": "telegram",
+                           "peer": {"kind": "group", "id": group_id}}})
+config["bindings"] = bindings
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+PY
+}
+
+# Remove binding for an agent from openclaw.json
+remove_binding() {
+  local agent_id="$1"
+  python3 - "$CONFIG_FILE" "$agent_id" <<'PY'
+import json, sys
+path, agent_id = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    config = json.load(f)
+config["bindings"] = [b for b in config.get("bindings", [])
+                      if b.get("agentId") != agent_id]
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+PY
+}
+
+# Remove agent from openclaw.json agents.list
+remove_agent_config() {
+  local agent_id="$1"
+  python3 - "$CONFIG_FILE" "$agent_id" <<'PY'
+import json, sys
+path, agent_id = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    config = json.load(f)
+agents = config.get("agents", {})
+agents["list"] = [a for a in agents.get("list", []) if a.get("id") != agent_id]
+config["agents"] = agents
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+PY
+}
+
+# Check if agent is registered in openclaw.json
+agent_registered() {
+  local id="$1"
+  python3 -c "
+import json, sys
+c = json.load(open('$CONFIG_FILE'))
+ids = [a.get('id') for a in c.get('agents',{}).get('list',[])]
+sys.exit(0 if '$id' in ids else 1)
+" 2>/dev/null
+}
+
+# Last memory file date (returns date string from most recent YYYY-MM-DD.md or "—")
+last_activity() {
+  local id="$1"
+  local mem_dir="$PROJECTS_DIR/$id/memory"
+  if [[ -d "$mem_dir" ]]; then
+    local latest
+    latest=$(find "$mem_dir" -maxdepth 1 -name '*.md' 2>/dev/null | sort | tail -1)
+    if [[ -n "$latest" ]]; then
+      basename "$latest" .md
+    else
+      echo "—"
+    fi
+  else
+    echo "—"
+  fi
+}
+
+# Detect tech stack from codebase by inspecting manifest files
+detect_stack() {
+  local path="$1"; local stack=()
+
+  # Runtime / language markers
+  [[ -f "$path/package.json" ]]                                && stack+=("Node.js")
+  [[ -f "$path/composer.json" ]]                               && stack+=("PHP")
+  [[ -f "$path/requirements.txt" || -f "$path/pyproject.toml" ]] && stack+=("Python")
+  [[ -f "$path/Gemfile" ]]                                     && stack+=("Ruby")
+  [[ -f "$path/go.mod" ]]                                      && stack+=("Go")
+  [[ -f "$path/Cargo.toml" ]]                                  && stack+=("Rust")
+  [[ -f "$path/pom.xml" ]]                                     && stack+=("Java/Maven")
+  [[ -f "$path/docker-compose.yml" || -f "$path/Dockerfile" ]] && stack+=("Docker")
+  [[ -d "$path/.git" ]]                                        && stack+=("git")
+
+  # JS/TS framework hints (from package.json dependencies)
+  if [[ -f "$path/package.json" ]]; then
+    grep -q '"next"'       "$path/package.json" 2>/dev/null && stack+=("Next.js")
+    grep -q '"react"'      "$path/package.json" 2>/dev/null && stack+=("React")
+    grep -q '"vue"'        "$path/package.json" 2>/dev/null && stack+=("Vue")
+    grep -q '"fastify"'    "$path/package.json" 2>/dev/null && stack+=("Fastify")
+    grep -q '"express"'    "$path/package.json" 2>/dev/null && stack+=("Express")
+    grep -q '"typescript"' "$path/package.json" 2>/dev/null && stack+=("TypeScript")
+  fi
+
+  # Python framework hints
+  if [[ -f "$path/requirements.txt" ]]; then
+    grep -qi "fastapi" "$path/requirements.txt" 2>/dev/null && stack+=("FastAPI")
+    grep -qi "django"  "$path/requirements.txt" 2>/dev/null && stack+=("Django")
+    grep -qi "flask"   "$path/requirements.txt" 2>/dev/null && stack+=("Flask")
+    grep -qi "pytest"  "$path/requirements.txt" 2>/dev/null && stack+=("pytest")
+  fi
+
+  # PHP framework hints
+  if [[ -f "$path/composer.json" ]]; then
+    grep -q '"drupal"'   "$path/composer.json" 2>/dev/null && stack+=("Drupal")
+    grep -q '"laravel"'  "$path/composer.json" 2>/dev/null && stack+=("Laravel")
+    grep -q '"symfony"'  "$path/composer.json" 2>/dev/null && stack+=("Symfony")
+  fi
+
+  local IFS=", "; echo "${stack[*]:-unknown}"
+}
+
+test_cmd_for_stack() {
+  local s="$1"
+  echo "$s" | grep -q "pytest\|Python\|FastAPI\|Django\|Flask" && { echo "pytest -v"; return; }
+  echo "$s" | grep -q "Node\|npm\|Next\|React\|Express\|Fastify" && { echo "npm test"; return; }
+  echo "$s" | grep -q "PHP\|Drupal\|Laravel" && { echo "./vendor/bin/phpunit"; return; }
+  echo "$s" | grep -q "Go" && { echo "go test ./..."; return; }
+  echo "$s" | grep -q "Rust" && { echo "cargo test"; return; }
+  echo "# add test command"
+}
+
+# Interactive project selector using fzf (falls back to numbered list if fzf missing)
+pick_project() {
+  local prompt="${1:-Select project}"
+  local ids; ids=$(project_ids)
+  if [[ -z "$ids" ]]; then
+    error_hint "No projects found in $PROJECTS_DIR" "Run: rack add"
+  fi
+
+  if command -v fzf &>/dev/null; then
+    dbg "Using fzf picker"
+    local selected
+    selected=$(echo "$ids" | fzf --prompt="$prompt > " --height=40% --border --ansi 2>/dev/null || true)
+    if [[ -z "$selected" ]]; then
+      warn "Selection cancelled."
+      exit 0
+    fi
+    echo "$selected"
+  else
+    dbg "fzf not found — using numbered fallback"
+    warn "fzf not installed. Install with: brew install fzf"
+    echo ""
+    echo -e "${BOLD}$prompt:${RESET}"
+    local i=1
+    local -a _items=()
+    while IFS= read -r item; do
+      printf "  %2d) %s\n" "$i" "$item"
+      _items[$i]="$item"
+      i=$((i + 1))
+    done <<< "$ids"
+    echo ""
+    read -rp "Enter number [1-$((i-1))]: " _choice
+    if [[ -z "${_choice:-}" ]] || [[ -z "${_items[$_choice]:-}" ]]; then
+      warn "Invalid selection. Aborted."
+      exit 0
+    fi
+    echo "${_items[$_choice]}"
+  fi
+}
+
+# Restart gateway if running
+restart_gateway() {
+  dbg "Checking gateway service status..."
+  if systemctl --user is-active openclaw-gateway.service &>/dev/null; then
+    info "Restarting gateway..."
+    if ! systemctl --user restart openclaw-gateway.service 2>/dev/null; then
+      warn "Gateway restart failed."
+      echo "  Check: systemctl --user status openclaw-gateway.service"
+      return 1
+    fi
+    sleep 2
+    success "Gateway restarted"
+  else
+    warn "Gateway not running. Start it with:"
+    echo "  systemctl --user start openclaw-gateway.service"
+  fi
+}
+
+# ─── COMMAND: list ────────────────────────────────────────────────────────────
+cmd_list() {
+  local ids; ids=$(project_ids)
+  if [[ -z "$ids" ]]; then
+    warn "No project agents found."
+    echo "Run: rack add"
+    exit 0
+  fi
+
+  echo ""
+  printf "${BOLD}%-20s %-6s %-10s %-12s %-20s %s${RESET}\n" \
+    "AGENT" "TYPE" "TELEGRAM" "LAST ACTIVE" "CODEBASE/PATH" "STATUS"
+  printf '%0.s─' {1..100}; echo ""
+
+  while IFS= read -r id; do
+    local type;       type=$(meta_get "$id" "type" "repo")
+    local tg;         tg=$(get_tg_binding "$id")
+    local codebase;   codebase=$(meta_get "$id" "codebase" "")
+    local activity;   activity=$(last_activity "$id")
+    local registered; registered="—"
+    local tg_display; tg_display="${DIM}none${RESET}"
+
+    # Check registration
+    if agent_registered "$id"; then
+      registered="${GREEN}ok${RESET}"
+    else
+      registered="${RED}missing${RESET}"
+    fi
+
+    # Telegram display
+    if [[ -n "$tg" ]]; then
+      tg_display="${GREEN}wired${RESET}"
+    else
+      tg_display="${YELLOW}unwired${RESET}"
+    fi
+
+    # Shorten codebase path
+    local path_short; path_short=$(echo "$codebase" | sed "s|$HOME|~|")
+    [[ -z "$path_short" ]] && path_short="${DIM}—${RESET}"
+    [[ ${#path_short} -gt 20 ]] && path_short="${path_short: -20}"
+
+    printf "%-20s %-6s %-19s %-12s %-20s %b\n" \
+      "$id" "$type" "$tg_display" "$activity" "$path_short" "$registered"
+  done <<< "$ids"
+  echo ""
+}
+
+# ─── COMMAND: info ────────────────────────────────────────────────────────────
+cmd_info() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Inspect project")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local type;       type=$(meta_get "$id" "type" "repo")
+  local name;       name=$(meta_get "$id" "name" "$id")
+  local codebase;   codebase=$(meta_get "$id" "codebase" "—")
+  local stack;      stack=$(meta_get "$id" "stack" "—")
+  local model;      model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+  local tg;         tg=$(get_tg_binding "$id")
+  local activity;   activity=$(last_activity "$id")
+  local mem_count;  mem_count=$(find "$workspace/memory" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  local has_memory; [[ -f "$workspace/MEMORY.md" ]] && has_memory="yes" || has_memory="no"
+  local has_reqs;   [[ -f "$workspace/REQUIREMENTS.md" ]] && has_reqs="yes" || has_reqs="no"
+
+  header "Project: $name ($id)"
+  echo ""
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Type:"        "$type"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Workspace:"   "$workspace"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Codebase:"    "$codebase"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Stack:"       "$stack"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Model:"       "$model"
+  echo ""
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Registered:"  "$(agent_registered "$id" && echo "${GREEN}yes${RESET}" || echo "${RED}no${RESET}")"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Telegram:"    "${tg:-${YELLOW}not wired${RESET}}"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Last active:" "$activity"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Memory days:" "$mem_count"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "MEMORY.md:"   "$has_memory"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "REQUIREMENTS:" "$has_reqs"
+
+  echo ""
+  header "Workspace files"
+  find "$workspace" -maxdepth 1 -type f | sort | while read -r f; do
+    local size; size=$(wc -l < "$f" 2>/dev/null || echo "?")
+    printf "  %-30s %s lines\n" "$(basename "$f")" "$size"
+  done
+
+  if [[ -n "$tg" && "$type" == "repo" && -n "$codebase" ]]; then
+    echo ""
+    header "First-run prompt (send in Telegram group if MEMORY.md is missing)"
+    echo ""
+    echo "  Read the codebase at $codebase and update your"
+    echo "  SOUL.md and MEMORY.md with: tech stack, entry points,"
+    echo "  architecture, current state, recent git activity."
+    echo ""
+  fi
+}
+
+# ─── COMMAND: add ─────────────────────────────────────────────────────────────
+cmd_add() {
+  header "Add Project Agent"
+  echo ""
+
+  # Type
+  echo -e "${BOLD}Project type:${RESET}"
+  echo "  1) repo   — codebase in ~/Sites (active development)"
+  echo "  2) task   — web research, files, automation (no fixed codebase)"
+  echo ""
+  read -rp "Type [1/2]: " TYPE_INPUT
+  case "$TYPE_INPUT" in
+    1|repo) PROJECT_TYPE="repo" ;;
+    2|task) PROJECT_TYPE="task" ;;
+    *) error "Invalid. Use 1 or 2." ;;
+  esac
+
+  # Display name + slug
+  echo ""
+  read -rp "Display name (e.g. 'Sensor App'): " DISPLAY_NAME
+  [[ -z "$DISPLAY_NAME" ]] && error "Display name required."
+
+  DEFAULT_SLUG=$(slugify "$DISPLAY_NAME")
+  read -rp "Agent ID [$DEFAULT_SLUG]: " AGENT_ID_INPUT
+  AGENT_ID="${AGENT_ID_INPUT:-$DEFAULT_SLUG}"
+  AGENT_ID=$(slugify "$AGENT_ID")
+
+  [[ -d "$PROJECTS_DIR/$AGENT_ID" ]] && error "Project '$AGENT_ID' already exists. Use: rack repair $AGENT_ID"
+
+  # Codebase
+  CODEBASE_PATH=""
+  DETECTED_STACK=""
+  if [[ "$PROJECT_TYPE" == "repo" ]]; then
+    CLOSEST=$(ls "$SITES_DIR" 2>/dev/null \
+      | grep -i "$(echo "$DISPLAY_NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')" \
+      | head -1 || true)
+    DEFAULT_PATH="$SITES_DIR/${CLOSEST:-$DISPLAY_NAME}"
+    read -rp "Codebase path [$DEFAULT_PATH]: " PATH_INPUT
+    CODEBASE_PATH="${PATH_INPUT:-$DEFAULT_PATH}"
+    if [[ -d "$CODEBASE_PATH" ]]; then
+      DETECTED_STACK=$(detect_stack "$CODEBASE_PATH")
+      info "Detected stack: $DETECTED_STACK"
+    else
+      warn "Path not found: $CODEBASE_PATH"
+    fi
+  fi
+
+  read -rp "Description: " DESCRIPTION
+  [[ -z "$DESCRIPTION" ]] && DESCRIPTION="No description provided."
+
+  TECH_STACK=""
+  if [[ "$PROJECT_TYPE" == "repo" ]]; then
+    read -rp "Stack [${DETECTED_STACK:-unknown}]: " STACK_INPUT
+    TECH_STACK="${STACK_INPUT:-$DETECTED_STACK}"
+  fi
+
+  read -rp "Model [$DEFAULT_MODEL]: " MODEL_INPUT
+  MODEL="${MODEL_INPUT:-$DEFAULT_MODEL}"
+
+  # Telegram
+  echo ""
+  header "Telegram group (Enter to skip)"
+  _show_unbound_groups
+  read -rp "Group ID (e.g. -1001234567890): " TG_GROUP_ID
+
+  # Build workspace
+  _create_workspace "$AGENT_ID" "$PROJECT_TYPE" "$DISPLAY_NAME" \
+    "$CODEBASE_PATH" "$TECH_STACK" "$DESCRIPTION" "$MODEL"
+
+  # Save metadata (all fields needed for deep reset / regeneration)
+  meta_set "$AGENT_ID" "type"        "$PROJECT_TYPE"
+  meta_set "$AGENT_ID" "name"        "$DISPLAY_NAME"
+  meta_set "$AGENT_ID" "codebase"    "$CODEBASE_PATH"
+  meta_set "$AGENT_ID" "stack"       "$TECH_STACK"
+  meta_set "$AGENT_ID" "model"       "$MODEL"
+  meta_set "$AGENT_ID" "description" "$DESCRIPTION"
+  meta_set "$AGENT_ID" "created"     "$(date -Iseconds)"
+
+  # Create work directory for task-type projects (no fixed codebase)
+  if [[ "$PROJECT_TYPE" == "task" ]]; then
+    mkdir -p "$SITES_DIR/$AGENT_ID"
+    success "Work directory created: $SITES_DIR/$AGENT_ID"
+  fi
+
+  # Register agent with openclaw
+  openclaw agents add "$AGENT_ID" \
+    --workspace "$PROJECTS_DIR/$AGENT_ID" \
+    --model "$MODEL" \
+    --non-interactive 2>&1 | grep -v "^$"
+  success "Agent '$AGENT_ID' registered"
+
+  # Telegram
+  if [[ -n "${TG_GROUP_ID:-}" ]]; then
+    _wire_group "$AGENT_ID" "$TG_GROUP_ID"
+    restart_gateway
+  else
+    _print_wire_instructions "$AGENT_ID"
+  fi
+
+  _print_summary "$AGENT_ID" "$PROJECT_TYPE" "$CODEBASE_PATH" "${TG_GROUP_ID:-}"
+}
+
+# ─── COMMAND: delete ──────────────────────────────────────────────────────────
+cmd_delete() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Delete project")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name; name=$(meta_get "$id" "name" "$id")
+  local tg;   tg=$(get_tg_binding "$id")
+
+  header "Delete: $name ($id)"
+  echo ""
+  echo -e "  Workspace:    $workspace"
+  echo -e "  Registered:   $(agent_registered "$id" && echo "yes" || echo "no")"
+  echo -e "  Telegram:     ${tg:-none}"
+  echo ""
+  warn "This will:"
+  echo "  - Remove agent registration from openclaw.json"
+  echo "  - Remove Telegram binding (if any)"
+  echo ""
+  read -rp "Also delete workspace directory? [y/N]: " DEL_WORKSPACE
+  echo ""
+  read -rp "Type the agent ID to confirm deletion [$id]: " CONFIRM
+  [[ "$CONFIRM" != "$id" ]] && { warn "Aborted."; exit 0; }
+
+  # Remove from openclaw
+  remove_agent_config "$id"
+  success "Removed from agent registry"
+
+  # Remove binding
+  if [[ -n "$tg" ]]; then
+    remove_binding "$id"
+    success "Telegram binding removed"
+  fi
+
+  # Remove workspace
+  if [[ "${DEL_WORKSPACE,,}" == "y" ]]; then
+    rm -rf "$workspace"
+    success "Workspace deleted: $workspace"
+  else
+    warn "Workspace kept at: $workspace"
+  fi
+
+  restart_gateway
+  success "Done. Project '$id' deleted."
+}
+
+# ─── COMMAND: reset ───────────────────────────────────────────────────────────
+cmd_reset() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Reset project")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name; name=$(meta_get "$id" "name" "$id")
+
+  header "Reset: $name ($id)"
+  echo ""
+  echo "Choose what to reset:"
+  echo "  1) Memory only     — delete memory/*.md daily logs"
+  echo "  2) Full reset      — memory + MEMORY.md + HEARTBEAT.md (keep identity)"
+  echo "  3) Deep reset      — full reset + regenerate SOUL.md/AGENTS.md from scratch"
+  echo ""
+  read -rp "Choice [1/2/3]: " RESET_LEVEL
+
+  case "$RESET_LEVEL" in
+    1)
+      local count; count=$(find "$workspace/memory" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+      read -rp "Delete $count memory log files? [y/N]: " CONFIRM
+      [[ "${CONFIRM,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+      rm -f "$workspace/memory/"*.md
+      success "Memory logs cleared ($count files)"
+      ;;
+    2)
+      read -rp "Clear memory, MEMORY.md and reset HEARTBEAT.md? [y/N]: " CONFIRM
+      [[ "${CONFIRM,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+      rm -f "$workspace/memory/"*.md
+      rm -f "$workspace/MEMORY.md"
+      cat > "$workspace/HEARTBEAT.md" <<HEARTBEAT
+# HEARTBEAT.md — $(meta_get "$id" "name" "$id")
+
+Check every session. Follow strictly. Delete items when done.
+
+## Active Tasks
+_none_
+
+## Pending Decisions
+_none_
+
+## Notes
+_none_
+HEARTBEAT
+      chmod 600 "$workspace/HEARTBEAT.md"
+      success "Full reset complete — SOUL.md and AGENTS.md preserved"
+      ;;
+    3)
+      read -rp "Regenerate ALL workspace files from metadata? [y/N]: " CONFIRM
+      [[ "${CONFIRM,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+      rm -f "$workspace/memory/"*.md "$workspace/MEMORY.md" "$workspace/REQUIREMENTS.md"
+      local type;     type=$(meta_get "$id" "type" "repo")
+      local name2;    name2=$(meta_get "$id" "name" "$id")
+      local codebase; codebase=$(meta_get "$id" "codebase" "")
+      local stack;    stack=$(meta_get "$id" "stack" "")
+      local desc;     desc=$(meta_get "$id" "description" "No description.")
+      local model;    model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+      _create_workspace "$id" "$type" "$name2" "$codebase" "$stack" "$desc" "$model"
+      success "Deep reset complete — workspace regenerated from metadata"
+      ;;
+    *) error "Invalid choice." ;;
+  esac
+}
+
+# ─── COMMAND: repair ──────────────────────────────────────────────────────────
+cmd_repair() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Repair project")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found at $workspace"
+
+  local name; name=$(meta_get "$id" "name" "$id")
+  header "Repair: $name ($id)"
+  echo ""
+  local fixed=0
+
+  # 1. Check required files
+  local model; model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+  for f in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md; do
+    if [[ ! -f "$workspace/$f" ]]; then
+      warn "Missing: $f"
+      local type;     type=$(meta_get "$id" "type" "repo")
+      local name2;    name2=$(meta_get "$id" "name" "$id")
+      local codebase; codebase=$(meta_get "$id" "codebase" "")
+      local stack;    stack=$(meta_get "$id" "stack" "")
+      local desc;     desc=$(meta_get "$id" "description" "No description.")
+      _create_workspace "$id" "$type" "$name2" "$codebase" "$stack" "$desc" "$model"
+      success "Regenerated missing workspace files"
+      ((fixed++)); break
+    fi
+  done
+
+  # 2. Check memory directory
+  if [[ ! -d "$workspace/memory" ]]; then
+    mkdir -p "$workspace/memory"
+    chmod 700 "$workspace/memory"
+    success "Created missing memory/ directory"
+    ((fixed++))
+  fi
+
+  # 3. Fix permissions
+  local bad_dirs;  bad_dirs=$(find "$workspace" -type d ! -perm 700 2>/dev/null | wc -l | tr -d ' ')
+  local bad_files; bad_files=$(find "$workspace" -type f ! -perm 600 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$bad_dirs" -gt 0 || "$bad_files" -gt 0 ]]; then
+    find "$workspace" -type d -exec chmod 700 {} \;
+    find "$workspace" -type f -exec chmod 600 {} \;
+    success "Fixed permissions ($bad_dirs dirs, $bad_files files)"
+    ((fixed++))
+  else
+    success "Permissions OK"
+  fi
+
+  # 4. Check agent registration
+  if ! agent_registered "$id"; then
+    warn "Agent not registered — re-registering..."
+    openclaw agents add "$id" \
+      --workspace "$workspace" \
+      --model "$model" \
+      --non-interactive 2>&1 | grep -v "^$"
+    success "Agent re-registered"
+    ((fixed++))
+  else
+    success "Agent registration OK"
+  fi
+
+  # 5. Check Telegram binding
+  local tg; tg=$(get_tg_binding "$id")
+  if [[ -z "$tg" ]]; then
+    warn "No Telegram binding"
+    read -rp "Wire a Telegram group now? Enter group ID or blank to skip: " TG_INPUT
+    if [[ -n "$TG_INPUT" ]]; then
+      _wire_group "$id" "$TG_INPUT"
+      ((fixed++))
+    fi
+  else
+    success "Telegram binding OK ($tg)"
+    # Verify group is in allowlist
+    local in_allowlist
+    in_allowlist=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+groups = c.get('channels',{}).get('telegram',{}).get('groups',{})
+print('yes' if '$tg' in groups else 'no')
+" 2>/dev/null || echo "no")
+    if [[ "$in_allowlist" != "yes" ]]; then
+      warn "Group $tg not in allowlist — fixing..."
+      openclaw config set "channels.telegram.groups.${tg}" '{"requireMention": false}' 2>&1 || true
+      success "Group added to allowlist"
+      ((fixed++))
+    else
+      success "Telegram allowlist OK"
+    fi
+  fi
+
+  # 6. Restart if anything changed
+  echo ""
+  if [[ "$fixed" -gt 0 ]]; then
+    success "$fixed issue(s) fixed"
+    restart_gateway
+  else
+    success "Everything looks healthy — nothing to fix"
+  fi
+}
+
+# ─── COMMAND: wire ────────────────────────────────────────────────────────────
+cmd_wire() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Wire Telegram group")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name; name=$(meta_get "$id" "name" "$id")
+  local existing_tg; existing_tg=$(get_tg_binding "$id")
+
+  header "Wire Telegram: $name ($id)"
+  echo ""
+  [[ -n "$existing_tg" ]] && warn "Currently wired to group: $existing_tg"
+
+  _show_unbound_groups
+  read -rp "Telegram group ID: " TG_GROUP_ID
+  [[ -z "$TG_GROUP_ID" ]] && { warn "Aborted."; exit 0; }
+
+  _wire_group "$id" "$TG_GROUP_ID"
+  restart_gateway
+  success "Done. '$id' is now wired to group $TG_GROUP_ID"
+}
+
+# ─── COMMAND: unwire ──────────────────────────────────────────────────────────
+cmd_unwire() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Unwire Telegram group")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name; name=$(meta_get "$id" "name" "$id")
+  local tg;   tg=$(get_tg_binding "$id")
+
+  [[ -z "$tg" ]] && { warn "'$id' has no Telegram binding."; exit 0; }
+
+  header "Unwire Telegram: $name ($id)"
+  echo ""
+  warn "This will remove the binding for group $tg"
+  read -rp "Confirm? [y/N]: " CONFIRM
+  [[ "${CONFIRM,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+
+  remove_binding "$id"
+  success "Binding removed"
+  restart_gateway
+}
+
+# ─── Internal: create workspace files ────────────────────────────────────────
+_create_workspace() {
+  local id="$1" type="$2" name="$3" codebase="$4" stack="$5" desc="$6" model="$7"
+  local workspace="$PROJECTS_DIR/$id"
+  local test_cmd; test_cmd=$(test_cmd_for_stack "$stack")
+
+  mkdir -p "$workspace/memory"
+
+  # SOUL.md
+  if [[ "$type" == "repo" ]]; then
+    cat > "$workspace/SOUL.md" <<SOUL
+# SOUL.md — ${name}
+
+## Identity
+You are the autonomous agent for **${name}**. You know this project deeply. You do not discuss or act on other projects.
+
+## Description
+${desc}
+
+## Codebase
+${codebase}
+
+## Stack
+${stack}
+
+## Test Command
+\`${test_cmd}\`
+
+## Traits
+- Read files before making any changes. Never assume structure.
+- Delegate: implementation → programmer, review → reviewer, tests → tester.
+- Completion signal: output \`<promise>DONE</promise>\` when a task is complete.
+- Proactive: check HEARTBEAT.md every session.
+- Scope: never act outside ${codebase}.
+
+## Safety
+- Never push to main/master without HITL approval.
+- Never delete files without explicit instruction.
+SOUL
+  else
+    cat > "$workspace/SOUL.md" <<SOUL
+# SOUL.md — ${name}
+
+## Identity
+You are the autonomous agent for **${name}**. You handle tasks, research, and file operations for this context only.
+
+## Description
+${desc}
+
+## Work Directory
+~/Sites/${id}/
+
+## Traits
+- Break requests into numbered steps and execute them.
+- Log all completed tasks to memory/YYYY-MM-DD.md.
+- Proactive: check HEARTBEAT.md every session.
+- Scope: stay within this context. Do not reference other projects.
+
+## Safety
+- Never post publicly or send external messages without HITL approval.
+- Ask before overwriting existing files.
+SOUL
+  fi
+
+  # AGENTS.md
+  if [[ "$type" == "repo" ]]; then
+    cat > "$workspace/AGENTS.md" <<AGENTS
+# AGENTS.md — ${name}
+
+## Every Session
+1. Read SOUL.md
+2. Read HEARTBEAT.md — any pending tasks?
+3. Read memory/YYYY-MM-DD.md (today + yesterday)
+4. Read MEMORY.md if it exists
+
+## Project Path
+${codebase}
+
+## Delegation
+| Task              | Delegate to  |
+|-------------------|--------------|
+| Code              | programmer   |
+| Review            | reviewer     |
+| Tests             | tester       |
+| Memory/patterns   | knowledge    |
+| Risky actions     | security     |
+
+## Scope Rule
+Only act on ${name}. Redirect other project questions to the correct group.
+
+## First Run
+If MEMORY.md is missing, read the codebase and write it:
+1. Check package.json / requirements.txt / composer.json
+2. Read key entry points
+3. Check git log --oneline -20
+4. Write MEMORY.md: architecture, current state, key files, known issues
+AGENTS
+  else
+    cat > "$workspace/AGENTS.md" <<AGENTS
+# AGENTS.md — ${name}
+
+## Every Session
+1. Read SOUL.md
+2. Read HEARTBEAT.md
+3. Read memory/YYYY-MM-DD.md (today + yesterday)
+
+## Work Directory
+~/Sites/${id}/
+
+## Task Protocol
+1. Break request into numbered steps
+2. Execute each step
+3. Log results to memory/YYYY-MM-DD.md
+4. Report blockers immediately
+
+## Scope Rule
+Only handle ${name} tasks.
+AGENTS
+  fi
+
+  # TOOLS.md
+  if [[ "$type" == "repo" ]]; then
+    cat > "$workspace/TOOLS.md" <<TOOLS
+# TOOLS.md — ${name}
+
+## Project Path
+${codebase}
+
+## Stack
+${stack}
+
+## Commands
+\`\`\`bash
+${test_cmd}       # run tests
+git log --oneline -10  # recent history
+git diff HEAD          # review before commit
+\`\`\`
+
+## Environment Notes
+_Add: DB name, ports, env vars, dev server command, seed scripts._
+TOOLS
+  else
+    cat > "$workspace/TOOLS.md" <<TOOLS
+# TOOLS.md — ${name}
+
+## Work Directory
+~/Sites/${id}/
+
+## Notes
+_Add: API keys needed, URLs to monitor, file locations, tools to use._
+TOOLS
+  fi
+
+  # HEARTBEAT.md
+  cat > "$workspace/HEARTBEAT.md" <<HEARTBEAT
+# HEARTBEAT.md — ${name}
+
+Check every session. Delete items when done.
+
+## Active Tasks
+_none yet_
+
+## Pending Decisions
+_none_
+
+## Notes
+_none_
+HEARTBEAT
+
+  # Fix permissions
+  find "$workspace" -type d -exec chmod 700 {} \;
+  find "$workspace" -type f -exec chmod 600 {} \;
+
+  success "Workspace created: $workspace"
+}
+
+# ─── Internal: wire a group ───────────────────────────────────────────────────
+_wire_group() {
+  local id="$1" group_id="$2"
+  openclaw config set "channels.telegram.groups.${group_id}" '{"requireMention": false}' 2>&1 \
+    || warn "Could not set allowlist entry — check manually"
+  success "Group $group_id added to allowlist"
+  upsert_binding "$id" "$group_id"
+  success "Binding: $id ← telegram group $group_id"
+}
+
+# ─── Internal: show unbound groups from today's logs ─────────────────────────
+_show_unbound_groups() {
+  [[ ! -f "$LOG_FILE" ]] && return
+  local groups
+  groups=$(grep -o '"chatId":-[0-9]*' "$LOG_FILE" 2>/dev/null | sed 's/"chatId"://' | sort -u || true)
+  [[ -z "$groups" ]] && return
+  echo -e "${CYAN}Groups seen today (from gateway logs):${RESET}"
+  while IFS= read -r gid; do
+    local title bound
+    title=$(grep -o "\"chatId\":${gid},\"title\":\"[^\"]*\"" "$LOG_FILE" 2>/dev/null \
+      | tail -1 | sed 's/.*"title":"//;s/".*//' || echo "unknown")
+    bound=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+for b in c.get('bindings',[]):
+    if b.get('match',{}).get('peer',{}).get('id') == '$gid':
+        print(b['agentId']); exit()
+print('')
+" 2>/dev/null || echo "")
+    if [[ -n "$bound" ]]; then
+      printf "  ${DIM}%-20s %-30s → %s${RESET}\n" "$gid" "$title" "$bound"
+    else
+      printf "  ${GREEN}%-20s %-30s → unbound${RESET}\n" "$gid" "$title"
+    fi
+  done <<< "$groups"
+  echo ""
+}
+
+# ─── Internal: print wire instructions ───────────────────────────────────────
+_print_wire_instructions() {
+  local id="$1"
+  echo ""
+  warn "No Telegram group wired. When ready:"
+  echo ""
+  echo "  rack wire $id"
+  echo ""
+  echo "  Or manually:"
+  echo "  1. Create group in Telegram, add @claw_x9m_bot, send a message"
+  echo "  2. openclaw config set 'channels.telegram.groups.<ID>' '{\"requireMention\": false}'"
+  echo "  3. Add to bindings in ~/.openclaw/openclaw.json"
+  echo "  4. systemctl --user restart openclaw-gateway.service"
+}
+
+# ─── Internal: print summary ─────────────────────────────────────────────────
+_print_summary() {
+  local id="$1" type="$2" codebase="$3" tg="$4"
+  echo ""
+  success "Project agent '$id' is ready"
+  echo ""
+  printf "  ${BOLD}%-14s${RESET} %s\n" "Agent ID:"    "$id"
+  printf "  ${BOLD}%-14s${RESET} %s\n" "Type:"        "$type"
+  [[ -n "$codebase" ]] && printf "  ${BOLD}%-14s${RESET} %s\n" "Codebase:"   "$codebase"
+  [[ -n "$tg" ]] && printf "  ${BOLD}%-14s${RESET} %s\n" "Telegram:"   "group $tg → wired ✓"
+  echo ""
+  if [[ "$type" == "repo" && -n "$codebase" && -d "$codebase" ]]; then
+    echo -e "${BOLD}First message to send in the Telegram group:${RESET}"
+    echo ""
+    echo "  Read the codebase at $codebase and update your SOUL.md"
+    echo "  and MEMORY.md with: tech stack, entry points, architecture,"
+    echo "  current state, and recent git activity."
+  fi
+  echo ""
+}
+
+# ─── COMMAND: doctor ──────────────────────────────────────────────────────────
+cmd_doctor() {
+  header "Rack Doctor — System Health Check"
+  echo ""
+  local issues=0
+
+  # 1. openclaw binary
+  if command -v openclaw &>/dev/null; then
+    success "openclaw: $(command -v openclaw)"
+    dbg "openclaw version: $(openclaw --version 2>/dev/null || echo 'n/a')"
+  else
+    fail "openclaw not found in PATH"
+    echo "  Install from: https://openclaw.dev"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 2. python3
+  if command -v python3 &>/dev/null; then
+    success "python3: $(command -v python3)"
+  else
+    fail "python3 not found — required for JSON operations"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 3. fzf (optional)
+  if command -v fzf &>/dev/null; then
+    success "fzf: $(command -v fzf)"
+  else
+    warn "fzf not installed — interactive pickers will use numbered fallback"
+    echo "  Install with: brew install fzf"
+  fi
+
+  # 4. Config file
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    fail "Config missing: $CONFIG_FILE"
+    echo "  Run: openclaw onboard"
+    issues=$(( issues + 1 ))
+  elif python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>/dev/null; then
+    success "Config JSON valid: $CONFIG_FILE"
+    dbg "Agents in config: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents',{}).get('list',[])))" 2>/dev/null)"
+    dbg "Bindings in config: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('bindings',[])))" 2>/dev/null)"
+  else
+    fail "Config JSON is invalid: $CONFIG_FILE"
+    echo "  Run: openclaw doctor"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 5. Gateway service
+  local svc_status="unknown"
+  svc_status=$(systemctl --user is-active openclaw-gateway.service 2>/dev/null) || true
+  if [[ "$svc_status" == "active" ]]; then
+    success "Gateway service: active"
+    if [[ "$DEBUG" == "1" ]]; then
+      systemctl --user status openclaw-gateway.service --no-pager -l 2>/dev/null \
+        | head -12 | sed 's/^/  /'
+    fi
+  else
+    fail "Gateway service: $svc_status"
+    echo "  Run: systemctl --user start openclaw-gateway.service"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 6. Telegram channel
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local tg_enabled
+    tg_enabled=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
+" 2>/dev/null || echo "unknown")
+    if [[ "$tg_enabled" == "yes" ]]; then
+      success "Telegram channel: enabled"
+    else
+      warn "Telegram channel: disabled or not configured"
+      echo "  Run: openclaw onboard  (to configure Telegram)"
+    fi
+  fi
+
+  # 7. Per-project checks
+  local ids; ids=$(project_ids)
+  if [[ -z "$ids" ]]; then
+    echo ""
+    warn "No project agents found — run: rack add"
+  else
+    echo ""
+    echo -e "${BOLD}Project agents:${RESET}"
+    while IFS= read -r id; do
+      local proj_issues=()
+      local tg; tg=$(get_tg_binding "$id")
+
+      for f in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md; do
+        [[ ! -f "$PROJECTS_DIR/$id/$f" ]] && proj_issues+=("missing $f")
+      done
+      [[ ! -f "$PROJECTS_DIR/$id/$META_FILE" ]] && proj_issues+=("no $META_FILE")
+
+      if ! openclaw agents list 2>/dev/null | grep -q "^- ${id}$"; then
+        proj_issues+=("not registered in openclaw")
+      fi
+
+      if [[ "${#proj_issues[@]}" -gt 0 ]]; then
+        fail "  $id: ${proj_issues[*]}"
+        echo "    Fix with: rack repair $id"
+        issues=$(( issues + 1 ))
+      elif [[ -z "$tg" ]]; then
+        warn "  $id: OK, no Telegram binding  →  rack wire $id"
+      else
+        success "  $id: OK  →  group $tg"
+      fi
+    done <<< "$ids"
+  fi
+
+  # 8. Today's log
+  echo ""
+  if [[ -f "$LOG_FILE" ]]; then
+    local lines; lines=$(wc -l < "$LOG_FILE" | tr -d ' ')
+    success "Today's log: $LOG_FILE ($lines lines)"
+    if [[ "$DEBUG" == "1" && "$lines" -gt 0 ]]; then
+      echo ""
+      echo -e "${DIM}Last 5 log lines:${RESET}"
+      tail -5 "$LOG_FILE" 2>/dev/null | sed 's/^/  /'
+    fi
+  else
+    dim "  No log today: $LOG_FILE"
+    dim "  (Normal if the gateway hasn't received messages yet)"
+  fi
+
+  # Summary
+  echo ""
+  if [[ "$issues" -eq 0 ]]; then
+    success "All checks passed — rack is healthy."
+  else
+    echo -e "${RED}${BOLD}${issues} critical issue(s) found.${RESET}"
+    echo "  Project issues:  rack repair [id]"
+    echo "  Gateway issues:  openclaw doctor"
+    exit 1
+  fi
+}
+
+# ─── COMMAND: logs ────────────────────────────────────────────────────────────
+# Show recent memory logs or gateway log entries for a project.
+cmd_logs() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "View logs for")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name; name=$(meta_get "$id" "name" "$id")
+  header "Logs: $name ($id)"
+
+  # Show most recent memory day-log (if any)
+  local latest_mem
+  latest_mem=$(find "$workspace/memory" -maxdepth 1 -name '*.md' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  if [[ -n "$latest_mem" ]]; then
+    echo ""
+    echo -e "${BOLD}Latest memory log:${RESET} $(basename "$latest_mem")"
+    echo -e "${DIM}$(head -40 "$latest_mem")${RESET}"
+    local total_lines; total_lines=$(wc -l < "$latest_mem" | tr -d ' ')
+    [[ "$total_lines" -gt 40 ]] && dim "  ... ($((total_lines - 40)) more lines)"
+  else
+    echo ""
+    dim "  No memory logs yet."
+  fi
+
+  # Show gateway log entries for this agent (if today's log exists)
+  if [[ -f "$LOG_FILE" ]]; then
+    local tg; tg=$(get_tg_binding "$id")
+    if [[ -n "$tg" ]]; then
+      local gateway_lines
+      gateway_lines=$(grep -c "$tg" "$LOG_FILE" 2>/dev/null || echo "0")
+      echo ""
+      echo -e "${BOLD}Gateway log:${RESET} $gateway_lines entries today for group $tg"
+      if [[ "$gateway_lines" -gt 0 ]]; then
+        grep "$tg" "$LOG_FILE" 2>/dev/null | tail -10 | sed 's/^/  /'
+        [[ "$gateway_lines" -gt 10 ]] && dim "  ... ($((gateway_lines - 10)) more entries)"
+      fi
+    fi
+  fi
+  echo ""
+}
+
+# ─── COMMAND: edit ────────────────────────────────────────────────────────────
+# Open workspace files in $EDITOR for manual editing.
+cmd_edit() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Edit workspace for")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local editor="${EDITOR:-${VISUAL:-nano}}"
+  local name; name=$(meta_get "$id" "name" "$id")
+
+  header "Edit: $name ($id)"
+  echo ""
+  echo "Opening workspace files in $editor..."
+  echo "  $workspace/SOUL.md"
+  echo "  $workspace/AGENTS.md"
+  echo "  $workspace/TOOLS.md"
+  echo "  $workspace/HEARTBEAT.md"
+  echo ""
+
+  # Open the main workspace files (editor gets all four)
+  "$editor" \
+    "$workspace/SOUL.md" \
+    "$workspace/AGENTS.md" \
+    "$workspace/TOOLS.md" \
+    "$workspace/HEARTBEAT.md"
+
+  success "Edits saved."
+}
+
+# ─── COMMAND: model ───────────────────────────────────────────────────────────
+# View or change the model assigned to a project agent.
+cmd_model() {
+  local id="${1:-}" new_model="${2:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Change model for")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local name;    name=$(meta_get "$id" "name" "$id")
+  local current; current=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+
+  # If no new model provided, just show current
+  if [[ -z "$new_model" ]]; then
+    header "Model: $name ($id)"
+    echo ""
+    printf "  ${BOLD}Current:${RESET}  %s\n" "$current"
+    printf "  ${BOLD}Default:${RESET}  %s\n" "$DEFAULT_MODEL"
+    echo ""
+    echo "To change:  rack model $id <model>"
+    echo "Example:    rack model $id anthropic/claude-sonnet-4-6"
+    echo ""
+    return
+  fi
+
+  # Update model in .rack-meta.json
+  meta_set "$id" "model" "$new_model"
+
+  # Update model in openclaw.json agents list
+  python3 - "$CONFIG_FILE" "$id" "$new_model" <<'PY'
+import json, sys
+path, agent_id, new_model = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    config = json.load(f)
+for agent in config.get("agents", {}).get("list", []):
+    if agent.get("id") == agent_id:
+        agent["model"] = new_model
+        break
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+PY
+
+  success "Model updated: $current → $new_model"
+  restart_gateway
+}
+
+# ─── Help ─────────────────────────────────────────────────────────────────────
+cmd_help() {
+  cat <<HELP
+
+${BOLD}rack — OpenClaw project manager${RESET}
+
+${BOLD}USAGE${RESET}
+  rack [--debug] <command> [agent-id]
+
+${BOLD}LIFECYCLE${RESET}
+  ${GREEN}list${RESET}              List all project agents and their status
+  ${GREEN}add${RESET}               Add a new project agent (interactive)
+  ${GREEN}info${RESET}   [id]       Detailed status and info for a project
+  ${GREEN}delete${RESET} [id]       Remove a project agent (with confirmation)
+  ${GREEN}reset${RESET}  [id]       Clear memory / reset workspace (keeps identity)
+  ${GREEN}repair${RESET} [id]       Fix permissions, re-register, fix routing
+
+${BOLD}TELEGRAM${RESET}
+  ${GREEN}wire${RESET}   [id]       Wire or update a Telegram group binding
+  ${GREEN}unwire${RESET} [id]       Remove Telegram binding from a project
+
+${BOLD}UTILITIES${RESET}
+  ${GREEN}logs${RESET}   [id]       View memory logs and gateway entries for a project
+  ${GREEN}edit${RESET}   [id]       Open workspace files in \$EDITOR
+  ${GREEN}model${RESET}  [id] [m]   View or change the model for a project
+  ${GREEN}doctor${RESET}            Check gateway, projects, and config for issues
+
+  If [id] is omitted, an interactive picker is shown (fzf or numbered list).
+
+${BOLD}FLAGS${RESET}
+  --debug, -D       Verbose mode: show debug trace and extra log output
+                    Or set in env: DEBUG=1 rack <command>
+
+${BOLD}EXAMPLES${RESET}
+  rack                        # show project list
+  rack add                    # add a new project
+  rack doctor                 # health check everything
+  rack doctor --debug         # health check with verbose output
+  rack info coreapp      # inspect one project
+  rack repair sensorapp       # fix any issues
+  rack wire corpbot       # attach a Telegram group
+  rack reset sideproject       # clear memory logs
+  rack delete marketing       # remove a project
+
+${BOLD}DEBUG${RESET}
+  rack --debug <command>      # trace execution + extra output
+  DEBUG=1 rack repair foo     # same, via environment variable
+
+${BOLD}PATHS${RESET}
+  Workspaces:  ~/.openclaw/workspaces/projects/
+  Config:      ~/.openclaw/openclaw.json
+  Logs:        /tmp/openclaw/openclaw-YYYY-MM-DD.log
+
+HELP
+}
+
+# ─── Router ───────────────────────────────────────────────────────────────────
+# Parse global flags first (--debug may appear anywhere)
+_ARGS=()
+for _a in "$@"; do
+  case "$_a" in
+    --debug|-D) DEBUG=1 ;;
+    *)          _ARGS+=("$_a") ;;
+  esac
+done
+
+[[ "$DEBUG" == "1" ]] && { set -x; dbg "Debug mode enabled"; }
+
+CMD="${_ARGS[0]:-list}"
+ARG="${_ARGS[1]:-}"
+
+case "$CMD" in
+  list)              cmd_list ;;
+  add|create|new)    cmd_add ;;
+  info|show)         cmd_info "$ARG" ;;
+  delete|remove|rm)  cmd_delete "$ARG" ;;
+  reset)             cmd_reset "$ARG" ;;
+  repair|fix)        cmd_repair "$ARG" ;;
+  wire)              cmd_wire "$ARG" ;;
+  unwire)            cmd_unwire "$ARG" ;;
+  logs|log)          cmd_logs "$ARG" ;;
+  edit)              cmd_edit "$ARG" ;;
+  model)             cmd_model "$ARG" "${_ARGS[2]:-}" ;;
+  doctor|check)      cmd_doctor ;;
+  help|--help|-h)    cmd_help ;;
+  *)                 error_hint "Unknown command '$CMD'" "Run: rack help" ;;
+esac
