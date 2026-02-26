@@ -1,0 +1,176 @@
+# Lobster Workflow: Automated Code Review
+# Review pull requests with AI assistance
+
+name: code-review
+description: "Automated code review with security and quality checks"
+
+env:
+  PROJECT_PATH: "${WORKSPACE}/../../codebase"
+  PR_BRANCH: "${PR_BRANCH}"
+  BASE_BRANCH: "main"
+
+steps:
+  - id: fetch-changes
+    type: shell
+    description: "Fetch PR changes"
+    command: |
+      cd ${PROJECT_PATH}
+      git fetch origin ${PR_BRANCH}
+      git checkout ${PR_BRANCH}
+      git diff origin/${BASE_BRANCH}...HEAD > /tmp/pr-diff.txt
+      git log origin/${BASE_BRANCH}..HEAD --oneline > /tmp/pr-commits.txt
+
+  - id: count-changes
+    type: shell
+    description: "Analyze change scope"
+    command: |
+      cd ${PROJECT_PATH}
+      FILES_CHANGED=$(git diff --name-only origin/${BASE_BRANCH}...HEAD | wc -l)
+      LINES_ADDED=$(git diff --stat origin/${BASE_BRANCH}...HEAD | tail -1 | awk '{print $4}')
+      LINES_REMOVED=$(git diff --stat origin/${BASE_BRANCH}...HEAD | tail -1 | awk '{print $6}')
+
+      echo "Files changed: $FILES_CHANGED"
+      echo "Lines added: $LINES_ADDED"
+      echo "Lines removed: $LINES_REMOVED"
+
+  - id: security-scan
+    type: shell
+    description: "Run security scanner"
+    command: |
+      cd ${PROJECT_PATH}
+
+      # Node.js
+      if [ -f package.json ]; then
+        npm audit --audit-level=moderate || true
+      fi
+
+      # Python
+      if [ -f requirements.txt ]; then
+        pip-audit || echo "pip-audit not installed"
+        bandit -r src/ || echo "bandit not installed"
+      fi
+
+      # Go
+      if [ -f go.mod ]; then
+        gosec ./... || echo "gosec not installed"
+      fi
+    continueOnError: true
+
+  - id: detect-secrets
+    type: shell
+    description: "Scan for exposed secrets"
+    command: |
+      cd ${PROJECT_PATH}
+
+      # Check for common patterns
+      git diff origin/${BASE_BRANCH}...HEAD | grep -E "(api[_-]?key|password|secret|token|credential)" || echo "No secrets detected"
+
+      # Check for hardcoded IPs
+      git diff origin/${BASE_BRANCH}...HEAD | grep -E "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" || echo "No IPs detected"
+
+  - id: code-quality
+    type: shell
+    description: "Check code quality metrics"
+    command: |
+      cd ${PROJECT_PATH}
+
+      # Run linter
+      if [ -f package.json ]; then
+        npm run lint 2>&1 | tee /tmp/lint-output.txt
+      elif [ -f requirements.txt ]; then
+        pylint src/ 2>&1 | tee /tmp/lint-output.txt || true
+      fi
+
+      # Check complexity (if available)
+      # radon cc src/ -a || echo "Radon not installed"
+
+  - id: ai-review
+    type: llm
+    description: "AI code review"
+    prompt: |
+      Review this pull request comprehensively:
+
+      ## Diff
+      ```
+      ${steps.fetch-changes.file:/tmp/pr-diff.txt}
+      ```
+
+      ## Commits
+      ```
+      ${steps.fetch-changes.file:/tmp/pr-commits.txt}
+      ```
+
+      ## Security Scan
+      ${steps.security-scan.stdout}
+
+      ## Secret Detection
+      ${steps.detect-secrets.stdout}
+
+      ## Code Quality
+      ${steps.code-quality.stdout}
+
+      ## Change Stats
+      ${steps.count-changes.stdout}
+
+      Provide a code review covering:
+
+      1. **Security Issues** (HIGH priority)
+         - Exposed secrets or credentials
+         - SQL injection risks
+         - XSS vulnerabilities
+         - Unsafe dependencies
+
+      2. **Code Quality** (MEDIUM priority)
+         - Adherence to style guide
+         - Code duplication
+         - Complex functions
+         - Missing error handling
+
+      3. **Architecture** (MEDIUM priority)
+         - Design patterns
+         - Separation of concerns
+         - Test coverage
+
+      4. **Documentation** (LOW priority)
+         - Missing comments
+         - Outdated docs
+         - Unclear naming
+
+      5. **Recommendation**
+         - APPROVE: Ready to merge
+         - REQUEST_CHANGES: Issues must be fixed
+         - COMMENT: Optional improvements
+
+      Format your response as:
+      - Executive summary (2-3 sentences)
+      - Detailed findings by category
+      - Final recommendation with reasoning
+
+    approval: optional  # Let reviewer decide if changes needed
+
+  - id: post-review
+    type: shell
+    description: "Post review comment"
+    command: |
+      # This would post to GitHub/GitLab via API
+      echo "Review posted to PR"
+      # gh pr comment ${PR_NUMBER} --body "${steps.ai-review.response}"
+
+outputs:
+  - review: "${steps.ai-review.response}"
+  - securityFindings: "${steps.security-scan.stdout}"
+  - qualityMetrics: "${steps.code-quality.stdout}"
+
+notifications:
+  onComplete:
+    - channel: telegram
+      message: "✅ Code review completed for PR #${PR_NUMBER}"
+
+  onError:
+    - channel: telegram
+      message: "❌ Code review failed: ${error}"
+
+artifacts:
+  - /tmp/pr-diff.txt
+  - /tmp/pr-commits.txt
+  - /tmp/lint-output.txt

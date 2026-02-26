@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Command: doctor
+
+cmd_doctor() {
+  header "Rack Doctor — System Health Check"
+  echo ""
+  local issues=0
+
+  # 1. openclaw binary
+  if command -v openclaw &>/dev/null; then
+    success "openclaw: $(command -v openclaw)"
+    dbg "openclaw version: $(openclaw --version 2>/dev/null || echo 'n/a')"
+  else
+    fail "openclaw not found in PATH"
+    echo "  Install from: https://openclaw.dev"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 2. python3
+  if command -v python3 &>/dev/null; then
+    success "python3: $(command -v python3)"
+  else
+    fail "python3 not found — required for JSON operations"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 3. fzf (optional)
+  if command -v fzf &>/dev/null; then
+    success "fzf: $(command -v fzf)"
+  else
+    warn "fzf not installed — interactive pickers will use numbered fallback"
+    echo "  Install with: brew install fzf"
+  fi
+
+  # 4. Config file
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    fail "Config missing: $CONFIG_FILE"
+    echo "  Run: openclaw onboard"
+    issues=$(( issues + 1 ))
+  elif python3 -c "import json; json.load(open('$CONFIG_FILE'))" 2>/dev/null; then
+    success "Config JSON valid: $CONFIG_FILE"
+    dbg "Agents in config: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents',{}).get('list',[])))" 2>/dev/null)"
+    dbg "Bindings in config: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('bindings',[])))" 2>/dev/null)"
+  else
+    fail "Config JSON is invalid: $CONFIG_FILE"
+    echo "  Run: openclaw doctor"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 5. Gateway service
+  local svc_status="unknown"
+  svc_status=$(systemctl --user is-active openclaw-gateway.service 2>/dev/null) || true
+  if [[ "$svc_status" == "active" ]]; then
+    success "Gateway service: active"
+    if [[ "$DEBUG" == "1" ]]; then
+      systemctl --user status openclaw-gateway.service --no-pager -l 2>/dev/null \
+        | head -12 | sed 's/^/  /'
+    fi
+  else
+    fail "Gateway service: $svc_status"
+    echo "  Run: systemctl --user start openclaw-gateway.service"
+    issues=$(( issues + 1 ))
+  fi
+
+  # 6. Telegram channel
+  if [[ -f "$CONFIG_FILE" ]]; then
+    local tg_enabled
+    tg_enabled=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
+" 2>/dev/null || echo "unknown")
+    if [[ "$tg_enabled" == "yes" ]]; then
+      success "Telegram channel: enabled"
+    else
+      warn "Telegram channel: disabled or not configured"
+      echo "  Run: openclaw onboard  (to configure Telegram)"
+    fi
+  fi
+
+  # 7. Per-project checks
+  local ids; ids=$(project_ids)
+  if [[ -z "$ids" ]]; then
+    echo ""
+    warn "No project agents found — run: rack add"
+  else
+    echo ""
+    echo -e "${BOLD}Project agents:${RESET}"
+    while IFS= read -r id; do
+      local proj_issues=()
+      local tg; tg=$(get_tg_binding "$id")
+
+      for f in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md; do
+        [[ ! -f "$PROJECTS_DIR/$id/$f" ]] && proj_issues+=("missing $f")
+      done
+      [[ ! -f "$PROJECTS_DIR/$id/$META_FILE" ]] && proj_issues+=("no $META_FILE")
+
+      if ! openclaw agents list 2>/dev/null | grep -q "^- ${id}$"; then
+        proj_issues+=("not registered in openclaw")
+      fi
+
+      if [[ "${#proj_issues[@]}" -gt 0 ]]; then
+        fail "  $id: ${proj_issues[*]}"
+        echo "    Fix with: rack repair $id"
+        issues=$(( issues + 1 ))
+      elif [[ -z "$tg" ]]; then
+        warn "  $id: OK, no Telegram binding  →  rack wire $id"
+      else
+        success "  $id: OK  →  group $tg"
+      fi
+    done <<< "$ids"
+  fi
+
+  # 8. Today's log
+  echo ""
+  if [[ -f "$LOG_FILE" ]]; then
+    local lines; lines=$(wc -l < "$LOG_FILE" | tr -d ' ')
+    success "Today's log: $LOG_FILE ($lines lines)"
+    if [[ "$DEBUG" == "1" && "$lines" -gt 0 ]]; then
+      echo ""
+      echo -e "${DIM}Last 5 log lines:${RESET}"
+      tail -5 "$LOG_FILE" 2>/dev/null | sed 's/^/  /'
+    fi
+  else
+    dim "  No log today: $LOG_FILE"
+    dim "  (Normal if the gateway hasn't received messages yet)"
+  fi
+
+  # Summary
+  echo ""
+  if [[ "$issues" -eq 0 ]]; then
+    success "All checks passed — rack is healthy."
+  else
+    echo -e "${RED}${BOLD}${issues} critical issue(s) found.${RESET}"
+    echo "  Project issues:  rack repair [id]"
+    echo "  Gateway issues:  openclaw doctor"
+    exit 1
+  fi
+}
+
