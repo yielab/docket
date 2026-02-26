@@ -13,7 +13,6 @@ route_command() {
     delete|remove|rm)  cmd_delete "$@" ;;
     reset)             cmd_reset "$@" ;;
     repair|fix)        cmd_repair "$@" ;;
-    team)              cmd_team "$@" ;;
     wire)              cmd_wire "$@" ;;
     unwire)            cmd_unwire "$@" ;;
     logs|log)          cmd_logs "$@" ;;
@@ -22,6 +21,7 @@ route_command() {
     profile|tier)      cmd_profile "$@" ;;
     scope)             cmd_scope "$@" ;;
     workflow|wf)       cmd_workflow "$@" ;;
+    keys|key|secret)   cmd_keys "$@" ;;
     cost|usage)        cmd_cost "$@" ;;
     doctor|check)      cmd_doctor "$@" ;;
     help|--help|-h)    cmd_help "$@" ;;

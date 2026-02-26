@@ -26,9 +26,18 @@ mkdir -p "$LIB_DIR"
 echo "→ Copying library files..."
 cp -r "$SCRIPT_DIR/lib/"* "$LIB_DIR/"
 
-# Copy binary and make it executable
+# Copy binary and update LIB_DIR path
 echo "→ Installing rack binary..."
-cat > "$BIN_DIR/rack" <<'EOF'
+cp "$SCRIPT_DIR/bin/rack" "$BIN_DIR/rack"
+
+# Update LIB_DIR path to point to installed location
+sed -i 's|^LIB_DIR=.*|LIB_DIR="${HOME}/.local/lib/rack"|' "$BIN_DIR/rack"
+
+# Make executable
+chmod +x "$BIN_DIR/rack"
+
+# Skip the old heredoc content (keeping for reference if needed)
+: <<'EOF_SKIP'
 #!/usr/bin/env bash
 # rack — OpenClaw project agent manager (Modular Edition)
 #
@@ -105,7 +114,6 @@ source "$LIB_DIR/commands/workflow.sh"
 source "$LIB_DIR/commands/cost.sh"
 source "$LIB_DIR/commands/doctor.sh"
 source "$LIB_DIR/commands/install.sh"
-source "$LIB_DIR/commands/team.sh"
 source "$LIB_DIR/commands/help.sh"
 
 # Source router
@@ -124,9 +132,7 @@ fi
 
 # Route command
 route_command "$CMD" "${_ARGS[@]:1}"
-EOF
-
-chmod +x "$BIN_DIR/rack"
+EOF_SKIP
 
 echo "→ Setting permissions..."
 find "$LIB_DIR" -type f -exec chmod 644 {} \;

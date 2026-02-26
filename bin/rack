@@ -9,10 +9,6 @@
 #   rack reset  [id]           Clear memory, reset heartbeat (keep identity)
 #   rack repair [id]           Fix permissions, routing, missing files
 #
-# Team coordination:
-#   rack team status           View team state
-#   rack team init             Create manager agent
-#   rack team check            Health check for specialists
 #
 # Session management:
 #   rack scope [id] show       Display current scope
@@ -78,10 +74,10 @@ source "$LIB_DIR/commands/model.sh"
 source "$LIB_DIR/commands/profile.sh"
 source "$LIB_DIR/commands/scope.sh"
 source "$LIB_DIR/commands/workflow.sh"
+source "$LIB_DIR/commands/keys.sh"
 source "$LIB_DIR/commands/cost.sh"
 source "$LIB_DIR/commands/doctor.sh"
 source "$LIB_DIR/commands/install.sh"
-source "$LIB_DIR/commands/team.sh"
 source "$LIB_DIR/commands/help.sh"
 
 # Source router
