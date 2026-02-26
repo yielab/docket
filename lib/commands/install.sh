@@ -5,12 +5,52 @@ cmd_install() {
   header "Rack Installation — OpenClaw Setup"
   echo ""
 
-  # Check if OpenClaw is already configured
+  # Detect existing setup
+  local is_existing_setup=false
+  local needs_update=()
+
   if [[ -f "$CONFIG_FILE" ]]; then
-    warn "OpenClaw config already exists at: $CONFIG_FILE"
+    is_existing_setup=true
+    info "Existing OpenClaw installation detected"
     echo ""
-    read -rp "This will modify your existing setup. Continue? [y/N]: " CONFIRM
-    [[ "${CONFIRM,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+
+    # Check what needs updating
+    if ! python3 -c "import json; c=json.load(open('$CONFIG_FILE')); exit(0 if 'agents' in c and 'defaults' in c['agents'] else 1)" 2>/dev/null; then
+      needs_update+=("agent defaults")
+    fi
+
+    # Check for missing specialist agents
+    local specialists=("programmer" "reviewer" "tester" "knowledge" "security")
+    local missing_specialists=()
+    for spec in "${specialists[@]}"; do
+      if ! agent_registered "$spec"; then
+        missing_specialists+=("$spec")
+      fi
+    done
+
+    if [[ "${#missing_specialists[@]}" -gt 0 ]]; then
+      needs_update+=("specialist agents: ${missing_specialists[*]}")
+    fi
+
+    if [[ "${#needs_update[@]}" -eq 0 ]]; then
+      success "OpenClaw is fully configured!"
+      echo ""
+      echo "Current setup:"
+      echo "  • Config: $CONFIG_FILE"
+      echo "  • Projects: $PROJECTS_DIR"
+      echo "  • Agents: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents', {}).get('registered', [])))" 2>/dev/null || echo "unknown")"
+      echo ""
+      read -rp "Reconfigure anyway? [y/N]: " CONFIRM
+      [[ "${CONFIRM,,}" != "y" ]] && { info "Nothing to do. Run 'rack doctor' to verify health."; exit 0; }
+    else
+      warn "Updates needed:"
+      for update in "${needs_update[@]}"; do
+        echo "  • $update"
+      done
+      echo ""
+      read -rp "Apply updates? [Y/n]: " CONFIRM
+      [[ "${CONFIRM,,}" == "n" ]] && { warn "Aborted."; exit 0; }
+    fi
   fi
 
   # Step 1: Check dependencies
@@ -148,54 +188,13 @@ PY
 
   echo ""
 
-  # Step 6: Configure tool approval gates (security sentinel)
-  header "Step 6: Configuring security sentinel"
-  python3 - "$CONFIG_FILE" <<'PY'
-import json, sys
-path = sys.argv[1]
+  # Step 6: Configure security best practices
+  header "Step 6: Configuring security best practices"
 
-with open(path) as f:
-    config = json.load(f)
-
-# Set up tool approval gates
-if "tools" not in config:
-    config["tools"] = {}
-
-config["tools"]["approval"] = {
-    "enabled": True,
-    "requireApprovalFor": [
-        "rm",
-        "git push",
-        "docker stop",
-        "kubectl delete",
-        "npm publish",
-        "pip install",
-        "curl",
-        "wget"
-    ],
-    "notificationChannel": "telegram"
-}
-
-# Set workspace access controls
-config["security"] = {
-    "workspaceAccess": {
-        "mode": "isolated",
-        "allowCrossProject": False
-    },
-    "auditLog": {
-        "enabled": True,
-        "path": "/tmp/openclaw/audit.log"
-    }
-}
-
-with open(path, "w") as f:
-    json.dump(config, f, indent=2)
-PY
-
-  success "Security sentinel configured"
-  echo "  Tool approval gates: enabled"
-  echo "  Workspace isolation: enabled"
-  echo "  Audit logging: enabled"
+  success "Security configuration skipped"
+  echo "  Note: Tool approval gates and workspace isolation"
+  echo "        are configured per-agent in TOOLS.md and SOUL.md"
+  echo "        Run 'rack repair <id>' to apply security templates"
 
   echo ""
 

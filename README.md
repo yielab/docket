@@ -47,15 +47,27 @@
 git clone https://github.com/yourusername/rack-cli.git
 cd rack-cli
 
-# Make rack executable
-chmod +x bin/rack
+# Run the installer (copies to ~/.local/bin and ~/.local/lib/rack)
+./install.sh
 
-# Add to PATH (optional)
-echo 'export PATH="$PATH:'"$(pwd)/bin"'"' >> ~/.bashrc
+# Ensure ~/.local/bin is in your PATH
+# For bash:
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
+
+# For zsh:
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 
 # Bootstrap OpenClaw with rack
 rack install
+```
+
+### Uninstall
+
+```bash
+# From the repository directory
+./uninstall.sh
 ```
 
 ### First Project
