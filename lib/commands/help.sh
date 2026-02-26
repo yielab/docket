@@ -21,10 +21,6 @@ ${BOLD}LIFECYCLE${RESET}
   ${GREEN}reset${RESET}  [id]       Clear memory / reset workspace (keeps identity)
   ${GREEN}repair${RESET} [id]       Fix permissions, re-register, fix routing
 
-${BOLD}TEAM COORDINATION${RESET}
-  ${GREEN}team${RESET}   [action]   Manage manager agent and team delegation
-                      Actions: status, init, check
-
 ${BOLD}TELEGRAM${RESET}
   ${GREEN}wire${RESET}   [id]       Wire or update a Telegram group binding
   ${GREEN}unwire${RESET} [id]       Remove Telegram binding from a project
@@ -36,6 +32,7 @@ ${BOLD}UTILITIES${RESET}
   ${GREEN}profile${RESET}  [id] [t]   Set model tier: economy, standard, or premium
   ${GREEN}scope${RESET}    [id] [a]   Manage session scopes for multi-project isolation
   ${GREEN}workflow${RESET} [id] [a]   Manage Lobster workflows (deterministic pipelines)
+  ${GREEN}keys${RESET}     <action>   Manage API keys (add/list/remove) - syncs to all agents
   ${GREEN}cost${RESET}     [id]       Token usage and cost breakdown (all or per-project)
   ${GREEN}doctor${RESET}              Check gateway, projects, and config for issues
 

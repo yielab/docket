@@ -20,7 +20,7 @@ cmd_install() {
     fi
 
     # Check for missing specialist agents
-    local specialists=("programmer" "reviewer" "tester" "knowledge" "security")
+    local specialists=("programmer" "reviewer" "tester" "knowledge" "security" "manager")
     local missing_specialists=()
     for spec in "${specialists[@]}"; do
       if ! agent_registered "$spec"; then
@@ -161,12 +161,13 @@ PY
 
   # Step 5: Install specialist agents (if not present)
   header "Step 5: Setting up specialist agents"
-  local specialists=("programmer" "reviewer" "tester" "knowledge" "security")
+  local specialists=("programmer" "reviewer" "tester" "knowledge" "security" "manager")
   local specialist_models=(
     "anthropic/claude-sonnet-4-6"
     "anthropic/claude-haiku-4-5"
     "anthropic/claude-haiku-4-5"
     "anthropic/claude-haiku-4-5"
+    "anthropic/claude-sonnet-4-6"
     "anthropic/claude-sonnet-4-6"
   )
 
@@ -228,16 +229,21 @@ PY
   echo "  1. Add your first project agent:"
   echo "     ${GREEN}rack add${RESET}"
   echo ""
-  echo "  2. Initialize team coordination (optional):"
-  echo "     ${GREEN}rack team init${RESET}"
-  echo ""
-  echo "  3. Configure Telegram:"
-  echo "     - Create groups for each agent"
-  echo "     - Add your bot (@your_bot)"
+  echo "  2. Configure Telegram (optional but recommended):"
+  echo "     - Create groups for each agent (manager, programmer, etc.)"
+  echo "     - Add your bot to each group"
   echo "     - Wire agents: ${GREEN}rack wire <agent-id>${RESET}"
   echo ""
-  echo "  4. Check system health:"
+  echo "  3. Check system health:"
   echo "     ${GREEN}rack doctor${RESET}"
+  echo ""
+  echo -e "${BOLD}Specialist Agents (auto-created):${RESET}"
+  echo "  • manager    - Orchestrates and delegates tasks"
+  echo "  • programmer - Code implementation"
+  echo "  • reviewer   - Code review and analysis"
+  echo "  • tester     - Test execution and verification"
+  echo "  • knowledge  - Memory distillation and patterns"
+  echo "  • security   - Security audits and risk checks"
   echo ""
   echo -e "${BOLD}Configuration:${RESET}"
   echo "  Config: $CONFIG_FILE"
