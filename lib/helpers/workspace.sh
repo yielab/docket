@@ -196,6 +196,37 @@ _wire_group() {
   success "Binding: $id ← telegram group $group_id"
 }
 
+_get_unbound_groups() {
+  local -n _groups_ref=$1
+  local -n _titles_ref=$2
+
+  [[ ! -f "$LOG_FILE" ]] && return
+
+  local groups
+  groups=$(grep -o '"chatId":-[0-9]*' "$LOG_FILE" 2>/dev/null | sed 's/"chatId"://' | sort -u || true)
+  [[ -z "$groups" ]] && return
+
+  while IFS= read -r gid; do
+    local title bound
+    title=$(grep -o "\"chatId\":${gid},\"title\":\"[^\"]*\"" "$LOG_FILE" 2>/dev/null \
+      | tail -1 | sed 's/.*"title":"//;s/".*//' || echo "unknown")
+    bound=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+for b in c.get('bindings',[]):
+    if b.get('match',{}).get('peer',{}).get('id') == '$gid':
+        print(b['agentId']); exit()
+print('')
+" 2>/dev/null || echo "")
+
+    # Only add unbound groups
+    if [[ -z "$bound" ]]; then
+      _groups_ref+=("$gid")
+      _titles_ref+=("$title")
+    fi
+  done <<< "$groups"
+}
+
 _show_unbound_groups() {
   [[ ! -f "$LOG_FILE" ]] && return
   local groups

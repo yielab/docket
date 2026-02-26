@@ -3,12 +3,35 @@
 
 cmd_edit() {
   local id="${1:-}"
-  [[ -z "$id" ]] && id=$(pick_project "Edit workspace for")
+  [[ -z "$id" ]] && id=$(pick_agent "Edit workspace for")
+
+  # Check both project and specialist agent locations
   local workspace="$PROJECTS_DIR/$id"
-  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+  local is_specialist=false
+  if [[ ! -d "$workspace" ]]; then
+    workspace="$OPENCLAW_DIR/workspaces/$id"
+    if [[ -d "$workspace" ]]; then
+      is_specialist=true
+    else
+      error "Agent '$id' not found"
+    fi
+  fi
 
   local editor="${EDITOR:-${VISUAL:-nano}}"
-  local name; name=$(meta_get "$id" "name" "$id")
+
+  # Get agent name
+  local name
+  if [[ "$is_specialist" == "true" ]]; then
+    if [[ -f "$workspace/IDENTITY.md" ]]; then
+      name=$(grep -m1 "^# " "$workspace/IDENTITY.md" 2>/dev/null | sed 's/^# //' || echo "$id")
+    elif [[ -f "$workspace/SOUL.md" ]]; then
+      name=$(grep -m1 "^# " "$workspace/SOUL.md" 2>/dev/null | sed 's/^# //' || echo "$id")
+    else
+      name="$id"
+    fi
+  else
+    name=$(meta_get "$id" "name" "$id")
+  fi
 
   # Check if editor is available
   if ! command -v "$editor" &>/dev/null; then
@@ -21,20 +44,27 @@ cmd_edit() {
 
   header "Edit: $name ($id)"
   echo ""
-  echo "Opening workspace files in $editor..."
-  echo "  $workspace/SOUL.md"
-  echo "  $workspace/AGENTS.md"
-  echo "  $workspace/TOOLS.md"
-  echo "  $workspace/HEARTBEAT.md"
+
+  # Collect files to edit
+  local files=()
+
+  [[ -f "$workspace/SOUL.md" ]] && files+=("$workspace/SOUL.md")
+  [[ -f "$workspace/IDENTITY.md" ]] && files+=("$workspace/IDENTITY.md")
+  [[ -f "$workspace/AGENTS.md" ]] && files+=("$workspace/AGENTS.md")
+  [[ -f "$workspace/TOOLS.md" ]] && files+=("$workspace/TOOLS.md")
+  [[ -f "$workspace/HEARTBEAT.md" ]] && files+=("$workspace/HEARTBEAT.md")
+
+  echo "Opening files in $editor:"
+  for f in "${files[@]}"; do
+    echo "  $(basename "$f")"
+  done
   echo ""
 
-  # Open the main workspace files (editor gets all four)
-  "$editor" \
-    "$workspace/SOUL.md" \
-    "$workspace/AGENTS.md" \
-    "$workspace/TOOLS.md" \
-    "$workspace/HEARTBEAT.md"
+  # Open files
+  "$editor" "${files[@]}"
 
   success "Edits saved."
+  echo ""
+  info "Restart gateway to apply changes: systemctl --user restart openclaw-gateway.service"
 }
 
