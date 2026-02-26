@@ -1,4 +1,35 @@
 #!/usr/bin/env bash
+# Rack CLI Installer
+# Installs rack binary and library files to ~/.local/
+
+set -euo pipefail
+
+INSTALL_DIR="${HOME}/.local"
+BIN_DIR="${INSTALL_DIR}/bin"
+LIB_DIR="${INSTALL_DIR}/lib/rack"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo ""
+echo "=================================="
+echo "  Rack CLI Installer"
+echo "=================================="
+echo ""
+
+# Create directories
+echo "→ Creating installation directories..."
+mkdir -p "$BIN_DIR"
+mkdir -p "$LIB_DIR"
+
+# Copy library files
+echo "→ Copying library files..."
+cp -r "$SCRIPT_DIR/lib/"* "$LIB_DIR/"
+
+# Copy binary and make it executable
+echo "→ Installing rack binary..."
+cat > "$BIN_DIR/rack" <<'EOF'
+#!/usr/bin/env bash
 # rack — OpenClaw project agent manager (Modular Edition)
 #
 # Lifecycle commands:
@@ -40,15 +71,8 @@
 # Usage:  rack <command> [agent-id] [args]
 #         rack                 (shows list)
 
-# Get script directory for sourcing (handle symlinks)
-if [[ -L "${BASH_SOURCE[0]}" ]]; then
-  # If this script is a symlink, resolve it to the actual file
-  REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
-  SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
-else
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+# Get library directory (installed in ~/.local/lib/rack)
+LIB_DIR="${HOME}/.local/lib/rack"
 
 # Source core modules
 source "$LIB_DIR/core/init.sh"
@@ -100,3 +124,40 @@ fi
 
 # Route command
 route_command "$CMD" "${_ARGS[@]:1}"
+EOF
+
+chmod +x "$BIN_DIR/rack"
+
+echo "→ Setting permissions..."
+find "$LIB_DIR" -type f -exec chmod 644 {} \;
+find "$LIB_DIR" -type d -exec chmod 755 {} \;
+
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "Installed to:"
+echo "  Binary: $BIN_DIR/rack"
+echo "  Library: $LIB_DIR"
+echo ""
+
+# Check if ~/.local/bin is in PATH
+if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
+  echo "✓ $BIN_DIR is in your PATH"
+else
+  echo "⚠  Add $BIN_DIR to your PATH:"
+  echo ""
+  echo "  For bash, add to ~/.bashrc:"
+  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo ""
+  echo "  For zsh, add to ~/.zshrc:"
+  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo ""
+  echo "  Then run: source ~/.bashrc  (or ~/.zshrc)"
+fi
+
+echo ""
+echo "Next steps:"
+echo "  1. Run: rack install       (sets up OpenClaw)"
+echo "  2. Run: rack add           (create your first agent)"
+echo "  3. Run: rack doctor        (verify system health)"
+echo ""

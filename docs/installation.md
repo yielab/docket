@@ -31,24 +31,9 @@ Complete guide to installing and configuring rack for OpenClaw agent management.
 
 ## Installation Methods
 
-### Method 1: Quick Install (Recommended)
+### Method 1: Standard Installation (Recommended)
 
-The quick install script will:
-1. Clone the repository
-2. Install rack to `/usr/local/bin`
-3. Set proper permissions
-4. Run initial setup
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/rack-cli/main/install.sh | bash
-```
-
-Then bootstrap OpenClaw:
-```bash
-rack install
-```
-
-### Method 2: Manual Installation
+This method installs rack to `~/.local/bin` and its library files to `~/.local/lib/rack`.
 
 #### Step 1: Clone Repository
 
@@ -58,27 +43,27 @@ git clone https://github.com/yourusername/rack-cli.git
 cd rack-cli
 ```
 
-#### Step 2: Make Executable
+#### Step 2: Run Installer
 
 ```bash
-chmod +x bin/rack
+./install.sh
 ```
 
-#### Step 3: Add to PATH
+This will:
+- Copy rack binary to `~/.local/bin/rack`
+- Copy library files to `~/.local/lib/rack`
+- Set proper permissions
+- Check if `~/.local/bin` is in your PATH
 
-**Option A: Symlink (recommended)**
-```bash
-sudo ln -s "$(pwd)/bin/rack" /usr/local/bin/rack
-```
+#### Step 3: Add to PATH (if needed)
 
-**Option B: Update shell profile**
 ```bash
 # For bash
-echo 'export PATH="$PATH:'"$(pwd)/bin"'"' >> ~/.bashrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
 # For zsh
-echo 'export PATH="$PATH:'"$(pwd)/bin"'"' >> ~/.zshrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -89,14 +74,19 @@ rack install
 ```
 
 This will:
-- Check dependencies
-- Initialize OpenClaw configuration
-- Create specialist agents (programmer, reviewer, tester, etc.)
-- Configure security sentinel
-- Set up workspace directories
+- Check dependencies (openclaw, python3, git)
+- Initialize OpenClaw configuration (or detect existing)
+- Create specialist agents (programmer, reviewer, tester, knowledge, security)
+- Set up workspace directories with proper permissions
 - Start the gateway service
 
-### Method 3: Development Installation
+**Smart Detection**: If OpenClaw is already configured, `rack install` will:
+- Detect what's already present
+- Show what needs updating
+- Offer to apply only necessary changes
+- Skip reconfiguration if everything is up to date
+
+### Method 2: Development Installation
 
 For contributing or testing:
 
@@ -237,6 +227,43 @@ rack install
 rack team check
 ```
 
+## Uninstalling
+
+### Remove rack
+
+To remove the rack CLI tool:
+
+```bash
+# From the repository directory
+cd /path/to/rack-cli
+./uninstall.sh
+```
+
+This removes:
+- `~/.local/bin/rack`
+- `~/.local/lib/rack`
+
+This **does NOT** remove:
+- OpenClaw installation
+- Agent workspaces (`~/.openclaw/workspaces`)
+- OpenClaw config (`~/.openclaw/openclaw.json`)
+
+### Complete Removal
+
+To remove OpenClaw and all agents:
+
+```bash
+# Stop gateway service
+systemctl --user stop openclaw-gateway.service
+systemctl --user disable openclaw-gateway.service
+
+# Remove OpenClaw data
+rm -rf ~/.openclaw
+
+# Uninstall OpenClaw
+# See: https://openclaw.dev/docs/uninstall
+```
+
 ## Upgrading
 
 ### From Previous Versions
@@ -246,7 +273,10 @@ rack team check
 cd /path/to/rack-cli
 git pull origin main
 
-# Re-run installation
+# Reinstall with new version
+./install.sh
+
+# Re-run setup (will detect existing and apply updates)
 rack install
 
 # Verify upgrade
