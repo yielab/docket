@@ -1,0 +1,153 @@
+# Lobster Workflow: CI Pipeline
+# Automated continuous integration with test running and deployment
+
+name: ci-pipeline
+description: "Run tests, analyze results, and optionally deploy"
+
+# Environment variables (can be overridden)
+env:
+  PROJECT_PATH: "${WORKSPACE}/../../codebase"
+  BRANCH: "main"
+
+steps:
+  - id: git-status
+    type: shell
+    description: "Check git status"
+    command: |
+      cd ${PROJECT_PATH}
+      git fetch origin
+      git status
+      git log --oneline -5
+    continueOnError: false
+
+  - id: install-deps
+    type: shell
+    description: "Install dependencies"
+    command: |
+      cd ${PROJECT_PATH}
+      if [ -f package.json ]; then
+        npm ci
+      elif [ -f requirements.txt ]; then
+        pip install -r requirements.txt
+      elif [ -f go.mod ]; then
+        go mod download
+      fi
+    continueOnError: false
+
+  - id: run-linter
+    type: shell
+    description: "Run linter"
+    command: |
+      cd ${PROJECT_PATH}
+      if [ -f package.json ]; then
+        npm run lint || echo "No lint script"
+      elif [ -f requirements.txt ]; then
+        pylint src/ || echo "Linting complete with warnings"
+      fi
+    continueOnError: true
+
+  - id: run-tests
+    type: shell
+    description: "Execute test suite"
+    command: |
+      cd ${PROJECT_PATH}
+      if [ -f package.json ]; then
+        npm test
+      elif [ -f requirements.txt ]; then
+        pytest -v
+      elif [ -f go.mod ]; then
+        go test ./...
+      fi
+    continueOnError: false
+    timeout: 600  # 10 minutes
+
+  - id: analyze-coverage
+    type: shell
+    description: "Check test coverage"
+    command: |
+      cd ${PROJECT_PATH}
+      if [ -f coverage/lcov.info ]; then
+        echo "Coverage report available"
+        grep -A 3 "LH:" coverage/lcov.info || true
+      fi
+    continueOnError: true
+
+  - id: llm-review
+    type: llm
+    description: "AI analysis of test results"
+    prompt: |
+      Analyze the CI pipeline results:
+
+      1. Review the git status output
+      2. Check linter warnings/errors
+      3. Examine test results
+      4. Assess test coverage
+
+      Provide:
+      - Summary of health (pass/fail/warning)
+      - Critical issues that need immediate attention
+      - Recommendations for improvements
+      - Whether it's safe to deploy (yes/no with reasoning)
+
+    # LLM will receive output from previous steps as context
+    approval: required  # Pause for human review
+    notifyOn: telegram
+
+  - id: build
+    type: shell
+    description: "Build production artifacts"
+    command: |
+      cd ${PROJECT_PATH}
+      if [ -f package.json ]; then
+        npm run build
+      elif [ -f Makefile ]; then
+        make build
+      elif [ -f go.mod ]; then
+        go build -o bin/app .
+      fi
+    continueOnError: false
+    # Only run if LLM approved deployment
+    condition: "${steps.llm-review.approved}"
+
+  - id: deploy-staging
+    type: shell
+    description: "Deploy to staging environment"
+    command: |
+      cd ${PROJECT_PATH}
+      # Example deployment commands
+      echo "Deploying to staging..."
+      # docker build -t myapp:staging .
+      # docker push myapp:staging
+      # kubectl rollout restart deployment/myapp-staging
+    approval: required  # Human approval for deployment
+    condition: "${steps.llm-review.approved}"
+
+outputs:
+  - testResults: "${steps.run-tests.stdout}"
+  - lintResults: "${steps.run-linter.stdout}"
+  - analysis: "${steps.llm-review.response}"
+  - deploymentStatus: "${steps.deploy-staging.exitCode}"
+
+notifications:
+  onComplete:
+    - channel: telegram
+      message: "✅ CI Pipeline completed successfully"
+
+  onError:
+    - channel: telegram
+      message: "❌ CI Pipeline failed at step: ${failedStep}"
+
+  onApprovalRequired:
+    - channel: telegram
+      message: "⏸️ Approval required for: ${currentStep}"
+
+# Artifacts to preserve
+artifacts:
+  - coverage/
+  - build/
+  - logs/
+
+# Cleanup after workflow
+cleanup:
+  - rm -rf node_modules/.cache
+  - rm -rf __pycache__

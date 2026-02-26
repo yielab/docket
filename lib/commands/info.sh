@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Command: info
+
+cmd_info() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && id=$(pick_project "Inspect project")
+  local workspace="$PROJECTS_DIR/$id"
+  [[ ! -d "$workspace" ]] && error "Project '$id' not found."
+
+  local type;       type=$(meta_get "$id" "type" "repo")
+  local name;       name=$(meta_get "$id" "name" "$id")
+  local codebase;   codebase=$(meta_get "$id" "codebase" "—")
+  local stack;      stack=$(meta_get "$id" "stack" "—")
+  local model;      model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+  local tg;         tg=$(get_tg_binding "$id")
+  local activity;   activity=$(last_activity "$id")
+  local mem_count;  mem_count=$(find "$workspace/memory" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  local has_memory; [[ -f "$workspace/MEMORY.md" ]] && has_memory="yes" || has_memory="no"
+  local has_reqs;   [[ -f "$workspace/REQUIREMENTS.md" ]] && has_reqs="yes" || has_reqs="no"
+
+  header "Project: $name ($id)"
+  echo ""
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Type:"        "$type"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Workspace:"   "$workspace"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Codebase:"    "$codebase"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Stack:"       "$stack"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Model:"       "$model"
+
+  local session_key; session_key=$(meta_get "$id" "sessionKey" "agent:${id}:default")
+  local project_key; project_key=$(meta_get "$id" "projectKey" "default")
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Session Key:"  "$session_key"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Project Scope:" "$project_key"
+  echo ""
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Registered:"  "$(agent_registered "$id" && echo "${GREEN}yes${RESET}" || echo "${RED}no${RESET}")"
+  local expected_group="${TELEGRAM_GROUP_NAMES[$id]:-}"
+  local tg_display
+  if [[ -n "$tg" ]]; then
+    tg_display="${GREEN}${tg}${RESET}"
+    [[ -n "$expected_group" ]] && tg_display+=" ${DIM}(${expected_group})${RESET}"
+  elif [[ -n "$expected_group" ]]; then
+    tg_display="${YELLOW}not wired${RESET} ${DIM}→ create group \"${expected_group}\"${RESET}"
+  else
+    tg_display="${YELLOW}not wired${RESET}"
+  fi
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Telegram:"    "$tg_display"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Last active:" "$activity"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "Memory days:" "$mem_count"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "MEMORY.md:"   "$has_memory"
+  printf "  ${BOLD}%-18s${RESET} %s\n" "REQUIREMENTS:" "$has_reqs"
+
+  echo ""
+  header "Workspace files"
+  find "$workspace" -maxdepth 1 -type f | sort | while read -r f; do
+    local size; size=$(wc -l < "$f" 2>/dev/null || echo "?")
+    printf "  %-30s %s lines\n" "$(basename "$f")" "$size"
+  done
+
+  if [[ -n "$tg" && "$type" == "repo" && -n "$codebase" ]]; then
+    echo ""
+    header "First-run prompt (send in Telegram group if MEMORY.md is missing)"
+    echo ""
+    echo "  Read the codebase at $codebase and update your"
+    echo "  SOUL.md and MEMORY.md with: tech stack, entry points,"
+    echo "  architecture, current state, recent git activity."
+    echo ""
+  fi
+}
+

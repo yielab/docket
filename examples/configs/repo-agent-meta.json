@@ -1,0 +1,11 @@
+{
+  "type": "repo",
+  "name": "My Web Application",
+  "codebase": "/home/user/Sites/mywebapp",
+  "stack": "Node.js, React, TypeScript, PostgreSQL",
+  "model": "anthropic/claude-sonnet-4-6",
+  "description": "Full-stack web application with user authentication and real-time features",
+  "created": "2026-02-25T10:00:00Z",
+  "sessionKey": "agent:mywebapp:default",
+  "projectKey": "default"
+}

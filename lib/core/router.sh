@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Command router - dispatches commands to their handlers
+
+route_command() {
+  local cmd="${1:-list}"
+  shift || true
+
+  case "$cmd" in
+    install|setup)     cmd_install "$@" ;;
+    list)              cmd_list "$@" ;;
+    add|create|new)    cmd_add "$@" ;;
+    info|show)         cmd_info "$@" ;;
+    delete|remove|rm)  cmd_delete "$@" ;;
+    reset)             cmd_reset "$@" ;;
+    repair|fix)        cmd_repair "$@" ;;
+    team)              cmd_team "$@" ;;
+    wire)              cmd_wire "$@" ;;
+    unwire)            cmd_unwire "$@" ;;
+    logs|log)          cmd_logs "$@" ;;
+    edit)              cmd_edit "$@" ;;
+    model)             cmd_model "$@" ;;
+    profile|tier)      cmd_profile "$@" ;;
+    scope)             cmd_scope "$@" ;;
+    workflow|wf)       cmd_workflow "$@" ;;
+    cost|usage)        cmd_cost "$@" ;;
+    doctor|check)      cmd_doctor "$@" ;;
+    help|--help|-h)    cmd_help "$@" ;;
+    *)                 error_hint "Unknown command '$cmd'" "Run: rack help" ;;
+  esac
+}

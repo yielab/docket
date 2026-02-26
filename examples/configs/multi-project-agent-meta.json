@@ -1,0 +1,12 @@
+{
+  "type": "repo",
+  "name": "E-commerce Platform",
+  "codebase": "/home/user/Sites/ecommerce",
+  "stack": "Python, Django, React, Redis, Celery",
+  "model": "anthropic/claude-sonnet-4-6",
+  "description": "Multi-tenant e-commerce platform with payment processing",
+  "created": "2026-02-20T09:15:00Z",
+  "sessionKey": "agent:ecommerce:staging",
+  "projectKey": "staging",
+  "notes": "Session scoped to 'staging' to isolate from production work"
+}
