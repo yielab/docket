@@ -85,6 +85,8 @@ source "$LIB_DIR/commands/install.sh"
 source "$LIB_DIR/commands/help.sh"
 source "$LIB_DIR/commands/team.sh"
 source "$LIB_DIR/commands/memory.sh"
+source "$LIB_DIR/commands/monitor.sh"
+source "$LIB_DIR/commands/smart.sh"
 
 # Source router
 source "$LIB_DIR/core/router.sh"
