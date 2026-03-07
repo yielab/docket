@@ -6,11 +6,20 @@ cmd_help() {
 
 ${BOLD}rack — OpenClaw project manager${RESET}
 
+${BOLD}AGENT TYPES${RESET}
+  ${CYAN}Specialist Agents${RESET}   Created by 'rack install' - shared team members
+                        → programmer, reviewer, tester, knowledge, security, manager
+                        → Work across ALL projects (don't create these manually)
+
+  ${CYAN}Project Agents${RESET}      Created by 'rack add' - one per project/codebase
+                        → mywebsite, mobile-app, etc.
+                        → Each works on ONE specific project
+
 ${BOLD}USAGE${RESET}
   rack [--debug] <command> [agent-id]
 
 ${BOLD}SETUP${RESET}
-  ${GREEN}install${RESET}           Bootstrap OpenClaw with rack best practices
+  ${GREEN}install${RESET}           Bootstrap OpenClaw + create specialist agents
                       (Run this first on a clean system)
 
 ${BOLD}LIFECYCLE${RESET}
@@ -34,7 +43,20 @@ ${BOLD}UTILITIES${RESET}
   ${GREEN}workflow${RESET} [id] [a]   Manage Lobster workflows (deterministic pipelines)
   ${GREEN}keys${RESET}     <action>   Manage API keys (add/list/remove) - syncs to all agents
   ${GREEN}cost${RESET}     [id]       Token usage and cost breakdown (all or per-project)
+  ${GREEN}billing${RESET}             Check API credits, balance warnings, and add credits
   ${GREEN}doctor${RESET}              Check gateway, projects, and config for issues
+  ${GREEN}browser${RESET}  <action>   Manage Brave browser connection (restart/kill/clean/status)
+
+${BOLD}TEAM & MEMORY (RACK Architecture)${RESET}
+  ${GREEN}team status${RESET}            Show specialist agent health and RACK status
+  ${GREEN}team upgrade${RESET}           Upgrade specialists to RACK-optimized templates
+  ${GREEN}team roles${RESET}             Show agent roles and responsibilities
+  ${GREEN}team check${RESET}             Verify all specialists exist
+  ${GREEN}memory index${RESET}   [id]    Index agent memory for fast search
+  ${GREEN}memory search${RESET}  [id] q  Search indexed memory
+  ${GREEN}memory snapshot${RESET} [id]   Create current state snapshot (avoids large context)
+  ${GREEN}memory compress${RESET} [id]   Archive old logs (>30 days)
+  ${GREEN}memory project${RESET}  [id]   Show quick-reference for project
 
 ${BOLD}PROFILES${RESET}
   ${GREEN}economy${RESET}   claude-haiku-4-5     \$0.80/\$4 per MTok   Routine tasks, triage

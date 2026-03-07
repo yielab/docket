@@ -45,6 +45,8 @@ else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+RACK_CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export RACK_CLI_ROOT
 
 # Source core modules
 source "$LIB_DIR/core/init.sh"
@@ -76,9 +78,13 @@ source "$LIB_DIR/commands/scope.sh"
 source "$LIB_DIR/commands/workflow.sh"
 source "$LIB_DIR/commands/keys.sh"
 source "$LIB_DIR/commands/cost.sh"
+source "$LIB_DIR/commands/billing.sh"
 source "$LIB_DIR/commands/doctor.sh"
+source "$LIB_DIR/commands/browser.sh"
 source "$LIB_DIR/commands/install.sh"
 source "$LIB_DIR/commands/help.sh"
+source "$LIB_DIR/commands/team.sh"
+source "$LIB_DIR/commands/memory.sh"
 
 # Source router
 source "$LIB_DIR/core/router.sh"
