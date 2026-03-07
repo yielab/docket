@@ -23,7 +23,11 @@ route_command() {
     workflow|wf)       cmd_workflow "$@" ;;
     keys|key|secret)   cmd_keys "$@" ;;
     cost|usage)        cmd_cost "$@" ;;
+    billing|credits)   cmd_billing "$@" ;;
     doctor|check)      cmd_doctor "$@" ;;
+    browser|brave)     cmd_browser "$@" ;;
+    team)              cmd_team "$@" ;;
+    memory|mem)        cmd_memory "$@" ;;
     help|--help|-h)    cmd_help "$@" ;;
     *)                 error_hint "Unknown command '$cmd'" "Run: rack help" ;;
   esac

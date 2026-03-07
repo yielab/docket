@@ -1,0 +1,351 @@
+# Lobster Workflow: Bug Fix Pipeline (RACK Architecture)
+#
+# Zero-token plumbing — LLM only for creative work
+# Enforces: Programmer → Reviewer → Tester sequence with approval gates
+
+name: bug-fix-pipeline
+description: "Automated bug fix workflow with security gates and validation"
+
+variables:
+  TASK_ID: "{{ env.TASK_ID || 'T' + Date.now() }}"
+  PROJECT_ID: "{{ env.PROJECT_ID || 'unknown' }}"
+  BRIEF_DIR: "/tmp/rack-briefs/{{ TASK_ID }}"
+  WORKSPACE: "$HOME/.openclaw/workspaces/projects/{{ PROJECT_ID }}"
+
+steps:
+  # ─────────────────────────────────────────────────────────────
+  # Step 1: Manager creates compressed brief
+  # ─────────────────────────────────────────────────────────────
+  - id: create-brief
+    type: shell
+    command: |
+      mkdir -p {{ BRIEF_DIR }}
+      echo "Task ID: {{ TASK_ID }}" > {{ BRIEF_DIR }}/BRIEF.md
+      echo "Project: {{ PROJECT_ID }}" >> {{ BRIEF_DIR }}/BRIEF.md
+      echo "" >> {{ BRIEF_DIR }}/BRIEF.md
+      echo "Waiting for Manager to populate brief..." >> {{ BRIEF_DIR }}/BRIEF.md
+    continueOnError: false
+
+  - id: manager-brief
+    type: llm
+    agent: manager
+    session: "manager:atlas:coordination"
+    prompt: |
+      Create a compressed brief for this bug fix task.
+
+      Bug report: {{ env.BUG_REPORT }}
+
+      Output format (MAX 500 tokens):
+      ```
+      TASK: [one sentence]
+      FILE: [path]
+      LINE: [number]
+      CHANGE: [exact modification]
+      ACCEPTANCE:
+        • [criterion 1]
+        • [criterion 2]
+      ROOT_CAUSE: [why bug occurred]
+      ```
+
+      Write to: {{ BRIEF_DIR }}/BRIEF.md
+
+      Remember: Compress context! Programmer doesn't need investigation transcript.
+    approval: auto
+    outputs:
+      brief_path: "{{ BRIEF_DIR }}/BRIEF.md"
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 2: Programmer implements fix
+  # ─────────────────────────────────────────────────────────────
+  - id: delegate-programmer
+    type: message
+    channel: telegram
+    target: "group:Programmer Team"
+    message: |
+      🛠 New Task: {{ TASK_ID }}
+
+      Read brief: {{ BRIEF_DIR }}/BRIEF.md
+      Signal completion: {{ BRIEF_DIR }}/DONE.md
+
+      Remember: Read brief ONLY, implement exact change, write DONE.md
+
+  - id: wait-programmer
+    type: poll
+    file: "{{ BRIEF_DIR }}/DONE.md"
+    timeout: 600  # 10 minutes
+    interval: 30  # Check every 30s
+    onTimeout: escalate
+
+  - id: verify-implementation
+    type: shell
+    command: |
+      if [ ! -f "{{ BRIEF_DIR }}/DONE.md" ]; then
+        echo "ERROR: Programmer did not signal completion"
+        exit 1
+      fi
+
+      # Extract changed files from DONE.md
+      grep "File:" {{ BRIEF_DIR }}/DONE.md > {{ BRIEF_DIR }}/CHANGED_FILES.txt
+      echo "Implementation complete. Files changed:"
+      cat {{ BRIEF_DIR }}/CHANGED_FILES.txt
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 3: Reviewer audits (security + correctness)
+  # ─────────────────────────────────────────────────────────────
+  - id: delegate-reviewer
+    type: message
+    channel: telegram
+    target: "group:Reviewer Team"
+    message: |
+      🔍 Review Task: {{ TASK_ID }}
+
+      Brief: {{ BRIEF_DIR }}/BRIEF.md
+      Implementation: {{ BRIEF_DIR }}/DONE.md
+
+      Run security checklist. Output: APPROVED.md or REJECTED.md
+
+  - id: wait-reviewer
+    type: poll
+    files:
+      - "{{ BRIEF_DIR }}/APPROVED.md"
+      - "{{ BRIEF_DIR }}/REJECTED.md"
+    timeout: 300  # 5 minutes
+    interval: 20
+    onTimeout: escalate
+
+  - id: check-review-outcome
+    type: shell
+    command: |
+      if [ -f "{{ BRIEF_DIR }}/REJECTED.md" ]; then
+        echo "❌ REVIEW REJECTED"
+        cat {{ BRIEF_DIR }}/REJECTED.md
+        exit 1  # Triggers retry-programmer step
+      elif [ -f "{{ BRIEF_DIR }}/APPROVED.md" ]; then
+        echo "✅ REVIEW APPROVED"
+        cat {{ BRIEF_DIR }}/APPROVED.md
+      else
+        echo "ERROR: Reviewer did not signal outcome"
+        exit 1
+      fi
+    continueOnError: false
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 3b: If rejected, loop back to programmer
+  # ─────────────────────────────────────────────────────────────
+  - id: retry-programmer
+    type: conditional
+    condition: "{{ steps['check-review-outcome'].exitCode === 1 }}"
+    steps:
+      - id: increment-retry
+        type: shell
+        command: |
+          RETRY_FILE="{{ BRIEF_DIR }}/RETRY_COUNT.txt"
+          if [ -f "$RETRY_FILE" ]; then
+            RETRY=$(($(cat $RETRY_FILE) + 1))
+          else
+            RETRY=1
+          fi
+
+          if [ $RETRY -gt 3 ]; then
+            echo "ERROR: Max retries exceeded (3)"
+            exit 1
+          fi
+
+          echo $RETRY > $RETRY_FILE
+          echo "Retry attempt: $RETRY/3"
+
+      - id: send-retry-to-programmer
+        type: message
+        channel: telegram
+        target: "group:Programmer Team"
+        message: |
+          ⚠️ Retry Required: {{ TASK_ID }}
+
+          Reviewer feedback: {{ BRIEF_DIR }}/REJECTED.md
+          Original brief: {{ BRIEF_DIR }}/BRIEF.md
+
+          Fix issues and write new DONE.md
+
+      # Jump back to wait-programmer (Lobster loops)
+      - id: loop-back
+        type: goto
+        target: wait-programmer
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 4: Tester validates (behavior only)
+  # ─────────────────────────────────────────────────────────────
+  - id: delegate-tester
+    type: message
+    channel: telegram
+    target: "group:Tester Team"
+    message: |
+      ✅ Validation Task: {{ TASK_ID }}
+
+      Reproduction steps: {{ BRIEF_DIR }}/BRIEF.md (read ACCEPTANCE only)
+      DO NOT read implementation or review!
+
+      Output: VALIDATED.md or FAILED.md
+
+  - id: wait-tester
+    type: poll
+    files:
+      - "{{ BRIEF_DIR }}/VALIDATED.md"
+      - "{{ BRIEF_DIR }}/FAILED.md"
+    timeout: 600  # 10 minutes
+    interval: 30
+    onTimeout: escalate
+
+  - id: check-validation-outcome
+    type: shell
+    command: |
+      if [ -f "{{ BRIEF_DIR }}/FAILED.md" ]; then
+        echo "❌ VALIDATION FAILED"
+        cat {{ BRIEF_DIR }}/FAILED.md
+        exit 1  # Triggers retry
+      elif [ -f "{{ BRIEF_DIR }}/VALIDATED.md" ]; then
+        echo "✅ VALIDATION PASSED"
+        cat {{ BRIEF_DIR }}/VALIDATED.md
+      else
+        echo "ERROR: Tester did not signal outcome"
+        exit 1
+      fi
+    continueOnError: false
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 4b: If failed, loop back to programmer
+  # ─────────────────────────────────────────────────────────────
+  - id: retry-on-failed-validation
+    type: conditional
+    condition: "{{ steps['check-validation-outcome'].exitCode === 1 }}"
+    steps:
+      - id: increment-validation-retry
+        type: shell
+        command: |
+          RETRY_FILE="{{ BRIEF_DIR }}/VALIDATION_RETRY_COUNT.txt"
+          if [ -f "$RETRY_FILE" ]; then
+            RETRY=$(($(cat $RETRY_FILE) + 1))
+          else
+            RETRY=1
+          fi
+
+          if [ $RETRY -gt 3 ]; then
+            echo "ERROR: Max validation retries exceeded (3)"
+            echo "Escalating to engineer..."
+            exit 1
+          fi
+
+          echo $RETRY > $RETRY_FILE
+
+      - id: send-validation-failure-to-programmer
+        type: message
+        channel: telegram
+        target: "group:Programmer Team"
+        message: |
+          🔴 Validation Failed: {{ TASK_ID }}
+
+          Tester report: {{ BRIEF_DIR }}/FAILED.md
+          Bug still reproducible. Please fix and resubmit.
+
+      - id: loop-back-validation
+        type: goto
+        target: wait-programmer
+
+  # ─────────────────────────────────────────────────────────────
+  # Step 5: Success! Update memory and notify engineer
+  # ─────────────────────────────────────────────────────────────
+  - id: update-memory
+    type: shell
+    command: |
+      DATE=$(date +%Y-%m-%d)
+      TIME=$(date +%H:%M)
+
+      MEMORY_FILE="{{ WORKSPACE }}/memory/$DATE.md"
+
+      echo "## [$TIME] Bug Fix Complete: {{ TASK_ID }}" >> $MEMORY_FILE
+      echo "" >> $MEMORY_FILE
+      echo "**Task:** $(grep 'TASK:' {{ BRIEF_DIR }}/BRIEF.md)" >> $MEMORY_FILE
+      echo "**File:** $(grep 'FILE:' {{ BRIEF_DIR }}/BRIEF.md)" >> $MEMORY_FILE
+      echo "**Status:** ✅ Validated and ready for commit" >> $MEMORY_FILE
+      echo "" >> $MEMORY_FILE
+
+      echo "Memory updated: $MEMORY_FILE"
+
+  - id: notify-engineer
+    type: message
+    channel: telegram
+    target: "{{ env.ENGINEER_TELEGRAM_ID }}"
+    message: |
+      ✅ Bug Fix Complete: {{ TASK_ID }}
+
+      **Task:** {{ env.BUG_REPORT }}
+
+      **Pipeline Results:**
+      • Programmer: Implemented ✓
+      • Reviewer: Approved ✓
+      • Tester: Validated ✓
+
+      **Files Ready for Review:**
+      {{ steps['verify-implementation'].output }}
+
+      **Next Steps:**
+      1. Review changes: cd {{ WORKSPACE }}
+      2. Inspect diff: git diff
+      3. Commit: git commit -m "Fix: [description]"
+
+      **Evidence:**
+      • Brief: {{ BRIEF_DIR }}/BRIEF.md
+      • Implementation: {{ BRIEF_DIR }}/DONE.md
+      • Review: {{ BRIEF_DIR }}/APPROVED.md
+      • Validation: {{ BRIEF_DIR }}/VALIDATED.md
+
+  - id: cleanup-brief
+    type: shell
+    command: |
+      # Keep brief for 24h for debugging
+      echo "{{ TASK_ID }}" > /tmp/rack-completed-tasks.log
+      echo "Brief will be cleaned up in 24h: {{ BRIEF_DIR }}"
+
+# ─────────────────────────────────────────────────────────────
+# Error Handlers
+# ─────────────────────────────────────────────────────────────
+onError:
+  - id: escalate-to-engineer
+    type: message
+    channel: telegram
+    target: "{{ env.ENGINEER_TELEGRAM_ID }}"
+    message: |
+      🚨 Pipeline Failed: {{ TASK_ID }}
+
+      **Error:** {{ error.message }}
+      **Step:** {{ error.step }}
+
+      **Manual intervention required.**
+
+      Check logs: {{ BRIEF_DIR }}/
+
+onTimeout:
+  - id: timeout-alert
+    type: message
+    channel: telegram
+    target: "{{ env.ENGINEER_TELEGRAM_ID }}"
+    message: |
+      ⏱ Pipeline Timeout: {{ TASK_ID }}
+
+      **Stuck at:** {{ timeout.step }}
+      **Waiting for:** {{ timeout.resource }}
+
+      Check specialist agent status.
+
+# ─────────────────────────────────────────────────────────────
+# Outputs
+# ─────────────────────────────────────────────────────────────
+outputs:
+  task_id: "{{ TASK_ID }}"
+  brief_path: "{{ BRIEF_DIR }}/BRIEF.md"
+  evidence_dir: "{{ BRIEF_DIR }}"
+  completion_status: "validated"
+
+notifications:
+  onComplete: telegram
+  onError: telegram
+  target: "{{ env.ENGINEER_TELEGRAM_ID }}"

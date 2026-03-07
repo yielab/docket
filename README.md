@@ -70,13 +70,34 @@ rack install
 ./uninstall.sh
 ```
 
+### Understanding Agent Types
+
+**rack** manages two types of agents:
+
+#### Specialist Agents (The Team)
+Created automatically by `rack install` - shared across all projects:
+- **programmer** - Writes code for any project
+- **reviewer** - Reviews code quality
+- **tester** - Runs tests
+- **knowledge** - Documentation & research
+- **security** - Security audits
+- **manager** - Coordinates team tasks
+
+**Don't create or delete these manually** - they're shared resources.
+
+#### Project Agents
+Created by `rack add` - one per project/codebase:
+- Work on ONE specific project
+- Have their own workspace, memory, and Telegram group
+- Examples: `mywebsite`, `mobile-app`, `content-blog`
+
 ### First Project
 
 ```bash
 # Add your first project agent
 rack add
 
-# View all agents
+# View all agents (both specialist and project)
 rack list
 
 # Get detailed info

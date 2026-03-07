@@ -1,77 +1,168 @@
 # Multimodal Capabilities (Images & Video)
 
-Your agents can already analyze images - just send them via Telegram! Claude Sonnet 4.6 has built-in vision.
+## Agent Types Overview
 
-## Add Image/Video Generation
+**Important**: Understand the two types of agents in your system:
 
-Want your agent to **generate** images or videos? Just add an API key.
+### Specialist Agents (The Team)
+Created automatically by `rack install` - shared across all projects:
+- **programmer** - Writes code for any project
+- **reviewer** - Reviews code quality
+- **tester** - Runs tests
+- **knowledge** - Documentation & research
+- **security** - Security audits
+- **manager** - Coordinates team tasks
+
+### Project Agents
+Created by `rack add` - one per project/codebase:
+- **mywebsite** - Your website project
+- **mobile-app** - Your mobile app
+- **content-blog** - Your blog
+- etc.
+
+**Use project agents for multimodal**, not specialists. Each project agent works on ONE specific project.
+
+---
+
+## Vision (Analyze Images)
+
+All agents with Claude Sonnet 4.6+ can **already analyze images** - just send them via Telegram!
+
+```bash
+# Ensure your project agent has a vision-capable model
+rack model mywebsite anthropic/claude-sonnet-4-6
+```
+
+Send an image in Telegram → agent analyzes it. No setup needed!
+
+---
+
+## Generation (Create Images & Videos)
+
+Want your **project agent** to **generate** images or videos? Add an API key.
 
 ### 2-Step Setup
 
 ```bash
-# 1. Make sure agent has vision model
-rack model marketing anthropic/claude-sonnet-4-6
+# 1. Ensure project agent has vision model (required for image understanding)
+rack model mywebsite anthropic/claude-sonnet-4-6
 
-# 2. Add API key (stored centrally, synced to all agents)
+# 2. Add API key (stored centrally, available to ALL agents)
 rack keys add GOOGLE_AI_API_KEY
 ```
 
-Get your key at: https://aistudio.google.com/
+**Get your free key**: https://aistudio.google.com/
+- Sign in with Google account
+- Click "Get API key" → "Create API key"
+- Copy and paste when prompted
 
-**That's it!** The key is stored in `~/.openclaw/secrets.json` and automatically synced to all agent workspaces. Claude already knows how to use curl and read environment variables - no manual configuration needed.
+**That's it!** Claude already knows how to:
+- Read API keys from environment variables
+- Call Google Imagen 3 / Veo APIs using curl
+- Ask for your approval before spending money
+
+No manual SOUL.md editing required.
+
+---
 
 ## How It Works
 
-- **Vision**: Built-in with Sonnet 4.6 (free)
-- **Generation**: Agent calls API when user asks
-- **Cost**: ~$0.01-0.03 per image, ~$0.15 per 5sec video
-- **Approval**: Agent will always ask before spending money
-- **Central Storage**: One key, all agents can use it
+When you add a key with `rack keys`, the system:
+1. Stores it securely in `~/.openclaw/secrets.json` (600 permissions)
+2. Syncs it to ALL agent `.env` files automatically
+3. Restarts the OpenClaw gateway
 
-Claude figures out when/how to call the API based on user requests.
+Your project agents can then use the key without any additional configuration.
+
+- **Vision**: Built-in with Sonnet 4.6 (free)
+- **Generation**: Agent calls API when you request it
+- **Cost**: ~$0.01-0.03 per image, ~$0.15 per 5sec video
+- **Approval**: Agent always asks before generating (costs money)
+- **Scope**: All agents share the same API keys
+
+---
 
 ## Example Usage
 
-```
-User: "Analyze this design" [sends image]
-Agent: [Uses built-in vision - free]
+**User** (in Telegram): *[sends screenshot of design]*
+**mywebsite agent**: "This design uses a clean card layout with good spacing..."
 
-User: "Generate a marketing banner"
-Agent: "This will cost ~$0.01. Proceed?"
-User: "Yes"
-Agent: [Calls Imagen API, delivers image]
-```
+**User**: "Generate a hero image for our homepage - mountains at sunset"
+**mywebsite agent**: "This will use Google Imagen 3 (~$0.01). Proceed?"
+**User**: "Yes"
+**mywebsite agent**: *[generates and sends image]*
 
-No special commands needed - it just works!
+No special commands needed - natural conversation!
+
+---
 
 ## Managing Keys
 
 ```bash
-# Add a key
+# Add a key (prompts securely for value)
 rack keys add GOOGLE_AI_API_KEY
 
-# List all keys (values masked)
+# List all keys (values masked for security)
 rack keys list
 
-# Remove a key
+# Remove a key (prompts for confirmation)
 rack keys remove GOOGLE_AI_API_KEY
 ```
 
-Keys are automatically synced to all agent `.env` files whenever you add/remove them.
+Keys automatically sync to all agent workspaces when you add/remove them.
+
+---
 
 ## Available APIs
 
-| Service | Cost | Quality | Get Key |
-| --- | --- | --- | --- |
-| Google Imagen 3 | $0.01/img | Excellent | <https://aistudio.google.com/> |
-| Google Veo | $0.15/5sec | Best video | <https://aistudio.google.com/> |
-| OpenAI DALL-E 3 | $0.04/img | Good | <https://platform.openai.com/> |
+| Service | Cost | Quality | Best For | Get Key |
+| --- | --- | --- | --- | --- |
+| **Google Imagen 3** | $0.01/img | Excellent | Marketing, design, general | <https://aistudio.google.com/> |
+| **Google Veo** | $0.15/5sec | Best video | Video content, demos | <https://aistudio.google.com/> |
+| **OpenAI DALL-E 3** | $0.04/img | Good | Alternative to Imagen | <https://platform.openai.com/> |
+
+All keys support the same format: `rack keys add <KEY_NAME>`
+
+---
+
+## Common Questions
+
+### Q: Which agent should I enable multimodal for?
+
+**A:** Your **project agents** (created with `rack add`), NOT specialist agents.
+
+✅ **Good**: `rack model mywebsite anthropic/claude-sonnet-4-6` (project agent)
+❌ **Wrong**: `rack model programmer anthropic/claude-sonnet-4-6` (specialist - shared across all projects)
+
+### Q: Can multiple project agents use images?
+
+**A:** Yes! All project agents share the same API keys. Just ensure each has Sonnet 4.6:
+
+```bash
+rack model mywebsite anthropic/claude-sonnet-4-6
+rack model mobile-app anthropic/claude-sonnet-4-6
+rack model content-blog anthropic/claude-sonnet-4-6
+```
+
+### Q: Do I need to edit SOUL.md or IDENTITY.md?
+
+**A:** No! Claude already knows:
+- How to read environment variables
+- How to call Google APIs with curl
+- When to ask for approval before spending money
+
+### Q: Can specialist agents generate images?
+
+**A:** Technically yes (they share the keys), but you probably don't want this. Specialists like `programmer` and `reviewer` work across all projects - keep multimodal in project-specific agents.
+
+---
 
 ## Technical Details
 
-- **Storage**: `~/.openclaw/secrets.json` (600 permissions, secure)
+- **Storage**: `~/.openclaw/secrets.json` (600 permissions, user-only access)
 - **Distribution**: Auto-synced to `<workspace>/.env` for each agent
-- **Gateway**: Restarts automatically after key changes
-- **Scope**: All agents have access to all keys
+- **Gateway**: Restarts automatically after key changes to load new environment
+- **Security**: Never committed to git, never shown in logs
+- **Scope**: All agents (both specialist and project) have access to all keys
 
-This centralized approach makes key management simple and clear - no need to edit individual agent files!
+This centralized approach keeps key management simple, secure, and transparent!

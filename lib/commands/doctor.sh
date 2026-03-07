@@ -111,11 +111,41 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
     done <<< "$ids"
   fi
 
-  # 8. Today's log
+  # 8. Brave browser connection (for OpenClaw web UI)
+  echo ""
+  local brave_procs
+  brave_procs=$(ps aux | grep "openclaw/browser" | grep -v grep | wc -l)
+  if [[ "$brave_procs" -gt 0 ]]; then
+    # Check if processes are stale (older than 3 days)
+    local oldest_brave
+    oldest_brave=$(ps -eo pid,etimes,cmd | grep "openclaw/browser" | grep -v grep | awk '{print $2}' | sort -n | tail -1)
+    local days_old=$(( oldest_brave / 86400 ))
+
+    if [[ "$days_old" -gt 2 ]]; then
+      warn "Brave browser: $brave_procs processes (oldest: ${days_old} days old)"
+      echo "  ${DIM}Old browser processes can cause disconnections${RESET}"
+      echo "  ${YELLOW}Fix: rack browser restart${RESET}"
+    else
+      success "Brave browser: $brave_procs processes running"
+    fi
+  else
+    dim "  Brave browser: not running (OpenClaw will auto-start when needed)"
+  fi
+
+  # 9. Today's log
   echo ""
   if [[ -f "$LOG_FILE" ]]; then
     local lines; lines=$(wc -l < "$LOG_FILE" | tr -d ' ')
     success "Today's log: $LOG_FILE ($lines lines)"
+
+    # Check for disconnection patterns
+    if grep -qi "disconnect\|timeout\|connection.*closed" "$LOG_FILE" 2>/dev/null; then
+      local disconnect_count
+      disconnect_count=$(grep -ci "disconnect\|timeout\|connection.*closed" "$LOG_FILE" 2>/dev/null)
+      warn "  Found $disconnect_count disconnect/timeout events in log"
+      echo "  ${DIM}If Brave disconnects frequently, run: ${RESET}${YELLOW}rack browser restart${RESET}"
+    fi
+
     if [[ "$DEBUG" == "1" && "$lines" -gt 0 ]]; then
       echo ""
       echo -e "${DIM}Last 5 log lines:${RESET}"

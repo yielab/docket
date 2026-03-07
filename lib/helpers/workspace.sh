@@ -227,6 +227,40 @@ print('')
   done <<< "$groups"
 }
 
+# Get ALL groups from logs (both bound and unbound)
+# Checks today's log and up to 7 days back
+_get_all_groups() {
+  local -n _groups_ref=$1
+  local -n _titles_ref=$2
+  local -n _bindings_ref=$3
+
+  # Check multiple log files (today + past week)
+  local log_pattern="${LOG_FILE%/*}/openclaw-*.log"
+  local groups
+  groups=$(grep -h '"chatId":-[0-9]*' $log_pattern 2>/dev/null | sed 's/.*"chatId"://' | sed 's/[^-0-9].*//' | sort -u || true)
+  [[ -z "$groups" ]] && return
+
+  while IFS= read -r gid; do
+    local title bound
+    # Check all log files for group title
+    title=$(grep -h "\"chatId\":${gid},\"title\":\"[^\"]*\"" $log_pattern 2>/dev/null \
+      | tail -1 | sed 's/.*"title":"//;s/".*//' || echo "unknown")
+    bound=$(python3 -c "
+import json
+c = json.load(open('$CONFIG_FILE'))
+for b in c.get('bindings',[]):
+    if b.get('match',{}).get('peer',{}).get('id') == '$gid':
+        print(b['agentId']); exit()
+print('')
+" 2>/dev/null || echo "")
+
+    # Add all groups with their binding status
+    _groups_ref+=("$gid")
+    _titles_ref+=("$title")
+    _bindings_ref+=("$bound")  # Leave empty if unbound
+  done <<< "$groups"
+}
+
 _show_unbound_groups() {
   [[ ! -f "$LOG_FILE" ]] && return
   local groups
