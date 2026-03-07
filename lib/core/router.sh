@@ -28,6 +28,8 @@ route_command() {
     browser|brave)     cmd_browser "$@" ;;
     team)              cmd_team "$@" ;;
     memory|mem)        cmd_memory "$@" ;;
+    monitor|mon)       cmd_monitor "$@" ;;
+    smart|ai)          cmd_smart "$@" ;;
     help|--help|-h)    cmd_help "$@" ;;
     *)                 error_hint "Unknown command '$cmd'" "Run: rack help" ;;
   esac
