@@ -6,26 +6,64 @@
 
 **rack** is a production-ready CLI for managing OpenClaw autonomous agent deployments. It provides enterprise-grade features like multi-project isolation, team coordination, deterministic workflows, and cost management — without requiring direct OpenClaw CLI interaction or JSON editing.
 
+## 🏗️ RACK Architecture
+
+**rack** uses the RACK architecture for maximum efficiency:
+
+- **50-98% token reduction** through context compression
+- **6-20x faster responses** through short-circuit resolution
+- **Automatic security** through mandatory 6-point checklist
+- **88% cost savings** (typical: $57/mo → $7/mo)
+
+### How It Works
+
+```
+Engineer → Project Agent → Specialists → Done
+```
+
+**Specialists work efficiently:**
+- Manager reads SNAPSHOT.md (2K tokens), not full history (100K)
+- Programmer reads brief only (500 tokens), not investigation
+- Reviewer runs 6-point security checklist automatically
+- Tester validates behavior only (doesn't read code)
+
+**Result:** Fast, cheap, secure autonomous development.
+
+See [docs/RACK.md](docs/RACK.md) for technical details.
+
 ## ✨ Features
 
-- **🚀 Clean Install**: Bootstrap a complete OpenClaw setup from scratch with `rack install`
-- **🔒 Session Scoping**: Multi-project isolation via `agent:<id>:<project>` coordinates
-- **👥 Team Coordination**: Manager agent with delegation and task orchestration
-- **⚙️ Lobster Workflows**: Deterministic YAML pipelines for token-efficient execution
-- **🛡️ Security Sentinel**: Tool approval gates, workspace isolation, audit logging
-- **💰 Cost Management**: Tiered model profiles with real-time usage tracking
-- **📱 Mobile-First**: Telegram integration for approvals and monitoring
-- **🔍 Health Monitoring**: Proactive checks and autonomous recovery
+### Core Features
+- **🔧 Clean Install**: Bootstrap OpenClaw + specialists with `rack install`
+- **👥 Team Management**: 6 specialist agents (programmer, reviewer, tester, etc.)
+- **📁 Project Isolation**: One agent per project/codebase
+- **🛡️ Security Gates**: Prompt injection detection, commit prevention
+- **📱 Telegram Integration**: Mobile-first management and monitoring
+- **💸 Cost Tracking**: Real-time usage and tiered model profiles
+
+## 📚 Documentation
+
+**Start here:** [docs/README.md](docs/README.md) - Documentation index
+
+**Quick guides:**
+- [Quick Start Guide](docs/QUICK-START-RACK.md) - 5-minute setup
+- [Workflow Guide](docs/WORKFLOW-GUIDE.md) - Complete examples
+- [Security Model](docs/SECURITY-SIMPLE.md) - Automatic security
+- [Commands Reference](docs/commands.md) - All commands
+
+**Technical deep dive:**
+- [RACK Architecture](docs/RACK.md) - Performance, cost, implementation
+
+**Specialized topics:**
+- [Multimodal Guide](docs/MULTIMODAL.md) - Image & video generation
+- [Billing & Alerts](docs/billing-alerts.md) - Cost management
 
 ## 📋 Table of Contents
 
 - [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Architecture](#architecture)
+- [RACK Architecture](#rack-architecture)
+- [Documentation](#documentation)
 - [Commands](#commands)
-- [Configuration](#configuration)
-- [Development](#development)
 - [Testing](#testing)
 - [Contributing](#contributing)
 - [License](#license)
