@@ -38,23 +38,67 @@ cmd_wire() {
   echo ""
   [[ -n "$existing_tg" ]] && warn "Currently wired to group: $existing_tg"
 
-  # Get unbound groups
+  # Get all groups from logs (both bound and unbound)
+  local -a all_groups=()
+  local -a all_titles=()
+  local -a all_bindings=()
+  _get_all_groups all_groups all_titles all_bindings
+
+  if [[ "${#all_groups[@]}" -eq 0 ]]; then
+    warn "No Telegram groups found in today's logs."
+    echo ""
+    echo -e "${BOLD}To wire a group:${RESET}"
+    echo "  ${CYAN}1.${RESET} Create a Telegram group"
+    echo "  ${CYAN}2.${RESET} Add your OpenClaw bot to the group"
+    echo "  ${CYAN}3.${RESET} Send a message in the group"
+    echo "  ${CYAN}4.${RESET} Wait a few seconds, then run: ${GREEN}rack wire $id${RESET}"
+    echo ""
+    warn "Aborted - no groups available."
+    exit 0
+  fi
+
+  # Filter to unbound groups
   local -a unbound_groups=()
   local -a group_titles=()
-  _get_unbound_groups unbound_groups group_titles
+  for i in "${!all_groups[@]}"; do
+    if [[ -z "${all_bindings[$i]}" ]]; then
+      unbound_groups+=("${all_groups[$i]}")
+      group_titles+=("${all_titles[$i]}")
+    fi
+  done
 
+  # If no unbound groups, show all groups with current bindings
   if [[ "${#unbound_groups[@]}" -eq 0 ]]; then
-    warn "No unbound Telegram groups found in today's logs."
+    echo -e "${YELLOW}All groups are already bound:${RESET}"
     echo ""
-    echo "To wire a group:"
-    echo "  1. Create a Telegram group"
-    echo "  2. Add @claw_x9m_bot to the group"
-    echo "  3. Send a message in the group"
-    echo "  4. Wait a few seconds, then run: rack wire $id"
+    for i in "${!all_groups[@]}"; do
+      local num=$((i+1))
+      local binding_display="${all_bindings[$i]:-<unbound>}"
+      printf "  ${BOLD}%2d.${RESET} %-20s %-30s → ${CYAN}%s${RESET}\n" \
+        "$num" "${all_groups[$i]}" "${all_titles[$i]}" "$binding_display"
+    done
     echo ""
-    echo "Or enter the group ID manually:"
-    read -rp "Telegram group ID (or press Enter to cancel): " TG_GROUP_ID
-    [[ -z "$TG_GROUP_ID" ]] && { warn "Aborted."; exit 0; }
+    echo "You can:"
+    echo "  ${CYAN}•${RESET} Create a new Telegram group, add bot, send message, then run: ${GREEN}rack wire $id${RESET}"
+    echo "  ${CYAN}•${RESET} Unbind an existing group: ${GREEN}rack unwire <agent-id>${RESET}"
+    echo "  ${CYAN}•${RESET} Override an existing binding (select number above)"
+    echo ""
+
+    read -rp "Select group (1-${#all_groups[@]}) or press Enter to cancel: " choice
+    [[ -z "$choice" ]] && { warn "Aborted."; exit 0; }
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le "${#all_groups[@]}" ]]; then
+      TG_GROUP_ID="${all_groups[$((choice-1))]}"
+      local prev_binding="${all_bindings[$((choice-1))]}"
+      if [[ -n "$prev_binding" ]]; then
+        warn "This will unbind '$prev_binding' from group '${all_titles[$((choice-1))]}'"
+        read -rp "Continue? [y/N]: " confirm
+        [[ "${confirm,,}" != "y" ]] && { warn "Aborted."; exit 0; }
+      fi
+    else
+      warn "Invalid choice. Aborted."
+      exit 0
+    fi
   elif [[ "${#unbound_groups[@]}" -eq 1 ]]; then
     # Auto-select single unbound group
     local gid="${unbound_groups[0]}"

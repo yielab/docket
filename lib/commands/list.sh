@@ -49,7 +49,8 @@ print(len(c.get('bindings',[])))
   echo -e "  ${BOLD}OpenClaw${RESET}  ${gw_badge}  ${tg_badge}  ${DIM}│${RESET}  ${total_agents} agents  ${bindings_count} binding(s)  ${DIM}│${RESET}  v$(openclaw --version 2>/dev/null || echo '?')"
   echo -e "  ${DIM}$(printf '%0.s─' {1..66})${RESET}"
 
-  header "Project Agents ($count)"
+  echo -e "${BOLD}${CYAN}PROJECT AGENTS${RESET} ${DIM}(your work - each is dedicated to one codebase/project)${RESET} ${BOLD}($count)${RESET}"
+  echo ""
 
   while IFS= read -r id; do
     local name;       name=$(meta_get "$id" "name" "$id")
@@ -152,6 +153,32 @@ print(len(c.get('bindings',[])))
     echo ""
     dim "  Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) rack wire <id>"
   fi
+
+  # Show specialist agents section
+  echo ""
+  echo -e "${BOLD}${GREEN}SPECIALIST AGENTS${RESET} ${DIM}(the team - shared across all projects)${RESET}"
+  echo ""
+  echo -e "  ${DIM}These work across ALL your projects. Don't wire them to individual groups.${RESET}"
+  echo ""
+
+  local specialists=("manager" "programmer" "reviewer" "tester" "knowledge" "security")
+  for spec in "${specialists[@]}"; do
+    local spec_dir="$OPENCLAW_DIR/workspaces/$spec"
+    if [[ -d "$spec_dir" ]]; then
+      local spec_model=""
+      if [[ -f "$spec_dir/.rack-meta.json" ]]; then
+        spec_model=$(python3 -c "import json; print(json.load(open('$spec_dir/.rack-meta.json')).get('model',''))" 2>/dev/null || echo "")
+      fi
+      [[ -z "$spec_model" ]] && spec_model="sonnet-4-6"
+
+      # Shorten model name for display
+      local model_short="${spec_model##*/}"
+      model_short="${model_short//anthropic\//}"
+      model_short="${model_short//claude-/}"
+
+      printf "  ${GREEN}✓${RESET} %-12s ${DIM}%s${RESET}\n" "$spec" "$model_short"
+    fi
+  done
 
   echo ""
   printf '%0.s─' {1..70}; echo ""
