@@ -58,6 +58,20 @@ ${BOLD}TEAM & MEMORY (RACK Architecture)${RESET}
   ${GREEN}memory compress${RESET} [id]   Archive old logs (>30 days)
   ${GREEN}memory project${RESET}  [id]   Show quick-reference for project
 
+${BOLD}SMART ROUTING & CONTEXT (Automatic Cost Optimization)${RESET}
+  ${GREEN}smart enable${RESET}           Enable intelligent model routing globally
+  ${GREEN}smart status${RESET}           Show smart routing configuration
+  ${GREEN}smart configure${RESET}        Interactive configuration (context window, TTL)
+  ${GREEN}smart upgrade${RESET}  [id]    Upgrade agent(s) to smart routing templates
+  ${GREEN}smart test${RESET}     [id]    Test smart routing with sample tasks
+
+${BOLD}MONITORING & LOGGING${RESET}
+  ${GREEN}monitor status${RESET}         Show current usage, limits, and remaining credits
+  ${GREEN}monitor log${RESET}    [id]    Show detailed interaction log for agent
+  ${GREEN}monitor alerts${RESET}         Configure cost alerts (daily/weekly/monthly)
+  ${GREEN}monitor dashboard${RESET}      Real-time cost dashboard (updates every 5s)
+  ${GREEN}monitor export${RESET} [file]  Export usage data to CSV for analysis
+
 ${BOLD}PROFILES${RESET}
   ${GREEN}economy${RESET}   claude-haiku-4-5     \$0.80/\$4 per MTok   Routine tasks, triage
   ${GREEN}standard${RESET}  claude-sonnet-4-6    \$3/\$15 per MTok     Active dev, code review
