@@ -156,6 +156,42 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
     dim "  (Normal if the gateway hasn't received messages yet)"
   fi
 
+  # 10. Check for invalid model names
+  echo ""
+  echo -e "${BOLD}Model Configuration${RESET}"
+  local invalid_models
+  invalid_models=$(python3 << 'PYEOF'
+import json, os
+config_path = os.path.expanduser('~/.openclaw/openclaw.json')
+with open(config_path, 'r') as f:
+    config = json.load(f)
+
+invalid = []
+aliases = {
+    'anthropic/claude-haiku-3-5': 'anthropic/claude-haiku-4-5',
+    'anthropic/claude-haiku-3': 'anthropic/claude-haiku-4-5',
+    'anthropic/claude-sonnet-3-5': 'anthropic/claude-sonnet-4-6',
+}
+
+# Check all agents
+for agent in config.get('agents', {}).get('registered', []):
+    if 'model' in agent and agent['model'] in aliases:
+        invalid.append(f"{agent.get('id')}: {agent['model']}")
+
+for line in invalid:
+    print(line)
+PYEOF
+)
+
+  if [[ -z "$invalid_models" ]]; then
+    success "  All agent models are valid"
+  else
+    fail "  Found invalid model configurations:"
+    echo "$invalid_models" | sed 's/^/    /'
+    echo "  ${YELLOW}Fix with: rack doctor --fix${RESET}"
+    issues=$(( issues + 1 ))
+  fi
+
   # Summary
   echo ""
   if [[ "$issues" -eq 0 ]]; then
@@ -164,6 +200,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
     echo -e "${RED}${BOLD}${issues} critical issue(s) found.${RESET}"
     echo "  Project issues:  rack repair [id]"
     echo "  Gateway issues:  openclaw doctor"
+    echo "  Model issues:    rack doctor --fix"
     exit 1
   fi
 }
