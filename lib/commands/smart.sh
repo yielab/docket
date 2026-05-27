@@ -49,24 +49,20 @@ config_path = os.path.expanduser('~/.openclaw/openclaw.json')
 with open(config_path, 'r') as f:
     config = json.load(f)
 
-# Context Pruning - Sliding window (keep last 10 turns)
+# Context Pruning - OpenClaw format (cache-ttl mode)
 config['contextPruning'] = {
-    'mode': 'sliding',
-    'maxTurns': 10,
-    'keepSystem': True  # Always keep SOUL.md
+    'mode': 'cache-ttl',
+    'ttl': '1h',  # Cache expires after 1 hour
+    'keepLastAssistants': 10  # Keep last 10 assistant responses
 }
 
-# Compaction - Aggressive (compress after 10 turns)
+# Compaction - OpenClaw format
 config['compaction'] = {
-    'mode': 'aggressive',
-    'threshold': 10,
-    'target': 5  # Compress to 5 turns summary
-}
-
-# Cache TTL - Prevent indefinite caching
-config['cache'] = {
-    'ttl': 3600,  # 1 hour
-    'maxSize': 50000  # 50K tokens max per cache entry
+    'mode': 'default',
+    'memoryFlush': {
+        'enabled': True,
+        'softThresholdTokens': 15000  # Flush when exceeds 15K tokens
+    }
 }
 
 with open(config_path, 'w') as f:

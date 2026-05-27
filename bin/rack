@@ -60,6 +60,7 @@ source "$LIB_DIR/helpers/picker.sh"
 source "$LIB_DIR/helpers/service.sh"
 source "$LIB_DIR/helpers/utils.sh"
 source "$LIB_DIR/helpers/workspace.sh"
+source "$LIB_DIR/helpers/models.sh"
 
 # Source command modules
 source "$LIB_DIR/commands/list.sh"
@@ -87,6 +88,10 @@ source "$LIB_DIR/commands/team.sh"
 source "$LIB_DIR/commands/memory.sh"
 source "$LIB_DIR/commands/monitor.sh"
 source "$LIB_DIR/commands/smart.sh"
+source "$LIB_DIR/commands/cleanup.sh"
+source "$LIB_DIR/commands/terminal.sh"
+source "$LIB_DIR/commands/cleanup.sh"
+source "$LIB_DIR/commands/terminal.sh"
 
 # Source router
 source "$LIB_DIR/core/router.sh"
@@ -104,3 +109,6 @@ fi
 
 # Route command
 route_command "$CMD" "${_ARGS[@]:1}"
+source "$LIB_DIR/commands/cleanup.sh"
+source "$LIB_DIR/commands/terminal.sh"
+source "$LIB_DIR/commands/terminal.sh"
