@@ -32,19 +32,21 @@ cmd_scope() {
       meta_set "$id" "projectKey" "$project_key"
       meta_set "$id" "sessionKey" "$new_session"
       sync_session_key "$id" "$new_session"
+      mark_gateway_dirty
       success "Session scope updated: $current_key → $project_key"
       success "Session key: $new_session"
       info "Update SOUL.md to reflect the new scope if needed."
-      restart_gateway
+      restart_gateway_if_dirty
       ;;
     reset)
       local default_session; default_session=$(generate_session_key "$id" "default")
       meta_set "$id" "projectKey" "default"
       meta_set "$id" "sessionKey" "$default_session"
       sync_session_key "$id" "$default_session"
+      mark_gateway_dirty
       success "Session scope reset to: default"
       success "Session key: $default_session"
-      restart_gateway
+      restart_gateway_if_dirty
       ;;
     *)
       error_hint "Unknown action '$action'" "Use: show, set, or reset"

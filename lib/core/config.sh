@@ -45,6 +45,10 @@ declare -A MODEL_PRICING=(
   ["anthropic/claude-opus-4-6"]="15.00:75.00:1.50:18.75"
 )
 
+# ─── Cost enforcement thresholds ─────────────────────────────────────────────
+RUNAWAY_TURNS_THRESHOLD=200   # sessions with more turns than this trigger a warning
+RUNAWAY_COST_THRESHOLD=20     # sessions costing more than this (USD) trigger a warning
+
 # Resolve a profile name to a model ID, or return the input as-is if already a model
 resolve_model() {
   local input="$1"

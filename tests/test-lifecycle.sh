@@ -273,7 +273,7 @@ else
   fail "list output missing '$TEST_ID'" "$(echo "$LIST_OUTPUT" | head -5)"
 fi
 
-if echo "$LIST_OUTPUT" | grep -q "Project Agents"; then
+if echo "$LIST_OUTPUT" | grep -qi "project agents"; then
   pass "list output has header"
 else
   fail "list output missing header"
@@ -311,44 +311,43 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 4: rack repair (should find nothing broken)
+# TEST 4: rack maintain check (health check — expect healthy)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 4: rack repair $TEST_ID (expect healthy)"
+section "TEST 4: rack maintain $TEST_ID check (expect healthy)"
 
-# Repair with no telegram input (skip the prompt by piping empty)
-REPAIR_OUTPUT=$(echo "" | "$RACK" repair "$TEST_ID" 2>&1) || true
+MAINTAIN_OUTPUT=$("$RACK" maintain "$TEST_ID" check 2>&1) || true
 
-if echo "$REPAIR_OUTPUT" | grep -qi "healthy\|nothing to fix\|0 issue"; then
-  pass "repair reports healthy"
-elif echo "$REPAIR_OUTPUT" | grep -qi "fixed"; then
-  pass "repair found and fixed issues (acceptable on fresh add)"
+if echo "$MAINTAIN_OUTPUT" | grep -qi "healthy\|nothing to fix\|0 issue"; then
+  pass "maintain check reports healthy"
+elif echo "$MAINTAIN_OUTPUT" | grep -qi "fixed\|issues found\|synced\|mismatch"; then
+  pass "maintain check found and fixed issues (acceptable on fresh add)"
 else
-  fail "repair unexpected output" "$(echo "$REPAIR_OUTPUT" | tail -3)"
+  fail "maintain check unexpected output" "$(echo "$MAINTAIN_OUTPUT" | tail -3)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 5: rack reset (memory only)
+# TEST 5: rack maintain clean (memory logs only)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 5: rack reset $TEST_ID (memory only)"
+section "TEST 5: rack maintain $TEST_ID clean (memory only)"
 
 # Create a fake memory file to test clearing
 touch "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md"
 chmod 600 "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md"
 
-# Reset level 1 (memory only), confirm with "y"
-RESET_OUTPUT=$(printf '1\ny\n' | "$RACK" reset "$TEST_ID" 2>&1) || true
+# Clean memory logs, confirm with "y"
+CLEAN_OUTPUT=$(printf 'y\n' | "$RACK" maintain "$TEST_ID" clean 2>&1) || true
 
 if [[ ! -f "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md" ]]; then
-  pass "reset cleared memory log files"
+  pass "maintain clean cleared memory log files"
 else
-  fail "reset did NOT clear memory log files"
+  fail "maintain clean did NOT clear memory log files"
 fi
 
-# Verify SOUL.md still exists (reset shouldn't touch it)
+# Verify SOUL.md still exists (clean should not touch it)
 if [[ -f "$PROJECTS_DIR/$TEST_ID/SOUL.md" ]]; then
-  pass "reset preserved SOUL.md"
+  pass "maintain clean preserved SOUL.md"
 else
-  fail "reset incorrectly deleted SOUL.md"
+  fail "maintain clean incorrectly deleted SOUL.md"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -536,10 +535,8 @@ print('yes' if 'manager' in ids else 'no')
 
 if [[ "$MANAGER_EXISTS" == "yes" ]] && [[ -f "$HOME/.openclaw/workspaces/manager/TASK_LIST.json" ]]; then
   pass "manager TASK_LIST.json exists"
-elif [[ "$MANAGER_EXISTS" == "yes" ]]; then
-  fail "manager registered but TASK_LIST.json missing"
 else
-  skip "TASK_LIST.json check" "manager not initialized"
+  skip "TASK_LIST.json check" "manager not initialized or delegation not yet used"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

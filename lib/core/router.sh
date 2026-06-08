@@ -8,136 +8,102 @@ route_command() {
   case "$cmd" in
     # Core commands
     install|setup)     cmd_install "$@" ;;
-    list)              cmd_list "$@" ;;
-    add|create|new)    cmd_add "$@" ;;
-    info|show)         cmd_info "$@" ;;
-    delete|remove|rm)  cmd_delete "$@" ;;
+    list)              cmd_list    "$@" ;;
+    add|create|new)    cmd_add     "$@" ;;
+    info|show)         cmd_info    "$@" ;;
+    delete|remove|rm)  cmd_delete  "$@" ;;
 
-    # New unified commands
+    # Unified maintenance (replaces reset/repair/cleanup)
     maintain)          cmd_maintain "$@" ;;
+
+    # Execution mode (replaces terminal)
     mode)              cmd_mode "$@" ;;
+
+    # Context & memory (replaces memory)
     context)           cmd_context "$@" ;;
 
     # Telegram
-    wire)              cmd_wire "$@" ;;
+    wire)              cmd_wire   "$@" ;;
     unwire)            cmd_unwire "$@" ;;
-    telegram)          cmd_wire "$@" ;;  # Alias for wire
+    telegram)          cmd_wire   "$@" ;;
 
     # Configuration
-    scope)             cmd_scope "$@" ;;
+    scope)             cmd_scope   "$@" ;;
     profile|tier)      cmd_profile "$@" ;;
-    keys|key|secret)   cmd_keys "$@" ;;
+    keys|key|secret)   cmd_keys    "$@" ;;
 
     # Team & Workflows
-    team)              cmd_team "$@" ;;
+    team)              cmd_team     "$@" ;;
     workflow|wf)       cmd_workflow "$@" ;;
 
     # Utilities
-    logs|log)          cmd_logs "$@" ;;
-    edit)              cmd_edit "$@" ;;
-    cost|usage)        cmd_cost "$@" ;;
-    doctor|check)      cmd_doctor "$@" ;;
-    help|--help|-h)    cmd_help "$@" ;;
+    logs|log)          cmd_logs     "$@" ;;
+    edit)              cmd_edit     "$@" ;;
+    cost|usage)        cmd_cost     "$@" ;;
+    doctor|check)      cmd_doctor   "$@" ;;
+    snapshot|export)   cmd_snapshot "$@" ;;
+    serve)             cmd_serve    "$@" ;;
+    help|--help|-h)    cmd_help     "$@" ;;
 
-    # DEPRECATED commands (with warnings)
+    # ── Removed / renamed commands ──────────────────────────────────────────
     reset)
-      warn "⚠ 'rack reset' is deprecated. Use 'rack maintain [id] <clean|reset|rebuild>'"
-      echo ""
-      echo "  ${GREEN}rack maintain $1 clean${RESET}    Clear memory logs (was: reset 1)"
-      echo "  ${GREEN}rack maintain $1 reset${RESET}    Clear memory + heartbeat (was: reset 2)"
-      echo "  ${GREEN}rack maintain $1 rebuild${RESET}  Regenerate workspace (was: reset 3)"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_reset "$@"
+      echo "rack reset was renamed → use: rack maintain [id] <clean|reset|rebuild>"
+      exit 1
       ;;
     repair|fix)
-      warn "⚠ 'rack repair' is deprecated. Use 'rack maintain [id] check'"
-      echo ""
-      echo "  ${GREEN}rack maintain $1 check${RESET}    Health check & auto-fix"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_repair "$@"
+      echo "rack repair was renamed → use: rack maintain [id] check"
+      exit 1
       ;;
     cleanup|clean)
-      warn "⚠ 'rack cleanup' is deprecated. Use 'rack maintain [id] sessions'"
-      echo ""
-      echo "  ${GREEN}rack maintain $1 sessions${RESET}    Clean large/old sessions"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_cleanup "$@"
+      echo "rack cleanup was renamed → use: rack maintain [id] sessions"
+      exit 1
       ;;
     model)
-      warn "⚠ 'rack model' is deprecated. Use 'rack profile [id] [tier]'"
-      echo ""
-      echo "  ${GREEN}rack profile $1 economy${RESET}     Use haiku-4-5"
-      echo "  ${GREEN}rack profile $1 standard${RESET}    Use sonnet-4-6"
-      echo "  ${GREEN}rack profile $1 premium${RESET}     Use opus-4-6"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_model "$@"
+      echo "rack model was renamed → use: rack profile [id] <economy|standard|premium>"
+      exit 1
       ;;
     billing|credits)
-      warn "⚠ 'rack billing' is deprecated. Use 'rack cost [id]'"
-      echo ""
-      echo "  ${GREEN}rack cost${RESET}              Show usage for all agents"
-      echo "  ${GREEN}rack cost $1${RESET}           Show usage for specific agent"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_billing "$@"
+      echo "rack billing was renamed → use: rack cost [id]"
+      exit 1
       ;;
     monitor|mon)
-      warn "⚠ 'rack monitor' is deprecated. Use 'rack cost [id] <subcommand>'"
-      echo ""
-      echo "  ${GREEN}rack cost $1${RESET}           Show usage"
-      echo "  ${GREEN}rack cost $1 log${RESET}       Show interaction log"
-      echo "  ${GREEN}rack cost $1 watch${RESET}     Real-time dashboard"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_monitor "$@"
+      echo "rack monitor was renamed → use: rack cost [id]"
+      exit 1
       ;;
     memory|mem)
-      warn "⚠ 'rack memory' is deprecated. Use 'rack context [id] <subcommand>'"
-      echo ""
-      echo "  ${GREEN}rack context $1${RESET}           Show recent activity"
-      echo "  ${GREEN}rack context $1 search <q>${RESET}  Search memory"
-      echo "  ${GREEN}rack context $1 snapshot${RESET}    Create snapshot"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_memory "$@"
+      echo "rack memory was renamed → use: rack context [id] <search|snapshot|index|compress>"
+      exit 1
       ;;
     smart|ai)
-      warn "⚠ 'rack smart' is deprecated. Use 'rack mode [id] smart'"
-      echo ""
-      echo "  ${GREEN}rack mode $1 smart${RESET}       Enable smart routing"
-      echo "  ${GREEN}rack mode $1 standard${RESET}    Disable smart routing"
-      echo "  ${GREEN}rack mode $1${RESET}             Show current mode"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_smart "$@"
+      echo "rack smart was removed — smart routing was placebo (prose in SOUL.md does not change the gateway model)"
+      echo "Use: rack profile [id] <economy|standard|premium> to set the actual model"
+      exit 1
       ;;
     terminal|term)
-      warn "⚠ 'rack terminal' is deprecated. Use 'rack mode [id] terminal'"
-      echo ""
-      echo "  ${GREEN}rack mode $1 terminal${RESET}    Enable terminal mode (zero cost)"
-      echo "  ${GREEN}rack mode $1 api${RESET}         Disable terminal mode"
-      echo "  ${GREEN}rack mode $1${RESET}             Show current mode"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_terminal "$@"
+      if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
+        cmd_terminal "$@"
+      else
+        echo "rack terminal was renamed → use: rack mode [id] terminal"
+        echo "  Or enable old interface: RACK_EXPERIMENTAL=1 rack terminal <subcommand>"
+        exit 1
+      fi
       ;;
     browser|brave)
-      warn "⚠ 'rack browser' is deprecated. Use 'rack doctor browser'"
-      echo ""
-      echo "  ${GREEN}rack doctor browser${RESET}        Browser diagnostics"
-      echo "  ${GREEN}rack doctor browser --fix${RESET}  Auto-fix browser issues"
-      echo ""
-      read -rp "Continue with old command? [y/N]: " confirm
-      [[ "$confirm" =~ ^[Yy]$ ]] && cmd_browser "$@"
+      if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
+        cmd_browser "$@"
+      else
+        echo "rack browser is experimental"
+        echo "  Enable: RACK_EXPERIMENTAL=1 rack browser <status|restart|kill|clean>"
+        echo "  Or use: rack doctor  (browser health is section 8)"
+        exit 1
+      fi
       ;;
 
     # Unknown command
     *)
-      error_hint "Unknown command '$cmd'" "Run: rack help"
+      echo "Unknown command '$cmd'"
+      echo "Run: rack help"
+      exit 1
       ;;
   esac
 }

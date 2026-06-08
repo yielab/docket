@@ -38,7 +38,7 @@ cmd_install() {
       echo "Current setup:"
       echo "  • Config: $CONFIG_FILE"
       echo "  • Projects: $PROJECTS_DIR"
-      echo "  • Agents: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents', {}).get('registered', [])))" 2>/dev/null || echo "unknown")"
+      echo "  • Agents: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents', {}).get('list', [])))" 2>/dev/null || echo "unknown")"
       echo ""
       read -rp "Reconfigure anyway? [y/N]: " CONFIRM
       [[ "${CONFIRM,,}" != "y" ]] && { info "Nothing to do. Run 'rack doctor' to verify health."; exit 0; }

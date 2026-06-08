@@ -99,7 +99,7 @@ if 'model' in config:
         fixed_count += 1
 
 # Fix in agents
-for agent in config.get('agents', {}).get('registered', []):
+for agent in config.get('agents', {}).get('list', []):
     if 'model' in agent:
         old = agent['model']
         if old in aliases:
