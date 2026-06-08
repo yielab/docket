@@ -1,0 +1,50 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories and files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+tmp/
+temp/
+
+# Logs
+logs/
+*.log
+
+# Test artifacts
+test-*-agent/
+.test-*/
+
+# OpenClaw runtime files (don't commit user configs)
+~/.openclaw/
+openclaw.json.backup
+
+# Internal documentation
+internal-docs/
+AUDIT_REPORT.md
+CRITICAL_ISSUES.md
+TERMINAL-MODE-QUICKSTART.txt
+
+# Local development
+.env
+.env.local
+.secrets
+
+# Claude artifacts
+.claude/

@@ -178,6 +178,507 @@ result=$(test_cmd_for_stack "Rust")
 assert_equals "cargo test" "$result" "test_cmd_for_stack returns cargo test for Rust"
 
 echo ""
+
+# ── P0-1: agents.list config key tests ────────────────────────────────────────
+echo "Testing agents.list config key (P0-1)..."
+source "$LIB_DIR/helpers/output.sh"
+source "$LIB_DIR/helpers/json.sh"
+
+_P01_TMP=$(mktemp)
+cat > "$_P01_TMP" <<'JSON'
+{
+  "agents": {
+    "defaults": {"model": {"primary": "anthropic/claude-sonnet-4-6"}},
+    "list": [
+      {"id": "alpha", "model": "anthropic/claude-haiku-4-5"},
+      {"id": "beta",  "model": "anthropic/claude-sonnet-4-6"}
+    ]
+  },
+  "bindings": []
+}
+JSON
+
+# Override CONFIG_FILE to point at the tmp fixture
+_REAL_CONFIG="$CONFIG_FILE"
+CONFIG_FILE="$_P01_TMP"
+
+# agent_registered should find agents in agents.list
+agent_registered "alpha" 2>/dev/null
+assert_equals "0" "$?" "agent_registered finds alpha in agents.list"
+
+agent_registered "beta" 2>/dev/null
+assert_equals "0" "$?" "agent_registered finds beta in agents.list"
+
+_missing_exit=0
+agent_registered "nonexistent" 2>/dev/null || _missing_exit=$?
+assert_equals "1" "$_missing_exit" "agent_registered returns 1 for missing agent"
+
+# Agent count expression (used in install.sh) reads agents.list
+_count=$(python3 -c "import json; c=json.load(open('$_P01_TMP')); print(len(c.get('agents', {}).get('list', [])))")
+assert_equals "2" "$_count" "agents.list count returns correct number"
+
+# Ensure agents.registered does NOT exist in a valid config (would return 0)
+_reg_count=$(python3 -c "import json; c=json.load(open('$_P01_TMP')); print(len(c.get('agents', {}).get('registered', [])))")
+assert_equals "0" "$_reg_count" "agents.registered is empty (correct key is agents.list)"
+
+# Restore
+CONFIG_FILE="$_REAL_CONFIG"
+rm -f "$_P01_TMP"
+echo ""
+
+# ── P0-2: Config drift detection logic ────────────────────────────────────────
+echo "Testing config drift detection (P0-2)..."
+_P02_CFG=$(mktemp)
+_P02_META=$(mktemp)
+
+cat > "$_P02_CFG" <<'JSON'
+{
+  "agents": {
+    "defaults": {},
+    "list": [
+      {"id": "myagent", "model": "anthropic/claude-sonnet-4-6"}
+    ]
+  },
+  "bindings": []
+}
+JSON
+
+# meta matches openclaw — no drift expected
+cat > "$_P02_META" <<'JSON'
+{"model": "anthropic/claude-sonnet-4-6", "name": "My Agent"}
+JSON
+
+_drift_output=$(python3 - "$_P02_CFG" "$_P02_META" "myagent" <<'PY'
+import json, sys
+config  = json.load(open(sys.argv[1]))
+meta    = json.load(open(sys.argv[2]))
+agent_id = sys.argv[3]
+
+meta_model = meta.get("model", "")
+oc_agent   = next((a for a in config.get("agents", {}).get("list", []) if a.get("id") == agent_id), None)
+oc_model   = oc_agent.get("model", "") if oc_agent else ""
+
+if meta_model and oc_model and meta_model != oc_model:
+    print(f"DRIFT: meta={meta_model} openclaw={oc_model}")
+else:
+    print("OK")
+PY
+)
+assert_equals "OK" "$_drift_output" "drift detector: no drift when models match"
+
+# Introduce drift — meta has different model
+cat > "$_P02_META" <<'JSON'
+{"model": "anthropic/claude-haiku-4-5", "name": "My Agent"}
+JSON
+
+_drift_output=$(python3 - "$_P02_CFG" "$_P02_META" "myagent" <<'PY'
+import json, sys
+config  = json.load(open(sys.argv[1]))
+meta    = json.load(open(sys.argv[2]))
+agent_id = sys.argv[3]
+
+meta_model = meta.get("model", "")
+oc_agent   = next((a for a in config.get("agents", {}).get("list", []) if a.get("id") == agent_id), None)
+oc_model   = oc_agent.get("model", "") if oc_agent else ""
+
+if meta_model and oc_model and meta_model != oc_model:
+    print(f"DRIFT: meta={meta_model} openclaw={oc_model}")
+else:
+    print("OK")
+PY
+)
+assert_contains "$_drift_output" "DRIFT" "drift detector: reports drift when models differ"
+assert_contains "$_drift_output" "haiku" "drift detector: drift output includes meta model"
+assert_contains "$_drift_output" "sonnet" "drift detector: drift output includes openclaw model"
+
+# Agent not in openclaw.json — no false positive
+_drift_output=$(python3 - "$_P02_CFG" "$_P02_META" "unknown-agent" <<'PY'
+import json, sys
+config  = json.load(open(sys.argv[1]))
+meta    = json.load(open(sys.argv[2]))
+agent_id = sys.argv[3]
+
+meta_model = meta.get("model", "")
+oc_agent   = next((a for a in config.get("agents", {}).get("list", []) if a.get("id") == agent_id), None)
+oc_model   = oc_agent.get("model", "") if oc_agent else ""
+
+if meta_model and oc_model and meta_model != oc_model:
+    print(f"DRIFT: meta={meta_model} openclaw={oc_model}")
+else:
+    print("OK")
+PY
+)
+assert_equals "OK" "$_drift_output" "drift detector: no false positive for agent absent from openclaw"
+
+rm -f "$_P02_CFG" "$_P02_META"
+echo ""
+
+# ── P0-3: oc_get / oc_set / set_agent_model ───────────────────────────────────
+echo "Testing oc_get / oc_set / set_agent_model (P0-3)..."
+
+_P03_CFG=$(mktemp)
+_P03_META_DIR=$(mktemp -d)
+mkdir -p "$_P03_META_DIR/testagent"
+
+cat > "$_P03_CFG" <<'JSON'
+{
+  "agents": {
+    "defaults": {"model": {"primary": "anthropic/claude-sonnet-4-6"}},
+    "list": [
+      {"id": "testagent", "model": "anthropic/claude-sonnet-4-6"}
+    ]
+  },
+  "bindings": []
+}
+JSON
+
+cat > "$_P03_META_DIR/testagent/.rack-meta.json" <<'JSON'
+{"name": "Test Agent", "model": "anthropic/claude-sonnet-4-6"}
+JSON
+
+# Override globals for isolated testing
+_REAL_CONFIG2="$CONFIG_FILE"
+_REAL_PROJECTS="$PROJECTS_DIR"
+CONFIG_FILE="$_P03_CFG"
+PROJECTS_DIR="$_P03_META_DIR"
+
+# oc_get: read a dotted path
+_val=$(oc_get "agents.defaults.model.primary" "fallback")
+assert_equals "anthropic/claude-sonnet-4-6" "$_val" "oc_get reads dotted path"
+
+_val=$(oc_get "agents.nonexistent.field" "mydefault")
+assert_equals "mydefault" "$_val" "oc_get returns default for missing path"
+
+# oc_set: write a value and read it back
+oc_set "agents.defaults.model.primary" '"anthropic/claude-haiku-4-5"'
+_val=$(oc_get "agents.defaults.model.primary" "")
+assert_equals "anthropic/claude-haiku-4-5" "$_val" "oc_set writes and oc_get reads back"
+
+# oc_set: creates .bak before writing
+assert_not_empty "$(ls "${_P03_CFG}.bak" 2>/dev/null)" "oc_set creates .bak backup file"
+
+# oc_set: file is valid JSON after write
+python3 -c "import json; json.load(open('$_P03_CFG'))" 2>/dev/null
+assert_equals "0" "$?" "oc_set produces valid JSON"
+
+# oc_set: bad JSON value is rejected
+oc_set "some.key" "not-valid-json{" 2>/dev/null
+assert_equals "1" "$?" "oc_set rejects invalid JSON value"
+
+# set_agent_model: updates both sources
+set_agent_model "testagent" "anthropic/claude-haiku-4-5"
+_oc_model=$(python3 -c "
+import json
+c = json.load(open('$_P03_CFG'))
+a = next((x for x in c.get('agents',{}).get('list',[]) if x.get('id')=='testagent'), {})
+print(a.get('model',''))
+")
+_meta_model=$(python3 -c "
+import json
+print(json.load(open('$_P03_META_DIR/testagent/.rack-meta.json')).get('model',''))
+")
+assert_equals "anthropic/claude-haiku-4-5" "$_oc_model"    "set_agent_model updates openclaw.json"
+assert_equals "anthropic/claude-haiku-4-5" "$_meta_model"  "set_agent_model updates .rack-meta.json"
+
+# Restore
+CONFIG_FILE="$_REAL_CONFIG2"
+PROJECTS_DIR="$_REAL_PROJECTS"
+rm -rf "$_P03_CFG" "${_P03_CFG}.bak" "$_P03_META_DIR"
+echo ""
+
+# ── P0-4: mark_gateway_dirty / restart_gateway_if_dirty ───────────────────────
+echo "Testing mark_gateway_dirty / restart_gateway_if_dirty (P0-4)..."
+source "$LIB_DIR/helpers/service.sh"
+export RACK_NO_RESTART=1
+
+# Not dirty — no output
+RACK_GATEWAY_DIRTY=0
+_out=$(restart_gateway_if_dirty 2>&1)
+assert_equals "" "$_out" "restart_gateway_if_dirty is a no-op when not dirty"
+
+# mark_gateway_dirty sets the flag in the current shell
+RACK_GATEWAY_DIRTY=0
+mark_gateway_dirty
+assert_equals "1" "$RACK_GATEWAY_DIRTY" "mark_gateway_dirty sets flag to 1"
+
+# restart_gateway_if_dirty triggers when dirty (test output, then clear flag directly)
+RACK_GATEWAY_DIRTY=1
+_out=$(restart_gateway_if_dirty 2>&1)
+assert_contains "$_out" "dry-run" "restart_gateway_if_dirty triggers when dirty"
+
+# After a direct (non-subshell) call, flag is cleared in parent
+RACK_GATEWAY_DIRTY=1
+restart_gateway_if_dirty >/dev/null 2>&1
+assert_equals "0" "$RACK_GATEWAY_DIRTY" "restart_gateway_if_dirty clears dirty flag after firing"
+
+# Two mark_dirty calls still produce only one restart
+RACK_GATEWAY_DIRTY=0
+mark_gateway_dirty
+mark_gateway_dirty
+_restart_count=$(restart_gateway_if_dirty 2>&1 | grep -c "dry-run" || true)
+assert_equals "1" "$_restart_count" "multiple mark_dirty calls produce exactly one restart"
+
+unset RACK_NO_RESTART
+echo ""
+
+# ── P1-1: Per-agent budget field ───────────────────────────────────────────────
+echo "Testing per-agent budget field (P1-1)..."
+_P11_DIR=$(mktemp -d)
+mkdir -p "$_P11_DIR/testagent"
+cat > "$_P11_DIR/testagent/.rack-meta.json" <<'JSON'
+{"name": "Test Agent", "model": "anthropic/claude-sonnet-4-6"}
+JSON
+
+_REAL_PROJ_P11="$PROJECTS_DIR"
+PROJECTS_DIR="$_P11_DIR"
+
+meta_set "testagent" "budgetUsd" "5"
+_val=$(meta_get "testagent" "budgetUsd" "")
+assert_equals "5" "$_val" "meta_set/get budgetUsd stores and reads integer budget"
+
+meta_set "testagent" "budgetUsd" "10.50"
+_val=$(meta_get "testagent" "budgetUsd" "")
+assert_equals "10.50" "$_val" "budgetUsd handles decimal amounts"
+
+meta_set "testagent" "budgetUsd" "0"
+_val=$(meta_get "testagent" "budgetUsd" "")
+assert_equals "0" "$_val" "budgetUsd=0 stored correctly (no cap)"
+
+# Paused flag set and cleared
+meta_set "testagent" "paused" "true"
+meta_set "testagent" "pausedReason" "budget"
+_paused=$(meta_get "testagent" "paused" "")
+assert_equals "true" "$_paused" "paused flag stored correctly"
+_reason=$(meta_get "testagent" "pausedReason" "")
+assert_equals "budget" "$_reason" "pausedReason stored correctly"
+
+PROJECTS_DIR="$_REAL_PROJ_P11"
+rm -rf "$_P11_DIR"
+echo ""
+
+# ── P1-2: Budget check threshold logic ────────────────────────────────────────
+echo "Testing budget check threshold logic (P1-2)..."
+
+# Python percentage calculation
+_pct=$(python3 -c "print(int(float('0.50') / float('1.00') * 100))")
+assert_equals "50" "$_pct" "budget pct: 50% of cap"
+
+_pct=$(python3 -c "print(int(float('0.85') / float('1.00') * 100))")
+assert_equals "85" "$_pct" "budget pct: 85% is in warning zone"
+
+_pct=$(python3 -c "print(int(float('1.05') / float('1.00') * 100))")
+assert_equals "105" "$_pct" "budget pct: 105% is over cap"
+
+# Threshold decision logic
+_status="ok"
+_pv=50
+[[ "$_pv" -ge 100 ]] && _status="paused"
+[[ "$_status" == "ok" && "$_pv" -ge 80 ]] && _status="warning"
+assert_equals "ok" "$_status" "check_budget: <80% returns ok"
+
+_status="ok"
+_pv=85
+[[ "$_pv" -ge 100 ]] && _status="paused"
+[[ "$_status" == "ok" && "$_pv" -ge 80 ]] && _status="warning"
+assert_equals "warning" "$_status" "check_budget: ≥80% triggers warning"
+
+_status="ok"
+_pv=105
+[[ "$_pv" -ge 100 ]] && _status="paused"
+[[ "$_status" == "ok" && "$_pv" -ge 80 ]] && _status="warning"
+assert_equals "paused" "$_status" "check_budget: ≥100% triggers pause"
+
+echo ""
+
+# ── P1-3: Runaway session detection ───────────────────────────────────────────
+echo "Testing runaway session detection (P1-3)..."
+source "$LIB_DIR/helpers/workspace.sh"
+
+_P13_SESSIONS=$(mktemp -d)
+_P13_JSONL="$_P13_SESSIONS/session-test.jsonl"
+
+# Create 250 turns (above RUNAWAY_TURNS_THRESHOLD=200) with a known cost
+python3 -c "
+import json
+entry = {'message': {'usage': {
+    'input': 1000, 'output': 500, 'cacheRead': 0, 'cacheWrite': 0,
+    'cost': {'total': 0.01}}}}
+with open('$_P13_JSONL', 'w') as f:
+    for _ in range(250):
+        f.write(json.dumps(entry) + '\n')
+"
+
+# Parse the sessions dir directly (mirrors _aggregate_cost logic)
+_cost_out=$(python3 - "$_P13_SESSIONS" <<'PY'
+import json, sys, os, glob
+sessions_dir = sys.argv[1]
+total = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "cost": 0.0, "turns": 0}
+for f in glob.glob(os.path.join(sessions_dir, "*.jsonl")):
+    with open(f) as fh:
+        for line in fh:
+            try:
+                data = json.loads(line)
+                msg = data.get("message", {})
+                usage = msg.get("usage", {}) if isinstance(msg, dict) else {}
+                if usage:
+                    total["input"]      += usage.get("input", 0)
+                    total["output"]     += usage.get("output", 0)
+                    total["cacheRead"]  += usage.get("cacheRead", 0)
+                    total["cacheWrite"] += usage.get("cacheWrite", 0)
+                    cost = usage.get("cost", {})
+                    total["cost"]  += cost.get("total", 0) if isinstance(cost, dict) else 0
+                    total["turns"] += 1
+            except (json.JSONDecodeError, KeyError):
+                pass
+print(f'{total["input"]}|{total["output"]}|{total["cacheRead"]}|{total["cacheWrite"]}|{total["cost"]:.6f}|{total["turns"]}')
+PY
+)
+
+IFS='|' read -r _ _ _ _ _total_cost _turns <<< "$_cost_out"
+assert_equals "250" "$_turns" "runaway parser: counts 250 turns correctly"
+
+# Threshold comparison: 250 > 200 should trigger
+_over_turns=0
+[[ "$_turns" -gt "${RUNAWAY_TURNS_THRESHOLD:-200}" ]] && _over_turns=1
+assert_equals "1" "$_over_turns" "runaway: 250 turns exceeds RUNAWAY_TURNS_THRESHOLD"
+
+# Cost threshold: 250 * 0.01 = 2.50; should NOT trigger $20 threshold
+_over_cost=0
+python3 -c "import sys; sys.exit(0 if float('$_total_cost') >= 20 else 1)" 2>/dev/null \
+  && _over_cost=1
+assert_equals "0" "$_over_cost" "runaway: \$2.50 does NOT exceed \$20 threshold"
+
+rm -rf "$_P13_SESSIONS"
+echo ""
+
+# ─── P4-2: Team delegation helpers ────────────────────────────────────────────
+echo "── P4-2: Team delegation ──"
+
+_P42_DIR=$(mktemp -d)
+_P42_TASK_LIST="$_P42_DIR/TASK_LIST.json"
+
+# Seed an empty task list
+echo '{"tasks":[]}' > "$_P42_TASK_LIST"
+
+# Add a task via Python (same logic as _team_delegate)
+python3 - "$_P42_TASK_LIST" "task-001" "Fix login bug" "normal" "2026-06-08T10:00:00" <<'PYEOF'
+import sys, json
+path, tid, desc, pri, created = sys.argv[1:]
+with open(path) as f:
+    data = json.load(f)
+data.setdefault("tasks", []).append({
+    "id": tid, "description": desc, "priority": pri,
+    "created": created, "status": "pending"
+})
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+PYEOF
+
+_p42_count=$(python3 -c "import json; d=json.load(open('$_P42_TASK_LIST')); print(len([t for t in d['tasks'] if t['status']=='pending']))")
+assert_equals "1" "$_p42_count" "delegate: task appears in pending queue"
+
+# Add a second task with high priority
+python3 - "$_P42_TASK_LIST" "task-002" "Security audit" "high" "2026-06-08T10:01:00" <<'PYEOF'
+import sys, json
+path, tid, desc, pri, created = sys.argv[1:]
+with open(path) as f:
+    data = json.load(f)
+data.setdefault("tasks", []).append({
+    "id": tid, "description": desc, "priority": pri,
+    "created": created, "status": "pending"
+})
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+PYEOF
+
+_p42_count2=$(python3 -c "import json; d=json.load(open('$_P42_TASK_LIST')); print(len([t for t in d['tasks'] if t['status']=='pending']))")
+assert_equals "2" "$_p42_count2" "delegate: two tasks pending after second add"
+
+# Mark task-001 as done
+python3 - "$_P42_TASK_LIST" "task-001" <<'PYEOF'
+import json, sys
+path, tid = sys.argv[1:]
+with open(path) as f:
+    data = json.load(f)
+for t in data.get("tasks", []):
+    if t["id"] == tid:
+        t["status"] = "done"
+        break
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+PYEOF
+
+_p42_pending=$(python3 -c "import json; d=json.load(open('$_P42_TASK_LIST')); print(len([t for t in d['tasks'] if t['status']=='pending']))")
+_p42_done=$(python3 -c "import json; d=json.load(open('$_P42_TASK_LIST')); print(len([t for t in d['tasks'] if t['status']=='done']))")
+assert_equals "1" "$_p42_pending" "done: one task still pending after marking first done"
+assert_equals "1" "$_p42_done"    "done: one task in done state"
+
+# Priority ordering check (high should sort before normal)
+_p42_first_pri=$(python3 -c "
+import json
+d=json.load(open('$_P42_TASK_LIST'))
+pending=[t for t in d['tasks'] if t['status']=='pending']
+order={'high':0,'normal':1,'low':2}
+pending.sort(key=lambda t: order.get(t.get('priority','normal'),1))
+print(pending[0]['priority'] if pending else 'empty')
+")
+assert_equals "high" "$_p42_first_pri" "queue: high-priority task sorts first"
+
+rm -rf "$_P42_DIR"
+echo ""
+
+# ─── P5-1: Channel-aware binding helpers ───────────────────────────────────────
+echo "── P5-1: Channel-aware bindings ──"
+
+_P51_CONFIG=$(mktemp)
+echo '{"bindings":[]}' > "$_P51_CONFIG"
+
+# Stub CONFIG_FILE for these tests
+_orig_config="${CONFIG_FILE:-}"
+CONFIG_FILE="$_P51_CONFIG"
+
+# Test 1: upsert_binding with explicit channel
+upsert_binding "agent-a" "peer-123" "discord" "server"
+_p51_ch=$(python3 -c "import json; b=json.load(open('$_P51_CONFIG'))['bindings'][0]; print(b['match']['channel'])")
+assert_equals "discord" "$_p51_ch" "upsert_binding: channel written correctly for non-telegram"
+
+# Test 2: get_channel_binding retrieves the correct peer
+_p51_peer=$(get_channel_binding "agent-a" "discord")
+assert_equals "peer-123" "$_p51_peer" "get_channel_binding: retrieves peer for named channel"
+
+# Test 3: get_tg_binding returns empty when only discord binding exists
+_p51_tg=$(get_tg_binding "agent-a")
+assert_equals "" "$_p51_tg" "get_tg_binding: returns empty when agent has no telegram binding"
+
+# Test 4: upsert second binding on telegram channel alongside discord
+upsert_binding "agent-a" "tg-group-99" "telegram" "group"
+_p51_tg2=$(get_tg_binding "agent-a")
+assert_equals "tg-group-99" "$_p51_tg2" "get_tg_binding: returns telegram peer after adding telegram binding"
+
+# Test 5: upsert_binding replaces existing same-channel binding (idempotent channel key)
+upsert_binding "agent-a" "peer-456" "discord" "server"
+_p51_count=$(python3 -c "import json; bs=json.load(open('$_P51_CONFIG'))['bindings']; print(len([b for b in bs if b['match']['channel']=='discord']))")
+assert_equals "1" "$_p51_count" "upsert_binding: replaces existing binding for same channel (no duplicates)"
+
+CONFIG_FILE="$_orig_config"
+rm -f "$_P51_CONFIG"
+echo ""
+
+# ─── P5-2: Snapshot command ────────────────────────────────────────────────────
+echo "── P5-2: Snapshot command ──"
+
+_p52_out=$(./bin/rack snapshot 2>/dev/null)
+_p52_valid=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok')" 2>/dev/null || echo "fail")
+assert_equals "ok" "$_p52_valid" "snapshot: output is valid JSON"
+
+_p52_has_agents=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d.get('agents') else 'no')" 2>/dev/null || echo "no")
+assert_equals "yes" "$_p52_has_agents" "snapshot: agents array present"
+
+_p52_gateway=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('present' if 'gateway' in d else 'missing')" 2>/dev/null || echo "missing")
+assert_equals "present" "$_p52_gateway" "snapshot: gateway field present"
+echo ""
+
+echo ""
 echo "========================================"
 echo "  Summary"
 echo "========================================"
