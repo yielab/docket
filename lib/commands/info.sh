@@ -12,6 +12,9 @@ cmd_info() {
   local codebase;   codebase=$(meta_get "$id" "codebase" "—")
   local stack;      stack=$(meta_get "$id" "stack" "—")
   local model;      model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+  local budget;     budget=$(meta_get "$id" "budgetUsd" "")
+  local paused;     paused=$(meta_get "$id" "paused" "")
+  local paused_reason; paused_reason=$(meta_get "$id" "pausedReason" "")
   local tg;         tg=$(get_tg_binding "$id")
   local activity;   activity=$(last_activity "$id")
   local mem_count;  mem_count=$(find "$workspace/memory" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
@@ -25,6 +28,12 @@ cmd_info() {
   printf "  ${BOLD}%-18s${RESET} %s\n" "Codebase:"    "$codebase"
   printf "  ${BOLD}%-18s${RESET} %s\n" "Stack:"       "$stack"
   printf "  ${BOLD}%-18s${RESET} %s\n" "Model:"       "$model"
+  if [[ -n "$budget" && "$budget" != "0" ]]; then
+    printf "  ${BOLD}%-18s${RESET} \$%.2f\n" "Budget cap:"  "$budget"
+  fi
+  if [[ "$paused" == "true" ]]; then
+    printf "  ${BOLD}%-18s${RESET} ${RED}PAUSED${RESET}%s\n" "Status:" "${paused_reason:+ (${paused_reason})}"
+  fi
 
   local session_key; session_key=$(meta_get "$id" "sessionKey" "agent:${id}:default")
   local project_key; project_key=$(meta_get "$id" "projectKey" "default")

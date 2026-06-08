@@ -124,7 +124,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
     if [[ "$days_old" -gt 2 ]]; then
       warn "Brave browser: $brave_procs processes (oldest: ${days_old} days old)"
       echo "  ${DIM}Old browser processes can cause disconnections${RESET}"
-      echo "  ${YELLOW}Fix: rack browser restart${RESET}"
+      echo "  ${YELLOW}Fix: RACK_EXPERIMENTAL=1 rack browser restart${RESET}"
     else
       success "Brave browser: $brave_procs processes running"
     fi
@@ -143,7 +143,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
       local disconnect_count
       disconnect_count=$(grep -ci "disconnect\|timeout\|connection.*closed" "$LOG_FILE" 2>/dev/null)
       warn "  Found $disconnect_count disconnect/timeout events in log"
-      echo "  ${DIM}If Brave disconnects frequently, run: ${RESET}${YELLOW}rack browser restart${RESET}"
+      echo "  ${DIM}If Brave disconnects frequently, run: ${RESET}${YELLOW}RACK_EXPERIMENTAL=1 rack browser restart${RESET}"
     fi
 
     if [[ "$DEBUG" == "1" && "$lines" -gt 0 ]]; then
@@ -174,7 +174,7 @@ aliases = {
 }
 
 # Check all agents
-for agent in config.get('agents', {}).get('registered', []):
+for agent in config.get('agents', {}).get('list', []):
     if 'model' in agent and agent['model'] in aliases:
         invalid.append(f"{agent.get('id')}: {agent['model']}")
 
@@ -190,6 +190,116 @@ PYEOF
     echo "$invalid_models" | sed 's/^/    /'
     echo "  ${YELLOW}Fix with: rack doctor --fix${RESET}"
     issues=$(( issues + 1 ))
+  fi
+
+  # 11. Config drift detection (meta vs openclaw.json)
+  # Run as a single Python call over all project agents to avoid heredoc-in-loop warnings.
+  local drift_ids; drift_ids=$(project_ids)
+  if [[ -n "$drift_ids" ]]; then
+    echo ""
+    echo -e "${BOLD}Config drift check (meta ↔ openclaw.json):${RESET}"
+
+    local _drift_script
+    _drift_script=$(cat <<'PYEOF'
+import json, sys, os
+
+config_path  = sys.argv[1]
+projects_dir = sys.argv[2]
+meta_file    = sys.argv[3]
+agent_ids    = sys.argv[4:]
+
+config = json.load(open(config_path))
+oc_agents = {a.get('id'): a for a in config.get('agents', {}).get('list', [])}
+
+drift = []
+ok    = []
+for aid in agent_ids:
+    meta_path = os.path.join(projects_dir, aid, meta_file)
+    if not os.path.exists(meta_path):
+        continue
+    meta_model = json.load(open(meta_path)).get('model', '')
+    if not meta_model:
+        continue
+    oc_model = oc_agents.get(aid, {}).get('model', '')
+    if oc_model and meta_model != oc_model:
+        drift.append(f"DRIFT {aid} meta={meta_model} openclaw={oc_model}")
+    else:
+        ok.append(f"OK {aid}")
+
+for line in ok:
+    print(line)
+for line in drift:
+    print(line)
+PYEOF
+)
+
+    local _drift_results
+    _drift_results=$(python3 -c "$_drift_script" \
+      "$CONFIG_FILE" "$PROJECTS_DIR" "$META_FILE" $drift_ids 2>/dev/null || true)
+
+    local drift_found=0
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      local _id="${line#* }"; _id="${_id%% *}"
+      if [[ "$line" == DRIFT* ]]; then
+        local _meta="${line##*meta=}"; _meta="${_meta%% *}"
+        local _oc="${line##*openclaw=}"
+        fail "  $_id: drift — model meta=${_meta} openclaw=${_oc}"
+        issues=$(( issues + 1 ))
+        drift_found=$(( drift_found + 1 ))
+      else
+        success "  $_id: in sync"
+      fi
+    done <<< "$_drift_results"
+
+    if [[ "$drift_found" -gt 0 ]]; then
+      echo "  Fix with: rack doctor --fix"
+    fi
+  fi
+
+  # 12. Budget and runaway session check
+  local budget_ids; budget_ids=$(project_ids)
+  if [[ -n "$budget_ids" ]]; then
+    echo ""
+    echo -e "${BOLD}Budget check:${RESET}"
+    while IFS= read -r bid; do
+      local b_budget; b_budget=$(meta_get "$bid" "budgetUsd" "")
+      if [[ -z "$b_budget" || "$b_budget" == "0" ]]; then
+        dim "  $bid: no cap"
+        continue
+      fi
+      local b_data; b_data=$(_aggregate_cost "$bid")
+      local b_cost b_turns
+      IFS='|' read -r _ _ _ _ b_cost b_turns <<< "$b_data"
+      local b_pct
+      b_pct=$(python3 -c "print(int(float('$b_cost') / float('$b_budget') * 100))" 2>/dev/null || echo "0")
+      if [[ "$b_pct" -ge 100 ]]; then
+        fail "  $bid: over budget — ${b_pct}% of \$$b_budget (\$$b_cost used)"
+        issues=$(( issues + 1 ))
+      elif [[ "$b_pct" -ge 80 ]]; then
+        warn "  $bid: ${b_pct}% of \$$b_budget (\$$b_cost used)"
+      else
+        success "  $bid: \$$b_cost / \$$b_budget (${b_pct}%)"
+      fi
+    done <<< "$budget_ids"
+
+    echo ""
+    echo -e "${BOLD}Runaway session check:${RESET}"
+    while IFS= read -r rid; do
+      local r_data; r_data=$(_aggregate_cost "$rid")
+      local r_cost r_turns
+      IFS='|' read -r _ _ _ _ r_cost r_turns <<< "$r_data"
+      local r_flag=0
+      [[ "$r_turns" -gt "${RUNAWAY_TURNS_THRESHOLD:-200}" ]] && r_flag=1
+      python3 -c "import sys; sys.exit(0 if float('$r_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" \
+        2>/dev/null && r_flag=1
+      if [[ "$r_flag" -eq 1 ]]; then
+        fail "  $rid: runaway — $r_turns turns, \$$r_cost"
+        issues=$(( issues + 1 ))
+      else
+        success "  $rid: ok ($r_turns turns, \$$r_cost)"
+      fi
+    done <<< "$budget_ids"
   fi
 
   # Summary

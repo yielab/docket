@@ -188,12 +188,12 @@ HEARTBEAT
 }
 
 _wire_group() {
-  local id="$1" group_id="$2"
-  openclaw config set "channels.telegram.groups.${group_id}" '{"requireMention": false}' 2>&1 \
+  local id="$1" group_id="$2" channel="${3:-telegram}" peer_kind="${4:-group}"
+  openclaw config set "channels.${channel}.groups.${group_id}" '{"requireMention": false}' 2>&1 \
     || warn "Could not set allowlist entry — check manually"
   success "Group $group_id added to allowlist"
-  upsert_binding "$id" "$group_id"
-  success "Binding: $id ← telegram group $group_id"
+  upsert_binding "$id" "$group_id" "$channel" "$peer_kind"
+  success "Binding: $id ← $channel $peer_kind $group_id"
 }
 
 _get_unbound_groups() {
@@ -326,6 +326,7 @@ _show_agent_cost() {
   local id="$1"
   local model; model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
   local profile; profile=$(model_to_profile "$model")
+  local budget;  budget=$(meta_get "$id" "budgetUsd" "")
   local cost_data
   cost_data=$(_aggregate_cost "$id")
   IFS='|' read -r c_in c_out c_cr c_cw c_cost c_turns <<< "$cost_data"
@@ -340,6 +341,26 @@ _show_agent_cost() {
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Cache write:" "$c_cw"
   echo ""
   printf "  ${BOLD}%-16s${RESET} ${GREEN}\$%.4f${RESET}\n" "Total cost:" "$c_cost"
+
+  # Budget status
+  if [[ -n "$budget" && "$budget" != "0" ]]; then
+    local pct
+    pct=$(python3 -c "print(int(float('$c_cost') / float('$budget') * 100))" 2>/dev/null || echo "0")
+    local color="$GREEN"
+    [[ "$pct" -ge 80 ]]  && color="$YELLOW"
+    [[ "$pct" -ge 100 ]] && color="$RED"
+    printf "  ${BOLD}%-16s${RESET} ${color}%s%%${RESET} of \$%.2f cap\n" "Budget:" "$pct" "$budget"
+  fi
+
+  # Runaway detection
+  if [[ "$c_turns" -gt "${RUNAWAY_TURNS_THRESHOLD:-200}" ]]; then
+    echo ""
+    warn "  High turn count: $c_turns turns (threshold: ${RUNAWAY_TURNS_THRESHOLD:-200})"
+  fi
+  if python3 -c "import sys; sys.exit(0 if float('$c_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" 2>/dev/null; then
+    echo ""
+    warn "  High cost session: \$$c_cost exceeds \$${RUNAWAY_COST_THRESHOLD:-20} threshold"
+  fi
 
   # Show savings estimate if not already on economy
   if [[ "$profile" != "economy" ]]; then

@@ -22,6 +22,7 @@ echo ""
 # Track results
 UNIT_PASSED=true
 INTEGRATION_PASSED=true
+EVALS_PASSED=true
 
 # Run unit tests
 echo -e "${BOLD}Running Unit Tests...${RESET}"
@@ -49,11 +50,26 @@ fi
 
 echo ""
 echo "========================================"
+echo ""
+
+# Run evals (non-blocking — SKIP is acceptable; only FAIL counts)
+echo -e "${BOLD}Running Eval Harness...${RESET}"
+echo "----------------------------------------"
+if "$SCRIPT_DIR/evals/run-evals.sh"; then
+  echo -e "${GREEN}✓ Evals passed (or all skipped)${RESET}"
+else
+  echo -e "${YELLOW}⚠ Some evals failed (non-blocking)${RESET}"
+  EVALS_PASSED=false
+fi
+
+echo ""
+echo "========================================"
 echo "  Final Summary"
 echo "========================================"
 
 if $UNIT_PASSED && $INTEGRATION_PASSED; then
   echo -e "${GREEN}${BOLD}✓ ALL TESTS PASSED${RESET}"
+  $EVALS_PASSED || echo -e "  ${YELLOW}⚠ Evals: some failures (non-blocking — run: ./tests/evals/run-evals.sh)${RESET}"
   echo ""
   exit 0
 else
@@ -61,6 +77,7 @@ else
   echo ""
   $UNIT_PASSED || echo -e "  ${RED}• Unit tests failed${RESET}"
   $INTEGRATION_PASSED || echo -e "  ${RED}• Integration tests failed${RESET}"
+  $EVALS_PASSED || echo -e "  ${YELLOW}⚠ Evals: some failures (non-blocking)${RESET}"
   echo ""
   exit 1
 fi

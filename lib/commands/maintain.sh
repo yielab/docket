@@ -171,7 +171,13 @@ _maintain_check() {
     echo "    SOUL.md:  $soul_key"
     ((issues_found++))
 
-    sync_session_key "$id"
+    local canonical_key="${meta_key:-$(generate_session_key "$id")}"
+    sync_session_key "$id" "$canonical_key"
+    # Also write the canonical key back to SOUL.md so both sources agree
+    if [[ -f "$workspace/SOUL.md" ]]; then
+      sed -i "s|^Session Key:.*|Session Key: $canonical_key|" "$workspace/SOUL.md" 2>/dev/null \
+        || warn "  Could not update SOUL.md session key"
+    fi
     success "  ✓ Session key synced"
     ((fixes_applied++))
   else
