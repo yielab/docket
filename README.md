@@ -1,615 +1,286 @@
-# rack — OpenClaw Agent Manager
+# rack-cli
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-98.9%25-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/rack-cli)
+[![CI](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml)
 
-**rack** is a production-ready CLI for managing OpenClaw autonomous agent deployments. It provides enterprise-grade features like multi-project isolation, team coordination, deterministic workflows, and cost management — without requiring direct OpenClaw CLI interaction or JSON editing.
+A modular Bash CLI for managing OpenClaw autonomous agents with project isolation and workflow automation.
 
-## 🏗️ RACK Architecture
+## Motivation
 
-**rack** uses the RACK architecture for maximum efficiency:
+I built rack to simplify OpenClaw agent orchestration across multiple projects. Instead of manually editing JSON configs and managing workspace directories, rack provides a unified interface with session-based project isolation and automated workspace provisioning.
 
-- **50-98% token reduction** through context compression
-- **6-20x faster responses** through short-circuit resolution
-- **Automatic security** through mandatory 6-point checklist
-- **88% cost savings** (typical: $57/mo → $7/mo)
+## Project Status
 
-### How It Works
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Agent lifecycle (add/delete/reset) | ✅ Working | Full CRUD via `rack maintain` |
+| Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
+| Specialist agents team | ✅ Working | 6 pre-configured roles |
+| Lobster workflow integration | ✅ Working | YAML pipeline support |
+| Cost tracking & budget caps | ✅ Working | 3 model tiers, per-agent budget, runaway detection |
+| API key management | ✅ Working | Centralized key distribution |
+| CI pipeline | ✅ Working | GitHub Actions on every push/PR |
+| Telegram integration | ✅ Working | Manual wire: create group, add bot, run `rack wire` |
+| Terminal mode | ⚙️ Experimental | `RACK_EXPERIMENTAL=1 rack terminal`; or use `rack mode terminal` |
+| Manager coordination | ⚠️ Limited | Basic task queue only; full delegation in backlog |
 
-```
-Engineer → Project Agent → Specialists → Done
-```
-
-**Specialists work efficiently:**
-- Manager reads SNAPSHOT.md (2K tokens), not full history (100K)
-- Programmer reads brief only (500 tokens), not investigation
-- Reviewer runs 6-point security checklist automatically
-- Tester validates behavior only (doesn't read code)
-
-**Result:** Fast, cheap, secure autonomous development.
-
-See [docs/RACK.md](docs/RACK.md) for technical details.
-
-## ✨ Features
-
-### Core Features
-- **🔧 Clean Install**: Bootstrap OpenClaw + specialists with `rack install`
-- **👥 Team Management**: 6 specialist agents (programmer, reviewer, tester, etc.)
-- **📁 Project Isolation**: One agent per project/codebase
-- **🛡️ Security Gates**: Prompt injection detection, commit prevention
-- **📱 Telegram Integration**: Mobile-first management and monitoring
-- **💸 Cost Tracking**: Real-time usage and tiered model profiles
-
-## 📚 Documentation
-
-**Start here:** [docs/README.md](docs/README.md) - Documentation index
-
-**Quick guides:**
-- [Quick Start Guide](docs/QUICK-START-RACK.md) - 5-minute setup
-- [Workflow Guide](docs/WORKFLOW-GUIDE.md) - Complete examples
-- [Security Model](docs/SECURITY-SIMPLE.md) - Automatic security
-- [Commands Reference](docs/commands.md) - All commands
-
-**Technical deep dive:**
-- [RACK Architecture](docs/RACK.md) - Performance, cost, implementation
-
-**Specialized topics:**
-- [Multimodal Guide](docs/MULTIMODAL.md) - Image & video generation
-- [Billing & Alerts](docs/billing-alerts.md) - Cost management
-
-## 📋 Table of Contents
-
-- [Quick Start](#quick-start)
-- [RACK Architecture](#rack-architecture)
-- [Documentation](#documentation)
-- [Commands](#commands)
-- [Testing](#testing)
-- [Contributing](#contributing)
-- [License](#license)
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **OpenClaw**: Install from [openclaw.dev](https://openclaw.dev)
-- **Bash**: 4.0+ (ships with macOS/Linux)
-- **Python**: 3.7+ (for JSON manipulation)
-- **systemctl**: For service management
-- **fzf** (optional): For enhanced interactive pickers
-
-### Install
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/rack-cli.git
-cd rack-cli
-
-# Run the installer (copies to ~/.local/bin and ~/.local/lib/rack)
-./install.sh
-
-# Ensure ~/.local/bin is in your PATH
-# For bash:
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# For zsh:
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# Bootstrap OpenClaw with rack
-rack install
-```
-
-### Uninstall
-
-```bash
-# From the repository directory
-./uninstall.sh
-```
-
-### Understanding Agent Types
-
-**rack** manages two types of agents:
-
-#### Specialist Agents (The Team)
-Created automatically by `rack install` - shared across all projects:
-- **programmer** - Writes code for any project
-- **reviewer** - Reviews code quality
-- **tester** - Runs tests
-- **knowledge** - Documentation & research
-- **security** - Security audits
-- **manager** - Coordinates team tasks
-
-**Don't create or delete these manually** - they're shared resources.
-
-#### Project Agents
-Created by `rack add` - one per project/codebase:
-- Work on ONE specific project
-- Have their own workspace, memory, and Telegram group
-- Examples: `mywebsite`, `mobile-app`, `content-blog`
-
-### First Project
-
-```bash
-# Add your first project agent
-rack add
-
-# View all agents (both specialist and project)
-rack list
-
-# Get detailed info
-rack info <agent-id>
-
-# Wire to Telegram (optional)
-rack wire <agent-id>
-
-# Check system health
-rack doctor
-```
-
-## 📦 Installation
-
-### Option 1: Quick Install (Recommended)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/rack-cli/main/install.sh | bash
-```
-
-### Option 2: Manual Install
+## Installation
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/rack-cli.git
+git clone https://github.com/santiagoyie/rack-cli.git
 cd rack-cli
 
-# Run installation
-./bin/rack install
-```
+# Make available in PATH
+sudo ln -s "$(pwd)/bin/rack" /usr/local/bin/rack
 
-### Option 3: Development Install
-
-```bash
-# Clone with symlink
-git clone https://github.com/yourusername/rack-cli.git
-cd rack-cli
-ln -s "$(pwd)/bin/rack" /usr/local/bin/rack
-
-# Run tests
-./tests/test-lifecycle.sh
-```
-
-## 💡 Usage
-
-### Basic Workflow
-
-```bash
-# 1. Bootstrap OpenClaw (first time only)
+# Initialize OpenClaw and specialist agents
 rack install
+```
 
-# 2. Add a project agent
-rack add
-#   → Choose type: repo or task
-#   → Enter project name
-#   → Select codebase path
-#   → Choose model profile
+**Prerequisites:**
+- Bash 4.0+
+- Python 3.7+
+- [OpenClaw](https://openclaw.dev) daemon
+- systemctl (for service management)
+- fzf (optional, for interactive selection)
 
-# 3. View agents
+## Quick Start
+
+```bash
+# Create project agent
+rack add myproject ~/code/myproject
+
+# List agents
 rack list
 
-# 4. Get detailed info
+# Check agent info
 rack info myproject
 
-# 5. Manage costs
-rack cost                    # All agents
-rack cost myproject          # Single agent
-rack profile myproject economy  # Switch to cheaper model
-
-# 6. Configure session scope
-rack scope myproject set alpha    # Isolate to "alpha" context
-rack scope myproject reset        # Reset to default
-
-# 7. Team coordination (optional)
-rack team init              # Create manager agent
-rack team status            # View team state
-
-# 8. Create workflows (optional)
-rack workflow myproject create ci-pipeline
-rack workflow myproject list
-```
-
-### Telegram Integration
-
-```bash
-# 1. Create Telegram group
-# 2. Add your OpenClaw bot
-# 3. Send a test message
-# 4. Wire the agent
-rack wire myproject
-
-# 5. Get group ID from logs
-tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
-
-# 6. Approve actions from mobile
-# Bot will send notifications for dangerous operations
-```
-
-### Cost Optimization
-
-```bash
-# View current usage
-rack cost
-
-# Switch to economy mode (saves ~75%)
+# Change model profile (economy/standard/premium)
 rack profile myproject economy
 
-# View potential savings
-rack cost myproject
+# Set $5 spending cap
+rack profile myproject --budget 5
+
+# Clear agent memory
+rack maintain myproject clean
+
+# Delete agent
+rack delete myproject
 ```
 
-## 🏗️ Architecture
+## Architecture
 
-### Directory Structure
+The project consists of ~8,900 lines of Bash (CLI + tests):
 
 ```
 rack-cli/
-├── bin/
-│   └── rack                 # Main executable (2600 lines)
-├── docs/
-│   ├── installation.md      # Detailed install guide
-│   ├── commands.md          # Command reference
-│   ├── architecture.md      # System design
-│   └── development.md       # Developer guide
-├── tests/
-│   └── test-lifecycle.sh    # Integration tests
-├── examples/
-│   ├── workflows/           # Example Lobster workflows
-│   └── configs/             # Sample configurations
-├── CLAUDE.md                # AI assistant instructions
-├── README.md                # This file
-└── LICENSE                  # Apache 2.0 license
+├── bin/rack                         # Entry point (~110 lines)
+├── lib/
+│   ├── core/                        # Init, config, routing (3 files)
+│   ├── helpers/                     # Reusable utilities (9 files)
+│   ├── commands/                    # 22 command implementations
+│   └── commands/experimental/       # 3 experimental files (RACK_EXPERIMENTAL=1)
+└── tests/
+    ├── unit/                        # 77 unit tests (100% passing)
+    ├── test-lifecycle.sh            # 12 integration scenarios (60 assertions)
+    └── evals/                       # 6 specialist-role eval stubs
 ```
 
-### How rack Works
+Each agent maintains an isolated workspace:
+- `SOUL.md` - Agent identity and session key
+- `AGENTS.md` - Team delegation rules
+- `TOOLS.md` - Project-specific commands
+- `HEARTBEAT.md` - Active tasks/monitoring
+- `.rack-meta.json` - Agent metadata
+- `memory/` - Daily conversation logs
 
-```
-┌─────────────┐
-│   rack CLI  │  ← User interface (Bash)
-└──────┬──────┘
-       │
-       ├─→ .rack-meta.json    ← Per-project metadata
-       │   (name, type, model, sessionKey, etc.)
-       │
-       ├─→ openclaw.json      ← OpenClaw daemon config
-       │   (agents, bindings, security, etc.)
-       │
-       └─→ Workspace Files
-           ├── SOUL.md        ← Agent identity + session key
-           ├── AGENTS.md      ← Delegation rules
-           ├── TOOLS.md       ← Project commands
-           ├── HEARTBEAT.md   ← Active tasks
-           ├── memory/        ← Daily logs
-           └── workflows/     ← Lobster pipelines
-```
+Configuration synchronizes between:
+- `.rack-meta.json` in each workspace (rack metadata)
+- `~/.openclaw/openclaw.json` (OpenClaw daemon config)
 
-### Session Isolation
+## Command Reference
 
-Each agent has a **session key** (`agent:<id>:<project>`) that:
-- Prevents cross-project contamination
-- Isolates workspace memory
-- Enforces routing boundaries
-- Enables parallel project work
+### Core Commands
 
 ```bash
-rack scope myproject set alpha    # agent:myproject:alpha
-rack scope myproject set beta     # agent:myproject:beta
+rack install              # Bootstrap OpenClaw and agents
+rack add [id] [path]      # Create project agent
+rack list                 # Show all agents
+rack info <id>            # Display agent details
+rack delete <id>          # Remove agent
+rack maintain <id> clean  # Clear agent memory (see Maintenance below)
 ```
 
-### Team Coordination
-
-The **Manager agent** orchestrates work across specialists:
-
-```
-Manager (Sonnet 4.6)
-├─→ programmer (Sonnet 4.6)    # Code implementation
-├─→ reviewer (Haiku 4.5)        # Code review
-├─→ tester (Haiku 4.5)          # Testing
-├─→ knowledge (Haiku 4.5)       # Memory/patterns
-└─→ security (Sonnet 4.6)       # Security audits
-```
-
-The manager uses `TASK_LIST.json` for coordination and cannot edit code directly — it only plans and delegates.
-
-## 📚 Commands
-
-### Setup
+### Configuration
 
 ```bash
-rack install              # Bootstrap OpenClaw with best practices
+rack profile <id> [tier]  # Set model tier (economy/standard/premium)
+rack scope <id> set <key> # Change project session key
+rack keys                 # Manage API keys
+rack cost [id]            # Show token usage and costs
 ```
 
-### Lifecycle
+### Maintenance
 
 ```bash
-rack list                 # List all project agents
-rack add                  # Add new project agent (interactive)
-rack info <id>            # Detailed agent status
-rack delete <id>          # Remove agent (with confirmation)
-rack reset <id>           # Clear memory (3 levels)
-rack repair <id>          # Fix permissions and routing
+rack maintain [id] check    # Health check and auto-fix
+rack maintain [id] clean    # Clear memory logs
+rack maintain [id] reset    # Clear memory + heartbeat
+rack maintain [id] rebuild  # Full rebuild from metadata
+rack maintain [id] sessions # Archive large/old sessions
+rack doctor                 # System-wide diagnostics (budget, drift, runaway)
 ```
 
-### Team Coordination
+### Context & Memory
 
 ```bash
-rack team status          # View team state
-rack team init            # Create manager agent
-rack team check           # Health check for specialists
+rack context [id]              # Recent activity overview
+rack context [id] search <q>   # Search indexed memory
+rack context [id] snapshot     # Create SNAPSHOT.md for fast agent context
+rack context [id] compress     # Archive logs older than 30 days
 ```
 
-### Session Management
+### Team Delegation
 
 ```bash
-rack scope <id> show             # Display current scope
-rack scope <id> set <project>    # Change project scope
-rack scope <id> reset            # Reset to default
+rack team delegate "Fix the login bug"             # Queue task for manager
+rack team delegate --priority high "Security audit" # High-priority task
+rack team queue                                     # Show pending tasks
+rack team done <task-id>                            # Mark task complete
 ```
 
-### Workflows
+### Advanced Features
 
 ```bash
-rack workflow <id> list                 # List workflows
-rack workflow <id> create <name>        # Create from template
-rack workflow <id> show <name>          # Display workflow
-rack workflow <id> delete <name>        # Remove workflow
-```
-
-### Telegram
-
-```bash
-rack wire <id>            # Wire Telegram group
-rack unwire <id>          # Remove binding
-```
-
-### Utilities
-
-```bash
-rack logs <id>            # View memory logs
-rack edit <id>            # Open workspace in $EDITOR
-rack model <id> [model]   # View/change model
-rack profile <id> [tier]  # Set model profile
-rack cost [id]            # Token usage and costs
-rack doctor               # System health check
+rack workflow <id> create <name>  # Create Lobster pipeline
+rack mode <id> terminal           # Switch to terminal mode (zero API cost)
+rack profile <id> --budget 5      # Set $5 spending cap
 ```
 
 ### Model Profiles
 
-| Profile | Model | Cost | Use Case |
-|---------|-------|------|----------|
-| `economy` | claude-haiku-4-5 | $0.80/$4 per MTok | Routine tasks, triage, simple Q&A |
-| `standard` | claude-sonnet-4-6 | $3/$15 per MTok | Active development, code review |
-| `premium` | claude-opus-4-6 | $15/$75 per MTok | Complex architecture, security |
+| Profile | Model | Cost (per MTok) | Use Case |
+| ------- | ----- | --------------- | -------- |
+| economy | claude-haiku-4-5 | $0.80/$4 | Routine tasks |
+| standard | claude-sonnet-4-6 | $3/$15 | Active development |
+| premium | claude-opus-4-6 | $15/$75 | Complex architecture |
 
-## ⚙️ Configuration
+## Session Isolation
 
-### OpenClaw Config Location
+Each agent uses session keys (`agent:<id>:<project>`) to:
 
-`~/.openclaw/openclaw.json` — Managed by rack, no manual editing needed
-
-### Project Metadata
-
-`~/.openclaw/workspaces/projects/<id>/.rack-meta.json`
-
-```json
-{
-  "type": "repo",
-  "name": "My Project",
-  "codebase": "/home/user/Sites/myproject",
-  "stack": "Node.js, React, TypeScript",
-  "model": "anthropic/claude-sonnet-4-6",
-  "description": "My awesome project",
-  "created": "2026-02-25T10:00:00Z",
-  "sessionKey": "agent:myproject:default",
-  "projectKey": "default"
-}
-```
-
-### Security Sentinel (Auto-configured)
-
-Tool approval gates for:
-- `rm` — File deletion
-- `git push` — Code deployment
-- `docker stop` — Container management
-- `kubectl delete` — Kubernetes operations
-- `npm publish` — Package publishing
-- `pip install` — Package installation
-- `curl`, `wget` — Network requests
-
-## 🔧 Development
-
-### Project Structure
-
-```
-rack-cli/
-├── bin/
-│   └── rack                  # Entry point (~100 lines)
-├── lib/
-│   ├── core/                 # Core initialization & config
-│   │   ├── init.sh          # Strict mode, debug
-│   │   ├── config.sh        # Paths, colors, models, pricing
-│   │   └── router.sh        # Command dispatcher
-│   ├── helpers/              # Reusable utilities
-│   │   ├── output.sh        # Output formatting
-│   │   ├── json.sh          # JSON manipulation
-│   │   ├── session.sh       # Session management
-│   │   ├── picker.sh        # Interactive picker
-│   │   ├── service.sh       # Service control
-│   │   ├── utils.sh         # Utilities
-│   │   └── workspace.sh     # Workspace management
-│   └── commands/             # Command implementations (19 files)
-│       ├── install.sh, add.sh, list.sh, info.sh
-│       ├── delete.sh, reset.sh, repair.sh
-│       ├── team.sh, workflow.sh, scope.sh
-│       └── wire.sh, unwire.sh, logs.sh, etc.
-├── tests/
-│   ├── unit/                 # Unit tests (27 tests)
-│   └── test-lifecycle.sh     # Integration tests (62 tests)
-├── docs/
-│   ├── architecture.md
-│   ├── commands.md
-│   ├── development.md
-│   └── installation.md
-└── examples/
-    ├── configs/              # Example configurations
-    └── workflows/            # Example Lobster workflows
-```
-
-### Adding a New Command
-
-1. Create `lib/commands/mycommand.sh`:
-```bash
-# lib/commands/mycommand.sh
-
-cmd_mycommand() {
-  local id="${1:-}"
-  [[ -z "$id" ]] && id=$(pick_project "Select project")
-
-  # Your implementation
-  success "Command executed!"
-}
-```
-
-2. Source in `bin/rack`:
-```bash
-source "$LIB_DIR/commands/mycommand.sh"
-```
-
-3. Add to `lib/core/router.sh`:
-```bash
-case "$cmd" in
-  # ...
-  mycommand) cmd_mycommand "$@" ;;
-  # ...
-esac
-```
-
-4. Update help text in `cmd_help()`
-
-### Code Style
-
-- **Naming**: `snake_case` for functions and variables
-- **Globals**: `UPPER_CASE` for constants
-- **Error handling**: Use `error()`, `warn()`, `fail()` helpers
-- **Debugging**: Support `DEBUG=1` for verbose output
-- **Permissions**: 700 for dirs, 600 for files
-- **Exit codes**: 0 = success, 1 = error
-
-## 🧪 Testing
-
-### Run Full Test Suite
+- Prevent cross-project contamination
+- Enable parallel project work
+- Maintain separate memory contexts
 
 ```bash
-# Run all tests (unit + integration)
+rack scope myproject set alpha    # Switch to alpha context
+rack scope myproject reset        # Return to default
+```
+
+## Testing
+
+```bash
+# Run all tests
 ./tests/run-all-tests.sh
 
-# Run unit tests only
+# Unit tests only (77 tests, 100% passing)
 ./tests/unit/test-helpers.sh
 
-# Run integration tests only
+# Integration tests (12 lifecycle scenarios, 60 assertions)
 ./tests/test-lifecycle.sh
+./tests/test-lifecycle.sh --keep  # Keep test agent for inspection
 
-# Keep test agent for inspection
-./tests/test-lifecycle.sh --keep
+# Specialist-role evals (6 stubs)
+./tests/evals/run-evals.sh
 ```
 
-### Test Coverage
+**Current status:** all suites green — 77 unit, 60 integration (2 skipped), 5 evals (1 skipped).
 
-- ✅ Installation and bootstrap
-- ✅ Agent lifecycle (add, list, info, delete)
-- ✅ Session scoping (show, set, reset)
-- ✅ Team coordination (status, init)
-- ✅ Workflow management (create, list, delete)
-- ✅ Cost tracking and model profiles
-- ✅ Repair and health checks
+## Development
 
-### Manual Testing
+### SSD (Spec-Driven Development) Workflow
 
-```bash
-# Test install
-DEBUG=1 rack install
+This project follows strict SSD practices. All features must be specified before implementation:
 
-# Test agent creation
-DEBUG=1 rack add
+1. **Write Specification First** (`specs/`)
+   - Functional specs in `specs/functional/`
+   - API contracts in `specs/api/`
+   - Acceptance criteria in `specs/acceptance/`
 
-# Test scope management
-rack scope test-agent set alpha
-rack info test-agent  # Should show new session key
+2. **Test-Driven Development**
+   - Write failing tests based on specs
+   - Implement minimal code to pass
+   - Refactor while maintaining tests
 
-# Test cleanup
-rack delete test-agent
-```
+3. **Validate Specifications**
 
-## 🤝 Contributing
+   ```bash
+   ./scripts/validate-specs.sh    # Check spec completeness
+   ./scripts/spec-coverage.sh     # Analyze coverage
+   ```
 
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md).
+4. **Continuous Validation**
+   - Pre-commit hooks validate specs
+   - CI/CD enforces spec compliance
+   - Breaking changes require spec updates
 
-### Development Setup
+See [specs/README.md](specs/README.md) for complete SSD documentation.
 
-```bash
-# Fork and clone
-git clone https://github.com/yourusername/rack-cli.git
-cd rack-cli
+### Adding a Command (SSD Process)
 
-# Create feature branch
-git checkout -b feature/my-feature
+1. **Create specification** in `specs/functional/command-name.spec.md`
 
-# Make changes and test
-./tests/test-lifecycle.sh
+2. **Write tests** in `tests/integration/test-command.sh`
 
-# Commit with conventional commits
-git commit -m "feat: add new command for X"
+3. **Implement command** in `lib/commands/newcommand.sh`:
 
-# Push and create PR
-git push origin feature/my-feature
-```
+   ```bash
+   cmd_newcommand() {
+     local id="${1:-}"
+     [[ -z "$id" ]] && id=$(pick_project "Select project")
 
-### Commit Convention
+     # Implementation matching spec
+     success "Command executed!"
+   }
+   ```
 
-```
-feat: New feature
-fix: Bug fix
-docs: Documentation changes
-refactor: Code refactoring
-test: Test updates
-chore: Maintenance tasks
-```
+4. **Update documentation** and ensure specs are current
 
-## 📄 License
+### Conventions
 
-Apache 2.0 - see [LICENSE](LICENSE) file for details.
+- Strict mode: `set -euo pipefail`
+- Functions return via echo, exit codes for status
+- JSON operations use embedded Python
+- Workspace permissions: 700 dirs, 600 files
+- Debug output: `DEBUG=1 rack <command>`
+- All features require specifications before implementation
+- Tests must be written before code (TDD)
+- Specifications use RFC 2119 keywords (MUST, SHOULD, MAY)
 
-## 🙏 Acknowledgments
+## What's Next
 
-- [OpenClaw](https://openclaw.dev) — Autonomous agent framework
-- [Anthropic Claude](https://claude.ai) — AI models
-- Community contributors and testers
+1. Flesh out the eval harness (`tests/evals/`) — golden task stubs per specialist role exist and pass; expand into real model-routing checks
+2. Full manager delegation (currently a basic task queue only)
 
-## 📞 Support
+## Contributing
 
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/rack-cli/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/rack-cli/discussions)
+This project uses pure Bash with modular architecture. PRs welcome for:
 
-## 🗺️ Roadmap
+- Additional OpenClaw integrations
+- Command implementations
+- Test coverage improvements
+- Documentation
 
-- [ ] Web dashboard for monitoring
-- [ ] Multi-user support with RBAC
-- [ ] Custom skill integration
-- [ ] Cost budget alerts
-- [ ] Automated heartbeat monitoring
-- [ ] BM25 + Vector hybrid retrieval
-- [ ] Event-driven recovery protocols
+## License
+
+Apache-2.0
+
+## Author
+
+Santiago Yie - Backend/Platform Engineer
 
 ---
 
-**Made with ❤️ for autonomous development**
+*This is a personal project demonstrating CLI development, system integration, and agent orchestration patterns. Actively used for managing AI agents in development environments.*
