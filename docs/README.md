@@ -1,238 +1,84 @@
 # rack Documentation
 
-**rack** is a production-ready CLI for managing OpenClaw autonomous agent teams with RACK architecture.
+**rack** is a modular Bash CLI for managing OpenClaw autonomous agents with project
+isolation, tiered model routing, and cost tracking.
+
+> New here? Start with the [project README](../README.md) for the overview and install steps,
+> then come back for the guides below.
 
 ---
 
-## Quick Links
+## Guides
 
-- **New to rack?** → Start with [Quick Start Guide](QUICK-START-RACK.md) (5 minutes)
-- **Need examples?** → See [Workflow Guide](WORKFLOW-GUIDE.md) (complete examples)
-- **Security questions?** → Read [Security Model](SECURITY-SIMPLE.md) (layered, convention-based)
-- **Command reference?** → Check [Commands](commands.md) (all commands explained)
+| Doc | What it covers |
+|-----|----------------|
+| [Quick Start](QUICK-START-RACK.md) | 5-minute setup: install, create your first project agent, assign work |
+| [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
+| [Command Reference](commands.md) | Every command with syntax, options, and examples |
+| [Architecture (RACK)](RACK.md) | Technical deep dive: routing, context management, agent roles |
+| [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
+| [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
----
-
-## Documentation Structure
-
-### 🚀 Getting Started
-
-**[Quick Start Guide](QUICK-START-RACK.md)** - 5-minute setup
-- Install rack + OpenClaw
-- Upgrade to RACK architecture
-- Create your first project agent
-- Assign work and review results
-
-### 📖 Core Guides
-
-**[Workflow Guide](WORKFLOW-GUIDE.md)** - Complete workflow examples
-- Project agents vs. specialist agents
-- Two workflow models (direct vs. via manager)
-- Step-by-step examples (bug fixes, features)
-- Engineer's daily workflow
-- Cost & token management
-
-**[Commands Reference](commands.md)** - All rack commands
-- Lifecycle: `install`, `add`, `list`, `info`, `delete`
-- Team: `team status`, `team delegate`, `team queue`, `team done`
-- Context/Memory: `context snapshot`, `context index`, `context search`
-- Utilities: `wire`, `profile`, `cost`, `doctor`
-
-**[Security Model](SECURITY-SIMPLE.md)** - Layered, convention-based
-- Three layers: agent constraints, reviewer role, human git review
-- Prompt-injection awareness in the reviewer checklist
-- Instruction-level commit/dangerous-action constraints
-- Enforced tool-approval gates are specified but planned (not yet wired up)
-
-### 🏗️ Architecture
-
-**[RACK Architecture](RACK.md)** - Technical deep dive
-- What is RACK? (Routing, Autonomy, Context, Knowledge)
-- Performance improvements (50-98% token reduction)
-- Agent roles and responsibilities
-- Implementation details
-- Cost analysis
-
-### 🎨 Specialized Topics
-
-**[Multimodal Guide](MULTIMODAL.md)** - Image & video generation
-- Setup API keys for image generation
-- Using project agents for media
-- Cost management for media generation
-
-**[Billing & Alerts](billing-alerts.md)** - Cost management
-- Check API credits
-- Set up billing alerts
-- Monitor token usage
-- Add credits when needed
+For how features are specified before implementation, see the specs under
+[`../specs/`](../specs/) and the [SSD workflow guide](../SSD-WORKFLOW.md).
 
 ---
 
-## Quick Reference
-
-### Most Common Commands
+## Most common commands
 
 ```bash
 # Setup (once)
-rack install            # Install OpenClaw + create specialists
+rack install                 # Install OpenClaw + specialist agents
 
 # Daily use
-rack add               # Create project agent
-rack list              # Show all agents
-rack context snapshot  # Create fast-access context
+rack add                     # Create a project agent
+rack list                    # Show all agents
+rack info <id>               # Agent details
+rack context snapshot <id>   # Create fast-access context
 
-# Utilities
-rack team status       # Check team/specialist status
-rack cost              # View token usage
-rack doctor            # Health check
+# Configuration
+rack profile <id> <tier>     # economy | standard | premium
+rack profile <id> --budget 5 # Per-agent spend cap (USD)
+rack scope <id> set <key>    # Switch project context
+
+# Maintenance & health
+rack maintain <id> check     # Health check + auto-fix
+rack cost [id]               # Token usage and cost
+rack doctor                  # System-wide diagnostics
 ```
 
-### File Locations
+See the [Command Reference](commands.md) for the full set.
+
+---
+
+## File layout
 
 ```
 ~/.openclaw/
-├── openclaw.json                  # OpenClaw config
+├── openclaw.json                  # OpenClaw daemon config
 └── workspaces/
-    ├── manager/                   # Specialist: orchestrator
-    ├── programmer/                # Specialist: code implementation
-    ├── reviewer/                  # Specialist: security gate
+    ├── manager/                   # Specialist: orchestrator (delegation only)
+    ├── programmer/                # Specialist: implementation
+    ├── reviewer/                  # Specialist: review
     ├── tester/                    # Specialist: validation
-    ├── knowledge/                 # Specialist: pattern extraction
+    ├── knowledge/                 # Specialist: docs / research
     ├── security/                  # Specialist: security audits
     └── projects/
-        ├── mywebsite/             # Project agent workspace
-        │   ├── SOUL.md           # Agent identity
-        │   ├── SNAPSHOT.md       # Fast-access context
-        │   ├── MEMORY.md         # Architectural decisions
-        │   ├── HEARTBEAT.md      # Active tasks
-        │   └── memory/           # Daily logs
-        └── mobile-app/            # Another project agent
+        └── <agent-id>/            # Project agent workspace
+            ├── SOUL.md            # Identity + session key
+            ├── AGENTS.md          # Session protocol
+            ├── TOOLS.md           # Project commands
+            ├── HEARTBEAT.md       # Active tasks
+            ├── .rack-meta.json    # rack metadata
+            └── memory/            # Daily logs
 ```
 
 ---
 
-## Learning Path
+## Contributing to docs
 
-### Beginner (First Hour)
-1. Read [Quick Start](QUICK-START-RACK.md) - 5 min
-2. Run `rack install` - 2 min
-3. Create project: `rack add` - 2 min
-5. Assign first task in Telegram - 10 min
-6. Review results and commit - 5 min
+1. **Accurate over comprehensive** — every example should run against the current CLI
+2. **User-focused** — answer "how do I…", link to the [Command Reference](commands.md) for detail
+3. **Consistent formatting** — follow the existing style
 
-**Total: ~25 minutes to first working agent**
-
-### Intermediate (First Day)
-7. Read [Workflow Guide](WORKFLOW-GUIDE.md) - 20 min
-8. Understand project vs. specialist agents
-9. Try both workflow models (direct & via manager)
-10. Review [Security Model](SECURITY-SIMPLE.md) - 10 min
-11. Check `rack cost` to see token savings
-
-**Total: Add ~30 minutes for deeper understanding**
-
-### Advanced (First Week)
-12. Read [RACK Architecture](RACK.md) - 30 min
-13. Optimize context management (`rack context`)
-14. Set up multimodal (if needed)
-15. Customize agent SOUL.md files
-16. Set up billing alerts
-
-**Total: Ongoing learning as you use rack**
-
----
-
-## Troubleshooting
-
-### Quick Fixes
-
-**Agent not responding?**
-```bash
-rack team status  # Check RACK status
-systemctl --user restart openclaw-gateway.service  # Restart
-```
-
-**Using too many tokens?**
-```bash
-rack context snapshot <project>  # Create fast context
-# Agent will read this instead of full history
-```
-
-**Security concerns?**
-```bash
-grep "NEVER commit" ~/.openclaw/workspaces/programmer/SOUL.md
-# Should find: "NEVER commit to git"
-```
-
-**More issues?**
-- Check [Quick Start Troubleshooting](QUICK-START-RACK.md#troubleshooting)
-- Check [Workflow Guide Issues](WORKFLOW-GUIDE.md#troubleshooting)
-- Run `rack doctor` for health check
-
----
-
-## Support & Community
-
-- **GitHub Issues:** https://github.com/santiagoyie/rack-cli/issues
-- **Documentation:** You're reading it!
-- **Help Command:** `rack help` - Quick command reference
-
----
-
-## What's New
-
-### Version 1.0 (RACK Architecture)
-- ✅ 50-98% token reduction through context compression
-- ✅ Layered security model (agent constraints + reviewer + git review)
-- ✅ Behavior-only validation (objective testing)
-- ✅ Memory management system
-- ✅ Team management commands
-- ✅ Bug-fix pipeline (Lobster workflows)
-
-See [RACK Architecture](RACK.md) for full details.
-
----
-
-## Contributing
-
-Documentation improvements welcome! Key principles:
-
-1. **Simple over comprehensive** - Clear, practical examples
-2. **User-focused** - Answer "how do I..." not "here's how it works"
-3. **Tested examples** - All code examples should work
-4. **Consistent formatting** - Follow existing style
-
----
-
-## Quick Tips
-
-💡 **Create memory snapshots regularly** - Saves tokens
-```bash
-rack context snapshot <project>
-```
-
-💡 **Check cost often** - Monitor token usage
-```bash
-rack cost
-```
-
-💡 **Use project agents, not specialists directly** - Better isolation
-```bash
-# ✅ Good: Create project agent
-rack add mywebsite
-
-# ❌ Bad: Message programmer directly
-# (Programmer is shared, not project-specific)
-```
-
-💡 **Review before committing** - Always check git diff
-```bash
-git diff  # Review changes
-git commit -m "..."  # Only if approved
-```
-
----
-
-**Happy automating! 🤖**
-
-For questions or issues, start with [Quick Start Guide](QUICK-START-RACK.md) or run `rack help`.
+For questions, run `rack help` or start with the [Quick Start](QUICK-START-RACK.md).

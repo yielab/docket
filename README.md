@@ -14,7 +14,7 @@ Rack is also a deliberate exploration of patterns and disciplines outside my day
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Agent lifecycle (add/delete/reset) | ✅ Working | Full CRUD via `rack maintain` |
+| Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `rack maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
 | Specialist agents team | ✅ Working | 6 pre-configured roles |
 | Lobster workflow integration | ✅ Working | YAML pipeline support |
@@ -22,7 +22,7 @@ Rack is also a deliberate exploration of patterns and disciplines outside my day
 | API key management | ✅ Working | Centralized key distribution |
 | CI pipeline | ✅ Working | GitHub Actions on every push/PR |
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `rack wire` |
-| Terminal mode | ⚙️ Experimental | `RACK_EXPERIMENTAL=1 rack terminal`; or use `rack mode terminal` |
+| Security gates | 🗓️ Planned | Specified in `specs/functional/security-gates.spec.md`; not yet enforced |
 | Manager coordination | ⚠️ Limited | Basic task queue only; full delegation in backlog |
 
 ## Installation
@@ -158,8 +158,8 @@ rack team done <task-id>                            # Mark task complete
 
 ```bash
 rack workflow <id> create <name>  # Create Lobster pipeline
-rack mode <id> terminal           # Switch to local terminal mode (zero API cost)
 rack profile <id> --budget 5      # Set $5 spending cap
+rack context <id> snapshot        # Create fast-access context for an agent
 ```
 
 ### Model Profiles

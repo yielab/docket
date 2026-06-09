@@ -71,9 +71,9 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 ## How Each Layer Works
 
 ### Layer 1: Prevention (Agent SOUL.md)
-- Agents have constraints built into identity
-- Can't commit, can't push, can't delete
-- **No code needed, just instructions**
+- Agents have constraints written into their identity prompt
+- Instructed not to commit, push, or delete (prompt-level, not enforced)
+- **No code — just instructions**
 
 ### Layer 2: Detection (Reviewer Checklist)
 - 6-point checklist runs automatically
@@ -108,7 +108,7 @@ grep "prompt injection\|hardcoded secret" ~/.openclaw/workspaces/reviewer/SOUL.m
 ### Test 3: Are There Agent Commits?
 ```bash
 cd ~/Sites/myproject
-git log --author="Claude" --since="30 days ago"
+git log --since="30 days ago" --format="%an"  # review automated/agent commit authors
 
 # Should return: NOTHING (agents don't commit!)
 ```
