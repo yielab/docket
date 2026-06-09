@@ -25,7 +25,7 @@ Complete technical guide to rack's RACK architecture implementation.
 RACK is an architectural pattern for autonomous agent teams that achieves:
 - **50-98% token reduction** through context compression
 - **6-20x faster** responses through short-circuit resolution
-- **Automatic security** through mandatory checklists
+- **Layered, convention-based security** through mandatory checklists
 - **Objective validation** through behavior-only testing
 
 ### The Problem (Before RACK)
@@ -743,7 +743,7 @@ See [Comparison Table](RACK-ANALYSIS.md#comparison-rackmd-vs-current-implementat
 
 - [Quick Start Guide](QUICK-START-RACK.md) - Get started in 5 minutes
 - [Workflow Guide](WORKFLOW-GUIDE.md) - Complete examples
-- [Security Model](SECURITY-SIMPLE.md) - Automatic security
+- [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands
 - [Implementation Report](AGENT-VALIDATION-COMPLETE.md) - Technical validation
 

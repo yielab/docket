@@ -8,7 +8,7 @@
 
 - **New to rack?** → Start with [Quick Start Guide](QUICK-START-RACK.md) (5 minutes)
 - **Need examples?** → See [Workflow Guide](WORKFLOW-GUIDE.md) (complete examples)
-- **Security questions?** → Read [Security Model](SECURITY-SIMPLE.md) (automatic & simple)
+- **Security questions?** → Read [Security Model](SECURITY-SIMPLE.md) (layered, convention-based)
 - **Command reference?** → Check [Commands](commands.md) (all commands explained)
 
 ---
@@ -34,15 +34,15 @@
 
 **[Commands Reference](commands.md)** - All rack commands
 - Lifecycle: `install`, `add`, `list`, `info`, `delete`
-- Team: `team status`, `team upgrade`, `team roles`
-- Memory: `memory snapshot`, `memory index`, `memory search`
-- Utilities: `wire`, `model`, `cost`, `doctor`
+- Team: `team status`, `team delegate`, `team queue`, `team done`
+- Context/Memory: `context snapshot`, `context index`, `context search`
+- Utilities: `wire`, `profile`, `cost`, `doctor`
 
-**[Security Model](SECURITY-SIMPLE.md)** - Automatic security
-- Three-layer defense (built-in, automatic, simple)
-- Prompt injection protection
-- Commit prevention
-- Dangerous action prevention
+**[Security Model](SECURITY-SIMPLE.md)** - Layered, convention-based
+- Three layers: agent constraints, reviewer role, human git review
+- Prompt-injection awareness in the reviewer checklist
+- Instruction-level commit/dangerous-action constraints
+- Enforced tool-approval gates are specified but planned (not yet wired up)
 
 ### 🏗️ Architecture
 
@@ -75,15 +75,14 @@
 ```bash
 # Setup (once)
 rack install            # Install OpenClaw + create specialists
-rack team upgrade       # Upgrade to RACK architecture
 
 # Daily use
 rack add               # Create project agent
 rack list              # Show all agents
-rack memory snapshot   # Create fast-access context
+rack context snapshot  # Create fast-access context
 
 # Utilities
-rack team status       # Check RACK optimization
+rack team status       # Check team/specialist status
 rack cost              # View token usage
 rack doctor            # Health check
 ```
@@ -117,8 +116,7 @@ rack doctor            # Health check
 ### Beginner (First Hour)
 1. Read [Quick Start](QUICK-START-RACK.md) - 5 min
 2. Run `rack install` - 2 min
-3. Run `rack team upgrade` - 1 min
-4. Create project: `rack add` - 2 min
+3. Create project: `rack add` - 2 min
 5. Assign first task in Telegram - 10 min
 6. Review results and commit - 5 min
 
@@ -135,7 +133,7 @@ rack doctor            # Health check
 
 ### Advanced (First Week)
 12. Read [RACK Architecture](RACK.md) - 30 min
-13. Optimize memory management (`rack memory`)
+13. Optimize context management (`rack context`)
 14. Set up multimodal (if needed)
 15. Customize agent SOUL.md files
 16. Set up billing alerts
@@ -156,7 +154,7 @@ systemctl --user restart openclaw-gateway.service  # Restart
 
 **Using too many tokens?**
 ```bash
-rack memory snapshot <project>  # Create fast context
+rack context snapshot <project>  # Create fast context
 # Agent will read this instead of full history
 ```
 
@@ -175,7 +173,7 @@ grep "NEVER commit" ~/.openclaw/workspaces/programmer/SOUL.md
 
 ## Support & Community
 
-- **GitHub Issues:** https://github.com/anthropics/claude-code/issues (or your repo)
+- **GitHub Issues:** https://github.com/santiagoyie/rack-cli/issues
 - **Documentation:** You're reading it!
 - **Help Command:** `rack help` - Quick command reference
 
@@ -185,7 +183,7 @@ grep "NEVER commit" ~/.openclaw/workspaces/programmer/SOUL.md
 
 ### Version 1.0 (RACK Architecture)
 - ✅ 50-98% token reduction through context compression
-- ✅ Automatic security with 6-point checklist
+- ✅ Layered security model (agent constraints + reviewer + git review)
 - ✅ Behavior-only validation (objective testing)
 - ✅ Memory management system
 - ✅ Team management commands
@@ -210,7 +208,7 @@ Documentation improvements welcome! Key principles:
 
 💡 **Create memory snapshots regularly** - Saves tokens
 ```bash
-rack memory snapshot <project>
+rack context snapshot <project>
 ```
 
 💡 **Check cost often** - Monitor token usage
