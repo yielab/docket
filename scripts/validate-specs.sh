@@ -122,31 +122,31 @@ check_structure() {
 # Validate all specifications
 validate_all() {
     echo "Validating functional specifications..."
-    for spec in specs/functional/*.spec.md 2>/dev/null; do
+    for spec in specs/functional/*.spec.md; do
         [[ -f "$spec" ]] && validate_spec "$spec" "functional"
     done
     echo ""
 
     echo "Validating API specifications..."
-    for spec in specs/api/*.spec.md 2>/dev/null; do
+    for spec in specs/api/*.spec.md; do
         [[ -f "$spec" ]] && validate_spec "$spec" "api"
     done
     echo ""
 
     echo "Validating data specifications..."
-    for spec in specs/data/*.spec.md 2>/dev/null; do
+    for spec in specs/data/*.spec.md; do
         [[ -f "$spec" ]] && validate_spec "$spec" "data"
     done
     echo ""
 
     echo "Validating acceptance criteria..."
-    for spec in specs/acceptance/*.md 2>/dev/null; do
+    for spec in specs/acceptance/*.md; do
         [[ -f "$spec" ]] && validate_spec "$spec" "acceptance"
     done
     echo ""
 
     echo "Validating validation rules..."
-    for spec in specs/validation/*.spec.md 2>/dev/null; do
+    for spec in specs/validation/*.spec.md; do
         [[ -f "$spec" ]] && validate_spec "$spec" "validation"
     done
 }

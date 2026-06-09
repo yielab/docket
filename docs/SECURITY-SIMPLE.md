@@ -1,14 +1,16 @@
-# Security: Simple & Automatic
+# Security: Layered & Convention-Based
 
-**Philosophy:** Security checks happen automatically. No extra commands needed.
+**Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
+
+> **Status / honesty note.** rack's current security model is **instruction- and review-based**, not hard-enforced. Agent constraints live in prompts (SOUL.md), not in a technical sandbox, and the reviewer is a specialist agent, not a blocking gate. **Enforced tool-approval gates are specified but not yet wired up** — see [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Planned). Treat the constraints below as strong defaults, not guarantees.
 
 ---
 
-## How Security Works (Automatic)
+## How Security Works (Layered)
 
-### 1. Agents Can't Do Dangerous Things (Built-In)
+### 1. Agents Are Instructed Not to Do Dangerous Things
 
-**Every agent SOUL.md has:**
+**Every agent SOUL.md includes:**
 ```markdown
 ## Safety Constraints (NEVER Violate)
 1. NEVER commit to git
@@ -18,7 +20,7 @@
 5. NEVER store secrets
 ```
 
-**That's it.** Agents follow these rules inherently. No enforcement needed.
+These are **prompt-level constraints**: agents are instructed to follow them, but they are not technically enforced. Enforcement (tool-approval gates) is the planned next layer.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -125,8 +127,9 @@ grep -rn "ignore previous\|you are now" ~/Sites/myproject/src/
 ```
 
 ### Agent Tries to Commit
-**Impossible.** Agent SOUL.md says "NEVER commit"
-If it happens anyway → bug in OpenClaw, not rack
+The agent is instructed never to commit (SOUL.md), and the reviewer plus your git-diff review
+are the backstops. This is a convention, not a hard gate — enforced gating is planned (see the
+status note above).
 
 ### Hardcoded Secret Found
 ```bash
@@ -141,11 +144,11 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 **Security = 3 things:**
 
-1. **Agent constraints** (in SOUL.md) → Prevents dangerous actions
-2. **Reviewer checklist** (automatic) → Detects injection/secrets
+1. **Agent constraints** (in SOUL.md) → Discourages dangerous actions (prompt-level)
+2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
 3. **Engineer review** (git diff) → Final human check
 
-**No complex commands. No separate security tools. Just works.**
+**No complex commands today; enforced tool-approval gates are the planned next layer.**
 
 ---
 

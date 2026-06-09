@@ -30,7 +30,7 @@ All agents with Claude Sonnet 4.6+ can **already analyze images** - just send th
 
 ```bash
 # Ensure your project agent has a vision-capable model
-rack model mywebsite anthropic/claude-sonnet-4-6
+rack profile mywebsite standard
 ```
 
 Send an image in Telegram → agent analyzes it. No setup needed!
@@ -45,7 +45,7 @@ Want your **project agent** to **generate** images or videos? Add an API key.
 
 ```bash
 # 1. Ensure project agent has vision model (required for image understanding)
-rack model mywebsite anthropic/claude-sonnet-4-6
+rack profile mywebsite standard
 
 # 2. Add API key (stored centrally, available to ALL agents)
 rack keys add GOOGLE_AI_API_KEY
@@ -131,17 +131,17 @@ All keys support the same format: `rack keys add <KEY_NAME>`
 
 **A:** Your **project agents** (created with `rack add`), NOT specialist agents.
 
-✅ **Good**: `rack model mywebsite anthropic/claude-sonnet-4-6` (project agent)
-❌ **Wrong**: `rack model programmer anthropic/claude-sonnet-4-6` (specialist - shared across all projects)
+✅ **Good**: `rack profile mywebsite standard (project agent)
+❌ **Wrong**: `rack profile programmer standard (specialist - shared across all projects)
 
 ### Q: Can multiple project agents use images?
 
 **A:** Yes! All project agents share the same API keys. Just ensure each has Sonnet 4.6:
 
 ```bash
-rack model mywebsite anthropic/claude-sonnet-4-6
-rack model mobile-app anthropic/claude-sonnet-4-6
-rack model content-blog anthropic/claude-sonnet-4-6
+rack profile mywebsite standard
+rack profile mobile-app standard
+rack profile content-blog standard
 ```
 
 ### Q: Do I need to edit SOUL.md or IDENTITY.md?

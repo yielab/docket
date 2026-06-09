@@ -15,12 +15,11 @@ This specification covers:
 - Agent listing (`rack list`)
 - Agent information display (`rack info`)
 - Agent deletion (`rack delete`)
-- Agent reset operations (`rack reset`)
-- Agent repair operations (`rack repair`)
+- Agent maintenance operations (`rack maintain`)
 
 This specification does NOT cover:
-- Agent communication (see telegram.spec.md)
-- Agent workflows (see workflow.spec.md)
+- Agent communication (see telegram-integration.spec.md)
+- Agent workflows (see workflow-integration.spec.md)
 - Team coordination (see team-coordination.spec.md)
 
 ## Requirements
@@ -102,39 +101,44 @@ programmer    specialist  -                          premium    active    1 hour
 5. **SHOULD** display deletion summary
 6. **MUST NOT** delete if agent has active tasks (unless --force)
 
-### Agent Reset (rack reset)
+### Agent Maintenance (rack maintain)
 
-Three levels **MUST** be supported:
+`rack maintain [agent-id] [mode]` consolidates the retired `reset`, `repair`, and `cleanup`
+commands. Five modes **MUST** be supported, in increasing order of impact.
 
-#### Level 1 (Default) - Memory Logs
+#### check (Default) - Health and Auto-fix
+- Verify and fix missing workspace directory → recreate
+- Regenerate missing core files from templates
+- Reset invalid permissions to 700/600
+- Restore corrupted metadata from openclaw.json
+- Re-register a missing openclaw registration
+- Clean up orphaned Telegram bindings
+
+#### clean - Memory Logs
 - Clear `memory/*.md` daily logs
 - Preserve SOUL.md, AGENTS.md, TOOLS.md
 - Preserve session and project keys
 - Preserve .rack-meta.json
 
-#### Level 2 - Deep Memory
-- Everything from Level 1
+#### reset - Deep Memory
+- Everything from `clean`
 - Clear MEMORY.md summary
 - Clear HEARTBEAT.md tasks
 - Reset conversation context
 
-#### Level 3 - Complete Reset
-- Everything from Level 2
+#### rebuild - Complete Rebuild
+- Everything from `reset`
 - Regenerate SOUL.md from metadata
 - Regenerate AGENTS.md from template
 - Regenerate TOOLS.md from stack
 - Generate new session key
 - Reset project key to default
 
-### Agent Repair (rack repair)
+#### sessions - Session Hygiene
+- Archive large or old session data
+- Preserve all configuration and identity files
 
-**MUST** check and fix:
-1. Missing workspace directory → recreate
-2. Missing core files → regenerate from templates
-3. Invalid permissions → reset to 700/600
-4. Corrupted metadata → restore from openclaw.json
-5. Missing openclaw registration → re-register
-6. Orphaned Telegram bindings → clean up
+`reset` and `rebuild` are destructive and **MUST** prompt for confirmation unless forced.
 
 ## Interface Contracts
 
@@ -153,11 +157,8 @@ rack info <agent-id> [--format detailed|summary|json]
 # Delete agent
 rack delete <agent-id> [--force] [--keep-logs]
 
-# Reset agent
-rack reset <agent-id> [level] # level: 1|2|3
-
-# Repair agent
-rack repair <agent-id> [--check-only]
+# Maintain agent (replaces reset/repair/cleanup)
+rack maintain <agent-id> [check|clean|reset|rebuild|sessions]
 ```
 
 ### Return Codes
@@ -185,16 +186,16 @@ $ rack add mywebsite ~/projects/website
 [SUCCESS] Agent 'mywebsite' created and registered
 ```
 
-### Resetting an Agent
+### Maintaining an Agent
 
 ```bash
-$ rack reset mywebsite 2
-[WARN] Level 2 reset will clear memory and tasks
+$ rack maintain mywebsite reset
+[WARN] 'reset' will clear memory and tasks
 Continue? (y/N): y
 [INFO] Clearing memory logs...
 [INFO] Resetting MEMORY.md...
 [INFO] Clearing HEARTBEAT.md...
-[SUCCESS] Agent 'mywebsite' reset (level 2)
+[SUCCESS] Agent 'mywebsite' maintained (reset)
 ```
 
 ## Validation
@@ -226,7 +227,7 @@ After successful creation:
 | Agent already exists | Duplicate ID | Use different ID or delete existing |
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.openclaw permissions |
-| Workspace corrupted | Missing files | Run `rack repair` |
+| Workspace corrupted | Missing files | Run `rack maintain check` |
 | Daemon not running | OpenClaw down | Start with `systemctl --user start openclaw-gateway` |
 
 ## Performance Criteria
@@ -234,11 +235,15 @@ After successful creation:
 - Agent creation: < 2 seconds
 - Agent listing: < 500ms for 100 agents
 - Agent deletion: < 1 second
-- Reset Level 1: < 500ms
-- Reset Level 3: < 3 seconds
-- Repair operation: < 5 seconds
+- Maintain (clean): < 500ms
+- Maintain (rebuild): < 3 seconds
+- Maintain (check): < 5 seconds
 
 ## Changelog
+
+### Version 1.1.0 (2026-06-09)
+- Replaced the retired `rack reset`/`rack repair` with `rack maintain` and its five modes
+- Updated interface signatures, examples, and recovery steps to match the shipped CLI
 
 ### Version 1.0.0 (2024-01-20)
 - Initial complete specification

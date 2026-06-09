@@ -15,6 +15,40 @@ So that [benefit]
 
 Each story includes acceptance criteria that must be met for the story to be considered complete.
 
+## Stories
+
+The stories below are grouped into epics. Each has a stable ID used to cross-reference
+acceptance criteria and tests.
+
+| ID | Story | Epic |
+|----|-------|------|
+| AGT-001 | Create Project Agent | Agent Management |
+| AGT-002 | Reset Agent Memory | Agent Management |
+| AGT-003 | Monitor Agent Costs | Agent Management |
+| TEAM-001 | Initialize Team Manager | Team Coordination |
+| TEAM-002 | Delegate Tasks | Team Coordination |
+| WF-001 | Create Lobster Pipeline | Workflow Automation |
+| WF-002 | Execute Workflow | Workflow Automation |
+| SEC-001 | Project Isolation | Security and Isolation |
+| SEC-002 | Tool Approval Gates | Security and Isolation |
+| COM-001 | Telegram Integration | Communication |
+| MON-001 | Health Monitoring | Monitoring and Maintenance |
+| MON-002 | System Diagnostics | Monitoring and Maintenance |
+
+The full story definitions (As a / I want / So that) follow, organized by epic.
+
+## Criteria
+
+Every story carries two checklists:
+
+- **Acceptance Criteria** — observable conditions that MUST hold for the story to be
+  accepted. Written as checkboxes so coverage is visible at a glance.
+- **Definition of Done** — the engineering bar (tests, docs, error handling) that MUST
+  be satisfied before the story is closed.
+
+Criteria SHOULD be phrased so each line maps to at least one test. Stories whose criteria
+are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
+
 ## Epic: Agent Management
 
 ### Story: AGT-001 - Create Project Agent
@@ -291,7 +325,7 @@ Each story includes acceptance criteria that must be met for the story to be con
 - Fix suggestions accurate
 - Can run in verbose mode
 
-## Acceptance Test Scenarios
+## Scenarios
 
 ### Scenario: Complete Agent Lifecycle
 
@@ -333,7 +367,7 @@ Then I should see:
   | Total Cost | $0.53 |
 ```
 
-## Success Metrics
+## Metrics
 
 ### Quantitative Metrics
 - Agent creation success rate > 99%
