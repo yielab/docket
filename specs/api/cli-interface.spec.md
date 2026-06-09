@@ -18,6 +18,47 @@ This specification covers:
 - Return codes and error handling
 - Environment variables
 
+## Syntax
+
+All rack commands follow a single top-level grammar:
+
+```
+rack [global-options] <command> [command-options] [arguments]
+```
+
+- `global-options` MUST precede the command (see [Options](#options)).
+- `command` MUST be one of the entries in the Command Registry below.
+- `arguments` are positional and command-specific (see [Arguments](#arguments)).
+
+When a required `agent-id` argument is omitted, commands that operate on a single agent
+MUST fall back to interactive selection (fzf when available, otherwise a numbered menu).
+The per-command entries in the Command Registry are the authoritative source for each
+command's exact syntax.
+
+## Arguments
+
+Positional arguments are command-specific; the following conventions apply across commands:
+
+| Argument | Applies to | Rules |
+|----------|------------|-------|
+| `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
+| `codebase-path` | `add` | MUST be absolute or tilde-expanded; MUST exist and be readable |
+| `tier` | `profile` | MUST be one of `economy`, `standard`, `premium` |
+| `action` | `scope`, `keys`, `team`, `workflow` | MUST be a verb from that command's documented action set |
+
+Unrecognized or excess positional arguments MUST produce return code 4 (invalid arguments).
+
+## Options
+
+Options are `--long` flags, some with a `-short` alias. The global options listed above are
+accepted by every command; command-specific options are listed per command in the Command
+Registry. Conventions:
+
+- Boolean flags default to `false` and take no value (e.g. `--force`, `--debug`).
+- Value options take exactly one argument (e.g. `--model <tier>`, `--period <days>`).
+- `--help`/`-h` MUST be honored before any other parsing and exit 0.
+- Unknown options MUST produce return code 4 (invalid arguments).
+
 ## Global Command Structure
 
 ### Syntax Pattern
@@ -99,15 +140,20 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Deletion confirmation
 **Return**: 0 on success, 2 if not found
 
-#### rack reset
-**Purpose**: Clear agent memory/state
-**Syntax**: `rack reset <agent-id> [level]`
+#### rack maintain
+**Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
+**Syntax**: `rack maintain [agent-id] [mode]`
 **Arguments**:
-- `agent-id` (required): Agent to reset
-- `level` (optional): Reset depth 1-3 (default: 1)
-**Validation**: Level must be 1, 2, or 3
-**Output**: Reset progress and confirmation
-**Return**: 0 on success, 2 if not found, 4 on invalid level
+- `agent-id` (optional): Target agent; interactive picker if omitted
+- `mode` (optional): Maintenance level (default: `check`)
+**Modes**:
+- `check`: Health check and auto-fix (was `rack repair`)
+- `clean`: Clear memory day-logs (was `rack reset 1`)
+- `reset`: Clean + clear MEMORY.md and HEARTBEAT.md (was `rack reset 2`)
+- `rebuild`: Deep rebuild — regenerate all files from metadata (was `rack reset 3`)
+- `sessions`: Archive large/old session data (was `rack cleanup safe`)
+**Output**: Maintenance progress and confirmation
+**Return**: 0 on success, 2 if not found, 4 on invalid mode
 
 ### Configuration Commands
 
@@ -120,37 +166,42 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Profile change confirmation or current profile
 **Return**: 0 on success, 2 if not found, 4 on invalid tier
 
-#### rack model
-**Purpose**: Set specific model version
-**Syntax**: `rack model <agent-id> <model-name>`
+#### rack mode
+**Purpose**: Show or set an agent's execution backend
+**Syntax**: `rack mode [agent-id] [mode]`
 **Arguments**:
-- `agent-id` (required): Target agent
-- `model-name` (required): Specific model identifier
-**Validation**: Model must exist in MODEL_PROFILES
-**Output**: Model change confirmation
-**Return**: 0 on success, 2 if not found, 4 on invalid model
+- `agent-id` (optional): Target agent; interactive picker if omitted
+- `mode` (optional): `api`, `terminal`, or `status` (shows current if omitted)
+**Modes**:
+- `api`: Use the API backend (default; consumes tokens)
+- `terminal`: Use local terminal mode (zero API cost)
+- `status`: Show the current mode without changing it
+**Output**: Current or updated mode
+**Return**: 0 on success, 2 if not found, 4 on invalid mode
 
 #### rack scope
 **Purpose**: Manage session keys for project isolation
 **Syntax**: `rack scope <agent-id> <action> [value]`
 **Arguments**:
 - `agent-id` (required): Target agent
-- `action` (required): get/set/reset
+- `action` (required): show/set/reset
 - `value` (conditional): Required for 'set' action
 **Output**: Current or updated session key
 **Return**: 0 on success, 2 if not found, 4 on invalid action
 
 #### rack keys
-**Purpose**: Manage API keys centrally
-**Syntax**: `rack keys [action] [provider] [value]`
+**Purpose**: Manage API keys centrally; keys auto-sync to all agents
+**Syntax**: `rack keys [action] [key-name]`
 **Actions**:
-- `list`: Show all configured keys
-- `set <provider> <key>`: Set provider key
-- `remove <provider>`: Remove provider key
-- `sync`: Propagate to all agents
-**Providers**: anthropic, openai, google, groq, openrouter
+- `list`: Show all stored keys (values masked) — default
+- `setup`: Interactive setup wizard for all keys
+- `add <KEY_NAME>`: Add or update a specific key
+- `validate [KEY_NAME]`: Test whether keys work
+- `remove <KEY_NAME>`: Remove a key
+- `export`: Print keys as shell environment variables
+**Key names**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`
 **Output**: Key status or update confirmation
-**Return**: 0 on success, 4 on invalid provider
+**Return**: 0 on success, 4 on invalid key name
 
 ### Workflow Commands
 
@@ -171,22 +222,45 @@ rack [global-options] <command> [command-options] [arguments]
 **Purpose**: Manage team coordination features
 **Syntax**: `rack team <action> [args]`
 **Actions**:
-- `init`: Create manager agent
-- `status`: Show team status and tasks
-- `assign <task> <agent>`: Delegate task
-- `sync`: Update task states
+- `status`: Show specialist health and task summary
+- `delegate "<task>" [--priority high]`: Queue a task for the manager
+- `queue`: List pending tasks
+- `done <task-id>`: Mark a task complete
 **Output**: Team status or action confirmation
 **Return**: 0 on success, various errors
 
-### Maintenance Commands
+### Memory and Context Commands
 
-#### rack repair
-**Purpose**: Fix workspace issues
-**Syntax**: `rack repair <agent-id> [--check-only]`
-**Options**:
-- `--check-only`: Report issues without fixing
-**Output**: Issues found and fixes applied
-**Return**: 0 if healthy/fixed, 6 if corrupted
+#### rack context
+**Purpose**: Inspect and manage an agent's memory/context
+**Syntax**: `rack context [agent-id] [action]`
+**Actions**:
+- `show`: Recent activity overview (default)
+- `search <query>`: Search indexed memory
+- `snapshot`: Create SNAPSHOT.md for fast agent context
+- `index`: Rebuild the memory index
+- `compress`: Archive logs older than 30 days
+- `project`: Show project-level context
+**Output**: Context view or action confirmation
+**Return**: 0 on success, 2 if not found
+
+#### rack edit
+**Purpose**: Open an agent's workspace files in `$EDITOR`
+**Syntax**: `rack edit [agent-id]`
+**Arguments**:
+- `agent-id` (optional): Target agent; interactive picker if omitted
+**Output**: Opens SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md in the editor
+**Return**: 0 on success, 2 if not found
+
+#### rack logs
+**Purpose**: Show an agent's latest memory log and today's gateway entries
+**Syntax**: `rack logs [agent-id]`
+**Arguments**:
+- `agent-id` (optional): Target agent; interactive picker if omitted
+**Output**: Latest memory day-log plus today's gateway log lines for the agent's group
+**Return**: 0 on success, 2 if not found
+
+### Maintenance Commands
 
 #### rack doctor
 **Purpose**: System diagnostics
@@ -212,6 +286,53 @@ rack [global-options] <command> [command-options] [arguments]
 - `--by-model`: Group by model
 - `--csv`: Export as CSV
 **Output**: Cost breakdown table
+**Return**: 0 always
+
+### Monitoring Commands
+
+#### rack snapshot
+**Purpose**: Emit JSON system state for dashboards or CI artifacts
+**Syntax**: `rack snapshot [--output <file>]`
+**Options**:
+- `--output <file>`: Write JSON to a file instead of stdout
+**Output**: JSON object (gateway status, channels, agents)
+**Return**: 0 on success
+
+#### rack serve
+**Purpose**: Serve the live snapshot JSON over HTTP for team dashboards
+**Syntax**: `rack serve [--port <n>] [--interval <s>]`
+**Options**:
+- `--port <n>`: Listen port (default: 7331)
+- `--interval <s>`: Snapshot refresh interval in seconds (default: 30)
+**Output**: Serves `http://localhost:<port>/status.json`, refreshed on the interval
+**Return**: 0 on clean shutdown (Ctrl-C)
+
+### Telegram Commands
+
+#### rack wire
+**Purpose**: Bind a Telegram group to an agent (see telegram-integration.spec.md)
+**Syntax**: `rack wire [agent-id]`
+**Arguments**:
+- `agent-id` (optional): Target agent; interactive picker if omitted
+**Output**: Binding confirmation; restarts gateway
+**Return**: 0 on success, 2 if not found
+
+#### rack unwire
+**Purpose**: Remove an agent's Telegram binding
+**Syntax**: `rack unwire [agent-id]`
+**Arguments**:
+- `agent-id` (optional): Target agent; interactive picker if omitted
+**Output**: Unbind confirmation; restarts gateway
+**Return**: 0 on success, 2 if not found
+
+### Help
+
+#### rack help
+**Purpose**: Show usage information
+**Syntax**: `rack help [command]`
+**Arguments**:
+- `command` (optional): Show help for a specific command
+**Output**: Command list or per-command usage
 **Return**: 0 always
 
 ## Output Formats
@@ -267,17 +388,21 @@ Default table uses column alignment:
 |------|---------|---------|
 | 0 | Success | All commands |
 | 1 | General failure | All commands |
-| 2 | Not found | info, delete, reset, repair |
+| 2 | Not found | info, delete, maintain |
 | 3 | Already exists | add |
 | 4 | Invalid arguments | All commands |
-| 5 | Permission denied | add, delete, repair |
-| 6 | Corruption detected | repair, doctor |
+| 5 | Permission denied | add, delete, maintain |
+| 6 | Corruption detected | maintain, doctor |
 | 7 | Daemon error | All commands |
 | 8 | Network error | keys, workflow |
 | 9 | Timeout | All commands |
 | 127 | Command not found | doctor |
 
-## Input Validation Rules
+## Validation
+
+Input validation rules that every command MUST enforce before performing side effects.
+The authoritative rule set lives in [input-validation.spec.md](../validation/input-validation.spec.md);
+the contract-level summary follows.
 
 ### Agent ID Validation
 - Pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
@@ -309,7 +434,7 @@ When agent-id is omitted for commands that need it:
 ### Confirmation Prompts
 Required for destructive operations:
 - `rack delete` (unless --force)
-- `rack reset` level 2/3
+- `rack maintain` reset/rebuild
 - `rack install --clean`
 
 Format: `"Action description. Continue? (y/N): "`
@@ -353,11 +478,19 @@ Format: `"Action description. Continue? (y/N): "`
 - Warn on version mismatch
 
 ### Deprecated Features
-- `rack terminal` → Use native terminal
-- `rack maintain` → Use `rack repair`
+- `rack reset <level>` → Use `rack maintain clean|reset|rebuild`
+- `rack repair` → Use `rack maintain check`
+- `rack cleanup` → Use `rack maintain sessions`
+- `rack model` → Use `rack profile`
 - Direct JSON editing → Use rack commands
 
 ## Changelog
+
+### Version 1.1.0 (2026-06-09)
+- Synced the command registry with the shipped CLI
+- Replaced retired `reset`/`repair`/`model` with `maintain` and `mode`
+- Added `context`, `edit`, `logs`, `snapshot`, `serve`, `wire`, `unwire`, `help`
+- Corrected the `team` action set and return-code usage
 
 ### Version 1.0.0 (2024-01-20)
 - Complete CLI interface specification

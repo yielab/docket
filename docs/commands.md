@@ -28,7 +28,7 @@ rack install
 1. Checks for required dependencies (bash, python3, openclaw, systemctl)
 2. Initializes OpenClaw configuration at `~/.openclaw/openclaw.json`
 3. Creates specialist agents (programmer, reviewer, tester, knowledge, security)
-4. Configures security sentinel with tool approval gates
+4. Sets up specialist agents and best-practice defaults (enforced security gates are planned — see specs/functional/security-gates.spec.md)
 5. Sets up workspace directories with proper permissions (700)
 6. Starts the openclaw-gateway.service systemd unit
 
@@ -233,79 +233,57 @@ rack delete myproject
 
 ---
 
-### reset
+### maintain
 
-Clear agent memory and heartbeat, optionally regenerating workspace files.
-
-**Syntax:**
-```bash
-rack reset <agent-id> [level]
-```
-
-**Reset levels:**
-- **Level 1** (default): Clear memory logs only (`memory/*.md`)
-- **Level 2**: Clear memory + MEMORY.md + HEARTBEAT.md
-- **Level 3**: Deep reset - regenerate SOUL.md, AGENTS.md, TOOLS.md from metadata
-
-**Example:**
-```bash
-# Level 1: Clear memory logs
-rack reset myproject
-rack reset myproject 1
-
-# Level 2: Clear memory + heartbeat
-rack reset myproject 2
-
-# Level 3: Deep reset (regenerate all files)
-rack reset myproject 3
-```
-
-**Aliases:** None
-
-**Notes:**
-- Preserves identity (.rack-meta.json, openclaw.json)
-- Use level 1 for normal cleanup
-- Use level 3 to fix corrupted workspace files
-- Does not restart gateway
-
----
-
-### repair
-
-Fix permissions, routing, and missing workspace files.
+Clear memory, repair, or rebuild an agent. Consolidates the retired `reset`, `repair`, and
+`cleanup` commands into one.
 
 **Syntax:**
 ```bash
-rack repair <agent-id>
-rack repair           # Interactive picker
+rack maintain [agent-id] [mode]
 ```
 
-**What it fixes:**
-1. Directory permissions (700)
-2. File permissions (600)
-3. Missing workspace files (SOUL.md, AGENTS.md, etc.)
-4. Session key sync between .rack-meta.json and openclaw.json
-5. Telegram bindings
+**Modes:**
+- **`check`** (default): Health check and auto-fix — permissions (700/600), missing workspace
+  files, session-key sync between `.rack-meta.json` and `openclaw.json`, Telegram bindings
+- **`clean`**: Clear memory logs only (`memory/*.md`)
+- **`reset`**: Clear memory + MEMORY.md + HEARTBEAT.md
+- **`rebuild`**: Deep rebuild — regenerate SOUL.md, AGENTS.md, TOOLS.md from metadata
+- **`sessions`**: Archive large/old session data
 
 **Example:**
 ```bash
-rack repair myproject
+# Health check and auto-fix (was: rack repair)
+rack maintain myproject
+rack maintain myproject check
 
-# Output:
-# → Repairing agent 'myproject'...
-# ✓ Permissions fixed
-# ✓ Session key synced
-# ✓ Missing files regenerated
-# ✓ Repair complete
+# Clear memory logs (was: rack reset 1)
+rack maintain myproject clean
+
+# Clear memory + heartbeat (was: rack reset 2)
+rack maintain myproject reset
+
+# Deep rebuild (was: rack reset 3)
+rack maintain myproject rebuild
+
+# Archive old sessions (was: rack cleanup safe)
+rack maintain myproject sessions
 ```
 
-**Aliases:** `fix`
+**Migration (deprecated → current):**
+
+| Old | New |
+|-----|-----|
+| `rack repair [id]` | `rack maintain [id] check` |
+| `rack reset [id]` / `reset [id] 1` | `rack maintain [id] clean` |
+| `rack reset [id] 2` | `rack maintain [id] reset` |
+| `rack reset [id] 3` | `rack maintain [id] rebuild` |
+| `rack cleanup [id]` | `rack maintain [id] sessions` |
 
 **Notes:**
-- Safe to run anytime
-- Does not delete existing data
-- Useful after manual file edits
-- Restarts gateway after repair
+- Preserves identity (`.rack-meta.json`, `openclaw.json`)
+- `reset`/`rebuild` are destructive and prompt for confirmation
+- Restarts the gateway after structural changes
 
 ---
 
@@ -640,53 +618,26 @@ EDITOR=code rack edit myproject
 - Respects $EDITOR environment variable
 - Falls back to `vi` if $EDITOR not set
 - Opens workspace directory in most editors
-- Be careful editing .rack-meta.json (use `rack repair` to fix)
+- Be careful editing .rack-meta.json (use `rack maintain <id> check` to fix)
 
 ---
 
-### model
+### model (retired)
 
-View or change the LLM model for an agent.
-
-**Syntax:**
-```bash
-rack model <agent-id>               # Show current model
-rack model <agent-id> <model>       # Set new model
-```
-
-**Available models:**
-- `anthropic/claude-haiku-4-5` - Economy ($0.80/$4 per MTok)
-- `anthropic/claude-sonnet-4-6` - Standard ($3/$15 per MTok)
-- `anthropic/claude-opus-4-6` - Premium ($15/$75 per MTok)
-
-**Example:**
-```bash
-# Show current model
-rack model myproject
-# Output: anthropic/claude-sonnet-4-6
-
-# Change to Opus
-rack model myproject anthropic/claude-opus-4-6
-# ✓ Model updated to anthropic/claude-opus-4-6
-```
-
-**Aliases:** None
-
-**Notes:**
-- Updates .rack-meta.json and openclaw.json
-- Restarts gateway to apply changes
-- Use `rack profile` for easier tier selection
+`rack model <id> <model-id>` has been retired. Use [`rack profile`](#profile) with a tier
+(`economy` / `standard` / `premium`) instead — see the next section.
 
 ---
 
 ### profile
 
-Set model profile tier (economy/standard/premium).
+Set model profile tier (economy/standard/premium). Also sets per-agent budget caps.
 
 **Syntax:**
 ```bash
-rack profile <agent-id>               # Show current profile
+rack profile <agent-id>               # Show current profile, model, and budget
 rack profile <agent-id> <tier>        # Set profile tier
+rack profile <agent-id> --budget <USD> # Set a per-agent spend cap (0 = none)
 ```
 
 **Profiles:**
@@ -812,11 +763,11 @@ rack doctor
 # ✓ reviewer OK
 # ✓ tester OK
 # ✓ knowledge OK
-# ⚠ security - Missing HEARTBEAT.md (run: rack repair security)
+# ⚠ security - Missing HEARTBEAT.md (run: rack maintain security check)
 #
 # Projects
 # ✓ myproject - OK
-# ⚠ taskagent - Permission issue (run: rack repair taskagent)
+# ⚠ taskagent - Permission issue (run: rack maintain taskagent check)
 #
 # Summary
 # ────────────────────────────────────────
@@ -934,7 +885,7 @@ Use bash loops for batch operations:
 ```bash
 # Reset all agents
 for id in $(rack list | awk '{print $1}' | tail -n +2); do
-  rack reset "$id" 1
+  rack maintain "$id" clean
 done
 
 # Switch all to economy

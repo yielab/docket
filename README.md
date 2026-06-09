@@ -2,11 +2,13 @@
 
 [![CI](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml)
 
-A modular Bash CLI for managing OpenClaw autonomous agents with project isolation and workflow automation.
+A modular Bash CLI for managing OpenClaw autonomous agents with project isolation and workflow automation. Personal R&D project exploring agent orchestration patterns, spec-driven development methodology, and cost-tracking tooling for production-style multi-agent setups.
 
 ## Motivation
 
 I built rack to simplify OpenClaw agent orchestration across multiple projects. Instead of manually editing JSON configs and managing workspace directories, rack provides a unified interface with session-based project isolation and automated workspace provisioning.
+
+Rack is also a deliberate exploration of patterns and disciplines outside my day-to-day paid work, which has mostly been PHP/Symfony/Drupal for US agencies. Specifically: spec-driven development (features specified before implementation, RFC 2119 keywords, a coverage tool that reports honest gaps), modular Bash architecture at scale, and multi-agent coordination patterns with cost-tracking and tiered model routing.
 
 ## Project Status
 
@@ -71,7 +73,9 @@ rack delete myproject
 
 ## Architecture
 
-The project consists of ~8,900 lines of Bash (CLI + tests):
+The project consists of ~8,100 lines of Bash across the CLI and test suite (~9,350 counting SSD tooling, installers, and a retained legacy reference script):
+
+Why Bash: rack runs anywhere with Bash 4+ — no runtime install, no compilation step, no dependency hell. The trade-off is verbosity at this size; if rack grows past 10,000 lines I'd migrate the core to Go. The current scope justifies staying in Bash.
 
 ```
 rack-cli/
@@ -154,7 +158,7 @@ rack team done <task-id>                            # Mark task complete
 
 ```bash
 rack workflow <id> create <name>  # Create Lobster pipeline
-rack mode <id> terminal           # Switch to terminal mode (zero API cost)
+rack mode <id> terminal           # Switch to local terminal mode (zero API cost)
 rack profile <id> --budget 5      # Set $5 spending cap
 ```
 
@@ -202,31 +206,28 @@ rack scope myproject reset        # Return to default
 
 ### SSD (Spec-Driven Development) Workflow
 
-This project follows strict SSD practices. All features must be specified before implementation:
+Rack is where I'm practicing spec-driven development as a discipline: writing the specification for a feature before the implementation, using RFC 2119 keywords (MUST/SHOULD/MAY) to make requirements testable, and tracking how much of the codebase is actually covered. This is a rollout in progress, not a finished mandate — the specs cover the core lifecycle today and are being extended outward.
 
-1. **Write Specification First** (`specs/`)
-   - Functional specs in `specs/functional/`
-   - API contracts in `specs/api/`
+1. **Write the specification first** (`specs/`)
+   - Functional specs in `specs/functional/` — e.g. [agent-lifecycle.spec.md](specs/functional/agent-lifecycle.spec.md), an example of how a feature is specified (with RFC 2119 keywords) before it's built
+   - API/CLI contracts in `specs/api/`
    - Acceptance criteria in `specs/acceptance/`
+   - Input-validation rules in `specs/validation/`
 
-2. **Test-Driven Development**
-   - Write failing tests based on specs
-   - Implement minimal code to pass
-   - Refactor while maintaining tests
+2. **Drive implementation from the spec**, then back it with tests in `tests/`
 
-3. **Validate Specifications**
+3. **Measure coverage honestly**
 
    ```bash
-   ./scripts/validate-specs.sh    # Check spec completeness
-   ./scripts/spec-coverage.sh     # Analyze coverage
+   ./scripts/validate-specs.sh    # Validate spec structure/completeness (all specs pass)
+   ./scripts/spec-coverage.sh     # Report command/feature/test coverage
    ```
 
-4. **Continuous Validation**
-   - Pre-commit hooks validate specs
-   - CI/CD enforces spec compliance
-   - Breaking changes require spec updates
+   `validate-specs.sh` passes all 14 specs cleanly; `spec-coverage.sh` reports **100% command coverage (22/22), 100% feature coverage (10/10), 100% of tracked specs test-backed**. "Covered" here means a feature has a structured, validated spec — not that every feature is fully built: `security-gates`, for example, is specified but marked *Planned*, because the tool-approval gates aren't wired up yet. The tooling reports honestly (a heading-level spec, not a passing mention), so the number reflects real specs.
 
-See [specs/README.md](specs/README.md) for complete SSD documentation.
+4. **CI runs `validate-specs.sh` on every push** (currently advisory/non-blocking) alongside the unit tests. Making spec validation a blocking CI gate is a tracked next step (see [What's Next](#whats-next)).
+
+See [specs/README.md](specs/README.md) for the full SSD documentation.
 
 ### Adding a Command (SSD Process)
 
@@ -255,14 +256,16 @@ See [specs/README.md](specs/README.md) for complete SSD documentation.
 - JSON operations use embedded Python
 - Workspace permissions: 700 dirs, 600 files
 - Debug output: `DEBUG=1 rack <command>`
-- All features require specifications before implementation
-- Tests must be written before code (TDD)
+- New features are specified before implementation where the SSD rollout has reached them
+- Behavior is covered by unit and integration tests
 - Specifications use RFC 2119 keywords (MUST, SHOULD, MAY)
 
 ## What's Next
 
 1. Flesh out the eval harness (`tests/evals/`) — golden task stubs per specialist role exist and pass; expand into real model-routing checks
 2. Full manager delegation (currently a basic task queue only)
+3. Make spec validation a blocking CI gate — promote `validate-specs.sh` from advisory to required, and run integration tests in CI alongside the unit suite
+4. Implement the security-gates design — the spec exists ([specs/functional/security-gates.spec.md](specs/functional/security-gates.spec.md), marked *Planned*); wire up tool-approval gates and workspace isolation so `rack install` applies them by default instead of skipping the step
 
 ## Contributing
 
@@ -273,6 +276,10 @@ This project uses pure Bash with modular architecture. PRs welcome for:
 - Test coverage improvements
 - Documentation
 
+---
+
+*A personal R&D project by Santiago Yie, built to manage OpenClaw agent deployments while deepening spec-driven development, multi-agent orchestration, and cost-tracking discipline. Actively used in real development environments.*
+
 ## License
 
 Apache-2.0
@@ -280,7 +287,3 @@ Apache-2.0
 ## Author
 
 Santiago Yie - Backend/Platform Engineer
-
----
-
-*This is a personal project demonstrating CLI development, system integration, and agent orchestration patterns. Actively used for managing AI agents in development environments.*

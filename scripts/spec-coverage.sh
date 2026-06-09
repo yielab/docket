@@ -27,12 +27,16 @@ scan_commands() {
     echo "$commands"
     echo ""
 
-    # Check if each command has a spec
+    # Check if each command has a spec.
+    # A command counts as specified only if it has a structured spec entry — a markdown
+    # heading naming the command (e.g. "#### rack add" in the API contract) or a dedicated
+    # functional spec file. A bare prose mention does NOT count, so the number reflects
+    # commands that are actually specified, not merely referenced.
     for cmd in $commands; do
-        # Look for command in specifications
-        if grep -r "rack $cmd" specs/ >/dev/null 2>&1; then
+        if grep -rqE "^#+[[:space:]].*\brack ${cmd}\b" specs/ 2>/dev/null \
+            || [[ -f "specs/functional/${cmd}.spec.md" ]]; then
             COMMANDS_COVERED["$cmd"]=1
-            echo -e "${GREEN}✓${NC} $cmd - documented"
+            echo -e "${GREEN}✓${NC} $cmd - specified"
         else
             COMMANDS_COVERED["$cmd"]=0
             echo -e "${RED}✗${NC} $cmd - missing specification"
@@ -78,17 +82,19 @@ scan_test_coverage() {
     # Find all test files
     local test_files=$(find tests -name "*.sh" -type f 2>/dev/null)
 
-    # Map of spec to test patterns
+    # Map of spec to test patterns. Patterns match how the integration suite actually
+    # exercises each feature (it drives real `rack <cmd>` invocations rather than defining
+    # test_<cmd>() functions), so a match means the spec's behavior is covered by a test.
     declare -A SPEC_TEST_MAP
-    SPEC_TEST_MAP["agent-lifecycle"]="test_add|test_delete|test_reset"
-    SPEC_TEST_MAP["session-scoping"]="test_scope|test_session"
-    SPEC_TEST_MAP["workflow"]="test_workflow|test_lobster"
-    SPEC_TEST_MAP["team-coordination"]="test_team|test_manager"
-    SPEC_TEST_MAP["cost-tracking"]="test_cost|test_usage"
+    SPEC_TEST_MAP["agent-lifecycle"]="rack add|rack delete|rack info"
+    SPEC_TEST_MAP["session-scoping"]="rack scope"
+    SPEC_TEST_MAP["workflow"]="rack workflow"
+    SPEC_TEST_MAP["team-coordination"]="rack team"
+    SPEC_TEST_MAP["cost-tracking"]="rack cost"
 
     for spec in "${!SPEC_TEST_MAP[@]}"; do
         local pattern="${SPEC_TEST_MAP[$spec]}"
-        if grep -r "$pattern" tests/ >/dev/null 2>&1; then
+        if grep -rE "$pattern" tests/ >/dev/null 2>&1; then
             TESTS_COVERED["$spec"]=1
             echo -e "${GREEN}✓${NC} $spec - has tests"
         else

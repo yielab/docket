@@ -8,7 +8,10 @@
 
 This specification defines all input validation rules for rack CLI commands to ensure data integrity, security, and proper error handling.
 
-## Validation Categories
+## Rules
+
+Validation rules are grouped by input field. Each category states the field, the commands
+that consume it, the RFC 2119 rule set, and the reference implementation.
 
 ### 1. Agent ID Validation
 
@@ -428,6 +431,25 @@ validate_api_key() {
 }
 ```
 
+## Functions
+
+The reference implementations above define the canonical validation surface. Every command
+MUST route untrusted input through the matching function before acting on it.
+
+| Function | Validates | Returns |
+|----------|-----------|---------|
+| `validate_agent_id(id, check_exists)` | Agent ID format, length, reserved words, uniqueness | 0 if valid, 1 otherwise |
+| `validate_path(path, must_exist, type)` | Absolute/tilde path, existence, readability, forbidden dirs | Resolved path + 0, or 1 |
+| `validate_model(input)` | Profile alias or exact model name | Canonical model id + 0, or 1 |
+| `validate_number(value, min, max, name)` | Positive integer within range, no leading zeros | Integer + 0, or 1 |
+| `validate_session_key(key)` | `agent:<id>:<project>` format and components | 0 if valid, 1 otherwise |
+| `validate_action(command, action, args...)` | Action is in the command's allowed set with required args | 0 if valid, 1 otherwise |
+| `validate_api_key(provider, key)` | Non-empty, no whitespace, provider format | 0 (warns on format mismatch) |
+
+Sanitization helpers (`sanitize_for_shell`, `escape_json_value`, `prevent_path_traversal`)
+complement these and MUST be applied wherever input crosses into a shell, JSON, or filesystem
+boundary.
+
 ## Sanitization Rules
 
 ### Shell Command Injection Prevention
@@ -513,7 +535,6 @@ validation_error() {
 ### Unit Tests
 
 ```bash
-#!/usr/bin/env bash
 # tests/unit/test-validation.sh
 
 test_agent_id_validation() {

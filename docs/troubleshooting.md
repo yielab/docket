@@ -106,13 +106,13 @@ OpenClaw keeps full conversation history in context. With 258+ turns, cached con
 #### 1. **Reset Agent Sessions**
 ```bash
 # Level 1: Clear memory logs only
-rack reset <agent-id> 1
+rack maintain <agent-id> clean
 
 # Level 2: Clear memory + HEARTBEAT.md
-rack reset <agent-id> 2
+rack maintain <agent-id> reset
 
 # Level 3: Deep reset - regenerate all from metadata
-rack reset <agent-id> 3
+rack maintain <agent-id> rebuild
 ```
 
 #### 2. **Enable Smart Routing** (Auto model selection)
@@ -183,7 +183,7 @@ systemctl --user restart openclaw-gateway
 ### Permission Denied Errors
 **Fix:**
 ```bash
-rack repair <agent-id>
+rack maintain <agent-id> check
 ```
 
 This fixes:
@@ -268,6 +268,6 @@ rack scope <agent-id> reset
 5. **Emergency reset:**
    ```bash
    # If all else fails
-   rack reset <agent-id> 3
+   rack maintain <agent-id> rebuild
    systemctl --user restart openclaw-gateway
    ```
