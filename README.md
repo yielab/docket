@@ -73,7 +73,7 @@ rack delete myproject
 
 ## Architecture
 
-The project consists of ~8,100 lines of Bash across the CLI and test suite (~9,350 counting SSD tooling, installers, and a retained legacy reference script):
+The project consists of ~8,100 lines of Bash across the CLI and test suite (~8,800 counting SSD tooling and installers):
 
 Why Bash: rack runs anywhere with Bash 4+ — no runtime install, no compilation step, no dependency hell. The trade-off is verbosity at this size; if rack grows past 10,000 lines I'd migrate the core to Go. The current scope justifies staying in Bash.
 
