@@ -260,10 +260,7 @@ git commit -m "Add dark mode toggle to settings
 
 - Add ThemeContext for state management
 - Add toggle button in settings panel
-- Theme persists across sessions
-
-
-"
+- Theme persists across sessions"
 
 git push
 ```
@@ -636,10 +633,7 @@ cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/VALIDATED.md
 
 # If approved:
 git add .
-git commit -m "Feature: Contact form
-
-
-"
+git commit -m "Feature: Contact form"
 git push
 ```
 

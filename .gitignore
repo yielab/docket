@@ -48,3 +48,5 @@ TERMINAL-MODE-QUICKSTART.txt
 
 # Claude artifacts
 .claude/
+# AI assistant dev guidance (kept local, not published)
+CLAUDE.md
