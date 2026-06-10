@@ -372,6 +372,13 @@ PYEOF
     *)   [[ "$gs_state" == "OK" ]] && dim "  Approval routing: not configured — rack gates enable" ;;
   esac
 
+  # G5 — workspace isolation (Docker sandbox)
+  local iso; iso=$(_isolation_status)
+  case "$iso" in
+    non-main|all) success "  Workspace isolation: $iso (Docker sandbox)" ;;
+    *)            dim "  Workspace isolation: off — rack gates isolate on (needs Docker)" ;;
+  esac
+
   # G1 — daemon security audit summary (config-perms finding excluded; rack owns it).
   if [[ "$audit_available" -eq 1 ]]; then
     local summary_line a_crit a_warn a_info

@@ -14,6 +14,7 @@ cmd_gates() {
     status)  _gates_status ;;
     enable)  _gates_enable "$@" ;;
     disable) _gates_disable ;;
+    isolate) _gates_isolate "$@" ;;
     *)
       cat <<EOF
 ${BOLD}Usage:${RESET} rack gates <command>
@@ -22,6 +23,7 @@ ${BOLD}Commands:${RESET}
   ${GREEN}status${RESET}            Show current exec-approval policy and audit posture
   ${GREEN}enable${RESET} [--force]  Apply conservative gate defaults + curated allowlist
   ${GREEN}disable${RESET}           Reset gate defaults (escape hatch; daemon falls back to tools.exec)
+  ${GREEN}isolate${RESET} [on|off]  Confine tool execution to a per-agent Docker sandbox (needs Docker)
 
 ${BOLD}What 'enable' does:${RESET}
   Sets exec-approval defaults to ${CYAN}security=allowlist, ask=on-miss, askFallback=deny${RESET}
@@ -58,6 +60,39 @@ _gates_status() {
     off)   warn "Approval routing: off — prompts won't reach chat" ;;
     *)     dim "Approval routing: not configured" ;;
   esac
+
+  local iso; iso=$(_isolation_status)
+  case "$iso" in
+    non-main|all) success "Workspace isolation: $iso (Docker sandbox)" ;;
+    off)          dim "Workspace isolation: off" ;;
+    *)            dim "Workspace isolation: not configured — rack gates isolate on" ;;
+  esac
+}
+
+_gates_isolate() {
+  local want="${1:-on}"
+  header "Workspace isolation (Docker sandbox)"
+  echo ""
+
+  if [[ "$want" == "off" ]]; then
+    disable_workspace_isolation || return 1
+    restart_gateway
+    success "Sandbox isolation disabled (mode=off) — tools run on the host"
+    return 0
+  fi
+
+  if ! command -v docker &>/dev/null; then
+    fail "Docker not found — isolation requires Docker"
+    echo "  Install Docker, then re-run: ${GREEN}rack gates isolate on${RESET}"
+    return 1
+  fi
+
+  apply_workspace_isolation || return 1
+  restart_gateway
+  success "Sandbox isolation on (mode=non-main, scope=agent, workspaceAccess=rw)"
+  echo "  Non-main sessions run tools in a per-agent container; only the workspace is mounted."
+  warn "First sandboxed run builds/pulls the image (openclaw-sandbox:bookworm-slim)."
+  echo "  Disable: ${GREEN}rack gates isolate off${RESET}"
 }
 
 _gates_enable() {
