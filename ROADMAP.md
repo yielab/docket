@@ -21,8 +21,10 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 - 🗓️ **Enforced tool-approval gates** — implement [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md):
   gate dangerous operations (`rm`, `git push`, `docker stop`) behind approval, with an audit
   trail, and have `rack install` apply them by default.
-- 🗓️ **Scoped secret distribution** — stop fanning every key out to every agent `.env`; sync
-  only the keys an agent's provider/model needs.
+- ✅ **Scoped secret distribution** — `rack keys` now syncs only the provider key an agent's
+  configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
+  non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
+  `.env` lines. Covered by a least-privilege regression test (P5-4).
 - 🗓️ **Secrets backend abstraction** — keep the 0600 JSON file as the default, but allow a
   pluggable backend (OS keychain / `libsecret` / Vault) and add `rack keys rotate` plus
   key-age reporting in `rack doctor`.
@@ -96,9 +98,9 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 ### Near-term (next four, concrete)
 
 1. ✅ Fix the `keys.sh` injection (done, tested).
-2. 🗓️ `json_write_atomic` + `flock` (Phase 1) — removes the corruption/race failure class.
-3. 🗓️ CI: shellcheck + integration + blocking specs + Bash matrix (Phase 2).
-4. 🗓️ Versioning + `CHANGELOG.md` + first tagged release `v0.1.0` (Phase 2).
+2. ✅ Scope secret distribution to least privilege (done, tested — P5-4).
+3. 🗓️ `json_write_atomic` + `flock` (Phase 1) — removes the corruption/race failure class.
+4. 🗓️ CI: shellcheck + integration + blocking specs + Bash matrix (Phase 2).
 
 A deeper internal audit with severities and effort estimates lives in
 `internal-docs/ARCHITECTURE-AUDIT.md` (not published).
