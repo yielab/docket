@@ -9,6 +9,7 @@ cmd_keys() {
     add)      _keys_add "$@" ;;
     list)     _keys_list ;;
     remove)   _keys_remove "$@" ;;
+    rotate)   _keys_rotate "$@" ;;
     setup)    _keys_setup ;;
     validate) _keys_validate "$@" ;;
     export)   _keys_export ;;
@@ -21,6 +22,7 @@ ${BOLD}Commands:${RESET}
   ${GREEN}add${RESET} <KEY_NAME>       Add or update a specific API key
   ${GREEN}list${RESET}                 List all stored keys (values masked)
   ${GREEN}validate${RESET} [KEY_NAME]  Test if API keys are working
+  ${GREEN}rotate${RESET} <KEY_NAME>    Replace an existing key's value and re-sync
   ${GREEN}remove${RESET} <KEY_NAME>    Remove an API key
   ${GREEN}export${RESET}               Export keys as environment variables (for shell)
 
@@ -87,6 +89,7 @@ _keys_add() {
 
   # Add/update key (value passed via environment — never interpolated into code)
   RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+  _keys_touch_meta "$key_name" "added"
   success "Added key: $key_name"
 
   # Sync to all agent .env files
@@ -120,6 +123,87 @@ with open(tmp, "w") as f:
     f.write("\n")
 os.chmod(tmp, 0o600)
 os.replace(tmp, path)
+PYEOF
+}
+
+# Record key lifecycle metadata in a sidecar (secrets.meta.json) so `rack doctor`
+# can report key age. Stores first-seen (added_at) and last-rotation (rotated_at)
+# timestamps. The timestamp arrives via the environment; nothing user-controlled
+# is interpolated into source. Atomic write, mode 0600.
+# Usage: _keys_touch_meta <KEY_NAME> <added|rotated|removed>
+_keys_touch_meta() {
+  local key_name="$1" event="$2"
+  local meta_file="$OPENCLAW_DIR/secrets.meta.json"
+  local now
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  RACK_META_NOW="$now" python3 - "$meta_file" "$key_name" "$event" <<'PYEOF'
+import json, os, sys
+path, key_name, event = sys.argv[1], sys.argv[2], sys.argv[3]
+now = os.environ.get("RACK_META_NOW", "")
+try:
+    with open(path) as f:
+        meta = json.load(f)
+except Exception:
+    meta = {}
+if event == "removed":
+    meta.pop(key_name, None)
+else:
+    entry = meta.get(key_name) or {}
+    entry.setdefault("added_at", now)
+    if event == "rotated":
+        entry["rotated_at"] = now
+    meta[key_name] = entry
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(meta, f, indent=2)
+    f.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, path)
+PYEOF
+}
+
+# Report stored-key age for `rack doctor`. Emits one machine-parseable line per
+# key: "<STATE>|<KEY>|<detail>" where STATE is OK, STALE, or UNKNOWN. A key is
+# STALE when its last add/rotation is older than the threshold (default 90 days,
+# override with RACK_KEY_MAX_AGE_DAYS).
+_keys_age_report() {
+  local secrets_file="$OPENCLAW_DIR/secrets.json"
+  local meta_file="$OPENCLAW_DIR/secrets.meta.json"
+  [[ -f "$secrets_file" ]] || return 0
+  RACK_KEY_THRESHOLD="${RACK_KEY_MAX_AGE_DAYS:-90}" \
+    python3 - "$secrets_file" "$meta_file" <<'PYEOF'
+import json, os, sys
+from datetime import datetime, timezone
+secrets_path, meta_path = sys.argv[1], sys.argv[2]
+threshold = int(os.environ.get("RACK_KEY_THRESHOLD", "90"))
+try:
+    with open(secrets_path) as f:
+        secrets = json.load(f)
+except Exception:
+    sys.exit(0)
+try:
+    with open(meta_path) as f:
+        meta = json.load(f)
+except Exception:
+    meta = {}
+now = datetime.now(timezone.utc)
+def parse(ts):
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+for key in sorted(secrets.keys()):
+    entry = meta.get(key) or {}
+    rotated = bool(entry.get("rotated_at"))
+    ref = entry.get("rotated_at") or entry.get("added_at")
+    dt = parse(ref) if ref else None
+    if dt is None:
+        print(f"UNKNOWN|{key}|age unknown (added before tracking)")
+        continue
+    age = max(0, (now - dt).days)
+    verb = "since rotation" if rotated else "old"
+    state = "STALE" if age >= threshold else "OK"
+    print(f"{state}|{key}|{age}d {verb}")
 PYEOF
 }
 
@@ -208,11 +292,59 @@ os.replace(tmp, path)
 print(f"✓ Removed key: {key_name}")
 PYEOF
 
+  # Drop lifecycle metadata for the removed key
+  _keys_touch_meta "$key_name" "removed"
+
   # Sync to all agent .env files
   _sync_keys_to_agents
 
   # Restart gateway
   info "Restarting OpenClaw gateway..."
+  restart_gateway
+}
+
+# Rotate an existing key: replace its value and re-sync. Unlike `add`, the key
+# MUST already exist — rotation is for replacing a leaked/expired credential.
+_keys_rotate() {
+  local key_name="$1"
+  if [[ -z "$key_name" ]]; then
+    error "Key name required. Usage: rack keys rotate <KEY_NAME>"
+  fi
+
+  if [[ ! "$key_name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+    error "Invalid key name. Use UPPERCASE_WITH_UNDERSCORES (e.g., ANTHROPIC_API_KEY)"
+  fi
+
+  local secrets_file="$OPENCLAW_DIR/secrets.json"
+  if [[ ! -f "$secrets_file" ]]; then
+    error "No secrets file found. Add a key first: rack keys add $key_name"
+  fi
+
+  # Must already exist (rotation replaces an existing credential, never creates)
+  local exists
+  exists=$(python3 -c "import json,sys; print(sys.argv[2] in json.load(open(sys.argv[1])))" "$secrets_file" "$key_name" 2>/dev/null || echo "False")
+  if [[ "$exists" != "True" ]]; then
+    error "Key '$key_name' not found. Use 'rack keys add $key_name' to create it."
+  fi
+
+  echo -e "${BOLD}Rotate API Key${RESET}"
+  echo -e "Key name: ${CYAN}$key_name${RESET}"
+  echo ""
+  read -rsp "Enter NEW key value (hidden): " key_value
+  echo ""
+
+  if [[ -z "$key_value" ]]; then
+    error "Key value cannot be empty"
+  fi
+
+  # Replace value (via environment — never interpolated into code) and stamp rotation
+  RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+  _keys_touch_meta "$key_name" "rotated"
+  success "Rotated key: $key_name"
+
+  # Re-sync scoped keys and restart gateway
+  _sync_keys_to_agents
+  info "Restarting OpenClaw gateway to apply changes..."
   restart_gateway
 }
 
@@ -434,6 +566,7 @@ _keys_setup() {
 
       # Save key (value via environment — never interpolated into code)
       RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+      _keys_touch_meta "$key_name" "added"
 
       echo "${GREEN}✓${RESET} Saved $key_name"
       echo ""
