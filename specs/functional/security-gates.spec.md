@@ -1,20 +1,26 @@
 # Security Gates Specification
 
-**Version**: 0.1.0
-**Status**: Planned (not yet enforced)
-**Last Updated**: 2026-06-09
+**Version**: 0.2.0
+**Status**: Implemented (opt-in; on-by-default deferred)
+**Last Updated**: 2026-06-10
 
 ## Purpose
 
-This specification defines the intended tool-approval and workspace-isolation model for rack
-agents: requiring explicit approval before dangerous tool calls and confining agents to their
-own workspace. It is written spec-first; the behavior below is the target design, not the
-current runtime.
+This specification defines the tool-approval and workspace-isolation model for rack agents:
+requiring explicit approval before dangerous tool calls and confining agents to their own
+workspace. It is implemented on the OpenClaw daemon's native exec-approval, approval-routing,
+and sandbox primitives — rack configures and verifies; the daemon enforces.
 
-> **Implementation status.** `rack install` does not yet apply these gates — Step 6
-> ("Configuring security best practices") currently reports "Security configuration skipped".
-> This spec is the contract the implementation will be built against. Until it ships,
-> security gates **MUST NOT** be described as active in user-facing material.
+> **Implementation status.** Shipped **opt-in**: `rack gates enable` (or `rack install --gates`)
+> writes conservative exec-approval defaults (`security: allowlist`, `ask: on-miss`,
+> `askFallback: deny`) with a curated allowlist; `rack gates enable` also routes approval prompts
+> to each agent's session (`approvals.exec`, answerable via `/approve`); `rack gates isolate on`
+> applies Docker workspace isolation. `rack doctor` reports gate status, approval routing,
+> isolation, and config-permission hardening. **On-by-default in `rack install` is deferred**
+> pending per-agent *headless* approval routing — session-mode delivery only answers prompts
+> during an interactive session, so default-on could deny an unattended agent with no approver.
+> Until that flip, default `rack install` does not enable enforcement, and gates **MUST NOT** be
+> described as on-by-default in user-facing material.
 
 ## Scope
 
@@ -50,11 +56,16 @@ is the intended channel for approval prompts.
 
 ## Interface Contracts
 
-Planned surface (subject to change as the feature is implemented):
+### `rack gates` command (implemented)
 
 ```bash
-rack doctor          # MUST report whether security gates are configured
-rack maintain <id> check   # MUST (re)apply gate templates to an agent
+rack gates status            # MUST report exec-approval policy, routing, isolation, audit
+rack gates enable [--force]  # MUST apply conservative exec-approval defaults + curated
+                             #   allowlist and enable approval routing (opt-in)
+rack gates disable           # MUST reset gate defaults + routing (reversible escape hatch)
+rack gates isolate [on|off]  # MUST set/clear Docker workspace isolation (requires Docker)
+rack install --gates         # MUST apply the gate configuration during install (opt-in)
+rack doctor                  # MUST report whether security gates are configured
 ```
 
 ## Examples
@@ -83,6 +94,15 @@ rack maintain <id> check   # MUST (re)apply gate templates to an agent
 - Audit log entries **MUST NOT** be silently editable by the agent.
 
 ## Changelog
+
+### Version 0.2.0 (2026-06-10)
+
+- Implemented opt-in on native daemon primitives: `rack gates enable` / `isolate`,
+  `rack install --gates`, and config-permission hardening
+- Exec-approval enforcement (allowlist + ask/on-miss + deny fallback), Telegram approval
+  routing (`approvals.exec`, `/approve`), and Docker workspace isolation
+- `rack doctor` reports gate status, routing, isolation, and audit posture
+- On-by-default in `rack install` deferred pending per-agent headless approval routing
 
 ### Version 0.1.0 (2026-06-09)
 
