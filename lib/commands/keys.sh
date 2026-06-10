@@ -26,10 +26,11 @@ ${BOLD}Commands:${RESET}
   ${GREEN}remove${RESET} <KEY_NAME>    Remove an API key
   ${GREEN}export${RESET}               Export keys as environment variables (for shell)
 
-${BOLD}Storage Location (Single Source of Truth):${RESET}
-  ${CYAN}~/.openclaw/secrets.json${RESET}
+${BOLD}Storage Backend:${RESET}
+  ${CYAN}file${RESET}    (default)  ~/.openclaw/secrets.json (0600)
+  ${CYAN}keyring${RESET}           OS keyring via libsecret; secrets.json holds names only
+  Select with ${GREEN}RACK_SECRETS_BACKEND=keyring${RESET} (falls back to file if unavailable).
 
-  All API keys are stored in ONE file with secure permissions (600).
   Keys are automatically synced to:
     • Agent workspaces (.env files) — scoped: each agent gets only the
       provider key its model needs (least privilege)
@@ -79,18 +80,10 @@ _keys_add() {
     error "Key value cannot be empty"
   fi
 
-  # Create secrets.json if it doesn't exist
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-  if [[ ! -f "$secrets_file" ]]; then
-    echo '{}' > "$secrets_file"
-    chmod 600 "$secrets_file"
-    info "Created $secrets_file"
-  fi
-
-  # Add/update key (value passed via environment — never interpolated into code)
-  RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+  # Store via the active backend (value via environment — never interpolated).
+  RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "added"
-  success "Added key: $key_name"
+  success "Added key: $key_name ($(secrets_backend) backend)"
 
   # Sync to all agent .env files
   _sync_keys_to_agents
@@ -209,9 +202,8 @@ PYEOF
 
 # List all stored keys (masked)
 _keys_list() {
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-
-  if [[ ! -f "$secrets_file" ]]; then
+  local names; names=$(secret_names)
+  if [[ -z "$names" ]]; then
     echo -e "${DIM}No API keys stored yet.${RESET}"
     echo ""
     echo -e "Add a key with: ${GREEN}rack keys add <KEY_NAME>${RESET}"
@@ -219,31 +211,22 @@ _keys_list() {
   fi
 
   echo -e "${BOLD}Stored API Keys${RESET}"
-  echo -e "${DIM}File: $secrets_file${RESET}"
+  echo -e "${DIM}Backend: $(secrets_backend)${RESET}"
   echo ""
 
-  python3 - "$secrets_file" <<'PYEOF'
-import json, sys
-
-try:
-    with open(sys.argv[1], 'r') as f:
-        secrets = json.load(f)
-except Exception as e:
-    print(f"Error reading secrets: {e}", file=sys.stderr)
-    sys.exit(1)
-
-if not secrets:
-    print("No keys found.")
-else:
-    max_len = max(len(k) for k in secrets.keys())
-    for key, value in secrets.items():
-        # Mask value (show first 4 and last 4 chars)
-        if len(value) > 12:
-            masked = value[:4] + '*' * (len(value) - 8) + value[-4:]
-        else:
-            masked = '*' * len(value)
-        print(f"  {key:<{max_len}}  {masked}")
-PYEOF
+  # Mask values in-shell (value never crosses a process boundary as argv).
+  local key val n masked maxlen=0
+  while IFS= read -r key; do [[ -n "$key" ]] && (( ${#key} > maxlen )) && maxlen=${#key}; done <<< "$names"
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    val=$(secret_get "$key"); n=${#val}
+    if (( n > 12 )); then
+      masked="${val:0:4}$(printf '%*s' $((n - 8)) '' | tr ' ' '*')${val: -4}"
+    else
+      masked="$(printf '%*s' "$n" '' | tr ' ' '*')"
+    fi
+    printf "  %-${maxlen}s  %s\n" "$key" "$masked"
+  done <<< "$names"
 
   echo ""
   echo -e "${DIM}Tip: Remove a key with${RESET} rack keys remove <KEY_NAME>"
@@ -256,16 +239,7 @@ _keys_remove() {
     error "Key name required. Usage: rack keys remove <KEY_NAME>"
   fi
 
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-  if [[ ! -f "$secrets_file" ]]; then
-    error "No secrets file found"
-  fi
-
-  # Check if key exists
-  local exists
-  exists=$(python3 -c "import json,sys; secrets=json.load(open(sys.argv[1])); print(sys.argv[2] in secrets)" "$secrets_file" "$key_name" 2>/dev/null || echo "False")
-
-  if [[ "$exists" != "True" ]]; then
+  if ! secret_has "$key_name"; then
     error "Key '$key_name' not found"
   fi
 
@@ -276,21 +250,9 @@ _keys_remove() {
     return
   fi
 
-  # Remove key (argv-passed, atomic write)
-  python3 - "$secrets_file" "$key_name" <<'PYEOF'
-import json, os, sys
-path, key_name = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    secrets = json.load(f)
-secrets.pop(key_name, None)
-tmp = path + ".tmp"
-with open(tmp, "w") as f:
-    json.dump(secrets, f, indent=2)
-    f.write("\n")
-os.chmod(tmp, 0o600)
-os.replace(tmp, path)
-print(f"✓ Removed key: {key_name}")
-PYEOF
+  # Remove from the active backend (keyring + index)
+  secret_del "$key_name"
+  success "Removed key: $key_name"
 
   # Drop lifecycle metadata for the removed key
   _keys_touch_meta "$key_name" "removed"
@@ -315,15 +277,8 @@ _keys_rotate() {
     error "Invalid key name. Use UPPERCASE_WITH_UNDERSCORES (e.g., ANTHROPIC_API_KEY)"
   fi
 
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-  if [[ ! -f "$secrets_file" ]]; then
-    error "No secrets file found. Add a key first: rack keys add $key_name"
-  fi
-
   # Must already exist (rotation replaces an existing credential, never creates)
-  local exists
-  exists=$(python3 -c "import json,sys; print(sys.argv[2] in json.load(open(sys.argv[1])))" "$secrets_file" "$key_name" 2>/dev/null || echo "False")
-  if [[ "$exists" != "True" ]]; then
+  if ! secret_has "$key_name"; then
     error "Key '$key_name' not found. Use 'rack keys add $key_name' to create it."
   fi
 
@@ -338,7 +293,7 @@ _keys_rotate() {
   fi
 
   # Replace value (via environment — never interpolated into code) and stamp rotation
-  RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+  RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "rotated"
   success "Rotated key: $key_name"
 
@@ -376,11 +331,19 @@ except Exception:
 # and synced to every agent. This limits the blast radius if one agent
 # workspace is compromised — it no longer exposes every provider's key.
 _sync_keys_to_agents() {
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
+  # Materialise current secret values (from whichever backend) into a 0600 temp
+  # the per-agent writer reads. For the keyring backend this is the only place
+  # plaintext values surface, transiently — and they must be written to .env
+  # regardless. For the file backend it is just a copy of secrets.json.
+  local secrets_file
+  secrets_file=$(mktemp)
+  chmod 600 "$secrets_file"
+  secret_export_json > "$secrets_file" 2>/dev/null
 
-  # Read secrets
-  if [[ ! -f "$secrets_file" ]]; then
-    return  # No secrets to sync
+  # Nothing to sync if there are no keys.
+  if ! python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)" "$secrets_file" 2>/dev/null; then
+    rm -f "$secrets_file"
+    return
   fi
 
   # Find all agent workspaces
@@ -473,6 +436,7 @@ EOF
     ((count++))
   done
 
+  rm -f "$secrets_file"   # discard the transient plaintext materialisation
   [[ $count -gt 0 ]] && info "Synced keys to $count agent workspace(s) (scoped per provider)"
 }
 
@@ -481,16 +445,8 @@ _keys_setup() {
   header "API Keys Setup Wizard"
   echo ""
   echo "This wizard will help you configure API keys for OpenClaw agents."
-  echo "Keys are stored in: ${CYAN}~/.openclaw/secrets.json${RESET}"
+  echo "Storage backend: ${CYAN}$(secrets_backend)${RESET}"
   echo ""
-
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-
-  # Load existing secrets
-  local existing_secrets="{}"
-  if [[ -f "$secrets_file" ]]; then
-    existing_secrets=$(cat "$secrets_file")
-  fi
 
   # Define providers with validation patterns
   declare -A providers=(
@@ -525,10 +481,7 @@ _keys_setup() {
     echo ""
 
     # Check if key exists
-    local has_key
-    has_key=$(echo "$existing_secrets" | python3 -c "import json, sys; secrets=json.load(sys.stdin); print(sys.argv[1] in secrets)" "$key_name")
-
-    if [[ "$has_key" == "True" ]]; then
+    if secret_has "$key_name"; then
       echo "${GREEN}✓${RESET} Key already configured"
       read -rp "Update this key? [y/N]: " update
       [[ ! "$update" =~ ^[Yy]$ ]] && continue
@@ -565,7 +518,7 @@ _keys_setup() {
       fi
 
       # Save key (value via environment — never interpolated into code)
-      RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+      RACK_KEY_VALUE="$key_value" secret_put "$key_name"
       _keys_touch_meta "$key_name" "added"
 
       echo "${GREEN}✓${RESET} Saved $key_name"
@@ -611,9 +564,8 @@ _keys_setup() {
 # Validate API keys by testing them
 _keys_validate() {
   local key_name="${1:-}"
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
 
-  if [[ ! -f "$secrets_file" ]]; then
+  if [[ -z "$(secret_names)" ]]; then
     error "No API keys found. Run: rack keys setup"
   fi
 
@@ -622,27 +574,15 @@ _keys_validate() {
 
   # If specific key provided, validate just that one
   if [[ -n "$key_name" ]]; then
-    _validate_single_key "$key_name" "$secrets_file"
+    _validate_single_key "$key_name"
     return
   fi
 
   # Otherwise validate all keys
-  local keys_to_validate
-  keys_to_validate=$(python3 - "$secrets_file" <<'PYEOF'
-import json, sys
-
-with open(sys.argv[1]) as f:
-    secrets = json.load(f)
-
-for key_name in secrets.keys():
-    print(f"{key_name}")
-PYEOF
-)
-
   while IFS= read -r key; do
     [[ -z "$key" ]] && continue
-    _validate_single_key "$key" "$secrets_file"
-  done <<< "$keys_to_validate"
+    _validate_single_key "$key"
+  done <<< "$(secret_names)"
 
   echo ""
   success "Validation complete"
@@ -653,10 +593,9 @@ PYEOF
 
 _validate_single_key() {
   local key_name="$1"
-  local secrets_file="$2"
 
   local key_value
-  key_value=$(python3 -c "import json,sys; secrets=json.load(open(sys.argv[1])); print(secrets.get(sys.argv[2], ''))" "$secrets_file" "$key_name")
+  key_value=$(secret_get "$key_name")
 
   if [[ -z "$key_value" ]]; then
     echo "  ${RED}✗${RESET} $key_name - Not found"
@@ -695,24 +634,20 @@ _validate_single_key() {
 
 # Export keys as environment variables
 _keys_export() {
-  local secrets_file="$OPENCLAW_DIR/secrets.json"
-
-  if [[ ! -f "$secrets_file" ]]; then
+  if [[ -z "$(secret_names)" ]]; then
     error "No API keys found. Run: rack keys setup"
   fi
 
-  # Output export commands
-  python3 - "$secrets_file" <<'PYEOF'
+  # Materialise values (backend-agnostic) into a 0600 temp, then emit exports.
+  local blob; blob=$(mktemp); chmod 600 "$blob"
+  secret_export_json > "$blob"
+  python3 - "$blob" <<'PYEOF'
 import json, sys
-
-with open(sys.argv[1]) as f:
-    secrets = json.load(f)
-
-for key_name, key_value in secrets.items():
-    # Escape single quotes in value
+for key_name, key_value in json.load(open(sys.argv[1])).items():
     safe_value = key_value.replace("'", "'\\''")
     print(f"export {key_name}='{safe_value}'")
 PYEOF
+  rm -f "$blob"
 }
 
 # Show current environment status
