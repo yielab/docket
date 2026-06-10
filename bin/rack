@@ -61,6 +61,7 @@ source "$LIB_DIR/helpers/utils.sh"
 source "$LIB_DIR/helpers/workspace.sh"
 source "$LIB_DIR/helpers/models.sh"
 source "$LIB_DIR/helpers/budget.sh"
+source "$LIB_DIR/helpers/security.sh"
 
 # Source command modules
 source "$LIB_DIR/commands/list.sh"

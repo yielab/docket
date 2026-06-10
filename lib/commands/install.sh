@@ -192,10 +192,21 @@ PY
   # Step 6: Configure security best practices
   header "Step 6: Configuring security best practices"
 
-  success "Security configuration skipped"
-  echo "  Note: Tool approval gates and workspace isolation"
-  echo "        are configured per-agent in TOOLS.md and SOUL.md"
-  echo "        Run 'rack repair <id>' to apply security templates"
+  # Harden permissions on sensitive state files so another local user can't read
+  # secrets or rewrite tool/auth policy (G2). Enforcement gates (exec approvals,
+  # workspace isolation) are specified in security-gates.spec.md and applied in a
+  # later phase; see ROADMAP Phase 0.
+  local _hardened; _hardened=$(secure_config_perms)
+  if [[ -n "$_hardened" ]]; then
+    while IFS= read -r _f; do
+      [[ -n "$_f" ]] && success "Tightened permissions to 600: $_f"
+    done <<< "$_hardened"
+  else
+    success "Config and secrets permissions already owner-only (600)"
+  fi
+  echo "  ${DIM}Verify posture anytime with: rack doctor  (Security gates section)${RESET}"
+  echo "  ${DIM}Tool-approval gates are specified (Planned) in${RESET}"
+  echo "  ${DIM}specs/functional/security-gates.spec.md — applied in a later phase.${RESET}"
 
   echo ""
 
