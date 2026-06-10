@@ -1,6 +1,9 @@
 # rack-cli
 
 [![CI](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/santiagoyie/rack-cli/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Shell: Bash 4+](https://img.shields.io/badge/shell-bash%204%2B-green.svg)](https://www.gnu.org/software/bash/)
+[![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
 
 A modular Bash CLI for managing OpenClaw autonomous agents with project isolation and workflow automation. Personal R&D project exploring agent orchestration patterns, spec-driven development methodology, and cost-tracking tooling for production-style multi-agent setups.
 
