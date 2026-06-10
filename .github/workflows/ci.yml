@@ -19,8 +19,25 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Validate specs (non-blocking)
-        run: ./scripts/validate-specs.sh || true
+      # Quality gate: fail only on real errors (not style/info), and skip the
+      # "can't follow non-constant source" noise from rack's dynamic sourcing.
+      - name: ShellCheck (error severity)
+        run: |
+          shellcheck --version
+          shellcheck -S error -e SC1090,SC1091 \
+            bin/rack \
+            lib/core/*.sh lib/helpers/*.sh lib/commands/*.sh \
+            lib/commands/experimental/*.sh \
+            scripts/*.sh tests/*.sh tests/unit/*.sh
 
-      - name: Run unit tests
-        run: ./tests/unit/test-helpers.sh
+      - name: Validate specs (blocking)
+        run: ./scripts/validate-specs.sh
+
+      - name: Spec coverage (informational)
+        run: ./scripts/spec-coverage.sh || true
+
+      # Unit tests are hermetic (env-overridable paths); use a throwaway HOME so
+      # nothing touches a real ~/.openclaw. Integration tests need the openclaw
+      # daemon + systemctl and are run locally, not in CI.
+      - name: Unit tests
+        run: HOME="$(mktemp -d)" ./tests/unit/test-helpers.sh

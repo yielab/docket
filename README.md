@@ -165,8 +165,21 @@ rack maintain [id] clean    # Clear memory logs
 rack maintain [id] reset    # Clear memory + heartbeat
 rack maintain [id] rebuild  # Full rebuild from metadata
 rack maintain [id] sessions # Archive large/old sessions
-rack doctor                 # System-wide diagnostics (budget, drift, runaway)
+rack doctor                 # System-wide diagnostics (budget, drift, runaway, gates)
 ```
+
+### Security Gates (opt-in)
+
+```bash
+rack gates status           # Exec-approval policy, routing, isolation, audit posture
+rack gates enable           # Apply approval gates + curated allowlist + chat routing
+rack gates isolate on       # Confine tool execution to a per-agent Docker sandbox
+rack gates disable          # Revert gate defaults (escape hatch)
+rack install --gates        # Apply gates during install
+```
+
+`RACK_SECRETS_BACKEND=keyring` stores key values in the OS keyring (libsecret) instead of the
+default 0600 JSON file. Run `rack --version` to print the installed version.
 
 ### Context & Memory
 
