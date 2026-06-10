@@ -1227,6 +1227,41 @@ assert_equals "5.0" "$(echo "$_p92" | python3 -c "import json,sys; print(json.lo
 rm -rf "$_P92"
 echo ""
 
+# ─── P10-1: serve metrics + health ─────────────────────────────────────────────
+echo "── P10-1: Serve metrics ──"
+
+source "$LIB_DIR/commands/snapshot.sh"
+source "$LIB_DIR/commands/serve.sh"
+
+_P101=$(mktemp -d)
+mkdir -p "$_P101/projects/a1" "$_P101/agents/a1/sessions" "$_P101/out"
+echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6"}' > "$_P101/projects/a1/.rack-meta.json"
+printf '%s\n' '{"message":{"usage":{"input":1000,"output":500,"cost":{"total":0.5}}}}' > "$_P101/agents/a1/sessions/s.jsonl"
+
+_serve_env=(OPENCLAW_DIR="$_P101" PROJECTS_DIR="$_P101/projects" META_FILE=".rack-meta.json"
+            DEFAULT_MODEL="anthropic/claude-sonnet-4-6" RACK_SERVICE_MANAGER=none CONFIG_FILE="$_P101/openclaw.json")
+echo '{"agents":{"list":[]},"bindings":[],"channels":{}}' > "$_P101/openclaw.json"
+
+_p101_m=$(env "${_serve_env[@]}" bash -c 'source lib/core/config.sh; source lib/helpers/output.sh; source lib/helpers/json.sh; source lib/helpers/picker.sh; source lib/helpers/service.sh; source lib/helpers/workspace.sh; source lib/commands/cost.sh; source lib/commands/serve.sh; _serve_metrics')
+echo "$_p101_m" | grep -q "^rack_agents_total 1$" && _p101_a="ok" || _p101_a="no"
+assert_equals "ok" "$_p101_a" "metrics: rack_agents_total reflects agent count"
+echo "$_p101_m" | grep -q "^rack_cost_usd_total 0.5$" && _p101_c="ok" || _p101_c="no"
+assert_equals "ok" "$_p101_c" "metrics: rack_cost_usd_total aggregates"
+echo "$_p101_m" | grep -q "^rack_gateway_up 0$" && _p101_g="ok" || _p101_g="no"
+assert_equals "ok" "$_p101_g" "metrics: rack_gateway_up reflects state"
+echo "$_p101_m" | grep -q "# TYPE rack_agents_total gauge" && _p101_t="ok" || _p101_t="no"
+assert_equals "ok" "$_p101_t" "metrics: includes Prometheus HELP/TYPE"
+
+# _serve_refresh writes the served artifacts.
+env "${_serve_env[@]}" bash -c 'source lib/core/config.sh; source lib/helpers/output.sh; source lib/helpers/json.sh; source lib/helpers/picker.sh; source lib/helpers/service.sh; source lib/helpers/workspace.sh; source lib/commands/cost.sh; source lib/commands/snapshot.sh; source lib/commands/serve.sh; _serve_refresh "'"$_P101/out"'"' 2>/dev/null
+[[ -f "$_P101/out/metrics" ]] && _p101_mf="yes" || _p101_mf="no"
+assert_equals "yes" "$_p101_mf" "serve: /metrics artifact written"
+_p101_health=$(python3 -c "import json; print(json.load(open('$_P101/out/health'))['status'])" 2>/dev/null)
+assert_equals "ok" "$_p101_health" "serve: /health emits status ok"
+
+rm -rf "$_P101"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

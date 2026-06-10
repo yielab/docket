@@ -110,7 +110,7 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `continue-on-error` until reliably green); promote to a required gate once proven. A real
   end-to-end macOS run also needs the OpenClaw daemon's own launchd support.
 
-## Phase 4 — Operability & observability — 🚧 in progress
+## Phase 4 — Operability & observability — 🚧 mostly complete
 
 > What "enterprise-grade" actually means day to day.
 
@@ -125,7 +125,9 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   budget checks are O(changed files), not O(all history). Self-healing (stale entries dropped),
   `RACK_NO_COST_INDEX=1` forces full recompute. P9-1. 🗓️ remaining: batch the human
   `list` / `doctor` per-field reads the same way `list --json` already does.
-- 🗓️ **Metrics** — extend `rack serve` with Prometheus-format metrics and a health endpoint.
+- ✅ **Metrics** — `rack serve` now exposes `/metrics` (Prometheus: `rack_agents_total`,
+  `rack_agent_cost_usd`, `rack_agent_turns_total`, `rack_cost_usd_total`, `rack_gateway_up`)
+  and `/health` alongside `/status.json`, refreshed on the same interval. P10-1.
 
 ## Phase 5 — MLOps depth (the differentiating story)
 
