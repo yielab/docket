@@ -782,6 +782,50 @@ assert_equals "600" "$_p54_perm" "scoped: synced .env is mode 600"
 rm -rf "$_P54_HOME"
 echo ""
 
+# ─── P5-5: Key rotation metadata & age reporting ───────────────────────────────
+echo "── P5-5: Key rotation & age hygiene ──"
+
+_P55_HOME=$(mktemp -d)
+cat > "$_P55_HOME/secrets.json" <<'JSON'
+{"ANTHROPIC_API_KEY":"sk-ant-old","OPENAI_API_KEY":"sk-oai-new"}
+JSON
+chmod 600 "$_P55_HOME/secrets.json"
+
+# An old key (manually stamped in the past) must report STALE.
+cat > "$_P55_HOME/secrets.meta.json" <<'JSON'
+{"ANTHROPIC_API_KEY":{"added_at":"2000-01-01T00:00:00Z"}}
+JSON
+chmod 600 "$_P55_HOME/secrets.meta.json"
+
+# Stamp the second key as freshly added (now).
+OPENCLAW_DIR="$_P55_HOME" _keys_touch_meta "OPENAI_API_KEY" "added"
+
+_p55_report=$(OPENCLAW_DIR="$_P55_HOME" _keys_age_report)
+echo "$_p55_report" | grep -q '^STALE|ANTHROPIC_API_KEY|' && _p55_stale="yes" || _p55_stale="no"
+assert_equals "yes" "$_p55_stale" "age: key older than threshold reports STALE"
+echo "$_p55_report" | grep -q '^OK|OPENAI_API_KEY|' && _p55_ok="yes" || _p55_ok="no"
+assert_equals "yes" "$_p55_ok" "age: freshly added key reports OK"
+
+# Rotation stamps rotated_at and clears staleness.
+OPENCLAW_DIR="$_P55_HOME" _keys_touch_meta "ANTHROPIC_API_KEY" "rotated"
+_p55_rot=$(python3 -c "import json,sys; print('yes' if json.load(open(sys.argv[1]))['ANTHROPIC_API_KEY'].get('rotated_at') else 'no')" "$_P55_HOME/secrets.meta.json")
+assert_equals "yes" "$_p55_rot" "rotate: rotated_at timestamp recorded"
+_p55_report2=$(OPENCLAW_DIR="$_P55_HOME" _keys_age_report)
+echo "$_p55_report2" | grep -q '^OK|ANTHROPIC_API_KEY|' && _p55_fresh="yes" || _p55_fresh="no"
+assert_equals "yes" "$_p55_fresh" "rotate: rotated key is no longer STALE"
+
+# Removal drops the lifecycle metadata entry.
+OPENCLAW_DIR="$_P55_HOME" _keys_touch_meta "OPENAI_API_KEY" "removed"
+_p55_gone=$(python3 -c "import json,sys; print('absent' if 'OPENAI_API_KEY' not in json.load(open(sys.argv[1])) else 'present')" "$_P55_HOME/secrets.meta.json")
+assert_equals "absent" "$_p55_gone" "remove: lifecycle metadata is dropped"
+
+# Sidecar is mode 600.
+_p55_perm=$(stat -c '%a' "$_P55_HOME/secrets.meta.json" 2>/dev/null || stat -f '%Lp' "$_P55_HOME/secrets.meta.json" 2>/dev/null)
+assert_equals "600" "$_p55_perm" "meta: sidecar is mode 600"
+
+rm -rf "$_P55_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

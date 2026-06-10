@@ -114,7 +114,10 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
   # 8. Brave browser connection (for OpenClaw web UI)
   echo ""
   local brave_procs
-  brave_procs=$(ps aux | grep "openclaw/browser" | grep -v grep | wc -l)
+  # `|| true` so a no-match grep (exit 1) doesn't trip `set -e`/pipefail and abort
+  # doctor before the later checks run. wc still prints 0 on empty input.
+  brave_procs=$( { ps aux | grep "openclaw/browser" | grep -v grep | wc -l; } 2>/dev/null || true )
+  brave_procs=${brave_procs:-0}
   if [[ "$brave_procs" -gt 0 ]]; then
     # Check if processes are stale (older than 3 days)
     local oldest_brave
@@ -300,6 +303,30 @@ PYEOF
         success "  $rid: ok ($r_turns turns, \$$r_cost)"
       fi
     done <<< "$budget_ids"
+  fi
+
+  # 13. API key hygiene (age since add/rotation)
+  local key_report; key_report=$(_keys_age_report)
+  if [[ -n "$key_report" ]]; then
+    echo ""
+    echo -e "${BOLD}API key hygiene:${RESET}"
+    local stale_keys=0
+    while IFS='|' read -r k_state k_name k_detail; do
+      [[ -z "$k_name" ]] && continue
+      case "$k_state" in
+        STALE)
+          warn "  $k_name: $k_detail — consider: rack keys rotate $k_name"
+          stale_keys=$(( stale_keys + 1 ))
+          ;;
+        UNKNOWN)
+          dim "  $k_name: $k_detail"
+          ;;
+        *)
+          success "  $k_name: $k_detail"
+          ;;
+      esac
+    done <<< "$key_report"
+    [[ "$stale_keys" -gt 0 ]] && echo "  ${DIM}Rotate keys older than ${RACK_KEY_MAX_AGE_DAYS:-90} days${RESET}"
   fi
 
   # Summary

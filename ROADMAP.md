@@ -25,9 +25,12 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
   non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
   `.env` lines. Covered by a least-privilege regression test (P5-4).
+- ✅ **Key rotation & age hygiene** — `rack keys rotate <KEY>` replaces an existing
+  credential (and re-syncs scoped), lifecycle timestamps are tracked in a 0600
+  `secrets.meta.json` sidecar, and `rack doctor` flags keys older than the rotation
+  threshold (default 90 days, `RACK_KEY_MAX_AGE_DAYS`). Covered by regression test P5-5.
 - 🗓️ **Secrets backend abstraction** — keep the 0600 JSON file as the default, but allow a
-  pluggable backend (OS keychain / `libsecret` / Vault) and add `rack keys rotate` plus
-  key-age reporting in `rack doctor`.
+  pluggable backend (OS keychain / `libsecret` / Vault) so keys aren't plaintext at rest.
 
 ## Phase 1 — Write-safety & reliability
 
@@ -99,8 +102,8 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 1. ✅ Fix the `keys.sh` injection (done, tested).
 2. ✅ Scope secret distribution to least privilege (done, tested — P5-4).
-3. 🗓️ `json_write_atomic` + `flock` (Phase 1) — removes the corruption/race failure class.
-4. 🗓️ CI: shellcheck + integration + blocking specs + Bash matrix (Phase 2).
+3. ✅ Key rotation + age hygiene in `doctor` (done, tested — P5-5).
+4. 🗓️ `json_write_atomic` + `flock` (Phase 1) — removes the corruption/race failure class.
 
 A deeper internal audit with severities and effort estimates lives in
 `internal-docs/ARCHITECTURE-AUDIT.md` (not published).
