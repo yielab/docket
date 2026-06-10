@@ -84,24 +84,9 @@ _keys_add() {
     info "Created $secrets_file"
   fi
 
-  # Add/update key using Python
-  python3 <<PYEOF
-import json, sys
-
-try:
-    with open('$secrets_file', 'r') as f:
-        secrets = json.load(f)
-except:
-    secrets = {}
-
-secrets['$key_name'] = '''$key_value'''
-
-with open('$secrets_file', 'w') as f:
-    json.dump(secrets, f, indent=2)
-    f.write('\n')
-
-print("✓ Added key: $key_name")
-PYEOF
+  # Add/update key (value passed via environment — never interpolated into code)
+  RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
+  success "Added key: $key_name"
 
   # Sync to all agent .env files
   _sync_keys_to_agents
@@ -109,6 +94,32 @@ PYEOF
   # Restart gateway to pick up new keys
   info "Restarting OpenClaw gateway to apply changes..."
   restart_gateway
+}
+
+# Safely write one key into secrets.json.
+# The value is read from $RACK_KEY_VALUE (environment), the name and path arrive
+# via argv — nothing user-controlled is ever interpolated into Python source.
+# Writes atomically (tmp + replace) and enforces 0600.
+# Usage: RACK_KEY_VALUE="$value" _keys_store <secrets-file> <KEY_NAME>
+_keys_store() {
+  local secrets_file="$1" key_name="$2"
+  python3 - "$secrets_file" "$key_name" <<'PYEOF'
+import json, os, sys
+path, key_name = sys.argv[1], sys.argv[2]
+value = os.environ.get("RACK_KEY_VALUE", "")
+try:
+    with open(path) as f:
+        secrets = json.load(f)
+except Exception:
+    secrets = {}
+secrets[key_name] = value
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(secrets, f, indent=2)
+    f.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, path)
+PYEOF
 }
 
 # List all stored keys (masked)
@@ -167,7 +178,7 @@ _keys_remove() {
 
   # Check if key exists
   local exists
-  exists=$(python3 -c "import json; secrets=json.load(open('$secrets_file')); print('$key_name' in secrets)" 2>/dev/null || echo "False")
+  exists=$(python3 -c "import json,sys; secrets=json.load(open(sys.argv[1])); print(sys.argv[2] in secrets)" "$secrets_file" "$key_name" 2>/dev/null || echo "False")
 
   if [[ "$exists" != "True" ]]; then
     error "Key '$key_name' not found"
@@ -180,21 +191,20 @@ _keys_remove() {
     return
   fi
 
-  # Remove key
-  python3 <<PYEOF
-import json
-
-with open('$secrets_file', 'r') as f:
+  # Remove key (argv-passed, atomic write)
+  python3 - "$secrets_file" "$key_name" <<'PYEOF'
+import json, os, sys
+path, key_name = sys.argv[1], sys.argv[2]
+with open(path) as f:
     secrets = json.load(f)
-
-if '$key_name' in secrets:
-    del secrets['$key_name']
-
-with open('$secrets_file', 'w') as f:
+secrets.pop(key_name, None)
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
     json.dump(secrets, f, indent=2)
-    f.write('\n')
-
-print("✓ Removed key: $key_name")
+    f.write("\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, path)
+print(f"✓ Removed key: {key_name}")
 PYEOF
 
   # Sync to all agent .env files
@@ -213,9 +223,6 @@ _sync_keys_to_agents() {
   if [[ ! -f "$secrets_file" ]]; then
     return  # No secrets to sync
   fi
-
-  local secrets_data
-  secrets_data=$(cat "$secrets_file")
 
   # Find all agent workspaces
   local -a workspaces=()
@@ -242,12 +249,14 @@ _sync_keys_to_agents() {
   for workspace in "${workspaces[@]}"; do
     local env_file="$workspace/.env"
 
-    # Create/update .env with secrets
-    python3 <<EOF
-import json, os
+    # Create/update .env with secrets (paths via argv; secrets read inside Python,
+    # never interpolated into source)
+    python3 - "$secrets_file" "$env_file" <<'EOF'
+import json, os, sys
 
-secrets = json.loads('''$secrets_data''')
-env_file = '$env_file'
+secrets_path, env_file = sys.argv[1], sys.argv[2]
+with open(secrets_path) as f:
+    secrets = json.load(f)
 
 # Read existing .env if present
 existing_lines = []
@@ -332,7 +341,7 @@ _keys_setup() {
 
     # Check if key exists
     local has_key
-    has_key=$(echo "$existing_secrets" | python3 -c "import json, sys; secrets=json.load(sys.stdin); print('$key_name' in secrets)")
+    has_key=$(echo "$existing_secrets" | python3 -c "import json, sys; secrets=json.load(sys.stdin); print(sys.argv[1] in secrets)" "$key_name")
 
     if [[ "$has_key" == "True" ]]; then
       echo "${GREEN}✓${RESET} Key already configured"
@@ -370,26 +379,8 @@ _keys_setup() {
         continue
       fi
 
-      # Save key
-      python3 <<PYEOF
-import json
-
-secrets_file = '$secrets_file'
-try:
-    with open(secrets_file, 'r') as f:
-        secrets = json.load(f)
-except:
-    secrets = {}
-
-secrets['$key_name'] = '''$key_value'''
-
-with open(secrets_file, 'w') as f:
-    json.dump(secrets, f, indent=2)
-    f.write('\n')
-
-import os
-os.chmod(secrets_file, 0o600)
-PYEOF
+      # Save key (value via environment — never interpolated into code)
+      RACK_KEY_VALUE="$key_value" _keys_store "$secrets_file" "$key_name"
 
       echo "${GREEN}✓${RESET} Saved $key_name"
       echo ""
@@ -479,7 +470,7 @@ _validate_single_key() {
   local secrets_file="$2"
 
   local key_value
-  key_value=$(python3 -c "import json; secrets=json.load(open('$secrets_file')); print(secrets.get('$key_name', ''))")
+  key_value=$(python3 -c "import json,sys; secrets=json.load(open(sys.argv[1])); print(secrets.get(sys.argv[2], ''))" "$secrets_file" "$key_name")
 
   if [[ -z "$key_value" ]]; then
     echo "  ${RED}✗${RESET} $key_name - Not found"

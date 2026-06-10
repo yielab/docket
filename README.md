@@ -293,6 +293,9 @@ See [specs/README.md](specs/README.md) for the full SSD documentation.
 
 ## What's Next
 
+See [ROADMAP.md](ROADMAP.md) for the full phased plan (security → reliability → portability →
+operability → MLOps depth). Near-term highlights:
+
 1. Flesh out the eval harness (`tests/evals/`) — golden task stubs per specialist role exist and pass; expand into real model-routing checks
 2. Full manager delegation (currently a basic task queue only)
 3. Make spec validation a blocking CI gate — promote `validate-specs.sh` from advisory to required, and run integration tests in CI alongside the unit suite
