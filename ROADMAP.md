@@ -118,11 +118,13 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `profile.model/budget`, `scope.set/reset`, `agent.add/delete`) appends a who/when/what JSON line
   to `$OPENCLAW_DIR/audit.log` (0600); secret values are never logged. View with `rack audit [N]`
   / `rack audit --json` (`RACK_NO_AUDIT=1` opts out). Test P8-1.
-- 🚧 **`--json` on read commands** — `rack list --json` ships (a single batched Python pass over
-  all metas + config — also the perf pattern below). `info` / `cost` / `doctor` still to do. P8-2.
-- 🚧 **Performance** — `list --json` already collapses the per-agent field spawns into one Python
-  call; extend that batching to the human `list` / `doctor` views. Still 🗓️: an incremental cost
-  index keyed by session-file mtime so `cost` is O(changed files), not O(all history).
+- 🚧 **`--json` on read commands** — `rack list --json` and `rack cost --json` ship (batched
+  Python passes). `info` / `doctor` still to do. P8-2 / P9-2.
+- ✅ **Performance: incremental cost index** — `_aggregate_cost` caches per-session-file totals
+  in `.cost-index.json` keyed by (mtime, size); unchanged files are read from cache, so `cost`/
+  budget checks are O(changed files), not O(all history). Self-healing (stale entries dropped),
+  `RACK_NO_COST_INDEX=1` forces full recompute. P9-1. 🗓️ remaining: batch the human
+  `list` / `doctor` per-field reads the same way `list --json` already does.
 - 🗓️ **Metrics** — extend `rack serve` with Prometheus-format metrics and a health endpoint.
 
 ## Phase 5 — MLOps depth (the differentiating story)
