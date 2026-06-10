@@ -25,10 +25,15 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
     summary with any critical findings.
   - ✅ **State files hardened** — `rack install` and `rack doctor` ensure `openclaw.json` /
     `secrets.json` are `600` (a writable config lets another local user rewrite tool/auth policy).
-  - 🗓️ **Enforcement** — `rack install` writes conservative exec-approval defaults
-    (`security: allowlist`, `ask: on-miss`, `askFallback: deny`) so dangerous ops (`rm`,
-    `git push`, `docker stop`) prompt by default, with approval routed to the agent's Telegram
-    binding and per-agent workspace isolation via the sandbox tool policy.
+  - ✅ **Enforcement (opt-in)** — `rack gates enable` (or `rack install --gates`) writes
+    conservative exec-approval defaults (`security: allowlist`, `ask: on-miss`,
+    `askFallback: deny`) and seeds each agent a curated safe-bin allowlist, so dangerous /
+    non-allowlisted commands (`rm`, `dd`, `docker`, …) prompt and — absent an approver — are
+    denied (fail-closed). Idempotent, non-clobbering, reversible (`rack gates disable`).
+    Opt-in until approval routing lands so fail-closed is answerable. Test P5-7.
+  - 🗓️ **Approval routing + isolation** — route approval prompts to the agent's Telegram
+    binding (`approvals.exec.targets` + `/approve`), then flip enforcement on by default; add
+    per-agent workspace isolation via the sandbox tool policy / Docker runtime.
 - ✅ **Scoped secret distribution** — `rack keys` now syncs only the provider key an agent's
   configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
   non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
