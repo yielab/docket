@@ -64,18 +64,21 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   File-backend behaviour is byte-equivalent to before; keyring round-trip validated (P5-10).
   macOS `security` / Vault backends are a documented follow-up.
 
-## Phase 1 — Write-safety & reliability
+## Phase 1 — Write-safety & reliability — ✅ complete
 
 > One crash mid-write should never corrupt an agent or the shared daemon config.
 
-- 🗓️ **Atomic writes everywhere** — extract the proven `oc_set` pattern (tmp → validate →
-  `os.replace`, restore-on-corruption) into one `json_write_atomic` helper and route
-  `meta_set`, `upsert_binding`, `remove_binding`, and `remove_agent_config` through it.
-- 🗓️ **Cross-process locking** — a single `flock` on `~/.openclaw/.rack.lock` around every
-  mutating command, so two concurrent `rack` invocations can't lose updates.
-- 🗓️ **Loud-on-corruption reads** — replace silent `|| echo "$default"` fallbacks with a
-  policy that warns clearly when state is unreadable, even when a default keeps the command
-  alive.
+- ✅ **Atomic writes everywhere** — `json_atomic_write` (validate stdin → rolling `.bak` →
+  tmp → `os.replace` → 0600) now backs `meta_set`, `upsert_binding`, `remove_binding`,
+  `remove_agent_config`, and `oc_set`. A failed producer can no longer truncate the target
+  (invalid/empty JSON is refused, original left intact). Test P6-1.
+- ✅ **Cross-process locking** — `with_rack_lock` takes an exclusive `flock` on
+  `$OPENCLAW_DIR/.rack.lock` around each leaf writer (spanning read-modify-write), so two
+  concurrent `rack` invocations can't lose an update. Only leaf writers are wrapped, so the
+  lock never nests/deadlocks; degrades to unlocked if `flock` is unavailable (e.g. macOS).
+- ✅ **Loud-on-corruption reads** — `meta_get` / `oc_get` now warn clearly to stderr when a
+  state file exists but won't parse (instead of silently returning the default), while still
+  returning the default so the command stays alive.
 
 ## Phase 2 — Release engineering & CI rigor
 
@@ -132,10 +135,10 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 ### Near-term (next four, concrete)
 
-1. ✅ Fix the `keys.sh` injection (done, tested).
-2. ✅ Scope secret distribution to least privilege (done, tested — P5-4).
-3. ✅ Key rotation + age hygiene in `doctor` (done, tested — P5-5).
-4. 🗓️ `json_write_atomic` + `flock` (Phase 1) — removes the corruption/race failure class.
+1. ✅ Phase 0 — security hardening (injection, scoped secrets, rotation/age, gates, backends).
+2. ✅ Phase 1 — `json_atomic_write` + `flock` + loud reads (P6-1) — corruption/race class removed.
+3. 🗓️ Phase 2 — CI: shellcheck + integration + blocking specs + Bash/OS matrix.
+4. 🗓️ Phase 2 — versioning + `CHANGELOG.md` + first tagged release `v0.1.0`.
 
 A deeper internal audit with severities and effort estimates lives in
 `internal-docs/ARCHITECTURE-AUDIT.md` (not published).

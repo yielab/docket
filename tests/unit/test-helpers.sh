@@ -1027,6 +1027,50 @@ else
 fi
 echo ""
 
+# ─── P6-1: Write-safety (atomic writes + lock + loud reads) ────────────────────
+echo "── P6-1: Write-safety ──"
+
+source "$LIB_DIR/helpers/json.sh"
+
+_P61=$(mktemp -d)
+_p61_f="$_P61/data.json"
+echo '{"keep":1}' > "$_p61_f"
+
+# Valid JSON via stdin → written atomically, 0600, with a rolling .bak, no .tmp.
+printf '{"a":1,"b":2}' | json_atomic_write "$_p61_f"
+_p61_b=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['b'])" "$_p61_f")
+assert_equals "2" "$_p61_b" "atomic: valid JSON is written"
+_p61_perm=$(stat -c '%a' "$_p61_f" 2>/dev/null || stat -f '%Lp' "$_p61_f")
+assert_equals "600" "$_p61_perm" "atomic: written file is 0600"
+[[ -f "$_p61_f.bak" ]] && _p61_bak="yes" || _p61_bak="no"
+assert_equals "yes" "$_p61_bak" "atomic: rolling .bak created"
+[[ -e "$_p61_f.tmp" ]] && _p61_tmp="left" || _p61_tmp="clean"
+assert_equals "clean" "$_p61_tmp" "atomic: no .tmp left behind"
+
+# Invalid JSON on stdin → refused; the original file must NOT be truncated.
+printf 'NOT JSON' | json_atomic_write "$_p61_f" 2>/dev/null && _p61_rc="wrote" || _p61_rc="refused"
+assert_equals "refused" "$_p61_rc" "atomic: invalid JSON is refused (non-zero exit)"
+_p61_intact=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['b'])" "$_p61_f")
+assert_equals "2" "$_p61_intact" "atomic: original file intact after refused write"
+
+# with_rack_lock runs the command and propagates its exit code.
+OPENCLAW_DIR="$_P61" with_rack_lock true && _p61_lk="ok" || _p61_lk="fail"
+assert_equals "ok" "$_p61_lk" "lock: runs command (exit 0)"
+OPENCLAW_DIR="$_P61" with_rack_lock false && _p61_lf="ok" || _p61_lf="nonzero"
+assert_equals "nonzero" "$_p61_lf" "lock: propagates non-zero exit"
+
+# Loud-on-corruption read: a corrupt meta file warns to stderr but returns default.
+mkdir -p "$_P61/proj/bad"
+echo 'NOT JSON' > "$_P61/proj/bad/.rack-meta.json"
+_p61_warn=$(PROJECTS_DIR="$_P61/proj" META_FILE=".rack-meta.json" meta_get "bad" "model" "fallback" 2>&1 >/dev/null)
+echo "$_p61_warn" | grep -qiE "cannot read|corrupt|warning" && _p61_w="warned" || _p61_w="silent"
+assert_equals "warned" "$_p61_w" "read: corrupt state file warns loudly"
+_p61_val=$(PROJECTS_DIR="$_P61/proj" META_FILE=".rack-meta.json" meta_get "bad" "model" "fallback" 2>/dev/null)
+assert_equals "fallback" "$_p61_val" "read: corrupt file still returns default"
+
+rm -rf "$_P61"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
