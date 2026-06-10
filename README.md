@@ -53,7 +53,8 @@ Rack is also a deliberate exploration of patterns and disciplines outside my day
 | API key management | ✅ Working | Centralized key distribution |
 | CI pipeline | ✅ Working | GitHub Actions on every push/PR |
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `rack wire` |
-| Security gates | 🗓️ Planned | Specified in `specs/functional/security-gates.spec.md`; not yet enforced |
+| Security gates | ✅ Opt-in | Exec-approval enforcement + curated allowlist, Telegram approval routing, and Docker workspace isolation via `rack gates enable` / `isolate`; status in `rack doctor`. Opt-in by design (on-by-default pending headless approval routing) |
+| Secret storage backends | ✅ Working | `file` (0600 JSON, default) or `keyring` (libsecret, no plaintext at rest) via `RACK_SECRETS_BACKEND` |
 | Manager coordination | ⚠️ Limited | Basic task queue only; full delegation in backlog |
 
 ## Installation
