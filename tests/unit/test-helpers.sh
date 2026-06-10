@@ -826,6 +826,32 @@ assert_equals "600" "$_p55_perm" "meta: sidecar is mode 600"
 rm -rf "$_P55_HOME"
 echo ""
 
+# ─── P5-6: Config permission hardening (G2) ────────────────────────────────────
+echo "── P5-6: Config permission hardening ──"
+
+source "$LIB_DIR/helpers/security.sh"
+
+_P56_HOME=$(mktemp -d)
+printf '{}' > "$_P56_HOME/openclaw.json"; chmod 664 "$_P56_HOME/openclaw.json"
+printf '{}' > "$_P56_HOME/secrets.json"; chmod 600 "$_P56_HOME/secrets.json"
+
+_p56_changed=$(CONFIG_FILE="$_P56_HOME/openclaw.json" OPENCLAW_DIR="$_P56_HOME" secure_config_perms)
+
+# The 664 config is tightened to 600; the already-600 secrets file is untouched.
+_p56_cfg_mode=$(stat -c '%a' "$_P56_HOME/openclaw.json" 2>/dev/null || stat -f '%Lp' "$_P56_HOME/openclaw.json")
+assert_equals "600" "$_p56_cfg_mode" "perms: group/other-accessible config tightened to 600"
+echo "$_p56_changed" | grep -q "openclaw.json" && _p56_rep="yes" || _p56_rep="no"
+assert_equals "yes" "$_p56_rep" "perms: tightened file is reported"
+echo "$_p56_changed" | grep -q "secrets.json" && _p56_sec="reported" || _p56_sec="silent"
+assert_equals "silent" "$_p56_sec" "perms: already-600 file is left alone (never loosened)"
+
+# Idempotent: a second run is a no-op and reports nothing.
+_p56_again=$(CONFIG_FILE="$_P56_HOME/openclaw.json" OPENCLAW_DIR="$_P56_HOME" secure_config_perms)
+assert_equals "" "$_p56_again" "perms: idempotent (no-op on second run)"
+
+rm -rf "$_P56_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

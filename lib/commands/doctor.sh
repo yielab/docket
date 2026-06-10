@@ -329,6 +329,61 @@ PYEOF
     [[ "$stale_keys" -gt 0 ]] && echo "  ${DIM}Rotate keys older than ${RACK_KEY_MAX_AGE_DAYS:-90} days${RESET}"
   fi
 
+  # 14. Security gates (config hardening + exec-approval policy + daemon audit)
+  echo ""
+  echo -e "${BOLD}Security gates:${RESET}"
+
+  # Capture the daemon audit once; it owns issue-counting for its findings when
+  # available, so the config-perms check below doesn't double-count.
+  local audit_out; audit_out=$(_security_audit_report)
+  local audit_available=0; [[ -n "$audit_out" ]] && audit_available=1
+
+  # G2 — config-file hardening: openclaw.json must not be group/other-accessible.
+  local cfg_mode
+  cfg_mode=$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || stat -f '%Lp' "$CONFIG_FILE" 2>/dev/null || echo "")
+  if [[ -n "$cfg_mode" && "${cfg_mode: -2}" != "00" ]]; then
+    fail "  Config group/other-accessible (mode $cfg_mode): $CONFIG_FILE"
+    echo "    Another local user could change tool/auth policy. Fix: chmod 600 \"$CONFIG_FILE\""
+    issues=$(( issues + 1 ))
+  elif [[ -n "$cfg_mode" ]]; then
+    success "  Config perms: $cfg_mode (owner-only)"
+  fi
+
+  # G1 — exec-approval policy (advisory: gates are spec'd as Planned, so an
+  # inactive policy warns but does not fail the health check).
+  local gate_line gs_state gs_policy gs_counts
+  gate_line=$(_security_gate_report)
+  IFS='|' read -r gs_state gs_policy gs_counts <<< "$gate_line"
+  case "$gs_state" in
+    OK)    success "  Exec approvals: $gs_policy ($gs_counts)" ;;
+    OPEN)  warn "  Exec approvals: $gs_policy — host exec is ungated ($gs_counts)" ;;
+    UNSET) warn "  Exec approvals: not configured — gates inactive"
+           echo "    ${DIM}Apply defaults via rack install (spec: specs/functional/security-gates.spec.md)${RESET}" ;;
+    *)     dim "  Exec approvals: ${gs_policy:-status unavailable}" ;;
+  esac
+
+  # G1 — daemon security audit summary (config-perms finding excluded; rack owns it).
+  if [[ "$audit_available" -eq 1 ]]; then
+    local summary_line a_crit a_warn a_info
+    summary_line=$(printf '%s\n' "$audit_out" | head -1)
+    IFS='|' read -r a_crit a_warn a_info <<< "$summary_line"
+    if [[ "${a_crit:-0}" -gt 0 ]]; then
+      fail "  openclaw security audit: ${a_crit} critical, ${a_warn} warning(s)"
+      issues=$(( issues + a_crit ))
+      printf '%s\n' "$audit_out" | tail -n +2 | while IFS='|' read -r title remediation; do
+        [[ -z "$title" ]] && continue
+        echo "    ${RED}•${RESET} $title"
+        [[ -n "$remediation" ]] && echo "      ${DIM}fix: $remediation${RESET}"
+      done
+      echo "    ${DIM}Remediate: openclaw security audit --fix${RESET}"
+    elif [[ "${a_warn:-0}" -gt 0 ]]; then
+      warn "  openclaw security audit: ${a_warn} warning(s), 0 critical"
+      echo "    ${DIM}Details: openclaw security audit${RESET}"
+    else
+      success "  openclaw security audit: clean"
+    fi
+  fi
+
   # Summary
   echo ""
   if [[ "$issues" -eq 0 ]]; then
