@@ -2,11 +2,12 @@
 # Global configuration - paths, colors, models, Telegram mappings
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-OPENCLAW_DIR="$HOME/.openclaw"
-PROJECTS_DIR="$OPENCLAW_DIR/workspaces/projects"
-CONFIG_FILE="$OPENCLAW_DIR/openclaw.json"
-LOG_FILE="/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log"
-SITES_DIR="$HOME/Sites"
+# Overridable via environment for testing/CI; default to the standard locations.
+OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
+PROJECTS_DIR="${PROJECTS_DIR:-$OPENCLAW_DIR/workspaces/projects}"
+CONFIG_FILE="${CONFIG_FILE:-$OPENCLAW_DIR/openclaw.json}"
+LOG_FILE="${LOG_FILE:-/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log}"
+SITES_DIR="${SITES_DIR:-$HOME/Sites}"
 DEFAULT_MODEL="anthropic/claude-sonnet-4-6"
 META_FILE=".rack-meta.json"  # stored inside each project workspace
 
