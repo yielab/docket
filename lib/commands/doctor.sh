@@ -305,11 +305,18 @@ PYEOF
     done <<< "$budget_ids"
   fi
 
-  # 13. API key hygiene (age since add/rotation)
+  # 13. API key hygiene (backend + age since add/rotation)
   local key_report; key_report=$(_keys_age_report)
   if [[ -n "$key_report" ]]; then
     echo ""
     echo -e "${BOLD}API key hygiene:${RESET}"
+    local sec_backend; sec_backend=$(secrets_backend)
+    if [[ "$sec_backend" == "keyring" ]]; then
+      success "  Backend: keyring (values in OS keyring, not plaintext at rest)"
+    else
+      warn "  Backend: file — secrets are plaintext at rest in $OPENCLAW_DIR/secrets.json"
+      echo "    ${DIM}For at-rest protection: RACK_SECRETS_BACKEND=keyring (libsecret)${RESET}"
+    fi
     local stale_keys=0
     while IFS='|' read -r k_state k_name k_detail; do
       [[ -z "$k_name" ]] && continue
