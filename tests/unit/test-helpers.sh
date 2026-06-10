@@ -724,8 +724,9 @@ echo ""
 # ─── P5-4: Secret distribution is scoped to least privilege ────────────────────
 echo "── P5-4: Scoped secret distribution ──"
 
-# output.sh provides info() used by _sync_keys_to_agents.
+# output.sh provides info(); secrets.sh provides the backend used by the sync.
 source "$LIB_DIR/helpers/output.sh"
+source "$LIB_DIR/helpers/secrets.sh"
 
 # Hermetic OpenClaw home with two project agents on different providers.
 _P54_HOME=$(mktemp -d)
@@ -971,6 +972,59 @@ _p59_off=$(CONFIG_FILE="$_P59_HOME/openclaw.json" _isolation_status)
 assert_equals "off" "$_p59_off" "isolation: disable sets mode=off"
 
 rm -rf "$_P59_HOME"
+echo ""
+
+# ─── P5-10: Secret backend abstraction ─────────────────────────────────────────
+echo "── P5-10: Secret backend ──"
+
+source "$LIB_DIR/helpers/secrets.sh"
+
+# Dispatch: defaults to file; selects keyring only when secret-tool is present.
+_p510_def=$(RACK_SECRETS_BACKEND="" secrets_backend)
+assert_equals "file" "$_p510_def" "backend: defaults to file"
+
+# File backend round-trip (hermetic OPENCLAW_DIR).
+_P510_HOME=$(mktemp -d)
+RACK_KEY_VALUE="sk-file-xyz" OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_put "ANTHROPIC_API_KEY"
+_p510_get=$(OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_get "ANTHROPIC_API_KEY")
+assert_equals "sk-file-xyz" "$_p510_get" "backend(file): put/get round-trip"
+_p510_names=$(OPENCLAW_DIR="$_P510_HOME" secret_names)
+assert_equals "ANTHROPIC_API_KEY" "$_p510_names" "backend(file): names lists the key"
+OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_has "ANTHROPIC_API_KEY" && _p510_h="yes" || _p510_h="no"
+assert_equals "yes" "$_p510_h" "backend(file): secret_has true for stored key"
+_p510_perm=$(stat -c '%a' "$_P510_HOME/secrets.json" 2>/dev/null || stat -f '%Lp' "$_P510_HOME/secrets.json")
+assert_equals "600" "$_p510_perm" "backend(file): secrets.json is 0600"
+OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_del "ANTHROPIC_API_KEY"
+OPENCLAW_DIR="$_P510_HOME" secret_has "ANTHROPIC_API_KEY" && _p510_d="present" || _p510_d="gone"
+assert_equals "gone" "$_p510_d" "backend(file): secret_del removes the key"
+rm -rf "$_P510_HOME"
+
+# Keyring backend round-trip — only when a live keyring is reachable. Uses an
+# isolated service name so the real keyring isn't polluted; cleaned up after.
+_P510_SVC="rack-cli-test-$$"
+if command -v secret-tool >/dev/null 2>&1 \
+   && secret-tool store --label=probe service "$_P510_SVC" key PROBE <<<"x" >/dev/null 2>&1; then
+  secret-tool clear service "$_P510_SVC" key PROBE >/dev/null 2>&1
+  _P510_KHOME=$(mktemp -d)
+  _benv=(OPENCLAW_DIR="$_P510_KHOME" RACK_SECRETS_BACKEND=keyring RACK_KEYRING_SERVICE="$_P510_SVC")
+
+  _p510_kb=$(env "${_benv[@]}" RACK_SECRETS_BACKEND=keyring bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secrets_backend')
+  assert_equals "keyring" "$_p510_kb" "backend(keyring): selected when secret-tool live"
+
+  env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; RACK_KEY_VALUE="sk-kr-secret" secret_put OPENAI_API_KEY'
+  # Value must be retrievable from the keyring...
+  _p510_kget=$(env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secret_get OPENAI_API_KEY')
+  assert_equals "sk-kr-secret" "$_p510_kget" "backend(keyring): put/get via OS keyring"
+  # ...but the on-disk index must NOT contain the value (no plaintext at rest).
+  _p510_idxval=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('OPENAI_API_KEY',''))" "$_P510_KHOME/secrets.json")
+  assert_equals "" "$_p510_idxval" "backend(keyring): index stores no value (no plaintext at rest)"
+  # Cleanup keyring entry.
+  env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secret_del OPENAI_API_KEY' >/dev/null 2>&1
+  secret-tool clear service "$_P510_SVC" key OPENAI_API_KEY >/dev/null 2>&1
+  rm -rf "$_P510_KHOME"
+else
+  echo "  ${DIM}(keyring backend not validated — no live secret service in this environment)${RESET}"
+fi
 echo ""
 
 echo ""

@@ -10,10 +10,14 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 ---
 
-## Phase 0 — Security hardening (must precede a public "use this" recommendation)
+## Phase 0 — Security hardening (must precede a public "use this" recommendation) — ✅ complete
 
 > Agents execute commands and rack manages provider keys. Security is the difference between
 > "personal experiment" and "tool I'd run on a real machine."
+>
+> **Status: complete.** Every item below is shipped and tested. Two capabilities (exec-approval
+> enforcement and Docker isolation) ship **opt-in** by deliberate design — see the default-on
+> note under tool-approval gates for why on-by-default waits on per-agent headless routing.
 
 - ✅ **Eliminate code-injection in `keys.sh`** — all secret values now pass through the
   environment/argv into Python, never interpolated into source. Covered by an injection
@@ -35,9 +39,15 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
     (`enabled, mode: session`) so each agent's gated prompts reach its own channel, answerable
     with `/approve <id> allow-once|deny`; `session` mode avoids the cross-agent leakage a shared
     global target list would cause. Surfaced in `rack doctor` / `rack gates status`. Test P5-8.
-  - 🗓️ **Default-on + isolation** — with routing in place, flip enforcement on by default in
-    `rack install`; add per-agent workspace isolation via the sandbox tool policy / Docker
-    runtime, and explicit per-agent `targets` for headless (non-session) approval delivery.
+  - ✅ **Workspace isolation (opt-in)** — `rack gates isolate on` (Docker-gated) sets
+    `agents.defaults.sandbox` (`mode: non-main, scope: agent, workspaceAccess: rw`) so non-main
+    session tool execution runs in a per-agent container with only the workspace mounted.
+    Reversible (`isolate off`); surfaced in doctor/status. Test P5-9.
+  - 🗓️ **Default-on flip (deliberately deferred)** — enforcement and isolation ship **opt-in** by
+    design: `session`-mode routing only answers prompts during an interactive session, so a
+    headless/cron-triggered agent could be denied with no approver. Flipping `rack install` to
+    on-by-default waits on explicit per-agent `targets` for headless approval delivery (needs the
+    daemon to express per-agent routing without a shared global target list). Tracked, not blocking.
 - ✅ **Scoped secret distribution** — `rack keys` now syncs only the provider key an agent's
   configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
   non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
@@ -46,8 +56,13 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   credential (and re-syncs scoped), lifecycle timestamps are tracked in a 0600
   `secrets.meta.json` sidecar, and `rack doctor` flags keys older than the rotation
   threshold (default 90 days, `RACK_KEY_MAX_AGE_DAYS`). Covered by regression test P5-5.
-- 🗓️ **Secrets backend abstraction** — keep the 0600 JSON file as the default, but allow a
-  pluggable backend (OS keychain / `libsecret` / Vault) so keys aren't plaintext at rest.
+- ✅ **Secrets backend abstraction** — `rack keys` now goes through a pluggable backend
+  (`lib/helpers/secrets.sh`): `file` (default, 0600 `secrets.json`) or `keyring`
+  (`RACK_SECRETS_BACKEND=keyring`, libsecret) where values live in the OS keyring and
+  `secrets.json` keeps a names-only index (no plaintext at rest). Values never cross a process
+  boundary as argv; `rack doctor` reports the active backend and warns on plaintext-at-rest.
+  File-backend behaviour is byte-equivalent to before; keyring round-trip validated (P5-10).
+  macOS `security` / Vault backends are a documented follow-up.
 
 ## Phase 1 — Write-safety & reliability
 
