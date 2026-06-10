@@ -49,6 +49,15 @@ _gates_status() {
            echo "  Enable with: ${GREEN}rack gates enable${RESET}" ;;
     *)     dim "Status unavailable: ${gs_policy}" ;;
   esac
+
+  local route_line r_state r_mode
+  route_line=$(_approval_routing_status)
+  IFS='|' read -r r_state r_mode <<< "$route_line"
+  case "$r_state" in
+    on)    success "Approval routing: on (mode=${r_mode:-?})" ;;
+    off)   warn "Approval routing: off — prompts won't reach chat" ;;
+    *)     dim "Approval routing: not configured" ;;
+  esac
 }
 
 _gates_enable() {
@@ -81,6 +90,20 @@ _gates_enable() {
     applied-via-daemon) info "Applied via the running gateway (openclaw approvals set)" ;;
     applied-direct)     info "Wrote ~/.openclaw/exec-approvals.json directly (gateway not reached)" ;;
   esac
+
+  # G4 — wire the answer channel so fail-closed prompts are reachable.
+  local tg_count
+  if tg_count=$(apply_approval_routing); then
+    success "Approval routing on (mode=session) — prompts go to each agent's channel"
+    if [[ "${tg_count:-0}" -gt 0 ]]; then
+      echo "  ${tg_count} Telegram-bound agent(s) can approve with: /approve <id> allow-once|deny"
+    else
+      warn "No Telegram-bound agents — wire one (rack wire <id>) so prompts are answerable."
+    fi
+  fi
+
+  restart_gateway
+
   echo ""
   echo "  Verify:  ${GREEN}rack doctor${RESET}   ·   Tune:  ${GREEN}openclaw approvals allowlist add <glob>${RESET}"
   echo "  Disable: ${GREEN}rack gates disable${RESET}"
@@ -90,6 +113,8 @@ _gates_disable() {
   header "Disabling exec-approval gates"
   echo ""
   disable_exec_approval_gates || return 1
-  success "Reset gate defaults — daemon falls back to its tools.exec policy"
+  disable_approval_routing || true
+  restart_gateway
+  success "Reset gate defaults + approval routing — daemon falls back to tools.exec policy"
   echo "  ${DIM}Seeded allowlists are left in place (harmless; reused if re-enabled).${RESET}"
 }

@@ -31,9 +31,13 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
     non-allowlisted commands (`rm`, `dd`, `docker`, …) prompt and — absent an approver — are
     denied (fail-closed). Idempotent, non-clobbering, reversible (`rack gates disable`).
     Opt-in until approval routing lands so fail-closed is answerable. Test P5-7.
-  - 🗓️ **Approval routing + isolation** — route approval prompts to the agent's Telegram
-    binding (`approvals.exec.targets` + `/approve`), then flip enforcement on by default; add
-    per-agent workspace isolation via the sandbox tool policy / Docker runtime.
+  - ✅ **Approval routing** — `rack gates enable` also writes `approvals.exec`
+    (`enabled, mode: session`) so each agent's gated prompts reach its own channel, answerable
+    with `/approve <id> allow-once|deny`; `session` mode avoids the cross-agent leakage a shared
+    global target list would cause. Surfaced in `rack doctor` / `rack gates status`. Test P5-8.
+  - 🗓️ **Default-on + isolation** — with routing in place, flip enforcement on by default in
+    `rack install`; add per-agent workspace isolation via the sandbox tool policy / Docker
+    runtime, and explicit per-agent `targets` for headless (non-session) approval delivery.
 - ✅ **Scoped secret distribution** — `rack keys` now syncs only the provider key an agent's
   configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
   non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
