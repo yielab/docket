@@ -95,14 +95,20 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 - 🗓️ **Bash/OS matrix** — Bash 4.x/5.x + a macOS runner; folded into Phase 3 (portability),
   where the `service_ctl` abstraction and GNU-ism removal make a green macOS run achievable.
 
-## Phase 3 — Portability
+## Phase 3 — Portability — 🚧 mostly complete
 
 > macOS is a large share of the dev-tool audience; today rack is Linux-only.
 
-- 🗓️ **Service abstraction** — a `service_ctl` layer over the 11 `systemctl --user` call
-  sites (systemd | launchd | foreground), so macOS and WSL work.
-- 🗓️ **Remove GNU-isms** — replace `find -printf` and similar GNU-only flags with portable
-  equivalents; fail with a clear message on Bash < 4.
+- ✅ **Service abstraction** — `service_ctl` / `service_manager` / `service_hint` (service.sh)
+  now own every gateway call and user-facing hint; the ~20 scattered `systemctl --user`
+  references collapsed to one place. On systemd, behaviour is unchanged; off systemd it degrades
+  cleanly (no crash, platform-appropriate guidance). Overridable via `RACK_SERVICE_MANAGER`. P7-1.
+- ✅ **Remove GNU-isms** — `find -printf` → `newest_file`; GNU `sed -i` → `portable_sed_i`;
+  `readlink -f` bootstrap → a portable symlink-follow loop; portable `file_mtime`/`file_size`/
+  `file_mode` wrappers (GNU vs BSD `stat`). Bash < 4 now fails fast with a clear message. P7-1.
+- 🚧 **CI matrix** — a macOS job runs the unit suite under brewed Bash 4+ (informational /
+  `continue-on-error` until reliably green); promote to a required gate once proven. A real
+  end-to-end macOS run also needs the OpenClaw daemon's own launchd support.
 
 ## Phase 4 — Operability & observability
 

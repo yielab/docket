@@ -299,7 +299,7 @@ _print_wire_instructions() {
   echo "  1. Create group in Telegram, add @claw_x9m_bot, send a message"
   echo "  2. openclaw config set 'channels.telegram.groups.<ID>' '{\"requireMention\": false}'"
   echo "  3. Add to bindings in ~/.openclaw/openclaw.json"
-  echo "  4. systemctl --user restart openclaw-gateway.service"
+  echo "  4. $(service_hint restart)"
 }
 
 _print_summary() {

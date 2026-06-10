@@ -49,16 +49,16 @@ cmd_doctor() {
 
   # 5. Gateway service
   local svc_status="unknown"
-  svc_status=$(systemctl --user is-active openclaw-gateway.service 2>/dev/null) || true
+  svc_status=$(service_ctl is-active 2>/dev/null) || true
+  [[ -z "$svc_status" ]] && svc_status="unknown"
   if [[ "$svc_status" == "active" ]]; then
     success "Gateway service: active"
-    if [[ "$DEBUG" == "1" ]]; then
-      systemctl --user status openclaw-gateway.service --no-pager -l 2>/dev/null \
-        | head -12 | sed 's/^/  /'
+    if [[ "$DEBUG" == "1" && "$(service_manager)" == "systemd" ]]; then
+      service_ctl status 2>/dev/null | head -12 | sed 's/^/  /'
     fi
   else
     fail "Gateway service: $svc_status"
-    echo "  Run: systemctl --user start openclaw-gateway.service"
+    echo "  Run: $(service_hint start)"
     issues=$(( issues + 1 ))
   fi
 

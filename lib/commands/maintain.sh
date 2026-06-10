@@ -175,7 +175,7 @@ _maintain_check() {
     sync_session_key "$id" "$canonical_key"
     # Also write the canonical key back to SOUL.md so both sources agree
     if [[ -f "$workspace/SOUL.md" ]]; then
-      sed -i "s|^Session Key:.*|Session Key: $canonical_key|" "$workspace/SOUL.md" 2>/dev/null \
+      portable_sed_i "s|^Session Key:.*|Session Key: $canonical_key|" "$workspace/SOUL.md" \
         || warn "  Could not update SOUL.md session key"
     fi
     success "  ✓ Session key synced"
@@ -380,7 +380,7 @@ _maintain_rebuild() {
   info "Agent fully regenerated from metadata"
   echo ""
   warn "Restart gateway to apply changes:"
-  echo "  ${GREEN}systemctl --user restart openclaw-gateway${RESET}"
+  echo "  ${GREEN}$(service_hint restart)${RESET}"
 }
 
 _maintain_sessions() {

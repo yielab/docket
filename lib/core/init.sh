@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # Core initialization - strict mode and debug settings
 
+# rack uses Bash 4+ features (associative arrays, ${var,,}, etc.). macOS ships
+# Bash 3.2 by default — fail early with a clear message instead of cryptic errors.
+if [[ -z "${BASH_VERSINFO:-}" || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "rack requires Bash 4.0+ (found ${BASH_VERSION:-unknown})." >&2
+  echo "  On macOS: brew install bash, then run rack with the newer bash." >&2
+  exit 1
+fi
+
 # Strict mode for better error handling
 set -euo pipefail
 
