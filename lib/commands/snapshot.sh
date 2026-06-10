@@ -31,8 +31,11 @@ except Exception:
 import json, os, sys, glob, re
 
 config_path, projects_dir, openclaw_dir = sys.argv[1:]
-with open(config_path) as f:
-    config = json.load(f)
+try:
+    with open(config_path) as f:
+        config = json.load(f)
+except Exception:
+    config = {}
 
 bindings = config.get("bindings", [])
 agents_list = config.get("agents", {}).get("list", [])

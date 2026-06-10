@@ -667,7 +667,18 @@ echo ""
 # ─── P5-2: Snapshot command ────────────────────────────────────────────────────
 echo "── P5-2: Snapshot command ──"
 
-_p52_out=$(./bin/rack snapshot 2>/dev/null)
+# Hermetic fixture: a temp OpenClaw home with one registered project agent so the
+# command works without a real ~/.openclaw (e.g. in CI). Paths are env-overridable.
+_P52_HOME=$(mktemp -d)
+mkdir -p "$_P52_HOME/workspaces/projects/testagent"
+cat > "$_P52_HOME/workspaces/projects/testagent/.rack-meta.json" <<'JSON'
+{"name":"Test Agent","type":"repo","model":"anthropic/claude-sonnet-4-6"}
+JSON
+cat > "$_P52_HOME/openclaw.json" <<'JSON'
+{"agents":{"list":[{"id":"testagent"}]},"bindings":[],"channels":{}}
+JSON
+
+_p52_out=$(OPENCLAW_DIR="$_P52_HOME" CONFIG_FILE="$_P52_HOME/openclaw.json" PROJECTS_DIR="$_P52_HOME/workspaces/projects" ./bin/rack snapshot 2>/dev/null)
 _p52_valid=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok')" 2>/dev/null || echo "fail")
 assert_equals "ok" "$_p52_valid" "snapshot: output is valid JSON"
 
@@ -676,6 +687,8 @@ assert_equals "yes" "$_p52_has_agents" "snapshot: agents array present"
 
 _p52_gateway=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('present' if 'gateway' in d else 'missing')" 2>/dev/null || echo "missing")
 assert_equals "present" "$_p52_gateway" "snapshot: gateway field present"
+
+rm -rf "$_P52_HOME"
 echo ""
 
 echo ""
