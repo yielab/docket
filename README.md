@@ -7,11 +7,39 @@
 
 A modular Bash CLI for managing OpenClaw autonomous agents with project isolation and workflow automation. Personal R&D project exploring agent orchestration patterns, spec-driven development methodology, and cost-tracking tooling for production-style multi-agent setups.
 
+## Features
+
+**Agent lifecycle & isolation**
+- 🚀 **One-command bootstrap** — `rack install` sets up OpenClaw and a 6-member specialist team
+- 📦 **Project agents** — create, inspect, maintain, and delete agents, each with a dedicated, permission-locked workspace (`700`/`600`)
+- 🔒 **Session-based isolation** — `agent:<id>:<project>` keys keep memory and context from leaking across projects
+
+**Cost control & model routing**
+- 🎚️ **Tiered model profiles** — economy (Haiku), standard (Sonnet), premium (Opus), switchable per agent
+- 💰 **Budget caps & runaway detection** — set a per-agent USD cap; agents auto-pause when it's hit
+- 📊 **Cost reporting** — token usage and dollar cost, per agent or aggregated
+
+**Team & automation**
+- 👥 **Specialist team** — programmer, reviewer, tester, knowledge, security, and manager roles, shared across projects
+- 📋 **Task delegation** — queue work for the manager with `rack team delegate` and track it through to done
+- ⚙️ **Lobster workflows** — deterministic YAML pipelines for repeatable, token-efficient runs
+
+**Operations**
+- 🔑 **Centralized API keys** — set once with `rack keys`, auto-synced to every agent
+- 📱 **Telegram integration** — manage agents and approve actions from your phone
+- 🩺 **Health & diagnostics** — `rack doctor` and `rack maintain check` detect drift, budget overruns, and stale sessions; `rack snapshot` emits JSON system state for dashboards/CI
+
+**Engineering discipline**
+- 📐 **Spec-driven development** — every command and feature is backed by an RFC 2119 specification (100% spec coverage, checked by `validate-specs.sh` / `spec-coverage.sh`)
+- 🧩 **Modular Bash architecture** — 21 commands and 9 reusable helpers, covered by 77 unit and 60 integration tests
+
+See the [Project Status](#project-status) table below for the maturity of each feature, and the [Command Reference](#command-reference) for full usage.
+
 ## Motivation
 
 I built rack to simplify OpenClaw agent orchestration across multiple projects. Instead of manually editing JSON configs and managing workspace directories, rack provides a unified interface with session-based project isolation and automated workspace provisioning.
 
-Rack is also a deliberate exploration of patterns and disciplines outside my day-to-day paid work, which has mostly been PHP/Symfony/Drupal for US agencies. Specifically: spec-driven development (features specified before implementation, RFC 2119 keywords, a coverage tool that reports honest gaps), modular Bash architecture at scale, and multi-agent coordination patterns with cost-tracking and tiered model routing.
+Rack is also a deliberate exploration of patterns and disciplines outside my day-to-day paid work. Specifically: spec-driven development (features specified before implementation, RFC 2119 keywords, a coverage tool that reports honest gaps), modular Bash architecture at scale, and multi-agent coordination patterns with cost-tracking and tiered model routing.
 
 ## Project Status
 
@@ -76,7 +104,7 @@ rack delete myproject
 
 ## Architecture
 
-The project consists of ~8,100 lines of Bash across the CLI and test suite (~8,800 counting SSD tooling and installers):
+The project consists of ~7,200 lines of Bash across the CLI and test suite (~7,800 counting SSD tooling and installers):
 
 Why Bash: rack runs anywhere with Bash 4+ — no runtime install, no compilation step, no dependency hell. The trade-off is verbosity at this size; if rack grows past 10,000 lines I'd migrate the core to Go. The current scope justifies staying in Bash.
 
@@ -86,8 +114,8 @@ rack-cli/
 ├── lib/
 │   ├── core/                        # Init, config, routing (3 files)
 │   ├── helpers/                     # Reusable utilities (9 files)
-│   ├── commands/                    # 22 command implementations
-│   └── commands/experimental/       # 3 experimental files (RACK_EXPERIMENTAL=1)
+│   ├── commands/                    # 21 command implementations
+│   └── commands/experimental/       # 1 experimental command (RACK_EXPERIMENTAL=1)
 └── tests/
     ├── unit/                        # 77 unit tests (100% passing)
     ├── test-lifecycle.sh            # 12 integration scenarios (60 assertions)
@@ -226,7 +254,7 @@ Rack is where I'm practicing spec-driven development as a discipline: writing th
    ./scripts/spec-coverage.sh     # Report command/feature/test coverage
    ```
 
-   `validate-specs.sh` passes all 14 specs cleanly; `spec-coverage.sh` reports **100% command coverage (22/22), 100% feature coverage (10/10), 100% of tracked specs test-backed**. "Covered" here means a feature has a structured, validated spec — not that every feature is fully built: `security-gates`, for example, is specified but marked *Planned*, because the tool-approval gates aren't wired up yet. The tooling reports honestly (a heading-level spec, not a passing mention), so the number reflects real specs.
+   `validate-specs.sh` passes all 14 specs cleanly; `spec-coverage.sh` reports **100% command coverage (21/21), 100% feature coverage (10/10), 100% of tracked specs test-backed**. "Covered" here means a feature has a structured, validated spec — not that every feature is fully built: `security-gates`, for example, is specified but marked *Planned*, because the tool-approval gates aren't wired up yet. The tooling reports honestly (a heading-level spec, not a passing mention), so the number reflects real specs.
 
 4. **CI runs `validate-specs.sh` on every push** (currently advisory/non-blocking) alongside the unit tests. Making spec validation a blocking CI gate is a tracked next step (see [What's Next](#whats-next)).
 
