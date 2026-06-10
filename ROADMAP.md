@@ -18,9 +18,17 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 - ✅ **Eliminate code-injection in `keys.sh`** — all secret values now pass through the
   environment/argv into Python, never interpolated into source. Covered by an injection
   regression test (P5-3) that feeds a hostile value and asserts it is stored as data.
-- 🗓️ **Enforced tool-approval gates** — implement [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md):
-  gate dangerous operations (`rm`, `git push`, `docker stop`) behind approval, with an audit
-  trail, and have `rack install` apply them by default.
+- 🚧 **Tool-approval gates** — implement [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
+  on the daemon's native exec-approval + audit primitives.
+  - ✅ **Gate status is visible** — `rack doctor` reports the exec-approval policy
+    (`security`/`ask`/`askFallback`, per-agent allowlist counts) and an `openclaw security audit`
+    summary with any critical findings.
+  - ✅ **State files hardened** — `rack install` and `rack doctor` ensure `openclaw.json` /
+    `secrets.json` are `600` (a writable config lets another local user rewrite tool/auth policy).
+  - 🗓️ **Enforcement** — `rack install` writes conservative exec-approval defaults
+    (`security: allowlist`, `ask: on-miss`, `askFallback: deny`) so dangerous ops (`rm`,
+    `git push`, `docker stop`) prompt by default, with approval routed to the agent's Telegram
+    binding and per-agent workspace isolation via the sandbox tool policy.
 - ✅ **Scoped secret distribution** — `rack keys` now syncs only the provider key an agent's
   configured model needs (an `anthropic/…` agent gets `ANTHROPIC_API_KEY`, not every key);
   non-provider/custom secrets are still shared. Writes are atomic and preserve user-authored
