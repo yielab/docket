@@ -43,8 +43,6 @@ such as `rack profile`, `rack scope`, and `rack mode`.
 | `budgetUsd` | number | No | `profile --budget` | Per-agent spend cap in USD |
 | `paused` | boolean | No | `doctor`, `profile` | Whether the agent is paused (e.g. budget exceeded) |
 | `pausedReason` | string | No | `doctor`, `profile` | Human-readable reason the agent was paused |
-| `terminalMode` | boolean | No | `mode` | Whether the agent runs in local terminal mode |
-| `useApi` | boolean | No | `mode` | Whether the agent uses the API backend (default `true`) |
 
 ## Schema
 
@@ -61,9 +59,7 @@ such as `rack profile`, `rack scope`, and `rack mode`.
   "projectKey": "string",
   "budgetUsd": 0,
   "paused": false,
-  "pausedReason": "string (optional)",
-  "terminalMode": false,
-  "useApi": true
+  "pausedReason": "string (optional)"
 }
 ```
 

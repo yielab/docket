@@ -82,13 +82,11 @@ source "$LIB_DIR/commands/install.sh"
 source "$LIB_DIR/commands/help.sh"
 source "$LIB_DIR/commands/team.sh"
 source "$LIB_DIR/commands/maintain.sh"
-source "$LIB_DIR/commands/mode.sh"
 source "$LIB_DIR/commands/context.sh"
 source "$LIB_DIR/commands/snapshot.sh"
 source "$LIB_DIR/commands/serve.sh"
 # Experimental commands — gate behind RACK_EXPERIMENTAL=1
 if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
-  source "$LIB_DIR/commands/experimental/terminal.sh"
   source "$LIB_DIR/commands/experimental/browser.sh"
 fi
 

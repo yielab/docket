@@ -166,19 +166,6 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Profile change confirmation or current profile
 **Return**: 0 on success, 2 if not found, 4 on invalid tier
 
-#### rack mode
-**Purpose**: Show or set an agent's execution backend
-**Syntax**: `rack mode [agent-id] [mode]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-- `mode` (optional): `api`, `terminal`, or `status` (shows current if omitted)
-**Modes**:
-- `api`: Use the API backend (default; consumes tokens)
-- `terminal`: Use local terminal mode (zero API cost)
-- `status`: Show the current mode without changing it
-**Output**: Current or updated mode
-**Return**: 0 on success, 2 if not found, 4 on invalid mode
-
 #### rack scope
 **Purpose**: Manage session keys for project isolation
 **Syntax**: `rack scope <agent-id> <action> [value]`
