@@ -1071,6 +1071,21 @@ assert_equals "fallback" "$_p61_val" "read: corrupt file still returns default"
 rm -rf "$_P61"
 echo ""
 
+# ─── P6-2: Versioning ──────────────────────────────────────────────────────────
+echo "── P6-2: Versioning ──"
+
+_p62_ver=$(cat "$LIB_DIR/../VERSION" 2>/dev/null)
+assert_not_empty "$_p62_ver" "version: VERSION file present and non-empty"
+_p62_out=$(./bin/rack --version 2>/dev/null)
+assert_equals "rack $_p62_ver" "$_p62_out" "version: 'rack --version' matches VERSION file"
+_p62_v2=$(./bin/rack -V 2>/dev/null)
+assert_equals "rack $_p62_ver" "$_p62_v2" "version: '-V' alias matches"
+# CHANGELOG documents the current version.
+grep -q "\[$_p62_ver\]" "$LIB_DIR/../CHANGELOG.md" && _p62_cl="yes" || _p62_cl="no"
+assert_equals "yes" "$_p62_cl" "version: CHANGELOG has an entry for $_p62_ver"
+
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
