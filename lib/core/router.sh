@@ -39,6 +39,7 @@ route_command() {
     cost|usage)        cmd_cost     "$@" ;;
     doctor|check)      cmd_doctor   "$@" ;;
     gates|security)    cmd_gates    "$@" ;;
+    audit)             cmd_audit    "$@" ;;
     snapshot|export)   cmd_snapshot "$@" ;;
     serve)             cmd_serve    "$@" ;;
     help|--help|-h)    cmd_help     "$@" ;;

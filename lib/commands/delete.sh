@@ -44,6 +44,7 @@ cmd_delete() {
   fi
 
   restart_gateway
+  audit_log "agent.delete" "$id"
   success "Done. Project '$id' deleted."
 }
 
