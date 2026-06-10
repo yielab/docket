@@ -721,6 +721,67 @@ assert_equals "600" "$_p53_perm" "keys: secrets file is mode 600"
 rm -f "$_P53_SECRETS" "$_P53_MARKER"
 echo ""
 
+# ─── P5-4: Secret distribution is scoped to least privilege ────────────────────
+echo "── P5-4: Scoped secret distribution ──"
+
+# output.sh provides info() used by _sync_keys_to_agents.
+source "$LIB_DIR/helpers/output.sh"
+
+# Hermetic OpenClaw home with two project agents on different providers.
+_P54_HOME=$(mktemp -d)
+mkdir -p "$_P54_HOME/workspaces/projects/anth-agent"
+mkdir -p "$_P54_HOME/workspaces/projects/oai-agent"
+cat > "$_P54_HOME/workspaces/projects/anth-agent/.rack-meta.json" <<'JSON'
+{"name":"Anthropic Agent","type":"repo","model":"anthropic/claude-sonnet-4-6"}
+JSON
+cat > "$_P54_HOME/workspaces/projects/oai-agent/.rack-meta.json" <<'JSON'
+{"name":"OpenAI Agent","type":"repo","model":"openai/gpt-4o"}
+JSON
+
+# A user-authored line in one .env must survive the rewrite.
+echo "MY_CUSTOM_FLAG=keepme" > "$_P54_HOME/workspaces/projects/anth-agent/.env"
+
+# Secrets: two provider keys + one custom (shared) secret.
+cat > "$_P54_HOME/secrets.json" <<'JSON'
+{"ANTHROPIC_API_KEY":"sk-ant-aaa","OPENAI_API_KEY":"sk-oai-bbb","SHARED_TOKEN":"shared-ccc"}
+JSON
+chmod 600 "$_P54_HOME/secrets.json"
+
+OPENCLAW_DIR="$_P54_HOME" PROJECTS_DIR="$_P54_HOME/workspaces/projects" \
+  _sync_keys_to_agents >/dev/null 2>&1
+
+_p54_anth=$(cat "$_P54_HOME/workspaces/projects/anth-agent/.env")
+_p54_oai=$(cat "$_P54_HOME/workspaces/projects/oai-agent/.env")
+
+# Anthropic agent: gets its own provider key, NOT OpenAI's.
+echo "$_p54_anth" | grep -q '^ANTHROPIC_API_KEY=' && _p54_a1="yes" || _p54_a1="no"
+assert_equals "yes" "$_p54_a1" "scoped: anthropic agent receives ANTHROPIC_API_KEY"
+echo "$_p54_anth" | grep -q '^OPENAI_API_KEY=' && _p54_a2="leaked" || _p54_a2="absent"
+assert_equals "absent" "$_p54_a2" "scoped: anthropic agent does NOT receive OPENAI_API_KEY"
+
+# OpenAI agent: mirror image.
+echo "$_p54_oai" | grep -q '^OPENAI_API_KEY=' && _p54_o1="yes" || _p54_o1="no"
+assert_equals "yes" "$_p54_o1" "scoped: openai agent receives OPENAI_API_KEY"
+echo "$_p54_oai" | grep -q '^ANTHROPIC_API_KEY=' && _p54_o2="leaked" || _p54_o2="absent"
+assert_equals "absent" "$_p54_o2" "scoped: openai agent does NOT receive ANTHROPIC_API_KEY"
+
+# Shared (non-provider) secret reaches both agents.
+echo "$_p54_anth" | grep -q '^SHARED_TOKEN=' && _p54_s1="yes" || _p54_s1="no"
+echo "$_p54_oai" | grep -q '^SHARED_TOKEN=' && _p54_s2="yes" || _p54_s2="no"
+assert_equals "yes" "$_p54_s1" "scoped: shared secret reaches anthropic agent"
+assert_equals "yes" "$_p54_s2" "scoped: shared secret reaches openai agent"
+
+# User-authored line is preserved.
+echo "$_p54_anth" | grep -q '^MY_CUSTOM_FLAG=keepme' && _p54_keep="yes" || _p54_keep="no"
+assert_equals "yes" "$_p54_keep" "scoped: user-authored .env line is preserved"
+
+# .env files are mode 600.
+_p54_perm=$(stat -c '%a' "$_P54_HOME/workspaces/projects/anth-agent/.env" 2>/dev/null || stat -f '%Lp' "$_P54_HOME/workspaces/projects/anth-agent/.env" 2>/dev/null)
+assert_equals "600" "$_p54_perm" "scoped: synced .env is mode 600"
+
+rm -rf "$_P54_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

@@ -29,7 +29,8 @@ ${BOLD}Storage Location (Single Source of Truth):${RESET}
 
   All API keys are stored in ONE file with secure permissions (600).
   Keys are automatically synced to:
-    • Agent workspaces (.env files)
+    • Agent workspaces (.env files) — scoped: each agent gets only the
+      provider key its model needs (least privilege)
     • OpenClaw gateway (via environment)
     • Shell environment (via 'export' command)
 
@@ -215,7 +216,33 @@ PYEOF
   restart_gateway
 }
 
-# Sync secrets.json to all agent .env files
+# Determine an agent's model provider from its .rack-meta.json.
+# Models are stored as "<provider>/<model>" (e.g. anthropic/claude-sonnet-4-6),
+# so the provider is the prefix. Falls back to the default model's provider when
+# the agent has no recorded model.
+# Usage: _agent_provider <workspace-dir>  ->  echoes provider (e.g. "anthropic")
+_agent_provider() {
+  local workspace="$1"
+  local meta="$workspace/.rack-meta.json"
+  local model=""
+  if [[ -f "$meta" ]]; then
+    model=$(python3 -c "import json,sys
+try:
+    print(json.load(open(sys.argv[1])).get('model','') or '')
+except Exception:
+    print('')" "$meta" 2>/dev/null || echo "")
+  fi
+  [[ -z "$model" ]] && model="$DEFAULT_MODEL"
+  printf '%s' "${model%%/*}"
+}
+
+# Sync secrets.json to all agent .env files, scoped to least privilege.
+#
+# Each agent receives only the provider API key its configured model needs
+# (an anthropic agent gets ANTHROPIC_API_KEY, not OPENAI_API_KEY, etc.). Any
+# secret whose name is not a known provider key is treated as a shared secret
+# and synced to every agent. This limits the blast radius if one agent
+# workspace is compromised — it no longer exposes every provider's key.
 _sync_keys_to_agents() {
   local secrets_file="$OPENCLAW_DIR/secrets.json"
 
@@ -248,47 +275,73 @@ _sync_keys_to_agents() {
   local count=0
   for workspace in "${workspaces[@]}"; do
     local env_file="$workspace/.env"
+    local provider
+    provider=$(_agent_provider "$workspace")
 
-    # Create/update .env with secrets (paths via argv; secrets read inside Python,
-    # never interpolated into source)
-    python3 - "$secrets_file" "$env_file" <<'EOF'
+    # Create/update .env, scoped to the agent's provider. Paths and provider
+    # arrive via argv; secrets are read inside Python (never interpolated into
+    # source). The write is atomic (tmp + os.replace) and mode 0600.
+    python3 - "$secrets_file" "$env_file" "$provider" <<'EOF'
 import json, os, sys
 
-secrets_path, env_file = sys.argv[1], sys.argv[2]
+secrets_path, env_file, provider = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(secrets_path) as f:
-    secrets = json.load(f)
+    all_secrets = json.load(f)
 
-# Read existing .env if present
-existing_lines = []
+# Known provider API keys -> the provider that needs them. A secret not in this
+# map is a custom/shared secret and goes to every agent.
+PROVIDER_KEYS = {
+    "ANTHROPIC_API_KEY": "anthropic",
+    "OPENAI_API_KEY": "openai",
+    "GOOGLE_AI_API_KEY": "google",
+    "OPENROUTER_API_KEY": "openrouter",
+}
+
+def needed(name):
+    owner = PROVIDER_KEYS.get(name)
+    return True if owner is None else owner == provider
+
+scoped = {k: v for k, v in all_secrets.items() if needed(k)}
+
+# Preserve user-authored lines: anything that isn't a managed secret assignment
+# or one of our header comments survives the rewrite.
+preserved = []
 if os.path.exists(env_file):
-    with open(env_file, 'r') as f:
-        existing_lines = [line.rstrip() for line in f if not any(line.startswith(k + '=') for k in secrets.keys())]
+    with open(env_file) as f:
+        for raw in f:
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+            if not stripped:
+                continue
+            key = stripped.split("=", 1)[0].strip() if "=" in stripped else ""
+            if key in all_secrets:
+                continue  # drop any managed secret line (scoped or not)
+            if stripped.startswith("#") and (
+                "Agent Environment Variables" in stripped
+                or "Managed by rack keys" in stripped
+                or "User-defined (preserved)" in stripped
+            ):
+                continue
+            preserved.append(line)
 
-# Write new .env
-with open(env_file, 'w') as f:
-    # Keep non-secret lines
-    for line in existing_lines:
-        if line.strip() and not line.strip().startswith('#'):
-            continue  # Remove old non-comment content
-        if line.strip():
-            f.write(line + '\n')
-
-    # Add header if file was empty
-    if not existing_lines or not any('Agent Environment' in line for line in existing_lines):
-        f.write('# Agent Environment Variables\n')
-        f.write('# Managed by rack keys - do not edit manually\n\n')
-
-    # Write all secrets
-    for key, value in secrets.items():
-        f.write(f'{key}={value}\n')
-
-os.chmod(env_file, 0o600)
+tmp = env_file + ".tmp"
+with open(tmp, "w") as f:
+    f.write("# Agent Environment Variables\n")
+    f.write("# Managed by rack keys - do not edit secret lines manually\n\n")
+    for key, value in scoped.items():
+        f.write(f"{key}={value}\n")
+    if preserved:
+        f.write("\n# User-defined (preserved)\n")
+        for line in preserved:
+            f.write(line + "\n")
+os.chmod(tmp, 0o600)
+os.replace(tmp, env_file)
 EOF
 
     ((count++))
   done
 
-  [[ $count -gt 0 ]] && info "Synced keys to $count agent workspace(s)"
+  [[ $count -gt 0 ]] && info "Synced keys to $count agent workspace(s) (scoped per provider)"
 }
 
 # Interactive setup wizard
