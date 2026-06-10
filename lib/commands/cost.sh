@@ -1,9 +1,49 @@
 #!/usr/bin/env bash
 # Command: cost
 
+# Machine-readable per-agent cost (rack cost --json), backed by the incremental
+# cost index. Emits {agents:[{id,model,input,output,costUsd,turns,budgetUsd}],totalUsd}.
+_cost_json() {
+  local ids; ids=$(project_ids)
+  {
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      local model budget cost_data c_in c_out c_cr c_cw c_cost c_turns
+      model=$(meta_get "$pid" "model" "$DEFAULT_MODEL")
+      budget=$(meta_get "$pid" "budgetUsd" "")
+      cost_data=$(_aggregate_cost "$pid")
+      IFS='|' read -r c_in c_out c_cr c_cw c_cost c_turns <<< "$cost_data"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$pid" "$model" "$c_in" "$c_out" "$c_cost" "$c_turns" "$budget"
+    done <<< "$ids"
+  } | python3 -c '
+import json, sys
+agents, total = [], 0.0
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    pid, model, c_in, c_out, c_cost, c_turns, budget = line.split("\t")
+    cost = float(c_cost or 0)
+    total += cost
+    agents.append({
+        "id": pid, "model": model,
+        "input": int(c_in or 0), "output": int(c_out or 0),
+        "costUsd": round(cost, 6), "turns": int(c_turns or 0),
+        "budgetUsd": (float(budget) if budget and budget != "0" else None),
+    })
+print(json.dumps({"agents": agents, "totalUsd": round(total, 6)}, indent=2))
+'
+}
+
 cmd_cost() {
   local id="${1:-}"
   local agents_dir="$OPENCLAW_DIR/agents"
+
+  if [[ "$id" == "--json" ]]; then
+    _cost_json
+    return 0
+  fi
 
   # If an ID is given, show cost for that project only; otherwise show all
   if [[ -n "$id" ]]; then

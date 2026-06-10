@@ -374,34 +374,87 @@ _show_agent_cost() {
   fi
 }
 
+# Aggregate token usage/cost across an agent's session JSONL files.
+# Uses an incremental index (.cost-index.json) keyed by each file's (mtime, size):
+# unchanged files are read from cache, so a call costs O(changed files) of parsing
+# rather than O(all history). RACK_NO_COST_INDEX=1 forces a full recompute.
+# Output: input|output|cacheRead|cacheWrite|cost|turns
 _aggregate_cost() {
   local id="$1"
   local sessions_dir="$OPENCLAW_DIR/agents/$id/sessions"
+  local index_path="$OPENCLAW_DIR/agents/$id/.cost-index.json"
 
-  python3 - "$sessions_dir" <<'PY' 2>/dev/null || echo "0|0|0|0|0.0|0"
+  python3 - "$sessions_dir" "$index_path" <<'PY' 2>/dev/null || echo "0|0|0|0|0.0|0"
 import json, sys, os, glob
 
-sessions_dir = sys.argv[1]
-total = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "cost": 0.0, "turns": 0}
+sessions_dir, index_path = sys.argv[1], sys.argv[2]
+use_index = os.environ.get("RACK_NO_COST_INDEX") != "1"
 
-if os.path.isdir(sessions_dir):
-    for f in glob.glob(os.path.join(sessions_dir, "*.jsonl")):
-        with open(f) as fh:
+index = {}
+if use_index:
+    try:
+        with open(index_path) as fh:
+            index = json.load(fh)
+    except Exception:
+        index = {}
+
+def parse_file(path):
+    t = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "cost": 0.0, "turns": 0}
+    try:
+        with open(path) as fh:
             for line in fh:
                 try:
                     data = json.loads(line)
-                    msg = data.get("message", {})
-                    usage = msg.get("usage", {}) if isinstance(msg, dict) else {}
-                    if usage:
-                        total["input"] += usage.get("input", 0)
-                        total["output"] += usage.get("output", 0)
-                        total["cacheRead"] += usage.get("cacheRead", 0)
-                        total["cacheWrite"] += usage.get("cacheWrite", 0)
-                        cost = usage.get("cost", {})
-                        total["cost"] += cost.get("total", 0) if isinstance(cost, dict) else 0
-                        total["turns"] += 1
-                except (json.JSONDecodeError, KeyError):
-                    pass
+                except Exception:
+                    continue
+                msg = data.get("message", {})
+                usage = msg.get("usage", {}) if isinstance(msg, dict) else {}
+                if usage:
+                    t["input"] += usage.get("input", 0)
+                    t["output"] += usage.get("output", 0)
+                    t["cacheRead"] += usage.get("cacheRead", 0)
+                    t["cacheWrite"] += usage.get("cacheWrite", 0)
+                    cost = usage.get("cost", {})
+                    t["cost"] += cost.get("total", 0) if isinstance(cost, dict) else 0
+                    t["turns"] += 1
+    except Exception:
+        pass
+    return t
+
+total = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "cost": 0.0, "turns": 0}
+seen, changed = set(), False
+if os.path.isdir(sessions_dir):
+    for f in glob.glob(os.path.join(sessions_dir, "*.jsonl")):
+        name = os.path.basename(f)
+        seen.add(name)
+        try:
+            st = os.stat(f)
+            sig = [int(st.st_mtime), st.st_size]
+        except OSError:
+            continue
+        ent = index.get(name)
+        if use_index and ent and ent.get("sig") == sig:
+            t = ent["totals"]
+        else:
+            t = parse_file(f)
+            index[name] = {"sig": sig, "totals": t}
+            changed = True
+        for k in total:
+            total[k] += t.get(k, 0)
+
+if use_index:
+    for name in list(index.keys()):
+        if name not in seen:
+            del index[name]; changed = True
+    if changed:
+        try:
+            tmp = index_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(index, fh)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, index_path)
+        except Exception:
+            pass
 
 print(f'{total["input"]}|{total["output"]}|{total["cacheRead"]}|{total["cacheWrite"]}|{total["cost"]:.6f}|{total["turns"]}')
 PY

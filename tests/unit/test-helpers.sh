@@ -1174,6 +1174,59 @@ assert_equals "-100" "$(echo "$_p82_json" | python3 -c "import json,sys; print(j
 rm -rf "$_P82"
 echo ""
 
+# ─── P9-1: Cost index (incremental aggregation) ────────────────────────────────
+echo "── P9-1: Cost index ──"
+
+source "$LIB_DIR/helpers/workspace.sh"
+
+_P91=$(mktemp -d)
+mkdir -p "$_P91/agents/a1/sessions"
+printf '%s\n%s\n' \
+  '{"message":{"usage":{"input":100,"output":50,"cost":{"total":0.01}}}}' \
+  '{"message":{"usage":{"input":200,"output":100,"cost":{"total":0.02}}}}' \
+  > "$_P91/agents/a1/sessions/s1.jsonl"
+
+_p91_1=$(OPENCLAW_DIR="$_P91" _aggregate_cost "a1")
+assert_equals "300|150|0|0|0.030000|2" "$_p91_1" "cost: aggregates input/output/cost/turns"
+[[ -f "$_P91/agents/a1/.cost-index.json" ]] && _p91_idx="yes" || _p91_idx="no"
+assert_equals "yes" "$_p91_idx" "cost: index file created"
+
+# Unchanged files → cached result identical.
+_p91_2=$(OPENCLAW_DIR="$_P91" _aggregate_cost "a1")
+assert_equals "$_p91_1" "$_p91_2" "cost: cached call returns identical totals"
+
+# Append a turn → size changes → file re-parsed incrementally.
+printf '%s\n' '{"message":{"usage":{"input":10,"output":5,"cost":{"total":0.001}}}}' >> "$_P91/agents/a1/sessions/s1.jsonl"
+assert_equals "310|155|0|0|0.031000|3" "$(OPENCLAW_DIR="$_P91" _aggregate_cost "a1")" "cost: changed file re-parsed"
+
+# A removed session drops from the totals.
+rm "$_P91/agents/a1/sessions/s1.jsonl"
+assert_equals "0|0|0|0|0.000000|0" "$(OPENCLAW_DIR="$_P91" _aggregate_cost "a1")" "cost: removed session reflected"
+
+rm -rf "$_P91"
+echo ""
+
+# ─── P9-2: cost --json ─────────────────────────────────────────────────────────
+echo "── P9-2: cost --json ──"
+
+source "$LIB_DIR/helpers/picker.sh"
+source "$LIB_DIR/commands/cost.sh"
+
+_P92=$(mktemp -d)
+mkdir -p "$_P92/projects/a1" "$_P92/agents/a1/sessions"
+echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6","budgetUsd":"5"}' > "$_P92/projects/a1/.rack-meta.json"
+printf '%s\n' '{"message":{"usage":{"input":1000,"output":500,"cost":{"total":0.25}}}}' > "$_P92/agents/a1/sessions/s.jsonl"
+
+_p92=$(OPENCLAW_DIR="$_P92" PROJECTS_DIR="$_P92/projects" META_FILE=".rack-meta.json" \
+  DEFAULT_MODEL="anthropic/claude-sonnet-4-6" _cost_json)
+echo "$_p92" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p92_v="ok" || _p92_v="fail"
+assert_equals "ok" "$_p92_v" "cost --json: valid JSON"
+assert_equals "0.25" "$(echo "$_p92" | python3 -c "import json,sys; print(json.load(sys.stdin)['totalUsd'])")" "cost --json: total cost"
+assert_equals "5.0" "$(echo "$_p92" | python3 -c "import json,sys; print(json.load(sys.stdin)['agents'][0]['budgetUsd'])")" "cost --json: budget surfaced"
+
+rm -rf "$_P92"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
