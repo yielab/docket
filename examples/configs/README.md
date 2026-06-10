@@ -178,7 +178,7 @@ When you update metadata via rack, both are synced automatically:
 
 ```bash
 # These commands update BOTH sources
-rack model myagent anthropic/claude-opus-4-6
+rack profile myagent premium
 rack profile myagent premium
 rack scope myagent set alpha
 ```

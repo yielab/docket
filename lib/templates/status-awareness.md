@@ -194,7 +194,7 @@ What happened:
 - Should be "claude-haiku-4-5"
 
 How to fix:
-1. Run: rack model my-website claude-haiku-4-5
+1. Run: rack profile my-website economy
 2. Or: rack profile my-website economy
 
 I'll use the default model (sonnet-4-6) for now while you fix this.
