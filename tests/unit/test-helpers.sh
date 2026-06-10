@@ -691,6 +691,36 @@ assert_equals "present" "$_p52_gateway" "snapshot: gateway field present"
 rm -rf "$_P52_HOME"
 echo ""
 
+# ─── P5-3: Secret storage is injection-safe ────────────────────────────────────
+echo "── P5-3: Secrets injection safety ──"
+
+# Source the key-store helper (and its deps) in isolation.
+source "$LIB_DIR/commands/keys.sh"
+
+_P53_SECRETS=$(mktemp)
+echo '{}' > "$_P53_SECRETS"
+# Hostile value: if interpolated into Python source it would run os.system and
+# create a marker file. Stored safely, it must end up as a literal string.
+_P53_MARKER=$(mktemp -u)
+_P53_PAYLOAD="'''; import os; os.system('touch $_P53_MARKER'); x='''"
+
+RACK_KEY_VALUE="$_P53_PAYLOAD" _keys_store "$_P53_SECRETS" "ANTHROPIC_API_KEY" >/dev/null 2>&1
+
+# The injected command must NOT have run
+[[ ! -e "$_P53_MARKER" ]] && _p53_safe="safe" || _p53_safe="EXECUTED"
+assert_equals "safe" "$_p53_safe" "keys: hostile value is not executed (no injection)"
+
+# The value must be stored verbatim as a JSON string
+_p53_roundtrip=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ANTHROPIC_API_KEY'])" "$_P53_SECRETS")
+assert_equals "$_P53_PAYLOAD" "$_p53_roundtrip" "keys: hostile value stored verbatim as data"
+
+# secrets.json must be 0600
+_p53_perm=$(stat -c '%a' "$_P53_SECRETS" 2>/dev/null || stat -f '%Lp' "$_P53_SECRETS" 2>/dev/null)
+assert_equals "600" "$_p53_perm" "keys: secrets file is mode 600"
+
+rm -f "$_P53_SECRETS" "$_P53_MARKER"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
