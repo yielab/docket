@@ -226,6 +226,8 @@ PY
       _g_seeded=$(printf '%s' "$_g_out" | tr '|' '\n' | sed -n 's/^seeded=//p')
       success "Exec-approval gates applied (security=allowlist, ask=on-miss, askFallback=deny)"
       [[ -n "$_g_seeded" ]] && echo "  Seeded allowlist (${_g_bins} bins) for: ${_g_seeded}"
+      local _g_tg; _g_tg=$(apply_approval_routing 2>/dev/null) \
+        && success "Approval routing on (mode=session); ${_g_tg:-0} Telegram-bound agent(s)"
       warn "Fail-closed: non-allowlisted commands are denied without an approver."
       echo "  Tune: ${GREEN}openclaw approvals allowlist add <glob>${RESET}  ·  Disable: ${GREEN}rack gates disable${RESET}"
     else

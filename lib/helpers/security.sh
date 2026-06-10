@@ -242,3 +242,42 @@ open(sys.argv[2], 'a').write('\n')" "$appr_file" "$tmp_out" 2>/dev/null \
     rm -f "$tmp_out"
   fi
 }
+
+# G4 — route exec-approval prompts to the channel each agent is operating in, so
+# a Telegram-bound agent's prompts reach its group and can be answered with
+# `/approve <id> allow-once|deny`. Writes approvals.exec = {enabled, mode:session}
+# in openclaw.json. "session" routes each prompt to its originating session's
+# channel, which avoids the cross-agent leakage a shared global target list would
+# cause. Echoes the count of Telegram-bound agents (informational). A gateway
+# restart is the caller's responsibility (config change).
+apply_approval_routing() {
+  [[ -f "$CONFIG_FILE" ]] || { fail "No openclaw config at $CONFIG_FILE"; return 1; }
+  oc_set "approvals.exec" '{"enabled": true, "mode": "session"}' \
+    || { fail "Failed to write approvals.exec"; return 1; }
+  local id count=0
+  for id in $(_all_agent_ids); do
+    [[ -n "$(get_tg_binding "$id")" ]] && count=$(( count + 1 ))
+  done
+  echo "$count"
+}
+
+# G4 — turn approval forwarding off (escape hatch): approvals.exec.enabled=false.
+disable_approval_routing() {
+  [[ -f "$CONFIG_FILE" ]] || return 0
+  oc_set "approvals.exec.enabled" 'false'
+}
+
+# Echo "<on|off|unset>|<mode>" describing the approvals.exec routing config.
+_approval_routing_status() {
+  [[ -f "$CONFIG_FILE" ]] || { echo "unset|"; return 0; }
+  python3 -c "import json,sys
+try:
+    e = (json.load(open(sys.argv[1])).get('approvals') or {}).get('exec') or {}
+except Exception:
+    e = {}
+if not e:
+    print('unset|')
+else:
+    print(('on' if e.get('enabled') else 'off') + '|' + (e.get('mode') or ''))" \
+    "$CONFIG_FILE" 2>/dev/null || echo "unset|"
+}
