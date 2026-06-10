@@ -72,7 +72,6 @@ chmod +x "$BIN_DIR/rack"
 # Utility commands:
 #   rack logs    [id]           View memory logs and gateway entries
 #   rack edit    [id]           Open workspace files in $EDITOR
-#   rack model   [id] [model]   View or change the model for a project
 #   rack profile [id] [tier]    Set model profile (economy/standard/premium)
 #   rack cost    [id]           Token usage and cost breakdown
 #   rack doctor                 System-wide health check
