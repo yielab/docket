@@ -1,7 +1,54 @@
 #!/usr/bin/env bash
 # Command: list
 
+# Machine-readable agent inventory (rack list --json). A single Python pass over
+# all project metas + the daemon config — stable output for scripting/CI, and it
+# also avoids the per-field interpreter spawns the human view does.
+_list_json() {
+  python3 - "$PROJECTS_DIR" "$CONFIG_FILE" "$DEFAULT_MODEL" "$META_FILE" <<'PY'
+import json, os, sys
+projects_dir, config_file, default_model, meta_file = sys.argv[1:5]
+try:
+    cfg = json.load(open(config_file))
+except Exception:
+    cfg = {}
+registered = {a.get("id") for a in cfg.get("agents", {}).get("list", [])}
+bindings = {}
+for b in cfg.get("bindings", []):
+    m = b.get("match", {}) or {}
+    if m.get("channel") == "telegram":
+        bindings[b.get("agentId")] = (m.get("peer", {}) or {}).get("id")
+agents = []
+if os.path.isdir(projects_dir):
+    for aid in sorted(os.listdir(projects_dir)):
+        meta_path = os.path.join(projects_dir, aid, meta_file)
+        if not os.path.isfile(meta_path):
+            continue
+        try:
+            meta = json.load(open(meta_path))
+        except Exception:
+            meta = {}
+        agents.append({
+            "id": aid,
+            "name": meta.get("name", aid),
+            "type": meta.get("type", "repo"),
+            "model": meta.get("model", default_model),
+            "stack": meta.get("stack", ""),
+            "codebase": meta.get("codebase", ""),
+            "budgetUsd": meta.get("budgetUsd", ""),
+            "telegram": bindings.get(aid),
+            "registered": aid in registered,
+        })
+print(json.dumps({"agents": agents}, indent=2))
+PY
+}
+
 cmd_list() {
+  if [[ "${1:-}" == "--json" ]]; then
+    _list_json
+    return 0
+  fi
+
   local ids; ids=$(project_ids)
   if [[ -z "$ids" ]]; then
     warn "No project agents found."

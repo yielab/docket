@@ -46,6 +46,7 @@ except ValueError:
     else
       success "Budget cap removed for '$id'."
     fi
+    audit_log "profile.budget" "$id=\$${budget_amount}"
     [[ -z "$profile" ]] && return
   fi
 
@@ -98,6 +99,7 @@ except ValueError:
   set_agent_model "$id" "$new_model"
 
   success "Profile changed: $cur_profile ($current) → $profile ($new_model)"
+  audit_log "profile.model" "$id=$profile ($new_model)"
   mark_gateway_dirty
   restart_gateway_if_dirty
 }

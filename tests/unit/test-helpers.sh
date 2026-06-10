@@ -1125,6 +1125,55 @@ assert_equals "640" "$(file_mode "$_P71/sz")" "file_mode: octal mode"
 rm -rf "$_P71"
 echo ""
 
+# ─── P8-1: Audit log ───────────────────────────────────────────────────────────
+echo "── P8-1: Audit log ──"
+
+source "$LIB_DIR/helpers/audit.sh"
+
+_P81=$(mktemp -d)
+OPENCLAW_DIR="$_P81" audit_log "keys.add" "ANTHROPIC_API_KEY"
+OPENCLAW_DIR="$_P81" audit_log "gates.enable" "security=allowlist"
+assert_equals "2" "$(wc -l < "$_P81/audit.log" | tr -d ' ')" "audit: one JSON line per call"
+_p81_action=$(tail -1 "$_P81/audit.log" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['action'])")
+assert_equals "gates.enable" "$_p81_action" "audit: records the action"
+_p81_meta=$(tail -1 "$_P81/audit.log" | python3 -c "import json,sys; e=json.loads(sys.stdin.read()); print('yes' if e.get('user') and e.get('ts') else 'no')")
+assert_equals "yes" "$_p81_meta" "audit: records user + timestamp"
+_p81_perm=$(stat -c '%a' "$_P81/audit.log" 2>/dev/null || stat -f '%Lp' "$_P81/audit.log")
+assert_equals "600" "$_p81_perm" "audit: log file is 0600"
+
+rm -f "$_P81/audit.log"
+RACK_NO_AUDIT=1 OPENCLAW_DIR="$_P81" audit_log "keys.add" "X"
+[[ -f "$_P81/audit.log" ]] && _p81_off="wrote" || _p81_off="skipped"
+assert_equals "skipped" "$_p81_off" "audit: RACK_NO_AUDIT=1 disables logging"
+
+rm -rf "$_P81"
+echo ""
+
+# ─── P8-2: list --json ─────────────────────────────────────────────────────────
+echo "── P8-2: list --json ──"
+
+source "$LIB_DIR/commands/list.sh"
+
+_P82=$(mktemp -d)
+mkdir -p "$_P82/projects/alpha"
+cat > "$_P82/projects/alpha/.rack-meta.json" <<'JSON'
+{"name":"Alpha","type":"repo","model":"anthropic/claude-sonnet-4-6","stack":"Go"}
+JSON
+cat > "$_P82/openclaw.json" <<'JSON'
+{"agents":{"list":[{"id":"alpha"}]},"bindings":[{"agentId":"alpha","match":{"channel":"telegram","peer":{"kind":"group","id":"-100"}}}],"channels":{}}
+JSON
+
+_p82_json=$(PROJECTS_DIR="$_P82/projects" CONFIG_FILE="$_P82/openclaw.json" \
+  DEFAULT_MODEL="anthropic/claude-sonnet-4-6" META_FILE=".rack-meta.json" _list_json)
+echo "$_p82_json" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p82_v="ok" || _p82_v="fail"
+assert_equals "ok" "$_p82_v" "list --json: valid JSON"
+assert_equals "alpha" "$(echo "$_p82_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['agents'][0]['id'])")" "list --json: agent id present"
+assert_equals "True" "$(echo "$_p82_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['agents'][0]['registered'])")" "list --json: registered reflects config"
+assert_equals "-100" "$(echo "$_p82_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['agents'][0]['telegram'])")" "list --json: telegram binding resolved"
+
+rm -rf "$_P82"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

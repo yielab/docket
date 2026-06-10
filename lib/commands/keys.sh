@@ -83,6 +83,7 @@ _keys_add() {
   # Store via the active backend (value via environment — never interpolated).
   RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "added"
+  audit_log "keys.add" "$key_name"
   success "Added key: $key_name ($(secrets_backend) backend)"
 
   # Sync to all agent .env files
@@ -252,6 +253,7 @@ _keys_remove() {
 
   # Remove from the active backend (keyring + index)
   secret_del "$key_name"
+  audit_log "keys.remove" "$key_name"
   success "Removed key: $key_name"
 
   # Drop lifecycle metadata for the removed key
@@ -295,6 +297,7 @@ _keys_rotate() {
   # Replace value (via environment — never interpolated into code) and stamp rotation
   RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "rotated"
+  audit_log "keys.rotate" "$key_name"
   success "Rotated key: $key_name"
 
   # Re-sync scoped keys and restart gateway
