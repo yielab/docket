@@ -56,6 +56,7 @@ ${BOLD}CONTEXT & MEMORY  (rack context [id] <subcommand>)${RESET}
 ${BOLD}MONITORING${RESET}
   ${GREEN}cost${RESET}     [id]      Token usage and cost breakdown with budget status
   ${GREEN}doctor${RESET}             System health: gateway, config, drift, budget, runaway
+  ${GREEN}gates${RESET}              Exec-approval gates: status / enable / disable (opt-in)
 
 ${BOLD}TEAM & WORKFLOWS${RESET}
   ${GREEN}team status${RESET}        Specialist agent health and RACK status

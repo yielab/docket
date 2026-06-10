@@ -2,6 +2,16 @@
 # Command: install
 
 cmd_install() {
+  # Opt-in enforcement: gates are applied only with --gates (default install
+  # leaves enforcement untouched so existing autonomous agents aren't blocked).
+  local want_gates=0 a
+  for a in "$@"; do
+    case "$a" in
+      --gates)    want_gates=1 ;;
+      --no-gates) want_gates=0 ;;
+    esac
+  done
+
   header "Rack Installation — OpenClaw Setup"
   echo ""
 
@@ -205,8 +215,26 @@ PY
     success "Config and secrets permissions already owner-only (600)"
   fi
   echo "  ${DIM}Verify posture anytime with: rack doctor  (Security gates section)${RESET}"
-  echo "  ${DIM}Tool-approval gates are specified (Planned) in${RESET}"
-  echo "  ${DIM}specs/functional/security-gates.spec.md — applied in a later phase.${RESET}"
+
+  # Opt-in exec-approval enforcement (G3).
+  if [[ "$want_gates" -eq 1 ]]; then
+    echo ""
+    local _g_out
+    if _g_out=$(apply_exec_approval_gates); then
+      local _g_bins _g_seeded
+      _g_bins=$(printf '%s' "$_g_out" | tr '|' '\n' | sed -n 's/^bins=//p')
+      _g_seeded=$(printf '%s' "$_g_out" | tr '|' '\n' | sed -n 's/^seeded=//p')
+      success "Exec-approval gates applied (security=allowlist, ask=on-miss, askFallback=deny)"
+      [[ -n "$_g_seeded" ]] && echo "  Seeded allowlist (${_g_bins} bins) for: ${_g_seeded}"
+      warn "Fail-closed: non-allowlisted commands are denied without an approver."
+      echo "  Tune: ${GREEN}openclaw approvals allowlist add <glob>${RESET}  ·  Disable: ${GREEN}rack gates disable${RESET}"
+    else
+      warn "Could not apply exec-approval gates (see 'rack gates enable')"
+    fi
+  else
+    echo "  ${DIM}Exec-approval enforcement is opt-in: 'rack gates enable' (or install --gates).${RESET}"
+    echo "  ${DIM}Spec: specs/functional/security-gates.spec.md.${RESET}"
+  fi
 
   echo ""
 

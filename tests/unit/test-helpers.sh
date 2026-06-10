@@ -852,6 +852,62 @@ assert_equals "" "$_p56_again" "perms: idempotent (no-op on second run)"
 rm -rf "$_P56_HOME"
 echo ""
 
+# ─── P5-7: Exec-approval gate apply (G3) ───────────────────────────────────────
+echo "── P5-7: Exec-approval gates ──"
+
+# Force the local-file path so the test never touches a real daemon: a stub
+# openclaw that fails makes apply_exec_approval_gates fall back to a direct write.
+openclaw() { return 1; }
+
+_P57_HOME=$(mktemp -d)
+cat > "$_P57_HOME/openclaw.json" <<'JSON'
+{"agents":{"list":[{"id":"alpha"},{"id":"beta"}]},"bindings":[],"channels":{}}
+JSON
+# Pre-existing approvals file with a socket — must be preserved across apply.
+cat > "$_P57_HOME/exec-approvals.json" <<'JSON'
+{"version":1,"socket":{"path":"/x.sock","token":"tok"},"defaults":{},"agents":{}}
+JSON
+
+CONFIG_FILE="$_P57_HOME/openclaw.json" OPENCLAW_DIR="$_P57_HOME" apply_exec_approval_gates >/dev/null 2>&1
+_p57_appr="$_P57_HOME/exec-approvals.json"
+
+_p57_sec=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['defaults'].get('security'))" "$_p57_appr")
+assert_equals "allowlist" "$_p57_sec" "gates: defaults.security=allowlist"
+_p57_fb=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['defaults'].get('askFallback'))" "$_p57_appr")
+assert_equals "deny" "$_p57_fb" "gates: defaults.askFallback=deny"
+
+# Existing socket/token preserved (config not clobbered).
+_p57_tok=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['socket'].get('token'))" "$_p57_appr")
+assert_equals "tok" "$_p57_tok" "gates: existing socket/token preserved"
+
+# Both registered agents seeded with a non-empty allowlist.
+_p57_alpha=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['agents']['alpha']['allowlist']))" "$_p57_appr")
+[[ "$_p57_alpha" -gt 0 ]] && _p57_a="seeded" || _p57_a="empty"
+assert_equals "seeded" "$_p57_a" "gates: agent allowlist seeded with curated bins"
+
+# Dangerous bins (rm) are deliberately NOT allowlisted → they stay gated.
+_p57_rm=$(python3 -c "import json,sys
+al=json.load(open(sys.argv[1]))['agents']['alpha']['allowlist']
+print('present' if any(e['pattern'].endswith('/rm') for e in al) else 'absent')" "$_p57_appr")
+assert_equals "absent" "$_p57_rm" "gates: dangerous bin (rm) is not allowlisted"
+
+_p57_perm=$(stat -c '%a' "$_p57_appr" 2>/dev/null || stat -f '%Lp' "$_p57_appr")
+assert_equals "600" "$_p57_perm" "gates: exec-approvals.json written 0600"
+
+# Idempotent: a second run must not overwrite existing defaults.
+_p57_again=$(CONFIG_FILE="$_P57_HOME/openclaw.json" OPENCLAW_DIR="$_P57_HOME" apply_exec_approval_gates 2>/dev/null)
+echo "$_p57_again" | grep -q 'defaults_changed=0' && _p57_idem="kept" || _p57_idem="clobbered"
+assert_equals "kept" "$_p57_idem" "gates: re-run preserves existing defaults (non-clobber)"
+
+# disable resets defaults to empty (escape hatch).
+CONFIG_FILE="$_P57_HOME/openclaw.json" OPENCLAW_DIR="$_P57_HOME" disable_exec_approval_gates >/dev/null 2>&1
+_p57_dis=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['defaults']))" "$_p57_appr")
+assert_equals "0" "$_p57_dis" "gates: disable resets defaults to empty"
+
+unset -f openclaw
+rm -rf "$_P57_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
