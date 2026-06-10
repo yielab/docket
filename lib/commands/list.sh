@@ -13,7 +13,7 @@ cmd_list() {
 
   # ── OpenClaw status bar ──
   local gw_badge tg_badge total_agents
-  local gw_status; gw_status=$(systemctl --user is-active openclaw-gateway.service 2>/dev/null) || gw_status="inactive"
+  local gw_status; gw_status=$(service_ctl is-active 2>/dev/null) || gw_status="inactive"
   if [[ "$gw_status" == "active" ]]; then
     gw_badge="${GREEN}● gateway up${RESET}"
   else

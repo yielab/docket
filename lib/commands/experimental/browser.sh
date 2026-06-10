@@ -253,7 +253,7 @@ _browser_clean() {
     success "Browser data cleaned"
     echo "  New size: ${CYAN}$size_after${RESET}"
     echo ""
-    echo -e "${YELLOW}Next step: ${RESET}${GREEN}systemctl --user restart openclaw-gateway.service${RESET}"
+    echo -e "${YELLOW}Next step: ${RESET}${GREEN}$(service_hint restart)${RESET}"
   else
     warn "Nothing to clean (or directory structure unexpected)"
   fi

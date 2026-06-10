@@ -1086,6 +1086,45 @@ assert_equals "yes" "$_p62_cl" "version: CHANGELOG has an entry for $_p62_ver"
 
 echo ""
 
+# ─── P7-1: Portability (service abstraction + GNU-ism-free helpers) ────────────
+echo "── P7-1: Portability ──"
+
+source "$LIB_DIR/helpers/service.sh"
+source "$LIB_DIR/helpers/utils.sh"
+
+# service_manager honours the override; hints/ctl follow it.
+assert_equals "launchd" "$(RACK_SERVICE_MANAGER=launchd service_manager)" "service: manager override respected"
+assert_equals "systemctl --user restart openclaw-gateway.service" \
+  "$(RACK_SERVICE_MANAGER=systemd service_hint restart)" "service: systemd hint"
+RACK_SERVICE_MANAGER=none service_hint restart | grep -q "openclaw gateway restart" && _p71_h2="ok" || _p71_h2="no"
+assert_equals "ok" "$_p71_h2" "service: non-systemd hint avoids systemctl"
+RACK_SERVICE_MANAGER=none service_ctl is-active 2>/dev/null && _p71_ia="active" || _p71_ia="inactive"
+assert_equals "inactive" "$_p71_ia" "service: is-active false off systemd"
+
+# newest_file: most recent match by mtime (portable, replaces find -printf).
+_P71=$(mktemp -d)
+echo a > "$_P71/2024-01-01.md"; echo b > "$_P71/2024-02-01.md"
+touch -t 202401010000 "$_P71/2024-01-01.md"
+touch -t 202402010000 "$_P71/2024-02-01.md"
+assert_equals "$_P71/2024-02-01.md" "$(newest_file "$_P71" '*.md')" "newest_file: most recent by mtime"
+assert_equals "" "$(newest_file "$_P71" '*.txt')" "newest_file: empty when no match"
+
+# portable_sed_i: in-place edit on GNU or BSD sed, preserving other lines.
+printf 'Session Key: old\nkeep this\n' > "$_P71/SOUL.md"
+portable_sed_i "s|^Session Key:.*|Session Key: new|" "$_P71/SOUL.md"
+grep -q "^Session Key: new" "$_P71/SOUL.md" && _p71_se="ok" || _p71_se="no"
+assert_equals "ok" "$_p71_se" "portable_sed_i: applies substitution"
+grep -q "^keep this" "$_P71/SOUL.md" && _p71_keep="ok" || _p71_keep="no"
+assert_equals "ok" "$_p71_keep" "portable_sed_i: preserves other lines"
+
+# Portable stat wrappers.
+printf '12345' > "$_P71/sz"; chmod 640 "$_P71/sz"
+assert_equals "5" "$(file_size "$_P71/sz")" "file_size: bytes"
+assert_equals "640" "$(file_mode "$_P71/sz")" "file_mode: octal mode"
+
+rm -rf "$_P71"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

@@ -65,6 +65,6 @@ cmd_edit() {
 
   success "Edits saved."
   echo ""
-  info "Restart gateway to apply changes: systemctl --user restart openclaw-gateway.service"
+  info "Restart gateway to apply changes: $(service_hint restart)"
 }
 

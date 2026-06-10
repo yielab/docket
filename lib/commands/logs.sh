@@ -12,7 +12,7 @@ cmd_logs() {
 
   # Show most recent memory day-log (if any)
   local latest_mem
-  latest_mem=$(find "$workspace/memory" -maxdepth 1 -name '*.md' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  latest_mem=$(newest_file "$workspace/memory" '*.md')
   if [[ -n "$latest_mem" ]]; then
     echo ""
     echo -e "${BOLD}Latest memory log:${RESET} $(basename "$latest_mem")"

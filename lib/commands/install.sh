@@ -242,22 +242,27 @@ PY
 
   # Step 7: Set up gateway service
   header "Step 7: Gateway service"
-  if systemctl --user is-active openclaw-gateway.service &>/dev/null; then
-    success "Gateway already running"
-    info "Restarting to apply changes..."
-    systemctl --user restart openclaw-gateway.service
-    sleep 2
+  if [[ "$(service_manager)" == "none" ]]; then
+    warn "No service manager detected — start the OpenClaw gateway yourself:"
+    echo "  $(service_hint start)"
   else
-    info "Starting gateway service..."
-    systemctl --user start openclaw-gateway.service 2>/dev/null || true
-    sleep 2
-  fi
+    if service_ctl is-active &>/dev/null; then
+      success "Gateway already running"
+      info "Restarting to apply changes..."
+      service_ctl restart
+      sleep 2
+    else
+      info "Starting gateway service..."
+      service_ctl start 2>/dev/null || true
+      sleep 2
+    fi
 
-  if systemctl --user is-active openclaw-gateway.service &>/dev/null; then
-    success "Gateway service: active"
-  else
-    warn "Gateway service not started"
-    echo "  Start manually: systemctl --user start openclaw-gateway.service"
+    if service_ctl is-active &>/dev/null; then
+      success "Gateway service: active"
+    else
+      warn "Gateway service not started"
+      echo "  Start manually: $(service_hint start)"
+    fi
   fi
 
   echo ""

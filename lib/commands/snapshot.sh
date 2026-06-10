@@ -11,7 +11,7 @@ cmd_snapshot() {
   done
 
   local gw_status
-  gw_status=$(systemctl --user is-active openclaw-gateway.service 2>/dev/null || echo "inactive")
+  gw_status=$(service_ctl is-active 2>/dev/null || echo "inactive")
 
   # Collect configured channel names
   local channels_json
