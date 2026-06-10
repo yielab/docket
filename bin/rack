@@ -99,6 +99,16 @@ source "$LIB_DIR/core/router.sh"
 declare -a _ARGS=("$@")
 CMD="${_ARGS[0]:-list}"
 
+# Version flag — read from the VERSION file at the repo root.
+if [[ "$CMD" == "--version" || "$CMD" == "-V" || "$CMD" == "version" ]]; then
+  if [[ -f "$RACK_CLI_ROOT/VERSION" ]]; then
+    echo "rack $(cat "$RACK_CLI_ROOT/VERSION")"
+  else
+    echo "rack (version unknown)"
+  fi
+  exit 0
+fi
+
 # Handle --debug flag
 if [[ "$CMD" == "--debug" ]]; then
   DEBUG=1

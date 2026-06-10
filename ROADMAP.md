@@ -80,17 +80,20 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   state file exists but won't parse (instead of silently returning the default), while still
   returning the default so the command stays alive.
 
-## Phase 2 — Release engineering & CI rigor
+## Phase 2 — Release engineering & CI rigor — 🚧 mostly complete
 
 > Cheap, high-signal credibility — both for adoption and as an engineering artifact.
 
-- 🗓️ **Versioning** — a `VERSION` file, a `rack --version` flag, semver git tags, and a
-  `CHANGELOG.md`.
-- 🗓️ **Release workflow** — tagged GitHub Releases with a checksummed tarball; a Homebrew tap
-  and/or `nix`/`apt` path as a stretch.
-- 🗓️ **Stronger CI** — make spec validation blocking (all specs already pass), run the
-  integration suite in CI (now hermetic-capable), and add a **shellcheck** gate.
-- 🗓️ **Bash/OS matrix** — test against Bash 4.x and 5.x; add a macOS runner.
+- ✅ **Versioning** — a `VERSION` file, `rack --version` / `-V`, and a `CHANGELOG.md`
+  (Keep a Changelog). The first cut tag is `v0.1.0` (test P6-2 keeps them in sync).
+- ✅ **Release workflow** — `.github/workflows/release.yml` builds a checksummed tarball and
+  cuts a GitHub Release on a `v*` tag (guards that the tag matches `VERSION`; uses the
+  pre-installed `gh` CLI, no third-party action). 🗓️ Homebrew tap / `nix` / `apt` remain stretch.
+- ✅ **Stronger CI** — spec validation is now **blocking**, a **shellcheck** gate (`-S error`,
+  verified clean) runs on every push, and unit tests run under a throwaway `HOME`. Integration
+  tests need the `openclaw` daemon + `systemctl`, so they stay local (documented in the workflow).
+- 🗓️ **Bash/OS matrix** — Bash 4.x/5.x + a macOS runner; folded into Phase 3 (portability),
+  where the `service_ctl` abstraction and GNU-ism removal make a green macOS run achievable.
 
 ## Phase 3 — Portability
 

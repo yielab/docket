@@ -415,7 +415,7 @@ _maintain_sessions() {
   # Combine and deduplicate
   local sessions_to_clean=()
   for session in "${large_sessions[@]}" "${old_sessions[@]}"; do
-    [[ " ${sessions_to_clean[@]} " =~ " ${session} " ]] || sessions_to_clean+=("$session")
+    [[ " ${sessions_to_clean[*]} " =~ " ${session} " ]] || sessions_to_clean+=("$session")
   done
 
   if [[ ${#sessions_to_clean[@]} -eq 0 ]]; then
