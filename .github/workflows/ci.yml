@@ -41,3 +41,28 @@ jobs:
       # daemon + systemctl and are run locally, not in CI.
       - name: Unit tests
         run: HOME="$(mktemp -d)" ./tests/unit/test-helpers.sh
+
+  # macOS portability check — exercises the no-systemd / BSD-coreutils paths under
+  # a brewed Bash 4+. Informational for now (the Linux job is the required gate);
+  # promote to required once it's reliably green.
+  macos:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Bash 4+ (macOS ships 3.2)
+        run: |
+          brew install bash
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      - name: Unit tests under Bash 4+
+        run: |
+          bash --version | head -1
+          HOME="$(mktemp -d)" bash ./tests/unit/test-helpers.sh

@@ -549,7 +549,7 @@ _keys_setup() {
   if [[ ! "$restart" =~ ^[Nn]$ ]]; then
     restart_gateway
   else
-    warn "Remember to restart gateway manually: ${GREEN}systemctl --user restart openclaw-gateway${RESET}"
+    warn "Remember to restart gateway manually: ${GREEN}$(service_hint restart)${RESET}"
   fi
 
   echo ""

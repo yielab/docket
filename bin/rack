@@ -36,13 +36,17 @@
 #         rack                 (shows list)
 
 # Get script directory for sourcing (handle symlinks)
-if [[ -L "${BASH_SOURCE[0]}" ]]; then
-  # If this script is a symlink, resolve it to the actual file
-  REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
-  SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
-else
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
+# Resolve symlinks portably (macOS readlink has no -f) by following the chain.
+REAL_SCRIPT="${BASH_SOURCE[0]}"
+while [[ -L "$REAL_SCRIPT" ]]; do
+  _link="$(readlink "$REAL_SCRIPT")"
+  if [[ "$_link" == /* ]]; then
+    REAL_SCRIPT="$_link"
+  else
+    REAL_SCRIPT="$(dirname "$REAL_SCRIPT")/$_link"
+  fi
+done
+SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
 LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
 RACK_CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 export RACK_CLI_ROOT
