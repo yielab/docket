@@ -16,9 +16,6 @@ route_command() {
     # Unified maintenance (replaces reset/repair/cleanup)
     maintain)          cmd_maintain "$@" ;;
 
-    # Execution mode (replaces terminal)
-    mode)              cmd_mode "$@" ;;
-
     # Context & memory (replaces memory)
     context)           cmd_context "$@" ;;
 
@@ -79,14 +76,10 @@ route_command() {
       echo "Use: rack profile [id] <economy|standard|premium> to set the actual model"
       exit 1
       ;;
-    terminal|term)
-      if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
-        cmd_terminal "$@"
-      else
-        echo "rack terminal was renamed → use: rack mode [id] terminal"
-        echo "  Or enable old interface: RACK_EXPERIMENTAL=1 rack terminal <subcommand>"
-        exit 1
-      fi
+    mode|terminal|term)
+      echo "rack mode / rack terminal has been removed."
+      echo "Use: rack profile [id] <economy|standard|premium> to choose a model tier."
+      exit 1
       ;;
     browser|brave)
       if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then

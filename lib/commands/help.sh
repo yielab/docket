@@ -44,7 +44,6 @@ ${BOLD}CONFIGURATION${RESET}
                         rack profile [id] --budget <USD>  (set spending cap)
   ${GREEN}scope${RESET}    [id] [a]  Manage session scopes for multi-project isolation
   ${GREEN}keys${RESET}     <action>  Manage API keys — syncs to all agents
-  ${GREEN}mode${RESET}     [id]      Switch execution mode: api | terminal
 
 ${BOLD}CONTEXT & MEMORY  (rack context [id] <subcommand>)${RESET}
   ${GREEN}show${RESET}               Recent activity, active tasks, stats (default)
