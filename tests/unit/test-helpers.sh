@@ -946,6 +946,33 @@ assert_equals "off|session" "$_p58_off" "routing: disable sets enabled=false"
 rm -rf "$_P58_HOME"
 echo ""
 
+# ─── P5-9: Workspace isolation (G5) ────────────────────────────────────────────
+echo "── P5-9: Workspace isolation ──"
+
+_P59_HOME=$(mktemp -d)
+echo '{"agents":{"list":[{"id":"alpha"}]},"bindings":[],"channels":{}}' > "$_P59_HOME/openclaw.json"
+
+CONFIG_FILE="$_P59_HOME/openclaw.json" apply_workspace_isolation >/dev/null 2>&1
+
+_p59_mode=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['agents']['defaults']['sandbox']['mode'])" "$_P59_HOME/openclaw.json")
+assert_equals "non-main" "$_p59_mode" "isolation: sandbox.mode=non-main"
+_p59_wa=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['agents']['defaults']['sandbox']['workspaceAccess'])" "$_P59_HOME/openclaw.json")
+assert_equals "rw" "$_p59_wa" "isolation: sandbox.workspaceAccess=rw"
+_p59_st=$(CONFIG_FILE="$_P59_HOME/openclaw.json" _isolation_status)
+assert_equals "non-main" "$_p59_st" "isolation: status reports non-main"
+
+# Existing agents list preserved through the write.
+_p59_pres=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['agents']['list']))" "$_P59_HOME/openclaw.json")
+assert_equals "1" "$_p59_pres" "isolation: agents.list preserved"
+
+# Disable flips mode to off.
+CONFIG_FILE="$_P59_HOME/openclaw.json" disable_workspace_isolation >/dev/null 2>&1
+_p59_off=$(CONFIG_FILE="$_P59_HOME/openclaw.json" _isolation_status)
+assert_equals "off" "$_p59_off" "isolation: disable sets mode=off"
+
+rm -rf "$_P59_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

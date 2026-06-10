@@ -267,6 +267,35 @@ disable_approval_routing() {
   oc_set "approvals.exec.enabled" 'false'
 }
 
+# G5 — per-agent workspace isolation via the daemon's Docker sandbox.
+# Sets agents.defaults.sandbox = { mode: non-main, scope: agent, workspaceAccess: rw }
+# so non-main sessions run tool execution inside a per-agent container with only
+# the agent workspace mounted (blast-radius reduction). Requires Docker; the
+# caller is responsible for the capability check and gateway restart.
+apply_workspace_isolation() {
+  [[ -f "$CONFIG_FILE" ]] || { fail "No openclaw config at $CONFIG_FILE"; return 1; }
+  oc_set "agents.defaults.sandbox" \
+    '{"mode": "non-main", "scope": "agent", "workspaceAccess": "rw"}' \
+    || { fail "Failed to write sandbox config"; return 1; }
+}
+
+# G5 — turn sandbox isolation off (mode: off). Reversible escape hatch.
+disable_workspace_isolation() {
+  [[ -f "$CONFIG_FILE" ]] || return 0
+  oc_set "agents.defaults.sandbox.mode" '"off"'
+}
+
+# Echo the effective sandbox mode (off|non-main|all|unset) from openclaw.json.
+_isolation_status() {
+  [[ -f "$CONFIG_FILE" ]] || { echo "unset"; return 0; }
+  python3 -c "import json,sys
+try:
+    sb = ((json.load(open(sys.argv[1])).get('agents') or {}).get('defaults') or {}).get('sandbox') or {}
+except Exception:
+    sb = {}
+print(sb.get('mode') or 'unset')" "$CONFIG_FILE" 2>/dev/null || echo "unset"
+}
+
 # Echo "<on|off|unset>|<mode>" describing the approvals.exec routing config.
 _approval_routing_status() {
   [[ -f "$CONFIG_FILE" ]] || { echo "unset|"; return 0; }
