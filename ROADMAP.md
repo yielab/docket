@@ -110,15 +110,19 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `continue-on-error` until reliably green); promote to a required gate once proven. A real
   end-to-end macOS run also needs the OpenClaw daemon's own launchd support.
 
-## Phase 4 — Operability & observability
+## Phase 4 — Operability & observability — 🚧 in progress
 
 > What "enterprise-grade" actually means day to day.
 
-- 🗓️ **`--json` on every read command** (not just `snapshot`) for scriptable, stable output.
-- 🗓️ **Audit log** of mutating operations (who/when/what changed an agent, binding, budget).
-- 🗓️ **Performance** — batch agent/field reads into single Python calls (kills the
-  per-field interpreter-spawn cost on `list`/`doctor`); add an incremental cost index keyed
-  by session-file mtime so `cost` is O(changed files), not O(all history).
+- ✅ **Audit log** — every mutating op (`keys.add/remove/rotate`, `gates.enable/disable/isolate`,
+  `profile.model/budget`, `scope.set/reset`, `agent.add/delete`) appends a who/when/what JSON line
+  to `$OPENCLAW_DIR/audit.log` (0600); secret values are never logged. View with `rack audit [N]`
+  / `rack audit --json` (`RACK_NO_AUDIT=1` opts out). Test P8-1.
+- 🚧 **`--json` on read commands** — `rack list --json` ships (a single batched Python pass over
+  all metas + config — also the perf pattern below). `info` / `cost` / `doctor` still to do. P8-2.
+- 🚧 **Performance** — `list --json` already collapses the per-agent field spawns into one Python
+  call; extend that batching to the human `list` / `doctor` views. Still 🗓️: an incremental cost
+  index keyed by session-file mtime so `cost` is O(changed files), not O(all history).
 - 🗓️ **Metrics** — extend `rack serve` with Prometheus-format metrics and a health endpoint.
 
 ## Phase 5 — MLOps depth (the differentiating story)

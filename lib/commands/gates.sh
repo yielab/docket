@@ -77,6 +77,7 @@ _gates_isolate() {
   if [[ "$want" == "off" ]]; then
     disable_workspace_isolation || return 1
     restart_gateway
+    audit_log "gates.isolate" "off"
     success "Sandbox isolation disabled (mode=off) — tools run on the host"
     return 0
   fi
@@ -89,6 +90,7 @@ _gates_isolate() {
 
   apply_workspace_isolation || return 1
   restart_gateway
+  audit_log "gates.isolate" "on"
   success "Sandbox isolation on (mode=non-main, scope=agent, workspaceAccess=rw)"
   echo "  Non-main sessions run tools in a per-agent container; only the workspace is mounted."
   warn "First sandboxed run builds/pulls the image (openclaw-sandbox:bookworm-slim)."
@@ -138,6 +140,7 @@ _gates_enable() {
   fi
 
   restart_gateway
+  audit_log "gates.enable" "security=allowlist seeded=${seeded:-}"
 
   echo ""
   echo "  Verify:  ${GREEN}rack doctor${RESET}   ·   Tune:  ${GREEN}openclaw approvals allowlist add <glob>${RESET}"
@@ -150,6 +153,7 @@ _gates_disable() {
   disable_exec_approval_gates || return 1
   disable_approval_routing || true
   restart_gateway
+  audit_log "gates.disable" ""
   success "Reset gate defaults + approval routing — daemon falls back to tools.exec policy"
   echo "  ${DIM}Seeded allowlists are left in place (harmless; reused if re-enabled).${RESET}"
 }

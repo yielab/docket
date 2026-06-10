@@ -92,6 +92,7 @@ cmd_add() {
     --model "$MODEL" \
     --non-interactive 2>&1 | grep -v "^$"
   success "Agent '$AGENT_ID' registered"
+  audit_log "agent.add" "$AGENT_ID model=$MODEL"
 
   # Sync session key to OpenClaw config
   local session_key; session_key=$(meta_get "$AGENT_ID" "sessionKey" "agent:${AGENT_ID}:default")

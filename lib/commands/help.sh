@@ -57,6 +57,7 @@ ${BOLD}MONITORING${RESET}
   ${GREEN}cost${RESET}     [id]      Token usage and cost breakdown with budget status
   ${GREEN}doctor${RESET}             System health: gateway, config, drift, budget, runaway
   ${GREEN}gates${RESET}              Exec-approval gates: status / enable / disable (opt-in)
+  ${GREEN}audit${RESET}    [N]       Recent mutating operations (keys, gates, profile, agents)
 
 ${BOLD}TEAM & WORKFLOWS${RESET}
   ${GREEN}team status${RESET}        Specialist agent health and RACK status
