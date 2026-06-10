@@ -908,6 +908,44 @@ unset -f openclaw
 rm -rf "$_P57_HOME"
 echo ""
 
+# ─── P5-8: Approval routing (G4) ───────────────────────────────────────────────
+echo "── P5-8: Approval routing ──"
+
+_P58_HOME=$(mktemp -d)
+# Config with one Telegram-bound agent (alpha) and one unbound (beta).
+cat > "$_P58_HOME/openclaw.json" <<'JSON'
+{"agents":{"list":[{"id":"alpha"},{"id":"beta"}]},
+ "bindings":[{"agentId":"alpha","match":{"channel":"telegram","peer":{"kind":"group","id":"-100200"}}}],
+ "channels":{}}
+JSON
+
+_p58_count=$(CONFIG_FILE="$_P58_HOME/openclaw.json" OPENCLAW_DIR="$_P58_HOME" apply_approval_routing)
+
+# approvals.exec written with enabled:true, mode:session.
+_p58_enabled=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approvals']['exec']['enabled'])" "$_P58_HOME/openclaw.json")
+assert_equals "True" "$_p58_enabled" "routing: approvals.exec.enabled=true"
+_p58_mode=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approvals']['exec']['mode'])" "$_P58_HOME/openclaw.json")
+assert_equals "session" "$_p58_mode" "routing: mode=session (no cross-agent target list)"
+
+# Telegram-bound agents counted (1 of 2).
+assert_equals "1" "$_p58_count" "routing: counts telegram-bound agents"
+
+# Status helper reports on|session.
+_p58_status=$(CONFIG_FILE="$_P58_HOME/openclaw.json" _approval_routing_status)
+assert_equals "on|session" "$_p58_status" "routing: status reports on|session"
+
+# Existing config preserved through the oc_set write.
+_p58_pres=$(python3 -c "import json,sys; c=json.load(open(sys.argv[1])); print(len(c['bindings']), len(c['agents']['list']))" "$_P58_HOME/openclaw.json")
+assert_equals "1 2" "$_p58_pres" "routing: bindings and agents preserved"
+
+# Disable flips enabled to false (escape hatch).
+CONFIG_FILE="$_P58_HOME/openclaw.json" disable_approval_routing >/dev/null 2>&1
+_p58_off=$(CONFIG_FILE="$_P58_HOME/openclaw.json" _approval_routing_status)
+assert_equals "off|session" "$_p58_off" "routing: disable sets enabled=false"
+
+rm -rf "$_P58_HOME"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

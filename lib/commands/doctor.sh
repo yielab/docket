@@ -358,8 +358,18 @@ PYEOF
     OK)    success "  Exec approvals: $gs_policy ($gs_counts)" ;;
     OPEN)  warn "  Exec approvals: $gs_policy — host exec is ungated ($gs_counts)" ;;
     UNSET) warn "  Exec approvals: not configured — gates inactive"
-           echo "    ${DIM}Apply defaults via rack install (spec: specs/functional/security-gates.spec.md)${RESET}" ;;
+           echo "    ${DIM}Enable via rack gates enable (spec: specs/functional/security-gates.spec.md)${RESET}" ;;
     *)     dim "  Exec approvals: ${gs_policy:-status unavailable}" ;;
+  esac
+
+  # G4 — approval routing (how prompts reach an approver)
+  local route_line r_state r_mode
+  route_line=$(_approval_routing_status)
+  IFS='|' read -r r_state r_mode <<< "$route_line"
+  case "$r_state" in
+    on)  success "  Approval routing: on (mode=${r_mode:-?})" ;;
+    off) [[ "$gs_state" == "OK" ]] && warn "  Approval routing: off — gated prompts won't reach chat" ;;
+    *)   [[ "$gs_state" == "OK" ]] && dim "  Approval routing: not configured — rack gates enable" ;;
   esac
 
   # G1 — daemon security audit summary (config-perms finding excluded; rack owns it).
