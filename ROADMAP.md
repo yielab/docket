@@ -136,8 +136,11 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 - 🗓️ **Real eval harness** — promote the eval stubs to golden-task evals per specialist role;
   use results to gate model-tier recommendations with data, not vibes.
-- 🗓️ **Cost & latency history** — daily per-agent series (`rack cost --history`) built on the
-  Phase 4 cost index, with regression alerts.
+- ✅ **Cost history** — `rack cost --history [id] [--days N] [--json]` shows a daily per-agent
+  cost/turn/token series (bucketed by session timestamp), cached in `.cost-history.json` by the
+  same (mtime, size) signatures as the cost index, with a simple regression flag (a day >2× its
+  trailing 3-day average). P11-1. (Latency isn't in the session schema — a `latency_ms` field on
+  OpenClaw session events would let this extend to latency without changing the rack side.)
 - 🗓️ **Template/prompt versioning** — stamp SOUL/AGENTS/TOOLS template versions into
   `.rack-meta.json` and surface drift in `rack doctor`.
 - 🗓️ **Declarative provisioning** — `rack add --from agent.yaml` so agent fleets are

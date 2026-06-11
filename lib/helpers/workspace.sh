@@ -460,6 +460,79 @@ print(f'{total["input"]}|{total["output"]}|{total["cacheRead"]}|{total["cacheWri
 PY
 }
 
+# Per-day cost/turn/token series for one agent, from session timestamps.
+# Cached in .cost-history.json keyed by the set of (file, mtime, size) signatures:
+# if no session file changed since last run, the cached history is returned
+# without re-parsing. RACK_NO_COST_INDEX=1 forces a recompute.
+# Output: one line per day, "YYYY-MM-DD|turns|input|output|cost".
+_cost_history() {
+  local id="$1"
+  local sessions_dir="$OPENCLAW_DIR/agents/$id/sessions"
+  local hist_path="$OPENCLAW_DIR/agents/$id/.cost-history.json"
+  python3 - "$sessions_dir" "$hist_path" <<'PY' 2>/dev/null || true
+import json, sys, os, glob
+sessions_dir, hist_path = sys.argv[1], sys.argv[2]
+use_index = os.environ.get("RACK_NO_COST_INDEX") != "1"
+
+sigs, files = {}, []
+if os.path.isdir(sessions_dir):
+    files = sorted(glob.glob(os.path.join(sessions_dir, "*.jsonl")))
+    for f in files:
+        try:
+            st = os.stat(f)
+            sigs[os.path.basename(f)] = [int(st.st_mtime), st.st_size]
+        except OSError:
+            pass
+
+cached = {}
+if use_index:
+    try:
+        cached = json.load(open(hist_path))
+    except Exception:
+        cached = {}
+
+if use_index and cached.get("sigs") == sigs:
+    hist = cached.get("history", {})
+else:
+    hist = {}
+    for f in files:
+        try:
+            fh = open(f)
+        except OSError:
+            continue
+        for line in fh:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            msg = d.get("message", {})
+            usage = msg.get("usage", {}) if isinstance(msg, dict) else {}
+            if not usage:
+                continue
+            ts = d.get("timestamp", "")
+            day = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else "unknown"
+            b = hist.setdefault(day, {"turns": 0, "input": 0, "output": 0, "cost": 0.0})
+            b["turns"] += 1
+            b["input"] += usage.get("input", 0)
+            b["output"] += usage.get("output", 0)
+            cost = usage.get("cost", {})
+            b["cost"] += cost.get("total", 0) if isinstance(cost, dict) else 0
+    if use_index:
+        try:
+            tmp = hist_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump({"sigs": sigs, "history": hist}, fh)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, hist_path)
+        except Exception:
+            pass
+
+for day in sorted(hist.keys()):
+    b = hist[day]
+    print(f'{day}|{b["turns"]}|{b["input"]}|{b["output"]}|{b["cost"]:.6f}')
+PY
+}
+
 _estimate_cost() {
   local in_tok="$1" out_tok="$2" cache_r="$3" cache_w="$4" model="$5"
   local pricing="${MODEL_PRICING[$model]:-3.00:15.00:0.30:3.75}"

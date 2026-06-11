@@ -154,7 +154,7 @@ rack maintain <id> clean  # Clear agent memory (see Maintenance below)
 rack profile <id> [tier]  # Set model tier (economy/standard/premium)
 rack scope <id> set <key> # Change project session key
 rack keys                 # Manage API keys
-rack cost [id]            # Show token usage and costs
+rack cost [id]            # Show token usage and costs (--json, --history [--days N])
 ```
 
 ### Maintenance
