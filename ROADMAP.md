@@ -134,8 +134,14 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 > Turn the existing cost/routing primitives into a real, data-driven LLMOps control plane.
 
-- 🗓️ **Real eval harness** — promote the eval stubs to golden-task evals per specialist role;
-  use results to gate model-tier recommendations with data, not vibes.
+- ✅ **Real eval harness** — six specialist-role evals (programmer, reviewer, tester,
+  knowledge, security, manager), each with two modes: a fast structural check (always, no
+  LLM, verifies the SOUL.md contract) and a live golden-task check (`RACK_EVAL_LIVE=1`,
+  invokes `openclaw agent --local --json`, records pass/fail + cost + tokens to
+  `tests/evals/results/YYYY-MM-DD.jsonl`). `rack eval [--live] [--tier <t>] [--role <r>]
+  [--recommend]` drives the harness; `rack eval --recommend` and `rack doctor` (section 16)
+  surface per-role tier suggestions from stored results. Infrastructure failures (quota,
+  auth, timeout) are SKIP, not FAIL — evals stay non-blocking in CI.
 - ✅ **Cost history** — `rack cost --history [id] [--days N] [--json]` shows a daily per-agent
   cost/turn/token series (bucketed by session timestamp), cached in `.cost-history.json` by the
   same (mtime, size) signatures as the cost index, with a simple regression flag (a day >2× its
@@ -154,7 +160,43 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   Shares one `_provision_agent` core with interactive `rack add`. Example specs in
   `examples/configs/`. P11-3.
 
-## Phase 6 — Product & community
+## Phase 6 — Model & provider agnosticism — 🔴 CRITICAL (jumps the queue)
+
+> **Risk being addressed:** rack today has a hard dependency on the Claude API. The model
+> whitelist in `lib/helpers/models.sh` **rejects** any non-Anthropic model, the tier →
+> model mapping and pricing table in `lib/core/config.sh` are Anthropic-only, and the
+> README/templates/help text assume Claude everywhere. A pricing change, outage, regional
+> block, or ToS change at a single provider breaks every deployment. rack must be
+> **model-agnostic**: any provider the OpenClaw daemon supports — local (free: Ollama,
+> llama.cpp, LM Studio) or remote (paid: Anthropic, OpenAI, Google; mixed: OpenRouter) —
+> must be first-class, and the chosen model must be **explicit and visible** in every
+> command, instruction template, and doc.
+>
+> Detailed executable tasks: `internal-docs/IMPLEMENTATION-PLAN.md` §PHASE 6 (MA-1 … MA-8).
+
+- 🗓️ **Verify daemon provider surface (MA-1)** — confirm which providers/model-ID formats the
+  OpenClaw daemon accepts (`provider/model` strings, local endpoints, base-URL overrides) and
+  document the contract rack must target. Everything below builds on this.
+- 🗓️ **Data-driven model registry (MA-2)** — replace the hardcoded `VALID_MODELS` whitelist,
+  `MODEL_PROFILES`, and `MODEL_PRICING` with a registry file (built-in defaults + user
+  override). Unknown-but-well-formed `provider/model` IDs are accepted with a warning, never
+  rejected — the daemon is the validator of record.
+- 🗓️ **`rack models` command (MA-3)** — list/set the tier→model mapping and default model;
+  show provider, price (or **free/local**), and source of each mapping. No more silent defaults.
+- 🗓️ **Provider presets incl. free/local (MA-4)** — one-command switch of the whole tier
+  mapping: `anthropic` (current default), `openai`, `google`, `openrouter`, `local` (Ollama —
+  free, no API key). Free vs paid clearly labeled at selection time.
+- 🗓️ **Cost honesty for unknown/local models (MA-5)** — unpriced models report cost as
+  `n/a (no pricing data)` instead of $0.00; local models report `$0 (local)`.
+- 🗓️ **Provider-agnostic key plumbing (MA-6)** — extend the scoped-key sync + doctor checks to
+  all registry providers; local providers require no key and must not warn about one.
+- 🗓️ **Neutralize Claude-isms in templates (MA-7)** — agent prompt templates speak in **tiers**
+  (economy/standard/premium), not "haiku/sonnet/opus"; provider console URLs become
+  provider-resolved; `TEMPLATE_VERSION` bump makes the fleet drift visible.
+- 🗓️ **Docs & help truth pass (MA-8)** — README, `docs/`, `help.sh`, and CLAUDE.md state the
+  model-agnostic position up front: default models, how to switch, free options, paid options.
+
+## Phase 7 — Product & community
 
 - 🗓️ **Full manager delegation** — promote the task queue to an enforced state machine with
   locking and schema validation.
@@ -164,10 +206,12 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 ### Near-term (next four, concrete)
 
-1. ✅ Phase 0 — security hardening (injection, scoped secrets, rotation/age, gates, backends).
-2. ✅ Phase 1 — `json_atomic_write` + `flock` + loud reads (P6-1) — corruption/race class removed.
-3. 🗓️ Phase 2 — CI: shellcheck + integration + blocking specs + Bash/OS matrix.
-4. 🗓️ Phase 2 — versioning + `CHANGELOG.md` + first tagged release `v0.1.0`.
+1. 🔴 **Phase 6 — model & provider agnosticism (CRITICAL, do first)** — remove the hard
+   Claude-API dependency; registry + `rack models` + local/free presets + honest docs
+   (executable tasks: `internal-docs/IMPLEMENTATION-PLAN.md` §PHASE 6).
+2. ✅ Phase 0 — security hardening (injection, scoped secrets, rotation/age, gates, backends).
+3. ✅ Phase 1 — `json_atomic_write` + `flock` + loud reads (P6-1) — corruption/race class removed.
+4. 🗓️ Phase 2 — CI: Bash/OS matrix; versioning is done (`v0.1.0` tagged).
 
 A deeper internal audit with severities and effort estimates lives in
 `internal-docs/ARCHITECTURE-AUDIT.md` (not published).
