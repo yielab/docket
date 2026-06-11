@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`rack cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
+  series bucketed by session timestamp, cached in `.cost-history.json` by the same
+  (mtime, size) signatures as the cost index, with a regression flag for any day costing
+  more than 2× its trailing 3-day average.
+- **Template/prompt versioning** — `_create_workspace` stamps the current `TEMPLATE_VERSION`
+  into each agent's `.rack-meta.json` (on `rack add` and `rack maintain rebuild`); `rack doctor`
+  flags agents whose stamp is older than (or absent versus) the current template and points at
+  `rack maintain <id> rebuild`.
+
 ## [0.1.0] - 2026-06-10
 
 First tagged release. Establishes the security and write-safety baseline
