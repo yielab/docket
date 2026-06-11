@@ -1,0 +1,32 @@
+# Declarative agent fleet — provision with:  rack add --from examples/configs/agents.yaml
+#
+# Re-applying is safe: agents whose workspace already exists are skipped, so this
+# file can live in git as the source of truth for a reproducible fleet.
+#
+# Required per agent: name. Everything else has a default:
+#   id          slugified from name if omitted
+#   type        task (use "repo" for an agent bound to a codebase)
+#   codebase    repo agents only; "~" is expanded
+#   stack       auto-detected from the codebase when omitted
+#   model       falls back to the rack default (sonnet)
+#   description, telegram, budgetUsd, projectKey  all optional
+
+agents:
+  - name: My Website
+    type: repo
+    codebase: ~/Sites/mywebsite
+    model: anthropic/claude-sonnet-4-6
+    description: Marketing site — active development.
+    budgetUsd: 20
+
+  - name: Research Bot
+    type: task
+    model: anthropic/claude-haiku-4-5
+    description: Web research and file automation.
+
+  - id: mobile-app
+    name: Mobile App
+    type: repo
+    codebase: ~/Sites/mobile-app
+    description: React Native client.
+    telegram: "-1001234567890"

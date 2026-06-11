@@ -13,11 +13,12 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 - 🚀 **One-command bootstrap** — `rack install` sets up OpenClaw and a 6-member specialist team
 - 📦 **Project agents** — create, inspect, maintain, and delete agents, each with a dedicated, permission-locked workspace (`700`/`600`)
 - 🔒 **Session-based isolation** — `agent:<id>:<project>` keys keep memory and context from leaking across projects
+- 📄 **Declarative provisioning** — `rack add --from agents.yaml` provisions a whole fleet from a version-controlled spec; idempotent re-apply keeps git the source of truth
 
 **Cost control & model routing**
 - 🎚️ **Tiered model profiles** — economy (Haiku), standard (Sonnet), premium (Opus), switchable per agent
 - 💰 **Budget caps & runaway detection** — set a per-agent USD cap; agents auto-pause when it's hit
-- 📊 **Cost reporting** — token usage and dollar cost, per agent or aggregated
+- 📊 **Cost reporting** — token usage and dollar cost, per agent or aggregated, with a daily `--history` series and spike detection
 
 **Team & automation**
 - 👥 **Specialist team** — programmer, reviewer, tester, knowledge, security, and manager roles, shared across projects
@@ -31,7 +32,7 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 
 **Engineering discipline**
 - 📐 **Spec-driven development** — every command and feature is backed by an RFC 2119 specification (100% spec coverage, checked by `validate-specs.sh` / `spec-coverage.sh`)
-- 🧩 **Modular Bash architecture** — 21 commands and 9 reusable helpers, covered by 77 unit and 60 integration tests
+- 🧩 **Modular Bash architecture** — 22 commands and reusable helpers, covered by 194 unit and 60 integration tests
 
 See the [Project Status](#project-status) table below for the maturity of each feature, and the [Command Reference](#command-reference) for full usage.
 
@@ -141,7 +142,8 @@ Configuration synchronizes between:
 
 ```bash
 rack install              # Bootstrap OpenClaw and agents
-rack add [id] [path]      # Create project agent
+rack add [id] [path]      # Create project agent (interactive)
+rack add --from spec.yaml # Provision a fleet from a YAML/JSON spec (declarative)
 rack list                 # Show all agents
 rack info <id>            # Display agent details
 rack delete <id>          # Remove agent

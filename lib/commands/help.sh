@@ -24,6 +24,7 @@ ${BOLD}SETUP${RESET}
 ${BOLD}LIFECYCLE${RESET}
   ${GREEN}list${RESET}               List all project agents and their status
   ${GREEN}add${RESET}                Add a new project agent (interactive)
+  ${GREEN}add${RESET} ${DIM}--from <f>${RESET}     Provision agent(s) from a YAML/JSON spec (declarative)
   ${GREEN}info${RESET}     [id]      Detailed status for a project
   ${GREEN}delete${RESET}   [id]      Remove a project agent
   ${GREEN}maintain${RESET} [id]      Health check & maintenance (see subcommands below)
@@ -87,6 +88,7 @@ ${BOLD}FLAGS${RESET}
 ${BOLD}EXAMPLES${RESET}
   rack                            # show project list
   rack add                        # add a new project (interactive)
+  rack add --from agents.yaml     # provision a fleet from a spec file
   rack doctor                     # full health check
   rack info myproject             # inspect one project
   rack maintain myproject clean   # clear memory logs

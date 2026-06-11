@@ -36,6 +36,18 @@ This specification does NOT cover:
 8. **SHOULD** auto-detect project stack
 9. **SHOULD** suggest appropriate model profile based on project type
 10. **MAY** initialize with custom description
+11. **MUST** stamp the active template version into agent metadata so prompt drift is detectable
+12. **MAY** provision one or more agents declaratively from a spec file (`rack add --from <file>`)
+
+#### Declarative Provisioning (rack add --from)
+
+1. **MUST** accept a JSON spec; **SHOULD** accept YAML when a YAML parser is available
+2. **MUST** support a list of agents, a `{agents: [...]}` mapping, or a single agent mapping
+3. **MUST** apply the same defaults as interactive creation (id slugified from name, `task`
+   type, default model, stack auto-detection for repo agents) and require only a `name`
+4. **MUST** be idempotent: an agent whose workspace already exists is skipped, not recreated
+5. **MUST** validate the `type` field (`repo`|`task`) and skip invalid records without aborting
+6. **SHOULD** restart the gateway at most once per invocation, after all agents are provisioned
 
 ### Agent States
 
@@ -145,8 +157,11 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 ### CLI Command Signatures
 
 ```bash
-# Create agent
+# Create agent (interactive)
 rack add <agent-id> [codebase-path] [--type repo|task] [--model economy|standard|premium] [--description "text"]
+
+# Create one or more agents declaratively from a spec file (JSON, or YAML when PyYAML is present)
+rack add --from <agents.yaml|agents.json>
 
 # List agents
 rack list [--format table|json|csv] [--filter active|stopped|all]
@@ -240,6 +255,11 @@ After successful creation:
 - Maintain (check): < 5 seconds
 
 ## Changelog
+
+### Version 1.2.0 (2026-06-11)
+- Added template-version stamping requirement (drift surfaced in `rack doctor`)
+- Added declarative provisioning (`rack add --from <file>`): JSON/YAML specs, fleet lists,
+  idempotent re-apply, shared defaults with interactive creation
 
 ### Version 1.1.0 (2026-06-09)
 - Replaced the retired `rack reset`/`rack repair` with `rack maintain` and its five modes

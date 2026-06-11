@@ -20,6 +20,13 @@ parse_session_key() {
 # OpenClaw uses the agent.metadata field for custom properties
 sync_session_key() {
   local agent_id="$1" session_key="$2"
+  # The daemon owns openclaw.json; `openclaw agents add` creates it before we get
+  # here. If it's genuinely absent there's nothing to sync into — warn and skip
+  # rather than abort (so a fleet provision isn't halted by one missing config).
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    warn "Cannot sync session key for $agent_id — config missing: $CONFIG_FILE"
+    return 0
+  fi
   python3 - "$CONFIG_FILE" "$agent_id" "$session_key" <<'PY'
 import json, sys
 path, agent_id, session_key = sys.argv[1], sys.argv[2], sys.argv[3]
