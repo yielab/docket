@@ -1350,6 +1350,67 @@ assert_equals "drift" "$_p112_bump" "template: older stamp than current reads as
 rm -rf "$_P112"
 echo ""
 
+# ─── P11-3: Declarative provisioning (rack add --from) ─────────────────────────
+echo "── P11-3: Declarative provisioning ──"
+
+source "$LIB_DIR/helpers/workspace.sh"
+source "$LIB_DIR/commands/add.sh"
+
+# Parser: a single top-level mapping yields one agent; an `agents:` list yields N.
+_P113=$(mktemp -d)
+echo '{"name":"Solo","type":"task"}' > "$_P113/solo.json"
+_p113_one=$(_parse_agent_spec "$_P113/solo.json" | grep -c .)
+assert_equals "1" "$_p113_one" "declarative: single mapping → one agent line"
+
+cat > "$_P113/fleet.json" <<'JSON'
+{"agents":[
+  {"name":"Web One","type":"repo","codebase":"~/nope","model":"anthropic/claude-sonnet-4-6","budgetUsd":15},
+  {"name":"Task Two","type":"task","model":"anthropic/claude-haiku-4-5"}
+]}
+JSON
+_p113_n=$(_parse_agent_spec "$_P113/fleet.json" | grep -c .)
+assert_equals "2" "$_p113_n" "declarative: agents list → N agent lines"
+# `~` is expanded in codebase (no literal tilde survives).
+_parse_agent_spec "$_P113/fleet.json" | grep -q '/nope' && _p113_tilde="ok" || _p113_tilde="no"
+assert_equals "ok" "$_p113_tilde" "declarative: ~ expanded in codebase"
+
+# End-to-end provisioning with the daemon-facing calls stubbed out.
+sync_session_key() { :; }
+audit_log() { :; }
+restart_gateway() { :; }
+PATH="$_P113/bin:$PATH"; mkdir -p "$_P113/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$_P113/bin/openclaw"; chmod +x "$_P113/bin/openclaw"
+
+_p113_run() {
+  OPENCLAW_DIR="$_P113/oc" PROJECTS_DIR="$_P113/oc/projects" \
+  SITES_DIR="$_P113/sites" META_FILE=".rack-meta.json" CONFIG_FILE="$_P113/oc/openclaw.json" \
+  TEMPLATE_VERSION="3" _add_from_file "$_P113/fleet.json"
+}
+_p113_out=$(_p113_run 2>&1)
+
+[[ -f "$_P113/oc/projects/web-one/SOUL.md" ]] && _p113_ws="yes" || _p113_ws="no"
+assert_equals "yes" "$_p113_ws" "declarative: workspace created for slugified id (web-one)"
+
+_p113_model=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+  meta_get "web-one" "model" "MISSING")
+assert_equals "anthropic/claude-sonnet-4-6" "$_p113_model" "declarative: model stamped into meta"
+
+_p113_budget=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+  meta_get "web-one" "budgetUsd" "MISSING")
+assert_equals "15" "$_p113_budget" "declarative: budgetUsd stamped into meta"
+
+_p113_tv=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+  meta_get "task-two" "templateVersion" "MISSING")
+assert_equals "3" "$_p113_tv" "declarative: templateVersion stamped on provisioned agent"
+
+# Re-applying the same file is idempotent: existing agents are skipped.
+_p113_again=$(_p113_run 2>&1)
+echo "$_p113_again" | grep -q "already exists — skipped" && _p113_idem="ok" || _p113_idem="no"
+assert_equals "ok" "$_p113_idem" "declarative: re-apply skips existing agents (idempotent)"
+
+rm -rf "$_P113"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
