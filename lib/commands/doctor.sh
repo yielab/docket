@@ -408,6 +408,30 @@ PYEOF
     fi
   fi
 
+  # 15. Template/prompt version drift (advisory — agents still run on an old
+  # template, but their SOUL/AGENTS/TOOLS prompts predate the current text).
+  local tmpl_ids; tmpl_ids=$(project_ids)
+  if [[ -n "$tmpl_ids" ]]; then
+    echo ""
+    echo -e "${BOLD}Template version (current: v${TEMPLATE_VERSION:-1}):${RESET}"
+    local tmpl_drift=0
+    while IFS= read -r tid; do
+      [[ -z "$tid" ]] && continue
+      local tv; tv=$(meta_get "$tid" "templateVersion" "")
+      if [[ -z "$tv" ]]; then
+        warn "  $tid: unstamped (pre-versioning) — rack maintain $tid rebuild"
+        tmpl_drift=$(( tmpl_drift + 1 ))
+      elif [[ "$tv" != "${TEMPLATE_VERSION:-1}" ]]; then
+        warn "  $tid: on v$tv, current v${TEMPLATE_VERSION:-1} — rack maintain $tid rebuild"
+        tmpl_drift=$(( tmpl_drift + 1 ))
+      else
+        success "  $tid: v$tv (current)"
+      fi
+    done <<< "$tmpl_ids"
+    [[ "$tmpl_drift" -gt 0 ]] && \
+      echo "  ${DIM}Rebuild regenerates prompts from metadata; edit metadata first if needed.${RESET}"
+  fi
+
   # Summary
   echo ""
   if [[ "$issues" -eq 0 ]]; then

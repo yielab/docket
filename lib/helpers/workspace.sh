@@ -180,6 +180,10 @@ _none_
 _none_
 HEARTBEAT
 
+  # Stamp the template version so `rack doctor` can detect prompt drift after a
+  # template change (both `rack add` and `rack maintain rebuild` route here).
+  meta_set "$id" "templateVersion" "${TEMPLATE_VERSION:-1}"
+
   # Fix permissions
   find "$workspace" -type d -exec chmod 700 {} \;
   find "$workspace" -type f -exec chmod 600 {} \;

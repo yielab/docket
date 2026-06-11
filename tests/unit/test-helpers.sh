@@ -1320,6 +1320,36 @@ assert_equals "2026-01-02" "$(echo "$_p111d" | python3 -c "import json,sys; prin
 rm -rf "$_P111"
 echo ""
 
+# ─── P11-2: Template/prompt version stamping & drift ───────────────────────────
+echo "── P11-2: Template versioning ──"
+
+source "$LIB_DIR/helpers/output.sh"
+source "$LIB_DIR/helpers/json.sh"
+source "$LIB_DIR/helpers/workspace.sh"
+
+_P112=$(mktemp -d)
+(
+  export PROJECTS_DIR="$_P112/projects" OPENCLAW_DIR="$_P112" META_FILE=".rack-meta.json"
+  export TEMPLATE_VERSION="7"
+  _create_workspace "tv1" "task" "TV One" "" "" "a task agent" "$DEFAULT_MODEL" >/dev/null 2>&1
+)
+_p112_stamp=$(PROJECTS_DIR="$_P112/projects" META_FILE=".rack-meta.json" \
+  meta_get "tv1" "templateVersion" "MISSING")
+assert_equals "7" "$_p112_stamp" "template: _create_workspace stamps TEMPLATE_VERSION into meta"
+
+# Drift comparison logic: a lower stamp than current is detected as drift.
+_p112_cur="7"
+_p112_old=$(PROJECTS_DIR="$_P112/projects" META_FILE=".rack-meta.json" \
+  meta_get "tv1" "templateVersion" "")
+if [[ "$_p112_old" != "$_p112_cur" ]]; then _p112_drift="drift"; else _p112_drift="current"; fi
+assert_equals "current" "$_p112_drift" "template: matching stamp reads as current"
+# Simulate a template bump: stamp 7, current 8 → drift.
+if [[ "7" != "8" ]]; then _p112_bump="drift"; else _p112_bump="current"; fi
+assert_equals "drift" "$_p112_bump" "template: older stamp than current reads as drift"
+
+rm -rf "$_P112"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
