@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`rack eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
+  eval harness. Each of the six roles (programmer, reviewer, tester, knowledge, security,
+  manager) has a structural mode (fast SOUL.md contract check) and a live mode
+  (`RACK_EVAL_LIVE=1`) that sends a golden task via `openclaw agent --local --json` and
+  checks the response against acceptance criteria. Results (pass/fail, cost, tokens) are
+  stored in `tests/evals/results/YYYY-MM-DD.jsonl`; `rack eval --recommend` and
+  `rack doctor` (section 16) surface per-role tier suggestions from stored results.
+  Infrastructure failures (quota, auth, timeout) are SKIP — evals stay non-blocking in CI.
 - **`rack cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
   series bucketed by session timestamp, cached in `.cost-history.json` by the same
   (mtime, size) signatures as the cost index, with a regression flag for any day costing

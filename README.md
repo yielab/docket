@@ -32,7 +32,8 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 
 **Engineering discipline**
 - 📐 **Spec-driven development** — every command and feature is backed by an RFC 2119 specification (100% spec coverage, checked by `validate-specs.sh` / `spec-coverage.sh`)
-- 🧩 **Modular Bash architecture** — 22 commands and reusable helpers, covered by 194 unit and 60 integration tests
+- 📏 **Golden-task eval harness** — six specialist-role evals, structural + live (`RACK_EVAL_LIVE=1`) modes; results feed `rack doctor`'s tier recommendations
+- 🧩 **Modular Bash architecture** — 23 commands and reusable helpers, covered by 194 unit and 60 integration tests
 
 See the [Project Status](#project-status) table below for the maturity of each feature, and the [Command Reference](#command-reference) for full usage.
 

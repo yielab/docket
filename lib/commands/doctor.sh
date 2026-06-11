@@ -432,6 +432,51 @@ PYEOF
       echo "  ${DIM}Rebuild regenerates prompts from metadata; edit metadata first if needed.${RESET}"
   fi
 
+  # 16. Eval results — tier recommendations from the last RACK_EVAL_LIVE=1 run.
+  #   Only shown when results exist; purely advisory (no issue count bump).
+  local eval_results_dir
+  eval_results_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../tests/evals/results" && pwd 2>/dev/null)" || true
+  if [[ -d "$eval_results_dir" ]]; then
+    local latest_results; latest_results=$(ls -t "$eval_results_dir"/*.jsonl 2>/dev/null | head -1)
+    if [[ -n "$latest_results" ]]; then
+      echo ""
+      local results_date; results_date=$(basename "$latest_results" .jsonl)
+      echo -e "${BOLD}Eval results (${results_date}):${RESET}"
+      python3 - "$latest_results" <<'PY'
+import json, sys, collections
+recs = []
+try:
+    for line in open(sys.argv[1]):
+        try: recs.append(json.loads(line))
+        except Exception: pass
+except Exception: pass
+if not recs:
+    print("  (no records in results file)")
+    sys.exit(0)
+TIER_ORDER = {"economy": 0, "standard": 1, "premium": 2}
+by_role = collections.defaultdict(list)
+for r in recs:
+    by_role[r["role"]].append(r)
+for role, results in sorted(by_role.items()):
+    passing = [r for r in results if r.get("passed")]
+    failing  = [r for r in results if not r.get("passed")]
+    if not passing and not failing:
+        continue
+    if not passing:
+        print(f"  {role}: all {len(failing)} run(s) FAILED")
+        continue
+    min_tier = min(passing, key=lambda r: TIER_ORDER.get(r.get("tier","standard"), 1))["tier"]
+    avg_cost = sum(r.get("costUsd",0) for r in passing) / len(passing)
+    current_tier = results[-1].get("tier","?")
+    if TIER_ORDER.get(min_tier,1) < TIER_ORDER.get(current_tier,1):
+        print(f"  \033[1;33m⚠\033[0m  {role}: passed on {min_tier} (avg ${avg_cost:.4f}/run) — consider downgrading from {current_tier}")
+    else:
+        print(f"  \033[0;32m✓\033[0m  {role}: {min_tier} minimum (avg ${avg_cost:.4f}/run, {len(passing)}/{len(results)} passed)")
+PY
+      dim "  Re-run: RACK_EVAL_LIVE=1 rack eval"
+    fi
+  fi
+
   # Summary
   echo ""
   if [[ "$issues" -eq 0 ]]; then
