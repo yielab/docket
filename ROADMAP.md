@@ -141,8 +141,11 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   same (mtime, size) signatures as the cost index, with a simple regression flag (a day >2× its
   trailing 3-day average). P11-1. (Latency isn't in the session schema — a `latency_ms` field on
   OpenClaw session events would let this extend to latency without changing the rack side.)
-- 🗓️ **Template/prompt versioning** — stamp SOUL/AGENTS/TOOLS template versions into
-  `.rack-meta.json` and surface drift in `rack doctor`.
+- ✅ **Template/prompt versioning** — `_create_workspace` stamps the current
+  `TEMPLATE_VERSION` (config.sh) into each agent's `.rack-meta.json` on `rack add` and
+  `rack maintain rebuild`; `rack doctor` flags agents whose stamp is older than (or absent
+  versus) the current template and points at `rack maintain <id> rebuild` to regenerate the
+  prompts. Bumping the integer after any material template edit makes the drift visible fleet-wide. P11-2.
 - 🗓️ **Declarative provisioning** — `rack add --from agent.yaml` so agent fleets are
   reproducible and reviewable in git.
 

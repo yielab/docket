@@ -11,6 +11,13 @@ SITES_DIR="${SITES_DIR:-$HOME/Sites}"
 DEFAULT_MODEL="anthropic/claude-sonnet-4-6"
 META_FILE=".rack-meta.json"  # stored inside each project workspace
 
+# Version of the SOUL/AGENTS/TOOLS/HEARTBEAT workspace templates emitted by
+# _create_workspace. Stamped into each agent's .rack-meta.json at creation /
+# rebuild; `rack doctor` flags agents whose stamp is older (prompt drift) and
+# suggests `rack maintain <id> rebuild`. Bump this (integer) whenever the
+# template text in lib/helpers/workspace.sh changes materially.
+TEMPLATE_VERSION="${TEMPLATE_VERSION:-1}"
+
 # ─── Expected Telegram group names per agent ─────────────────────────────────
 # Maps agent ID → the Telegram group name the user should create.
 # Used by "rack list" to show setup status and by "rack doctor" for auditing.
