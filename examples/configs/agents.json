@@ -1,0 +1,18 @@
+{
+  "agents": [
+    {
+      "name": "My Website",
+      "type": "repo",
+      "codebase": "~/Sites/mywebsite",
+      "model": "anthropic/claude-sonnet-4-6",
+      "description": "Marketing site — active development.",
+      "budgetUsd": 20
+    },
+    {
+      "name": "Research Bot",
+      "type": "task",
+      "model": "anthropic/claude-haiku-4-5",
+      "description": "Web research and file automation."
+    }
+  ]
+}

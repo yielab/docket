@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into each agent's `.rack-meta.json` (on `rack add` and `rack maintain rebuild`); `rack doctor`
   flags agents whose stamp is older than (or absent versus) the current template and points at
   `rack maintain <id> rebuild`.
+- **Declarative provisioning** — `rack add --from <agents.yaml|agents.json>` provisions a whole
+  fleet from a spec file (JSON always; YAML when PyYAML is installed). Supports a single agent
+  mapping, a list, or `{agents: [...]}`; only `name` is required. Idempotent (existing agents
+  skipped) so a fleet file can be re-applied and kept in git. Example specs in `examples/configs/`.
+
+### Changed
+
+- `sync_session_key` now warns and skips (instead of aborting) when `openclaw.json` is absent,
+  so one missing config can't halt a multi-agent provision.
 
 ## [0.1.0] - 2026-06-10
 

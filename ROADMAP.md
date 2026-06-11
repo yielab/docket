@@ -146,8 +146,13 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `rack maintain rebuild`; `rack doctor` flags agents whose stamp is older than (or absent
   versus) the current template and points at `rack maintain <id> rebuild` to regenerate the
   prompts. Bumping the integer after any material template edit makes the drift visible fleet-wide. P11-2.
-- 🗓️ **Declarative provisioning** — `rack add --from agent.yaml` so agent fleets are
-  reproducible and reviewable in git.
+- ✅ **Declarative provisioning** — `rack add --from <agents.yaml|agents.json>` provisions a
+  whole fleet from a spec file (JSON always; YAML when PyYAML is present). A document may be a
+  single agent mapping, a list, or `{agents: [...]}`; only `name` is required and the rest reuse
+  the interactive defaults. Idempotent (existing agents skipped, so a fleet file is safe to
+  re-apply and to keep in git as the source of truth) and restarts the gateway at most once.
+  Shares one `_provision_agent` core with interactive `rack add`. Example specs in
+  `examples/configs/`. P11-3.
 
 ## Phase 6 — Product & community
 
