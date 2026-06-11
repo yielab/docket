@@ -1283,6 +1283,43 @@ assert_equals "True" "$(echo "$_p102" | python3 -c "import json,sys; print(json.
 rm -rf "$_P102"
 echo ""
 
+# ─── P11-1: Cost history (daily series) ────────────────────────────────────────
+echo "── P11-1: Cost history ──"
+
+source "$LIB_DIR/helpers/workspace.sh"
+source "$LIB_DIR/helpers/picker.sh"
+source "$LIB_DIR/commands/cost.sh"
+
+_P111=$(mktemp -d)
+mkdir -p "$_P111/projects/a1" "$_P111/agents/a1/sessions"
+echo '{"name":"A1"}' > "$_P111/projects/a1/.rack-meta.json"
+{
+  echo '{"timestamp":"2026-01-01T10:00:00Z","message":{"usage":{"input":100,"output":50,"cost":{"total":0.10}}}}'
+  echo '{"timestamp":"2026-01-01T12:00:00Z","message":{"usage":{"input":100,"output":50,"cost":{"total":0.10}}}}'
+  echo '{"timestamp":"2026-01-02T09:00:00Z","message":{"usage":{"input":200,"output":100,"cost":{"total":0.30}}}}'
+} > "$_P111/agents/a1/sessions/s.jsonl"
+
+_p111=$(OPENCLAW_DIR="$_P111" _cost_history "a1")
+echo "$_p111" | grep -q '^2026-01-01|2|200|100|0.200000$' && _h1="ok" || _h1="no"
+assert_equals "ok" "$_h1" "history: day 1 bucket (2 turns summed)"
+echo "$_p111" | grep -q '^2026-01-02|1|200|100|0.300000$' && _h2="ok" || _h2="no"
+assert_equals "ok" "$_h2" "history: day 2 bucket"
+[[ -f "$_P111/agents/a1/.cost-history.json" ]] && _hidx="yes" || _hidx="no"
+assert_equals "yes" "$_hidx" "history: history index created"
+
+# JSON view: two days.
+_p111j=$(OPENCLAW_DIR="$_P111" PROJECTS_DIR="$_P111/projects" _cost_history_view "a1" 0 1)
+echo "$_p111j" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _hjv="ok" || _hjv="no"
+assert_equals "ok" "$_hjv" "history --json: valid JSON"
+assert_equals "2" "$(echo "$_p111j" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['history']))")" "history --json: two days"
+
+# --days 1 keeps only the most recent day.
+_p111d=$(OPENCLAW_DIR="$_P111" PROJECTS_DIR="$_P111/projects" _cost_history_view "a1" 1 1)
+assert_equals "2026-01-02" "$(echo "$_p111d" | python3 -c "import json,sys; print(json.load(sys.stdin)['history'][0]['date'])")" "history --days 1: keeps most recent"
+
+rm -rf "$_P111"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
