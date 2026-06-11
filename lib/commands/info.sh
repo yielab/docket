@@ -1,9 +1,55 @@
 #!/usr/bin/env bash
 # Command: info
 
+# Machine-readable single-agent detail (rack info <id> --json).
+_info_json() {
+  local id="$1"
+  local workspace="$PROJECTS_DIR/$id"
+  [[ -d "$workspace" ]] || error "Project '$id' not found."
+  local registered="false"; agent_registered "$id" && registered="true"
+  local tg; tg=$(get_tg_binding "$id")
+  local activity; activity=$(last_activity "$id")
+  python3 - "$workspace/$META_FILE" "$id" "$registered" "$tg" "$activity" "$DEFAULT_MODEL" <<'PY'
+import json, sys
+meta_path, aid, registered, tg, activity, default_model = sys.argv[1:7]
+try:
+    meta = json.load(open(meta_path))
+except Exception:
+    meta = {}
+print(json.dumps({
+    "id": aid,
+    "name": meta.get("name", aid),
+    "type": meta.get("type", "repo"),
+    "codebase": meta.get("codebase", ""),
+    "stack": meta.get("stack", ""),
+    "model": meta.get("model", default_model),
+    "budgetUsd": meta.get("budgetUsd", ""),
+    "paused": meta.get("paused", "") == "true",
+    "sessionKey": meta.get("sessionKey", f"agent:{aid}:default"),
+    "projectKey": meta.get("projectKey", "default"),
+    "registered": registered == "true",
+    "telegram": tg or None,
+    "lastActive": activity,
+}, indent=2))
+PY
+}
+
 cmd_info() {
-  local id="${1:-}"
-  [[ -z "$id" ]] && id=$(pick_project "Inspect project")
+  local id="" json=0 a
+  for a in "$@"; do
+    case "$a" in
+      --json) json=1 ;;
+      *) [[ -z "$id" ]] && id="$a" ;;
+    esac
+  done
+  [[ -z "$id" && "$json" -eq 0 ]] && id=$(pick_project "Inspect project")
+  [[ -z "$id" ]] && error "An agent id is required (e.g. rack info <id> --json)."
+
+  if [[ "$json" -eq 1 ]]; then
+    _info_json "$id"
+    return 0
+  fi
+
   local workspace="$PROJECTS_DIR/$id"
   [[ ! -d "$workspace" ]] && error "Project '$id' not found."
 

@@ -118,8 +118,9 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `profile.model/budget`, `scope.set/reset`, `agent.add/delete`) appends a who/when/what JSON line
   to `$OPENCLAW_DIR/audit.log` (0600); secret values are never logged. View with `rack audit [N]`
   / `rack audit --json` (`RACK_NO_AUDIT=1` opts out). Test P8-1.
-- 🚧 **`--json` on read commands** — `rack list --json` and `rack cost --json` ship (batched
-  Python passes). `info` / `doctor` still to do. P8-2 / P9-2.
+- 🚧 **`--json` on read commands** — `rack list --json`, `rack cost --json`, and
+  `rack info <id> --json` ship (batched Python passes). Only `doctor --json` remains (lower value:
+  `snapshot` already emits machine system state). P8-2 / P9-2 / P10-2.
 - ✅ **Performance: incremental cost index** — `_aggregate_cost` caches per-session-file totals
   in `.cost-index.json` keyed by (mtime, size); unchanged files are read from cache, so `cost`/
   budget checks are O(changed files), not O(all history). Self-healing (stale entries dropped),

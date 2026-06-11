@@ -1262,6 +1262,27 @@ assert_equals "ok" "$_p101_health" "serve: /health emits status ok"
 rm -rf "$_P101"
 echo ""
 
+# ─── P10-2: info --json ────────────────────────────────────────────────────────
+echo "── P10-2: info --json ──"
+
+source "$LIB_DIR/commands/info.sh"
+
+_P102=$(mktemp -d)
+mkdir -p "$_P102/projects/a1/memory"
+echo '{"name":"A1","type":"repo","model":"anthropic/claude-sonnet-4-6","stack":"Go","projectKey":"alpha"}' > "$_P102/projects/a1/.rack-meta.json"
+echo '{"agents":{"list":[{"id":"a1"}]},"bindings":[{"agentId":"a1","match":{"channel":"telegram","peer":{"kind":"group","id":"-55"}}}],"channels":{}}' > "$_P102/openclaw.json"
+
+_p102=$(PROJECTS_DIR="$_P102/projects" CONFIG_FILE="$_P102/openclaw.json" META_FILE=".rack-meta.json" \
+  DEFAULT_MODEL="anthropic/claude-sonnet-4-6" _info_json "a1")
+echo "$_p102" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p102_v="ok" || _p102_v="fail"
+assert_equals "ok" "$_p102_v" "info --json: valid JSON"
+assert_equals "alpha" "$(echo "$_p102" | python3 -c "import json,sys; print(json.load(sys.stdin)['projectKey'])")" "info --json: projectKey present"
+assert_equals "-55" "$(echo "$_p102" | python3 -c "import json,sys; print(json.load(sys.stdin)['telegram'])")" "info --json: telegram resolved"
+assert_equals "True" "$(echo "$_p102" | python3 -c "import json,sys; print(json.load(sys.stdin)['registered'])")" "info --json: registered reflects config"
+
+rm -rf "$_P102"
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"
