@@ -36,11 +36,94 @@ print(json.dumps({"agents": agents, "totalUsd": round(total, 6)}, indent=2))
 '
 }
 
+# Daily cost/turn/token history for one agent or all (rack cost --history [id]).
+# --days N limits to the last N days; --json emits {scope,history:[...]}.
+# Human view flags any day whose cost exceeds 2x its trailing 3-day average.
+_cost_history_view() {
+  local id="$1" days="$2" json="$3"
+  local -a agents=()
+  if [[ -n "$id" ]]; then
+    [[ -d "$PROJECTS_DIR/$id" ]] || error "Project '$id' not found."
+    agents=("$id")
+  else
+    local pid
+    while IFS= read -r pid; do [[ -n "$pid" ]] && agents+=("$pid"); done <<< "$(project_ids)"
+  fi
+
+  local tmp; tmp=$(mktemp)
+  local a
+  for a in "${agents[@]}"; do _cost_history "$a"; done > "$tmp" 2>/dev/null
+
+  [[ "$json" -ne 1 ]] && header "Cost history — ${id:-all agents}" && echo ""
+
+  RACK_HIST_DAYS="$days" RACK_HIST_JSON="$json" RACK_HIST_LABEL="${id:-all agents}" \
+    python3 - "$tmp" <<'PY'
+import json, os, sys
+days = int(os.environ.get("RACK_HIST_DAYS", "0") or 0)
+as_json = os.environ.get("RACK_HIST_JSON") == "1"
+label = os.environ.get("RACK_HIST_LABEL", "all agents")
+
+agg = {}
+for line in open(sys.argv[1]):
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    try:
+        day, turns, inp, out, cost = line.split("|")
+    except ValueError:
+        continue
+    b = agg.setdefault(day, {"turns": 0, "input": 0, "output": 0, "cost": 0.0})
+    b["turns"] += int(turns); b["input"] += int(inp); b["output"] += int(out); b["cost"] += float(cost)
+
+ordered = sorted(agg.keys())
+if days > 0:
+    ordered = ordered[-days:]
+rows = [{"date": d, "turns": agg[d]["turns"], "input": agg[d]["input"],
+         "output": agg[d]["output"], "costUsd": round(agg[d]["cost"], 6)} for d in ordered]
+
+if as_json:
+    print(json.dumps({"scope": label, "history": rows}, indent=2))
+    sys.exit(0)
+
+if not rows:
+    print("  (no dated session data yet)")
+    sys.exit(0)
+
+print(f"  {'DATE':<12} {'TURNS':>7} {'INPUT':>12} {'OUTPUT':>12} {'COST (USD)':>12}")
+costs = [r["costUsd"] for r in rows]
+for i, r in enumerate(rows):
+    flag = ""
+    if i >= 3:
+        avg = sum(costs[i - 3:i]) / 3
+        if avg > 0 and r["costUsd"] > 2 * avg:
+            flag = "  <- spike (>2x trailing avg)"
+    print(f"  {r['date']:<12} {r['turns']:>7} {r['input']:>12} {r['output']:>12} {r['costUsd']:>12.4f}{flag}")
+print(f"  {'':<12} {'':>7} {'':>12} {'':>12} {sum(costs):>12.4f}  total")
+PY
+  rm -f "$tmp"
+  [[ "$json" -ne 1 ]] && echo ""
+}
+
 cmd_cost() {
-  local id="${1:-}"
+  local id="" json=0 history=0 days=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)    json=1; shift ;;
+      --history) history=1; shift ;;
+      --days)    days="${2:-0}"; shift 2 ;;
+      --days=*)  days="${1#--days=}"; shift ;;
+      -*)        shift ;;
+      *)         [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
   local agents_dir="$OPENCLAW_DIR/agents"
 
-  if [[ "$id" == "--json" ]]; then
+  if [[ "$history" -eq 1 ]]; then
+    _cost_history_view "$id" "$days" "$json"
+    return 0
+  fi
+
+  if [[ "$json" -eq 1 ]]; then
     _cost_json
     return 0
   fi
