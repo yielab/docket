@@ -22,10 +22,16 @@ cmd_team() {
       _team_delegate "$@"
       ;;
     queue)
-      _team_queue
+      _team_queue "$@"
+      ;;
+    start)
+      _team_start "$@"
       ;;
     done)
       _team_done "$@"
+      ;;
+    cancel)
+      _team_cancel "$@"
       ;;
     init)
       warn "'team init' is deprecated. Use 'rack install' instead."
@@ -48,10 +54,17 @@ _team_help() {
   echo "  rack team roles               Show agent roles and responsibilities"
   echo ""
   echo -e "${BOLD}Task Delegation:${RESET}"
-  echo "  rack team delegate \"<task>\"   Add task to manager queue"
+  echo "  rack team delegate \"<task>\"            Add task (status: pending)"
   echo "  rack team delegate --priority high \"<task>\"  High-priority task"
-  echo "  rack team queue               Show pending tasks"
-  echo "  rack team done <task-id>      Mark task as complete"
+  echo "  rack team queue                        Show active tasks"
+  echo "  rack team queue --all                  Include done + cancelled"
+  echo "  rack team start <task-id>              pending → in_progress"
+  echo "  rack team done <task-id>               pending/in_progress → done"
+  echo "  rack team cancel <task-id>             pending/in_progress → cancelled"
+  echo ""
+  echo "  Valid state transitions:"
+  echo "    pending ──start──→ in_progress ──done──→ done"
+  echo "    pending/in_progress ──cancel──→ cancelled"
   echo ""
 }
 
@@ -136,14 +149,14 @@ _team_roles() {
   echo "  • Embedded classifier logic (routes tasks efficiently)"
   echo "  • Context compression before delegation"
   echo "  • Short-circuit resolution for simple queries"
-  echo "  • Model: Sonnet | Tools: read (memory), message"
+  echo "  • Model: standard tier | Tools: read (memory), message"
   echo ""
 
   echo -e "${BOLD}${GREEN}Programmer${RESET}"
   echo "  • Implements code changes from compressed briefs"
   echo "  • Reads <5K tokens per task (file + brief only)"
   echo "  • Signals completion via memory files"
-  echo "  • Model: Haiku (simple) / Sonnet (complex)"
+  echo "  • Model: economy (simple) / standard (complex)"
   echo "  • Tools: read, write, edit, exec (sandbox)"
   echo ""
 
@@ -151,28 +164,28 @@ _team_roles() {
   echo "  • Security + correctness gatekeeper"
   echo "  • 6-point mandatory checklist"
   echo "  • Veto power (bad code doesn't proceed)"
-  echo "  • Model: Sonnet | Tools: read (diff only)"
+  echo "  • Model: standard tier | Tools: read (diff only)"
   echo ""
 
   echo -e "${BOLD}${GREEN}Tester (Validator)${RESET}"
   echo "  • Behavior-only validation (doesn't read code!)"
   echo "  • Executes reproduction steps"
   echo "  • Binary verdict: PASS or FAIL"
-  echo "  • Model: Haiku | Tools: exec, browser (read-only)"
+  echo "  • Model: economy tier | Tools: exec, browser (read-only)"
   echo ""
 
   echo -e "${BOLD}${GREEN}Knowledge${RESET}"
   echo "  • Memory distillation and indexing"
   echo "  • Pattern extraction from logs"
   echo "  • Architectural decision tracking"
-  echo "  • Model: Haiku | Tools: read, memory search"
+  echo "  • Model: economy tier | Tools: read, memory search"
   echo ""
 
   echo -e "${BOLD}${GREEN}Security${RESET}"
   echo "  • Deep threat modeling (beyond code review)"
   echo "  • Penetration testing coordination"
   echo "  • Compliance audits (GDPR, HIPAA)"
-  echo "  • Model: Sonnet | Tools: read, browser"
+  echo "  • Model: standard tier | Tools: read, browser"
   echo ""
 
   echo -e "${DIM}Note: Reviewer handles routine security checks. Security specialist"
@@ -331,11 +344,11 @@ _ensure_task_list() {
     error "Manager agent not initialized. Run: rack install"
   fi
   if [[ ! -f "$path" ]]; then
-    echo '{"tasks":[]}' | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))" > "$path"
-    chmod 600 "$path"
+    echo '{"tasks":[]}' | json_atomic_write "$path"
   fi
 }
 
+# ── Schema-validated, locked delegate ─────────────────────────────────────
 _team_delegate() {
   local priority="normal"
   local -a rest=()
@@ -348,33 +361,29 @@ _team_delegate() {
   done
 
   local description="${rest[0]:-}"
-  if [[ -z "$description" ]]; then
+  [[ -z "$description" ]] && \
     error "Usage: rack team delegate [--priority high|normal|low] \"<task description>\""
+
+  # Schema: validate priority
+  case "$priority" in
+    high|normal|low) ;;
+    *) error "Invalid priority '$priority'. Use: high | normal | low" ;;
+  esac
+
+  # Schema: description length limit
+  if [[ ${#description} -gt 500 ]]; then
+    error "Description too long (${#description} chars). Limit: 500."
   fi
 
   _ensure_task_list
   local path; path=$(_task_list_path)
 
-  local task_id
-  task_id="task-$(date +%s%N | cut -c1-13)"
+  local task_id; task_id="task-$(date +%s%N 2>/dev/null | cut -c1-13 || date +%s)"
   local created; created=$(date -Iseconds)
 
-  python3 - "$path" "$task_id" "$description" "$priority" "$created" <<'PYEOF'
-import sys, json
-path, tid, desc, pri, created = sys.argv[1:]
-with open(path) as f:
-    data = json.load(f)
-data.setdefault("tasks", []).append({
-    "id": tid,
-    "description": desc,
-    "priority": pri,
-    "created": created,
-    "status": "pending"
-})
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-PYEOF
+  with_rack_lock _team_delegate_write "$path" "$task_id" "$description" "$priority" "$created"
 
+  rack_audit "team.delegate" "{\"id\":\"$task_id\",\"priority\":\"$priority\"}"
   success "Task queued: [$task_id] $description"
   echo "  Priority: $priority"
   echo "  Queue: $(_team_queue_count) task(s) pending"
@@ -382,87 +391,179 @@ PYEOF
   info "View queue: rack team queue"
 }
 
+_team_delegate_write() {
+  local path="$1" task_id="$2" desc="$3" pri="$4" created="$5"
+  python3 - "$path" "$task_id" "$desc" "$pri" "$created" <<'PY' | json_atomic_write "$path"
+import sys, json
+path, tid, desc, pri, created = sys.argv[1:]
+data = json.load(open(path))
+data.setdefault("tasks", []).append({
+    "id": tid, "description": desc, "priority": pri,
+    "created": created, "startedAt": None, "completedAt": None,
+    "status": "pending"
+})
+print(json.dumps(data, indent=2))
+PY
+}
+
 _team_queue_count() {
   local path; path=$(_task_list_path)
   [[ ! -f "$path" ]] && echo "0" && return
   python3 -c "
-import json, sys
-with open('$path') as f:
-    data = json.load(f)
-pending = [t for t in data.get('tasks', []) if t.get('status') == 'pending']
-print(len(pending))
+import json
+data = json.load(open('$path'))
+print(sum(1 for t in data.get('tasks',[]) if t.get('status') in ('pending','in_progress')))
 " 2>/dev/null || echo "0"
 }
 
 _team_queue() {
+  local show_all=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --all|-a) show_all=1; shift ;; *) shift ;; esac
+  done
+
   _ensure_task_list
   local path; path=$(_task_list_path)
 
   header "Manager Task Queue"
   echo ""
 
-  python3 - "$path" <<'PYEOF'
-import json, sys
-
+  SHOW_ALL="$show_all" python3 - "$path" <<'PY'
+import json, os, sys
 path = sys.argv[1]
-with open(path) as f:
-    data = json.load(f)
+show_all = os.environ.get("SHOW_ALL") == "1"
+tasks = json.load(open(path)).get("tasks", [])
+pri_order = {"high": 0, "normal": 1, "low": 2}
 
-tasks = data.get("tasks", [])
-pending   = [t for t in tasks if t.get("status") == "pending"]
-completed = [t for t in tasks if t.get("status") == "done"]
+def fmt_row(t, prefix=""):
+    tid   = t.get("id","?")[:14]
+    pri   = t.get("priority","normal")
+    cdate = t.get("created","?")[:19].replace("T"," ")
+    desc  = t.get("description","")
+    return f"  {prefix}{tid:<16}  {pri:<8}  {cdate:<22}  {desc}"
 
-if not pending:
-    print("  No pending tasks.")
+active = [t for t in tasks if t.get("status") in ("pending","in_progress")]
+done   = [t for t in tasks if t.get("status") == "done"]
+canc   = [t for t in tasks if t.get("status") == "cancelled"]
+
+if not active:
+    print("  No active tasks.")
 else:
-    pri_order = {"high": 0, "normal": 1, "low": 2}
-    pending.sort(key=lambda t: pri_order.get(t.get("priority","normal"), 1))
+    active.sort(key=lambda t: (0 if t["status"]=="in_progress" else 1,
+                               pri_order.get(t.get("priority","normal"),1)))
     print(f"  {'ID':<16}  {'PRI':<8}  {'CREATED':<22}  DESCRIPTION")
     print("  " + "─"*80)
-    for t in pending:
-        tid   = t.get("id","?")[:14]
-        pri   = t.get("priority","normal")
-        cdate = t.get("created","?")[:19].replace("T"," ")
-        desc  = t.get("description","")
-        print(f"  {tid:<16}  {pri:<8}  {cdate:<22}  {desc}")
+    for t in active:
+        prefix = "▶ " if t["status"] == "in_progress" else "  "
+        print(fmt_row(t, prefix.strip()))
 
 print()
-print(f"  Pending: {len(pending)}   Completed: {len(completed)}")
-PYEOF
+line = f"  Pending: {sum(1 for t in active if t['status']=='pending')}"
+line += f"   In progress: {sum(1 for t in active if t['status']=='in_progress')}"
+line += f"   Done: {len(done)}"
+if canc: line += f"   Cancelled: {len(canc)}"
+print(line)
+
+if show_all and (done or canc):
+    print()
+    print(f"  {'ID':<16}  {'STATUS':<12}  {'COMPLETED':<22}  DESCRIPTION")
+    print("  " + "─"*80)
+    for t in done + canc:
+        tid   = t.get("id","?")[:14]
+        st    = t.get("status","?")
+        cdate = (t.get("completedAt") or t.get("created","?"))[:19].replace("T"," ")
+        desc  = t.get("description","")
+        print(f"  {tid:<16}  {st:<12}  {cdate:<22}  {desc}")
+PY
 
   echo ""
-  info "Mark done: rack team done <task-id>"
+  info "Mark done: rack team done <id>  |  Start: rack team start <id>  |  Cancel: rack team cancel <id>"
+  [[ "$show_all" -eq 0 ]] && dim "  Show completed/cancelled: rack team queue --all"
 }
 
-_team_done() {
-  local task_id="${1:-}"
-  if [[ -z "$task_id" ]]; then
-    error "Usage: rack team done <task-id>"
-  fi
+# ── State transitions (all locked + atomic) ────────────────────────────────
+# Valid transitions: pending→in_progress, pending→done, in_progress→done,
+#                   pending→cancelled, in_progress→cancelled
 
-  _ensure_task_list
-  local path; path=$(_task_list_path)
-
-  local result
-  result=$(python3 - "$path" "$task_id" <<'PYEOF'
-import json, sys
-path, tid = sys.argv[1:]
-with open(path) as f:
-    data = json.load(f)
+_team_transition_write() {
+  local path="$1" tid="$2" new_state="$3"
+  local now; now=$(date -Iseconds)
+  python3 - "$path" "$tid" "$new_state" "$now" <<'PY' | json_atomic_write "$path"
+import sys, json
+path, tid, new_state, now = sys.argv[1:]
+ALLOWED = {
+    "in_progress": {"pending"},
+    "done":        {"pending", "in_progress"},
+    "cancelled":   {"pending", "in_progress"},
+}
+data = json.load(open(path))
 found = False
 for t in data.get("tasks", []):
     if t["id"] == tid or t["id"].startswith(tid):
-        t["status"] = "done"
+        cur = t.get("status", "pending")
+        if cur not in ALLOWED.get(new_state, set()):
+            # emit a sentinel to stdout — json_atomic_write will receive invalid JSON and abort
+            # so instead we write file unchanged and emit the sentinel via stderr path
+            import sys as _sys
+            _sys.stderr.write(f"INVALID_TRANSITION|{cur}\n")
+            print(json.dumps(data, indent=2))
+            found = True
+            break
+        t["status"] = new_state
+        if new_state == "in_progress":
+            t["startedAt"] = now
+        elif new_state in ("done", "cancelled"):
+            t["completedAt"] = now
+        print(json.dumps(data, indent=2))
+        import sys as _sys
+        _sys.stderr.write(f"OK|{t['description']}\n")
         found = True
-        print(t["description"])
         break
 if not found:
-    print("NOT_FOUND")
-    sys.exit(1)
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-PYEOF
-  ) || { warn "Task '$task_id' not found in queue"; return 1; }
+    import sys as _sys
+    _sys.stderr.write("NOTFOUND|\n")
+    print(json.dumps(data, indent=2))
+PY
+}
 
-  success "Task marked done: $result"
+_team_start() {
+  local result
+  result=$(_team_transition_result "in_progress" "${1:-}") || return 1
+  success "Task → in_progress: ${result#*|}"
+}
+
+_team_done() {
+  local result
+  result=$(_team_transition_result "done" "${1:-}") || return 1
+  success "Task → done: ${result#*|}"
+}
+
+_team_cancel() {
+  local result
+  result=$(_team_transition_result "cancelled" "${1:-}") || return 1
+  success "Task → cancelled: ${result#*|}"
+}
+
+# Performs the transition and prints the sentinel line; returns 1 on error.
+_team_transition_result() {
+  local new_state="$1" task_id="$2"
+  [[ -z "$task_id" ]] && error "Usage: rack team $new_state <task-id>"
+  _ensure_task_list
+  local path; path=$(_task_list_path)
+  local now; now=$(date -Iseconds)
+  local sentinel_file; sentinel_file=$(mktemp)
+  local ok=0
+  with_rack_lock _team_transition_write "$path" "$task_id" "$new_state" 2>"$sentinel_file" || ok=1
+  local sentinel; sentinel=$(cat "$sentinel_file"); rm -f "$sentinel_file"
+  if [[ "$sentinel" == NOTFOUND* || "$sentinel" == INVALID_TRANSITION* ]]; then
+    local detail="${sentinel#*|}"
+    if [[ "$sentinel" == INVALID_TRANSITION* ]]; then
+      fail "  Cannot move '$task_id' to $new_state (current status: $detail)"
+    else
+      fail "  Task '$task_id' not found"
+    fi
+    return 1
+  fi
+  rack_audit "team.$new_state" "{\"id\":\"$task_id\"}"
+  echo "$sentinel"
 }
