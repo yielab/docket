@@ -1,7 +1,7 @@
 # rack Documentation
 
 **rack** is a modular Bash CLI for managing OpenClaw autonomous agents with project
-isolation, tiered model routing, and cost tracking.
+isolation, role-based model routing, and cost tracking.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
@@ -37,7 +37,8 @@ rack info <id>               # Agent details
 rack context snapshot <id>   # Create fast-access context
 
 # Configuration
-rack profile <id> <tier>     # economy | standard | premium
+rack models                  # Role→model policy (set <role> <model>, presets)
+rack profile <id> <model>    # Pin an agent (<provider/model>) or 'default' = policy
 rack profile <id> --budget 5 # Per-agent spend cap (USD)
 rack scope <id> set <key>    # Switch project context
 

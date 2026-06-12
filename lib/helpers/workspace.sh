@@ -388,7 +388,7 @@ _show_agent_cost() {
       local savings
       savings=$(python3 -c "s=$c_cost - $eco_cost; print(f'{s:.4f}') if s > 0 else print('0.0000')")
       echo ""
-      dim "  On economy ($eco_model): \$$eco_cost — saves \$$savings"
+      dim "  On the cheapest model ($eco_model): \$$eco_cost — saves \$$savings"
     fi
   fi
 }
