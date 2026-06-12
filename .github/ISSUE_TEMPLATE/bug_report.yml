@@ -1,0 +1,54 @@
+name: Bug report
+description: Something isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: When I run `rack <command>`, it...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `rack add ...`
+        2. Then run `rack ...`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `rack doctor` and `rack --version`
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: debug-output
+    attributes:
+      label: Debug output (optional)
+      description: Output of `DEBUG=1 rack <command>`
+      render: text
+    validations:
+      required: false

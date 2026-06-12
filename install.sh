@@ -1,168 +1,79 @@
 #!/usr/bin/env bash
-# Rack CLI Installer
-# Installs rack binary and library files to ~/.local/
+# rack-cli installer — git-clone or curl install.
+#
+# Usage (from a cloned repo):
+#   ./install.sh [--prefix /usr/local]
+#
+# Usage (one-liner):
+#   curl -fsSL https://raw.githubusercontent.com/santiagoyie/rack-cli/main/install.sh | bash
+#
+# Homebrew (macOS/Linux):
+#   brew tap santiagoyie/rack-cli https://github.com/santiagoyie/rack-cli
+#   brew install rack-cli
 
 set -euo pipefail
 
-INSTALL_DIR="${HOME}/.local"
-BIN_DIR="${INSTALL_DIR}/bin"
-LIB_DIR="${INSTALL_DIR}/lib/rack"
+PREFIX="${RACK_PREFIX:-${HOME}/.local}"
+[[ "${1:-}" == "--prefix" ]] && { PREFIX="${2:?--prefix requires a path}"; shift 2; }
 
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_DIR="${PREFIX}/bin"
+LIB_DIR="${PREFIX}/lib/rack-cli"
 
-echo ""
-echo "=================================="
-echo "  Rack CLI Installer"
-echo "=================================="
-echo ""
+# Resolve the repo root (works from clone or from piped curl)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-./install.sh}")" && pwd 2>/dev/null)" || SCRIPT_DIR="$PWD"
 
-# Create directories
-echo "→ Creating installation directories..."
-mkdir -p "$BIN_DIR"
-mkdir -p "$LIB_DIR"
+# ── Preflight ──
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "Error: Bash 4.0+ required (found ${BASH_VERSION})."
+  echo "  macOS: brew install bash && exec bash"
+  exit 1
+fi
+command -v python3 >/dev/null 2>&1 || { echo "Error: python3 is required."; exit 1; }
 
-# Copy library files
-echo "→ Copying library files..."
-cp -r "$SCRIPT_DIR/lib/"* "$LIB_DIR/"
-
-# Copy binary and update LIB_DIR path
-echo "→ Installing rack binary..."
-cp "$SCRIPT_DIR/bin/rack" "$BIN_DIR/rack"
-
-# Update LIB_DIR path to point to installed location
-sed -i 's|^LIB_DIR=.*|LIB_DIR="${HOME}/.local/lib/rack"|' "$BIN_DIR/rack"
-
-# Make executable
-chmod +x "$BIN_DIR/rack"
-
-# Skip the old heredoc content (keeping for reference if needed)
-: <<'EOF_SKIP'
-#!/usr/bin/env bash
-# rack — OpenClaw project agent manager (Modular Edition)
-#
-# Lifecycle commands:
-#   rack list                  List all project agents
-#   rack add                   Add a new project agent (interactive)
-#   rack info   [id]           Detailed status of one project
-#   rack delete [id]           Remove agent and optionally its workspace
-#   rack reset  [id]           Clear memory, reset heartbeat (keep identity)
-#   rack repair [id]           Fix permissions, routing, missing files
-#
-# Team coordination:
-#   rack team status           View team state
-#   rack team init             Create manager agent
-#   rack team check            Health check for specialists
-#
-# Session management:
-#   rack scope [id] show       Display current scope
-#   rack scope [id] set <key>  Change project scope
-#   rack scope [id] reset      Reset to default
-#
-# Workflows:
-#   rack workflow [id] list            List workflows
-#   rack workflow [id] create <name>   Create from template
-#   rack workflow [id] show <name>     Display workflow
-#   rack workflow [id] delete <name>   Remove workflow
-#
-# Telegram commands:
-#   rack wire   [id]           Wire or update a Telegram group binding
-#   rack unwire [id]           Remove Telegram binding
-#
-# Utility commands:
-#   rack logs    [id]           View memory logs and gateway entries
-#   rack edit    [id]           Open workspace files in $EDITOR
-#   rack profile [id] [tier]    Set model profile (economy/standard/premium)
-#   rack cost    [id]           Token usage and cost breakdown
-#   rack doctor                 System-wide health check
-#
-# Usage:  rack <command> [agent-id] [args]
-#         rack                 (shows list)
-
-# Get library directory (installed in ~/.local/lib/rack)
-LIB_DIR="${HOME}/.local/lib/rack"
-
-# Source core modules
-source "$LIB_DIR/core/init.sh"
-source "$LIB_DIR/core/config.sh"
-
-# Source helper modules
-source "$LIB_DIR/helpers/output.sh"
-source "$LIB_DIR/helpers/json.sh"
-source "$LIB_DIR/helpers/session.sh"
-source "$LIB_DIR/helpers/picker.sh"
-source "$LIB_DIR/helpers/service.sh"
-source "$LIB_DIR/helpers/utils.sh"
-source "$LIB_DIR/helpers/workspace.sh"
-
-# Source command modules
-source "$LIB_DIR/commands/list.sh"
-source "$LIB_DIR/commands/info.sh"
-source "$LIB_DIR/commands/add.sh"
-source "$LIB_DIR/commands/delete.sh"
-source "$LIB_DIR/commands/reset.sh"
-source "$LIB_DIR/commands/repair.sh"
-source "$LIB_DIR/commands/wire.sh"
-source "$LIB_DIR/commands/unwire.sh"
-source "$LIB_DIR/commands/logs.sh"
-source "$LIB_DIR/commands/edit.sh"
-source "$LIB_DIR/commands/model.sh"
-source "$LIB_DIR/commands/profile.sh"
-source "$LIB_DIR/commands/scope.sh"
-source "$LIB_DIR/commands/workflow.sh"
-source "$LIB_DIR/commands/cost.sh"
-source "$LIB_DIR/commands/doctor.sh"
-source "$LIB_DIR/commands/install.sh"
-source "$LIB_DIR/commands/help.sh"
-
-# Source router
-source "$LIB_DIR/core/router.sh"
-
-# Parse arguments
-declare -a _ARGS=("$@")
-CMD="${_ARGS[0]:-list}"
-
-# Handle --debug flag
-if [[ "$CMD" == "--debug" ]]; then
-  DEBUG=1
-  CMD="${_ARGS[1]:-list}"
-  _ARGS=("${_ARGS[@]:1}")
+# When piped from curl, download the tarball instead
+if [[ ! -f "${SCRIPT_DIR}/bin/rack" ]]; then
+  command -v curl >/dev/null 2>&1 || { echo "Error: curl is required for remote install."; exit 1; }
+  tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
+  echo "Downloading rack-cli..."
+  curl -fsSL "https://github.com/santiagoyie/rack-cli/archive/refs/heads/main.tar.gz" \
+    | tar -xz -C "$tmpdir" --strip-components=1
+  SCRIPT_DIR="$tmpdir"
 fi
 
-# Route command
-route_command "$CMD" "${_ARGS[@]:1}"
-EOF_SKIP
-
-echo "→ Setting permissions..."
-find "$LIB_DIR" -type f -exec chmod 644 {} \;
-find "$LIB_DIR" -type d -exec chmod 755 {} \;
-
 echo ""
-echo "✓ Installation complete!"
-echo ""
-echo "Installed to:"
-echo "  Binary: $BIN_DIR/rack"
-echo "  Library: $LIB_DIR"
-echo ""
+echo "Installing rack-cli to ${PREFIX}..."
 
-# Check if ~/.local/bin is in PATH
-if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
-  echo "✓ $BIN_DIR is in your PATH"
+mkdir -p "$BIN_DIR" "$LIB_DIR"
+cp -r "${SCRIPT_DIR}/lib/"* "$LIB_DIR/"
+cp    "${SCRIPT_DIR}/bin/rack" "$BIN_DIR/rack"
+chmod 755 "$BIN_DIR/rack"
+
+# Patch the installed binary to use the fixed lib path instead of ../lib discovery.
+# Use a portable sed -i that works on both GNU and macOS (BSD).
+if sed --version 2>/dev/null | grep -q GNU; then
+  sed -i "s|LIB_DIR=\"\$(cd \"\\\$SCRIPT_DIR/../lib\" && pwd)\"|LIB_DIR=\"${LIB_DIR}\"|" "$BIN_DIR/rack"
 else
-  echo "⚠  Add $BIN_DIR to your PATH:"
-  echo ""
-  echo "  For bash, add to ~/.bashrc:"
-  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-  echo ""
-  echo "  For zsh, add to ~/.zshrc:"
-  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-  echo ""
-  echo "  Then run: source ~/.bashrc  (or ~/.zshrc)"
+  sed -i '' "s|LIB_DIR=\"\$(cd \"\\\$SCRIPT_DIR/../lib\" && pwd)\"|LIB_DIR=\"${LIB_DIR}\"|" "$BIN_DIR/rack"
 fi
 
+find "$LIB_DIR" -type d -exec chmod 755 {} \;
+find "$LIB_DIR" -type f -exec chmod 644 {} \;
+
+echo "✓ Installation complete."
 echo ""
+echo "  Binary:  $BIN_DIR/rack"
+echo "  Library: $LIB_DIR"
+echo "  Version: $("$BIN_DIR/rack" --version 2>/dev/null || echo 'n/a')"
+echo ""
+
+if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
+  echo "Add ${BIN_DIR} to your PATH (if not already):"
+  echo "  echo 'export PATH=\"${BIN_DIR}:\$PATH\"' >> ~/.bashrc  # or ~/.zshrc"
+  echo ""
+fi
+
 echo "Next steps:"
-echo "  1. Run: rack install       (sets up OpenClaw)"
-echo "  2. Run: rack add           (create your first agent)"
-echo "  3. Run: rack doctor        (verify system health)"
+echo "  rack install   — bootstrap OpenClaw + specialist agents"
+echo "  rack add       — create your first project agent"
+echo "  rack doctor    — verify system health"
 echo ""
