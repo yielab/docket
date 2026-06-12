@@ -23,12 +23,6 @@ TEMPLATE_VERSION="${TEMPLATE_VERSION:-3}"
 # Maps agent ID → the Telegram group name the user should create.
 # Used by "rack list" to show setup status and by "rack doctor" for auditing.
 declare -A TELEGRAM_GROUP_NAMES=(
-  [coreapp]="Core App"
-  [sensorapp]="Sensor App"
-  [corpbot]="Corp Bot"
-  [demo]="Demo Project"
-  [marketing]="Example Marketing"
-  [sideproject]="Side Project"
   [manager]="Manager"
 )
 

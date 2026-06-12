@@ -218,7 +218,7 @@ cmd_add() {
 
   # Display name + slug
   echo ""
-  read -rp "Display name (e.g. 'Sensor App'): " DISPLAY_NAME
+  read -rp "Display name (e.g. 'My Website'): " DISPLAY_NAME
   [[ -z "$DISPLAY_NAME" ]] && error "Display name required."
 
   DEFAULT_SLUG=$(slugify "$DISPLAY_NAME")

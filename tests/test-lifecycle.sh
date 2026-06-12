@@ -2,7 +2,7 @@
 # test-lifecycle.sh — Full lifecycle test for the rack command
 #
 # Tests: add → list → info → scope → team → workflow → repair → reset → cost → profile → delete
-# Uses a temporary "test-rack" agent backed by the demo-project codebase.
+# Uses a temporary "test-rack" agent backed by a throwaway test codebase.
 #
 # Usage:  ./tests/test-lifecycle.sh
 #         ./tests/test-lifecycle.sh --keep    (skip delete — leave agent for inspection)
@@ -13,7 +13,7 @@ set -uo pipefail
 # ─── Config ──────────────────────────────────────────────────────────────────
 TEST_ID="test-rack"
 TEST_NAME="Test Rack"
-CODEBASE="$HOME/Sites/demo-project"
+CODEBASE="${RACK_TEST_CODEBASE:-$HOME/.cache/rack-test-codebase}"
 RACK="$(dirname "$(realpath "$0")")/../bin/rack"
 PROJECTS_DIR="$HOME/.openclaw/workspaces/projects"
 OPENCLAW_DIR="$HOME/.openclaw"
@@ -79,10 +79,7 @@ if ! command -v openclaw &>/dev/null; then
 fi
 pass "openclaw in PATH: $(command -v openclaw)"
 
-if [[ ! -d "$CODEBASE" ]]; then
-  fail "codebase not found: $CODEBASE"
-  exit 1
-fi
+mkdir -p "$CODEBASE"
 pass "codebase exists: $CODEBASE"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
