@@ -33,11 +33,14 @@ will be published with credit to the reporter (unless you prefer to remain anony
 rack manages autonomous agents that can execute commands. Be aware of the current security
 model when assessing risk:
 
-- Agent-level safety constraints are **instruction-based** (written into each agent's prompt),
-  not technically enforced.
-- Enforced tool-approval gates and workspace sandboxing are **specified but not yet wired up** —
-  see [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
-  (Status: Planned).
+- By default, agent-level safety constraints are **instruction-based** (written into each
+  agent's prompt), not technically enforced.
+- Enforced tool-approval gates, Telegram approval routing, and Docker workspace isolation are
+  available **opt-in** via `rack gates enable` / `rack gates isolate on` (or
+  `rack install --gates`) — see
+  [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
+  (Status: Implemented, opt-in; on-by-default deferred). `rack doctor` and
+  `rack gates status` report the current posture.
 - Run rack and its agents only in environments you trust, and review agent output before
   acting on it.
 
