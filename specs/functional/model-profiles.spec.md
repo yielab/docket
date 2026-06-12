@@ -1,97 +1,213 @@
-# Model Profiles Specification
+# Model Policy Specification
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Status**: Complete
-**Last Updated**: 2026-06-09
+**Last Updated**: 2026-06-12
 
 ## Purpose
 
-This specification defines the tiered model profiles that let an operator trade cost against
-capability per agent, and how a profile maps to a concrete model id and pricing.
+This specification defines the **role→model policy** that decides which model every kind of
+agent runs on, how agents record their model intent (follow the policy vs. an explicit pin),
+and how policy changes propagate to the fleet. It replaces the v1 tier system
+(economy/standard/premium), which survives only as deprecated aliases.
 
 ## Scope
 
 This specification covers:
 
-- The three profile tiers and the models they resolve to
-- Setting and showing an agent's profile (`rack profile`)
+- The agent roles the policy knows about and their built-in model classes
+- The user registry overlay (`~/.openclaw/rack-models.json`)
+- Model intent per agent (`modelSource: policy | pinned`) and migration inference
+- Viewing/changing the policy (`rack models`) and pinning agents (`rack profile`)
+- Automatic re-resolution of policy-following agents on policy changes
+- Deprecated tier aliases and the fallback rank anchors
 - The pricing table used for cost estimation
 
 This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md).
 
 ## Requirements
 
-### Profile tiers
+### Roles and built-in policy
 
-1. Exactly three tiers **MUST** be supported, each mapping to one model id:
-   - `economy` → `anthropic/claude-haiku-4-5`
-   - `standard` → `anthropic/claude-sonnet-4-6` (default)
-   - `premium` → `anthropic/claude-opus-4-6`
-2. Each model **MUST** have a pricing entry in USD per million tokens, expressed as
-   `input:output:cacheWrite:cacheRead`.
-3. A model that is not one of the three profile models **MUST** be reported as `custom`.
+1. The policy **MUST** know exactly eight roles: the six specialist roles
+   (`manager`, `programmer`, `reviewer`, `tester`, `knowledge`, `security`) plus the two
+   project-agent types (`repo`, `task`), which double as project agents' policy roles.
+2. Each role **MUST** belong to one of two built-in classes, chosen for token efficiency:
+   - **cheap** (high-volume, low reasoning density): `manager`, `reviewer`, `tester`,
+     `knowledge`, `task` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
+   - **strong** (reasoning-dense): `programmer`, `security`, `repo` → the standard rank
+     anchor (default `anthropic/claude-sonnet-4-6`)
+3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
+   only as a per-agent pin.
+4. Each role **MUST** carry a short human-readable WHY string shown by `rack models`.
+5. Resolving an unknown role **MUST** fall back to `DEFAULT_MODEL` (no error).
 
-### Setting a profile (rack profile)
+### User registry overlay
 
-1. `rack profile <id> <tier>` **MUST** set the agent's model to the tier's model id and
-   restart the gateway.
-2. `rack profile <id>` with no tier **MUST** display the current model, profile, and budget.
-3. An invalid tier **MUST** fail with return code 4.
+1. `~/.openclaw/rack-models.json` **MAY** contain a `roles` map (`role → provider/model`);
+   well-formed entries **MUST** override the built-in role defaults. Unknown role names
+   **MUST** be ignored with a warning.
+2. A legacy registry containing only a `profiles` map **MUST** keep working: the rank
+   anchors are overridden first, then role defaults re-derive from them, then any `roles`
+   entries overlay on top.
+3. A corrupt registry **MUST** warn on stderr and keep built-in defaults (no crash).
+
+### Model intent per agent
+
+1. Every agent **MUST** record `modelSource` in `.rack-meta.json`: `policy` (follow the
+   role policy) or `pinned` (explicit model choice).
+2. Agents created without an explicit model, or with a model equal to their role's policy
+   model, **MUST** be stamped `policy`; an explicit divergent model **MUST** be stamped
+   `pinned`.
+3. Agents predating this field **MUST** have it inferred on read: model equals the role's
+   policy model → `policy`, otherwise → `pinned` (so a pre-existing agent is never silently
+   moved to a different model). `rack doctor` **MUST** backfill the field persistently.
+
+### Changing the policy (rack models)
+
+1. `rack models` **MUST** list ROLE, MODEL, PRICE, SOURCE (builtin/user), and WHY for all
+   eight roles, plus the default model and the fallback chain.
+2. `rack models set <role> <provider/model>` **MUST** validate the model, persist the
+   override to the registry, and apply it live.
+3. `rack models preset <name>` **MUST** map the preset's cheap/strong classes onto all
+   eight roles and persist them, plus the rank anchors and default.
+4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
+   and project, registered or not) **MUST** be re-resolved to its role's new model in both
+   config sources, with one gateway restart at the end and an audit entry per change.
+   Pinned agents **MUST NOT** be touched.
+
+### Pinning agents (rack profile)
+
+1. `rack profile <id> <provider/model>` **MUST** pin the agent: set the model in both
+   config sources and `modelSource: pinned`, then restart the gateway.
+2. `rack profile <id> default` **MUST** re-attach the agent to its role policy: resolve the
+   role's model, set it, and stamp `modelSource: policy`.
+3. `rack profile <id>` with no argument **MUST** display the current model, role (with WHY),
+   source (policy/pinned), and budget.
+4. `rack profile` **MUST** work for specialists as well as project agents.
+
+### Deprecated tier aliases
+
+1. The tier names `economy`, `standard`, `premium` **MUST** remain accepted wherever a
+   model is accepted, resolving through the rank anchors, and **MUST** emit a deprecation
+   warning.
+2. `rack models set <tier> <model>` **MUST** warn, update the anchor, and map the change
+   onto the roles of that class (economy → cheap roles, standard → strong roles,
+   premium → anchor only).
+3. The fallback chain **MUST** walk the rank anchors: premium → standard → economy, with
+   economy as the floor for unknown models.
+
+### Pricing
+
+1. Each built-in model **MUST** have a pricing entry in USD per million tokens, expressed
+   as `input:output:cacheWrite:cacheRead`.
+2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
 
 ## Interface Contracts
 
 ### CLI Command Signatures
 
 ```bash
-rack profile <agent-id> [economy|standard|premium]   # Set or show profile
-rack profile <agent-id> --budget <USD>               # Set a spend cap (see cost-tracking)
+rack models                              # Show the role→model policy
+rack models set <role|default> <provider/model>
+rack models preset [anthropic|openai|google|openrouter-free|openrouter]
+rack models reset                        # Restore built-in defaults
+rack profile <agent-id>                  # Show model, role, source, budget
+rack profile <agent-id> <provider/model> # Pin
+rack profile <agent-id> default          # Follow the role policy
+rack profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
 ```
 
-### Pricing Table (USD per MTok)
+### Built-in policy (Anthropic defaults)
 
-| Tier | Model | Input | Output |
-|------|-------|-------|--------|
+| Role | Class | Model | Why |
+| ---- | ----- | ----- | --- |
+| manager | cheap | claude-haiku-4-5 | high-volume coordination, shallow reasoning |
+| reviewer | cheap | claude-haiku-4-5 | triage and review, low reasoning density |
+| tester | cheap | claude-haiku-4-5 | run tests and report |
+| knowledge | cheap | claude-haiku-4-5 | retrieval and summarization |
+| task | cheap | claude-haiku-4-5 | project default for task agents |
+| programmer | strong | claude-sonnet-4-6 | code generation |
+| security | strong | claude-sonnet-4-6 | audit depth |
+| repo | strong | claude-sonnet-4-6 | project default for repo agents |
+
+### Pricing Table (USD per MTok, Anthropic defaults)
+
+| Anchor | Model | Input | Output |
+| ------ | ----- | ----- | ------ |
 | economy | claude-haiku-4-5 | 0.80 | 4.00 |
 | standard | claude-sonnet-4-6 | 3.00 | 15.00 |
 | premium | claude-opus-4-6 | 15.00 | 75.00 |
+
+### Registry file shape
+
+```json
+{
+  "default": "anthropic/claude-sonnet-4-6",
+  "roles":    { "programmer": "openai/gpt-4.1" },
+  "profiles": { "economy": "openai/gpt-4.1-nano" },
+  "pricing":  { "openai/gpt-4.1": {"input": 2.00, "output": 8.00} }
+}
+```
 
 ### Return Codes
 
 - `0`: Success
 - `2`: Agent not found
-- `4`: Invalid tier
+- `4`: Invalid model / unknown role
 
 ## Examples
 
-### Setting and showing a profile
+### Viewing and changing the policy
 
 ```bash
-$ rack profile mywebsite economy
-[SUCCESS] Profile set to 'economy' (claude-haiku-4-5) for 'mywebsite'
+$ rack models
+  ROLE          MODEL                        PRICE          SOURCE    WHY
+  manager       anthropic/claude-haiku-4-5   $0.80/$4.00    builtin   high-volume coordination...
+  programmer    anthropic/claude-sonnet-4-6  $3.00/$15.00   builtin   code generation
+  ...
 
-$ rack profile mywebsite
-  Model:       anthropic/claude-haiku-4-5
-  Profile:     economy
-  Budget cap:  none
+$ rack models set programmer openai/gpt-4.1
+✓ programmer → openai/gpt-4.1
+→ Re-resolving policy-following agents...
+  programmer (programmer): anthropic/claude-sonnet-4-6 → openai/gpt-4.1
+```
+
+### Pinning and unpinning an agent
+
+```bash
+$ rack profile mywebsite anthropic/claude-opus-4-6
+✓ Model pinned: anthropic/claude-sonnet-4-6 → anthropic/claude-opus-4-6
+
+$ rack profile mywebsite default
+✓ Model: anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 (follows role policy 'repo')
 ```
 
 ## Validation
 
 ### Pre-conditions
 
-- The target agent **MUST** exist.
+- The target agent **MUST** exist (profile) / the role **MUST** be known (models set).
 
 ### Post-conditions
 
-- After setting a tier, `.rack-meta.json` `model` **MUST** equal the tier's model id and the
-  gateway **MUST** have been restarted.
+- After a pin or policy change, `.rack-meta.json` `model` **MUST** equal the agent's model
+  in `openclaw.json` `agents.list`, `modelSource` **MUST** reflect the intent, and the
+  gateway **MUST** have been restarted exactly once per command.
 
 ### Invariants
 
-- A tier **MUST** always resolve to exactly one model id.
-- Pricing **MUST** exist for every profile model.
+- A role **MUST** always resolve to exactly one model id.
+- A pinned agent's model **MUST** survive any number of policy/preset changes.
+- Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.0.0 (2026-06-12)
+
+- Replaced the three-tier profile system with the role→model policy (Phase 6b, MA-9…MA-11)
+- Added `modelSource` intent, auto re-resolution of policy followers, specialist coverage
+- Tier names demoted to deprecated aliases over the fallback rank anchors
 
 ### Version 1.0.0 (2026-06-09)
 

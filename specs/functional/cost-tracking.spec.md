@@ -17,7 +17,7 @@ This specification covers:
 - Per-agent budget caps (`rack profile --budget`)
 - Pausing an agent when its cap is reached and runaway detection (`rack doctor`)
 
-This specification does NOT cover the tier-to-price mapping (see model-profiles.spec.md).
+This specification does NOT cover the role→model policy or pricing table (see model-profiles.spec.md).
 
 ## Requirements
 
