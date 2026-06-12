@@ -35,7 +35,7 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 **Engineering discipline**
 - 📐 **Spec-driven development** — every command and feature is backed by an RFC 2119 specification (100% spec coverage, checked by `validate-specs.sh` / `spec-coverage.sh`)
 - 📏 **Golden-task eval harness** — six specialist-role evals, structural + live (`RACK_EVAL_LIVE=1`) modes; results feed `rack doctor`'s model right-sizing hints
-- 🧩 **Modular Bash architecture** — 23 commands and reusable helpers, covered by 194 unit and 60 integration tests
+- 🧩 **Modular Bash architecture** — 23 commands and reusable helpers, covered by 241 unit and 60 integration tests
 
 See the [Project Status](#project-status) table below for the maturity of each feature, and the [Command Reference](#command-reference) for full usage.
 
@@ -59,7 +59,7 @@ Rack is also a deliberate exploration of patterns and disciplines outside my day
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `rack wire` |
 | Security gates | ✅ Opt-in | Exec-approval enforcement + curated allowlist, Telegram approval routing, and Docker workspace isolation via `rack gates enable` / `isolate`; status in `rack doctor`. Opt-in by design (on-by-default pending headless approval routing) |
 | Secret storage backends | ✅ Working | `file` (0600 JSON, default) or `keyring` (libsecret, no plaintext at rest) via `RACK_SECRETS_BACKEND` |
-| Manager coordination | ⚠️ Limited | Basic task queue only; full delegation in backlog |
+| Manager coordination | ✅ Working | Full delegation state machine (`rack team delegate` → queue → done) |
 
 ## Installation
 
@@ -125,9 +125,9 @@ rack-cli/
 │   ├── commands/                    # 21 command implementations
 │   └── commands/experimental/       # 1 experimental command (RACK_EXPERIMENTAL=1)
 └── tests/
-    ├── unit/                        # 77 unit tests (100% passing)
+    ├── unit/                        # 241 unit tests (100% passing)
     ├── test-lifecycle.sh            # 12 integration scenarios (60 assertions)
-    └── evals/                       # 6 specialist-role eval stubs
+    └── evals/                       # 6 specialist-role evals (structural + live)
 ```
 
 Each agent maintains an isolated workspace:
@@ -260,7 +260,7 @@ rack scope myproject reset        # Return to default
 # Run all tests
 ./tests/run-all-tests.sh
 
-# Unit tests only (77 tests, 100% passing)
+# Unit tests only (241 tests, 100% passing)
 ./tests/unit/test-helpers.sh
 
 # Integration tests (12 lifecycle scenarios, 60 assertions)
@@ -271,7 +271,7 @@ rack scope myproject reset        # Return to default
 ./tests/evals/run-evals.sh
 ```
 
-**Current status:** all suites green — 77 unit, 60 integration (2 skipped), 5 evals (1 skipped).
+**Current status:** all suites green — 241 unit, 60 integration (2 skipped), 5 evals (1 skipped).
 
 ## Development
 
@@ -336,10 +336,9 @@ See [specs/README.md](specs/README.md) for the full SSD documentation.
 See [ROADMAP.md](ROADMAP.md) for the full phased plan (security → reliability → portability →
 operability → MLOps depth). Near-term highlights:
 
-1. Flesh out the eval harness (`tests/evals/`) — golden task stubs per specialist role exist and pass; expand into real model-routing checks
-2. Full manager delegation (currently a basic task queue only)
-3. Make spec validation a blocking CI gate — promote `validate-specs.sh` from advisory to required, and run integration tests in CI alongside the unit suite
-4. Implement the security-gates design — the spec exists ([specs/functional/security-gates.spec.md](specs/functional/security-gates.spec.md), marked *Planned*); wire up tool-approval gates and workspace isolation so `rack install` applies them by default instead of skipping the step
+1. Expand the eval harness (`tests/evals/`) — golden tasks per specialist role run in structural and live modes; grow the task set and feed results into model right-sizing
+2. Run integration tests in CI alongside the unit suite (they currently require a local openclaw daemon), and promote the macOS job to a required check
+3. Turn security gates on by default — gates are implemented opt-in ([specs/functional/security-gates.spec.md](specs/functional/security-gates.spec.md)); on-by-default is pending headless approval routing
 
 ## Contributing
 

@@ -276,7 +276,7 @@ After 50 turns:
    - Session reset at 50 turns
 
 4. **Test & Validate**
-   - Run test conversation with my-website
+   - Run test conversation with a project agent
    - Verify context stays < 15K tokens
    - Verify 90% of turns use economy tier
 

@@ -17,7 +17,7 @@ The main user who:
 
 ### 2. **Project Agents** 📁
 One per project/codebase (created with `rack add`):
-- **Examples:** `mywebsite`, `mobile-app`, `myshop`
+- **Examples:** `mywebsite`, `mobile-app`, `content-blog`
 - **Role:** Project coordinator for ONE specific codebase
 - **Telegram:** Each has own dedicated group
 - **Works on:** Single project only (session-scoped)
