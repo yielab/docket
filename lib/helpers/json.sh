@@ -51,7 +51,7 @@ with_rack_lock() {
 # so the command stays alive.
 meta_get() {
   local id="$1" field="$2" default="${3:-}"
-  local meta="$PROJECTS_DIR/$id/$META_FILE"
+  local meta="$(agent_workspace_dir "$id")/$META_FILE"
   [[ -f "$meta" ]] || { echo "$default"; return; }
   local out
   if out=$(python3 - "$meta" "$field" "$default" <<'PY'
@@ -73,7 +73,7 @@ PY
 meta_set() { with_rack_lock _meta_set "$@"; }
 _meta_set() {
   local id="$1" field="$2" value="$3"
-  local meta="$PROJECTS_DIR/$id/$META_FILE"
+  local meta="$(agent_workspace_dir "$id")/$META_FILE"
   python3 - "$meta" "$field" "$value" <<'PY' | json_atomic_write "$meta"
 import json, sys, os
 path, field, value = sys.argv[1], sys.argv[2], sys.argv[3]

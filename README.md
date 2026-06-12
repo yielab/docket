@@ -16,7 +16,9 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 - 📄 **Declarative provisioning** — `rack add --from agents.yaml` provisions a whole fleet from a version-controlled spec; idempotent re-apply keeps git the source of truth
 
 **Cost control & model routing**
-- 🎚️ **Tiered model profiles** — economy (Haiku), standard (Sonnet), premium (Opus), switchable per agent
+
+- 🎚️ **Role→model policy** — each agent role (manager, programmer, tester, …) maps to the cheapest adequate model; change a role once with `rack models set` and every policy-following agent updates. Pin individual agents with `rack profile`
+- 🌐 **Multi-provider support** — Anthropic (default), OpenAI, Google, OpenRouter (incl. free tier); configure with `rack models preset`
 - 💰 **Budget caps & runaway detection** — set a per-agent USD cap; agents auto-pause when it's hit
 - 📊 **Cost reporting** — token usage and dollar cost, per agent or aggregated, with a daily `--history` series and spike detection
 
@@ -32,7 +34,7 @@ A modular Bash CLI for managing OpenClaw autonomous agents with project isolatio
 
 **Engineering discipline**
 - 📐 **Spec-driven development** — every command and feature is backed by an RFC 2119 specification (100% spec coverage, checked by `validate-specs.sh` / `spec-coverage.sh`)
-- 📏 **Golden-task eval harness** — six specialist-role evals, structural + live (`RACK_EVAL_LIVE=1`) modes; results feed `rack doctor`'s tier recommendations
+- 📏 **Golden-task eval harness** — six specialist-role evals, structural + live (`RACK_EVAL_LIVE=1`) modes; results feed `rack doctor`'s model right-sizing hints
 - 🧩 **Modular Bash architecture** — 23 commands and reusable helpers, covered by 194 unit and 60 integration tests
 
 See the [Project Status](#project-status) table below for the maturity of each feature, and the [Command Reference](#command-reference) for full usage.
@@ -41,7 +43,7 @@ See the [Project Status](#project-status) table below for the maturity of each f
 
 I built rack to simplify OpenClaw agent orchestration across multiple projects. Instead of manually editing JSON configs and managing workspace directories, rack provides a unified interface with session-based project isolation and automated workspace provisioning.
 
-Rack is also a deliberate exploration of patterns and disciplines outside my day-to-day paid work. Specifically: spec-driven development (features specified before implementation, RFC 2119 keywords, a coverage tool that reports honest gaps), modular Bash architecture at scale, and multi-agent coordination patterns with cost-tracking and tiered model routing.
+Rack is also a deliberate exploration of patterns and disciplines outside my day-to-day paid work. Specifically: spec-driven development (features specified before implementation, RFC 2119 keywords, a coverage tool that reports honest gaps), modular Bash architecture at scale, and multi-agent coordination patterns with cost-tracking and role-based model routing.
 
 ## Project Status
 
@@ -51,7 +53,7 @@ Rack is also a deliberate exploration of patterns and disciplines outside my day
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
 | Specialist agents team | ✅ Working | 6 pre-configured roles |
 | Lobster workflow integration | ✅ Working | YAML pipeline support |
-| Cost tracking & budget caps | ✅ Working | 3 model tiers, per-agent budget, runaway detection |
+| Cost tracking & budget caps | ✅ Working | Role→model policy, per-agent budget, runaway detection |
 | API key management | ✅ Working | Centralized key distribution |
 | CI pipeline | ✅ Working | GitHub Actions on every push/PR |
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `rack wire` |
@@ -92,8 +94,11 @@ rack list
 # Check agent info
 rack info myproject
 
-# Change model profile (economy/standard/premium)
-rack profile myproject economy
+# View / change the role→model policy
+rack models
+
+# Pin one agent's model (or 'default' to follow the role policy)
+rack profile myproject anthropic/claude-opus-4-6
 
 # Set $5 spending cap
 rack profile myproject --budget 5
@@ -154,7 +159,8 @@ rack maintain <id> clean  # Clear agent memory (see Maintenance below)
 ### Configuration
 
 ```bash
-rack profile <id> [tier]  # Set model tier (economy/standard/premium)
+rack models               # Role→model policy (set <role> <model>, preset, reset)
+rack profile <id> [model] # Pin an agent's model (<provider/model>) or 'default' = follow policy
 rack scope <id> set <key> # Change project session key
 rack keys                 # Manage API keys
 rack cost [id]            # Show token usage and costs (--json, --history [--days N])
@@ -210,13 +216,30 @@ rack profile <id> --budget 5      # Set $5 spending cap
 rack context <id> snapshot        # Create fast-access context for an agent
 ```
 
-### Model Profiles
+### Role→Model Policy & Provider Support
 
-| Profile | Model | Cost (per MTok) | Use Case |
-| ------- | ----- | --------------- | -------- |
-| economy | claude-haiku-4-5 | $0.80/$4 | Routine tasks |
-| standard | claude-sonnet-4-6 | $3/$15 | Active development |
-| premium | claude-opus-4-6 | $15/$75 | Complex architecture |
+rack is provider-agnostic. Each agent **role** maps to the cheapest model that's adequate for its workload — that mapping is the policy, and you can override any role:
+
+| Role | Default (Anthropic) | Why |
+| ---- | ------------------- | --- |
+| manager, reviewer, tester, knowledge | claude-haiku-4-5 | High-volume, low reasoning-density work |
+| programmer, security | claude-sonnet-4-6 | Reasoning-dense generation and audits |
+| repo / task (project agents) | sonnet / haiku | Project-agent type defaults |
+
+Stronger models (opus-class) are an explicit per-agent pin, never a standing default. Agents follow the policy by default; changing the policy (or switching provider preset) re-resolves every policy-following agent automatically — pinned agents are never touched.
+
+```bash
+rack models                          # Show the role→model policy with pricing
+rack models preset openrouter-free   # Switch all roles to OpenRouter free tier (no cost)
+rack models preset openai            # Switch to OpenAI (gpt-4.1-nano / gpt-4.1-mini)
+rack models preset google            # Switch to Google (gemini flash family)
+rack models preset anthropic         # Restore Anthropic defaults
+rack models set programmer openai/gpt-4.1   # Override one role
+rack profile myproject anthropic/claude-opus-4-6  # Pin one agent
+rack profile myproject default       # Re-attach the agent to its role policy
+```
+
+The old tier names (economy/standard/premium) are deprecated but still accepted with a warning. Pricing is shown as `n/a` for models not in the built-in table. Custom pricing can be added in `~/.openclaw/rack-models.json`.
 
 ## Session Isolation
 

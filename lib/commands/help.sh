@@ -41,8 +41,9 @@ ${BOLD}TELEGRAM${RESET}
   ${GREEN}unwire${RESET} [id]        Remove Telegram binding from a project
 
 ${BOLD}CONFIGURATION${RESET}
-  ${GREEN}profile${RESET}  [id] [t]  Set model tier: economy | standard | premium
-                        rack profile [id] --budget <USD>  (set spending cap)
+  ${GREEN}profile${RESET}  [id] [m]  Pin an agent's model (<provider/model>) or 'default' to
+                        follow the role policy; --budget <USD> sets a spending cap
+  ${GREEN}models${RESET}             View/change the role→model policy; switch provider presets
   ${GREEN}scope${RESET}    [id] [a]  Manage session scopes for multi-project isolation
   ${GREEN}keys${RESET}     <action>  Manage API keys — syncs to all agents
 
@@ -78,10 +79,12 @@ ${BOLD}UTILITIES${RESET}
   ${GREEN}serve${RESET}              Live JSON endpoint for dashboards (--port 7331 --interval 30)
   ${GREEN}help${RESET}               This help message
 
-${BOLD}MODEL PROFILES${RESET}
-  ${GREEN}economy${RESET}   claude-haiku-4-5     \$0.80/\$4 per MTok   Routine tasks, triage
-  ${GREEN}standard${RESET}  claude-sonnet-4-6    \$3/\$15 per MTok     Active development
-  ${GREEN}premium${RESET}   claude-opus-4-6      \$15/\$75 per MTok    Architecture, security
+${BOLD}MODEL POLICY${RESET}  (default: Anthropic — change with 'rack models preset')
+  Each agent role maps to the cheapest adequate model:
+  ${GREEN}cheap${RESET}   ${ROLE_MODELS[tester]:-${MODEL_PROFILES[economy]}}   manager reviewer tester knowledge task
+  ${GREEN}strong${RESET}  ${ROLE_MODELS[programmer]:-${MODEL_PROFILES[standard]}}  programmer security repo
+  'rack models' shows the full role→model table with pricing; 'rack profile <id>'
+  pins one agent to any model (incl. opus-class) without changing the policy.
 
 ${BOLD}FLAGS${RESET}
   --debug         Verbose mode — or set DEBUG=1 in env
@@ -93,7 +96,8 @@ ${BOLD}EXAMPLES${RESET}
   rack doctor                     # full health check
   rack info myproject             # inspect one project
   rack maintain myproject clean   # clear memory logs
-  rack profile myproject economy  # switch to haiku
+  rack profile myproject default  # follow the role policy model
+  rack profile myproject anthropic/claude-opus-4-6  # pin a stronger model
   rack profile myproject --budget 5  # set \$5 spending cap
   rack context myproject search "auth bug"  # search memory
   rack cost                       # cost breakdown for all agents

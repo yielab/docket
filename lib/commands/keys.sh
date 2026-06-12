@@ -41,17 +41,30 @@ ${BOLD}Quick Start:${RESET}
   ${GREEN}rack keys setup${RESET}      Run interactive wizard (recommended)
   ${GREEN}rack keys list${RESET}       See what keys you have
 
+${BOLD}Configured models (role policy):${RESET}
+  Cheap roles  : ${ROLE_MODELS[tester]:-${MODEL_PROFILES[economy]}}  (manager reviewer tester knowledge task)
+  Strong roles : ${ROLE_MODELS[programmer]:-${MODEL_PROFILES[standard]}}  (programmer security repo)
+  Full table: rack models  ·  Switch provider: rack models preset [anthropic|openai|google|openrouter-free|openrouter]
+
 ${BOLD}Supported Providers:${RESET}
-  ${CYAN}ANTHROPIC_API_KEY${RESET}     Anthropic Claude (claude-3/4 models)
-  ${CYAN}OPENAI_API_KEY${RESET}        OpenAI GPT/DALL-E
-  ${CYAN}GOOGLE_AI_API_KEY${RESET}     Google Gemini/Imagen/Veo
-  ${CYAN}OPENROUTER_API_KEY${RESET}    OpenRouter (unified access to many models)
+  ${CYAN}ANTHROPIC_API_KEY${RESET}     Anthropic Claude
+  ${CYAN}OPENAI_API_KEY${RESET}        OpenAI GPT-4.1 family
+  ${CYAN}GOOGLE_AI_API_KEY${RESET}     Google Gemini
+  ${CYAN}OPENROUTER_API_KEY${RESET}    OpenRouter (200+ models, free-tier available)
+  ${CYAN}GROQ_API_KEY${RESET}          Groq (fast inference)
+  ${CYAN}MISTRAL_API_KEY${RESET}       Mistral AI
+  ${CYAN}XAI_API_KEY${RESET}           xAI Grok
+
+${BOLD}Free option:${RESET}
+  Use OpenRouter free-tier models (zero per-token cost):
+    rack models preset openrouter-free
+    rack keys add OPENROUTER_API_KEY   (free account at openrouter.ai)
 
 ${BOLD}Get API Keys:${RESET}
   Anthropic:  ${BLUE}https://console.anthropic.com/settings/keys${RESET}
   OpenAI:     ${BLUE}https://platform.openai.com/api-keys${RESET}
   Google AI:  ${BLUE}https://aistudio.google.com/apikey${RESET}
-  OpenRouter: ${BLUE}https://openrouter.ai/settings/keys${RESET}
+  OpenRouter: ${BLUE}https://openrouter.ai/settings/keys${RESET} (free tier available)
 EOF
       ;;
   esac
@@ -389,10 +402,15 @@ with open(secrets_path) as f:
 # Known provider API keys -> the provider that needs them. A secret not in this
 # map is a custom/shared secret and goes to every agent.
 PROVIDER_KEYS = {
-    "ANTHROPIC_API_KEY": "anthropic",
-    "OPENAI_API_KEY": "openai",
-    "GOOGLE_AI_API_KEY": "google",
+    "ANTHROPIC_API_KEY":  "anthropic",
+    "OPENAI_API_KEY":     "openai",
+    "GOOGLE_AI_API_KEY":  "google",
     "OPENROUTER_API_KEY": "openrouter",
+    "GROQ_API_KEY":       "groq",
+    "MISTRAL_API_KEY":    "mistral",
+    "XAI_API_KEY":        "xai",
+    "CEREBRAS_API_KEY":   "cerebras",
+    "HUGGINGFACE_TOKEN":  "huggingface",
 }
 
 def needed(name):
@@ -460,7 +478,7 @@ _keys_setup() {
   )
 
   declare -A descriptions=(
-    ["ANTHROPIC_API_KEY"]="Anthropic Claude (Sonnet, Opus, Haiku)"
+    ["ANTHROPIC_API_KEY"]="Anthropic Claude"
     ["OPENAI_API_KEY"]="OpenAI GPT-4, GPT-3.5, DALL-E"
     ["GOOGLE_AI_API_KEY"]="Google Gemini, Imagen 3, Veo 2"
     ["OPENROUTER_API_KEY"]="Unified access to 200+ models"

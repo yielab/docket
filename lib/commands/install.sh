@@ -30,9 +30,8 @@ cmd_install() {
     fi
 
     # Check for missing specialist agents
-    local specialists=("programmer" "reviewer" "tester" "knowledge" "security" "manager")
     local missing_specialists=()
-    for spec in "${specialists[@]}"; do
+    for spec in "${RACK_SPECIALISTS[@]}"; do
       if ! agent_registered "$spec"; then
         missing_specialists+=("$spec")
       fi
@@ -169,31 +168,37 @@ PY
 
   echo ""
 
-  # Step 5: Install specialist agents (if not present)
+  # Step 5: Install specialist agents (if not present).
+  # Models come from the role→model policy (rack models), so a provider preset
+  # switched before install provisions specialists on that provider.
   header "Step 5: Setting up specialist agents"
-  local specialists=("programmer" "reviewer" "tester" "knowledge" "security" "manager")
-  local specialist_models=(
-    "anthropic/claude-sonnet-4-6"
-    "anthropic/claude-haiku-4-5"
-    "anthropic/claude-haiku-4-5"
-    "anthropic/claude-haiku-4-5"
-    "anthropic/claude-sonnet-4-6"
-    "anthropic/claude-sonnet-4-6"
-  )
 
-  for i in "${!specialists[@]}"; do
-    local spec="${specialists[$i]}"
-    local spec_model="${specialist_models[$i]}"
+  local spec
+  for spec in "${RACK_SPECIALISTS[@]}"; do
+    local spec_model; spec_model=$(resolve_role_model "$spec")
 
     if agent_registered "$spec"; then
       success "$spec: already registered"
     else
       info "Creating $spec agent..."
+      mkdir -p "$OPENCLAW_DIR/workspaces/$spec"
       openclaw agents add "$spec" \
         --workspace "$OPENCLAW_DIR/workspaces/$spec" \
         --model "$spec_model" \
         --non-interactive 2>&1 | grep -v "^$"
-      success "$spec: created ($(model_to_profile "$spec_model"))"
+      success "$spec: created ($spec_model — ${ROLE_WHY[$spec]:-})"
+    fi
+
+    # Specialists are first-class citizens of the meta system: stamp (or
+    # backfill) .rack-meta.json so list/profile/doctor manage them like any
+    # other agent.
+    if [[ -d "$OPENCLAW_DIR/workspaces/$spec" && ! -f "$OPENCLAW_DIR/workspaces/$spec/$META_FILE" ]]; then
+      meta_set "$spec" "kind"        "specialist"
+      meta_set "$spec" "role"        "$spec"
+      meta_set "$spec" "name"        "$spec"
+      meta_set "$spec" "model"       "$spec_model"
+      meta_set "$spec" "modelSource" "policy"
+      meta_set "$spec" "created"     "$(date -Iseconds)"
     fi
   done
 
@@ -297,9 +302,9 @@ PY
   echo "  Sites: $SITES_DIR"
   echo ""
   echo -e "${BOLD}Cost Management:${RESET}"
-  echo "  Default profile: $(model_to_profile "$DEFAULT_MODEL")"
+  echo "  Default model: $DEFAULT_MODEL"
   echo "  View usage: ${GREEN}rack cost${RESET}"
-  echo "  Change profiles: ${GREEN}rack profile <id> economy|standard|premium${RESET}"
+  echo "  Role→model policy: ${GREEN}rack models${RESET}   Pin one agent: ${GREEN}rack profile <id> <provider/model>${RESET}"
   echo ""
 }
 

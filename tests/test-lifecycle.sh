@@ -410,10 +410,10 @@ else
   fail "cost (single) missing model info"
 fi
 
-if echo "$COST_SINGLE" | grep -q "Profile:"; then
-  pass "cost (single) shows profile info"
+if echo "$COST_SINGLE" | grep -q "Source:"; then
+  pass "cost (single) shows model source (policy/pinned)"
 else
-  fail "cost (single) missing profile info"
+  fail "cost (single) missing model source"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -421,29 +421,36 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 section "TEST 8: rack profile $TEST_ID"
 
-# Show current profile (no change)
+# Show current model + intent (no change)
 PROFILE_SHOW=$("$RACK" profile "$TEST_ID" 2>&1) || true
 
-if echo "$PROFILE_SHOW" | grep -q "standard"; then
-  pass "profile shows current tier (standard)"
+if echo "$PROFILE_SHOW" | grep -q "Source:"; then
+  pass "profile shows model source (policy/pinned)"
 else
-  fail "profile not showing current tier"
+  fail "profile not showing model source"
 fi
 
-if echo "$PROFILE_SHOW" | grep -q "economy"; then
-  pass "profile lists available tiers"
+if echo "$PROFILE_SHOW" | grep -q "Role:"; then
+  pass "profile shows policy role"
 else
-  fail "profile missing available tiers"
+  fail "profile missing policy role"
 fi
 
-# Change to economy
-"$RACK" profile "$TEST_ID" economy 2>&1 || true
+# Pin to an explicit model
+"$RACK" profile "$TEST_ID" anthropic/claude-haiku-4-5 2>&1 || true
 
-ECONOMY_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('model',''))" 2>/dev/null)
-if echo "$ECONOMY_MODEL" | grep -qi "haiku"; then
-  pass "profile change to economy: model is haiku"
+PINNED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('model',''))" 2>/dev/null)
+if echo "$PINNED_MODEL" | grep -qi "haiku"; then
+  pass "profile pin: model is haiku"
 else
-  fail "profile change to economy: expected haiku, got $ECONOMY_MODEL"
+  fail "profile pin: expected haiku, got $PINNED_MODEL"
+fi
+
+PINNED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('modelSource',''))" 2>/dev/null)
+if [[ "$PINNED_SRC" == "pinned" ]]; then
+  pass "profile pin: modelSource=pinned"
+else
+  fail "profile pin: expected modelSource=pinned, got $PINNED_SRC"
 fi
 
 # Verify openclaw.json was updated too
@@ -455,19 +462,33 @@ for a in c.get('agents',{}).get('list',[]):
         print(a.get('model','')); break
 " 2>/dev/null)
 if echo "$OC_MODEL" | grep -qi "haiku"; then
-  pass "profile change updated openclaw.json"
+  pass "profile pin updated openclaw.json"
 else
-  fail "profile change did not update openclaw.json (got: $OC_MODEL)"
+  fail "profile pin did not update openclaw.json (got: $OC_MODEL)"
 fi
 
-# Change back to standard for clean state
-"$RACK" profile "$TEST_ID" standard 2>&1 || true
+# Deprecated tier name still resolves (with a warning), as a pin
+TIER_OUT=$("$RACK" profile "$TEST_ID" economy 2>&1) || true
+if echo "$TIER_OUT" | grep -qi "deprecated\|No change"; then
+  pass "profile accepts deprecated tier name with warning"
+else
+  fail "profile tier deprecation warning missing" "$(echo "$TIER_OUT" | head -2)"
+fi
+
+# Back to the role policy for clean state
+"$RACK" profile "$TEST_ID" default 2>&1 || true
 
 RESTORED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('model',''))" 2>/dev/null)
+RESTORED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('modelSource',''))" 2>/dev/null)
 if echo "$RESTORED_MODEL" | grep -qi "sonnet"; then
-  pass "profile restored to standard"
+  pass "profile default: back on repo policy model"
 else
-  fail "profile restore failed: got $RESTORED_MODEL"
+  fail "profile default restore failed: got $RESTORED_MODEL"
+fi
+if [[ "$RESTORED_SRC" == "policy" ]]; then
+  pass "profile default: modelSource=policy"
+else
+  fail "profile default: expected modelSource=policy, got $RESTORED_SRC"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -43,6 +43,7 @@ route_command() {
     eval|evals)        cmd_eval     "$@" ;;
     snapshot|export)   cmd_snapshot "$@" ;;
     serve)             cmd_serve    "$@" ;;
+    models)            cmd_models   "$@" ;;
     help|--help|-h)    cmd_help     "$@" ;;
 
     # ── Removed / renamed commands ──────────────────────────────────────────
@@ -59,7 +60,7 @@ route_command() {
       exit 1
       ;;
     model)
-      echo "rack model was renamed → use: rack profile [id] <economy|standard|premium>"
+      echo "rack model was renamed → use: rack profile [id] <provider/model|default>, or rack models for the role policy"
       exit 1
       ;;
     billing|credits)
@@ -76,12 +77,12 @@ route_command() {
       ;;
     smart|ai)
       echo "rack smart was removed — smart routing was placebo (prose in SOUL.md does not change the gateway model)"
-      echo "Use: rack profile [id] <economy|standard|premium> to set the actual model"
+      echo "Use: rack models (role policy) or rack profile [id] <provider/model> to set the actual model"
       exit 1
       ;;
     mode|terminal|term)
       echo "rack mode / rack terminal has been removed."
-      echo "Use: rack profile [id] <economy|standard|premium> to choose a model tier."
+      echo "Use: rack models (role policy) or rack profile [id] <provider/model> to choose models."
       exit 1
       ;;
     browser|brave)
