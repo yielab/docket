@@ -4,9 +4,10 @@
 #
 # Runs the specialist-role eval harness under tests/evals/.
 #   --live        enable live golden-task checks (sets RACK_EVAL_LIVE=1)
-#   --tier <t>    record results under this tier label (default: standard)
+#   --tier <t>    model-class label recorded with results (economy|standard|premium —
+#                 the internal rank classes; default: standard)
 #   --role <r>    run only <r>.eval.sh instead of all evals
-#   --recommend   print tier recommendations from stored results; no evals run
+#   --recommend   print per-role model right-sizing hints from stored results; no evals run
 
 cmd_eval() {
   local live=0 tier="standard" role="" recommend=0
@@ -28,7 +29,7 @@ cmd_eval() {
     || { error "Cannot locate tests/evals/ relative to lib/commands/eval.sh"; }
 
   if [[ "$recommend" -eq 1 ]]; then
-    header "Eval tier recommendations"
+    header "Eval model right-sizing hints"
     echo ""
     bash "$evals_dir/run-evals.sh" --recommend
     return $?

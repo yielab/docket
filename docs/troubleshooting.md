@@ -44,10 +44,12 @@ EOF
 systemctl --user restart openclaw-gateway
 ```
 
-**Valid model names:**
-- `anthropic/claude-haiku-4-5` (economy)
-- `anthropic/claude-sonnet-4-6` (standard)
-- `anthropic/claude-opus-4-6` (premium)
+**Valid model names (Anthropic defaults):**
+- `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge, task)
+- `anthropic/claude-sonnet-4-6` (strong class — programmer, security, repo)
+- `anthropic/claude-opus-4-6` (pin-only via `rack profile <id> <model>`)
+
+Check the live mapping anytime with `rack models`.
 
 #### 2. **Missing Telegram Bindings**
 **How to diagnose:**
