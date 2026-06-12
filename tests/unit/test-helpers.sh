@@ -1231,7 +1231,12 @@ echo "── P8-1: Audit log ──"
 source "$LIB_DIR/helpers/audit.sh"
 
 _P81=$(mktemp -d)
+# audit_log is the real function sourced from audit.sh just above; shellcheck
+# can't follow the variable-path source and only sees the P11-3 no-op stub
+# defined later in this file (SC2218 false positive).
+# shellcheck disable=SC2218
 OPENCLAW_DIR="$_P81" audit_log "keys.add" "ANTHROPIC_API_KEY"
+# shellcheck disable=SC2218
 OPENCLAW_DIR="$_P81" audit_log "gates.enable" "security=allowlist"
 assert_equals "2" "$(wc -l < "$_P81/audit.log" | tr -d ' ')" "audit: one JSON line per call"
 _p81_action=$(tail -1 "$_P81/audit.log" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['action'])")
@@ -1242,6 +1247,7 @@ _p81_perm=$(stat -c '%a' "$_P81/audit.log" 2>/dev/null || stat -f '%Lp' "$_P81/a
 assert_equals "600" "$_p81_perm" "audit: log file is 0600"
 
 rm -f "$_P81/audit.log"
+# shellcheck disable=SC2218
 RACK_NO_AUDIT=1 OPENCLAW_DIR="$_P81" audit_log "keys.add" "X"
 [[ -f "$_P81/audit.log" ]] && _p81_off="wrote" || _p81_off="skipped"
 assert_equals "skipped" "$_p81_off" "audit: RACK_NO_AUDIT=1 disables logging"
