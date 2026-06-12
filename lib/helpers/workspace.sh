@@ -329,14 +329,14 @@ _print_summary() {
 _show_agent_cost() {
   local id="$1"
   local model; model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
-  local profile; profile=$(model_to_profile "$model")
+  local profile; profile=$(agent_model_source "$id")
   local budget;  budget=$(meta_get "$id" "budgetUsd" "")
   local cost_data
   cost_data=$(_aggregate_cost "$id")
   IFS='|' read -r c_in c_out c_cr c_cw c_cost c_turns <<< "$cost_data"
 
   printf "  ${BOLD}%-16s${RESET} %s\n" "Model:"      "$model"
-  printf "  ${BOLD}%-16s${RESET} %s\n" "Profile:"     "$profile"
+  printf "  ${BOLD}%-16s${RESET} %s\n" "Source:"      "$profile"
   printf "  ${BOLD}%-16s${RESET} %s\n" "Turns:"       "$c_turns"
   echo ""
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Input:"       "$c_in"
@@ -344,16 +344,27 @@ _show_agent_cost() {
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Cache read:"  "$c_cr"
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Cache write:" "$c_cw"
   echo ""
-  printf "  ${BOLD}%-16s${RESET} ${GREEN}\$%.4f${RESET}\n" "Total cost:" "$c_cost"
+  # Cost display — honest about missing pricing data
+  local pricing_known=1
+  [[ -z "${MODEL_PRICING[$model]:-}" ]] && pricing_known=0
+  if [[ "$pricing_known" -eq 1 ]]; then
+    printf "  ${BOLD}%-16s${RESET} ${GREEN}\$%.4f${RESET}\n" "Total cost:" "$c_cost"
+  else
+    printf "  ${BOLD}%-16s${RESET} ${DIM}n/a (no pricing data for %s)${RESET}\n" "Total cost:" "$model"
+  fi
 
-  # Budget status
+  # Budget status — only when cost is trackable
   if [[ -n "$budget" && "$budget" != "0" ]]; then
-    local pct
-    pct=$(python3 -c "print(int(float('$c_cost') / float('$budget') * 100))" 2>/dev/null || echo "0")
-    local color="$GREEN"
-    [[ "$pct" -ge 80 ]]  && color="$YELLOW"
-    [[ "$pct" -ge 100 ]] && color="$RED"
-    printf "  ${BOLD}%-16s${RESET} ${color}%s%%${RESET} of \$%.2f cap\n" "Budget:" "$pct" "$budget"
+    if [[ "$pricing_known" -eq 1 ]]; then
+      local pct
+      pct=$(python3 -c "print(int(float('$c_cost') / float('$budget') * 100))" 2>/dev/null || echo "0")
+      local color="$GREEN"
+      [[ "$pct" -ge 80 ]]  && color="$YELLOW"
+      [[ "$pct" -ge 100 ]] && color="$RED"
+      printf "  ${BOLD}%-16s${RESET} ${color}%s%%${RESET} of \$%.2f cap\n" "Budget:" "$pct" "$budget"
+    else
+      printf "  ${BOLD}%-16s${RESET} ${YELLOW}cannot enforce — no pricing data${RESET}\n" "Budget:"
+    fi
   fi
 
   # Runaway detection
@@ -361,20 +372,24 @@ _show_agent_cost() {
     echo ""
     warn "  High turn count: $c_turns turns (threshold: ${RUNAWAY_TURNS_THRESHOLD:-200})"
   fi
-  if python3 -c "import sys; sys.exit(0 if float('$c_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" 2>/dev/null; then
-    echo ""
-    warn "  High cost session: \$$c_cost exceeds \$${RUNAWAY_COST_THRESHOLD:-20} threshold"
+  if [[ "$pricing_known" -eq 1 ]]; then
+    if python3 -c "import sys; sys.exit(0 if float('$c_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" 2>/dev/null; then
+      echo ""
+      warn "  High cost session: \$$c_cost exceeds \$${RUNAWAY_COST_THRESHOLD:-20} threshold"
+    fi
   fi
 
-  # Show savings estimate if not already on economy
-  if [[ "$profile" != "economy" ]]; then
-    local eco_model="${MODEL_PROFILES[economy]}"
+  # Savings estimate vs the cheapest anchor — only when both models are priced
+  local eco_model="${MODEL_PROFILES[economy]}"
+  if [[ "$model" != "$eco_model" ]]; then
     local eco_cost
     eco_cost=$(_estimate_cost "$c_in" "$c_out" "$c_cr" "$c_cw" "$eco_model")
-    local savings
-    savings=$(python3 -c "s=$c_cost - $eco_cost; print(f'{s:.4f}') if s > 0 else print('0.0000')")
-    echo ""
-    dim "  On economy ($eco_model): \$$eco_cost — saves \$$savings"
+    if [[ "$eco_cost" != "n/a" && "$pricing_known" -eq 1 ]]; then
+      local savings
+      savings=$(python3 -c "s=$c_cost - $eco_cost; print(f'{s:.4f}') if s > 0 else print('0.0000')")
+      echo ""
+      dim "  On economy ($eco_model): \$$eco_cost — saves \$$savings"
+    fi
   fi
 }
 
@@ -539,11 +554,17 @@ PY
 
 _estimate_cost() {
   local in_tok="$1" out_tok="$2" cache_r="$3" cache_w="$4" model="$5"
-  local pricing="${MODEL_PRICING[$model]:-3.00:15.00:0.30:3.75}"
+  local pricing="${MODEL_PRICING[$model]:-}"
+  if [[ -z "$pricing" ]]; then
+    echo "n/a"
+    return
+  fi
   IFS=':' read -r p_in p_out p_cr p_cw <<< "$pricing"
+  # Empty cache fields default to 0
+  p_cr="${p_cr:-0}"; p_cw="${p_cw:-0}"
   python3 -c "
 i, o, cr, cw = $in_tok, $out_tok, $cache_r, $cache_w
-pi, po, pcr, pcw = $p_in, $p_out, $p_cr, $p_cw
+pi, po, pcr, pcw = float('$p_in'), float('$p_out'), float('$p_cr'), float('$p_cw')
 cost = (i * pi + o * po + cr * pcr + cw * pcw) / 1_000_000
 print(f'{cost:.4f}')
 "

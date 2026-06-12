@@ -4,6 +4,8 @@
 cmd_delete() {
   local id="${1:-}"
   [[ -z "$id" ]] && id=$(pick_project "Delete project")
+  is_specialist "$id" && \
+    error "'$id' is a specialist agent — shared team infrastructure managed by 'rack install'. It cannot be deleted with 'rack delete'."
   local workspace="$PROJECTS_DIR/$id"
   [[ ! -d "$workspace" ]] && error "Project '$id' not found."
 

@@ -13,8 +13,11 @@ _cost_json() {
       budget=$(meta_get "$pid" "budgetUsd" "")
       cost_data=$(_aggregate_cost "$pid")
       IFS='|' read -r c_in c_out c_cr c_cw c_cost c_turns <<< "$cost_data"
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$pid" "$model" "$c_in" "$c_out" "$c_cost" "$c_turns" "$budget"
+      # pricing_known: 1 if model is in MODEL_PRICING, 0 otherwise
+      local pricing_known=0
+      [[ -n "${MODEL_PRICING[$model]:-}" ]] && pricing_known=1
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$pid" "$model" "$c_in" "$c_out" "$c_cost" "$c_turns" "$budget" "$pricing_known"
     done <<< "$ids"
   } | python3 -c '
 import json, sys
@@ -23,13 +26,17 @@ for line in sys.stdin:
     line = line.rstrip("\n")
     if not line:
         continue
-    pid, model, c_in, c_out, c_cost, c_turns, budget = line.split("\t")
+    parts = line.split("\t")
+    pid, model, c_in, c_out, c_cost, c_turns, budget = parts[:7]
+    pricing_known = (parts[7] == "1") if len(parts) > 7 else True
     cost = float(c_cost or 0)
     total += cost
     agents.append({
         "id": pid, "model": model,
         "input": int(c_in or 0), "output": int(c_out or 0),
-        "costUsd": round(cost, 6), "turns": int(c_turns or 0),
+        "costUsd": (round(cost, 6) if pricing_known else None),
+        "pricingKnown": pricing_known,
+        "turns": int(c_turns or 0),
         "budgetUsd": (float(budget) if budget and budget != "0" else None),
     })
 print(json.dumps({"agents": agents, "totalUsd": round(total, 6)}, indent=2))
@@ -140,7 +147,7 @@ cmd_cost() {
     header "Token Usage — All Project Agents"
     echo ""
     printf "${BOLD}%-16s %-10s %10s %10s %12s  %-8s  %-12s${RESET}\n" \
-      "AGENT" "MODEL" "INPUT" "OUTPUT" "COST (USD)" "PROFILE" "BUDGET"
+      "AGENT" "MODEL" "INPUT" "OUTPUT" "COST (USD)" "SOURCE" "BUDGET"
     printf '%0.s─' {1..90}; echo ""
 
     local total_cost=0
@@ -153,13 +160,13 @@ cmd_cost() {
     local runaway_agents=()
     while IFS= read -r pid; do
       local model; model=$(meta_get "$pid" "model" "$DEFAULT_MODEL")
-      local profile; profile=$(model_to_profile "$model")
+      local profile; profile=$(agent_model_source "$pid")
       local budget;  budget=$(meta_get "$pid" "budgetUsd" "")
       local cost_data
       cost_data=$(_aggregate_cost "$pid")
       IFS='|' read -r c_in c_out c_cr c_cw c_cost c_turns <<< "$cost_data"
 
-      local model_short; model_short=$(echo "$model" | sed 's|anthropic/||')
+      local model_short="${model##*/}"
       local budget_col="—"
       if [[ -n "$budget" && "$budget" != "0" ]]; then
         local pct
@@ -197,7 +204,7 @@ cmd_cost() {
 
     echo ""
     dim "  Costs from session data in ~/.openclaw/agents/*/sessions/*.jsonl"
-    dim "  Pricing: haiku \$0.80/\$4 · sonnet \$3/\$15 · opus \$15/\$75 (per MTok in/out)"
+    dim "  Pricing per configured tier — see: rack models"
   fi
   echo ""
 }

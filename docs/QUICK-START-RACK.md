@@ -71,7 +71,7 @@ Programmer: [Reads 100K tokens AGAIN + 20K brief]
 Reviewer: [Reads 100K tokens AGAIN + code]
           [Approves]
           ↓
-TOTAL: ~320K tokens = $0.96 (Sonnet)
+TOTAL: ~320K tokens = $X (strong model class)
 TIME: ~4 minutes
 ```
 
@@ -97,7 +97,7 @@ Tester: [Reads reproduction steps — 500 tokens]
         [Validates behavior]
         [PASS]
         ↓
-TOTAL: ~6.5K tokens = $0.02 (Haiku/Sonnet mix)
+TOTAL: ~6.5K tokens = $X (cheap/strong model mix)
 TIME: ~2 minutes
 SAVINGS: 98% cost, 50% time
 ```
@@ -248,7 +248,7 @@ Fix bug: Login crashes when token is null
 - Reads compressed brief ONLY (<500 tokens)
 - Target: <5K tokens per task
 - Signals completion via DONE.md
-- Uses Haiku for simple tasks (20x cheaper)
+- Uses cheap-model agents for simple tasks
 
 ### Reviewer
 **Before:** General code review
@@ -269,7 +269,7 @@ Fix bug: Login crashes when token is null
 - **Behavior-only validation** (does NOT read code!)
 - Executes reproduction steps objectively
 - Binary verdict: PASS or FAIL
-- Uses Haiku (cheap + sufficient for validation)
+- Runs on the cheap model class (sufficient for validation)
 
 ---
 
@@ -300,7 +300,7 @@ Time: 3 minutes
 
 **After:**
 ```
-Brief (500) + file (1K) + implement (500) = 2K tokens → $0.0016 (Haiku!)
+Brief (500) + file (1K) + implement (500) = 2K tokens → fraction of a cent (cheap model class)
 Time: 30 seconds
 ```
 **Savings: 99.7% cost, 6x faster**

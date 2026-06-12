@@ -58,7 +58,7 @@ Shared team (created with `rack install`):
 │              SPECIALIST AGENTS (Shared Team)                │
 ├─────────────────────────────────────────────────────────────┤
 │  programmer  │  reviewer  │  tester  │  knowledge  │  security│
-│  (Haiku/Son) │  (Sonnet)  │ (Haiku)  │  (Haiku)    │ (Sonnet) │
+│ (Eco/Std)    │ (Standard) │ (Economy)│  (Economy)  │(Standard)│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,7 +92,7 @@ rack add
   Type: repo
   Codebase: ~/Sites/mywebsite
   Stack: Next.js
-  Model: standard (Sonnet)
+  Model: strong class (role policy)
 
 # Wire to Telegram
 rack wire mywebsite
@@ -729,9 +729,9 @@ Reason: Mobile team requested it
 **Simple Task (CSS change):**
 ```
 Project Agent: 2K tokens (read SNAPSHOT, create brief)
-Programmer: 2K tokens (Haiku - implement)
+Programmer: 2K tokens (cheap model - implement)
 Reviewer: 1K tokens (quick check)
-Tester: 1K tokens (Haiku - validate)
+Tester: 1K tokens (cheap model - validate)
 ---
 Total: ~6K tokens = $0.005 (half a cent!)
 Time: 2 minutes
@@ -740,19 +740,19 @@ Time: 2 minutes
 **Medium Task (feature):**
 ```
 Project Agent: 5K tokens
-Programmer: 20K tokens (Sonnet - complex logic)
-Reviewer: 5K tokens (Sonnet - thorough)
-Tester: 3K tokens (Haiku - tests)
+Programmer: 20K tokens (strong model - complex logic)
+Reviewer: 5K tokens (strong model - thorough)
+Tester: 3K tokens (cheap model - tests)
 ---
-Total: ~33K tokens = $0.10 (ten cents)
+Total: ~33K tokens = varies by provider
 Time: 10 minutes
 ```
 
 **Complex Task (refactor):**
 ```
 Project Agent: 10K tokens
-Programmer: 50K tokens (Sonnet - multi-file)
-Reviewer: 10K tokens (Sonnet - security critical)
+Programmer: 50K tokens (strong model - multi-file)
+Reviewer: 10K tokens (strong model - security critical)
 Tester: 5K tokens (extensive tests)
 ---
 Total: ~75K tokens = $0.23 (twenty-three cents)

@@ -28,9 +28,9 @@ What happened:
 - Monthly limit reached or balance empty
 
 How to fix:
-1. Visit https://console.anthropic.com/settings/billing
-2. Add credits ($10-50 minimum recommended)
-3. I'll automatically resume when credits are available
+1. Check your provider's billing console and add credits
+2. Or switch to a free-tier provider: rack models preset openrouter-free
+3. I'll automatically resume when the account is active
 
 Current status: Waiting for credits...
 ```
@@ -180,7 +180,7 @@ Resuming: [task description]
 
 **Bad:**
 ```
-Error: FailoverError: Unknown model: anthropic/claude-haiku-3-5
+Error: FailoverError: Unknown model: <model-id>
 ```
 
 **Good:**
@@ -190,14 +190,16 @@ Error: FailoverError: Unknown model: anthropic/claude-haiku-3-5
 I encountered a model configuration issue.
 
 What happened:
-- Tried to use "claude-haiku-3-5" (doesn't exist)
-- Should be "claude-haiku-4-5"
+- Tried to use a model that isn't available or misconfigured
+- The assigned model ID may be incorrect
 
 How to fix:
-1. Run: rack profile my-website economy
-2. Or: rack profile my-website economy
+1. Run: rack models  (check the role→model policy)
+2. Run: rack profile <id> default  (follow the role policy)
+   or:  rack profile <id> <provider/model>  (pin a specific model)
+3. Or:  rack models preset anthropic  (restore defaults)
 
-I'll use the default model (sonnet-4-6) for now while you fix this.
+I'll use the default model for now while you fix this.
 ```
 
 ---

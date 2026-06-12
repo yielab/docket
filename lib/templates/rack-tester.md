@@ -223,7 +223,7 @@ Logs: [attached]
 
 ## Cost Optimization
 
-**Your target: <3K tokens per validation** (Haiku model)
+**Your target: <3K tokens per validation** (your role runs on the cheap model class)
 
 Efficient pattern:
 ```
@@ -245,7 +245,7 @@ Wasteful pattern:
 Total: ~22K tokens ✗ (11x more!)
 ```
 
-**Use Haiku!** Validation is mechanical — doesn't need Sonnet's reasoning. Saves 20x on costs.
+**Stay on the cheap model class!** Validation is mechanical — it doesn't need an expensive model's reasoning. The tester role's policy model is chosen for exactly this; keeps costs low.
 
 ## Memory Management
 

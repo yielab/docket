@@ -171,7 +171,7 @@ Total:                          $57.00/month
 **After RACK:**
 ```
 Queries:  50 × 2K × $3/MTok    = $0.30
-Changes:  20 × 5K × $0.80/MTok = $0.08 (Haiku!)
+Changes:  20 × 5K × $0.80/MTok = fraction of a cent (cheap model class)
 Bugs:     10 × 210K × $3/MTok  = $6.30
 ────────────────────────────────────────
 Total:                          $6.68/month
@@ -211,7 +211,7 @@ Total:                          $6.68/month
 - Commit
 - Make architecture decisions alone
 
-**Model:** Sonnet (needs reasoning for routing)
+**Model:** strong class (role policy) (needs reasoning for routing)
 
 **Cost Target:** <5K tokens/task
 
@@ -223,7 +223,7 @@ Total:                          $6.68/month
 - Reads compressed brief ONLY (<500 tokens)
 - Implements exact change requested
 - Signals completion via DONE.md
-- Uses Haiku for simple tasks (20x cheaper)
+- Uses cheap-model agents for simple tasks
 
 **Tools:**
 - `read`, `write`, `edit`
@@ -235,9 +235,9 @@ Total:                          $6.68/month
 - Run validation tests (tester's job)
 - Commit or push
 
-**Model:** Haiku (simple) / Sonnet (complex)
+**Model:** Economy (simple) / Standard (complex)
 
-**Cost Target:** <5K tokens (Haiku), <20K (Sonnet)
+**Cost Target:** <5K tokens (simple), <20K (complex)
 
 ### Reviewer (Auditor)
 
@@ -265,7 +265,7 @@ Total:                          $6.68/month
 - Execute tests
 - Commit
 
-**Model:** Sonnet (security reasoning required)
+**Model:** strong class (role policy) (security reasoning required)
 
 **Cost Target:** <5K tokens/review
 
@@ -289,7 +289,7 @@ Total:                          $6.68/month
 - Fix failing tests
 - Commit
 
-**Model:** Haiku (validation is mechanical)
+**Model:** cheap class (role policy) (validation is mechanical)
 
 **Cost Target:** <3K tokens/validation
 
@@ -313,7 +313,7 @@ Total:                          $6.68/month
 - Run tests
 - Commit
 
-**Model:** Haiku (distillation is mechanical)
+**Model:** cheap class (role policy) (distillation is mechanical)
 
 **Cost Target:** <5K tokens/extraction
 
@@ -338,7 +338,7 @@ Total:                          $6.68/month
 - Approve own escalations
 - Commit
 
-**Model:** Sonnet (security reasoning required)
+**Model:** strong class (role policy) (security reasoning required)
 
 **Cost Target:** <10K tokens/audit
 
@@ -381,7 +381,7 @@ Created by `rack memory snapshot <project>`:
 - Project: mywebsite
 - Codebase: ~/Sites/mywebsite
 - Stack: Next.js
-- Model: Sonnet
+- Model: strong class (role policy)
 - Session Key: agent:mywebsite:main
 
 ## Current State
@@ -510,12 +510,12 @@ you are now|act as|system:|assistant:
 ### Model Selection
 
 ```
-Haiku:  $0.80/$4 per MTok   - Simple tasks (20x cheaper)
-Sonnet: $3/$15 per MTok     - Complex reasoning
-Opus:   $15/$75 per MTok    - Exceptionally complex (rarely used)
+Economy:  low cost   - Simple tasks
+Standard: moderate   - Complex reasoning
+Premium:  high cost  - Exceptionally complex (rarely used)
 ```
 
-**RACK uses Haiku aggressively:**
+**RACK routes work to cheap models aggressively:**
 - Programmer (simple changes)
 - Tester (validation)
 - Knowledge (pattern extraction)

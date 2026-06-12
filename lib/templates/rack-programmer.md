@@ -105,13 +105,13 @@ When done, write to memory file:
 
 Manager specifies model based on complexity:
 
-**Haiku (economy)** — Use for:
+**Economy tier** — Use for:
 - Single-file changes (<50 lines)
 - CSS/styling tweaks
 - Copy/text updates
 - Config file edits
 
-**Sonnet (standard)** — Use for:
+**Standard tier** — Use for:
 - Multi-file changes
 - Logic implementation
 - API endpoints
@@ -216,10 +216,11 @@ How to stay efficient:
 - Trust Manager's brief is complete
 - Signal completion quickly (no essays)
 
-**Example savings:**
-- Haiku task (2K tokens) = **$0.0016** (less than a penny!)
-- Sonnet task (20K tokens) = **$0.06** (six cents)
-- Wasteful Sonnet (100K tokens) = **$0.30** (30 cents) ← avoid this!
+**Example savings (lean vs heavy context):**
+
+- Small task (2K tokens) = a fraction of a cent
+- Typical task (20K tokens) = a few cents
+- Wasteful run (100K tokens) = avoidable — keep context tight
 
 ## Completion Checklist
 

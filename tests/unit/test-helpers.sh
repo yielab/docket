@@ -627,6 +627,106 @@ assert_equals "high" "$_p42_first_pri" "queue: high-priority task sorts first"
 rm -rf "$_P42_DIR"
 echo ""
 
+# ─── PH7-1: Task queue state machine ───────────────────────────────────────────
+echo "── PH7-1: Task queue state machine ──"
+
+source "$LIB_DIR/commands/team.sh" 2>/dev/null || true
+
+_PH7_DIR=$(mktemp -d)
+_PH7_TL="$_PH7_DIR/TASK_LIST.json"
+echo '{"tasks":[]}' | json_atomic_write "$_PH7_TL"
+
+# Set up env for _ensure_task_list / _task_list_path
+_PH7_REAL_OPENCLAW="$OPENCLAW_DIR"
+OPENCLAW_DIR="$_PH7_DIR"
+mkdir -p "$_PH7_DIR/workspaces/manager"
+cp "$_PH7_TL" "$_PH7_DIR/workspaces/manager/TASK_LIST.json"
+
+# Override rack_audit to be a no-op
+rack_audit() { :; }
+
+# Seed two tasks directly
+python3 - "$_PH7_DIR/workspaces/manager/TASK_LIST.json" <<'PY'
+import sys, json
+path = sys.argv[1]
+data = {"tasks":[
+  {"id":"task-001","description":"Fix auth bug","priority":"normal",
+   "created":"2026-06-11T10:00:00","startedAt":None,"completedAt":None,"status":"pending"},
+  {"id":"task-002","description":"Security audit","priority":"high",
+   "created":"2026-06-11T10:01:00","startedAt":None,"completedAt":None,"status":"pending"},
+]}
+print(json.dumps(data, indent=2))
+PY
+cp "$_PH7_DIR/workspaces/manager/TASK_LIST.json" /dev/null 2>/dev/null || true
+python3 - "$_PH7_DIR/workspaces/manager/TASK_LIST.json" <<'PY'
+import sys, json
+path = sys.argv[1]
+data = {"tasks":[
+  {"id":"task-001","description":"Fix auth bug","priority":"normal",
+   "created":"2026-06-11T10:00:00","startedAt":None,"completedAt":None,"status":"pending"},
+  {"id":"task-002","description":"Security audit","priority":"high",
+   "created":"2026-06-11T10:01:00","startedAt":None,"completedAt":None,"status":"pending"},
+]}
+open(path,"w").write(json.dumps(data, indent=2))
+PY
+
+_ph7_path="$_PH7_DIR/workspaces/manager/TASK_LIST.json"
+
+# Transition pending → in_progress
+_ph7_sentinel=$(_team_transition_result "in_progress" "task-001" 2>&1)
+_ph7_status=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-001'][0]['status'])")
+assert_equals "in_progress"   "$_ph7_status"            "PH7-1: pending → in_progress"
+
+# startedAt is set
+_ph7_started=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-001'][0].get('startedAt') or '')")
+assert_not_empty "$_ph7_started"                         "PH7-1: startedAt set on start"
+
+# Transition in_progress → done
+_ph7_sentinel=$(_team_transition_result "done" "task-001" 2>&1)
+_ph7_status=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-001'][0]['status'])")
+assert_equals "done"          "$_ph7_status"             "PH7-1: in_progress → done"
+
+# completedAt is set on done
+_ph7_completed=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-001'][0].get('completedAt') or '')")
+assert_not_empty "$_ph7_completed"                       "PH7-1: completedAt set on done"
+
+# Invalid transition: done → in_progress (must be rejected)
+_ph7_rc=0
+( _team_transition_result "in_progress" "task-001" ) >/dev/null 2>&1 || _ph7_rc=$?
+_ph7_status2=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-001'][0]['status'])")
+assert_equals "done"          "$_ph7_status2"            "PH7-1: done → in_progress blocked (state unchanged)"
+
+# Transition pending → cancelled (direct, skip in_progress)
+_ph7_sentinel=$(_team_transition_result "cancelled" "task-002" 2>&1)
+_ph7_status3=$(python3 -c "import json; d=json.load(open('$_ph7_path')); print([t for t in d['tasks'] if t['id']=='task-002'][0]['status'])")
+assert_equals "cancelled"     "$_ph7_status3"            "PH7-1: pending → cancelled"
+
+# Queue count: no active tasks remain
+_ph7_count=$(_team_queue_count)
+assert_equals "0"             "$_ph7_count"              "PH7-1: queue count 0 after all tasks resolved"
+
+# _team_delegate_write: validates schema — only high/normal/low allowed
+_ph7_bad_rc=0
+python3 - "$_ph7_path" "task-003" "Test task" "INVALID" "2026-06-11T12:00:00" \
+  <<'PY' >/dev/null 2>&1 || _ph7_bad_rc=1
+import sys, json
+path, tid, desc, pri, created = sys.argv[1:]
+data = json.load(open(path))
+data["tasks"].append({"id":tid,"description":desc,"priority":pri,
+    "created":created,"startedAt":None,"completedAt":None,"status":"pending"})
+print(json.dumps(data,indent=2))
+PY
+# (Python itself doesn't block invalid priority — the bash layer does via case statement)
+# Test that the bash validation catches it:
+_ph7_pri_rc=0
+( cmd_team delegate --priority INVALID "test" ) >/dev/null 2>&1 || _ph7_pri_rc=$?
+assert_equals "1"             "$_ph7_pri_rc"             "PH7-1: invalid priority rejected at delegate"
+
+unset -f rack_audit
+OPENCLAW_DIR="$_PH7_REAL_OPENCLAW"
+rm -rf "$_PH7_DIR"
+echo ""
+
 # ─── P5-1: Channel-aware binding helpers ───────────────────────────────────────
 echo "── P5-1: Channel-aware bindings ──"
 
@@ -1409,6 +1509,215 @@ echo "$_p113_again" | grep -q "already exists — skipped" && _p113_idem="ok" ||
 assert_equals "ok" "$_p113_idem" "declarative: re-apply skips existing agents (idempotent)"
 
 rm -rf "$_P113"
+echo ""
+
+# ── MA-2: Model registry overlay ──────────────────────────────────────────────
+echo "Testing model registry overlay (MA-2)..."
+
+_MA2_DIR=$(mktemp -d)
+_MA2_REG="$_MA2_DIR/rack-models.json"
+
+# Baseline: no registry file — built-in defaults survive
+_ma2_economy_before="${MODEL_PROFILES[economy]}"
+_ma2_standard_before="${MODEL_PROFILES[standard]}"
+assert_not_empty "$_ma2_economy_before" "MA-2: built-in economy profile is set"
+assert_not_empty "$_ma2_standard_before" "MA-2: built-in standard profile is set"
+
+# Registry override: economy → openai/gpt-4.1-nano, add custom pricing
+cat > "$_MA2_REG" <<'JSON'
+{
+  "profiles": {
+    "economy": "openai/gpt-4.1-nano",
+    "standard": "openai/gpt-4.1-mini"
+  },
+  "pricing": {
+    "openai/gpt-4.1-nano": {"input": 0.10, "output": 0.40}
+  }
+}
+JSON
+
+# Temporarily set registry path and reload
+_MA2_REAL_REG="$MODEL_REGISTRY_FILE"
+MODEL_REGISTRY_FILE="$_MA2_REG"
+load_model_registry
+assert_equals "openai/gpt-4.1-nano"  "${MODEL_PROFILES[economy]}"  "MA-2: registry overrides economy tier"
+assert_equals "openai/gpt-4.1-mini"  "${MODEL_PROFILES[standard]}" "MA-2: registry overrides standard tier"
+assert_not_empty "${MODEL_PRICING[openai/gpt-4.1-nano]:-}" "MA-2: registry adds pricing entry"
+assert_not_empty "${MODEL_PROFILES[premium]:-}" "MA-2: premium tier still set after partial overlay"
+
+# Corrupt registry → built-ins survive, no crash
+cat > "$_MA2_REG" <<'JSON'
+{ this is not valid json
+JSON
+MODEL_REGISTRY_FILE="$_MA2_REG"
+MODEL_PROFILES[economy]="$_ma2_economy_before"
+MODEL_PROFILES[standard]="$_ma2_standard_before"
+load_model_registry 2>/dev/null
+assert_equals "$_ma2_economy_before"  "${MODEL_PROFILES[economy]}"  "MA-2: corrupt registry keeps built-in economy"
+assert_equals "$_ma2_standard_before" "${MODEL_PROFILES[standard]}" "MA-2: corrupt registry keeps built-in standard"
+
+# validate_model: well-formed unknown → accepted with no exit error
+# warn() writes to stdout; grep for just the model line (last non-empty line)
+source "$LIB_DIR/helpers/output.sh"  # ensure warn() available
+source "$LIB_DIR/helpers/models.sh"
+_ma2_val=$(validate_model "openrouter/some/exotic-model" 2>/dev/null | grep -v '^⚠\|^\[' | tail -1)
+assert_equals "openrouter/some/exotic-model" "$_ma2_val" "MA-2: validate_model accepts well-formed unknown model"
+
+# validate_model: tier name resolves
+_ma2_val=$(validate_model "economy" 2>/dev/null)
+assert_not_empty "$_ma2_val" "MA-2: validate_model resolves tier name"
+
+# validate_model: malformed fails — run in subshell so error()/exit 1 doesn't kill the test
+_ma2_rc=0
+( validate_model "not-a-valid-model" ) >/dev/null 2>&1 || _ma2_rc=$?
+assert_equals "1" "$_ma2_rc" "MA-2: validate_model rejects malformed (no provider prefix)"
+
+# get_fallback_model: walks tier chain
+MODEL_PROFILES[economy]="anthropic/claude-haiku-4-5"
+MODEL_PROFILES[standard]="anthropic/claude-sonnet-4-6"
+MODEL_PROFILES[premium]="anthropic/claude-opus-4-6"
+assert_equals "anthropic/claude-sonnet-4-6" \
+  "$(get_fallback_model "anthropic/claude-opus-4-6")"  "MA-2: fallback premium→standard"
+assert_equals "anthropic/claude-haiku-4-5" \
+  "$(get_fallback_model "anthropic/claude-sonnet-4-6")" "MA-2: fallback standard→economy"
+assert_equals "anthropic/claude-haiku-4-5" \
+  "$(get_fallback_model "openai/gpt-4.1")"             "MA-2: fallback unknown→economy"
+
+# Restore
+MODEL_REGISTRY_FILE="$_MA2_REAL_REG"
+load_model_registry 2>/dev/null
+rm -rf "$_MA2_DIR"
+echo ""
+
+# ── MA-9: Role→model policy ────────────────────────────────────────────────────
+echo "Testing role→model policy (MA-9)..."
+
+_MA9_DIR=$(mktemp -d)
+_MA9_REG="$_MA9_DIR/rack-models.json"
+_MA9_REAL_REG="$MODEL_REGISTRY_FILE"
+
+# Built-in derivation: cheap roles ← economy anchor, strong roles ← standard
+MODEL_REGISTRY_FILE="$_MA9_DIR/absent.json"
+MODEL_PROFILES[economy]="anthropic/claude-haiku-4-5"
+MODEL_PROFILES[standard]="anthropic/claude-sonnet-4-6"
+MODEL_PROFILES[premium]="anthropic/claude-opus-4-6"
+load_model_registry
+assert_equals "anthropic/claude-haiku-4-5"  "$(resolve_role_model tester)"     "MA-9: tester (cheap class) derives from economy anchor"
+assert_equals "anthropic/claude-haiku-4-5"  "$(resolve_role_model manager)"    "MA-9: manager (cheap class) derives from economy anchor"
+assert_equals "anthropic/claude-sonnet-4-6" "$(resolve_role_model programmer)" "MA-9: programmer (strong class) derives from standard anchor"
+assert_equals "anthropic/claude-sonnet-4-6" "$(resolve_role_model repo)"       "MA-9: repo type derives from standard anchor"
+assert_equals "$DEFAULT_MODEL"              "$(resolve_role_model nonsense)"   "MA-9: unknown role falls back to DEFAULT_MODEL"
+
+# roles: overlay wins over derivation; unknown role names are ignored with a warn
+cat > "$_MA9_REG" <<'JSON'
+{ "roles": { "programmer": "openai/gpt-4.1", "bogus": "openai/gpt-4o" } }
+JSON
+MODEL_REGISTRY_FILE="$_MA9_REG"
+load_model_registry 2>/dev/null
+assert_equals "openai/gpt-4.1"             "$(resolve_role_model programmer)" "MA-9: registry roles overlay overrides programmer"
+assert_equals "anthropic/claude-haiku-4-5" "$(resolve_role_model tester)"     "MA-9: untouched role keeps derived default"
+
+# Legacy profiles-only registry still works: roles re-derive from anchors
+cat > "$_MA9_REG" <<'JSON'
+{ "profiles": { "economy": "google/gemini-2.0-flash-lite", "standard": "google/gemini-2.5-flash" } }
+JSON
+load_model_registry 2>/dev/null
+assert_equals "google/gemini-2.0-flash-lite" "$(resolve_role_model knowledge)" "MA-9: legacy profiles registry re-derives cheap roles"
+assert_equals "google/gemini-2.5-flash"      "$(resolve_role_model security)"  "MA-9: legacy profiles registry re-derives strong roles"
+
+# Taxonomy helpers
+assert_equals "0" "$(is_specialist "manager"; echo $?)"   "MA-9: manager is a specialist"
+assert_equals "1" "$(is_specialist "myproject"; echo $?)" "MA-9: project id is not a specialist"
+assert_equals "0" "$(is_role "task"; echo $?)"            "MA-9: task is a policy role"
+assert_equals "1" "$(is_role "premium"; echo $?)"         "MA-9: tier name is not a policy role"
+
+# Restore anchors + registry
+MODEL_REGISTRY_FILE="$_MA9_REAL_REG"
+MODEL_PROFILES[economy]="anthropic/claude-haiku-4-5"
+MODEL_PROFILES[standard]="anthropic/claude-sonnet-4-6"
+MODEL_PROFILES[premium]="anthropic/claude-opus-4-6"
+load_model_registry 2>/dev/null
+rm -rf "$_MA9_DIR"
+echo ""
+
+# ── MA-10: Model intent (policy|pinned) inference ──────────────────────────────
+echo "Testing model intent inference (MA-10)..."
+
+_MA10=$(mktemp -d)
+mkdir -p "$_MA10/projects/pol-agent" "$_MA10/projects/pin-agent"
+cat > "$_MA10/projects/pol-agent/.rack-meta.json" <<JSON
+{"type": "task", "model": "$(resolve_role_model task)"}
+JSON
+cat > "$_MA10/projects/pin-agent/.rack-meta.json" <<'JSON'
+{"type": "task", "model": "openai/gpt-4o"}
+JSON
+
+_ma10_role=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_role "pol-agent")
+assert_equals "task" "$_ma10_role" "MA-10: project agent's role is its type"
+assert_equals "programmer" "$(agent_role "programmer")" "MA-10: specialist's role is its id"
+
+_ma10_pol=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pol-agent")
+_ma10_pin=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pin-agent")
+assert_equals "policy" "$_ma10_pol" "MA-10: model matching role policy infers source=policy"
+assert_equals "pinned" "$_ma10_pin" "MA-10: divergent model infers source=pinned"
+
+# Explicit modelSource field wins over inference
+cat > "$_MA10/projects/pin-agent/.rack-meta.json" <<'JSON'
+{"type": "task", "model": "openai/gpt-4o", "modelSource": "policy"}
+JSON
+_ma10_explicit=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pin-agent")
+assert_equals "policy" "$_ma10_explicit" "MA-10: explicit modelSource field wins over inference"
+
+rm -rf "$_MA10"
+echo ""
+
+# ── P8-3: doctor --json output shape ──────────────────────────────────────────
+source "$LIB_DIR/commands/doctor.sh" 2>/dev/null || true
+echo "Testing doctor --json output shape (P8-3)..."
+_P82_DIR=$(mktemp -d)
+_P82_CFG="$_P82_DIR/openclaw.json"
+_P82_PROJ="$_P82_DIR/projects"
+mkdir -p "$_P82_PROJ"
+
+# Minimal valid config (no agents)
+python3 -c "
+import json
+json.dump({'agents':{'list':[]},'bindings':[],'channels':{}}, open('$_P82_CFG','w'))
+"
+
+# Override env vars used by _doctor_json helpers to point at temp fixtures
+_P82_ORIG_CONFIG="$CONFIG_FILE"
+_P82_ORIG_PROJ="$PROJECTS_DIR"
+CONFIG_FILE="$_P82_CFG"
+PROJECTS_DIR="$_P82_PROJ"
+
+# Source stubs for helpers _doctor_json depends on that touch live system
+_security_gate_report()    { echo "UNSET||"; }
+_approval_routing_status() { echo "off|"; }
+_isolation_status()        { echo "off"; }
+_keys_age_report()         { echo ""; }
+_aggregate_cost()          { echo "0|0|0|0|0.0|0"; }
+service_ctl()              { echo "unknown"; }
+
+_p82_out=$(_doctor_json 2>/dev/null)
+_p82_healthy=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d['healthy'])" "$_p82_out" 2>/dev/null || echo "PARSE_ERROR")
+_p82_keys=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(sorted(d['checks'].keys()))" "$_p82_out" 2>/dev/null || echo "PARSE_ERROR")
+_p82_issues=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(type(d['issues']).__name__)" "$_p82_out" 2>/dev/null || echo "PARSE_ERROR")
+
+assert_not_empty "$_p82_out"                              "P8-3: doctor --json produces output"
+assert_not_empty "$_p82_healthy"                          "P8-3: doctor --json has healthy field"
+assert_equals   "int"    "$_p82_issues"                   "P8-3: doctor --json issues is an integer"
+assert_contains "$_p82_keys" "gateway"                    "P8-3: doctor --json checks has gateway key"
+assert_contains "$_p82_keys" "agents"                     "P8-3: doctor --json checks has agents key"
+assert_contains "$_p82_keys" "securityGates"              "P8-3: doctor --json checks has securityGates key"
+assert_contains "$_p82_keys" "templateDrift"              "P8-3: doctor --json checks has templateDrift key"
+
+# Restore
+CONFIG_FILE="$_P82_ORIG_CONFIG"
+PROJECTS_DIR="$_P82_ORIG_PROJ"
+unset -f _security_gate_report _approval_routing_status _isolation_status
+unset -f _keys_age_report _aggregate_cost service_ctl
+rm -rf "$_P82_DIR"
 echo ""
 
 echo ""
