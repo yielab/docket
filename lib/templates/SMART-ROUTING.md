@@ -13,7 +13,7 @@
 
 ## Model Routing Rules
 
-### Haiku-4-5 (Cheap: $0.80/$4) — 90% of tasks
+### Economy tier — 90% of tasks
 - ✅ Simple Q&A and clarifications
 - ✅ Code review (reading existing code)
 - ✅ Running tests
@@ -24,7 +24,7 @@
 - ✅ Status updates
 - ✅ Most debugging
 
-### Sonnet-4-6 (Standard: $3/$15) — 9% of tasks
+### Standard tier — 9% of tasks
 - ✅ Writing new code (functions, classes)
 - ✅ Refactoring existing code
 - ✅ Complex debugging (multi-file)
@@ -32,7 +32,7 @@
 - ✅ Database schema design
 - ✅ Configuration changes
 
-### Opus-4-6 (Premium: $15/$75) — 1% of tasks
+### Premium tier — 1% of tasks
 - ✅ Architecture decisions
 - ✅ Security-critical code
 - ✅ Performance optimization (algorithms)
@@ -50,21 +50,21 @@ Before every response, I classify the task:
 
 ### Complexity Signals
 
-**CHEAP (haiku):**
+**CHEAP (economy tier):**
 - User asks "what is...", "where is...", "show me..."
 - Read-only operations
 - Single-file changes
 - Test execution
 - No architectural decisions
 
-**STANDARD (sonnet):**
+**STANDARD (standard tier):**
 - "Write a function to..."
 - "Refactor this to..."
 - "Fix the bug in..."
 - Multi-file changes
 - Design decisions
 
-**PREMIUM (opus):**
+**PREMIUM (premium tier):**
 - "Design a system for..."
 - "Optimize performance of..."
 - "Security review of..."
@@ -73,13 +73,13 @@ Before every response, I classify the task:
 
 ### Override Detection
 
-If I start with haiku and realize complexity is higher:
-- Switch to sonnet mid-conversation
-- Log: "Upgrading to sonnet-4-6 for [reason]"
+If I start with economy tier and realize complexity is higher:
+- Switch to standard tier mid-conversation
+- Log: "Upgrading to standard tier for [reason]"
 
 If task is simpler than expected:
-- Downgrade to haiku
-- Log: "Using haiku-4-5 (sufficient for this task)"
+- Downgrade to economy tier
+- Log: "Using economy tier (sufficient for this task)"
 ```
 
 ---
@@ -129,15 +129,15 @@ openclaw config get models.routing
   "models": {
     "routing": {
       "enabled": true,
-      "default": "anthropic/claude-haiku-4-5",
+      "default": "<economy-model>",  // set by rack models
       "rules": [
         {
           "pattern": "write|implement|create|build|refactor",
-          "model": "anthropic/claude-sonnet-4-6"
+          "model": "<standard-model>"   // set by rack models
         },
         {
           "pattern": "architecture|design system|optimize|security audit",
-          "model": "anthropic/claude-opus-4-6"
+          "model": "<premium-model>"    // set by rack models
         }
       ]
     }
@@ -156,17 +156,17 @@ Each agent gets a "Task Classifier" section that self-selects model via delegati
 
 I analyze every request and choose the right specialist:
 
-1. **Simple tasks** → Delegate to knowledge agent (haiku)
+1. **Simple tasks** → Delegate to knowledge agent (economy tier)
    - "What is X?"
    - "Where is Y?"
    - "Show me Z"
 
-2. **Standard tasks** → Delegate to programmer (sonnet)
+2. **Standard tasks** → Delegate to programmer (standard tier)
    - "Write function..."
    - "Fix bug..."
    - "Refactor..."
 
-3. **Complex tasks** → Delegate to manager (opus)
+3. **Complex tasks** → Delegate to manager (premium tier)
    - "Design system..."
    - "Architect solution..."
    - "Security review..."
@@ -214,37 +214,37 @@ After 50 turns:
 
 **Turn 1 (User):** "The login page isn't working"
 
-**Agent (haiku):** "Let me check the logs..."
-- **Model:** haiku-4-5 ($0.80/$4)
+**Agent (economy tier):** "Let me check the logs..."
+- **Model:** economy tier
 - **Reason:** Investigation is cheap
 
 **Turn 2 (Agent):** "Found error: JWT validation failing. Need to fix auth middleware."
 
-**Turn 3 (Agent self-upgrades):** "Upgrading to sonnet-4-6 to implement fix..."
-- **Model:** sonnet-4-6 ($3/$15)
+**Turn 3 (Agent self-upgrades):** "Upgrading to standard tier to implement fix..."
+- **Model:** standard tier
 - **Reason:** Writing code requires standard model
 
-**Turn 4 (Agent):** "Fix complete. Running tests with haiku..."
-- **Model:** haiku-4-5 ($0.80/$4)
+**Turn 4 (Agent):** "Fix complete. Running tests with economy tier..."
+- **Model:** economy tier
 - **Reason:** Test execution is cheap
 
 **Result:**
-- 2 turns haiku: ~$0.02
-- 1 turn sonnet: ~$0.15
-- **Total: $0.17** (vs $1.50 if all sonnet)
+- 2 turns economy: ~cents
+- 1 turn standard: ~few cents
+- **Total: fraction of a dollar** (vs many times more if all standard)
 
 ---
 
 ## Cost Comparison
 
 ### Before (Manual Profiles)
-- All tasks use sonnet: $3/$15 per MTok
+- All tasks use standard tier: higher cost
 - 258 turns × ~100K context = **$28.17**
 
 ### After (Smart Routing + Context Management)
-- 90% haiku: $0.80/$4 per MTok
-- 9% sonnet: $3/$15 per MTok
-- 1% opus: $15/$75 per MTok
+- 90% economy tier: lowest cost
+- 9% standard tier: moderate cost
+- 1% premium tier: highest cost
 - Max 50 turns × 11K context = **$1.50**
 
 **Savings: 95%**
@@ -278,13 +278,14 @@ After 50 turns:
 4. **Test & Validate**
    - Run test conversation with my-website
    - Verify context stays < 15K tokens
-   - Verify 90% of turns use haiku
+   - Verify 90% of turns use economy tier
 
 ---
 
 **Goal:** Zero manual model selection. Agent automatically uses:
-- Haiku for 90% of tasks
-- Sonnet when needed
-- Opus rarely
+
+- Economy tier for 90% of tasks
+- Standard tier when needed
+- Premium tier rarely
 - Context never exceeds 15K tokens
 - Cost drops 90-95%

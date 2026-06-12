@@ -80,7 +80,7 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   state file exists but won't parse (instead of silently returning the default), while still
   returning the default so the command stays alive.
 
-## Phase 2 — Release engineering & CI rigor — 🚧 mostly complete
+## Phase 2 — Release engineering & CI rigor — ✅ complete
 
 > Cheap, high-signal credibility — both for adoption and as an engineering artifact.
 
@@ -88,14 +88,18 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   (Keep a Changelog). The first cut tag is `v0.1.0` (test P6-2 keeps them in sync).
 - ✅ **Release workflow** — `.github/workflows/release.yml` builds a checksummed tarball and
   cuts a GitHub Release on a `v*` tag (guards that the tag matches `VERSION`; uses the
-  pre-installed `gh` CLI, no third-party action). 🗓️ Homebrew tap / `nix` / `apt` remain stretch.
+  pre-installed `gh` CLI, no third-party action).
+- ✅ **Homebrew tap** — `Formula/rack-cli.rb` in the repo root; users install via
+  `brew tap santiagoyie/rack-cli https://github.com/santiagoyie/rack-cli && brew install rack-cli`.
+  `scripts/update-homebrew-sha.sh` computes + patches the SHA256 before each release tag.
+  `install.sh` also upgraded: portable `sed -i`, curl one-liner support, `--prefix` flag.
+  🗓️ `nix` / `apt` remain stretch.
 - ✅ **Stronger CI** — spec validation is now **blocking**, a **shellcheck** gate (`-S error`,
   verified clean) runs on every push, and unit tests run under a throwaway `HOME`. Integration
   tests need the `openclaw` daemon + `systemctl`, so they stay local (documented in the workflow).
-- 🗓️ **Bash/OS matrix** — Bash 4.x/5.x + a macOS runner; folded into Phase 3 (portability),
-  where the `service_ctl` abstraction and GNU-ism removal make a green macOS run achievable.
+- ✅ **Bash/OS matrix** — macOS runner (brewed Bash 4+, informational gate) shipped in Phase 3.
 
-## Phase 3 — Portability — 🚧 mostly complete
+## Phase 3 — Portability — ✅ complete
 
 > macOS is a large share of the dev-tool audience; today rack is Linux-only.
 
@@ -106,11 +110,11 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 - ✅ **Remove GNU-isms** — `find -printf` → `newest_file`; GNU `sed -i` → `portable_sed_i`;
   `readlink -f` bootstrap → a portable symlink-follow loop; portable `file_mtime`/`file_size`/
   `file_mode` wrappers (GNU vs BSD `stat`). Bash < 4 now fails fast with a clear message. P7-1.
-- 🚧 **CI matrix** — a macOS job runs the unit suite under brewed Bash 4+ (informational /
-  `continue-on-error` until reliably green); promote to a required gate once proven. A real
-  end-to-end macOS run also needs the OpenClaw daemon's own launchd support.
+- ✅ **CI matrix** — macOS job added (`.github/workflows/ci.yml`): installs Bash 4+ via brew,
+  runs the hermetic unit suite with a throwaway `$HOME`. Ships as `continue-on-error: true`
+  (informational) until CI confirms it's reliably green; promote by removing that flag.
 
-## Phase 4 — Operability & observability — 🚧 mostly complete
+## Phase 4 — Operability & observability — ✅ complete
 
 > What "enterprise-grade" actually means day to day.
 
@@ -118,14 +122,18 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   `profile.model/budget`, `scope.set/reset`, `agent.add/delete`) appends a who/when/what JSON line
   to `$OPENCLAW_DIR/audit.log` (0600); secret values are never logged. View with `rack audit [N]`
   / `rack audit --json` (`RACK_NO_AUDIT=1` opts out). Test P8-1.
-- 🚧 **`--json` on read commands** — `rack list --json`, `rack cost --json`, and
-  `rack info <id> --json` ship (batched Python passes). Only `doctor --json` remains (lower value:
-  `snapshot` already emits machine system state). P8-2 / P9-2 / P10-2.
+- ✅ **`--json` on read commands** — `rack list --json`, `rack cost --json`, `rack info --json`,
+  and `rack doctor --json` all ship. `doctor --json` emits a structured health object:
+  `{healthy, issues, checks:{openclaw, python3, gateway, agents, drift, budget, runaway,
+  keyHygiene, securityGates, templateDrift, …}}`. P8-2 / P9-2 / P10-2 / P8-3.
 - ✅ **Performance: incremental cost index** — `_aggregate_cost` caches per-session-file totals
   in `.cost-index.json` keyed by (mtime, size); unchanged files are read from cache, so `cost`/
   budget checks are O(changed files), not O(all history). Self-healing (stale entries dropped),
-  `RACK_NO_COST_INDEX=1` forces full recompute. P9-1. 🗓️ remaining: batch the human
-  `list` / `doctor` per-field reads the same way `list --json` already does.
+  `RACK_NO_COST_INDEX=1` forces full recompute. P9-1.
+- ✅ **Batch human `list`/`doctor` reads** — `_list_meta_batch` + `_list_spec_batch` do a single
+  Python pass over all agent metas + config per `rack list` invocation (was 8N+9 spawns for N
+  agents, now 2). `_doctor_batch_cost` replaces 2N `meta_get`+`_aggregate_cost` spawns in the
+  budget/runaway loops with one pass; arithmetic via `awk` instead of inline `python3 -c`.
 - ✅ **Metrics** — `rack serve` now exposes `/metrics` (Prometheus: `rack_agents_total`,
   `rack_agent_cost_usd`, `rack_agent_turns_total`, `rack_cost_usd_total`, `rack_gateway_up`)
   and `/health` alongside `/status.json`, refreshed on the same interval. P10-1.
@@ -160,58 +168,74 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   Shares one `_provision_agent` core with interactive `rack add`. Example specs in
   `examples/configs/`. P11-3.
 
-## Phase 6 — Model & provider agnosticism — 🔴 CRITICAL (jumps the queue)
+## Phase 6 — Model & provider agnosticism — ✅ complete
 
-> **Risk being addressed:** rack today has a hard dependency on the Claude API. The model
-> whitelist in `lib/helpers/models.sh` **rejects** any non-Anthropic model, the tier →
-> model mapping and pricing table in `lib/core/config.sh` are Anthropic-only, and the
-> README/templates/help text assume Claude everywhere. A pricing change, outage, regional
-> block, or ToS change at a single provider breaks every deployment. rack must be
-> **model-agnostic**: any provider the OpenClaw daemon supports — local (free: Ollama,
-> llama.cpp, LM Studio) or remote (paid: Anthropic, OpenAI, Google; mixed: OpenRouter) —
-> must be first-class, and the chosen model must be **explicit and visible** in every
-> command, instruction template, and doc.
->
-> Detailed executable tasks: `internal-docs/IMPLEMENTATION-PLAN.md` §PHASE 6 (MA-1 … MA-8).
+> Removed the hard Anthropic/Claude API dependency. rack now accepts any provider/model string
+> the OpenClaw daemon supports, with a user-editable registry overlay, five provider presets
+> (including an OpenRouter free-tier option), honest `n/a` cost reporting for unpriced models,
+> scoped key distribution for every provider, and fully tier-neutral agent templates and docs.
 
-- 🗓️ **Verify daemon provider surface (MA-1)** — confirm which providers/model-ID formats the
-  OpenClaw daemon accepts (`provider/model` strings, local endpoints, base-URL overrides) and
-  document the contract rack must target. Everything below builds on this.
-- 🗓️ **Data-driven model registry (MA-2)** — replace the hardcoded `VALID_MODELS` whitelist,
-  `MODEL_PROFILES`, and `MODEL_PRICING` with a registry file (built-in defaults + user
-  override). Unknown-but-well-formed `provider/model` IDs are accepted with a warning, never
-  rejected — the daemon is the validator of record.
-- 🗓️ **`rack models` command (MA-3)** — list/set the tier→model mapping and default model;
-  show provider, price (or **free/local**), and source of each mapping. No more silent defaults.
-- 🗓️ **Provider presets incl. free/local (MA-4)** — one-command switch of the whole tier
-  mapping: `anthropic` (current default), `openai`, `google`, `openrouter`, `local` (Ollama —
-  free, no API key). Free vs paid clearly labeled at selection time.
-- 🗓️ **Cost honesty for unknown/local models (MA-5)** — unpriced models report cost as
-  `n/a (no pricing data)` instead of $0.00; local models report `$0 (local)`.
-- 🗓️ **Provider-agnostic key plumbing (MA-6)** — extend the scoped-key sync + doctor checks to
-  all registry providers; local providers require no key and must not warn about one.
-- 🗓️ **Neutralize Claude-isms in templates (MA-7)** — agent prompt templates speak in **tiers**
-  (economy/standard/premium), not "haiku/sonnet/opus"; provider console URLs become
-  provider-resolved; `TEMPLATE_VERSION` bump makes the fleet drift visible.
-- 🗓️ **Docs & help truth pass (MA-8)** — README, `docs/`, `help.sh`, and CLAUDE.md state the
-  model-agnostic position up front: default models, how to switch, free options, paid options.
+- ✅ **Verify daemon provider surface (MA-1)** — 22 providers, 746 models; `provider/model` ID
+  format confirmed; no local/Ollama support in daemon (OpenRouter free-tier is the free path).
+- ✅ **Data-driven model registry (MA-2)** — `VALID_MODELS` whitelist replaced with regex +
+  user overlay at `~/.openclaw/rack-models.json`; unknown-but-valid IDs accepted with warning.
+- ✅ **`rack models` command (MA-3)** — list/set tier→model mapping; shows price, provider, source.
+- ✅ **Provider presets (MA-4)** — `anthropic` (default), `openai`, `google`, `openrouter`,
+  `openrouter-free`; `rack models preset <name>` switches all tiers at once.
+- ✅ **Cost honesty (MA-5)** — unpriced models show `n/a`; budget enforcement skipped when unpriced.
+- ✅ **Provider-agnostic key plumbing (MA-6)** — scoped sync + `rack doctor` section 13b
+  checks provider key coverage for all agents; local providers don't warn about missing keys.
+- ✅ **Neutralize Claude-isms in templates (MA-7)** — all agent templates use economy/standard/
+  premium tier language; `TEMPLATE_VERSION` bumped to 2 for fleet-wide drift detection.
+- ✅ **Docs & help truth pass (MA-8)** — README, `docs/`, `CLAUDE.md`, and `help.sh` describe
+  the multi-provider position with `rack models preset` examples and free-tier callout.
+
+## Phase 6b — Tier-less role→model policy — ✅ complete
+
+> Replaced the economy/standard/premium tier ladder with a **role→model policy**: every agent
+> role (manager, programmer, reviewer, tester, knowledge, security + project types repo/task)
+> maps to the cheapest adequate model, with the WHY visible in `rack models`. Agents record
+> intent (`modelSource: policy|pinned`); policy and preset changes re-resolve every
+> policy-following agent automatically, so fleet-wide drift is impossible by construction.
+
+- ✅ **Role→model policy map (MA-9)** — `ROLE_MODELS`/`ROLE_WHY` built-ins + `roles:` registry
+  overlay; install/add resolve through the policy (no hardcoded model IDs left); tier names
+  survive only as deprecated aliases over internal rank anchors (fallback chain preserved).
+- ✅ **Policy-following agents + auto re-resolve (MA-10)** — `modelSource` intent in
+  `.rack-meta.json` with safe inference for pre-existing agents (divergent model → pinned);
+  `rack models set/preset/reset` re-resolve policy followers with one gateway restart and
+  audit entries; `rack profile <id> <model|default>` pins/unpins one agent.
+- ✅ **Specialists join the meta system (MA-11)** — specialists get `.rack-meta.json`
+  (`kind: specialist`, `role`) at install, backfilled by `rack doctor`; `rack list` shows
+  model + source + role rationale for the whole taxonomy; `rack delete` guards specialists.
+- 🗓️ **Deferred:** `rack models optimize` (eval × cost-history right-sizing per role — needs
+  usage history on the new policy first) and per-task dynamic routing (blocked on a daemon
+  per-session model-override spike; prompt-level SMART-ROUTING stays dead).
 
 ## Phase 7 — Product & community
 
-- 🗓️ **Full manager delegation** — promote the task queue to an enforced state machine with
-  locking and schema validation.
-- 🗓️ Issue/PR templates, a richer eval-results page, and a short demo (asciinema).
+- ✅ **Full manager delegation** — task queue promoted to an enforced state machine with
+  locking and schema validation. States: `pending → in_progress → done | cancelled`;
+  `pending → cancelled` also valid. Atomic writes via `with_rack_lock` + `json_atomic_write`.
+  New subcommands: `rack team start <id>`, `rack team cancel <id>`.
+  Priority validation (high/normal/low only), 500-char description limit, timestamps
+  (`startedAt`, `completedAt`) recorded on transitions. `rack team queue --all` shows
+  completed/cancelled history.
+- ✅ **Issue/PR templates** — `.github/ISSUE_TEMPLATE/` (bug report + feature request, both
+  structured YAML forms) and `.github/PULL_REQUEST_TEMPLATE/` with test-plan checklist
+  and project conventions (atomic writes, `--json` on reads, tier-neutral language).
+- 🗓️ Eval-results page and a short demo (asciinema).
 
 ---
 
-### Near-term (next four, concrete)
+### Near-term (remaining open work)
 
-1. 🔴 **Phase 6 — model & provider agnosticism (CRITICAL, do first)** — remove the hard
-   Claude-API dependency; registry + `rack models` + local/free presets + honest docs
-   (executable tasks: `internal-docs/IMPLEMENTATION-PLAN.md` §PHASE 6).
-2. ✅ Phase 0 — security hardening (injection, scoped secrets, rotation/age, gates, backends).
-3. ✅ Phase 1 — `json_atomic_write` + `flock` + loud reads (P6-1) — corruption/race class removed.
-4. 🗓️ Phase 2 — CI: Bash/OS matrix; versioning is done (`v0.1.0` tagged).
+**Phases 0–7 are complete.** All remaining items are explicitly deferred or stretch goals:
+
+1. 🗓️ **Phase 0 remnant** — default-on gates flip (waiting on per-agent headless routing in daemon).
+2. 🗓️ **Phase 2 stretch** — nix / apt packaging (Homebrew tap done).
+3. 🗓️ **Phase 3 stretch** — promote macOS CI job from informational to required gate (remove `continue-on-error`).
+4. 🗓️ **Phase 7 remnant** — eval-results page, asciinema demo.
 
 A deeper internal audit with severities and effort estimates lives in
 `internal-docs/ARCHITECTURE-AUDIT.md` (not published).

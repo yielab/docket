@@ -164,8 +164,8 @@ for role, results in sorted(by_role.items()):
     avg_cost = total_cost / len(passing) if passing else 0
     current_tier = results[-1].get("tier", "?")
     if TIER_ORDER.get(min_tier, 1) < TIER_ORDER.get(current_tier, 1):
-        print(f"  {role}: passed on {min_tier} (avg ${avg_cost:.4f}/run) — consider downgrading from {current_tier}")
+        print(f"  {role}: passes on a cheaper model class ({min_tier}, avg ${avg_cost:.4f}/run) — rack models set {role} <provider/model>")
     else:
-        print(f"  {role}: {min_tier} is minimum passing tier (avg ${avg_cost:.4f}/run)")
+        print(f"  {role}: {min_tier} is the minimum passing model class (avg ${avg_cost:.4f}/run)")
 PY
 }

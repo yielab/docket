@@ -75,8 +75,8 @@ rack list
 ┌──────────────────────────────────────────────────────────────┐
 │ ID              Type   Model        Telegram      Session    │
 ├──────────────────────────────────────────────────────────────┤
-│ myproject       repo   sonnet-4-6   ✓ Wired      default     │
-│ taskagent       task   haiku-4-5    ✗ Not wired  alpha       │
+│ myproject       repo   sonnet (policy) ✓ Wired    default     │
+│ taskagent       task   haiku (policy)  ✗ Not wired alpha      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -129,11 +129,8 @@ rack add
 # → Enter codebase path: /home/user/Sites/myproject
 # → Detecting stack...
 # ✓ Detected: Node.js, React, TypeScript
-# → Select model:
-#   1) anthropic/claude-haiku-4-5 (economy)
-#   2) anthropic/claude-sonnet-4-6 (standard)
-#   3) anthropic/claude-opus-4-6 (premium)
-# Choice: 2
+# → Model [policy: anthropic/claude-sonnet-4-6]:
+#   (Enter = follow the role policy; type a provider/model ID to pin)
 #
 # ✓ Agent 'myawesomeproject' created
 ```
@@ -396,7 +393,7 @@ rack team check
 - Manager lives at `~/.openclaw/workspaces/manager/`
 - Uses TASK_LIST.json for coordination
 - Manager cannot edit code (delegation mode only)
-- Specialists use economy/standard models
+- Specialists run on the role→model policy (cheap class for manager/reviewer/tester/knowledge, strong class for programmer/security)
 
 ---
 
@@ -624,46 +621,81 @@ EDITOR=code rack edit myproject
 
 ### model (retired)
 
-`rack model <id> <model-id>` has been retired. Use [`rack profile`](#profile) with a tier
-(`economy` / `standard` / `premium`) instead — see the next section.
+`rack model <id> <model-id>` has been retired. Use [`rack profile`](#profile) to pin a
+model on one agent, or `rack models` to change the role→model policy — see the next section.
 
 ---
 
 ### profile
 
-Set model profile tier (economy/standard/premium). Also sets per-agent budget caps.
+Pin an agent's model, or re-attach it to the role→model policy. Also sets per-agent budget caps.
+
+Every agent follows its role's policy model by default (`modelSource: policy`). Pinning
+(`modelSource: pinned`) detaches it: policy and preset changes will no longer touch it.
 
 **Syntax:**
 ```bash
-rack profile <agent-id>               # Show current profile, model, and budget
-rack profile <agent-id> <tier>        # Set profile tier
-rack profile <agent-id> --budget <USD> # Set a per-agent spend cap (0 = none)
+rack profile <agent-id>                    # Show current model, role, source, budget
+rack profile <agent-id> <provider/model>   # Pin this agent to a model
+rack profile <agent-id> default            # Follow the role policy again
+rack profile <agent-id> --budget <USD>     # Set a per-agent spend cap (0 = none)
 ```
-
-**Profiles:**
-- `economy` → claude-haiku-4-5 (saves ~75% vs. standard)
-- `standard` → claude-sonnet-4-6 (recommended)
-- `premium` → claude-opus-4-6 (complex tasks only)
 
 **Example:**
 ```bash
-# Show current profile
+# Show current model and intent
 rack profile myproject
-# Output: standard (anthropic/claude-sonnet-4-6)
+# Current model:  anthropic/claude-sonnet-4-6
+# Role:           repo (project default for repo agents)
+# Source:         policy — follows the role's model (rack models)
 
-# Switch to economy
-rack profile myproject economy
-# ✓ Profile updated to economy (claude-haiku-4-5)
-# 💰 Estimated savings: ~75% per request
+# Pin a stronger model for a hard problem
+rack profile myproject anthropic/claude-opus-4-6
+# ✓ Model pinned: anthropic/claude-sonnet-4-6 → anthropic/claude-opus-4-6
+
+# Back to the policy when done
+rack profile myproject default
 ```
 
-**Aliases:** `tier`
+**Aliases:** `tier` (deprecated)
 
 **Notes:**
-- Easier than typing full model names
-- Shows estimated cost savings
+- Tier names (economy/standard/premium) are deprecated but still accepted with a warning; they resolve to the internal rank anchors and create a pin
 - Updates .rack-meta.json and openclaw.json
 - Restarts gateway after change
+
+---
+
+### models
+
+View and change the role→model policy — the single place that decides which model each
+kind of agent runs on. Built-in defaults put high-volume/low-reasoning roles (manager,
+reviewer, tester, knowledge, task) on the cheap model class and reasoning-dense roles
+(programmer, security, repo) on the strong class.
+
+**Syntax:**
+```bash
+rack models                            # Show the role→model policy with pricing and WHY
+rack models set <role> <provider/model> # Change one role's model
+rack models set default <provider/model> # Change the fallback default model
+rack models preset [name]              # List or apply a provider preset
+rack models reset                      # Restore built-in defaults
+```
+
+**Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`
+
+**Example:**
+```bash
+rack models set programmer openai/gpt-4.1
+# ✓ programmer → openai/gpt-4.1
+# → Re-resolving policy-following agents...
+#   (every agent with role 'programmer' that follows the policy is updated)
+```
+
+**Notes:**
+- Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`rack profile <id> <model>`) are never touched
+- Overrides persist in `~/.openclaw/rack-models.json` (`roles:` map); delete it or run `rack models reset` to restore built-ins
+- Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the actual model; pricing shows `n/a`
 
 ---
 
@@ -835,7 +867,7 @@ rack help
 | info | show |
 | delete | remove, rm |
 | repair | fix |
-| profile | tier |
+| profile | tier (deprecated) |
 | workflow | wf |
 | logs | log |
 | cost | usage |
@@ -888,10 +920,9 @@ for id in $(rack list | awk '{print $1}' | tail -n +2); do
   rack maintain "$id" clean
 done
 
-# Switch all to economy
-for id in $(rack list | awk '{print $1}' | tail -n +2); do
-  rack profile "$id" economy
-done
+# Cheaper models fleet-wide: change the policy once — every
+# policy-following agent updates automatically (pins are untouched)
+rack models preset openrouter-free
 ```
 
 ### Cost Monitoring

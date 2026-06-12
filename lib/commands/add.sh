@@ -11,14 +11,25 @@ _provision_agent() {
   local id="$1" type="$2" name="$3" codebase="$4" stack="$5" model="$6" \
         description="$7" projectkey="${8:-default}" budget="${9:-}" source="${10:-interactive}"
 
+  # Model intent: empty or policy-matching model → follow the role policy
+  # (type doubles as the policy role); anything else is an explicit pin.
+  local policy_model; policy_model=$(resolve_role_model "$type")
+  local model_source="pinned"
+  if [[ -z "$model" || "$model" == "$policy_model" ]]; then
+    model="$policy_model"
+    model_source="policy"
+  fi
+
   _create_workspace "$id" "$type" "$name" "$codebase" "$stack" "$description" "$model"
 
   # Save metadata (all fields needed for deep reset / regeneration)
+  meta_set "$id" "kind"        "project"
   meta_set "$id" "type"        "$type"
   meta_set "$id" "name"        "$name"
   meta_set "$id" "codebase"    "$codebase"
   meta_set "$id" "stack"       "$stack"
   meta_set "$id" "model"       "$model"
+  meta_set "$id" "modelSource" "$model_source"
   meta_set "$id" "description" "$description"
   meta_set "$id" "created"     "$(date -Iseconds)"
   meta_set "$id" "sessionKey"  "$(generate_session_key "$id" "$projectkey")"
@@ -136,7 +147,7 @@ _add_from_file() {
     id=$(slugify "$id")
     [[ -z "$name" ]] && name="$id"
     [[ -z "$type" ]] && type="task"
-    [[ -z "$model" ]] && model="$DEFAULT_MODEL"
+    [[ -z "$model" ]] && model=$(resolve_role_model "$type")
     [[ -z "$projectkey" ]] && projectkey="default"
     [[ -z "$description" ]] && description="No description provided."
 
@@ -244,8 +255,15 @@ cmd_add() {
     TECH_STACK="${STACK_INPUT:-$DETECTED_STACK}"
   fi
 
-  read -rp "Model [$DEFAULT_MODEL]: " MODEL_INPUT
-  MODEL="${MODEL_INPUT:-$DEFAULT_MODEL}"
+  # Default comes from the role policy for this agent type; accepting it means
+  # the agent follows the policy, typing a model ID pins it.
+  ROLE_DEFAULT=$(resolve_role_model "$PROJECT_TYPE")
+  read -rp "Model [policy: $ROLE_DEFAULT]: " MODEL_INPUT
+  if [[ -n "$MODEL_INPUT" ]]; then
+    MODEL=$(validate_model "$MODEL_INPUT") || exit 1
+  else
+    MODEL="$ROLE_DEFAULT"
+  fi
 
   # Telegram
   echo ""

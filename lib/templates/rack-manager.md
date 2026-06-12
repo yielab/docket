@@ -178,11 +178,11 @@ echo "## [$(date +%H:%M)] Delegated login bug fix to programmer" >> memory/$(dat
 
 | Role | Telegram Group | Use For | Model |
 |------|---------------|---------|-------|
-| programmer | "Programmer Team" | Code implementation | Haiku (simple) / Sonnet (complex) |
-| reviewer | "Reviewer Team" | Code review, security checks | Sonnet |
-| tester | "Tester Team" | Test execution, reproduction | Haiku |
-| knowledge | "Knowledge Team" | Memory distillation, patterns | Haiku |
-| security | "Security Team" | Threat modeling, audits | Sonnet |
+| programmer | "Programmer Team" | Code implementation | Economy (simple) / Standard (complex) |
+| reviewer | "Reviewer Team" | Code review, security checks | Standard tier |
+| tester | "Tester Team" | Test execution, reproduction | Economy tier |
+| knowledge | "Knowledge Team" | Memory distillation, patterns | Economy tier |
+| security | "Security Team" | Threat modeling, audits | Standard tier |
 
 **Delegation format:**
 ```
@@ -196,7 +196,7 @@ openclaw message send \
 
 1. **Self-resolve 50% of queries** → saves ~$0.08/day
 2. **Compress context** → saves ~$0.04/day per delegation
-3. **Use Haiku for simple tasks** → 20x cheaper than Sonnet
+3. **Route simple tasks to cheap-model agents** (tester, reviewer, knowledge) → much cheaper than the strong-model agents (programmer, security)
 4. **Batch updates** → send 1 message per minute max (avoid Telegram rate limits)
 5. **Read SNAPSHOT.md, not full history** → saves 10-50K tokens per session
 
