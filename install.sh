@@ -48,13 +48,10 @@ cp -r "${SCRIPT_DIR}/lib/"* "$LIB_DIR/"
 cp    "${SCRIPT_DIR}/bin/rack" "$BIN_DIR/rack"
 chmod 755 "$BIN_DIR/rack"
 
-# Patch the installed binary to use the fixed lib path instead of ../lib discovery.
-# Use a portable sed -i that works on both GNU and macOS (BSD).
-if sed --version 2>/dev/null | grep -q GNU; then
-  sed -i "s|LIB_DIR=\"\$(cd \"\\\$SCRIPT_DIR/../lib\" && pwd)\"|LIB_DIR=\"${LIB_DIR}\"|" "$BIN_DIR/rack"
-else
-  sed -i '' "s|LIB_DIR=\"\$(cd \"\\\$SCRIPT_DIR/../lib\" && pwd)\"|LIB_DIR=\"${LIB_DIR}\"|" "$BIN_DIR/rack"
-fi
+# Ship VERSION beside lib/ so `rack --version` works post-install (the launcher
+# checks $LIB_DIR/VERSION in the installed layout). No source-patching needed:
+# bin/rack auto-detects the <prefix>/lib/rack-cli layout at runtime.
+cp "${SCRIPT_DIR}/VERSION" "$LIB_DIR/VERSION" 2>/dev/null || true
 
 find "$LIB_DIR" -type d -exec chmod 755 {} \;
 find "$LIB_DIR" -type f -exec chmod 644 {} \;
@@ -76,4 +73,8 @@ echo "Next steps:"
 echo "  rack install   — bootstrap OpenClaw + specialist agents"
 echo "  rack add       — create your first project agent"
 echo "  rack doctor    — verify system health"
+echo ""
+echo "Optional — shell completions:"
+echo "  bash:  echo 'eval \"\$(rack completions bash)\"' >> ~/.bashrc"
+echo "  zsh:   echo 'eval \"\$(rack completions zsh)\"' >> ~/.zshrc"
 echo ""

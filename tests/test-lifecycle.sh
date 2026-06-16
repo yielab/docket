@@ -126,7 +126,7 @@ c['bindings'] = [b for b in c.get('bindings',[]) if b.get('agentId') != '$TEST_I
 with open('$CONFIG_FILE','w') as f:
     json.dump(c, f, indent=2)
 " 2>/dev/null
-  rm -rf "$PROJECTS_DIR/$TEST_ID"
+  rm -rf "${PROJECTS_DIR:?}/$TEST_ID"
   pass "cleaned up leftover test agent"
 fi
 

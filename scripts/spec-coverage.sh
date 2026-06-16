@@ -20,7 +20,7 @@ scan_commands() {
     echo "Scanning for commands..."
 
     # Find all cmd_* functions
-    local commands=$(grep -h "^cmd_[a-z_]*(" lib/commands/*.sh 2>/dev/null | \
+    local commands; commands=$(grep -h "^cmd_[a-z_]*(" lib/commands/*.sh 2>/dev/null | \
                     sed 's/cmd_//g' | sed 's/().*//g' | sort -u)
 
     echo "Found commands: $(echo "$commands" | wc -l)"
@@ -80,7 +80,7 @@ scan_test_coverage() {
     echo "Scanning test coverage..."
 
     # Find all test files
-    local test_files=$(find tests -name "*.sh" -type f 2>/dev/null)
+    local test_files; test_files=$(find tests -name "*.sh" -type f 2>/dev/null)
 
     # Map of spec to test patterns. Patterns match how the integration suite actually
     # exercises each feature (it drives real `rack <cmd>` invocations rather than defining
@@ -110,15 +110,15 @@ scan_acceptance() {
     echo "Scanning acceptance criteria..."
 
     # Count user stories
-    local total_stories=$(grep -c "^### Story:" specs/acceptance/user-stories.md 2>/dev/null || echo 0)
-    local completed_stories=$(grep -B2 "^\- \[x\]" specs/acceptance/user-stories.md 2>/dev/null | \
+    local total_stories; total_stories=$(grep -c "^### Story:" specs/acceptance/user-stories.md 2>/dev/null || echo 0)
+    local completed_stories; completed_stories=$(grep -B2 "^\- \[x\]" specs/acceptance/user-stories.md 2>/dev/null | \
                             grep -c "^### Story:" || echo 0)
 
     echo "User Stories: $completed_stories/$total_stories completed"
 
     # Check for acceptance tests
     if [[ -f "tests/acceptance/test-stories.sh" ]]; then
-        local test_count=$(grep -c "^test_story_" tests/acceptance/test-stories.sh 2>/dev/null || echo 0)
+        local test_count; test_count=$(grep -c "^test_story_" tests/acceptance/test-stories.sh 2>/dev/null || echo 0)
         echo "Acceptance Tests: $test_count implemented"
     else
         echo -e "${RED}Acceptance Tests: Not found${NC}"
@@ -154,9 +154,9 @@ generate_matrix() {
         fi
 
         # Format status symbols
-        local spec_symbol=$([[ $spec_status -eq 1 ]] && echo "✓" || echo "✗")
-        local test_symbol=$([[ $test_status -eq 1 ]] && echo "✓" || echo "✗")
-        local doc_symbol=$([[ $doc_status -eq 1 ]] && echo "✓" || echo "✗")
+        local spec_symbol; spec_symbol=$([[ $spec_status -eq 1 ]] && echo "✓" || echo "✗")
+        local test_symbol; test_symbol=$([[ $test_status -eq 1 ]] && echo "✓" || echo "✗")
+        local doc_symbol; doc_symbol=$([[ $doc_status -eq 1 ]] && echo "✓" || echo "✗")
 
         printf "%-25s %-10s %-10s %-10s\n" "rack $cmd" "$spec_symbol" "$test_symbol" "$doc_symbol"
     done
@@ -176,7 +176,7 @@ calculate_coverage() {
     for cmd in "${!COMMANDS_COVERED[@]}"; do
         [[ ${COMMANDS_COVERED[$cmd]} -eq 1 ]] && covered_commands=$((covered_commands + 1))
     done
-    local cmd_coverage=$((covered_commands * 100 / total_commands))
+    local cmd_coverage; cmd_coverage=$((covered_commands * 100 / total_commands))
 
     # Feature coverage
     local total_features=${#FEATURES_COVERED[@]}
@@ -184,7 +184,7 @@ calculate_coverage() {
     for feature in "${!FEATURES_COVERED[@]}"; do
         [[ ${FEATURES_COVERED[$feature]} -eq 1 ]] && covered_features=$((covered_features + 1))
     done
-    local feature_coverage=$((covered_features * 100 / total_features))
+    local feature_coverage; feature_coverage=$((covered_features * 100 / total_features))
 
     # Test coverage
     local total_specs=${#TESTS_COVERED[@]}
@@ -192,7 +192,7 @@ calculate_coverage() {
     for spec in "${!TESTS_COVERED[@]}"; do
         [[ ${TESTS_COVERED[$spec]} -eq 1 ]] && covered_specs=$((covered_specs + 1))
     done
-    local test_coverage=$((covered_specs * 100 / total_specs))
+    local test_coverage; test_coverage=$((covered_specs * 100 / total_specs))
 
     # Display results
     echo "Command Specification Coverage: ${cmd_coverage}% ($covered_commands/$total_commands)"
@@ -201,7 +201,7 @@ calculate_coverage() {
     echo ""
 
     # Overall status
-    local overall=$((cmd_coverage + feature_coverage + test_coverage))
+    local overall; overall=$((cmd_coverage + feature_coverage + test_coverage))
     overall=$((overall / 3))
 
     if [[ $overall -ge 90 ]]; then
@@ -283,9 +283,9 @@ export_report() {
 
         for cmd in "${!COMMANDS_COVERED[@]}"; do
             local spec_status="${COMMANDS_COVERED[$cmd]}"
-            local test_status=$([[ $(grep -r "test.*$cmd" tests/ 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
-            local doc_status=$([[ $(grep -r "rack $cmd" docs/ README.md 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
-            local spec_symbol=$([[ $spec_status -eq 1 ]] && echo "✓" || echo "✗")
+            local test_status; test_status=$([[ $(grep -r "test.*$cmd" tests/ 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
+            local doc_status; doc_status=$([[ $(grep -r "rack $cmd" docs/ README.md 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
+            local spec_symbol; spec_symbol=$([[ $spec_status -eq 1 ]] && echo "✓" || echo "✗")
 
             echo "| rack $cmd | $spec_symbol | $test_status | $doc_status |"
         done

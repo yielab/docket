@@ -12,12 +12,12 @@ assert_equals() {
 
   if [[ "$expected" == "$actual" ]]; then
     echo "✓ PASS: $test_name"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     echo "✗ FAIL: $test_name"
     echo "  Expected: $expected"
     echo "  Actual:   $actual"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -28,11 +28,11 @@ assert_contains() {
 
   if echo "$haystack" | grep -q "$needle"; then
     echo "✓ PASS: $test_name"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     echo "✗ FAIL: $test_name"
     echo "  String '$needle' not found in '$haystack'"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -42,10 +42,10 @@ assert_not_empty() {
 
   if [[ -n "$value" ]]; then
     echo "✓ PASS: $test_name"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     echo "✗ FAIL: $test_name (value is empty)"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -58,6 +58,10 @@ DEBUG="${DEBUG:-0}"
 source "$LIB_DIR/core/config.sh"
 source "$LIB_DIR/helpers/utils.sh"
 source "$LIB_DIR/helpers/session.sh"
+source "$LIB_DIR/helpers/output.sh"
+source "$LIB_DIR/helpers/json.sh"
+source "$LIB_DIR/helpers/security.sh"
+source "$LIB_DIR/commands/completions.sh"
 
 echo ""
 echo "========================================"
@@ -1449,8 +1453,9 @@ _p112_old=$(PROJECTS_DIR="$_P112/projects" META_FILE=".rack-meta.json" \
   meta_get "tv1" "templateVersion" "")
 if [[ "$_p112_old" != "$_p112_cur" ]]; then _p112_drift="drift"; else _p112_drift="current"; fi
 assert_equals "current" "$_p112_drift" "template: matching stamp reads as current"
-# Simulate a template bump: stamp 7, current 8 → drift.
-if [[ "7" != "8" ]]; then _p112_bump="drift"; else _p112_bump="current"; fi
+# Simulate a template bump: stored stamp 7, current 8 → drift.
+_p112_stamp="7"; _p112_current="8"
+if [[ "$_p112_stamp" != "$_p112_current" ]]; then _p112_bump="drift"; else _p112_bump="current"; fi
 assert_equals "drift" "$_p112_bump" "template: older stamp than current reads as drift"
 
 rm -rf "$_P112"
@@ -1724,6 +1729,83 @@ PROJECTS_DIR="$_P82_ORIG_PROJ"
 unset -f _security_gate_report _approval_routing_status _isolation_status
 unset -f _keys_age_report _aggregate_cost service_ctl
 rm -rf "$_P82_DIR"
+echo ""
+
+# ─── Audit: model-registry overlay (load_model_registry) ───────────────────────
+# Highest-risk pure-logic path: the embedded-Python overlay that re-resolves every
+# role's model. Tested directly here because bash integration tests don't exercise
+# its corrupt-input / unknown-role / anchor-re-derivation branches.
+echo "── Audit: load_model_registry() overlay ──"
+_REG_ORIG="${MODEL_REGISTRY_FILE:-}"
+_REG_DIR=$(mktemp -d)
+MODEL_REGISTRY_FILE="$_REG_DIR/rack-models.json"
+
+# Corrupt registry → warn, fall back to anchor-derived defaults, never crash.
+echo '{ this is not json' > "$MODEL_REGISTRY_FILE"
+load_model_registry 2>/dev/null
+assert_equals "${MODEL_PROFILES[standard]}" "$(resolve_role_model programmer)" \
+  "registry: corrupt file → strong role falls back to standard anchor"
+assert_equals "${MODEL_PROFILES[economy]}" "$(resolve_role_model reviewer)" \
+  "registry: corrupt file → cheap role falls back to economy anchor"
+
+# Explicit per-role override wins over the built-in class default.
+printf '%s' '{ "roles": { "programmer": "openai/gpt-4.1" } }' > "$MODEL_REGISTRY_FILE"
+load_model_registry
+assert_equals "openai/gpt-4.1" "$(resolve_role_model programmer)" \
+  "registry: explicit role override wins"
+
+# `default` override applies to DEFAULT_MODEL.
+printf '%s' '{ "default": "google/gemini-2.5-flash" }' > "$MODEL_REGISTRY_FILE"
+load_model_registry
+assert_equals "google/gemini-2.5-flash" "$DEFAULT_MODEL" \
+  "registry: default override applies"
+
+# Legacy `profiles.economy` anchor override re-derives every cheap role from it.
+printf '%s' '{ "profiles": { "economy": "google/gemini-2.0-flash-lite" } }' > "$MODEL_REGISTRY_FILE"
+load_model_registry
+assert_equals "google/gemini-2.0-flash-lite" "$(resolve_role_model reviewer)" \
+  "registry: cheap roles re-derive from overridden economy anchor"
+
+# Unknown role is rejected with a warning, not silently accepted.
+printf '%s' '{ "roles": { "wizard": "openai/gpt-4o" } }' > "$MODEL_REGISTRY_FILE"
+_reg_warn=$(load_model_registry 2>&1 >/dev/null)
+assert_contains "$_reg_warn" "wizard" "registry: unknown role is warned and ignored"
+
+# Restore registry state for any later tests.
+rm -rf "$_REG_DIR"
+MODEL_REGISTRY_FILE="$_REG_ORIG"
+load_model_registry 2>/dev/null || true
+echo ""
+
+# ─── Audit: shell completions (cmd_completions) ────────────────────────────────
+# Drift guard: the completion command table must stay in sync with the router, and
+# both emitted scripts must be syntactically valid in their target shell.
+echo "── Audit: shell completions ──"
+_compl_bash=$(cmd_completions bash)
+assert_contains "$_compl_bash" "complete -F _rack_complete rack" \
+  "completions: bash output registers the completion"
+
+# Every command the router dispatches must appear in the bash command table, so a
+# new/removed command can't silently desync completions.
+_compl_cmds=$(printf '%s\n' "$_compl_bash" | sed -n 's/.*local commands="\(.*\)".*/\1/p')
+_compl_member() { [[ " $1 " == *" $2 "* ]] && echo yes || echo no; }
+for _rc in install list add info delete maintain context wire unwire scope profile \
+           keys team workflow logs edit cost doctor gates audit eval snapshot serve \
+           models completions help; do
+  assert_equals "yes" "$(_compl_member "$_compl_cmds" "$_rc")" "completions: lists '$_rc'"
+done
+
+# Emitted scripts must parse in their target shell.
+_compl_btmp=$(mktemp)
+printf '%s\n' "$_compl_bash" > "$_compl_btmp"
+bash -n "$_compl_btmp" 2>/dev/null && _compl_bok=yes || _compl_bok=no
+assert_equals "yes" "$_compl_bok" "completions: bash script is valid bash"
+rm -f "$_compl_btmp"
+
+_compl_zsh=$(cmd_completions zsh)
+assert_contains "$_compl_zsh" "#compdef rack" "completions: zsh output has compdef header"
+
+unset -f _compl_member
 echo ""
 
 echo ""
