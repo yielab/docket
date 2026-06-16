@@ -19,12 +19,16 @@ jobs:
         with:
           python-version: "3.x"
 
-      # Quality gate: fail only on real errors (not style/info), and skip the
-      # "can't follow non-constant source" noise from rack's dynamic sourcing.
-      - name: ShellCheck (error severity)
+      # Quality gate: warning severity. Excludes are inherent to a sourced-library
+      # design, not style laziness:
+      #   SC1090/SC1091 — can't follow rack's dynamic `source "$LIB_DIR/..."`
+      #   SC2034        — shared vars (colors, model tables) defined in one file
+      #                   and consumed across sourced files; per-file analysis
+      #                   can't see the cross-file use.
+      - name: ShellCheck (warning severity)
         run: |
           shellcheck --version
-          shellcheck -S error -e SC1090,SC1091 \
+          shellcheck -S warning -e SC1090,SC1091,SC2034 \
             bin/rack \
             lib/core/*.sh lib/helpers/*.sh lib/commands/*.sh \
             lib/commands/experimental/*.sh \
@@ -41,6 +45,12 @@ jobs:
       # daemon + systemctl and are run locally, not in CI.
       - name: Unit tests
         run: HOME="$(mktemp -d)" ./tests/unit/test-helpers.sh
+
+      # Single source of truth for LOC / command / test counts. Fails if the
+      # README's quoted numbers drift from what the tree actually contains —
+      # honest metrics are part of the project's pitch, so they gate.
+      - name: Metrics in sync
+        run: HOME="$(mktemp -d)" ./scripts/metrics.sh --check
 
   # macOS portability check — exercises the no-systemd / BSD-coreutils paths under
   # a brewed Bash 4+. Informational for now (the Linux job is the required gate);
