@@ -44,6 +44,7 @@ route_command() {
     snapshot|export)   cmd_snapshot "$@" ;;
     serve)             cmd_serve    "$@" ;;
     models)            cmd_models   "$@" ;;
+    completions|completion) cmd_completions "$@" ;;
     help|--help|-h)    cmd_help     "$@" ;;
 
     # ── Removed / renamed commands ──────────────────────────────────────────

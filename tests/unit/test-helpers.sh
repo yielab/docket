@@ -61,6 +61,7 @@ source "$LIB_DIR/helpers/session.sh"
 source "$LIB_DIR/helpers/output.sh"
 source "$LIB_DIR/helpers/json.sh"
 source "$LIB_DIR/helpers/security.sh"
+source "$LIB_DIR/commands/completions.sh"
 
 echo ""
 echo "========================================"
@@ -1774,6 +1775,37 @@ assert_contains "$_reg_warn" "wizard" "registry: unknown role is warned and igno
 rm -rf "$_REG_DIR"
 MODEL_REGISTRY_FILE="$_REG_ORIG"
 load_model_registry 2>/dev/null || true
+echo ""
+
+# ─── Audit: shell completions (cmd_completions) ────────────────────────────────
+# Drift guard: the completion command table must stay in sync with the router, and
+# both emitted scripts must be syntactically valid in their target shell.
+echo "── Audit: shell completions ──"
+_compl_bash=$(cmd_completions bash)
+assert_contains "$_compl_bash" "complete -F _rack_complete rack" \
+  "completions: bash output registers the completion"
+
+# Every command the router dispatches must appear in the bash command table, so a
+# new/removed command can't silently desync completions.
+_compl_cmds=$(printf '%s\n' "$_compl_bash" | sed -n 's/.*local commands="\(.*\)".*/\1/p')
+_compl_member() { [[ " $1 " == *" $2 "* ]] && echo yes || echo no; }
+for _rc in install list add info delete maintain context wire unwire scope profile \
+           keys team workflow logs edit cost doctor gates audit eval snapshot serve \
+           models completions help; do
+  assert_equals "yes" "$(_compl_member "$_compl_cmds" "$_rc")" "completions: lists '$_rc'"
+done
+
+# Emitted scripts must parse in their target shell.
+_compl_btmp=$(mktemp)
+printf '%s\n' "$_compl_bash" > "$_compl_btmp"
+bash -n "$_compl_btmp" 2>/dev/null && _compl_bok=yes || _compl_bok=no
+assert_equals "yes" "$_compl_bok" "completions: bash script is valid bash"
+rm -f "$_compl_btmp"
+
+_compl_zsh=$(cmd_completions zsh)
+assert_contains "$_compl_zsh" "#compdef rack" "completions: zsh output has compdef header"
+
+unset -f _compl_member
 echo ""
 
 echo ""

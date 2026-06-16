@@ -292,8 +292,12 @@ cmd_doctor() {
   done
 
   if [[ "$json" -eq 1 ]]; then
-    _doctor_json
-    return
+    # Machine/monitoring contract: emit the JSON, then exit 0 when healthy and 1
+    # when the report flags issues, so `rack doctor --json` works as a health probe.
+    local _dj; _dj=$(_doctor_json)
+    printf '%s\n' "$_dj"
+    printf '%s' "$_dj" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("healthy") else 1)' 2>/dev/null
+    return $?
   fi
 
   header "Rack Doctor — System Health Check"
