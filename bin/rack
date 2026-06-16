@@ -106,6 +106,7 @@ source "$LIB_DIR/commands/context.sh"
 source "$LIB_DIR/commands/snapshot.sh"
 source "$LIB_DIR/commands/serve.sh"
 source "$LIB_DIR/commands/models.sh"
+source "$LIB_DIR/commands/completions.sh"
 # Experimental commands — gate behind RACK_EXPERIMENTAL=1
 if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
   source "$LIB_DIR/commands/experimental/browser.sh"
