@@ -77,6 +77,7 @@ ${BOLD}UTILITIES${RESET}
   ${GREEN}edit${RESET}      [id]     Open workspace files in \$EDITOR
   ${GREEN}snapshot${RESET}           JSON dump of all agents, bindings, costs (--output <file>)
   ${GREEN}serve${RESET}              Live JSON endpoint for dashboards (--port 7331 --interval 30)
+  ${GREEN}completions${RESET}        Shell completion script — eval "\$(rack completions bash|zsh)"
   ${GREEN}help${RESET}               This help message
 
 ${BOLD}MODEL POLICY${RESET}  (default: Anthropic — change with 'rack models preset')

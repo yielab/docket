@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
 - **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
   break-reporting policy; linked from the README's new Compatibility section.
+- **`rack completions <bash|zsh>`** — emits a shell completion script
+  (`eval "$(rack completions bash)"`). Completes commands, subcommands, and live agent ids
+  read from the workspace tree. The command/subcommand table is drift-guarded by the unit
+  suite so it can't silently desync from the router.
 
 ### Security docs
 
@@ -81,7 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test harness hardened** — counter increments use `n=$((n + 1))` instead of `((n++))`
   (which returns non-zero at 0 and would abort a `set -e` harness). Added 6 direct unit
   tests of the `load_model_registry` overlay (corrupt-file fallback, role/default/anchor
-  overrides, unknown-role rejection); unit suite is now 247 assertions.
+  overrides, unknown-role rejection), plus drift-guard tests for shell completions; unit
+  suite is now 276 assertions.
+- **`rack doctor --json` is now a usable health probe** — exits non-zero when the report is
+  unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
+  (`healthy`/`issues` were already present).
 
 ## [0.1.0] - 2026-06-10
 
