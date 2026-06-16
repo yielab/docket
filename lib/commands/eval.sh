@@ -37,7 +37,7 @@ cmd_eval() {
 
   if [[ -n "$role" ]]; then
     local eval_file="$evals_dir/${role}.eval.sh"
-    [[ -f "$eval_file" ]] || error "No eval found for role '$role'. Available: $(ls "$evals_dir"/*.eval.sh 2>/dev/null | xargs -n1 basename | sed 's/.eval.sh//' | tr '\n' ' ')"
+    [[ -f "$eval_file" ]] || error "No eval found for role '$role'. Available: $(for _f in "$evals_dir"/*.eval.sh; do [[ -e "$_f" ]] && basename "$_f" .eval.sh; done | tr '\n' ' ')"
     header "Eval: $role${live:+ (live)}"
     echo ""
     RACK_EVAL_LIVE="$live" RACK_EVAL_TIER="$tier" bash "$eval_file"

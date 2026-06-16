@@ -47,9 +47,20 @@ while [[ -L "$REAL_SCRIPT" ]]; do
   fi
 done
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
-LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
-RACK_CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-export RACK_CLI_ROOT
+
+# Resolve LIB_DIR for both layouts — no installer source-patching required:
+#   • RACK_LIB_DIR env override wins (packagers / tests)
+#   • installed layout:  <prefix>/bin/rack  +  <prefix>/lib/rack-cli/
+#   • repo/clone layout: <repo>/bin/rack    +  <repo>/lib/
+if [[ -n "${RACK_LIB_DIR:-}" ]]; then
+  LIB_DIR="$RACK_LIB_DIR"
+elif [[ -d "$SCRIPT_DIR/../lib/rack-cli" ]]; then
+  LIB_DIR="$(cd "$SCRIPT_DIR/../lib/rack-cli" && pwd)"
+else
+  LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+fi
+RACK_CLI_ROOT="${RACK_CLI_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+export RACK_CLI_ROOT LIB_DIR
 
 # Source core modules
 source "$LIB_DIR/core/init.sh"
@@ -109,8 +120,13 @@ CMD="${_ARGS[0]:-list}"
 
 # Version flag — read from the VERSION file at the repo root.
 if [[ "$CMD" == "--version" || "$CMD" == "-V" || "$CMD" == "version" ]]; then
-  if [[ -f "$RACK_CLI_ROOT/VERSION" ]]; then
-    echo "rack $(cat "$RACK_CLI_ROOT/VERSION")"
+  # VERSION lives at the repo root (clone) or beside lib/ (installed layout).
+  _vfile=""
+  for _c in "$RACK_CLI_ROOT/VERSION" "$LIB_DIR/VERSION"; do
+    [[ -f "$_c" ]] && { _vfile="$_c"; break; }
+  done
+  if [[ -n "$_vfile" ]]; then
+    echo "rack $(cat "$_vfile")"
   else
     echo "rack (version unknown)"
   fi

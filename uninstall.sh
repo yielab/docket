@@ -4,9 +4,11 @@
 
 set -euo pipefail
 
-INSTALL_DIR="${HOME}/.local"
+# Honor the same prefix install.sh used (RACK_PREFIX), defaulting to ~/.local.
+INSTALL_DIR="${RACK_PREFIX:-${HOME}/.local}"
 BIN_FILE="${INSTALL_DIR}/bin/rack"
-LIB_DIR="${INSTALL_DIR}/lib/rack"
+LIB_DIR="${INSTALL_DIR}/lib/rack-cli"
+LEGACY_LIB_DIR="${INSTALL_DIR}/lib/rack"  # path used by installs predating this fix
 
 echo ""
 echo "=================================="
@@ -14,8 +16,8 @@ echo "  Rack CLI Uninstaller"
 echo "=================================="
 echo ""
 
-# Check if rack is installed
-if [[ ! -f "$BIN_FILE" ]] && [[ ! -d "$LIB_DIR" ]]; then
+# Check if rack is installed (current or legacy lib path)
+if [[ ! -f "$BIN_FILE" ]] && [[ ! -d "$LIB_DIR" ]] && [[ ! -d "$LEGACY_LIB_DIR" ]]; then
   echo "✓ Rack is not installed"
   exit 0
 fi
@@ -26,6 +28,9 @@ if [[ -f "$BIN_FILE" ]]; then
 fi
 if [[ -d "$LIB_DIR" ]]; then
   echo "  • $LIB_DIR"
+fi
+if [[ -d "$LEGACY_LIB_DIR" ]]; then
+  echo "  • $LEGACY_LIB_DIR (legacy)"
 fi
 echo ""
 
@@ -44,11 +49,15 @@ if [[ -f "$BIN_FILE" ]]; then
   echo "  ✓ Removed $BIN_FILE"
 fi
 
-# Remove library directory
+# Remove library directory (current + legacy)
 if [[ -d "$LIB_DIR" ]]; then
   echo "→ Removing library files..."
   rm -rf "$LIB_DIR"
   echo "  ✓ Removed $LIB_DIR"
+fi
+if [[ -d "$LEGACY_LIB_DIR" ]]; then
+  rm -rf "$LEGACY_LIB_DIR"
+  echo "  ✓ Removed $LEGACY_LIB_DIR (legacy)"
 fi
 
 echo ""
