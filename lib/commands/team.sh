@@ -99,7 +99,7 @@ _team_status() {
   echo ""
 
   # Count upgraded vs total
-  local upgraded=$(grep -lE "RACK Architecture|Context Compression|validation specialist|veto power|compressed brief|observe behavior" ~/.openclaw/workspaces/*/SOUL.md 2>/dev/null | wc -l | tr -d ' ')
+  local upgraded; upgraded=$(grep -lE "RACK Architecture|Context Compression|validation specialist|veto power|compressed brief|observe behavior" ~/.openclaw/workspaces/*/SOUL.md 2>/dev/null | wc -l | tr -d ' ')
   local total=${#specialists[@]}
 
   if [[ $upgraded -eq $total ]] || [[ $upgraded -ge 4 ]]; then
@@ -213,7 +213,9 @@ _team_upgrade() {
 
   echo ""
 
-  local template_dir="$RACK_CLI_ROOT/lib/templates"
+  # $LIB_DIR resolves correctly in both repo and installed layouts (bin/rack);
+  # $RACK_CLI_ROOT/lib/templates only exists in the repo layout.
+  local template_dir="$LIB_DIR/templates"
   local upgraded=0
   local failed=0
 

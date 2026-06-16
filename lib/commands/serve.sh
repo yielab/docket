@@ -82,6 +82,6 @@ cmd_serve() {
   ) &
 
   # Serve with Python's built-in HTTP server
-  cd "$tmpdir"
+  cd "$tmpdir" || { fail "Cannot enter $tmpdir"; return 1; }
   python3 -m http.server "$port" --bind 127.0.0.1 2>/dev/null
 }

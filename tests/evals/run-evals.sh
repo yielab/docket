@@ -57,11 +57,11 @@ for eval_file in "${evals[@]}"; do
   output=$(bash "$eval_file" 2>&1)
   rc=$?
   case $rc in
-    0) echo -e "  ${GREEN}PASS${RESET}  $name"; ((PASS++)) ;;
-    2) echo -e "  ${DIM}SKIP  $name${RESET}"; ((SKIP++)) ;;
+    0) echo -e "  ${GREEN}PASS${RESET}  $name"; PASS=$((PASS + 1)) ;;
+    2) echo -e "  ${DIM}SKIP  $name${RESET}"; SKIP=$((SKIP + 1)) ;;
     *) echo -e "  ${RED}FAIL${RESET}  $name"
        [[ -n "$output" ]] && echo -e "${DIM}       ${output}${RESET}"
-       ((FAIL++)) ;;
+       FAIL=$((FAIL + 1)) ;;
   esac
 done
 
