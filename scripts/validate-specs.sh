@@ -157,11 +157,11 @@ check_references() {
     echo "Checking cross-references..."
 
     # Find all spec references
-    local refs=$(grep -r "see [a-z-]*\.spec\.md" specs/ 2>/dev/null | cut -d: -f2- || true)
+    local refs; refs=$(grep -r "see [a-z-]*\.spec\.md" specs/ 2>/dev/null | cut -d: -f2- || true)
 
     if [[ -n "$refs" ]]; then
         while IFS= read -r ref; do
-            local filename=$(echo "$ref" | grep -oP '[a-z-]+\.spec\.md')
+            local filename; filename=$(echo "$ref" | grep -oP '[a-z-]+\.spec\.md')
             if ! find specs -name "$filename" | grep -q .; then
                 echo -e "${YELLOW}⚠ Broken reference: $filename${NC}"
                 WARNINGS=$((WARNINGS + 1))
@@ -175,7 +175,7 @@ check_todos() {
     echo ""
     echo "Checking for incomplete specifications..."
 
-    local todos=$(grep -r "TODO\|FIXME\|XXX" specs/ 2>/dev/null || true)
+    local todos; todos=$(grep -r "TODO\|FIXME\|XXX" specs/ 2>/dev/null || true)
 
     if [[ -n "$todos" ]]; then
         echo "$todos" | while IFS= read -r todo; do

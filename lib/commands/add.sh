@@ -232,9 +232,17 @@ cmd_add() {
   CODEBASE_PATH=""
   DETECTED_STACK=""
   if [[ "$PROJECT_TYPE" == "repo" ]]; then
-    CLOSEST=$(ls "$SITES_DIR" 2>/dev/null \
-      | grep -i "$(echo "$DISPLAY_NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')" \
-      | head -1 || true)
+    # Best-effort fuzzy match: first dir under $SITES_DIR whose name contains the
+    # slugified display name (case-insensitive). Glob loop instead of ls|grep so
+    # odd filenames and regex metacharacters are handled literally.
+    local _needle _base
+    _needle=$(echo "$DISPLAY_NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+    CLOSEST=""
+    for _d in "$SITES_DIR"/*/; do
+      [[ -d "$_d" ]] || continue
+      _base=$(basename "$_d")
+      if [[ "${_base,,}" == *"$_needle"* ]]; then CLOSEST="$_base"; break; fi
+    done
     DEFAULT_PATH="$SITES_DIR/${CLOSEST:-$DISPLAY_NAME}"
     read -rp "Codebase path [$DEFAULT_PATH]: " PATH_INPUT
     CODEBASE_PATH="${PATH_INPUT:-$DEFAULT_PATH}"

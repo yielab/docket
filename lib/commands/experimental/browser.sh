@@ -54,7 +54,7 @@ _browser_status() {
   # Check extension connection status
   echo -e "${BOLD}Extension Connection:${RESET}"
   local tab_error_count
-  tab_error_count=$(grep -c "no tab is connected" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log 2>/dev/null || echo "0")
+  tab_error_count=$(grep -c "no tab is connected" "/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log" 2>/dev/null || echo "0")
 
   if [[ "$tab_error_count" -gt 0 ]]; then
     echo -e "  ${RED}✗ No tab connected${RESET} ${DIM}(${tab_error_count} error(s) today)${RESET}"

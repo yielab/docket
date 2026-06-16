@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **README repositioned around the ops layer** — leads with the one-line positioning
+  ("cost-aware ops layer for OpenClaw agent fleets"), a pain-first *Why*, a 60-second tour,
+  and a *How it relates to OpenClaw* differentiation table, with the command reference demoted
+  below the fold. Replaces the prior feature-firehose ordering. The "actively used in real
+  environments" line is replaced with an honest authorship note.
+
+### Added
+
+- **`scripts/metrics.sh`** — single source of truth for LOC / command / helper / unit-test /
+  spec counts (`--json`, `--check`). A new CI step (`metrics --check`) fails the build if the
+  README's quoted numbers drift from the tree. Reconciles prior contradictions (README claimed
+  241 tests / ~7,200 LOC / 21 commands; actual: 247 / ~8,700 / 25).
+- **`NOTICE`** — trademark/affiliation statement ("Independent project. Not affiliated with or
+  endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
+- **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
+  break-reporting policy; linked from the README's new Compatibility section.
+- **`rack completions <bash|zsh>`** — emits a shell completion script
+  (`eval "$(rack completions bash)"`). Completes commands, subcommands, and live agent ids
+  read from the workspace tree. The command/subcommand table is drift-guarded by the unit
+  suite so it can't silently desync from the router.
+
+### Security docs
+
+- **`SECURITY.md` expanded** — explicit threat model (what runs with what privileges), the
+  approval-gate model, a homelab-vs-public-VPS guidance box, secret-storage backends as
+  first-class safety features, a "what rack does NOT protect against" list, and a 90-day
+  responsible-disclosure timeline.
+
+### Fixed
+
+- **`rack --version` after install** — the installer never copied `VERSION` to the
+  install prefix, so installed users got `rack (version unknown)`. `VERSION` is now
+  shipped beside `lib/` and the launcher checks `$LIB_DIR/VERSION` in the installed layout.
+- **Brittle installer source-patching** — `install.sh` no longer rewrites the `LIB_DIR=`
+  line with `sed` (which broke silently on any whitespace change). `bin/rack` now
+  auto-detects the installed (`<prefix>/lib/rack-cli`) vs repo (`<repo>/lib`) layout at
+  runtime, and honors a `RACK_LIB_DIR` override for packagers/tests.
+- **`uninstall.sh` left files behind** — it removed `lib/rack` while `install.sh` installed
+  to `lib/rack-cli`. Paths now match; legacy `lib/rack` is also cleaned up, and `RACK_PREFIX`
+  is honored to mirror the installer.
+- **`rack team upgrade` in installed layout** — read templates from `$RACK_CLI_ROOT/lib/templates`,
+  which doesn't exist once installed; now uses `$LIB_DIR/templates`.
+
 ### Added
 
 - **`rack eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
@@ -34,6 +79,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `sync_session_key` now warns and skips (instead of aborting) when `openclaw.json` is absent,
   so one missing config can't halt a multi-agent provision.
+- **CI lint gate raised** from `-S error` to `-S warning` (with curated excludes for
+  cross-file shared vars and dynamic `source`), and the `SC2155`/`SC2188`/`SC2164`/`SC2076`/
+  `SC2010`/`SC2011`/`SC2046`/`SC2115`/`SC2050` warning backlog cleared so the gate stays green.
+- **Test harness hardened** — counter increments use `n=$((n + 1))` instead of `((n++))`
+  (which returns non-zero at 0 and would abort a `set -e` harness). Added 6 direct unit
+  tests of the `load_model_registry` overlay (corrupt-file fallback, role/default/anchor
+  overrides, unknown-role rejection), plus drift-guard tests for shell completions; unit
+  suite is now 276 assertions.
+- **`rack doctor --json` is now a usable health probe** — exits non-zero when the report is
+  unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
+  (`healthy`/`issues` were already present).
 
 ## [0.1.0] - 2026-06-10
 
