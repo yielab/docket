@@ -51,9 +51,20 @@ EOF
     ;;
   --check)
     fail=0
-    grep -q "$unit_tests unit" README.md || { echo "DRIFT: README unit-test count != $unit_tests"; fail=1; }
-    grep -qE "$core_cmd_files commands" README.md || { echo "DRIFT: README command count != $core_cmd_files"; fail=1; }
-    [[ $fail -eq 0 ]] && echo "metrics: README in sync ($unit_tests tests, $core_cmd_files commands)"
+    # Command count is a deterministic file count — gate it exactly. A new
+    # command file with no matching README bump fails the build.
+    grep -qE "$core_cmd_files commands" README.md \
+      || { echo "DRIFT: README command count != $core_cmd_files"; fail=1; }
+    # Unit-test count is NOT deterministic across environments: optional-dep
+    # tests (libsecret/fzf) skip in CI, so it differs from a dev box. The README
+    # states a floor ("270+ unit tests"); we assert the real count never drops
+    # below it rather than pinning an exact value that would false-fail in CI.
+    floor=$(grep -oE '[0-9]+\+ unit' README.md | grep -oE '[0-9]+' | head -1 || true)
+    if [[ -n "$floor" ]]; then
+      [[ "$unit_tests" -ge "$floor" ]] \
+        || { echo "DRIFT: actual unit tests ($unit_tests) < README floor ($floor)"; fail=1; }
+    fi
+    [[ $fail -eq 0 ]] && echo "metrics: README in sync (${unit_tests} tests ≥ floor ${floor:-n/a}, $core_cmd_files commands)"
     exit $fail
     ;;
   *)
