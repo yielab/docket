@@ -242,12 +242,14 @@ hand-maintained count to drift out of sync:
 
 - **~8,800 lines** of Bash in the shipped CLI (`lib` + `bin`); ~12,600 including tests and tooling
 - **26 commands** (one `cmd_*` per file) + 1 experimental, over **12 helper modules**
-- **276 unit tests** + 12 integration scenarios (60 assertions) + 6 specialist-role evals
+- **270+ unit tests** + 12 integration scenarios (60 assertions) + 6 specialist-role evals
+  (the exact unit count varies by environment — optional-dep tests for `libsecret`/`fzf` skip
+  when those aren't installed; `scripts/metrics.sh` prints the count for your machine)
 - **15 specifications** (RFC 2119), validated in CI
 
 ```bash
 ./tests/run-all-tests.sh           # everything
-./tests/unit/test-helpers.sh       # 276 unit tests
+./tests/unit/test-helpers.sh       # 270+ unit tests
 ./tests/test-lifecycle.sh          # 12 integration scenarios (60 assertions)
 ./tests/evals/run-evals.sh         # 6 specialist-role evals
 ```
