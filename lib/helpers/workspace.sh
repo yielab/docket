@@ -233,6 +233,9 @@ print('')
 
 # Get ALL groups from logs (both bound and unbound)
 # Checks today's log and up to 7 days back
+# Callers pass array names; the locals below are namerefs to the caller's arrays.
+# ShellCheck can't see through the indirection and misreads them as scalars (SC2178).
+# shellcheck disable=SC2178
 _get_all_groups() {
   local -n _groups_ref=$1
   local -n _titles_ref=$2

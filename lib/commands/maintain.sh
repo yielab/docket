@@ -94,7 +94,7 @@ _maintain_check() {
 
   # Check permissions
   echo "${BOLD}Checking permissions...${RESET}"
-  local workspace_perms=$(stat -c%a "$workspace" 2>/dev/null || stat -f%Lp "$workspace" 2>/dev/null)
+  local workspace_perms; workspace_perms=$(stat -c%a "$workspace" 2>/dev/null || stat -f%Lp "$workspace" 2>/dev/null)
 
   if [[ "$workspace_perms" != "700" ]]; then
     warn "  Workspace permissions: $workspace_perms (expected 700)"
@@ -110,7 +110,7 @@ _maintain_check() {
   local bad_perms=0
   for file in "$workspace"/{SOUL.md,AGENTS.md,TOOLS.md,HEARTBEAT.md,.rack-meta.json}; do
     if [[ -f "$file" ]]; then
-      local perms=$(stat -c%a "$file" 2>/dev/null || stat -f%Lp "$file" 2>/dev/null)
+      local perms; perms=$(stat -c%a "$file" 2>/dev/null || stat -f%Lp "$file" 2>/dev/null)
       if [[ "$perms" != "600" ]]; then
         chmod 600 "$file"
         ((bad_perms++))
@@ -158,7 +158,7 @@ _maintain_check() {
 
   # Check session key sync
   echo "${BOLD}Checking session key sync...${RESET}"
-  local meta_key=$(meta_get "$id" "sessionKey" "")
+  local meta_key; meta_key=$(meta_get "$id" "sessionKey" "")
   local soul_key=""
 
   if [[ -f "$workspace/SOUL.md" ]]; then
@@ -196,7 +196,7 @@ _maintain_check() {
     ((fixes_applied++))
     ((issues_found++))
   else
-    local log_count=$(find "$workspace/memory" -name "*.md" -type f 2>/dev/null | wc -l)
+    local log_count; log_count=$(find "$workspace/memory" -name "*.md" -type f 2>/dev/null | wc -l)
     success "  ✓ Memory directory OK ($log_count logs)"
   fi
 
@@ -240,7 +240,7 @@ _maintain_clean() {
     return 0
   fi
 
-  local log_count=$(find "$memory_dir" -name "*.md" -type f 2>/dev/null | wc -l)
+  local log_count; log_count=$(find "$memory_dir" -name "*.md" -type f 2>/dev/null | wc -l)
 
   if [[ $log_count -eq 0 ]]; then
     success "Memory already clean (no logs found)"
@@ -299,7 +299,7 @@ _maintain_reset() {
 
   # Clear MEMORY.md
   if [[ -f "$workspace/MEMORY.md" ]]; then
-    > "$workspace/MEMORY.md"
+    : > "$workspace/MEMORY.md"
     info "✓ Cleared MEMORY.md"
   fi
 
@@ -352,7 +352,7 @@ _maintain_rebuild() {
   fi
 
   # Backup current files
-  local backup_dir="$workspace/.backup-$(date +%Y%m%d-%H%M%S)"
+  local backup_dir; backup_dir="$workspace/.backup-$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$backup_dir"
 
   for file in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md MEMORY.md; do
@@ -371,7 +371,7 @@ _maintain_rebuild() {
   fi
 
   # Clear MEMORY.md
-  [[ -f "$workspace/MEMORY.md" ]] && > "$workspace/MEMORY.md"
+  [[ -f "$workspace/MEMORY.md" ]] && : > "$workspace/MEMORY.md"
 
   echo ""
   success "Rebuild complete!"
@@ -415,7 +415,7 @@ _maintain_sessions() {
   # Combine and deduplicate
   local sessions_to_clean=()
   for session in "${large_sessions[@]}" "${old_sessions[@]}"; do
-    [[ " ${sessions_to_clean[*]} " =~ " ${session} " ]] || sessions_to_clean+=("$session")
+    [[ " ${sessions_to_clean[*]} " == *" ${session} "* ]] || sessions_to_clean+=("$session")
   done
 
   if [[ ${#sessions_to_clean[@]} -eq 0 ]]; then
@@ -432,14 +432,14 @@ _maintain_sessions() {
 
   local total_size=0
   for session in "${sessions_to_clean[@]}"; do
-    local size=$(stat -c%s "$session" 2>/dev/null || stat -f%z "$session" 2>/dev/null)
-    local size_mb=$(echo "scale=1; $size / 1048576" | bc)
+    local size; size=$(stat -c%s "$session" 2>/dev/null || stat -f%z "$session" 2>/dev/null)
+    local size_mb; size_mb=$(echo "scale=1; $size / 1048576" | bc)
     total_size=$((total_size + size))
 
     echo "  • $(basename "$session") - ${size_mb}MB"
   done
 
-  local total_mb=$(echo "scale=1; $total_size / 1048576" | bc)
+  local total_mb; total_mb=$(echo "scale=1; $total_size / 1048576" | bc)
   echo ""
   warn "Total: ${total_mb}MB to clean"
   echo ""
@@ -476,13 +476,14 @@ _regenerate_workspace_files() {
 
   info "Regenerating workspace files..."
 
-  local name=$(meta_get "$id" "name" "$id")
-  local type=$(meta_get "$id" "type" "task")
-  local codebase=$(meta_get "$id" "codebase" "")
-  local stack=$(meta_get "$id" "stack" "")
-  local model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
-  local description=$(meta_get "$id" "description" "")
-  local session_key=$(meta_get "$id" "sessionKey" "agent:$id:default")
+  local name type codebase stack model description session_key
+  name=$(meta_get "$id" "name" "$id")
+  type=$(meta_get "$id" "type" "task")
+  codebase=$(meta_get "$id" "codebase" "")
+  stack=$(meta_get "$id" "stack" "")
+  model=$(meta_get "$id" "model" "$DEFAULT_MODEL")
+  description=$(meta_get "$id" "description" "")
+  session_key=$(meta_get "$id" "sessionKey" "agent:$id:default")
 
   # Regenerate SOUL.md
   _create_workspace "$id" "$type" "$name" "$codebase" "$stack" "$description"

@@ -10,6 +10,20 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
 
 ---
 
+## Tracked decisions (not yet scheduled)
+
+- 🗓️ **Project rename (deferred).** "rack" collides with Ruby Rack, is a generic word, and is
+  hard to search. The decision is to **keep "rack" for now but anchor it to "OpenClaw" on every
+  public surface** (README first line, repo description, social preview), so a later rename to a
+  searchable, namespace-clean name (candidates: `clawfleet`, `rackctl`, `openclaw-rack`) stays
+  low-cost. Revisit before any wide public launch. Touch points a rename must update: binary
+  name, `install.sh`/`uninstall.sh` paths, Homebrew `Formula/`, docs, and the metrics script.
+- 🗓️ **OpenClaw version-pinned CI.** Install the latest OpenClaw weekly, run the integration
+  suite, and open an auto-issue on schema break. Until then [COMPATIBILITY.md](COMPATIBILITY.md)
+  reflects manual verification.
+
+---
+
 ## Phase 0 — Security hardening (must precede a public "use this" recommendation) — ✅ complete
 
 > Agents execute commands and rack manages provider keys. Security is the difference between
