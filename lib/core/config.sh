@@ -27,8 +27,11 @@ declare -A TELEGRAM_GROUP_NAMES=(
 )
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
-RED='\033[0;31m';  GREEN='\033[0;32m';  YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BLUE='\033[0;34m';  BOLD='\033[1m';  DIM='\033[2m'; RESET='\033[0m'
+# Use ANSI-C quoting ($'…') so the variables hold real ESC bytes, not the
+# literal 4-char string "\033[…". This makes colors render through ANY emitter
+# — bare `echo`, `cat <<HEREDOC`, `printf` — not just `echo -e`.
+RED=$'\033[0;31m';  GREEN=$'\033[0;32m';  YELLOW=$'\033[1;33m'
+CYAN=$'\033[0;36m'; BLUE=$'\033[0;34m';  BOLD=$'\033[1m';  DIM=$'\033[2m'; RESET=$'\033[0m'
 TICK="${GREEN}✓${RESET}"; CROSS="${RED}✗${RESET}"; WARN="${YELLOW}⚠${RESET}"; ARROW="${CYAN}→${RESET}"
 
 # ─── Model rank anchors (deprecated tier names) ──────────────────────────────
