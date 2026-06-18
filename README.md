@@ -14,7 +14,7 @@
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
 <p align="center">
-  <img src="docs/assets/hero.gif" alt="docket in action: create an agent with a budget cap, list the fleet, check cost, run a health check" width="760">
+  <img src="docs/assets/hero.gif" alt="docket in action: provision an isolated project agent, list the fleet, inspect its per-project isolation, run a fleet health check, and set a budget guardrail" width="760">
 </p>
 
 <p align="center"><em>The whole loop in one terminal: <strong>provision → isolate → keep healthy → keep in budget.</strong></em></p>
@@ -79,42 +79,37 @@ That's the loop docket is built around: **provision → isolate → keep healthy
 
 ## See it in action
 
+The core loop is provisioning isolated agents and keeping the fleet healthy.
+
 <table>
 <tr>
-<td width="50%">
+<td width="33%">
 
-**`docket info <id>` — per-agent detail & isolation**
+**`docket info <id>` — isolation**
 
-<img src="docs/assets/info.png" alt="docket info: type, workspace, codebase, model, budget cap, session key, and workspace files" width="100%">
+<img src="docs/assets/info.png" alt="docket info: per-project isolation — session key, dedicated workspace, codebase, model, and workspace files" width="100%">
 
 </td>
-<td width="50%">
+<td width="33%">
 
-**`docket maintain <id> check` — health check & auto-fix**
+**`docket maintain <id> check` — health & auto-fix**
 
 <img src="docs/assets/maintain.png" alt="docket maintain check: permissions, workspace files, session-key sync, and memory all healthy" width="100%">
 
 </td>
-</tr>
-<tr>
-<td width="50%">
+<td width="33%">
 
-**`docket models` — role→cheapest-adequate-model policy**
+**`docket models` — role→model policy**
 
 <img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
-
-</td>
-<td width="50%">
-
-**`docket cost` — recorded spend, budget caps & runaway detection**
-
-<img src="docs/assets/cost.png" alt="docket cost: per-agent token usage, dollar cost, budget caps, and a runaway-session warning" width="100%">
 
 </td>
 </tr>
 </table>
 
 > Screenshots are from a real run against a live OpenClaw install; project names are anonymized.
+> The budget guardrail (`docket cost`, `docket profile --budget`) is documented under
+> [Cost reporting and its limits](#cost-reporting-and-its-limits) — intentionally not the headline.
 
 ## How it relates to OpenClaw
 
