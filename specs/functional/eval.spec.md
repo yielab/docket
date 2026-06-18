@@ -8,15 +8,15 @@
 
 This specification defines the specialist-role eval harness — golden-task checks that
 measure whether each specialist role performs adequately on its configured model — and
-the `rack eval` command that runs it. Stored results feed per-role model right-sizing
-hints (shown by `rack eval --recommend` and `rack doctor`), the data source for tuning
+the `docket eval` command that runs it. Stored results feed per-role model right-sizing
+hints (shown by `docket eval --recommend` and `docket doctor`), the data source for tuning
 the role→model policy (see model-profiles.spec.md).
 
 ## Scope
 
 This specification covers:
 
-- Running evals (`rack eval`, structural and live modes)
+- Running evals (`docket eval`, structural and live modes)
 - Per-role selection and the recorded results format
 - Right-sizing hints derived from stored results
 
@@ -25,17 +25,17 @@ model-profiles.spec.md) or the unit/integration test suites.
 
 ## Requirements
 
-### Running evals (rack eval)
+### Running evals (docket eval)
 
 1. One eval script per specialist role **MUST** exist under `tests/evals/`
    (`<role>.eval.sh` for programmer, reviewer, tester, knowledge, security, manager).
-2. `rack eval` **MUST** run all role evals in structural mode by default: checks that
+2. `docket eval` **MUST** run all role evals in structural mode by default: checks that
    do not call a model (workspace/template shape) and that skip rather than fail when
    prerequisites are absent.
-3. `rack eval --live` (or `RACK_EVAL_LIVE=1`) **MUST** enable live golden-task checks
+3. `docket eval --live` (or `DOCKET_EVAL_LIVE=1`) **MUST** enable live golden-task checks
    that exercise the agent's actual model; infrastructure failures (quota, network)
    **MUST** report as SKIP, not FAIL.
-4. `rack eval --role <r>` **MUST** run only that role's eval and **MUST** error with
+4. `docket eval --role <r>` **MUST** run only that role's eval and **MUST** error with
    the list of available roles when no such eval exists.
 5. `--tier <economy|standard|premium>` **MUST** set the model-class label recorded with
    results (the internal rank classes; default `standard`). It labels which class the
@@ -48,11 +48,11 @@ model-profiles.spec.md) or the unit/integration test suites.
 1. Live runs **MUST** append one JSON line per role run to
    `tests/evals/results/YYYY-MM-DD.jsonl` recording at least `date`, `role`, `tier`
    (model-class label), `passed`, and `costUsd`.
-2. `rack eval --recommend` **MUST** read the most recent results file and print one
+2. `docket eval --recommend` **MUST** read the most recent results file and print one
    hint per role: if the role passed on a cheaper model class than its current one,
-   suggest changing the role's model (`rack models set <role> <provider/model>`);
+   suggest changing the role's model (`docket models set <role> <provider/model>`);
    otherwise report the minimum passing class. It **MUST** run no evals.
-3. `rack doctor` **MUST** surface the same hints when results exist, advisory only
+3. `docket doctor` **MUST** surface the same hints when results exist, advisory only
    (no issue-count bump).
 
 ## Interface Contracts
@@ -60,11 +60,11 @@ model-profiles.spec.md) or the unit/integration test suites.
 ### CLI Command Signatures
 
 ```bash
-rack eval                          # All roles, structural mode
-rack eval --live                   # Enable live golden-task checks
-rack eval --role <role>            # One role only
-rack eval --tier <class>           # Model-class label for recorded results
-rack eval --recommend              # Right-sizing hints from stored results
+docket eval                          # All roles, structural mode
+docket eval --live                   # Enable live golden-task checks
+docket eval --role <role>            # One role only
+docket eval --tier <class>           # Model-class label for recorded results
+docket eval --recommend              # Right-sizing hints from stored results
 ```
 
 ### Result Record Schema (one JSON object per line)
@@ -85,21 +85,21 @@ rack eval --recommend              # Right-sizing hints from stored results
 ### Structural run and a live single-role run
 
 ```bash
-$ rack eval
+$ docket eval
   SKIP  knowledge
   SKIP  manager
   ...
   Pass: 0   Skip: 6   Fail: 0
 
-$ rack eval --live --role reviewer --tier economy
+$ docket eval --live --role reviewer --tier economy
 ✓ PASS — reviewer
 ```
 
 ### Right-sizing hints
 
 ```bash
-$ rack eval --recommend
-  reviewer: passes on a cheaper model class (economy, avg $0.0042/run) — rack models set reviewer <provider/model>
+$ docket eval --recommend
+  reviewer: passes on a cheaper model class (economy, avg $0.0042/run) — docket models set reviewer <provider/model>
   programmer: standard is the minimum passing model class (avg $0.0310/run)
 ```
 

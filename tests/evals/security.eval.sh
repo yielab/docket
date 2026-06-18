@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Eval: security role
 # Structural (always):  SOUL.md references threat modeling or audit.
-# Live (RACK_EVAL_LIVE=1): given a code snippet with a command-injection vuln,
+# Live (DOCKET_EVAL_LIVE=1): given a code snippet with a command-injection vuln,
 #   the agent names the vulnerability class and suggests a fix.
 # Exit 0=PASS  1=FAIL  2=SKIP
 
@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/eval-helpers.sh"
 
 WORKSPACE="$HOME/.openclaw/workspaces/security"
 SOUL="$WORKSPACE/SOUL.md"
-TIER="${RACK_EVAL_TIER:-premium}"
+TIER="${DOCKET_EVAL_TIER:-premium}"
 
 eval_skip_unless_workspace "$WORKSPACE"
 [[ ! -f "$SOUL" ]] && { echo "FAIL: SOUL.md missing" >&2; exit 1; }

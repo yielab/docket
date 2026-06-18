@@ -37,5 +37,5 @@ for line in lines[-n:]:
     print(f"  {e.get('ts',''):<20}  {e.get('user','?'):<10}  {e.get('action',''):<16}  {e.get('detail','')}")
 PY
   echo ""
-  echo "${DIM}Full JSONL: rack audit --json  ·  file: $logf${RESET}"
+  echo "${DIM}Full JSONL: docket audit --json  ·  file: $logf${RESET}"
 }

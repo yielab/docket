@@ -12,7 +12,7 @@ body:
     attributes:
       label: What happened?
       description: A clear description of the bug.
-      placeholder: When I run `rack <command>`, it...
+      placeholder: When I run `docket <command>`, it...
     validations:
       required: true
 
@@ -29,8 +29,8 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run `rack add ...`
-        2. Then run `rack ...`
+        1. Run `docket add ...`
+        2. Then run `docket ...`
         3. See error
     validations:
       required: true
@@ -39,7 +39,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Output of `rack doctor` and `rack --version`
+      description: Output of `docket doctor` and `docket --version`
       render: text
     validations:
       required: false
@@ -48,7 +48,7 @@ body:
     id: debug-output
     attributes:
       label: Debug output (optional)
-      description: Output of `DEBUG=1 rack <command>`
+      description: Output of `DEBUG=1 docket <command>`
       render: text
     validations:
       required: false

@@ -22,12 +22,12 @@ cmd_scope() {
       echo "Each project scope gets isolated workspace memory and routing."
       echo ""
       echo "Usage:"
-      echo "  rack scope $id set <project-key>    # Change project scope"
-      echo "  rack scope $id reset                # Reset to 'default'"
+      echo "  docket scope $id set <project-key>    # Change project scope"
+      echo "  docket scope $id reset                # Reset to 'default'"
       echo ""
       ;;
     set)
-      [[ -z "$project_key" ]] && error_hint "Project key required" "Usage: rack scope $id set <project-key>"
+      [[ -z "$project_key" ]] && error_hint "Project key required" "Usage: docket scope $id set <project-key>"
       local new_session; new_session=$(generate_session_key "$id" "$project_key")
       meta_set "$id" "projectKey" "$project_key"
       meta_set "$id" "sessionKey" "$new_session"

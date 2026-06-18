@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Command: info
 
-# Machine-readable single-agent detail (rack info <id> --json).
+# Machine-readable single-agent detail (docket info <id> --json).
 _info_json() {
   local id="$1"
   local workspace="$PROJECTS_DIR/$id"
@@ -43,7 +43,7 @@ cmd_info() {
     esac
   done
   [[ -z "$id" && "$json" -eq 0 ]] && id=$(pick_project "Inspect project")
-  [[ -z "$id" ]] && error "An agent id is required (e.g. rack info <id> --json)."
+  [[ -z "$id" ]] && error "An agent id is required (e.g. docket info <id> --json)."
 
   if [[ "$json" -eq 1 ]]; then
     _info_json "$id"

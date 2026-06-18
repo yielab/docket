@@ -62,7 +62,7 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 - [ ] Workspace directory is created with correct permissions (700/600)
 - [ ] Stack is auto-detected from project files
 - [ ] Appropriate model tier is suggested based on project size
-- [ ] Agent appears in `rack list` immediately after creation
+- [ ] Agent appears in `docket list` immediately after creation
 - [ ] Session key is generated for project isolation
 - [ ] Creation fails gracefully if agent ID already exists
 - [ ] User receives clear success confirmation with workspace path
@@ -330,23 +330,23 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 ### Scenario: Complete Agent Lifecycle
 
 ```gherkin
-Given a clean rack installation
+Given a clean docket installation
 When I create an agent named "testapp" for "~/projects/app"
 Then the agent should be created successfully
 And workspace should exist at ~/.openclaw/workspaces/projects/testapp
 
-When I run "rack info testapp"
+When I run "docket info testapp"
 Then I should see the agent details
 And the session key should be "agent:testapp:default"
 
-When I run "rack reset testapp 1"
+When I run "docket reset testapp 1"
 Then memory logs should be cleared
 But SOUL.md should remain unchanged
 
-When I run "rack delete testapp"
+When I run "docket delete testapp"
 And I confirm the deletion
 Then the workspace should be removed
-And the agent should not appear in "rack list"
+And the agent should not appear in "docket list"
 ```
 
 ### Scenario: Cost Tracking
@@ -357,7 +357,7 @@ And the agent has processed 50000 input tokens
 And the agent has generated 25000 output tokens
 And the agent uses "standard" profile (sonnet-4-6)
 
-When I run "rack cost webapp"
+When I run "docket cost webapp"
 Then I should see:
   | Metric | Value |
   | Input Tokens | 50,000 |

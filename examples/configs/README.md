@@ -1,6 +1,6 @@
 # Example Configurations
 
-Sample `.rack-meta.json` files demonstrating different agent setups.
+Sample `.docket-meta.json` files demonstrating different agent setups.
 
 ## Files
 
@@ -15,7 +15,7 @@ Standard repository-based agent for active development.
 
 **Create similar:**
 ```bash
-rack add
+docket add
 # Choose: repo type
 # Stack: Auto-detected or manual entry
 # Model: Standard (sonnet-4-6)
@@ -34,7 +34,7 @@ General-purpose task agent without a specific codebase.
 
 **Create similar:**
 ```bash
-rack add
+docket add
 # Choose: task type
 # Model: Economy (haiku-4-5)
 ```
@@ -52,9 +52,9 @@ Agent with session scoping for multi-environment work.
 
 **Create similar:**
 ```bash
-rack add
+docket add
 # Create normally, then:
-rack scope ecommerce set staging
+docket scope ecommerce set staging
 ```
 
 **Why use session scoping?**
@@ -74,12 +74,12 @@ High-cost agent for complex tasks requiring Opus.
 
 **Create similar:**
 ```bash
-rack add
+docket add
 # Choose: repo type
 # Model: Premium (opus-4-6)
 
 # Or upgrade existing:
-rack profile myagent premium
+docket profile myagent premium
 ```
 
 **When to use Opus:**
@@ -110,22 +110,22 @@ rack profile myagent premium
 Metadata files are stored in each agent's workspace:
 
 ```
-~/.openclaw/workspaces/projects/<agent-id>/.rack-meta.json
+~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json
 ```
 
 **Example:**
 ```
-~/.openclaw/workspaces/projects/mywebapp/.rack-meta.json
-~/.openclaw/workspaces/projects/research/.rack-meta.json
+~/.openclaw/workspaces/projects/mywebapp/.docket-meta.json
+~/.openclaw/workspaces/projects/research/.docket-meta.json
 ```
 
 ## Accessing Metadata
 
-### Via rack CLI
+### Via docket CLI
 
 ```bash
 # View metadata (formatted)
-rack info myagent
+docket info myagent
 
 # Read specific field (programmatic)
 meta_get myagent name
@@ -141,7 +141,7 @@ meta_set myagent description "New description"
 ```python
 import json
 
-meta_file = "/home/user/.openclaw/workspaces/projects/myagent/.rack-meta.json"
+meta_file = "/home/user/.openclaw/workspaces/projects/myagent/.docket-meta.json"
 
 # Read
 with open(meta_file) as f:
@@ -159,39 +159,39 @@ with open(meta_file, 'w') as f:
 
 ```bash
 # Read (requires jq)
-cat ~/.openclaw/workspaces/projects/myagent/.rack-meta.json | jq -r '.name'
+cat ~/.openclaw/workspaces/projects/myagent/.docket-meta.json | jq -r '.name'
 
-# Or use rack's helper
-source /path/to/rack-cli/bin/rack
+# Or use docket's helper
+source /path/to/docket-cli/bin/docket
 name=$(meta_get myagent name)
 echo "$name"
 ```
 
 ## Syncing with OpenClaw
 
-rack maintains two configuration sources:
+docket maintains two configuration sources:
 
-1. **`.rack-meta.json`** (per-project) - Source of truth for rack
+1. **`.docket-meta.json`** (per-project) - Source of truth for docket
 2. **`openclaw.json`** (global) - Source of truth for OpenClaw daemon
 
-When you update metadata via rack, both are synced automatically:
+When you update metadata via docket, both are synced automatically:
 
 ```bash
 # These commands update BOTH sources
-rack profile myagent premium
-rack profile myagent premium
-rack scope myagent set alpha
+docket profile myagent premium
+docket profile myagent premium
+docket scope myagent set alpha
 ```
 
 **Manual sync (if needed):**
 ```bash
 # If metadata gets out of sync, repair fixes it
-rack repair myagent
+docket repair myagent
 ```
 
 ## Custom Fields
 
-You can add custom fields to `.rack-meta.json`:
+You can add custom fields to `.docket-meta.json`:
 
 ```json
 {
@@ -212,7 +212,7 @@ meta_get myagent customField
 meta_set myagent owner "jane@example.com"
 ```
 
-**Note:** Custom fields won't appear in `rack info` output unless you modify the command.
+**Note:** Custom fields won't appear in `docket info` output unless you modify the command.
 
 ## Best Practices
 
@@ -229,8 +229,8 @@ meta_set myagent owner "jane@example.com"
 
 3. **Use session scoping**: Isolate different environments
    ```bash
-   rack scope backend-api set production
-   rack scope backend-api set staging
+   docket scope backend-api set production
+   docket scope backend-api set staging
    ```
 
 4. **Choose appropriate models**: Match cost to task complexity
@@ -252,35 +252,35 @@ meta_set myagent owner "jane@example.com"
 
 ```bash
 # Regenerate from OpenClaw config
-rack repair myagent
+docket repair myagent
 ```
 
 ### Metadata out of sync
 
 ```bash
 # Sync session keys and bindings
-rack repair myagent
+docket repair myagent
 ```
 
 ### Corrupted JSON
 
 ```bash
 # Backup corrupted file
-cp ~/.openclaw/workspaces/projects/myagent/.rack-meta.json \
-   ~/.openclaw/workspaces/projects/myagent/.rack-meta.json.backup
+cp ~/.openclaw/workspaces/projects/myagent/.docket-meta.json \
+   ~/.openclaw/workspaces/projects/myagent/.docket-meta.json.backup
 
 # Deep reset (regenerates from openclaw.json)
-rack reset myagent 3
+docket reset myagent 3
 ```
 
 ### Permission errors
 
 ```bash
 # Fix permissions (should be 600)
-chmod 600 ~/.openclaw/workspaces/projects/myagent/.rack-meta.json
+chmod 600 ~/.openclaw/workspaces/projects/myagent/.docket-meta.json
 
 # Or use repair
-rack repair myagent
+docket repair myagent
 ```
 
 ## See Also

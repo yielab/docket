@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Command: eval
-# rack eval [--live] [--tier economy|standard|premium] [--role <role>] [--recommend]
+# docket eval [--live] [--tier economy|standard|premium] [--role <role>] [--recommend]
 #
 # Runs the specialist-role eval harness under tests/evals/.
-#   --live        enable live golden-task checks (sets RACK_EVAL_LIVE=1)
+#   --live        enable live golden-task checks (sets DOCKET_EVAL_LIVE=1)
 #   --tier <t>    model-class label recorded with results (economy|standard|premium —
 #                 the internal rank classes; default: standard)
 #   --role <r>    run only <r>.eval.sh instead of all evals
@@ -40,7 +40,7 @@ cmd_eval() {
     [[ -f "$eval_file" ]] || error "No eval found for role '$role'. Available: $(for _f in "$evals_dir"/*.eval.sh; do [[ -e "$_f" ]] && basename "$_f" .eval.sh; done | tr '\n' ' ')"
     header "Eval: $role${live:+ (live)}"
     echo ""
-    RACK_EVAL_LIVE="$live" RACK_EVAL_TIER="$tier" bash "$eval_file"
+    DOCKET_EVAL_LIVE="$live" DOCKET_EVAL_TIER="$tier" bash "$eval_file"
     local rc=$?
     echo ""
     case $rc in
@@ -51,5 +51,5 @@ cmd_eval() {
     return $rc
   fi
 
-  RACK_EVAL_LIVE="$live" RACK_EVAL_TIER="$tier" bash "$evals_dir/run-evals.sh"
+  DOCKET_EVAL_LIVE="$live" DOCKET_EVAL_TIER="$tier" bash "$evals_dir/run-evals.sh"
 }

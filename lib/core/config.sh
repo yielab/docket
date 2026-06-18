@@ -9,19 +9,19 @@ CONFIG_FILE="${CONFIG_FILE:-$OPENCLAW_DIR/openclaw.json}"
 LOG_FILE="${LOG_FILE:-/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log}"
 SITES_DIR="${SITES_DIR:-$HOME/Sites}"
 DEFAULT_MODEL="anthropic/claude-sonnet-4-6"
-META_FILE=".rack-meta.json"  # stored inside each project workspace
-MODEL_REGISTRY_FILE="${MODEL_REGISTRY_FILE:-$OPENCLAW_DIR/rack-models.json}"
+META_FILE=".docket-meta.json"  # stored inside each project workspace
+MODEL_REGISTRY_FILE="${MODEL_REGISTRY_FILE:-$OPENCLAW_DIR/docket-models.json}"
 
 # Version of the SOUL/AGENTS/TOOLS/HEARTBEAT workspace templates emitted by
-# _create_workspace. Stamped into each agent's .rack-meta.json at creation /
-# rebuild; `rack doctor` flags agents whose stamp is older (prompt drift) and
-# suggests `rack maintain <id> rebuild`. Bump this (integer) whenever the
+# _create_workspace. Stamped into each agent's .docket-meta.json at creation /
+# rebuild; `docket doctor` flags agents whose stamp is older (prompt drift) and
+# suggests `docket maintain <id> rebuild`. Bump this (integer) whenever the
 # template text in lib/helpers/workspace.sh changes materially.
 TEMPLATE_VERSION="${TEMPLATE_VERSION:-3}"
 
 # ─── Expected Telegram group names per agent ─────────────────────────────────
 # Maps agent ID → the Telegram group name the user should create.
-# Used by "rack list" to show setup status and by "rack doctor" for auditing.
+# Used by "docket list" to show setup status and by "docket doctor" for auditing.
 declare -A TELEGRAM_GROUP_NAMES=(
   [manager]="Manager"
 )
@@ -43,19 +43,19 @@ declare -A MODEL_PROFILES=(
 )
 
 # ─── Agent taxonomy ───────────────────────────────────────────────────────────
-# Specialist agents are shared team members created by `rack install`; project
-# agents (kind: project) are created by `rack add` with type repo|task.
-RACK_SPECIALISTS=(manager programmer reviewer tester knowledge security)
+# Specialist agents are shared team members created by `docket install`; project
+# agents (kind: project) are created by `docket add` with type repo|task.
+DOCKET_SPECIALISTS=(manager programmer reviewer tester knowledge security)
 
 # Roles the model policy knows about: the six specialist roles plus the two
 # project-agent types (a project agent's `type` doubles as its policy role).
-RACK_ROLES=(manager programmer reviewer tester knowledge security repo task)
+DOCKET_ROLES=(manager programmer reviewer tester knowledge security repo task)
 
 # ─── Role→model policy (the user-facing model concept) ───────────────────────
 # Each role's built-in default derives from a class anchor, chosen for token
 # efficiency: cheap = high-volume / low reasoning-density work, strong =
 # reasoning-dense work. Stronger models (opus-class) are an explicit per-agent
-# pin (`rack profile <id> <provider/model>`), never a standing default.
+# pin (`docket profile <id> <provider/model>`), never a standing default.
 declare -A ROLE_CLASS=(
   [manager]="cheap"     [reviewer]="cheap" [tester]="cheap"
   [knowledge]="cheap"   [task]="cheap"
@@ -79,7 +79,7 @@ declare -A ROLE_MODELS=()
 
 _init_role_models() {
   local role
-  for role in "${RACK_ROLES[@]}"; do
+  for role in "${DOCKET_ROLES[@]}"; do
     case "${ROLE_CLASS[$role]:-strong}" in
       cheap)  ROLE_MODELS[$role]="${MODEL_PROFILES[economy]}" ;;
       *)      ROLE_MODELS[$role]="${MODEL_PROFILES[standard]}" ;;
@@ -97,7 +97,7 @@ is_role() { [[ -n "${ROLE_CLASS[${1:-}]:-}" ]]; }
 
 is_specialist() {
   local s
-  for s in "${RACK_SPECIALISTS[@]}"; do [[ "$s" == "${1:-}" ]] && return 0; done
+  for s in "${DOCKET_SPECIALISTS[@]}"; do [[ "$s" == "${1:-}" ]] && return 0; done
   return 1
 }
 
@@ -137,7 +137,7 @@ declare -A MODEL_PRICING=(
 
 # ─── Local providers (free, no API key required) ──────────────────────────────
 # The OpenClaw daemon does not support Ollama/llama.cpp local endpoints.
-# "Local" in rack means OpenRouter free-tier — zero per-token cost, but an
+# "Local" in docket means OpenRouter free-tier — zero per-token cost, but an
 # OpenRouter API key (free to create at openrouter.ai) is still needed.
 # This list is used to suppress provider-key warnings for truly keyless providers.
 LOCAL_PROVIDERS=()
@@ -162,7 +162,7 @@ path = sys.argv[1]
 try:
     reg = json.load(open(path))
 except Exception as e:
-    sys.stderr.write(f"rack-models.json is corrupt ({e}) — using built-in defaults\n")
+    sys.stderr.write(f"docket-models.json is corrupt ({e}) — using built-in defaults\n")
     sys.exit(0)
 
 ID_RE = re.compile(r'^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$')
@@ -194,7 +194,7 @@ PY
   ) || true
 
   if [[ -s "$errfile" ]]; then
-    echo "⚠  rack-models.json: $(cat "$errfile")" >&2
+    echo "⚠  docket-models.json: $(cat "$errfile")" >&2
     rm -f "$errfile"
     _init_role_models
     return 0
@@ -219,7 +219,7 @@ PY
     if is_role "$a"; then
       ROLE_MODELS["$a"]="$b"
     else
-      echo "⚠  rack-models.json: unknown role '$a' ignored (valid: ${RACK_ROLES[*]})" >&2
+      echo "⚠  docket-models.json: unknown role '$a' ignored (valid: ${DOCKET_ROLES[*]})" >&2
     fi
   done <<< "$overlay"
 }

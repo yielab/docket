@@ -32,12 +32,12 @@ os.replace(tmp, path)
 ' "$1"
 }
 
-# Run "$@" while holding an exclusive lock, so two concurrent rack invocations
+# Run "$@" while holding an exclusive lock, so two concurrent docket invocations
 # can't interleave a read-modify-write and lose an update. Only LEAF writers are
 # wrapped (they never call each other), so the lock never nests/deadlocks.
 # Falls back to running unlocked if flock or the lock file is unavailable.
-with_rack_lock() {
-  local lock="${OPENCLAW_DIR:-$HOME/.openclaw}/.rack.lock"
+with_docket_lock() {
+  local lock="${OPENCLAW_DIR:-$HOME/.openclaw}/.docket.lock"
   if command -v flock >/dev/null 2>&1 && ( : >"$lock" ) 2>/dev/null; then
     ( flock -x -w 10 9 2>/dev/null || true; "$@" ) 9>"$lock"
   else
@@ -45,7 +45,7 @@ with_rack_lock() {
   fi
 }
 
-# Read a field from the project's .rack-meta.json.
+# Read a field from the project's .docket-meta.json.
 # Missing file → default silently (normal). Present-but-unparseable → warn loudly
 # to stderr (corruption shouldn't be silently masked) but still return the default
 # so the command stays alive.
@@ -64,13 +64,13 @@ PY
   ); then
     echo "$out"
   else
-    echo "rack: warning: cannot read ${meta} (corrupt JSON?); using default for '${field}'" >&2
+    echo "docket: warning: cannot read ${meta} (corrupt JSON?); using default for '${field}'" >&2
     echo "$default"
   fi
 }
 
-# Write/update a field in .rack-meta.json (atomic + locked)
-meta_set() { with_rack_lock _meta_set "$@"; }
+# Write/update a field in .docket-meta.json (atomic + locked)
+meta_set() { with_docket_lock _meta_set "$@"; }
 _meta_set() {
   local id="$1" field="$2" value="$3"
   local meta; meta="$(agent_workspace_dir "$id")/$META_FILE"
@@ -106,7 +106,7 @@ get_tg_binding() { get_channel_binding "$1" "telegram"; }
 
 # Append or replace binding in openclaw.json (atomic + locked)
 # upsert_binding <agent_id> <peer_id> [channel=telegram] [peer_kind=group]
-upsert_binding() { with_rack_lock _upsert_binding "$@"; }
+upsert_binding() { with_docket_lock _upsert_binding "$@"; }
 _upsert_binding() {
   local agent_id="$1" peer_id="$2" channel="${3:-telegram}" peer_kind="${4:-group}"
   python3 - "$CONFIG_FILE" "$agent_id" "$peer_id" "$channel" "$peer_kind" <<'PY' | json_atomic_write "$CONFIG_FILE"
@@ -126,7 +126,7 @@ PY
 }
 
 # Remove binding for an agent from openclaw.json (atomic + locked)
-remove_binding() { with_rack_lock _remove_binding "$@"; }
+remove_binding() { with_docket_lock _remove_binding "$@"; }
 _remove_binding() {
   local agent_id="$1"
   python3 - "$CONFIG_FILE" "$agent_id" <<'PY' | json_atomic_write "$CONFIG_FILE"
@@ -141,7 +141,7 @@ PY
 }
 
 # Remove agent from openclaw.json agents.list (atomic + locked)
-remove_agent_config() { with_rack_lock _remove_agent_config "$@"; }
+remove_agent_config() { with_docket_lock _remove_agent_config "$@"; }
 _remove_agent_config() {
   local agent_id="$1"
   python3 - "$CONFIG_FILE" "$agent_id" <<'PY' | json_atomic_write "$CONFIG_FILE"
@@ -184,7 +184,7 @@ PY
   ); then
     echo "$out"
   else
-    echo "rack: warning: cannot read ${CONFIG_FILE} (corrupt JSON?); using default for '${dotpath}'" >&2
+    echo "docket: warning: cannot read ${CONFIG_FILE} (corrupt JSON?); using default for '${dotpath}'" >&2
     echo "$default"
   fi
 }
@@ -193,7 +193,7 @@ PY
 # Creates a rolling .bak before writing; validates JSON after write.
 # Usage: oc_set "agents.defaults.model" '"anthropic/claude-sonnet-4-6"'
 # The value must be valid JSON (strings need outer quotes).
-oc_set() { with_rack_lock _oc_set "$@"; }
+oc_set() { with_docket_lock _oc_set "$@"; }
 _oc_set() {
   local dotpath="$1" json_value="$2"
   python3 - "$CONFIG_FILE" "$dotpath" "$json_value" <<'PY'
@@ -239,7 +239,7 @@ os.replace(tmp, path)
 PY
 }
 
-# Update model in BOTH openclaw.json (agents.list entry) and .rack-meta.json atomically.
+# Update model in BOTH openclaw.json (agents.list entry) and .docket-meta.json atomically.
 # Returns 0 only if both writes succeed.
 # Usage: set_agent_model <id> <model>
 set_agent_model() {
@@ -278,7 +278,7 @@ PY
   local oc_exit=$?
   [[ "$oc_exit" -ne 0 ]] && return 1
 
-  # Update .rack-meta.json
+  # Update .docket-meta.json
   meta_set "$id" "model" "$model"
 }
 

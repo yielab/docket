@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Command: doctor
 
-# Single Python pass: read budgetUsd from each agent's .rack-meta.json and aggregate
+# Single Python pass: read budgetUsd from each agent's .docket-meta.json and aggregate
 # cost+turns from the cost index. Replaces 2N separate (meta_get + _aggregate_cost)
 # spawns in the budget/runaway loops with one process over all agents.
 # Output: COST\t<id>\t<budgetUsd>\t<cost_float>\t<turns_int>
@@ -10,7 +10,7 @@ _doctor_batch_cost() {
 import json, os, sys, glob
 projects_dir, meta_file, openclaw_dir = sys.argv[1], sys.argv[2], sys.argv[3]
 agent_ids = sys.argv[4:]
-use_index = os.environ.get("RACK_NO_COST_INDEX") != "1"
+use_index = os.environ.get("DOCKET_NO_COST_INDEX") != "1"
 
 def parse_file(path):
     t = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "cost": 0.0, "turns": 0}
@@ -293,14 +293,14 @@ cmd_doctor() {
 
   if [[ "$json" -eq 1 ]]; then
     # Machine/monitoring contract: emit the JSON, then exit 0 when healthy and 1
-    # when the report flags issues, so `rack doctor --json` works as a health probe.
+    # when the report flags issues, so `docket doctor --json` works as a health probe.
     local _dj; _dj=$(_doctor_json)
     printf '%s\n' "$_dj"
     printf '%s' "$_dj" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("healthy") else 1)' 2>/dev/null
     return $?
   fi
 
-  header "Rack Doctor — System Health Check"
+  header "Docket Doctor — System Health Check"
   echo ""
   local issues=0
 
@@ -380,7 +380,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
   local ids; ids=$(project_ids)
   if [[ -z "$ids" ]]; then
     echo ""
-    warn "No project agents found — run: rack add"
+    warn "No project agents found — run: docket add"
   else
     echo ""
     echo -e "${BOLD}Project agents:${RESET}"
@@ -399,10 +399,10 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
 
       if [[ "${#proj_issues[@]}" -gt 0 ]]; then
         fail "  $id: ${proj_issues[*]}"
-        echo "    Fix with: rack repair $id"
+        echo "    Fix with: docket repair $id"
         issues=$(( issues + 1 ))
       elif [[ -z "$tg" ]]; then
-        warn "  $id: OK, no Telegram binding  →  rack wire $id"
+        warn "  $id: OK, no Telegram binding  →  docket wire $id"
       else
         success "  $id: OK  →  group $tg"
       fi
@@ -425,7 +425,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
     if [[ "$days_old" -gt 2 ]]; then
       warn "Brave browser: $brave_procs processes (oldest: ${days_old} days old)"
       echo "  ${DIM}Old browser processes can cause disconnections${RESET}"
-      echo "  ${YELLOW}Fix: RACK_EXPERIMENTAL=1 rack browser restart${RESET}"
+      echo "  ${YELLOW}Fix: DOCKET_EXPERIMENTAL=1 docket browser restart${RESET}"
     else
       success "Brave browser: $brave_procs processes running"
     fi
@@ -444,7 +444,7 @@ print('yes' if c.get('channels',{}).get('telegram',{}).get('enabled') else 'no')
       local disconnect_count
       disconnect_count=$(grep -ci "disconnect\|timeout\|connection.*closed" "$LOG_FILE" 2>/dev/null)
       warn "  Found $disconnect_count disconnect/timeout events in log"
-      echo "  ${DIM}If Brave disconnects frequently, run: ${RESET}${YELLOW}RACK_EXPERIMENTAL=1 rack browser restart${RESET}"
+      echo "  ${DIM}If Brave disconnects frequently, run: ${RESET}${YELLOW}DOCKET_EXPERIMENTAL=1 docket browser restart${RESET}"
     fi
 
     if [[ "$DEBUG" == "1" && "$lines" -gt 0 ]]; then
@@ -489,7 +489,7 @@ PYEOF
   else
     fail "  Found invalid model configurations:"
     echo "$invalid_models" | sed 's/^/    /'
-    echo "  ${YELLOW}Fix with: rack doctor --fix${RESET}"
+    echo "  ${YELLOW}Fix with: docket doctor --fix${RESET}"
     issues=$(( issues + 1 ))
   fi
 
@@ -554,7 +554,7 @@ PYEOF
     done <<< "$_drift_results"
 
     if [[ "$drift_found" -gt 0 ]]; then
-      echo "  Fix with: rack doctor --fix"
+      echo "  Fix with: docket doctor --fix"
     fi
   fi
 
@@ -617,14 +617,14 @@ PYEOF
       success "  Backend: keyring (values in OS keyring, not plaintext at rest)"
     else
       warn "  Backend: file — secrets are plaintext at rest in $OPENCLAW_DIR/secrets.json"
-      echo "    ${DIM}For at-rest protection: RACK_SECRETS_BACKEND=keyring (libsecret)${RESET}"
+      echo "    ${DIM}For at-rest protection: DOCKET_SECRETS_BACKEND=keyring (libsecret)${RESET}"
     fi
     local stale_keys=0
     while IFS='|' read -r k_state k_name k_detail; do
       [[ -z "$k_name" ]] && continue
       case "$k_state" in
         STALE)
-          warn "  $k_name: $k_detail — consider: rack keys rotate $k_name"
+          warn "  $k_name: $k_detail — consider: docket keys rotate $k_name"
           stale_keys=$(( stale_keys + 1 ))
           ;;
         UNKNOWN)
@@ -635,7 +635,7 @@ PYEOF
           ;;
       esac
     done <<< "$key_report"
-    [[ "$stale_keys" -gt 0 ]] && echo "  ${DIM}Rotate keys older than ${RACK_KEY_MAX_AGE_DAYS:-90} days${RESET}"
+    [[ "$stale_keys" -gt 0 ]] && echo "  ${DIM}Rotate keys older than ${DOCKET_KEY_MAX_AGE_DAYS:-90} days${RESET}"
   fi
 
   # 13b. Provider key coverage — warn if any agent's model provider has no key stored
@@ -683,7 +683,7 @@ except Exception:
       echo -e "${BOLD}Provider key coverage:${RESET}"
       for _entry in "${missing_key_agents[@]}"; do
         fail "  Missing key: $_entry"
-        echo "    Add with: rack keys add ${_entry##*needs }"
+        echo "    Add with: docket keys add ${_entry##*needs }"
       done
     fi
   }
@@ -717,7 +717,7 @@ except Exception:
     OK)    success "  Exec approvals: $gs_policy ($gs_counts)" ;;
     OPEN)  warn "  Exec approvals: $gs_policy — host exec is ungated ($gs_counts)" ;;
     UNSET) warn "  Exec approvals: not configured — gates inactive"
-           echo "    ${DIM}Enable via rack gates enable (spec: specs/functional/security-gates.spec.md)${RESET}" ;;
+           echo "    ${DIM}Enable via docket gates enable (spec: specs/functional/security-gates.spec.md)${RESET}" ;;
     *)     dim "  Exec approvals: ${gs_policy:-status unavailable}" ;;
   esac
 
@@ -728,17 +728,17 @@ except Exception:
   case "$r_state" in
     on)  success "  Approval routing: on (mode=${r_mode:-?})" ;;
     off) [[ "$gs_state" == "OK" ]] && warn "  Approval routing: off — gated prompts won't reach chat" ;;
-    *)   [[ "$gs_state" == "OK" ]] && dim "  Approval routing: not configured — rack gates enable" ;;
+    *)   [[ "$gs_state" == "OK" ]] && dim "  Approval routing: not configured — docket gates enable" ;;
   esac
 
   # G5 — workspace isolation (Docker sandbox)
   local iso; iso=$(_isolation_status)
   case "$iso" in
     non-main|all) success "  Workspace isolation: $iso (Docker sandbox)" ;;
-    *)            dim "  Workspace isolation: off — rack gates isolate on (needs Docker)" ;;
+    *)            dim "  Workspace isolation: off — docket gates isolate on (needs Docker)" ;;
   esac
 
-  # G1 — daemon security audit summary (config-perms finding excluded; rack owns it).
+  # G1 — daemon security audit summary (config-perms finding excluded; docket owns it).
   if [[ "$audit_available" -eq 1 ]]; then
     local summary_line a_crit a_warn a_info
     summary_line=$(printf '%s\n' "$audit_out" | head -1)
@@ -771,10 +771,10 @@ except Exception:
       [[ -z "$tid" ]] && continue
       local tv; tv=$(meta_get "$tid" "templateVersion" "")
       if [[ -z "$tv" ]]; then
-        warn "  $tid: unstamped (pre-versioning) — rack maintain $tid rebuild"
+        warn "  $tid: unstamped (pre-versioning) — docket maintain $tid rebuild"
         tmpl_drift=$(( tmpl_drift + 1 ))
       elif [[ "$tv" != "${TEMPLATE_VERSION:-1}" ]]; then
-        warn "  $tid: on v$tv, current v${TEMPLATE_VERSION:-1} — rack maintain $tid rebuild"
+        warn "  $tid: on v$tv, current v${TEMPLATE_VERSION:-1} — docket maintain $tid rebuild"
         tmpl_drift=$(( tmpl_drift + 1 ))
       else
         success "  $tid: v$tv (current)"
@@ -785,13 +785,13 @@ except Exception:
   fi
 
   # 15b. Agent metadata backfill — one taxonomy for specialists and project
-  # agents. Specialists predating .rack-meta.json get one created; project
+  # agents. Specialists predating .docket-meta.json get one created; project
   # agents predating kind/modelSource get those inferred. Idempotent.
   echo ""
   echo -e "${BOLD}Agent metadata (taxonomy):${RESET}"
   {
     local backfilled=0 spec
-    for spec in "${RACK_SPECIALISTS[@]}"; do
+    for spec in "${DOCKET_SPECIALISTS[@]}"; do
       local sdir="$OPENCLAW_DIR/workspaces/$spec"
       [[ -d "$sdir" ]] || continue
       [[ -f "$sdir/$META_FILE" ]] && continue
@@ -832,7 +832,7 @@ PY
     [[ "$backfilled" -eq 0 ]] && success "  All agents have kind/role/modelSource metadata"
   }
 
-  # 16. Eval results — tier recommendations from the last RACK_EVAL_LIVE=1 run.
+  # 16. Eval results — tier recommendations from the last DOCKET_EVAL_LIVE=1 run.
   #   Only shown when results exist; purely advisory (no issue count bump).
   local eval_results_dir
   eval_results_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../tests/evals/results" && pwd 2>/dev/null)" || true
@@ -869,23 +869,23 @@ for role, results in sorted(by_role.items()):
     avg_cost = sum(r.get("costUsd",0) for r in passing) / len(passing)
     current_tier = results[-1].get("tier","?")
     if TIER_ORDER.get(min_tier,1) < TIER_ORDER.get(current_tier,1):
-        print(f"  \033[1;33m⚠\033[0m  {role}: passes on a cheaper model class ({min_tier}, avg ${avg_cost:.4f}/run) — rack models set {role} <provider/model>")
+        print(f"  \033[1;33m⚠\033[0m  {role}: passes on a cheaper model class ({min_tier}, avg ${avg_cost:.4f}/run) — docket models set {role} <provider/model>")
     else:
         print(f"  \033[0;32m✓\033[0m  {role}: {min_tier} minimum (avg ${avg_cost:.4f}/run, {len(passing)}/{len(results)} passed)")
 PY
-      dim "  Re-run: RACK_EVAL_LIVE=1 rack eval"
+      dim "  Re-run: DOCKET_EVAL_LIVE=1 docket eval"
     fi
   fi
 
   # Summary
   echo ""
   if [[ "$issues" -eq 0 ]]; then
-    success "All checks passed — rack is healthy."
+    success "All checks passed — docket is healthy."
   else
     echo -e "${RED}${BOLD}${issues} critical issue(s) found.${RESET}"
-    echo "  Project issues:  rack repair [id]"
+    echo "  Project issues:  docket repair [id]"
     echo "  Gateway issues:  openclaw doctor"
-    echo "  Model issues:    rack doctor --fix"
+    echo "  Model issues:    docket doctor --fix"
     exit 1
   fi
 }

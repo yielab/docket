@@ -1,4 +1,4 @@
-# Lobster Workflow: Bug Fix Pipeline (RACK Architecture)
+# Lobster Workflow: Bug Fix Pipeline (DOCKET Architecture)
 #
 # Zero-token plumbing — LLM only for creative work
 # Enforces: Programmer → Reviewer → Tester sequence with approval gates
@@ -9,7 +9,7 @@ description: "Automated bug fix workflow with security gates and validation"
 variables:
   TASK_ID: "{{ env.TASK_ID || 'T' + Date.now() }}"
   PROJECT_ID: "{{ env.PROJECT_ID || 'unknown' }}"
-  BRIEF_DIR: "/tmp/rack-briefs/{{ TASK_ID }}"
+  BRIEF_DIR: "/tmp/docket-briefs/{{ TASK_ID }}"
   WORKSPACE: "$HOME/.openclaw/workspaces/projects/{{ PROJECT_ID }}"
 
 steps:
@@ -302,7 +302,7 @@ steps:
     type: shell
     command: |
       # Keep brief for 24h for debugging
-      echo "{{ TASK_ID }}" > /tmp/rack-completed-tasks.log
+      echo "{{ TASK_ID }}" > /tmp/docket-completed-tasks.log
       echo "Brief will be cleaned up in 24h: {{ BRIEF_DIR }}"
 
 # ─────────────────────────────────────────────────────────────

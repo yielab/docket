@@ -1,6 +1,6 @@
-# Contributing to rack-cli
+# Contributing to docket-cli
 
-Thank you for your interest in contributing to rack-cli! This document provides guidelines and instructions for contributing to this project.
+Thank you for your interest in contributing to docket-cli! This document provides guidelines and instructions for contributing to this project.
 
 ## Code of Conduct
 
@@ -42,8 +42,8 @@ Enhancement suggestions are welcome! Please provide:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR-USERNAME/rack-cli.git
-cd rack-cli
+git clone https://github.com/YOUR-USERNAME/docket-cli.git
+cd docket-cli
 
 # Create a feature branch
 git checkout -b feature/your-feature
@@ -52,7 +52,7 @@ git checkout -b feature/your-feature
 ./tests/run-all-tests.sh
 
 # Run with debug mode for troubleshooting
-DEBUG=1 rack <command>
+DEBUG=1 docket <command>
 ```
 
 ## Code Style Guidelines
@@ -143,4 +143,4 @@ docs: update installation instructions
 
 Feel free to open an issue for questions or discussions about potential contributions.
 
-Thank you for contributing to rack-cli!
+Thank you for contributing to docket-cli!

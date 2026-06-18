@@ -2,7 +2,7 @@
 
 **Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
 
-> **Status / honesty note.** rack's default security model is **instruction- and review-based**, not hard-enforced. Agent constraints live in prompts (SOUL.md), not in a technical sandbox, and the reviewer is a specialist agent, not a blocking gate. **Enforced tool-approval gates, Telegram approval routing, and Docker workspace isolation are available opt-in** via `rack gates enable` / `rack gates isolate on` (or `rack install --gates`) — see [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, opt-in). Without gates enabled, treat the constraints below as strong defaults, not guarantees.
+> **Status / honesty note.** docket's default security model is **instruction- and review-based**, not hard-enforced. Agent constraints live in prompts (SOUL.md), not in a technical sandbox, and the reviewer is a specialist agent, not a blocking gate. **Enforced tool-approval gates, Telegram approval routing, and Docker workspace isolation are available opt-in** via `docket gates enable` / `docket gates isolate on` (or `docket install --gates`) — see [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, opt-in). Without gates enabled, treat the constraints below as strong defaults, not guarantees.
 
 ---
 
@@ -20,7 +20,7 @@
 5. NEVER store secrets
 ```
 
-These are **prompt-level constraints**: agents are instructed to follow them, but they are not technically enforced by default. For hard enforcement, enable the opt-in gates layer with `rack gates enable`.
+These are **prompt-level constraints**: agents are instructed to follow them, but they are not technically enforced by default. For hard enforcement, enable the opt-in gates layer with `docket gates enable`.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -129,7 +129,7 @@ grep -rn "ignore previous\|you are now" ~/Sites/myproject/src/
 ### Agent Tries to Commit
 The agent is instructed never to commit (SOUL.md), and the reviewer plus your git-diff review
 are the backstops. By default this is a convention, not a hard gate — enable enforced gating
-with `rack gates enable` (see the status note above).
+with `docket gates enable` (see the status note above).
 
 ### Hardcoded Secret Found
 ```bash
@@ -148,7 +148,7 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
 3. **Engineer review** (git diff) → Final human check
 
-**Want hard enforcement? Opt in with `rack gates enable` (tool-approval gates) and `rack gates isolate on` (Docker workspace isolation).**
+**Want hard enforcement? Opt in with `docket gates enable` (tool-approval gates) and `docket gates isolate on` (Docker workspace isolation).**
 
 ---
 
@@ -156,7 +156,7 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 ```bash
 # Start work (creates agent if needed)
-rack add
+docket add
 
 # Agent does work automatically
 # (Reviewer checks security automatically)

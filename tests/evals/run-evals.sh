@@ -3,8 +3,8 @@
 #
 # Modes:
 #   ./run-evals.sh                    structural checks only (fast, no LLM calls)
-#   RACK_EVAL_LIVE=1 ./run-evals.sh   + live golden-task checks via openclaw
-#   RACK_EVAL_TIER=economy ./...      override the tier label written to results
+#   DOCKET_EVAL_LIVE=1 ./run-evals.sh   + live golden-task checks via openclaw
+#   DOCKET_EVAL_TIER=economy ./...      override the tier label written to results
 #   ./run-evals.sh --recommend        print tier recommendations from stored results
 #
 # Each eval exits 0 (PASS), 1 (FAIL), or 2 (SKIP).
@@ -28,13 +28,13 @@ if [[ "${1:-}" == "--recommend" ]]; then
 fi
 
 PASS=0; FAIL=0; SKIP=0
-LIVE_MODE="${RACK_EVAL_LIVE:-0}"
+LIVE_MODE="${DOCKET_EVAL_LIVE:-0}"
 
 echo ""
 echo "========================================"
-echo "  rack-cli Eval Harness"
+echo "  docket-cli Eval Harness"
 [[ "$LIVE_MODE" == "1" ]] && echo "  Mode: LIVE (golden-task checks enabled)" \
-                          || echo "  Mode: structural only  (set RACK_EVAL_LIVE=1 for live)"
+                          || echo "  Mode: structural only  (set DOCKET_EVAL_LIVE=1 for live)"
 echo "========================================"
 echo ""
 
@@ -69,7 +69,7 @@ echo ""
 echo "========================================"
 printf "  Pass: %d   Skip: %d   Fail: %d\n" "$PASS" "$SKIP" "$FAIL"
 [[ "$LIVE_MODE" != "1" ]] && \
-  echo -e "  ${DIM}Run with RACK_EVAL_LIVE=1 for live golden-task checks${RESET}"
+  echo -e "  ${DIM}Run with DOCKET_EVAL_LIVE=1 for live golden-task checks${RESET}"
 echo "========================================"
 echo ""
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Command: models — view and change rack's tier→model mapping
+# Command: models — view and change docket's tier→model mapping
 
 # ─── Provider presets ─────────────────────────────────────────────────────────
 # Pinned from verified OpenClaw 2026.2.23 catalog (see MODEL-AGNOSTIC-NOTES.md).
@@ -85,7 +85,7 @@ PY
 }
 
 _write_registry() {
-  # Write overrides to rack-models.json atomically.
+  # Write overrides to docket-models.json atomically.
   # Args: "role.<role>=model", "tier.<tier>=model" (anchor), "default=model",
   # or "reset".
   python3 - "$MODEL_REGISTRY_FILE" "$@" <<'PY'
@@ -138,7 +138,7 @@ _models_list() {
   printf "$fmt" "ROLE" "MODEL" "PRICE" "SOURCE" "WHY"
   printf "$fmt" "----" "-----" "-----" "------" "---"
   local role
-  for role in "${RACK_ROLES[@]}"; do
+  for role in "${DOCKET_ROLES[@]}"; do
     local model="${ROLE_MODELS[$role]:-$DEFAULT_MODEL}"
     local price
     price=$(_models_pricing_label "$model")
@@ -157,9 +157,9 @@ _models_list() {
     printf "  (no user overrides — using built-in defaults)\n"
   fi
   echo ""
-  echo "Change: rack models set <role|default> <provider/model>"
-  echo "Preset: rack models preset [anthropic|openai|google|openrouter-free|openrouter]"
-  echo "Pin one agent instead: rack profile <id> <provider/model>   (back: rack profile <id> default)"
+  echo "Change: docket models set <role|default> <provider/model>"
+  echo "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]"
+  echo "Pin one agent instead: docket profile <id> <provider/model>   (back: docket profile <id> default)"
 }
 
 # ─── Subcommand: set ──────────────────────────────────────────────────────────
@@ -167,8 +167,8 @@ _models_list() {
 _models_set() {
   local key="$1" model="$2"
   [[ -z "$key" || -z "$model" ]] && \
-    error "Usage: rack models set <role|default> <provider/model>
-Roles: ${RACK_ROLES[*]}"
+    error "Usage: docket models set <role|default> <provider/model>
+Roles: ${DOCKET_ROLES[*]}"
 
   local validated
   validated=$(validate_model "$model") || exit 1
@@ -186,24 +186,24 @@ Roles: ${RACK_ROLES[*]}"
     local role
     case "$key" in
       economy)
-        for role in "${RACK_ROLES[@]}"; do
+        for role in "${DOCKET_ROLES[@]}"; do
           [[ "${ROLE_CLASS[$role]}" == "cheap" ]] && { writes+=("role.${role}=${validated}"); touched_roles+=("$role"); }
         done
         ;;
       standard)
-        for role in "${RACK_ROLES[@]}"; do
+        for role in "${DOCKET_ROLES[@]}"; do
           [[ "${ROLE_CLASS[$role]}" == "strong" ]] && { writes+=("role.${role}=${validated}"); touched_roles+=("$role"); }
         done
         ;;
       premium)
-        info "premium is a fallback anchor only — no role uses it by default. Pin an agent instead: rack profile <id> <provider/model>"
+        info "premium is a fallback anchor only — no role uses it by default. Pin an agent instead: docket profile <id> <provider/model>"
         ;;
     esac
     writes+=("tier.${key}=${validated}")
     [[ "${#touched_roles[@]}" -gt 0 ]] && \
       info "Mapped to role(s): ${touched_roles[*]}"
   else
-    error "Unknown key '$key'. Use a role (${RACK_ROLES[*]}) or 'default'."
+    error "Unknown key '$key'. Use a role (${DOCKET_ROLES[*]}) or 'default'."
   fi
 
   _write_registry "${writes[@]}" || error "Failed to write registry."
@@ -245,7 +245,7 @@ _models_preset() {
       printf "  %-18s  %-8s  %-20s  %s\n" "${p}${marker}" "$cost" "$key" "$note"
     done
     echo ""
-    echo "Apply: rack models preset <name>"
+    echo "Apply: docket models preset <name>"
     echo ""
     echo "Free options: openrouter-free (zero per-token cost, free account at openrouter.ai)"
     return
@@ -267,7 +267,7 @@ _models_preset() {
   # Map the preset's cheap/strong classes onto the role policy.
   local -a writes=("tier.economy=${econ}" "tier.standard=${std}" "tier.premium=${prem}" "default=${std}")
   local role cheap_roles="" strong_roles=""
-  for role in "${RACK_ROLES[@]}"; do
+  for role in "${DOCKET_ROLES[@]}"; do
     if [[ "${ROLE_CLASS[$role]}" == "cheap" ]]; then
       writes+=("role.${role}=${econ}"); cheap_roles+="$role "
     else
@@ -317,7 +317,7 @@ PY
     if [[ "$key_present" -eq 0 ]]; then
       echo ""
       warn "API key $key is not stored yet."
-      echo "  Add it: rack keys add $key <your-key>"
+      echo "  Add it: docket keys add $key <your-key>"
       if [[ "$preset" == "openrouter-free" || "$preset" == "openrouter" ]]; then
         echo "  Get one: https://openrouter.ai/keys (free account available)"
       fi
@@ -326,8 +326,8 @@ PY
 
   echo ""
   info "Pinned agents kept their model. Pin or unpin one agent:"
-  echo "  rack profile <id> <provider/model>   # pin"
-  echo "  rack profile <id> default            # follow the role policy again"
+  echo "  docket profile <id> <provider/model>   # pin"
+  echo "  docket profile <id> default            # follow the role policy again"
 }
 
 # ─── Subcommand: reset ────────────────────────────────────────────────────────
@@ -373,10 +373,10 @@ cmd_models() {
     *)
       error "Unknown models subcommand '$sub'.
 Usage:
-  rack models                            # show role→model policy
-  rack models set <role> <model>         # change a role's model (roles: ${RACK_ROLES[*]})
-  rack models preset [name]              # list or apply a provider preset
-  rack models reset                      # restore built-in defaults"
+  docket models                            # show role→model policy
+  docket models set <role> <model>         # change a role's model (roles: ${DOCKET_ROLES[*]})
+  docket models preset [name]              # list or apply a provider preset
+  docket models reset                      # restore built-in defaults"
       ;;
   esac
 }

@@ -1,6 +1,6 @@
-# Rack CLI Specification Documentation
+# Docket CLI Specification Documentation
 
-This directory contains all specifications following the SSD (Spec-driven Development) workflow for the rack-cli project.
+This directory contains all specifications following the SSD (Spec-driven Development) workflow for the docket-cli project.
 
 ## Specification Structure
 

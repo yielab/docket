@@ -34,52 +34,52 @@ cmd_maintain() {
 }
 
 _maintain_help() {
-  header "Rack Maintain — Agent Maintenance"
+  header "Docket Maintain — Agent Maintenance"
   echo ""
   echo "${BOLD}Usage:${RESET}"
-  echo "  rack maintain [agent-id] [mode]"
+  echo "  docket maintain [agent-id] [mode]"
   echo ""
   echo "${BOLD}Modes:${RESET}"
   echo "  ${GREEN}check${RESET}       Health check & auto-fix issues (default)"
   echo "              • Fix permissions (700/600)"
   echo "              • Regenerate missing files"
   echo "              • Sync session keys"
-  echo "              ${DIM}Replaces: rack repair${RESET}"
+  echo "              ${DIM}Replaces: docket repair${RESET}"
   echo ""
   echo "  ${GREEN}clean${RESET}       Clear memory logs only"
   echo "              • Delete memory/*.md files"
   echo "              • Preserve SOUL.md, AGENTS.md, TOOLS.md"
-  echo "              ${DIM}Replaces: rack reset 1${RESET}"
+  echo "              ${DIM}Replaces: docket reset 1${RESET}"
   echo ""
   echo "  ${GREEN}reset${RESET}       Clear memory + heartbeat"
   echo "              • Delete memory logs"
   echo "              • Clear MEMORY.md"
   echo "              • Clear HEARTBEAT.md"
-  echo "              ${DIM}Replaces: rack reset 2${RESET}"
+  echo "              ${DIM}Replaces: docket reset 2${RESET}"
   echo ""
   echo "  ${GREEN}rebuild${RESET}     Deep rebuild from metadata"
   echo "              • Regenerate SOUL.md, AGENTS.md, TOOLS.md"
   echo "              • Clear all memory"
   echo "              • Fix all issues"
-  echo "              ${DIM}Replaces: rack reset 3${RESET}"
+  echo "              ${DIM}Replaces: docket reset 3${RESET}"
   echo ""
   echo "  ${GREEN}sessions${RESET}    Clean large/old sessions"
   echo "              • Archive sessions >5MB or >30 days"
   echo "              • Free up disk space"
-  echo "              ${DIM}Replaces: rack cleanup safe${RESET}"
+  echo "              ${DIM}Replaces: docket cleanup safe${RESET}"
   echo ""
   echo "${BOLD}Examples:${RESET}"
-  echo "  rack maintain myproject              # Health check (default)"
-  echo "  rack maintain myproject clean        # Clear memory logs"
-  echo "  rack maintain myproject sessions     # Clean old sessions"
-  echo "  rack maintain                        # Interactive picker"
+  echo "  docket maintain myproject              # Health check (default)"
+  echo "  docket maintain myproject clean        # Clear memory logs"
+  echo "  docket maintain myproject sessions     # Clean old sessions"
+  echo "  docket maintain                        # Interactive picker"
   echo ""
   echo "${BOLD}Migration from old commands:${RESET}"
-  echo "  ${DIM}rack repair → rack maintain check${RESET}"
-  echo "  ${DIM}rack reset 1 → rack maintain clean${RESET}"
-  echo "  ${DIM}rack reset 2 → rack maintain reset${RESET}"
-  echo "  ${DIM}rack reset 3 → rack maintain rebuild${RESET}"
-  echo "  ${DIM}rack cleanup safe → rack maintain sessions${RESET}"
+  echo "  ${DIM}docket repair → docket maintain check${RESET}"
+  echo "  ${DIM}docket reset 1 → docket maintain clean${RESET}"
+  echo "  ${DIM}docket reset 2 → docket maintain reset${RESET}"
+  echo "  ${DIM}docket reset 3 → docket maintain rebuild${RESET}"
+  echo "  ${DIM}docket cleanup safe → docket maintain sessions${RESET}"
 }
 
 _maintain_check() {
@@ -108,7 +108,7 @@ _maintain_check() {
 
   # Check file permissions
   local bad_perms=0
-  for file in "$workspace"/{SOUL.md,AGENTS.md,TOOLS.md,HEARTBEAT.md,.rack-meta.json}; do
+  for file in "$workspace"/{SOUL.md,AGENTS.md,TOOLS.md,HEARTBEAT.md,.docket-meta.json}; do
     if [[ -f "$file" ]]; then
       local perms; perms=$(stat -c%a "$file" 2>/dev/null || stat -f%Lp "$file" 2>/dev/null)
       if [[ "$perms" != "600" ]]; then
@@ -136,7 +136,7 @@ _maintain_check() {
   [[ ! -f "$workspace/AGENTS.md" ]] && missing_files+=("AGENTS.md")
   [[ ! -f "$workspace/TOOLS.md" ]] && missing_files+=("TOOLS.md")
   [[ ! -f "$workspace/HEARTBEAT.md" ]] && missing_files+=("HEARTBEAT.md")
-  [[ ! -f "$workspace/.rack-meta.json" ]] && missing_files+=(".rack-meta.json")
+  [[ ! -f "$workspace/.docket-meta.json" ]] && missing_files+=(".docket-meta.json")
 
   if [[ ${#missing_files[@]} -gt 0 ]]; then
     warn "  Missing files: ${missing_files[*]}"
@@ -217,13 +217,13 @@ _maintain_check() {
       warn "Some issues require manual attention"
       echo ""
       echo "${BOLD}Next steps:${RESET}"
-      echo "  • Run ${GREEN}rack maintain $id rebuild${RESET} for full rebuild"
-      echo "  • Check logs: ${GREEN}rack logs $id${RESET}"
+      echo "  • Run ${GREEN}docket maintain $id rebuild${RESET} for full rebuild"
+      echo "  • Check logs: ${GREEN}docket logs $id${RESET}"
     fi
   fi
 
   echo ""
-  dim "Tip: Run 'rack maintain $id sessions' to clean old session data"
+  dim "Tip: Run 'docket maintain $id sessions' to clean old session data"
 }
 
 _maintain_clean() {
@@ -282,7 +282,7 @@ _maintain_reset() {
   echo "  • SOUL.md (identity)"
   echo "  • AGENTS.md (delegation rules)"
   echo "  • TOOLS.md (commands)"
-  echo "  • .rack-meta.json (metadata)"
+  echo "  • .docket-meta.json (metadata)"
   echo ""
 
   read -rp "Continue? [y/N]: " confirm
@@ -341,7 +341,7 @@ _maintain_rebuild() {
   echo "  • All memory logs"
   echo ""
   echo "Source of truth:"
-  echo "  • .rack-meta.json (preserved)"
+  echo "  • .docket-meta.json (preserved)"
   echo "  • openclaw.json (preserved)"
   echo ""
 

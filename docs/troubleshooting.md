@@ -14,7 +14,7 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 
 **How to diagnose:**
 ```bash
-rack doctor
+docket doctor
 # Look for "Model Configuration" section
 ```
 
@@ -23,8 +23,8 @@ rack doctor
 # Check for invalid models
 grep -i "haiku-3-5\|haiku-3\|sonnet-3-5" ~/.openclaw/openclaw.json
 
-# Auto-fix with rack
-rack doctor --fix
+# Auto-fix with docket
+docket doctor --fix
 
 # Manual fix
 python3 << 'EOF'
@@ -47,20 +47,20 @@ systemctl --user restart openclaw-gateway
 **Valid model names (Anthropic defaults):**
 - `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge, task)
 - `anthropic/claude-sonnet-4-6` (strong class — programmer, security, repo)
-- `anthropic/claude-opus-4-6` (pin-only via `rack profile <id> <model>`)
+- `anthropic/claude-opus-4-6` (pin-only via `docket profile <id> <model>`)
 
-Check the live mapping anytime with `rack models`.
+Check the live mapping anytime with `docket models`.
 
 #### 2. **Missing Telegram Bindings**
 **How to diagnose:**
 ```bash
-rack list
+docket list
 # Check if agent shows "● telegram" with group ID
 ```
 
 **How to fix:**
 ```bash
-rack wire <agent-id>
+docket wire <agent-id>
 ```
 
 #### 3. **Group Not in Allowlist**
@@ -80,7 +80,7 @@ EOF
 
 **How to fix:**
 ```bash
-rack wire <agent-id>
+docket wire <agent-id>
 # This automatically adds group to allowlist
 ```
 
@@ -108,18 +108,18 @@ OpenClaw keeps full conversation history in context. With 258+ turns, cached con
 #### 1. **Reset Agent Sessions**
 ```bash
 # Level 1: Clear memory logs only
-rack maintain <agent-id> clean
+docket maintain <agent-id> clean
 
 # Level 2: Clear memory + HEARTBEAT.md
-rack maintain <agent-id> reset
+docket maintain <agent-id> reset
 
 # Level 3: Deep reset - regenerate all from metadata
-rack maintain <agent-id> rebuild
+docket maintain <agent-id> rebuild
 ```
 
 #### 2. **Enable Smart Routing** (Auto model selection)
 ```bash
-rack smart enable <agent-id>
+docket smart enable <agent-id>
 ```
 
 This adds automatic model selection to SOUL.md:
@@ -129,8 +129,8 @@ This adds automatic model selection to SOUL.md:
 
 #### 3. **Monitor Costs**
 ```bash
-rack cost <agent-id>
-rack cost  # All agents
+docket cost <agent-id>
+docket cost  # All agents
 ```
 
 #### 4. **Context Management** (Manual)
@@ -160,13 +160,13 @@ Auto-Compression:
 ### Model Fallback Not Working
 **Issue:** OpenClaw v2026.2.23 doesn't support custom fallback config
 
-**Workaround:** Use rack's model validation:
+**Workaround:** Use docket's model validation:
 ```bash
 # Validate all models
-rack doctor
+docket doctor
 
 # Auto-fix invalid models
-rack doctor --fix
+docket doctor --fix
 ```
 
 ## Gateway Crashes
@@ -185,7 +185,7 @@ systemctl --user restart openclaw-gateway
 ### Permission Denied Errors
 **Fix:**
 ```bash
-rack maintain <agent-id> check
+docket maintain <agent-id> check
 ```
 
 This fixes:
@@ -218,8 +218,8 @@ tail -100 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | grep telegram
 systemctl --user restart openclaw-gateway
 
 # Re-wire agent
-rack unwire <agent-id>
-rack wire <agent-id>
+docket unwire <agent-id>
+docket wire <agent-id>
 ```
 
 ## Session/Scope Issues
@@ -232,33 +232,33 @@ rack wire <agent-id>
 **Fix:**
 ```bash
 # Check current scope
-rack scope <agent-id> show
+docket scope <agent-id> show
 
 # Set unique project scope
-rack scope <agent-id> set my-project-name
+docket scope <agent-id> set my-project-name
 
 # Or reset to default
-rack scope <agent-id> reset
+docket scope <agent-id> reset
 ```
 
 ## Getting Help
 
 1. **Run diagnostics:**
    ```bash
-   rack doctor
+   docket doctor
    openclaw doctor
    ```
 
 2. **Check logs:**
    ```bash
-   rack logs <agent-id>
+   docket logs <agent-id>
    journalctl --user -u openclaw-gateway --since "1 hour ago"
    ```
 
 3. **Verify configuration:**
    ```bash
-   rack info <agent-id>
-   rack list
+   docket info <agent-id>
+   docket list
    ```
 
 4. **Test agent:**
@@ -270,6 +270,6 @@ rack scope <agent-id> reset
 5. **Emergency reset:**
    ```bash
    # If all else fails
-   rack maintain <agent-id> rebuild
+   docket maintain <agent-id> rebuild
    systemctl --user restart openclaw-gateway
    ```

@@ -12,7 +12,7 @@ cmd_install() {
     esac
   done
 
-  header "Rack Installation — OpenClaw Setup"
+  header "Docket Installation — OpenClaw Setup"
   echo ""
 
   # Detect existing setup
@@ -31,7 +31,7 @@ cmd_install() {
 
     # Check for missing specialist agents
     local missing_specialists=()
-    for spec in "${RACK_SPECIALISTS[@]}"; do
+    for spec in "${DOCKET_SPECIALISTS[@]}"; do
       if ! agent_registered "$spec"; then
         missing_specialists+=("$spec")
       fi
@@ -50,7 +50,7 @@ cmd_install() {
       echo "  • Agents: $(python3 -c "import json; c=json.load(open('$CONFIG_FILE')); print(len(c.get('agents', {}).get('list', [])))" 2>/dev/null || echo "unknown")"
       echo ""
       read -rp "Reconfigure anyway? [y/N]: " CONFIRM
-      [[ "${CONFIRM,,}" != "y" ]] && { info "Nothing to do. Run 'rack doctor' to verify health."; exit 0; }
+      [[ "${CONFIRM,,}" != "y" ]] && { info "Nothing to do. Run 'docket doctor' to verify health."; exit 0; }
     else
       warn "Updates needed:"
       for update in "${needs_update[@]}"; do
@@ -169,12 +169,12 @@ PY
   echo ""
 
   # Step 5: Install specialist agents (if not present).
-  # Models come from the role→model policy (rack models), so a provider preset
+  # Models come from the role→model policy (docket models), so a provider preset
   # switched before install provisions specialists on that provider.
   header "Step 5: Setting up specialist agents"
 
   local spec
-  for spec in "${RACK_SPECIALISTS[@]}"; do
+  for spec in "${DOCKET_SPECIALISTS[@]}"; do
     local spec_model; spec_model=$(resolve_role_model "$spec")
 
     if agent_registered "$spec"; then
@@ -190,7 +190,7 @@ PY
     fi
 
     # Specialists are first-class citizens of the meta system: stamp (or
-    # backfill) .rack-meta.json so list/profile/doctor manage them like any
+    # backfill) .docket-meta.json so list/profile/doctor manage them like any
     # other agent.
     if [[ -d "$OPENCLAW_DIR/workspaces/$spec" && ! -f "$OPENCLAW_DIR/workspaces/$spec/$META_FILE" ]]; then
       meta_set "$spec" "kind"        "specialist"
@@ -219,7 +219,7 @@ PY
   else
     success "Config and secrets permissions already owner-only (600)"
   fi
-  echo "  ${DIM}Verify posture anytime with: rack doctor  (Security gates section)${RESET}"
+  echo "  ${DIM}Verify posture anytime with: docket doctor  (Security gates section)${RESET}"
 
   # Opt-in exec-approval enforcement (G3).
   if [[ "$want_gates" -eq 1 ]]; then
@@ -234,12 +234,12 @@ PY
       local _g_tg; _g_tg=$(apply_approval_routing 2>/dev/null) \
         && success "Approval routing on (mode=session); ${_g_tg:-0} Telegram-bound agent(s)"
       warn "Fail-closed: non-allowlisted commands are denied without an approver."
-      echo "  Tune: ${GREEN}openclaw approvals allowlist add <glob>${RESET}  ·  Disable: ${GREEN}rack gates disable${RESET}"
+      echo "  Tune: ${GREEN}openclaw approvals allowlist add <glob>${RESET}  ·  Disable: ${GREEN}docket gates disable${RESET}"
     else
-      warn "Could not apply exec-approval gates (see 'rack gates enable')"
+      warn "Could not apply exec-approval gates (see 'docket gates enable')"
     fi
   else
-    echo "  ${DIM}Exec-approval enforcement is opt-in: 'rack gates enable' (or install --gates).${RESET}"
+    echo "  ${DIM}Exec-approval enforcement is opt-in: 'docket gates enable' (or install --gates).${RESET}"
     echo "  ${DIM}Spec: specs/functional/security-gates.spec.md.${RESET}"
   fi
 
@@ -278,15 +278,15 @@ PY
   echo -e "${BOLD}Next Steps:${RESET}"
   echo ""
   echo "  1. Add your first project agent:"
-  echo "     ${GREEN}rack add${RESET}"
+  echo "     ${GREEN}docket add${RESET}"
   echo ""
   echo "  2. Configure Telegram (optional but recommended):"
   echo "     - Create groups for each agent (manager, programmer, etc.)"
   echo "     - Add your bot to each group"
-  echo "     - Wire agents: ${GREEN}rack wire <agent-id>${RESET}"
+  echo "     - Wire agents: ${GREEN}docket wire <agent-id>${RESET}"
   echo ""
   echo "  3. Check system health:"
-  echo "     ${GREEN}rack doctor${RESET}"
+  echo "     ${GREEN}docket doctor${RESET}"
   echo ""
   echo -e "${BOLD}Specialist Agents (auto-created):${RESET}"
   echo "  • manager    - Orchestrates and delegates tasks"
@@ -303,8 +303,8 @@ PY
   echo ""
   echo -e "${BOLD}Cost Management:${RESET}"
   echo "  Default model: $DEFAULT_MODEL"
-  echo "  View usage: ${GREEN}rack cost${RESET}"
-  echo "  Role→model policy: ${GREEN}rack models${RESET}   Pin one agent: ${GREEN}rack profile <id> <provider/model>${RESET}"
+  echo "  View usage: ${GREEN}docket cost${RESET}"
+  echo "  Role→model policy: ${GREEN}docket models${RESET}   Pin one agent: ${GREEN}docket profile <id> <provider/model>${RESET}"
   echo ""
 }
 
