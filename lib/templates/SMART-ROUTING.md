@@ -87,7 +87,7 @@ If task is simpler than expected:
 ## Smart Context Management
 
 ### Problem
-OpenClaw caches entire conversation → 258 turns = 21M tokens = $6.35
+OpenClaw caches entire conversation → 258 turns = 21M tokens read and re-read
 
 ### Solution: Rolling Window + Smart Compression
 

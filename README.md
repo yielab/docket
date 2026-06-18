@@ -1,14 +1,15 @@
-# docket-cli — the cost-aware ops layer for OpenClaw agent fleets
+# docket-cli — provision & isolate OpenClaw agent fleets across projects
 
 [![CI](https://github.com/yielab/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/yielab/docket/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Shell: Bash 4+](https://img.shields.io/badge/shell-bash%204%2B-green.svg)](https://www.gnu.org/software/bash/)
 [![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
 
-> Stop your [OpenClaw](https://openclaw.dev) agents from burning budget and leaking context
-> across projects. **docket** is a single Bash CLI that adds per-agent budget caps, hard project
-> isolation, and drift detection on top of OpenClaw — the ops layer for people running more
-> than one agent.
+> Spin up the agents you need for every project — each one properly isolated — in one command.
+> **docket** is a single Bash CLI that provisions per-project [OpenClaw](https://openclaw.dev)
+> agents with hard context isolation, keeps them healthy with drift detection, and adds budget
+> guardrails so a runaway agent can't quietly bankrupt you. The ops layer for people running
+> more than one agent.
 
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
@@ -16,22 +17,28 @@
   <img src="docs/assets/hero.gif" alt="docket in action: create an agent with a budget cap, list the fleet, check cost, run a health check" width="760">
 </p>
 
-<p align="center"><em>The whole loop in one terminal: <strong>create → cap → watch → keep healthy.</strong></em></p>
+<p align="center"><em>The whole loop in one terminal: <strong>provision → isolate → keep healthy → keep in budget.</strong></em></p>
 
 ## Why
 
-Running one OpenClaw agent is easy. Running a fleet surfaces three problems OpenClaw doesn't
-solve for you:
+Running one OpenClaw agent is easy. Running a fleet across several projects surfaces three
+problems OpenClaw doesn't solve for you:
 
-- **Runaway API cost.** Autonomous agents loop, retry, and call expensive models without
-  asking. docket gives every agent a per-agent USD budget cap that auto-pauses on breach, a
-  role→cheapest-adequate-model policy, and spike detection in `docket cost`.
+- **Per-project provisioning is manual and repetitive.** Each project needs its own agent with
+  the right workspace, stack detection, memory, and scope. docket bootstraps a properly
+  configured project agent in one command (`docket add`, or `docket add --from agents.yaml` for
+  a declarative, version-controlled fleet) plus a shared specialist team via `docket install`.
 - **Context leak across projects.** One agent's memory bleeding into another's is the
   "noisy neighbor" problem. docket assigns each agent a session key (`agent:<id>:<project>`)
-  so memory and context stay isolated.
+  so memory and context stay hard-isolated per project.
 - **Config drift.** OpenClaw updates and autonomy regressions silently change behavior.
-  `docket doctor` and `docket maintain check` detect drift, budget overruns, runaway loops, and
-  stale sessions; `docket add --from agents.yaml` keeps the fleet declarative and reproducible.
+  `docket doctor` and `docket maintain check` detect drift, runaway loops, and stale sessions.
+
+And one guardrail so autonomy doesn't get expensive: every agent can carry a per-agent USD
+**budget cap** that auto-pauses it on breach, computed from the daemon's actual recorded spend.
+A role→cheapest-adequate-model policy and `docket cost` reporting round it out. (Dollar figures
+are read from real session usage; comparative *estimates* depend on a pricing table — see
+[cost reporting caveats](#cost-reporting-and-its-limits).)
 
 ## Install
 
@@ -60,14 +67,15 @@ docket install
 ## 60-second tour
 
 ```bash
-docket add myproject ~/code/myproject   # create an isolated project agent
-docket profile myproject --budget 5     # cap it at $5; it auto-pauses on breach
-docket list                             # see every agent at a glance
-docket cost myproject                   # token usage + dollar cost, with spike detection
-docket doctor                           # fleet health: drift, budget, runaway, gates
+docket add myproject ~/code/myproject   # provision an isolated project agent (stack auto-detected)
+docket list                             # see every agent and its scope at a glance
+docket info myproject                   # workspace, codebase, session key, model
+docket doctor                           # fleet health: drift, runaway, stale sessions
+docket profile myproject --budget 5     # optional guardrail: cap spend; auto-pauses on breach
+docket cost myproject                   # token usage + recorded dollar spend
 ```
 
-That's the loop docket is built around: **create → cap → watch → keep healthy.**
+That's the loop docket is built around: **provision → isolate → keep healthy → keep in budget.**
 
 ## See it in action
 
@@ -75,20 +83,11 @@ That's the loop docket is built around: **create → cap → watch → keep heal
 <tr>
 <td width="50%">
 
-**`docket cost` — spend, budget caps & runaway detection**
+**`docket info <id>` — per-agent detail & isolation**
 
-<img src="docs/assets/cost.png" alt="docket cost: per-agent token usage, dollar cost, budget caps, and a runaway-session warning" width="100%">
-
-</td>
-<td width="50%">
-
-**`docket models` — role→cheapest-adequate-model policy**
-
-<img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
+<img src="docs/assets/info.png" alt="docket info: type, workspace, codebase, model, budget cap, session key, and workspace files" width="100%">
 
 </td>
-</tr>
-<tr>
 <td width="50%">
 
 **`docket maintain <id> check` — health check & auto-fix**
@@ -96,11 +95,20 @@ That's the loop docket is built around: **create → cap → watch → keep heal
 <img src="docs/assets/maintain.png" alt="docket maintain check: permissions, workspace files, session-key sync, and memory all healthy" width="100%">
 
 </td>
+</tr>
+<tr>
 <td width="50%">
 
-**`docket info <id>` — per-agent detail**
+**`docket models` — role→cheapest-adequate-model policy**
 
-<img src="docs/assets/info.png" alt="docket info: type, workspace, codebase, model, budget cap, session key, and workspace files" width="100%">
+<img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
+
+</td>
+<td width="50%">
+
+**`docket cost` — recorded spend, budget caps & runaway detection**
+
+<img src="docs/assets/cost.png" alt="docket cost: per-agent token usage, dollar cost, budget caps, and a runaway-session warning" width="100%">
 
 </td>
 </tr>
@@ -116,15 +124,35 @@ OpenClaw already spawns and coordinates agents (`agents.md`, `@mention` delegati
 | Need | OpenClaw native | docket adds |
 |------|-----------------|-----------|
 | Spawn / coordinate agents | ✅ `agents.md`, `@mention` | (uses it) |
-| Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
-| Cost reporting + spike detection | — | ✅ `docket cost [--history]` |
+| One-command per-project agent provisioning | — | ✅ `docket add` (stack auto-detect) |
 | Project isolation (no context leak) | partial | ✅ session keys |
 | Declarative fleet from version-controlled YAML | — | ✅ `docket add --from` |
 | Drift / health / runaway detection | — | ✅ `docket doctor` |
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
+| Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
+| Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
 
 If a row isn't genuinely true for your setup, treat it as aspirational — honesty is the point
 of this table.
+
+## Cost reporting and its limits
+
+docket's cost numbers come in two flavors, and they are not equally reliable:
+
+- **Recorded spend (trustworthy).** The dollar figures in `docket cost` and the per-agent budget
+  cap come straight from OpenClaw's own session usage logs — the daemon records what each call
+  actually cost. This does **not** depend on any pricing table docket maintains, so the budget
+  auto-pause fires on real money.
+- **Comparative estimates (best-effort).** "What this would cost on a cheaper model" and the
+  role→model price labels are computed from a **hardcoded pricing table** (`lib/core/config.sh`,
+  currently ~13 models across Anthropic/OpenAI/Google, snapshotted from a known OpenClaw catalog).
+  Model prices change and new models appear, so treat these as estimates, not quotes. Models not
+  in the table show `n/a` for the estimate (their *recorded* spend is still tracked). `docket cost`
+  and `docket models` print the snapshot date so you can judge staleness. You can override or
+  extend prices in `~/.openclaw/docket-models.json` (`pricing` key).
+
+In short: trust the recorded-spend and budget-cap numbers; treat model-to-model savings
+comparisons as directional.
 
 ## Project Status
 

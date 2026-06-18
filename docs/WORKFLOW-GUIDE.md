@@ -277,7 +277,7 @@ Project Agent writes to memory/2026-03-06.md:
 **Commit:** abc123f
 **Team:** programmer, reviewer, tester
 **Time:** 12 minutes (brief → deployed)
-**Cost:** ~8K tokens ($0.024)
+**Cost:** ~8K tokens
 ```
 
 ---
@@ -418,7 +418,7 @@ Manager → Engineer:
 4. Commit both projects
 
 **Total Time:** 2h 3min
-**Total Cost:** ~180K tokens ($0.54)
+**Total Cost:** ~180K tokens
 ```
 
 ---
@@ -722,7 +722,12 @@ Reason: Mobile team requested it
 
 ---
 
-## Cost & Token Management
+## Token Management
+
+These are **token** estimates — the thing docket's compression and routing actually control.
+For dollars, read your **recorded** spend with `docket cost`; it depends on your models and
+current pricing, so we don't project it here. See
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ### Per-Task Estimates
 
@@ -733,7 +738,7 @@ Programmer: 2K tokens (cheap model - implement)
 Reviewer: 1K tokens (quick check)
 Tester: 1K tokens (cheap model - validate)
 ---
-Total: ~6K tokens = $0.005 (half a cent!)
+Total: ~6K tokens
 Time: 2 minutes
 ```
 
@@ -744,7 +749,7 @@ Programmer: 20K tokens (strong model - complex logic)
 Reviewer: 5K tokens (strong model - thorough)
 Tester: 3K tokens (cheap model - tests)
 ---
-Total: ~33K tokens = varies by provider
+Total: ~33K tokens
 Time: 10 minutes
 ```
 
@@ -755,34 +760,25 @@ Programmer: 50K tokens (strong model - multi-file)
 Reviewer: 10K tokens (strong model - security critical)
 Tester: 5K tokens (extensive tests)
 ---
-Total: ~75K tokens = $0.23 (twenty-three cents)
+Total: ~75K tokens
 Time: 20 minutes
 ```
 
-### Monthly Budget Estimate
+### Monthly Token Estimate
 
 **Typical project (active development):**
 ```
-Simple tasks: 30/month × $0.005 = $0.15
-Medium tasks: 15/month × $0.10 = $1.50
-Complex tasks: 5/month × $0.23 = $1.15
-Queries/status: 50/month × $0.006 = $0.30
+Simple tasks:   30/month × 6K   = 180K tokens
+Medium tasks:   15/month × 33K  = 495K tokens
+Complex tasks:   5/month × 75K  = 375K tokens
+Queries/status: 50/month × 6K   = 300K tokens
 ---
-Total per project: ~$3.10/month
+Total per project: ~1.35M tokens/month
 ```
 
-**For 3 projects:**
-```
-3 × $3.10 = $9.30/month
-Manager overhead: +$2/month
----
-Total: ~$11.30/month
-```
-
-**Compare to manual:**
-- 1 engineer hour = $50-150 (freelance rate)
-- Docket saves ~10-20 hours/month = $500-3000/month
-- **ROI: 44x - 265x**
+For three projects, budget roughly ~4M tokens/month plus manager overhead. To turn that into a
+dollar figure for your setup, set a cap with `docket profile <id> --budget <usd>` and watch
+actual spend with `docket cost`.
 
 ---
 
@@ -886,7 +882,7 @@ Engineer → Manager → Project Agents → Specialists → Done → Engineer Re
 - ✅ 6-20x faster responses (SNAPSHOT.md, compression)
 - ✅ Autonomous execution (minimal engineer intervention)
 - ✅ Security-first (mandatory 6-point checklist)
-- ✅ Cost-effective ($3-11/month for active development)
+- ✅ Token-efficient (compression + cheap-model routing; cap spend with `--budget`)
 
 ---
 

@@ -71,7 +71,7 @@ Programmer: [Reads 100K tokens AGAIN + 20K brief]
 Reviewer: [Reads 100K tokens AGAIN + code]
           [Approves]
           ↓
-TOTAL: ~320K tokens = $X (strong model class)
+TOTAL: ~320K tokens (strong model class)
 TIME: ~4 minutes
 ```
 
@@ -97,9 +97,9 @@ Tester: [Reads reproduction steps — 500 tokens]
         [Validates behavior]
         [PASS]
         ↓
-TOTAL: ~6.5K tokens = $X (cheap/strong model mix)
+TOTAL: ~6.5K tokens (cheap/strong model mix)
 TIME: ~2 minutes
-SAVINGS: 98% cost, 50% time
+SAVINGS: ~98% fewer tokens, ~50% time
 ```
 
 ---
@@ -273,51 +273,56 @@ Fix bug: Login crashes when token is null
 
 ---
 
-## Cost Savings Examples
+## Token Savings Examples
+
+> The reduction here is in **tokens**, which is what context compression actually controls and
+> what you can measure directly. We don't quote dollar savings — your real spend depends on your
+> models and current pricing; read it with `docket cost`. See
+> [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ### Example 1: Status Query
 **Before:**
 ```
 Engineer: "What's the status?"
-Manager reads 100K tokens → $0.30
+Manager reads 100K tokens
 Time: 60s
 ```
 
 **After:**
 ```
 Engineer: "What's the status?"
-Manager reads SNAPSHOT.md (2K tokens) → $0.006
+Manager reads SNAPSHOT.md (2K tokens)
 Time: 3s
 ```
-**Savings: 98% cost, 20x faster**
+**~98% fewer tokens, ~20x faster** (100K → 2K tokens)
 
 ### Example 2: Simple CSS Change
 **Before:**
 ```
-Full history read + implementation = 200K tokens → $0.60
+Full history read + implementation = 200K tokens
 Time: 3 minutes
 ```
 
 **After:**
 ```
-Brief (500) + file (1K) + implement (500) = 2K tokens → fraction of a cent (cheap model class)
+Brief (500) + file (1K) + implement (500) = 2K tokens (cheap model class)
 Time: 30 seconds
 ```
-**Savings: 99.7% cost, 6x faster**
+**~99% fewer tokens, ~6x faster** (200K → 2K tokens)
 
 ### Example 3: Bug Fix Pipeline
 **Before:**
 ```
-Investigation + fix + review + test = 1M tokens → $3.00
+Investigation + fix + review + test = 1M tokens
 Time: 10 minutes
 ```
 
 **After:**
 ```
-Compressed pipeline = 210K tokens → $0.63
+Compressed pipeline = 210K tokens
 Time: 8 minutes
 ```
-**Savings: 79% cost, 20% faster**
+**~79% fewer tokens, ~20% faster** (1M → 210K tokens)
 
 ---
 
@@ -414,7 +419,7 @@ systemctl --user restart openclaw-gateway.service
 ## Next Steps
 
 1. **Test with real project:** Send a bug report to Manager
-2. **Monitor token usage:** Check if costs reduced by 50-90%
+2. **Monitor token usage:** Check whether token usage dropped (50-90% in our examples)
 3. **Create snapshots:** Run `docket memory snapshot` for all projects
 4. **Index memory:** Run `docket memory index` for fast search
 5. **Read full docs:** See [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
@@ -439,8 +444,8 @@ systemctl --user restart openclaw-gateway.service
 
 **🎉 You're now running DOCKET-optimized agents!**
 
-Expect:
-- 50-90% reduction in token costs
+Typical results in our examples (workload-dependent):
+- 50-90% reduction in token usage
 - 6-20x faster response times
 - Better security (mandatory checklists)
 - More reliable validation (objective behavior tests)
