@@ -433,7 +433,7 @@ systemctl --user restart openclaw-gateway.service
 
 **Questions?** Check the docs or run `docket help`
 
-**Issues?** File at https://github.com/your-repo/docket-cli/issues (adjust URL)
+**Issues?** File at https://github.com/yielab/docket/issues (adjust URL)
 
 ---
 

@@ -5,10 +5,10 @@
 #   ./install.sh [--prefix /usr/local]
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/santiagoyie/docket-cli/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/yielab/docket/main/install.sh | bash
 #
 # Homebrew (macOS/Linux):
-#   brew tap santiagoyie/docket-cli https://github.com/santiagoyie/docket-cli
+#   brew tap yielab/docket-cli https://github.com/yielab/docket
 #   brew install docket-cli
 
 set -euo pipefail
@@ -35,7 +35,7 @@ if [[ ! -f "${SCRIPT_DIR}/bin/docket" ]]; then
   command -v curl >/dev/null 2>&1 || { echo "Error: curl is required for remote install."; exit 1; }
   tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
   echo "Downloading docket-cli..."
-  curl -fsSL "https://github.com/santiagoyie/docket-cli/archive/refs/heads/main.tar.gz" \
+  curl -fsSL "https://github.com/yielab/docket/archive/refs/heads/main.tar.gz" \
     | tar -xz -C "$tmpdir" --strip-components=1
   SCRIPT_DIR="$tmpdir"
 fi

@@ -1,7 +1,7 @@
 class DocketCli < Formula
   desc "CLI for managing OpenClaw autonomous agent deployments"
-  homepage "https://github.com/santiagoyie/docket-cli"
-  url "https://github.com/santiagoyie/docket-cli/archive/refs/tags/v#{version}.tar.gz"
+  homepage "https://github.com/yielab/docket"
+  url "https://github.com/yielab/docket/archive/refs/tags/v#{version}.tar.gz"
   # sha256 is updated automatically by the release workflow (scripts/update-homebrew-sha.sh)
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
@@ -24,7 +24,7 @@ class DocketCli < Formula
     <<~EOS
       docket requires the OpenClaw daemon and openclaw CLI to be installed separately.
       See the quick-start guide for setup instructions:
-        https://github.com/santiagoyie/docket-cli/blob/main/docs/QUICK-START-DOCKET.md
+        https://github.com/yielab/docket/blob/main/docs/QUICK-START-DOCKET.md
 
       OpenClaw uses the system Python (python3) for JSON operations. If your system
       Python is < 3.8 you may need to set PYTHON3 to the Homebrew python path:
