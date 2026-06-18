@@ -347,52 +347,47 @@ _show_agent_cost() {
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Cache read:"  "$c_cr"
   printf "  ${BOLD}%-16s${RESET} %'d tokens\n" "Cache write:" "$c_cw"
   echo ""
-  # Cost display — honest about missing pricing data
-  local pricing_known=1
-  [[ -z "${MODEL_PRICING[$model]:-}" ]] && pricing_known=0
-  if [[ "$pricing_known" -eq 1 ]]; then
-    printf "  ${BOLD}%-16s${RESET} ${GREEN}\$%.4f${RESET}\n" "Total cost:" "$c_cost"
+  # Recorded spend comes from the daemon's session logs (usage.cost.total) and does
+  # NOT depend on docket's pricing table — so it is shown whenever the daemon logged
+  # a cost, regardless of whether the model appears in MODEL_PRICING.
+  local has_recorded=0
+  python3 -c "import sys; sys.exit(0 if float('$c_cost') > 0 else 1)" 2>/dev/null && has_recorded=1
+  if [[ "$has_recorded" -eq 1 ]]; then
+    printf "  ${BOLD}%-16s${RESET} ${GREEN}\$%.4f${RESET} ${DIM}(recorded)${RESET}\n" "Total cost:" "$c_cost"
   else
-    printf "  ${BOLD}%-16s${RESET} ${DIM}n/a (no pricing data for %s)${RESET}\n" "Total cost:" "$model"
+    printf "  ${BOLD}%-16s${RESET} ${DIM}none recorded by the daemon for these sessions${RESET}\n" "Total cost:"
   fi
 
-  # Budget status — only when cost is trackable
+  # Budget status — enforced on recorded spend, so it works regardless of the table
   if [[ -n "$budget" && "$budget" != "0" ]]; then
-    if [[ "$pricing_known" -eq 1 ]]; then
-      local pct
-      pct=$(python3 -c "print(int(float('$c_cost') / float('$budget') * 100))" 2>/dev/null || echo "0")
-      local color="$GREEN"
-      [[ "$pct" -ge 80 ]]  && color="$YELLOW"
-      [[ "$pct" -ge 100 ]] && color="$RED"
-      printf "  ${BOLD}%-16s${RESET} ${color}%s%%${RESET} of \$%.2f cap\n" "Budget:" "$pct" "$budget"
-    else
-      printf "  ${BOLD}%-16s${RESET} ${YELLOW}cannot enforce — no pricing data${RESET}\n" "Budget:"
-    fi
+    local pct
+    pct=$(python3 -c "print(int(float('$c_cost') / float('$budget') * 100))" 2>/dev/null || echo "0")
+    local color="$GREEN"
+    [[ "$pct" -ge 80 ]]  && color="$YELLOW"
+    [[ "$pct" -ge 100 ]] && color="$RED"
+    printf "  ${BOLD}%-16s${RESET} ${color}%s%%${RESET} of \$%.2f cap\n" "Budget:" "$pct" "$budget"
   fi
 
-  # Runaway detection
+  # Runaway detection — turn count and recorded cost; both independent of the table
   if [[ "$c_turns" -gt "${RUNAWAY_TURNS_THRESHOLD:-200}" ]]; then
     echo ""
     warn "  High turn count: $c_turns turns (threshold: ${RUNAWAY_TURNS_THRESHOLD:-200})"
   fi
-  if [[ "$pricing_known" -eq 1 ]]; then
-    if python3 -c "import sys; sys.exit(0 if float('$c_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" 2>/dev/null; then
-      echo ""
-      warn "  High cost session: \$$c_cost exceeds \$${RUNAWAY_COST_THRESHOLD:-20} threshold"
-    fi
+  if python3 -c "import sys; sys.exit(0 if float('$c_cost') >= ${RUNAWAY_COST_THRESHOLD:-20} else 1)" 2>/dev/null; then
+    echo ""
+    warn "  High cost session: \$$c_cost exceeds \$${RUNAWAY_COST_THRESHOLD:-20} threshold"
   fi
 
-  # Savings estimate vs the cheapest anchor — only when both models are priced
+  # NOTE: docket deliberately does NOT print a projected dollar-savings figure for
+  # switching models. That number can only come from the hand-maintained pricing
+  # table (no live feed, no test backing), so it would be an unsupported claim.
+  # If the agent runs a non-default model, surface that as a fact and let the role
+  # policy / `docket models` speak to model choice.
   local eco_model="${MODEL_PROFILES[economy]}"
   if [[ "$model" != "$eco_model" ]]; then
-    local eco_cost
-    eco_cost=$(_estimate_cost "$c_in" "$c_out" "$c_cr" "$c_cw" "$eco_model")
-    if [[ "$eco_cost" != "n/a" && "$pricing_known" -eq 1 ]]; then
-      local savings
-      savings=$(python3 -c "s=$c_cost - $eco_cost; print(f'{s:.4f}') if s > 0 else print('0.0000')")
-      echo ""
-      dim "  On the cheapest model ($eco_model): \$$eco_cost — saves \$$savings"
-    fi
+    echo ""
+    dim "  Running a non-default model. Role policy uses the cheapest adequate model"
+    dim "  per role — see: docket models. Track actual spend above, not projections."
   fi
 }
 

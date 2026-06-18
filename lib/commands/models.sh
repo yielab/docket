@@ -156,6 +156,7 @@ _models_list() {
   else
     printf "  (no user overrides — using built-in defaults)\n"
   fi
+  dim "  PRICE column is an estimate from a snapshot (as of ${MODEL_PRICING_AS_OF:-unknown}); override in $(basename "$MODEL_REGISTRY_FILE")"
   echo ""
   echo "Change: docket models set <role|default> <provider/model>"
   echo "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]"
