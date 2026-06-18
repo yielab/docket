@@ -31,6 +31,10 @@ logs/
 test-*-agent/
 .test-*/
 
+# Smoke-test harness: holds the real-name anonymization map + captures of the
+# live fleet. Published demo assets live in docs/assets/ (curated/anonymized).
+smoke-test/
+
 # OpenClaw runtime files (don't commit user configs)
 ~/.openclaw/
 openclaw.json.backup
