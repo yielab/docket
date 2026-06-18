@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Command: cost
 
-# Machine-readable per-agent cost (rack cost --json), backed by the incremental
+# Machine-readable per-agent cost (docket cost --json), backed by the incremental
 # cost index. Emits {agents:[{id,model,input,output,costUsd,turns,budgetUsd}],totalUsd}.
 _cost_json() {
   local ids; ids=$(project_ids)
@@ -43,7 +43,7 @@ print(json.dumps({"agents": agents, "totalUsd": round(total, 6)}, indent=2))
 '
 }
 
-# Daily cost/turn/token history for one agent or all (rack cost --history [id]).
+# Daily cost/turn/token history for one agent or all (docket cost --history [id]).
 # --days N limits to the last N days; --json emits {scope,history:[...]}.
 # Human view flags any day whose cost exceeds 2x its trailing 3-day average.
 _cost_history_view() {
@@ -63,12 +63,12 @@ _cost_history_view() {
 
   [[ "$json" -ne 1 ]] && header "Cost history — ${id:-all agents}" && echo ""
 
-  RACK_HIST_DAYS="$days" RACK_HIST_JSON="$json" RACK_HIST_LABEL="${id:-all agents}" \
+  DOCKET_HIST_DAYS="$days" DOCKET_HIST_JSON="$json" DOCKET_HIST_LABEL="${id:-all agents}" \
     python3 - "$tmp" <<'PY'
 import json, os, sys
-days = int(os.environ.get("RACK_HIST_DAYS", "0") or 0)
-as_json = os.environ.get("RACK_HIST_JSON") == "1"
-label = os.environ.get("RACK_HIST_LABEL", "all agents")
+days = int(os.environ.get("DOCKET_HIST_DAYS", "0") or 0)
+as_json = os.environ.get("DOCKET_HIST_JSON") == "1"
+label = os.environ.get("DOCKET_HIST_LABEL", "all agents")
 
 agg = {}
 for line in open(sys.argv[1]):
@@ -204,7 +204,7 @@ cmd_cost() {
 
     echo ""
     dim "  Costs from session data in ~/.openclaw/agents/*/sessions/*.jsonl"
-    dim "  Pricing per configured tier — see: rack models"
+    dim "  Pricing per configured tier — see: docket models"
   fi
   echo ""
 }

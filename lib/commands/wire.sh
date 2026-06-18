@@ -81,7 +81,7 @@ cmd_wire() {
       echo "  ${CYAN}1.${RESET} Create a Telegram group"
       echo "  ${CYAN}2.${RESET} Add your OpenClaw bot to the group"
       echo "  ${CYAN}3.${RESET} Send a message in the group"
-      echo "  ${CYAN}4.${RESET} Wait a few seconds, then run: ${GREEN}rack wire $id${RESET}"
+      echo "  ${CYAN}4.${RESET} Wait a few seconds, then run: ${GREEN}docket wire $id${RESET}"
       echo ""
       warn "Aborted - no groups available."
       exit 0
@@ -106,8 +106,8 @@ cmd_wire() {
       done
       echo ""
       echo "You can:"
-      echo "  ${CYAN}•${RESET} Create a new Telegram group, add bot, send message, then run: ${GREEN}rack wire $id${RESET}"
-      echo "  ${CYAN}•${RESET} Unbind an existing group: ${GREEN}rack unwire <agent-id>${RESET}"
+      echo "  ${CYAN}•${RESET} Create a new Telegram group, add bot, send message, then run: ${GREEN}docket wire $id${RESET}"
+      echo "  ${CYAN}•${RESET} Unbind an existing group: ${GREEN}docket unwire <agent-id>${RESET}"
       echo "  ${CYAN}•${RESET} Override an existing binding (select number above)"
       echo ""
 

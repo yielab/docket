@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Shared helpers for rack-cli eval scripts.
+# Shared helpers for docket-cli eval scripts.
 #
 # Sourced by every *.eval.sh. Provides:
 #   eval_skip_unless_workspace <path>   exit 2 if workspace missing
-#   eval_skip_unless_live               exit 2 unless RACK_EVAL_LIVE=1
+#   eval_skip_unless_live               exit 2 unless DOCKET_EVAL_LIVE=1
 #   eval_skip_unless_command <cmd>      exit 2 if binary not in PATH
 #   eval_run_task <agent_id> <prompt>   run openclaw agent --local --json;
 #                                       sets EVAL_RESPONSE / EVAL_META globals
@@ -26,7 +26,7 @@ eval_skip_unless_workspace() {
 }
 
 eval_skip_unless_live() {
-  if [[ "${RACK_EVAL_LIVE:-0}" != "1" ]]; then
+  if [[ "${DOCKET_EVAL_LIVE:-0}" != "1" ]]; then
     exit 2
   fi
 }
@@ -48,7 +48,7 @@ eval_skip_unless_command() {
 eval_run_task() {
   local agent_id="$1"
   local prompt="$2"
-  local timeout="${RACK_EVAL_TIMEOUT:-60}"
+  local timeout="${DOCKET_EVAL_TIMEOUT:-60}"
 
   eval_skip_unless_command openclaw
 
@@ -164,7 +164,7 @@ for role, results in sorted(by_role.items()):
     avg_cost = total_cost / len(passing) if passing else 0
     current_tier = results[-1].get("tier", "?")
     if TIER_ORDER.get(min_tier, 1) < TIER_ORDER.get(current_tier, 1):
-        print(f"  {role}: passes on a cheaper model class ({min_tier}, avg ${avg_cost:.4f}/run) — rack models set {role} <provider/model>")
+        print(f"  {role}: passes on a cheaper model class ({min_tier}, avg ${avg_cost:.4f}/run) — docket models set {role} <provider/model>")
     else:
         print(f"  {role}: {min_tier} is the minimum passing model class (avg ${avg_cost:.4f}/run)")
 PY

@@ -336,7 +336,7 @@ cat > "$_P03_CFG" <<'JSON'
 }
 JSON
 
-cat > "$_P03_META_DIR/testagent/.rack-meta.json" <<'JSON'
+cat > "$_P03_META_DIR/testagent/.docket-meta.json" <<'JSON'
 {"name": "Test Agent", "model": "anthropic/claude-sonnet-4-6"}
 JSON
 
@@ -379,10 +379,10 @@ print(a.get('model',''))
 ")
 _meta_model=$(python3 -c "
 import json
-print(json.load(open('$_P03_META_DIR/testagent/.rack-meta.json')).get('model',''))
+print(json.load(open('$_P03_META_DIR/testagent/.docket-meta.json')).get('model',''))
 ")
 assert_equals "anthropic/claude-haiku-4-5" "$_oc_model"    "set_agent_model updates openclaw.json"
-assert_equals "anthropic/claude-haiku-4-5" "$_meta_model"  "set_agent_model updates .rack-meta.json"
+assert_equals "anthropic/claude-haiku-4-5" "$_meta_model"  "set_agent_model updates .docket-meta.json"
 
 # Restore
 CONFIG_FILE="$_REAL_CONFIG2"
@@ -393,43 +393,43 @@ echo ""
 # ── P0-4: mark_gateway_dirty / restart_gateway_if_dirty ───────────────────────
 echo "Testing mark_gateway_dirty / restart_gateway_if_dirty (P0-4)..."
 source "$LIB_DIR/helpers/service.sh"
-export RACK_NO_RESTART=1
+export DOCKET_NO_RESTART=1
 
 # Not dirty — no output
-RACK_GATEWAY_DIRTY=0
+DOCKET_GATEWAY_DIRTY=0
 _out=$(restart_gateway_if_dirty 2>&1)
 assert_equals "" "$_out" "restart_gateway_if_dirty is a no-op when not dirty"
 
 # mark_gateway_dirty sets the flag in the current shell
-RACK_GATEWAY_DIRTY=0
+DOCKET_GATEWAY_DIRTY=0
 mark_gateway_dirty
-assert_equals "1" "$RACK_GATEWAY_DIRTY" "mark_gateway_dirty sets flag to 1"
+assert_equals "1" "$DOCKET_GATEWAY_DIRTY" "mark_gateway_dirty sets flag to 1"
 
 # restart_gateway_if_dirty triggers when dirty (test output, then clear flag directly)
-RACK_GATEWAY_DIRTY=1
+DOCKET_GATEWAY_DIRTY=1
 _out=$(restart_gateway_if_dirty 2>&1)
 assert_contains "$_out" "dry-run" "restart_gateway_if_dirty triggers when dirty"
 
 # After a direct (non-subshell) call, flag is cleared in parent
-RACK_GATEWAY_DIRTY=1
+DOCKET_GATEWAY_DIRTY=1
 restart_gateway_if_dirty >/dev/null 2>&1
-assert_equals "0" "$RACK_GATEWAY_DIRTY" "restart_gateway_if_dirty clears dirty flag after firing"
+assert_equals "0" "$DOCKET_GATEWAY_DIRTY" "restart_gateway_if_dirty clears dirty flag after firing"
 
 # Two mark_dirty calls still produce only one restart
-RACK_GATEWAY_DIRTY=0
+DOCKET_GATEWAY_DIRTY=0
 mark_gateway_dirty
 mark_gateway_dirty
 _restart_count=$(restart_gateway_if_dirty 2>&1 | grep -c "dry-run" || true)
 assert_equals "1" "$_restart_count" "multiple mark_dirty calls produce exactly one restart"
 
-unset RACK_NO_RESTART
+unset DOCKET_NO_RESTART
 echo ""
 
 # ── P1-1: Per-agent budget field ───────────────────────────────────────────────
 echo "Testing per-agent budget field (P1-1)..."
 _P11_DIR=$(mktemp -d)
 mkdir -p "$_P11_DIR/testagent"
-cat > "$_P11_DIR/testagent/.rack-meta.json" <<'JSON'
+cat > "$_P11_DIR/testagent/.docket-meta.json" <<'JSON'
 {"name": "Test Agent", "model": "anthropic/claude-sonnet-4-6"}
 JSON
 
@@ -646,8 +646,8 @@ OPENCLAW_DIR="$_PH7_DIR"
 mkdir -p "$_PH7_DIR/workspaces/manager"
 cp "$_PH7_TL" "$_PH7_DIR/workspaces/manager/TASK_LIST.json"
 
-# Override rack_audit to be a no-op
-rack_audit() { :; }
+# Override docket_audit to be a no-op
+docket_audit() { :; }
 
 # Seed two tasks directly
 python3 - "$_PH7_DIR/workspaces/manager/TASK_LIST.json" <<'PY'
@@ -726,7 +726,7 @@ _ph7_pri_rc=0
 ( cmd_team delegate --priority INVALID "test" ) >/dev/null 2>&1 || _ph7_pri_rc=$?
 assert_equals "1"             "$_ph7_pri_rc"             "PH7-1: invalid priority rejected at delegate"
 
-unset -f rack_audit
+unset -f docket_audit
 OPENCLAW_DIR="$_PH7_REAL_OPENCLAW"
 rm -rf "$_PH7_DIR"
 echo ""
@@ -775,14 +775,14 @@ echo "── P5-2: Snapshot command ──"
 # command works without a real ~/.openclaw (e.g. in CI). Paths are env-overridable.
 _P52_HOME=$(mktemp -d)
 mkdir -p "$_P52_HOME/workspaces/projects/testagent"
-cat > "$_P52_HOME/workspaces/projects/testagent/.rack-meta.json" <<'JSON'
+cat > "$_P52_HOME/workspaces/projects/testagent/.docket-meta.json" <<'JSON'
 {"name":"Test Agent","type":"repo","model":"anthropic/claude-sonnet-4-6"}
 JSON
 cat > "$_P52_HOME/openclaw.json" <<'JSON'
 {"agents":{"list":[{"id":"testagent"}]},"bindings":[],"channels":{}}
 JSON
 
-_p52_out=$(OPENCLAW_DIR="$_P52_HOME" CONFIG_FILE="$_P52_HOME/openclaw.json" PROJECTS_DIR="$_P52_HOME/workspaces/projects" ./bin/rack snapshot 2>/dev/null)
+_p52_out=$(OPENCLAW_DIR="$_P52_HOME" CONFIG_FILE="$_P52_HOME/openclaw.json" PROJECTS_DIR="$_P52_HOME/workspaces/projects" ./bin/docket snapshot 2>/dev/null)
 _p52_valid=$(echo "$_p52_out" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok')" 2>/dev/null || echo "fail")
 assert_equals "ok" "$_p52_valid" "snapshot: output is valid JSON"
 
@@ -808,7 +808,7 @@ echo '{}' > "$_P53_SECRETS"
 _P53_MARKER=$(mktemp -u)
 _P53_PAYLOAD="'''; import os; os.system('touch $_P53_MARKER'); x='''"
 
-RACK_KEY_VALUE="$_P53_PAYLOAD" _keys_store "$_P53_SECRETS" "ANTHROPIC_API_KEY" >/dev/null 2>&1
+DOCKET_KEY_VALUE="$_P53_PAYLOAD" _keys_store "$_P53_SECRETS" "ANTHROPIC_API_KEY" >/dev/null 2>&1
 
 # The injected command must NOT have run
 [[ ! -e "$_P53_MARKER" ]] && _p53_safe="safe" || _p53_safe="EXECUTED"
@@ -836,10 +836,10 @@ source "$LIB_DIR/helpers/secrets.sh"
 _P54_HOME=$(mktemp -d)
 mkdir -p "$_P54_HOME/workspaces/projects/anth-agent"
 mkdir -p "$_P54_HOME/workspaces/projects/oai-agent"
-cat > "$_P54_HOME/workspaces/projects/anth-agent/.rack-meta.json" <<'JSON'
+cat > "$_P54_HOME/workspaces/projects/anth-agent/.docket-meta.json" <<'JSON'
 {"name":"Anthropic Agent","type":"repo","model":"anthropic/claude-sonnet-4-6"}
 JSON
-cat > "$_P54_HOME/workspaces/projects/oai-agent/.rack-meta.json" <<'JSON'
+cat > "$_P54_HOME/workspaces/projects/oai-agent/.docket-meta.json" <<'JSON'
 {"name":"OpenAI Agent","type":"repo","model":"openai/gpt-4o"}
 JSON
 
@@ -1084,38 +1084,38 @@ echo "── P5-10: Secret backend ──"
 source "$LIB_DIR/helpers/secrets.sh"
 
 # Dispatch: defaults to file; selects keyring only when secret-tool is present.
-_p510_def=$(RACK_SECRETS_BACKEND="" secrets_backend)
+_p510_def=$(DOCKET_SECRETS_BACKEND="" secrets_backend)
 assert_equals "file" "$_p510_def" "backend: defaults to file"
 
 # File backend round-trip (hermetic OPENCLAW_DIR).
 _P510_HOME=$(mktemp -d)
-RACK_KEY_VALUE="sk-file-xyz" OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_put "ANTHROPIC_API_KEY"
-_p510_get=$(OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_get "ANTHROPIC_API_KEY")
+DOCKET_KEY_VALUE="sk-file-xyz" OPENCLAW_DIR="$_P510_HOME" DOCKET_SECRETS_BACKEND=file secret_put "ANTHROPIC_API_KEY"
+_p510_get=$(OPENCLAW_DIR="$_P510_HOME" DOCKET_SECRETS_BACKEND=file secret_get "ANTHROPIC_API_KEY")
 assert_equals "sk-file-xyz" "$_p510_get" "backend(file): put/get round-trip"
 _p510_names=$(OPENCLAW_DIR="$_P510_HOME" secret_names)
 assert_equals "ANTHROPIC_API_KEY" "$_p510_names" "backend(file): names lists the key"
-OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_has "ANTHROPIC_API_KEY" && _p510_h="yes" || _p510_h="no"
+OPENCLAW_DIR="$_P510_HOME" DOCKET_SECRETS_BACKEND=file secret_has "ANTHROPIC_API_KEY" && _p510_h="yes" || _p510_h="no"
 assert_equals "yes" "$_p510_h" "backend(file): secret_has true for stored key"
 _p510_perm=$(stat -c '%a' "$_P510_HOME/secrets.json" 2>/dev/null || stat -f '%Lp' "$_P510_HOME/secrets.json")
 assert_equals "600" "$_p510_perm" "backend(file): secrets.json is 0600"
-OPENCLAW_DIR="$_P510_HOME" RACK_SECRETS_BACKEND=file secret_del "ANTHROPIC_API_KEY"
+OPENCLAW_DIR="$_P510_HOME" DOCKET_SECRETS_BACKEND=file secret_del "ANTHROPIC_API_KEY"
 OPENCLAW_DIR="$_P510_HOME" secret_has "ANTHROPIC_API_KEY" && _p510_d="present" || _p510_d="gone"
 assert_equals "gone" "$_p510_d" "backend(file): secret_del removes the key"
 rm -rf "$_P510_HOME"
 
 # Keyring backend round-trip — only when a live keyring is reachable. Uses an
 # isolated service name so the real keyring isn't polluted; cleaned up after.
-_P510_SVC="rack-cli-test-$$"
+_P510_SVC="docket-cli-test-$$"
 if command -v secret-tool >/dev/null 2>&1 \
    && secret-tool store --label=probe service "$_P510_SVC" key PROBE <<<"x" >/dev/null 2>&1; then
   secret-tool clear service "$_P510_SVC" key PROBE >/dev/null 2>&1
   _P510_KHOME=$(mktemp -d)
-  _benv=(OPENCLAW_DIR="$_P510_KHOME" RACK_SECRETS_BACKEND=keyring RACK_KEYRING_SERVICE="$_P510_SVC")
+  _benv=(OPENCLAW_DIR="$_P510_KHOME" DOCKET_SECRETS_BACKEND=keyring DOCKET_KEYRING_SERVICE="$_P510_SVC")
 
-  _p510_kb=$(env "${_benv[@]}" RACK_SECRETS_BACKEND=keyring bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secrets_backend')
+  _p510_kb=$(env "${_benv[@]}" DOCKET_SECRETS_BACKEND=keyring bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secrets_backend')
   assert_equals "keyring" "$_p510_kb" "backend(keyring): selected when secret-tool live"
 
-  env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; RACK_KEY_VALUE="sk-kr-secret" secret_put OPENAI_API_KEY'
+  env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; DOCKET_KEY_VALUE="sk-kr-secret" secret_put OPENAI_API_KEY'
   # Value must be retrievable from the keyring...
   _p510_kget=$(env "${_benv[@]}" bash -c 'source '"$LIB_DIR"'/helpers/output.sh; source '"$LIB_DIR"'/helpers/secrets.sh; source '"$LIB_DIR"'/commands/keys.sh; secret_get OPENAI_API_KEY')
   assert_equals "sk-kr-secret" "$_p510_kget" "backend(keyring): put/get via OS keyring"
@@ -1157,19 +1157,19 @@ assert_equals "refused" "$_p61_rc" "atomic: invalid JSON is refused (non-zero ex
 _p61_intact=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['b'])" "$_p61_f")
 assert_equals "2" "$_p61_intact" "atomic: original file intact after refused write"
 
-# with_rack_lock runs the command and propagates its exit code.
-OPENCLAW_DIR="$_P61" with_rack_lock true && _p61_lk="ok" || _p61_lk="fail"
+# with_docket_lock runs the command and propagates its exit code.
+OPENCLAW_DIR="$_P61" with_docket_lock true && _p61_lk="ok" || _p61_lk="fail"
 assert_equals "ok" "$_p61_lk" "lock: runs command (exit 0)"
-OPENCLAW_DIR="$_P61" with_rack_lock false && _p61_lf="ok" || _p61_lf="nonzero"
+OPENCLAW_DIR="$_P61" with_docket_lock false && _p61_lf="ok" || _p61_lf="nonzero"
 assert_equals "nonzero" "$_p61_lf" "lock: propagates non-zero exit"
 
 # Loud-on-corruption read: a corrupt meta file warns to stderr but returns default.
 mkdir -p "$_P61/proj/bad"
-echo 'NOT JSON' > "$_P61/proj/bad/.rack-meta.json"
-_p61_warn=$(PROJECTS_DIR="$_P61/proj" META_FILE=".rack-meta.json" meta_get "bad" "model" "fallback" 2>&1 >/dev/null)
+echo 'NOT JSON' > "$_P61/proj/bad/.docket-meta.json"
+_p61_warn=$(PROJECTS_DIR="$_P61/proj" META_FILE=".docket-meta.json" meta_get "bad" "model" "fallback" 2>&1 >/dev/null)
 echo "$_p61_warn" | grep -qiE "cannot read|corrupt|warning" && _p61_w="warned" || _p61_w="silent"
 assert_equals "warned" "$_p61_w" "read: corrupt state file warns loudly"
-_p61_val=$(PROJECTS_DIR="$_P61/proj" META_FILE=".rack-meta.json" meta_get "bad" "model" "fallback" 2>/dev/null)
+_p61_val=$(PROJECTS_DIR="$_P61/proj" META_FILE=".docket-meta.json" meta_get "bad" "model" "fallback" 2>/dev/null)
 assert_equals "fallback" "$_p61_val" "read: corrupt file still returns default"
 
 rm -rf "$_P61"
@@ -1180,10 +1180,10 @@ echo "── P6-2: Versioning ──"
 
 _p62_ver=$(cat "$LIB_DIR/../VERSION" 2>/dev/null)
 assert_not_empty "$_p62_ver" "version: VERSION file present and non-empty"
-_p62_out=$(./bin/rack --version 2>/dev/null)
-assert_equals "rack $_p62_ver" "$_p62_out" "version: 'rack --version' matches VERSION file"
-_p62_v2=$(./bin/rack -V 2>/dev/null)
-assert_equals "rack $_p62_ver" "$_p62_v2" "version: '-V' alias matches"
+_p62_out=$(./bin/docket --version 2>/dev/null)
+assert_equals "docket $_p62_ver" "$_p62_out" "version: 'docket --version' matches VERSION file"
+_p62_v2=$(./bin/docket -V 2>/dev/null)
+assert_equals "docket $_p62_ver" "$_p62_v2" "version: '-V' alias matches"
 # CHANGELOG documents the current version.
 grep -q "\[$_p62_ver\]" "$LIB_DIR/../CHANGELOG.md" && _p62_cl="yes" || _p62_cl="no"
 assert_equals "yes" "$_p62_cl" "version: CHANGELOG has an entry for $_p62_ver"
@@ -1197,12 +1197,12 @@ source "$LIB_DIR/helpers/service.sh"
 source "$LIB_DIR/helpers/utils.sh"
 
 # service_manager honours the override; hints/ctl follow it.
-assert_equals "launchd" "$(RACK_SERVICE_MANAGER=launchd service_manager)" "service: manager override respected"
+assert_equals "launchd" "$(DOCKET_SERVICE_MANAGER=launchd service_manager)" "service: manager override respected"
 assert_equals "systemctl --user restart openclaw-gateway.service" \
-  "$(RACK_SERVICE_MANAGER=systemd service_hint restart)" "service: systemd hint"
-RACK_SERVICE_MANAGER=none service_hint restart | grep -q "openclaw gateway restart" && _p71_h2="ok" || _p71_h2="no"
+  "$(DOCKET_SERVICE_MANAGER=systemd service_hint restart)" "service: systemd hint"
+DOCKET_SERVICE_MANAGER=none service_hint restart | grep -q "openclaw gateway restart" && _p71_h2="ok" || _p71_h2="no"
 assert_equals "ok" "$_p71_h2" "service: non-systemd hint avoids systemctl"
-RACK_SERVICE_MANAGER=none service_ctl is-active 2>/dev/null && _p71_ia="active" || _p71_ia="inactive"
+DOCKET_SERVICE_MANAGER=none service_ctl is-active 2>/dev/null && _p71_ia="active" || _p71_ia="inactive"
 assert_equals "inactive" "$_p71_ia" "service: is-active false off systemd"
 
 # newest_file: most recent match by mtime (portable, replaces find -printf).
@@ -1252,9 +1252,9 @@ assert_equals "600" "$_p81_perm" "audit: log file is 0600"
 
 rm -f "$_P81/audit.log"
 # shellcheck disable=SC2218
-RACK_NO_AUDIT=1 OPENCLAW_DIR="$_P81" audit_log "keys.add" "X"
+DOCKET_NO_AUDIT=1 OPENCLAW_DIR="$_P81" audit_log "keys.add" "X"
 [[ -f "$_P81/audit.log" ]] && _p81_off="wrote" || _p81_off="skipped"
-assert_equals "skipped" "$_p81_off" "audit: RACK_NO_AUDIT=1 disables logging"
+assert_equals "skipped" "$_p81_off" "audit: DOCKET_NO_AUDIT=1 disables logging"
 
 rm -rf "$_P81"
 echo ""
@@ -1266,7 +1266,7 @@ source "$LIB_DIR/commands/list.sh"
 
 _P82=$(mktemp -d)
 mkdir -p "$_P82/projects/alpha"
-cat > "$_P82/projects/alpha/.rack-meta.json" <<'JSON'
+cat > "$_P82/projects/alpha/.docket-meta.json" <<'JSON'
 {"name":"Alpha","type":"repo","model":"anthropic/claude-sonnet-4-6","stack":"Go"}
 JSON
 cat > "$_P82/openclaw.json" <<'JSON'
@@ -1274,7 +1274,7 @@ cat > "$_P82/openclaw.json" <<'JSON'
 JSON
 
 _p82_json=$(PROJECTS_DIR="$_P82/projects" CONFIG_FILE="$_P82/openclaw.json" \
-  DEFAULT_MODEL="anthropic/claude-sonnet-4-6" META_FILE=".rack-meta.json" _list_json)
+  DEFAULT_MODEL="anthropic/claude-sonnet-4-6" META_FILE=".docket-meta.json" _list_json)
 echo "$_p82_json" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p82_v="ok" || _p82_v="fail"
 assert_equals "ok" "$_p82_v" "list --json: valid JSON"
 assert_equals "alpha" "$(echo "$_p82_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['agents'][0]['id'])")" "list --json: agent id present"
@@ -1324,10 +1324,10 @@ source "$LIB_DIR/commands/cost.sh"
 
 _P92=$(mktemp -d)
 mkdir -p "$_P92/projects/a1" "$_P92/agents/a1/sessions"
-echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6","budgetUsd":"5"}' > "$_P92/projects/a1/.rack-meta.json"
+echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6","budgetUsd":"5"}' > "$_P92/projects/a1/.docket-meta.json"
 printf '%s\n' '{"message":{"usage":{"input":1000,"output":500,"cost":{"total":0.25}}}}' > "$_P92/agents/a1/sessions/s.jsonl"
 
-_p92=$(OPENCLAW_DIR="$_P92" PROJECTS_DIR="$_P92/projects" META_FILE=".rack-meta.json" \
+_p92=$(OPENCLAW_DIR="$_P92" PROJECTS_DIR="$_P92/projects" META_FILE=".docket-meta.json" \
   DEFAULT_MODEL="anthropic/claude-sonnet-4-6" _cost_json)
 echo "$_p92" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p92_v="ok" || _p92_v="fail"
 assert_equals "ok" "$_p92_v" "cost --json: valid JSON"
@@ -1345,21 +1345,21 @@ source "$LIB_DIR/commands/serve.sh"
 
 _P101=$(mktemp -d)
 mkdir -p "$_P101/projects/a1" "$_P101/agents/a1/sessions" "$_P101/out"
-echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6"}' > "$_P101/projects/a1/.rack-meta.json"
+echo '{"name":"A1","model":"anthropic/claude-sonnet-4-6"}' > "$_P101/projects/a1/.docket-meta.json"
 printf '%s\n' '{"message":{"usage":{"input":1000,"output":500,"cost":{"total":0.5}}}}' > "$_P101/agents/a1/sessions/s.jsonl"
 
-_serve_env=(OPENCLAW_DIR="$_P101" PROJECTS_DIR="$_P101/projects" META_FILE=".rack-meta.json"
-            DEFAULT_MODEL="anthropic/claude-sonnet-4-6" RACK_SERVICE_MANAGER=none CONFIG_FILE="$_P101/openclaw.json")
+_serve_env=(OPENCLAW_DIR="$_P101" PROJECTS_DIR="$_P101/projects" META_FILE=".docket-meta.json"
+            DEFAULT_MODEL="anthropic/claude-sonnet-4-6" DOCKET_SERVICE_MANAGER=none CONFIG_FILE="$_P101/openclaw.json")
 echo '{"agents":{"list":[]},"bindings":[],"channels":{}}' > "$_P101/openclaw.json"
 
 _p101_m=$(env "${_serve_env[@]}" bash -c 'source lib/core/config.sh; source lib/helpers/output.sh; source lib/helpers/json.sh; source lib/helpers/picker.sh; source lib/helpers/service.sh; source lib/helpers/workspace.sh; source lib/commands/cost.sh; source lib/commands/serve.sh; _serve_metrics')
-echo "$_p101_m" | grep -q "^rack_agents_total 1$" && _p101_a="ok" || _p101_a="no"
-assert_equals "ok" "$_p101_a" "metrics: rack_agents_total reflects agent count"
-echo "$_p101_m" | grep -q "^rack_cost_usd_total 0.5$" && _p101_c="ok" || _p101_c="no"
-assert_equals "ok" "$_p101_c" "metrics: rack_cost_usd_total aggregates"
-echo "$_p101_m" | grep -q "^rack_gateway_up 0$" && _p101_g="ok" || _p101_g="no"
-assert_equals "ok" "$_p101_g" "metrics: rack_gateway_up reflects state"
-echo "$_p101_m" | grep -q "# TYPE rack_agents_total gauge" && _p101_t="ok" || _p101_t="no"
+echo "$_p101_m" | grep -q "^docket_agents_total 1$" && _p101_a="ok" || _p101_a="no"
+assert_equals "ok" "$_p101_a" "metrics: docket_agents_total reflects agent count"
+echo "$_p101_m" | grep -q "^docket_cost_usd_total 0.5$" && _p101_c="ok" || _p101_c="no"
+assert_equals "ok" "$_p101_c" "metrics: docket_cost_usd_total aggregates"
+echo "$_p101_m" | grep -q "^docket_gateway_up 0$" && _p101_g="ok" || _p101_g="no"
+assert_equals "ok" "$_p101_g" "metrics: docket_gateway_up reflects state"
+echo "$_p101_m" | grep -q "# TYPE docket_agents_total gauge" && _p101_t="ok" || _p101_t="no"
 assert_equals "ok" "$_p101_t" "metrics: includes Prometheus HELP/TYPE"
 
 # _serve_refresh writes the served artifacts.
@@ -1379,10 +1379,10 @@ source "$LIB_DIR/commands/info.sh"
 
 _P102=$(mktemp -d)
 mkdir -p "$_P102/projects/a1/memory"
-echo '{"name":"A1","type":"repo","model":"anthropic/claude-sonnet-4-6","stack":"Go","projectKey":"alpha"}' > "$_P102/projects/a1/.rack-meta.json"
+echo '{"name":"A1","type":"repo","model":"anthropic/claude-sonnet-4-6","stack":"Go","projectKey":"alpha"}' > "$_P102/projects/a1/.docket-meta.json"
 echo '{"agents":{"list":[{"id":"a1"}]},"bindings":[{"agentId":"a1","match":{"channel":"telegram","peer":{"kind":"group","id":"-55"}}}],"channels":{}}' > "$_P102/openclaw.json"
 
-_p102=$(PROJECTS_DIR="$_P102/projects" CONFIG_FILE="$_P102/openclaw.json" META_FILE=".rack-meta.json" \
+_p102=$(PROJECTS_DIR="$_P102/projects" CONFIG_FILE="$_P102/openclaw.json" META_FILE=".docket-meta.json" \
   DEFAULT_MODEL="anthropic/claude-sonnet-4-6" _info_json "a1")
 echo "$_p102" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null && _p102_v="ok" || _p102_v="fail"
 assert_equals "ok" "$_p102_v" "info --json: valid JSON"
@@ -1402,7 +1402,7 @@ source "$LIB_DIR/commands/cost.sh"
 
 _P111=$(mktemp -d)
 mkdir -p "$_P111/projects/a1" "$_P111/agents/a1/sessions"
-echo '{"name":"A1"}' > "$_P111/projects/a1/.rack-meta.json"
+echo '{"name":"A1"}' > "$_P111/projects/a1/.docket-meta.json"
 {
   echo '{"timestamp":"2026-01-01T10:00:00Z","message":{"usage":{"input":100,"output":50,"cost":{"total":0.10}}}}'
   echo '{"timestamp":"2026-01-01T12:00:00Z","message":{"usage":{"input":100,"output":50,"cost":{"total":0.10}}}}'
@@ -1439,17 +1439,17 @@ source "$LIB_DIR/helpers/workspace.sh"
 
 _P112=$(mktemp -d)
 (
-  export PROJECTS_DIR="$_P112/projects" OPENCLAW_DIR="$_P112" META_FILE=".rack-meta.json"
+  export PROJECTS_DIR="$_P112/projects" OPENCLAW_DIR="$_P112" META_FILE=".docket-meta.json"
   export TEMPLATE_VERSION="7"
   _create_workspace "tv1" "task" "TV One" "" "" "a task agent" "$DEFAULT_MODEL" >/dev/null 2>&1
 )
-_p112_stamp=$(PROJECTS_DIR="$_P112/projects" META_FILE=".rack-meta.json" \
+_p112_stamp=$(PROJECTS_DIR="$_P112/projects" META_FILE=".docket-meta.json" \
   meta_get "tv1" "templateVersion" "MISSING")
 assert_equals "7" "$_p112_stamp" "template: _create_workspace stamps TEMPLATE_VERSION into meta"
 
 # Drift comparison logic: a lower stamp than current is detected as drift.
 _p112_cur="7"
-_p112_old=$(PROJECTS_DIR="$_P112/projects" META_FILE=".rack-meta.json" \
+_p112_old=$(PROJECTS_DIR="$_P112/projects" META_FILE=".docket-meta.json" \
   meta_get "tv1" "templateVersion" "")
 if [[ "$_p112_old" != "$_p112_cur" ]]; then _p112_drift="drift"; else _p112_drift="current"; fi
 assert_equals "current" "$_p112_drift" "template: matching stamp reads as current"
@@ -1461,7 +1461,7 @@ assert_equals "drift" "$_p112_bump" "template: older stamp than current reads as
 rm -rf "$_P112"
 echo ""
 
-# ─── P11-3: Declarative provisioning (rack add --from) ─────────────────────────
+# ─── P11-3: Declarative provisioning (docket add --from) ─────────────────────────
 echo "── P11-3: Declarative provisioning ──"
 
 source "$LIB_DIR/helpers/workspace.sh"
@@ -1494,7 +1494,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$_P113/bin/openclaw"; chmod +x "$_P113
 
 _p113_run() {
   OPENCLAW_DIR="$_P113/oc" PROJECTS_DIR="$_P113/oc/projects" \
-  SITES_DIR="$_P113/sites" META_FILE=".rack-meta.json" CONFIG_FILE="$_P113/oc/openclaw.json" \
+  SITES_DIR="$_P113/sites" META_FILE=".docket-meta.json" CONFIG_FILE="$_P113/oc/openclaw.json" \
   TEMPLATE_VERSION="3" _add_from_file "$_P113/fleet.json"
 }
 _p113_out=$(_p113_run 2>&1)
@@ -1502,15 +1502,15 @@ _p113_out=$(_p113_run 2>&1)
 [[ -f "$_P113/oc/projects/web-one/SOUL.md" ]] && _p113_ws="yes" || _p113_ws="no"
 assert_equals "yes" "$_p113_ws" "declarative: workspace created for slugified id (web-one)"
 
-_p113_model=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+_p113_model=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".docket-meta.json" \
   meta_get "web-one" "model" "MISSING")
 assert_equals "anthropic/claude-sonnet-4-6" "$_p113_model" "declarative: model stamped into meta"
 
-_p113_budget=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+_p113_budget=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".docket-meta.json" \
   meta_get "web-one" "budgetUsd" "MISSING")
 assert_equals "15" "$_p113_budget" "declarative: budgetUsd stamped into meta"
 
-_p113_tv=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".rack-meta.json" \
+_p113_tv=$(PROJECTS_DIR="$_P113/oc/projects" META_FILE=".docket-meta.json" \
   meta_get "task-two" "templateVersion" "MISSING")
 assert_equals "3" "$_p113_tv" "declarative: templateVersion stamped on provisioned agent"
 
@@ -1526,7 +1526,7 @@ echo ""
 echo "Testing model registry overlay (MA-2)..."
 
 _MA2_DIR=$(mktemp -d)
-_MA2_REG="$_MA2_DIR/rack-models.json"
+_MA2_REG="$_MA2_DIR/docket-models.json"
 
 # Baseline: no registry file — built-in defaults survive
 _ma2_economy_before="${MODEL_PROFILES[economy]}"
@@ -1604,7 +1604,7 @@ echo ""
 echo "Testing role→model policy (MA-9)..."
 
 _MA9_DIR=$(mktemp -d)
-_MA9_REG="$_MA9_DIR/rack-models.json"
+_MA9_REG="$_MA9_DIR/docket-models.json"
 _MA9_REAL_REG="$MODEL_REGISTRY_FILE"
 
 # Built-in derivation: cheap roles ← economy anchor, strong roles ← standard
@@ -1656,27 +1656,27 @@ echo "Testing model intent inference (MA-10)..."
 
 _MA10=$(mktemp -d)
 mkdir -p "$_MA10/projects/pol-agent" "$_MA10/projects/pin-agent"
-cat > "$_MA10/projects/pol-agent/.rack-meta.json" <<JSON
+cat > "$_MA10/projects/pol-agent/.docket-meta.json" <<JSON
 {"type": "task", "model": "$(resolve_role_model task)"}
 JSON
-cat > "$_MA10/projects/pin-agent/.rack-meta.json" <<'JSON'
+cat > "$_MA10/projects/pin-agent/.docket-meta.json" <<'JSON'
 {"type": "task", "model": "openai/gpt-4o"}
 JSON
 
-_ma10_role=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_role "pol-agent")
+_ma10_role=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".docket-meta.json" agent_role "pol-agent")
 assert_equals "task" "$_ma10_role" "MA-10: project agent's role is its type"
 assert_equals "programmer" "$(agent_role "programmer")" "MA-10: specialist's role is its id"
 
-_ma10_pol=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pol-agent")
-_ma10_pin=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pin-agent")
+_ma10_pol=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".docket-meta.json" agent_model_source "pol-agent")
+_ma10_pin=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".docket-meta.json" agent_model_source "pin-agent")
 assert_equals "policy" "$_ma10_pol" "MA-10: model matching role policy infers source=policy"
 assert_equals "pinned" "$_ma10_pin" "MA-10: divergent model infers source=pinned"
 
 # Explicit modelSource field wins over inference
-cat > "$_MA10/projects/pin-agent/.rack-meta.json" <<'JSON'
+cat > "$_MA10/projects/pin-agent/.docket-meta.json" <<'JSON'
 {"type": "task", "model": "openai/gpt-4o", "modelSource": "policy"}
 JSON
-_ma10_explicit=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".rack-meta.json" agent_model_source "pin-agent")
+_ma10_explicit=$(PROJECTS_DIR="$_MA10/projects" META_FILE=".docket-meta.json" agent_model_source "pin-agent")
 assert_equals "policy" "$_ma10_explicit" "MA-10: explicit modelSource field wins over inference"
 
 rm -rf "$_MA10"
@@ -1738,7 +1738,7 @@ echo ""
 echo "── Audit: load_model_registry() overlay ──"
 _REG_ORIG="${MODEL_REGISTRY_FILE:-}"
 _REG_DIR=$(mktemp -d)
-MODEL_REGISTRY_FILE="$_REG_DIR/rack-models.json"
+MODEL_REGISTRY_FILE="$_REG_DIR/docket-models.json"
 
 # Corrupt registry → warn, fall back to anchor-derived defaults, never crash.
 echo '{ this is not json' > "$MODEL_REGISTRY_FILE"
@@ -1782,7 +1782,7 @@ echo ""
 # both emitted scripts must be syntactically valid in their target shell.
 echo "── Audit: shell completions ──"
 _compl_bash=$(cmd_completions bash)
-assert_contains "$_compl_bash" "complete -F _rack_complete rack" \
+assert_contains "$_compl_bash" "complete -F _docket_complete docket" \
   "completions: bash output registers the completion"
 
 # Every command the router dispatches must appear in the bash command table, so a
@@ -1803,7 +1803,7 @@ assert_equals "yes" "$_compl_bok" "completions: bash script is valid bash"
 rm -f "$_compl_btmp"
 
 _compl_zsh=$(cmd_completions zsh)
-assert_contains "$_compl_zsh" "#compdef rack" "completions: zsh output has compdef header"
+assert_contains "$_compl_zsh" "#compdef docket" "completions: zsh output has compdef header"
 
 unset -f _compl_member
 echo ""

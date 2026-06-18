@@ -88,7 +88,7 @@ if os.path.isdir(projects_dir):
         agent_dir = os.path.join(projects_dir, d)
         if not os.path.isdir(agent_dir):
             continue
-        meta = read_meta(os.path.join(agent_dir, ".rack-meta.json"))
+        meta = read_meta(os.path.join(agent_dir, ".docket-meta.json"))
         cost = aggregate_cost(d)
         total_cost += cost
         agents.append({
@@ -109,7 +109,7 @@ for spec in specialists:
     spec_dir = os.path.join(openclaw_dir, "workspaces", spec)
     if not os.path.isdir(spec_dir):
         continue
-    meta = read_meta(os.path.join(spec_dir, ".rack-meta.json"))
+    meta = read_meta(os.path.join(spec_dir, ".docket-meta.json"))
     cost = aggregate_cost(spec)
     total_cost += cost
     agents.append({

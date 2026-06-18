@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **rack** are documented here.
+All notable changes to **docket** are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -25,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
 - **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
   break-reporting policy; linked from the README's new Compatibility section.
-- **`rack completions <bash|zsh>`** — emits a shell completion script
-  (`eval "$(rack completions bash)"`). Completes commands, subcommands, and live agent ids
+- **`docket completions <bash|zsh>`** — emits a shell completion script
+  (`eval "$(docket completions bash)"`). Completes commands, subcommands, and live agent ids
   read from the workspace tree. The command/subcommand table is drift-guarded by the unit
   suite so it can't silently desync from the router.
 
@@ -34,43 +34,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`SECURITY.md` expanded** — explicit threat model (what runs with what privileges), the
   approval-gate model, a homelab-vs-public-VPS guidance box, secret-storage backends as
-  first-class safety features, a "what rack does NOT protect against" list, and a 90-day
+  first-class safety features, a "what docket does NOT protect against" list, and a 90-day
   responsible-disclosure timeline.
 
 ### Fixed
 
-- **`rack --version` after install** — the installer never copied `VERSION` to the
-  install prefix, so installed users got `rack (version unknown)`. `VERSION` is now
+- **`docket --version` after install** — the installer never copied `VERSION` to the
+  install prefix, so installed users got `docket (version unknown)`. `VERSION` is now
   shipped beside `lib/` and the launcher checks `$LIB_DIR/VERSION` in the installed layout.
 - **Brittle installer source-patching** — `install.sh` no longer rewrites the `LIB_DIR=`
-  line with `sed` (which broke silently on any whitespace change). `bin/rack` now
-  auto-detects the installed (`<prefix>/lib/rack-cli`) vs repo (`<repo>/lib`) layout at
-  runtime, and honors a `RACK_LIB_DIR` override for packagers/tests.
-- **`uninstall.sh` left files behind** — it removed `lib/rack` while `install.sh` installed
-  to `lib/rack-cli`. Paths now match; legacy `lib/rack` is also cleaned up, and `RACK_PREFIX`
+  line with `sed` (which broke silently on any whitespace change). `bin/docket` now
+  auto-detects the installed (`<prefix>/lib/docket-cli`) vs repo (`<repo>/lib`) layout at
+  runtime, and honors a `DOCKET_LIB_DIR` override for packagers/tests.
+- **`uninstall.sh` left files behind** — it removed `lib/docket` while `install.sh` installed
+  to `lib/docket-cli`. Paths now match; legacy `lib/docket` is also cleaned up, and `DOCKET_PREFIX`
   is honored to mirror the installer.
-- **`rack team upgrade` in installed layout** — read templates from `$RACK_CLI_ROOT/lib/templates`,
+- **`docket team upgrade` in installed layout** — read templates from `$DOCKET_CLI_ROOT/lib/templates`,
   which doesn't exist once installed; now uses `$LIB_DIR/templates`.
 
 ### Added
 
-- **`rack eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
+- **`docket eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
   eval harness. Each of the six roles (programmer, reviewer, tester, knowledge, security,
   manager) has a structural mode (fast SOUL.md contract check) and a live mode
-  (`RACK_EVAL_LIVE=1`) that sends a golden task via `openclaw agent --local --json` and
+  (`DOCKET_EVAL_LIVE=1`) that sends a golden task via `openclaw agent --local --json` and
   checks the response against acceptance criteria. Results (pass/fail, cost, tokens) are
-  stored in `tests/evals/results/YYYY-MM-DD.jsonl`; `rack eval --recommend` and
-  `rack doctor` (section 16) surface per-role tier suggestions from stored results.
+  stored in `tests/evals/results/YYYY-MM-DD.jsonl`; `docket eval --recommend` and
+  `docket doctor` (section 16) surface per-role tier suggestions from stored results.
   Infrastructure failures (quota, auth, timeout) are SKIP — evals stay non-blocking in CI.
-- **`rack cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
+- **`docket cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
   series bucketed by session timestamp, cached in `.cost-history.json` by the same
   (mtime, size) signatures as the cost index, with a regression flag for any day costing
   more than 2× its trailing 3-day average.
 - **Template/prompt versioning** — `_create_workspace` stamps the current `TEMPLATE_VERSION`
-  into each agent's `.rack-meta.json` (on `rack add` and `rack maintain rebuild`); `rack doctor`
+  into each agent's `.docket-meta.json` (on `docket add` and `docket maintain rebuild`); `docket doctor`
   flags agents whose stamp is older than (or absent versus) the current template and points at
-  `rack maintain <id> rebuild`.
-- **Declarative provisioning** — `rack add --from <agents.yaml|agents.json>` provisions a whole
+  `docket maintain <id> rebuild`.
+- **Declarative provisioning** — `docket add --from <agents.yaml|agents.json>` provisions a whole
   fleet from a spec file (JSON always; YAML when PyYAML is installed). Supports a single agent
   mapping, a list, or `{agents: [...]}`; only `name` is required. Idempotent (existing agents
   skipped) so a fleet file can be re-applied and kept in git. Example specs in `examples/configs/`.
@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests of the `load_model_registry` overlay (corrupt-file fallback, role/default/anchor
   overrides, unknown-role rejection), plus drift-guard tests for shell completions; unit
   suite is now 276 assertions.
-- **`rack doctor --json` is now a usable health probe** — exits non-zero when the report is
+- **`docket doctor --json` is now a usable health probe** — exits non-zero when the report is
   unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
   (`healthy`/`issues` were already present).
 
@@ -98,26 +98,26 @@ First tagged release. Establishes the security and write-safety baseline
 
 ### Added
 
-- **`rack gates`** command (`status` / `enable` / `disable` / `isolate`) — opt-in
+- **`docket gates`** command (`status` / `enable` / `disable` / `isolate`) — opt-in
   exec-approval enforcement on the OpenClaw daemon's native primitives: conservative
   defaults (`security: allowlist`, `ask: on-miss`, `askFallback: deny`) with a curated
-  safe-bin allowlist, plus `rack install --gates`.
-- **Approval routing** — `rack gates enable` writes `approvals.exec` (`mode: session`) so an
+  safe-bin allowlist, plus `docket install --gates`.
+- **Approval routing** — `docket gates enable` writes `approvals.exec` (`mode: session`) so an
   agent's gated prompts reach its own channel, answerable via `/approve`.
-- **Workspace isolation** — `rack gates isolate on` applies the daemon's Docker sandbox
+- **Workspace isolation** — `docket gates isolate on` applies the daemon's Docker sandbox
   (`agents.defaults.sandbox`), Docker-gated and reversible.
 - **Secret storage backends** — pluggable `file` (default, 0600 JSON) or `keyring`
-  (`RACK_SECRETS_BACKEND=keyring`, libsecret); keyring keeps no plaintext values at rest.
-- **`rack keys rotate`** and key-age hygiene (0600 `secrets.meta.json` sidecar); `rack doctor`
-  flags keys past the rotation threshold (`RACK_KEY_MAX_AGE_DAYS`, default 90d).
-- **`rack doctor`** security section — exec-approval policy, approval routing, isolation,
+  (`DOCKET_SECRETS_BACKEND=keyring`, libsecret); keyring keeps no plaintext values at rest.
+- **`docket keys rotate`** and key-age hygiene (0600 `secrets.meta.json` sidecar); `docket doctor`
+  flags keys past the rotation threshold (`DOCKET_KEY_MAX_AGE_DAYS`, default 90d).
+- **`docket doctor`** security section — exec-approval policy, approval routing, isolation,
   config-permission hardening, the `openclaw security audit` summary, and the active secret backend.
-- **`rack --version`** / `-V`, a `VERSION` file, and this changelog.
-- Write-safety primitives `json_atomic_write` and `with_rack_lock` (`flock`).
+- **`docket --version`** / `-V`, a `VERSION` file, and this changelog.
+- Write-safety primitives `json_atomic_write` and `with_docket_lock` (`flock`).
 
 ### Changed
 
-- **Scoped secret distribution** — `rack keys` syncs only the provider key an agent's model
+- **Scoped secret distribution** — `docket keys` syncs only the provider key an agent's model
   needs (not every key to every agent); custom/shared secrets still fan out. Atomic `.env`
   writes that preserve user-authored lines.
 - All JSON writers (`meta_set`, `upsert_binding`, `remove_binding`, `remove_agent_config`,
@@ -125,13 +125,13 @@ First tagged release. Establishes the security and write-safety baseline
   exclusive `flock`, so a crash or concurrent invocation can't corrupt or lose state.
 - `meta_get` / `oc_get` warn loudly when a state file exists but won't parse, instead of
   silently returning the default.
-- `rack install` Step 6 hardens `openclaw.json` / `secrets.json` permissions to `600`.
+- `docket install` Step 6 hardens `openclaw.json` / `secrets.json` permissions to `600`.
 
 ### Fixed
 
 - **Code injection in `keys.sh`** — secret values are never interpolated into Python source
   (passed via env/argv/stdin); regression-tested with a hostile value.
-- `rack doctor` aborted before later checks under `set -e`/pipefail when no sandbox browser
+- `docket doctor` aborted before later checks under `set -e`/pipefail when no sandbox browser
   process was running; all sections now run to completion.
 - Cleared one `shellcheck` error (SC2199, array membership test in `maintain`).
 
@@ -141,5 +141,5 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/santiagoyie/rack-cli/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/santiagoyie/rack-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/santiagoyie/docket-cli/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/santiagoyie/docket-cli/releases/tag/v0.1.0

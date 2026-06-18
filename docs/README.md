@@ -1,6 +1,6 @@
-# rack Documentation
+# docket Documentation
 
-**rack** is a modular Bash CLI for managing OpenClaw autonomous agents with project
+**docket** is a modular Bash CLI for managing OpenClaw autonomous agents with project
 isolation, role-based model routing, and cost tracking.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
@@ -12,10 +12,10 @@ isolation, role-based model routing, and cost tracking.
 
 | Doc | What it covers |
 |-----|----------------|
-| [Quick Start](QUICK-START-RACK.md) | 5-minute setup: install, create your first project agent, assign work |
+| [Quick Start](QUICK-START-DOCKET.md) | 5-minute setup: install, create your first project agent, assign work |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
-| [Architecture (RACK)](RACK.md) | Technical deep dive: routing, context management, agent roles |
+| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: routing, context management, agent roles |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
@@ -28,24 +28,24 @@ For how features are specified before implementation, see the specs under
 
 ```bash
 # Setup (once)
-rack install                 # Install OpenClaw + specialist agents
+docket install                 # Install OpenClaw + specialist agents
 
 # Daily use
-rack add                     # Create a project agent
-rack list                    # Show all agents
-rack info <id>               # Agent details
-rack context snapshot <id>   # Create fast-access context
+docket add                     # Create a project agent
+docket list                    # Show all agents
+docket info <id>               # Agent details
+docket context snapshot <id>   # Create fast-access context
 
 # Configuration
-rack models                  # Role→model policy (set <role> <model>, presets)
-rack profile <id> <model>    # Pin an agent (<provider/model>) or 'default' = policy
-rack profile <id> --budget 5 # Per-agent spend cap (USD)
-rack scope <id> set <key>    # Switch project context
+docket models                  # Role→model policy (set <role> <model>, presets)
+docket profile <id> <model>    # Pin an agent (<provider/model>) or 'default' = policy
+docket profile <id> --budget 5 # Per-agent spend cap (USD)
+docket scope <id> set <key>    # Switch project context
 
 # Maintenance & health
-rack maintain <id> check     # Health check + auto-fix
-rack cost [id]               # Token usage and cost
-rack doctor                  # System-wide diagnostics
+docket maintain <id> check     # Health check + auto-fix
+docket cost [id]               # Token usage and cost
+docket doctor                  # System-wide diagnostics
 ```
 
 See the [Command Reference](commands.md) for the full set.
@@ -70,7 +70,7 @@ See the [Command Reference](commands.md) for the full set.
             ├── AGENTS.md          # Session protocol
             ├── TOOLS.md           # Project commands
             ├── HEARTBEAT.md       # Active tasks
-            ├── .rack-meta.json    # rack metadata
+            ├── .docket-meta.json    # docket metadata
             └── memory/            # Daily logs
 ```
 
@@ -82,4 +82,4 @@ See the [Command Reference](commands.md) for the full set.
 2. **User-focused** — answer "how do I…", link to the [Command Reference](commands.md) for detail
 3. **Consistent formatting** — follow the existing style
 
-For questions, run `rack help` or start with the [Quick Start](QUICK-START-RACK.md).
+For questions, run `docket help` or start with the [Quick Start](QUICK-START-DOCKET.md).

@@ -16,7 +16,7 @@ The main user who:
 - Approves HITL gates
 
 ### 2. **Project Agents** 📁
-One per project/codebase (created with `rack add`):
+One per project/codebase (created with `docket add`):
 - **Examples:** `mywebsite`, `mobile-app`, `content-blog`
 - **Role:** Project coordinator for ONE specific codebase
 - **Telegram:** Each has own dedicated group
@@ -24,7 +24,7 @@ One per project/codebase (created with `rack add`):
 - **Delegates to:** Specialist agents for implementation
 
 ### 3. **Specialist Agents** 🛠️
-Shared team (created with `rack install`):
+Shared team (created with `docket install`):
 - **manager** - Orchestrates cross-project work
 - **programmer** - Implements code
 - **reviewer** - Reviews + security checks
@@ -87,7 +87,7 @@ Engineer → Manager → Project Agent(s) → Specialists → Done
 ### Setup
 ```bash
 # Create project agent
-rack add
+docket add
   Name: mywebsite
   Type: repo
   Codebase: ~/Sites/mywebsite
@@ -95,7 +95,7 @@ rack add
   Model: strong class (role policy)
 
 # Wire to Telegram
-rack wire mywebsite
+docket wire mywebsite
   → Create Telegram group: "MyWebsite Project"
   → Add your bot
   → Run command to link
@@ -286,9 +286,9 @@ Project Agent writes to memory/2026-03-06.md:
 
 ### Setup
 ```bash
-# Manager already exists (created by rack install)
+# Manager already exists (created by docket install)
 # Wire to Telegram
-rack wire manager
+docket wire manager
   → Create Telegram group: "Manager"
   → Add your bot
   → Run command to link
@@ -478,7 +478,7 @@ You do not discuss or act on other projects.
 **Scope (Session Key):**
 - `agent:mywebsite:main` - Isolates this agent to mywebsite only
 - Cannot access other projects' memory/files
-- Change with: `rack scope mywebsite set mywebsite-staging`
+- Change with: `docket scope mywebsite set mywebsite-staging`
 
 **Codebase Path:**
 - Hardcoded in SOUL.md: `~/Sites/mywebsite`
@@ -541,9 +541,9 @@ Programmer ONLY:
 - Ensures changes stay scoped
 - Reduces token usage (no irrelevant memory)
 
-### Delegation Format (RACK-Optimized)
+### Delegation Format (DOCKET-Optimized)
 
-**Before RACK (wasteful):**
+**Before DOCKET (wasteful):**
 ```
 Project Agent → Programmer:
 [Sends full conversation history: 100K tokens]
@@ -552,7 +552,7 @@ Project Agent → Programmer:
 Total: 122K tokens
 ```
 
-**After RACK (efficient):**
+**After DOCKET (efficient):**
 ```
 Project Agent → Programmer:
 Read brief: memory/tasks/T001/BRIEF.md
@@ -576,14 +576,14 @@ Total: 500 tokens
 ### Morning Routine
 ```bash
 # Check all projects
-rack list
+docket list
 
 # Check for stalled tasks
-rack team status
+docket team status
 
 # Create snapshots (if not recent)
 for project in mywebsite mobile-app; do
-  rack memory snapshot $project
+  docket memory snapshot $project
 done
 ```
 
@@ -610,7 +610,7 @@ Message: "Implement contact forms in all projects"
 **Via CLI:**
 ```bash
 # Check recent activity
-rack logs mywebsite
+docket logs mywebsite
 
 # Check task status
 cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/STATUS.md
@@ -641,13 +641,13 @@ git push
 
 ```bash
 # Compress old memory (optional)
-rack memory compress mywebsite
+docket memory compress mywebsite
 
 # Check cost
-rack cost
+docket cost
 
 # Check for any alerts
-rack doctor
+docket doctor
 ```
 
 ---
@@ -781,7 +781,7 @@ Total: ~$11.30/month
 
 **Compare to manual:**
 - 1 engineer hour = $50-150 (freelance rate)
-- Rack saves ~10-20 hours/month = $500-3000/month
+- Docket saves ~10-20 hours/month = $500-3000/month
 - **ROI: 44x - 265x**
 
 ---
@@ -792,17 +792,17 @@ Total: ~$11.30/month
 
 1. **Check if agent exists:**
    ```bash
-   rack list
+   docket list
    ```
 
 2. **Check Telegram binding:**
    ```bash
-   rack list  # Shows wire status
+   docket list  # Shows wire status
    ```
 
 3. **Re-wire if needed:**
    ```bash
-   rack wire mywebsite
+   docket wire mywebsite
    ```
 
 4. **Check gateway:**
@@ -814,12 +814,12 @@ Total: ~$11.30/month
 
 1. **Check session key:**
    ```bash
-   rack scope mywebsite show
+   docket scope mywebsite show
    ```
 
 2. **Reset if needed:**
    ```bash
-   rack scope mywebsite reset
+   docket scope mywebsite reset
    ```
 
 3. **Verify SOUL.md:**
@@ -831,12 +831,12 @@ Total: ~$11.30/month
 
 1. **Check if specialists exist:**
    ```bash
-   rack team check
+   docket team check
    ```
 
-2. **Verify RACK optimization:**
+2. **Verify DOCKET optimization:**
    ```bash
-   rack team status
+   docket team status
    ```
 
 3. **Check delegation logic in Project Agent:**
@@ -882,7 +882,7 @@ Engineer → Manager → Project Agents → Specialists → Done → Engineer Re
 ```
 
 **Key Benefits:**
-- ✅ 50-98% token reduction (RACK optimization)
+- ✅ 50-98% token reduction (DOCKET optimization)
 - ✅ 6-20x faster responses (SNAPSHOT.md, compression)
 - ✅ Autonomous execution (minimal engineer intervention)
 - ✅ Security-first (mandatory 6-point checklist)
@@ -890,4 +890,4 @@ Engineer → Manager → Project Agents → Specialists → Done → Engineer Re
 
 ---
 
-**Next:** Read [QUICK-START-RACK.md](QUICK-START-RACK.md) to test your first workflow!
+**Next:** Read [QUICK-START-DOCKET.md](QUICK-START-DOCKET.md) to test your first workflow!

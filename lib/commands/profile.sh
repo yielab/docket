@@ -63,7 +63,7 @@ except ValueError:
     printf "  ${BOLD}Current model:${RESET}  %s\n" "$current"
     printf "  ${BOLD}Role:${RESET}           %s ${DIM}(%s)${RESET}\n" "$role" "${ROLE_WHY[$role]:-}"
     if [[ "$source" == "policy" ]]; then
-      printf "  ${BOLD}Source:${RESET}         policy — follows the role's model (rack models)\n"
+      printf "  ${BOLD}Source:${RESET}         policy — follows the role's model (docket models)\n"
     else
       printf "  ${BOLD}Source:${RESET}         pinned — unaffected by policy changes\n"
     fi
@@ -75,10 +75,10 @@ except ValueError:
     echo ""
     printf "  ${BOLD}Policy for role '%s':${RESET} %s\n" "$role" "$(resolve_role_model "$role")"
     echo ""
-    echo "Usage:  rack profile $id <provider/model>   # pin this agent to a model"
-    echo "        rack profile $id default            # follow the role policy"
-    echo "        rack profile $id --budget <USD>     # spending cap (0 = none)"
-    echo "        rack models                         # view/change the role policy"
+    echo "Usage:  docket profile $id <provider/model>   # pin this agent to a model"
+    echo "        docket profile $id default            # follow the role policy"
+    echo "        docket profile $id --budget <USD>     # spending cap (0 = none)"
+    echo "        docket models                         # view/change the role policy"
     echo ""
     return
   fi
@@ -100,7 +100,7 @@ except ValueError:
     return
   fi
 
-  # Update both openclaw.json and .rack-meta.json atomically
+  # Update both openclaw.json and .docket-meta.json atomically
   set_agent_model "$id" "$new_model"
   meta_set "$id" "modelSource" "$new_source"
 

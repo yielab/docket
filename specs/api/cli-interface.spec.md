@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This specification defines the complete CLI interface contract for rack, including all commands, arguments, options, and outputs.
+This specification defines the complete CLI interface contract for docket, including all commands, arguments, options, and outputs.
 
 ## Scope
 
@@ -20,10 +20,10 @@ This specification covers:
 
 ## Syntax
 
-All rack commands follow a single top-level grammar:
+All docket commands follow a single top-level grammar:
 
 ```
-rack [global-options] <command> [command-options] [arguments]
+docket [global-options] <command> [command-options] [arguments]
 ```
 
 - `global-options` MUST precede the command (see [Options](#options)).
@@ -64,7 +64,7 @@ Registry. Conventions:
 ### Syntax Pattern
 
 ```
-rack [global-options] <command> [command-options] [arguments]
+docket [global-options] <command> [command-options] [arguments]
 ```
 
 ### Global Options
@@ -75,16 +75,16 @@ rack [global-options] <command> [command-options] [arguments]
 | --version | -v | Show version info | - |
 | --debug | -d | Enable debug output | false |
 | --quiet | -q | Suppress informational output | false |
-| --config | -c | Use alternate config file | ~/.openclaw/rack.conf |
+| --config | -c | Use alternate config file | ~/.openclaw/docket.conf |
 | --no-color | - | Disable colored output | false |
 
 ## Command Registry
 
 ### Core Commands
 
-#### rack install
+#### docket install
 **Purpose**: Bootstrap OpenClaw and specialist agents
-**Syntax**: `rack install [--clean] [--skip-agents] [--profile <tier>]`
+**Syntax**: `docket install [--clean] [--skip-agents] [--profile <tier>]`
 **Arguments**: None
 **Options**:
 - `--clean`: Remove existing configuration
@@ -93,9 +93,9 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Progress messages and success confirmation
 **Return**: 0 on success, 1-5 on various failures
 
-#### rack add
+#### docket add
 **Purpose**: Create new project agent
-**Syntax**: `rack add <agent-id> [codebase-path] [options]`
+**Syntax**: `docket add <agent-id> [codebase-path] [options]`
 **Arguments**:
 - `agent-id` (required): Unique identifier (alphanumeric + dash)
 - `codebase-path` (optional): Path to project directory
@@ -107,9 +107,9 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Creation progress and confirmation
 **Return**: 0 on success, 3 if exists, 4 on invalid args
 
-#### rack list
+#### docket list
 **Purpose**: Display all agents
-**Syntax**: `rack list [options]`
+**Syntax**: `docket list [options]`
 **Arguments**: None
 **Options**:
 - `--format <table|json|csv>`: Output format (default: table)
@@ -118,9 +118,9 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Formatted agent list
 **Return**: 0 always
 
-#### rack info
+#### docket info
 **Purpose**: Display detailed agent information
-**Syntax**: `rack info <agent-id> [options]`
+**Syntax**: `docket info <agent-id> [options]`
 **Arguments**:
 - `agent-id` (required): Agent identifier or interactive selection
 **Options**:
@@ -129,9 +129,9 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Agent details in requested format
 **Return**: 0 on success, 2 if not found
 
-#### rack delete
+#### docket delete
 **Purpose**: Remove agent completely
-**Syntax**: `rack delete <agent-id> [options]`
+**Syntax**: `docket delete <agent-id> [options]`
 **Arguments**:
 - `agent-id` (required): Agent to delete
 **Options**:
@@ -140,35 +140,35 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Deletion confirmation
 **Return**: 0 on success, 2 if not found
 
-#### rack maintain
+#### docket maintain
 **Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
-**Syntax**: `rack maintain [agent-id] [mode]`
+**Syntax**: `docket maintain [agent-id] [mode]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 - `mode` (optional): Maintenance level (default: `check`)
 **Modes**:
-- `check`: Health check and auto-fix (was `rack repair`)
-- `clean`: Clear memory day-logs (was `rack reset 1`)
-- `reset`: Clean + clear MEMORY.md and HEARTBEAT.md (was `rack reset 2`)
-- `rebuild`: Deep rebuild — regenerate all files from metadata (was `rack reset 3`)
-- `sessions`: Archive large/old session data (was `rack cleanup safe`)
+- `check`: Health check and auto-fix (was `docket repair`)
+- `clean`: Clear memory day-logs (was `docket reset 1`)
+- `reset`: Clean + clear MEMORY.md and HEARTBEAT.md (was `docket reset 2`)
+- `rebuild`: Deep rebuild — regenerate all files from metadata (was `docket reset 3`)
+- `sessions`: Archive large/old session data (was `docket cleanup safe`)
 **Output**: Maintenance progress and confirmation
 **Return**: 0 on success, 2 if not found, 4 on invalid mode
 
 ### Configuration Commands
 
-#### rack profile
+#### docket profile
 **Purpose**: Set model tier for agent
-**Syntax**: `rack profile <agent-id> [tier]`
+**Syntax**: `docket profile <agent-id> [tier]`
 **Arguments**:
 - `agent-id` (required): Target agent
 - `tier` (optional): economy/standard/premium (shows current if omitted)
 **Output**: Profile change confirmation or current profile
 **Return**: 0 on success, 2 if not found, 4 on invalid tier
 
-#### rack scope
+#### docket scope
 **Purpose**: Manage session keys for project isolation
-**Syntax**: `rack scope <agent-id> <action> [value]`
+**Syntax**: `docket scope <agent-id> <action> [value]`
 **Arguments**:
 - `agent-id` (required): Target agent
 - `action` (required): show/set/reset
@@ -176,9 +176,9 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Current or updated session key
 **Return**: 0 on success, 2 if not found, 4 on invalid action
 
-#### rack keys
+#### docket keys
 **Purpose**: Manage API keys centrally; keys auto-sync to all agents
-**Syntax**: `rack keys [action] [key-name]`
+**Syntax**: `docket keys [action] [key-name]`
 **Actions**:
 - `list`: Show all stored keys (values masked) — default
 - `setup`: Interactive setup wizard for all keys
@@ -192,9 +192,9 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Workflow Commands
 
-#### rack workflow
+#### docket workflow
 **Purpose**: Manage Lobster YAML pipelines
-**Syntax**: `rack workflow <agent-id> <action> [name]`
+**Syntax**: `docket workflow <agent-id> <action> [name]`
 **Actions**:
 - `create <name>`: Generate new workflow template
 - `list`: Show agent's workflows
@@ -205,9 +205,9 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Team Commands
 
-#### rack team
+#### docket team
 **Purpose**: Manage team coordination features
-**Syntax**: `rack team <action> [args]`
+**Syntax**: `docket team <action> [args]`
 **Actions**:
 - `status`: Show specialist health and task summary
 - `delegate "<task>" [--priority high]`: Queue a task for the manager
@@ -218,9 +218,9 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Memory and Context Commands
 
-#### rack context
+#### docket context
 **Purpose**: Inspect and manage an agent's memory/context
-**Syntax**: `rack context [agent-id] [action]`
+**Syntax**: `docket context [agent-id] [action]`
 **Actions**:
 - `show`: Recent activity overview (default)
 - `search <query>`: Search indexed memory
@@ -231,17 +231,17 @@ rack [global-options] <command> [command-options] [arguments]
 **Output**: Context view or action confirmation
 **Return**: 0 on success, 2 if not found
 
-#### rack edit
+#### docket edit
 **Purpose**: Open an agent's workspace files in `$EDITOR`
-**Syntax**: `rack edit [agent-id]`
+**Syntax**: `docket edit [agent-id]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Opens SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md in the editor
 **Return**: 0 on success, 2 if not found
 
-#### rack logs
+#### docket logs
 **Purpose**: Show an agent's latest memory log and today's gateway entries
-**Syntax**: `rack logs [agent-id]`
+**Syntax**: `docket logs [agent-id]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Latest memory day-log plus today's gateway log lines for the agent's group
@@ -249,9 +249,9 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Maintenance Commands
 
-#### rack doctor
+#### docket doctor
 **Purpose**: System diagnostics
-**Syntax**: `rack doctor [--verbose]`
+**Syntax**: `docket doctor [--verbose]`
 **Options**:
 - `--verbose`: Detailed diagnostic output
 **Output**: System health report
@@ -263,9 +263,9 @@ rack [global-options] <command> [command-options] [arguments]
 - Agent registrations
 **Return**: 0 if healthy, count of issues found
 
-#### rack cost
+#### docket cost
 **Purpose**: Display usage and costs
-**Syntax**: `rack cost [agent-id] [--period <days>]`
+**Syntax**: `docket cost [agent-id] [--period <days>]`
 **Arguments**:
 - `agent-id` (optional): Specific agent or all
 **Options**:
@@ -277,17 +277,17 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Monitoring Commands
 
-#### rack snapshot
+#### docket snapshot
 **Purpose**: Emit JSON system state for dashboards or CI artifacts
-**Syntax**: `rack snapshot [--output <file>]`
+**Syntax**: `docket snapshot [--output <file>]`
 **Options**:
 - `--output <file>`: Write JSON to a file instead of stdout
 **Output**: JSON object (gateway status, channels, agents)
 **Return**: 0 on success
 
-#### rack serve
+#### docket serve
 **Purpose**: Serve the live snapshot JSON over HTTP for team dashboards
-**Syntax**: `rack serve [--port <n>] [--interval <s>]`
+**Syntax**: `docket serve [--port <n>] [--interval <s>]`
 **Options**:
 - `--port <n>`: Listen port (default: 7331)
 - `--interval <s>`: Snapshot refresh interval in seconds (default: 30)
@@ -296,17 +296,17 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Telegram Commands
 
-#### rack wire
+#### docket wire
 **Purpose**: Bind a Telegram group to an agent (see telegram-integration.spec.md)
-**Syntax**: `rack wire [agent-id]`
+**Syntax**: `docket wire [agent-id]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Binding confirmation; restarts gateway
 **Return**: 0 on success, 2 if not found
 
-#### rack unwire
+#### docket unwire
 **Purpose**: Remove an agent's Telegram binding
-**Syntax**: `rack unwire [agent-id]`
+**Syntax**: `docket unwire [agent-id]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Unbind confirmation; restarts gateway
@@ -314,9 +314,9 @@ rack [global-options] <command> [command-options] [arguments]
 
 ### Help
 
-#### rack help
+#### docket help
 **Purpose**: Show usage information
-**Syntax**: `rack help [command]`
+**Syntax**: `docket help [command]`
 **Arguments**:
 - `command` (optional): Show help for a specific command
 **Output**: Command list or per-command usage
@@ -362,11 +362,11 @@ Default table uses column alignment:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RACK_HOME` | Base directory | `~/.openclaw` |
-| `RACK_DEBUG` | Enable debug (0/1) | 0 |
-| `RACK_NO_COLOR` | Disable colors (0/1) | 0 |
-| `RACK_MODEL_DEFAULT` | Default model tier | standard |
-| `RACK_EDITOR` | Preferred editor | $EDITOR or nano |
+| `DOCKET_HOME` | Base directory | `~/.openclaw` |
+| `DOCKET_DEBUG` | Enable debug (0/1) | 0 |
+| `DOCKET_NO_COLOR` | Disable colors (0/1) | 0 |
+| `DOCKET_MODEL_DEFAULT` | Default model tier | standard |
+| `DOCKET_EDITOR` | Preferred editor | $EDITOR or nano |
 | `OPENCLAW_API` | API endpoint | http://localhost:8000 |
 
 ## Return Code Convention
@@ -394,7 +394,7 @@ the contract-level summary follows.
 ### Agent ID Validation
 - Pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
 - Length: 3-50 characters
-- Reserved IDs: manager, system, rack, openclaw
+- Reserved IDs: manager, system, docket, openclaw
 
 ### Path Validation
 - Must be absolute or tilde-expanded
@@ -420,9 +420,9 @@ When agent-id is omitted for commands that need it:
 
 ### Confirmation Prompts
 Required for destructive operations:
-- `rack delete` (unless --force)
-- `rack maintain` reset/rebuild
-- `rack install --clean`
+- `docket delete` (unless --force)
+- `docket maintain` reset/rebuild
+- `docket install --clean`
 
 Format: `"Action description. Continue? (y/N): "`
 
@@ -439,7 +439,7 @@ Format: `"Action description. Continue? (y/N): "`
 ```
 [ERROR] Agent not found: myproject
         Details: No workspace at ~/.openclaw/workspaces/projects/myproject
-        Suggestion: Use 'rack list' to see available agents
+        Suggestion: Use 'docket list' to see available agents
 ```
 
 ## Performance Requirements
@@ -465,11 +465,11 @@ Format: `"Action description. Continue? (y/N): "`
 - Warn on version mismatch
 
 ### Deprecated Features
-- `rack reset <level>` → Use `rack maintain clean|reset|rebuild`
-- `rack repair` → Use `rack maintain check`
-- `rack cleanup` → Use `rack maintain sessions`
-- `rack model` → Use `rack profile`
-- Direct JSON editing → Use rack commands
+- `docket reset <level>` → Use `docket maintain clean|reset|rebuild`
+- `docket repair` → Use `docket maintain check`
+- `docket cleanup` → Use `docket maintain sessions`
+- `docket model` → Use `docket profile`
+- Direct JSON editing → Use docket commands
 
 ## Changelog
 

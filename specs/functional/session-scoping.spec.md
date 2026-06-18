@@ -14,7 +14,7 @@ context per project using a session key, so work on one project does not contami
 This specification covers:
 
 - The session-key format and its relationship to the project key
-- Showing, setting, and resetting an agent's scope (`rack scope`)
+- Showing, setting, and resetting an agent's scope (`docket scope`)
 - How scope changes propagate to the daemon
 
 This specification does NOT cover the workspace file layout (see workspace-structure.spec.md).
@@ -26,10 +26,10 @@ This specification does NOT cover the workspace file layout (see workspace-struc
 1. Every agent **MUST** have a session key of the form `agent:<id>:<project>`.
 2. The `<project>` component **MUST** equal the agent's `projectKey` field.
 3. The default project key **MUST** be `default`.
-4. Session keys **MUST** be stored in both `.rack-meta.json` and mirrored into
+4. Session keys **MUST** be stored in both `.docket-meta.json` and mirrored into
    `openclaw.json` so the daemon scopes memory correctly.
 
-### Scope operations (rack scope)
+### Scope operations (docket scope)
 
 1. `show` **MUST** display the current session and project keys (default action).
 2. `set <project-key>` **MUST** update both the session key and project key and re-sync the
@@ -48,9 +48,9 @@ This specification does NOT cover the workspace file layout (see workspace-struc
 ### CLI Command Signatures
 
 ```bash
-rack scope <agent-id> show           # Show current session/project key
-rack scope <agent-id> set <project>  # Switch to a project context
-rack scope <agent-id> reset          # Return to the default context
+docket scope <agent-id> show           # Show current session/project key
+docket scope <agent-id> set <project>  # Switch to a project context
+docket scope <agent-id> reset          # Return to the default context
 ```
 
 ### Return Codes
@@ -64,12 +64,12 @@ rack scope <agent-id> reset          # Return to the default context
 ### Switching project context
 
 ```bash
-$ rack scope mywebsite set alpha
+$ docket scope mywebsite set alpha
 [INFO] Session key: agent:mywebsite:alpha
 [SUCCESS] Scope set to 'alpha' for 'mywebsite'
 [INFO] Restarting gateway...
 
-$ rack scope mywebsite reset
+$ docket scope mywebsite reset
 [SUCCESS] Scope reset to 'default' for 'mywebsite'
 ```
 
@@ -82,7 +82,7 @@ $ rack scope mywebsite reset
 
 ### Post-conditions
 
-- After `set`, `sessionKey` and `projectKey` in `.rack-meta.json` **MUST** reflect the new
+- After `set`, `sessionKey` and `projectKey` in `.docket-meta.json` **MUST** reflect the new
   project, and the same value **MUST** be mirrored into `openclaw.json`.
 - After `reset`, the project key **MUST** be `default`.
 

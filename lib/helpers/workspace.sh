@@ -180,8 +180,8 @@ _none_
 _none_
 HEARTBEAT
 
-  # Stamp the template version so `rack doctor` can detect prompt drift after a
-  # template change (both `rack add` and `rack maintain rebuild` route here).
+  # Stamp the template version so `docket doctor` can detect prompt drift after a
+  # template change (both `docket add` and `docket maintain rebuild` route here).
   meta_set "$id" "templateVersion" "${TEMPLATE_VERSION:-1}"
 
   # Fix permissions
@@ -300,7 +300,7 @@ _print_wire_instructions() {
   echo ""
   warn "No Telegram group wired. When ready:"
   echo ""
-  echo "  rack wire $id"
+  echo "  docket wire $id"
   echo ""
   echo "  Or manually:"
   echo "  1. Create group in Telegram, add @claw_x9m_bot, send a message"
@@ -399,7 +399,7 @@ _show_agent_cost() {
 # Aggregate token usage/cost across an agent's session JSONL files.
 # Uses an incremental index (.cost-index.json) keyed by each file's (mtime, size):
 # unchanged files are read from cache, so a call costs O(changed files) of parsing
-# rather than O(all history). RACK_NO_COST_INDEX=1 forces a full recompute.
+# rather than O(all history). DOCKET_NO_COST_INDEX=1 forces a full recompute.
 # Output: input|output|cacheRead|cacheWrite|cost|turns
 _aggregate_cost() {
   local id="$1"
@@ -410,7 +410,7 @@ _aggregate_cost() {
 import json, sys, os, glob
 
 sessions_dir, index_path = sys.argv[1], sys.argv[2]
-use_index = os.environ.get("RACK_NO_COST_INDEX") != "1"
+use_index = os.environ.get("DOCKET_NO_COST_INDEX") != "1"
 
 index = {}
 if use_index:
@@ -485,7 +485,7 @@ PY
 # Per-day cost/turn/token series for one agent, from session timestamps.
 # Cached in .cost-history.json keyed by the set of (file, mtime, size) signatures:
 # if no session file changed since last run, the cached history is returned
-# without re-parsing. RACK_NO_COST_INDEX=1 forces a recompute.
+# without re-parsing. DOCKET_NO_COST_INDEX=1 forces a recompute.
 # Output: one line per day, "YYYY-MM-DD|turns|input|output|cost".
 _cost_history() {
   local id="$1"
@@ -494,7 +494,7 @@ _cost_history() {
   python3 - "$sessions_dir" "$hist_path" <<'PY' 2>/dev/null || true
 import json, sys, os, glob
 sessions_dir, hist_path = sys.argv[1], sys.argv[2]
-use_index = os.environ.get("RACK_NO_COST_INDEX") != "1"
+use_index = os.environ.get("DOCKET_NO_COST_INDEX") != "1"
 
 sigs, files = {}, []
 if os.path.isdir(sessions_dir):

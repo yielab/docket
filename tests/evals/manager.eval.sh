@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Eval: manager role
 # Structural (always):  SOUL.md references orchestration/delegation.
-# Live (RACK_EVAL_LIVE=1): given a vague task, the manager breaks it into
+# Live (DOCKET_EVAL_LIVE=1): given a vague task, the manager breaks it into
 #   assignable sub-tasks with role assignments.
 # Exit 0=PASS  1=FAIL  2=SKIP
 
@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/eval-helpers.sh"
 
 WORKSPACE="$HOME/.openclaw/workspaces/manager"
 SOUL="$WORKSPACE/SOUL.md"
-TIER="${RACK_EVAL_TIER:-standard}"
+TIER="${DOCKET_EVAL_TIER:-standard}"
 
 eval_skip_unless_workspace "$WORKSPACE"
 [[ ! -f "$SOUL" ]] && { echo "FAIL: SOUL.md missing" >&2; exit 1; }

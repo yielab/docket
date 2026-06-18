@@ -6,7 +6,7 @@
 
 ## Overview
 
-This document establishes the TDD (Test-Driven Development) framework for rack-cli, ensuring all features are developed test-first according to specifications.
+This document establishes the TDD (Test-Driven Development) framework for docket-cli, ensuring all features are developed test-first according to specifications.
 
 ## TDD Workflow
 
@@ -136,7 +136,7 @@ test_add_creates_agent_successfully() {
     mkdir -p "$test_path"
 
     # Act
-    local output=$(rack add "$test_id" "$test_path" 2>&1)
+    local output=$(docket add "$test_id" "$test_path" 2>&1)
     local exit_code=$?
 
     # Assert
@@ -146,7 +146,7 @@ test_add_creates_agent_successfully() {
         "should create workspace directory"
 
     # Cleanup
-    rack delete "$test_id" --force
+    docket delete "$test_id" --force
     rm -rf "$test_path"
 }
 
@@ -154,10 +154,10 @@ test_add_fails_with_duplicate_id() {
     local test_id="duplicate-test"
 
     # Arrange
-    rack add "$test_id" "/tmp/test1" 2>&1
+    docket add "$test_id" "/tmp/test1" 2>&1
 
     # Act
-    local output=$(rack add "$test_id" "/tmp/test2" 2>&1)
+    local output=$(docket add "$test_id" "/tmp/test2" 2>&1)
     local exit_code=$?
 
     # Assert
@@ -166,7 +166,7 @@ test_add_fails_with_duplicate_id() {
         "should show duplicate error"
 
     # Cleanup
-    rack delete "$test_id" --force
+    docket delete "$test_id" --force
 }
 ```
 
@@ -183,11 +183,11 @@ test_workflow_execution_completes() {
     local workflow_name="test-pipeline"
 
     # Setup
-    rack add "$agent_id" "/tmp/test"
-    rack workflow "$agent_id" create "$workflow_name"
+    docket add "$agent_id" "/tmp/test"
+    docket workflow "$agent_id" create "$workflow_name"
 
     # Execute workflow
-    local output=$(rack workflow "$agent_id" run "$workflow_name" 2>&1)
+    local output=$(docket workflow "$agent_id" run "$workflow_name" 2>&1)
     local exit_code=$?
 
     # Verify
@@ -196,7 +196,7 @@ test_workflow_execution_completes() {
     assert_file_exists "$WORKSPACES_DIR/projects/$agent_id/workflows/$workflow_name.yaml"
 
     # Cleanup
-    rack delete "$agent_id" --force
+    docket delete "$agent_id" --force
 }
 ```
 
@@ -211,11 +211,11 @@ test_session_isolation_prevents_cross_access() {
     local agent2="security-test-2"
 
     # Create two agents with different projects
-    rack add "$agent1" "/tmp/project1"
-    rack scope "$agent1" set "project-alpha"
+    docket add "$agent1" "/tmp/project1"
+    docket scope "$agent1" set "project-alpha"
 
-    rack add "$agent2" "/tmp/project2"
-    rack scope "$agent2" set "project-beta"
+    docket add "$agent2" "/tmp/project2"
+    docket scope "$agent2" set "project-beta"
 
     # Get session keys
     local session1=$(meta_get "$WORKSPACES_DIR/projects/$agent1" "sessionKey")
@@ -230,8 +230,8 @@ test_session_isolation_prevents_cross_access() {
         "session2 should include project-beta"
 
     # Cleanup
-    rack delete "$agent1" --force
-    rack delete "$agent2" --force
+    docket delete "$agent1" --force
+    docket delete "$agent2" --force
 }
 ```
 
@@ -250,7 +250,7 @@ test_story_AGT001_create_project_agent() {
     local agent_id="story-test-agent"
 
     # Execute story
-    rack add "$agent_id" "$(pwd)" --type repo --model standard
+    docket add "$agent_id" "$(pwd)" --type repo --model standard
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
 
@@ -259,15 +259,15 @@ test_story_AGT001_create_project_agent() {
     assert_directory_permissions "$WORKSPACES_DIR/projects/$agent_id" 700
     assert_file_permissions "$WORKSPACES_DIR/projects/$agent_id/SOUL.md" 600
 
-    local list_output=$(rack list)
+    local list_output=$(docket list)
     assert_contains "$list_output" "$agent_id" \
         "agent should appear in list"
 
-    local info=$(rack info "$agent_id" --format json)
+    local info=$(docket info "$agent_id" --format json)
     assert_json_field "$info" ".sessionKey" "agent:$agent_id:default"
 
     # Cleanup
-    rack delete "$agent_id" --force
+    docket delete "$agent_id" --force
 }
 ```
 
@@ -284,13 +284,13 @@ test_list_command_performance() {
 
     # Create 100 test agents
     for i in {1..100}; do
-        rack add "perf-test-$i" "/tmp/test-$i" &
+        docket add "perf-test-$i" "/tmp/test-$i" &
     done
     wait
 
     # Measure list performance
     local start=$(date +%s%N)
-    rack list > /dev/null
+    docket list > /dev/null
     local end=$(date +%s%N)
     local duration=$(( (end - start) / 1000000 )) # Convert to ms
 
@@ -299,7 +299,7 @@ test_list_command_performance() {
 
     # Cleanup
     for i in {1..100}; do
-        rack delete "perf-test-$i" --force &
+        docket delete "perf-test-$i" --force &
     done
     wait
 }

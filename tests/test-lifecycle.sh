@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# test-lifecycle.sh — Full lifecycle test for the rack command
+# test-lifecycle.sh — Full lifecycle test for the docket command
 #
 # Tests: add → list → info → scope → team → workflow → repair → reset → cost → profile → delete
-# Uses a temporary "test-rack" agent backed by a throwaway test codebase.
+# Uses a temporary "test-docket" agent backed by a throwaway test codebase.
 #
 # Usage:  ./tests/test-lifecycle.sh
 #         ./tests/test-lifecycle.sh --keep    (skip delete — leave agent for inspection)
@@ -11,10 +11,10 @@
 set -uo pipefail
 
 # ─── Config ──────────────────────────────────────────────────────────────────
-TEST_ID="test-rack"
-TEST_NAME="Test Rack"
-CODEBASE="${RACK_TEST_CODEBASE:-$HOME/.cache/rack-test-codebase}"
-RACK="$(dirname "$(realpath "$0")")/../bin/rack"
+TEST_ID="test-docket"
+TEST_NAME="Test Docket"
+CODEBASE="${DOCKET_TEST_CODEBASE:-$HOME/.cache/docket-test-codebase}"
+DOCKET="$(dirname "$(realpath "$0")")/../bin/docket"
 PROJECTS_DIR="$HOME/.openclaw/workspaces/projects"
 OPENCLAW_DIR="$HOME/.openclaw"
 CONFIG_FILE="$HOME/.openclaw/openclaw.json"
@@ -51,27 +51,27 @@ if [[ "$CLEAN" == true ]]; then
     pass "removed $OPENCLAW_DIR"
   fi
 
-  echo -e "  ${CYAN}→${RESET}  Running: rack install"
+  echo -e "  ${CYAN}→${RESET}  Running: docket install"
   echo ""
 
-  # Run rack install (will be interactive, so pass "y" to confirm)
-  printf 'y\n' | "$RACK" install || {
-    fail "rack install failed"
+  # Run docket install (will be interactive, so pass "y" to confirm)
+  printf 'y\n' | "$DOCKET" install || {
+    fail "docket install failed"
     exit 1
   }
 
-  pass "rack install completed"
+  pass "docket install completed"
   echo ""
 fi
 
 # ─── Pre-flight checks ──────────────────────────────────────────────────────
 section "Pre-flight"
 
-if [[ ! -x "$RACK" ]]; then
-  fail "rack binary not found at $RACK"
+if [[ ! -x "$DOCKET" ]]; then
+  fail "docket binary not found at $DOCKET"
   exit 1
 fi
-pass "rack binary exists: $RACK"
+pass "docket binary exists: $DOCKET"
 
 if ! command -v openclaw &>/dev/null; then
   fail "openclaw not in PATH"
@@ -89,7 +89,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 fi
 pass "openclaw.json exists"
 
-# Verify specialist agents exist (from rack install)
+# Verify specialist agents exist (from docket install)
 SPECIALISTS=("programmer" "reviewer" "tester" "knowledge" "security")
 MISSING_SPECS=()
 for spec in "${SPECIALISTS[@]}"; do
@@ -139,14 +139,14 @@ print(len(c.get('agents',{}).get('list',[])))
 pass "baseline: $AGENTS_BEFORE agents registered"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 1: rack add
+# TEST 1: docket add
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 1: rack add (create project agent)"
+section "TEST 1: docket add (create project agent)"
 
 # Interactive inputs for cmd_add:
 #   1. Type [1/2]          → 1 (repo)
-#   2. Display name        → Test Rack
-#   3. Agent ID [default]  → test-rack
+#   2. Display name        → Test Docket
+#   3. Agent ID [default]  → test-docket
 #   4. Codebase path       → (accept detected default)
 #   5. Description         → Test project for lifecycle test
 #   6. Stack [detected]    → (accept detected)
@@ -161,7 +161,7 @@ ADD_OUTPUT=$(printf '%s\n' \
   "" \
   "" \
   "" \
-  | "$RACK" add 2>&1) || true
+  | "$DOCKET" add 2>&1) || true
 
 ADD_EXIT=$?
 
@@ -173,7 +173,7 @@ else
 fi
 
 # Check required files
-for f in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md .rack-meta.json; do
+for f in SOUL.md AGENTS.md TOOLS.md HEARTBEAT.md .docket-meta.json; do
   if [[ -f "$PROJECTS_DIR/$TEST_ID/$f" ]]; then
     pass "file created: $f"
   else
@@ -203,15 +203,15 @@ else
   fail "file permissions: expected 600, got $file_perms"
 fi
 
-# Check .rack-meta.json content
-META_TYPE=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('type',''))" 2>/dev/null)
+# Check .docket-meta.json content
+META_TYPE=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('type',''))" 2>/dev/null)
 if [[ "$META_TYPE" == "repo" ]]; then
   pass "meta: type = repo"
 else
   fail "meta: type expected 'repo', got '$META_TYPE'"
 fi
 
-META_CODEBASE=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('codebase',''))" 2>/dev/null)
+META_CODEBASE=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('codebase',''))" 2>/dev/null)
 if [[ "$META_CODEBASE" == "$CODEBASE" ]]; then
   pass "meta: codebase = $CODEBASE"
 else
@@ -258,11 +258,11 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 2: rack list
+# TEST 2: docket list
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 2: rack list"
+section "TEST 2: docket list"
 
-LIST_OUTPUT=$("$RACK" list 2>&1) || true
+LIST_OUTPUT=$("$DOCKET" list 2>&1) || true
 
 if echo "$LIST_OUTPUT" | grep -q "$TEST_ID"; then
   pass "list output contains test agent '$TEST_ID'"
@@ -277,11 +277,11 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 3: rack info
+# TEST 3: docket info
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 3: rack info $TEST_ID"
+section "TEST 3: docket info $TEST_ID"
 
-INFO_OUTPUT=$("$RACK" info "$TEST_ID" 2>&1) || true
+INFO_OUTPUT=$("$DOCKET" info "$TEST_ID" 2>&1) || true
 
 if echo "$INFO_OUTPUT" | grep -q "$TEST_NAME"; then
   pass "info shows display name"
@@ -308,11 +308,11 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 4: rack maintain check (health check — expect healthy)
+# TEST 4: docket maintain check (health check — expect healthy)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 4: rack maintain $TEST_ID check (expect healthy)"
+section "TEST 4: docket maintain $TEST_ID check (expect healthy)"
 
-MAINTAIN_OUTPUT=$("$RACK" maintain "$TEST_ID" check 2>&1) || true
+MAINTAIN_OUTPUT=$("$DOCKET" maintain "$TEST_ID" check 2>&1) || true
 
 if echo "$MAINTAIN_OUTPUT" | grep -qi "healthy\|nothing to fix\|0 issue"; then
   pass "maintain check reports healthy"
@@ -323,16 +323,16 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 5: rack maintain clean (memory logs only)
+# TEST 5: docket maintain clean (memory logs only)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 5: rack maintain $TEST_ID clean (memory only)"
+section "TEST 5: docket maintain $TEST_ID clean (memory only)"
 
 # Create a fake memory file to test clearing
 touch "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md"
 chmod 600 "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md"
 
 # Clean memory logs, confirm with "y"
-CLEAN_OUTPUT=$(printf 'y\n' | "$RACK" maintain "$TEST_ID" clean 2>&1) || true
+CLEAN_OUTPUT=$(printf 'y\n' | "$DOCKET" maintain "$TEST_ID" clean 2>&1) || true
 
 if [[ ! -f "$PROJECTS_DIR/$TEST_ID/memory/2026-01-01.md" ]]; then
   pass "maintain clean cleared memory log files"
@@ -348,11 +348,11 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 6: rack doctor (system health)
+# TEST 6: docket doctor (system health)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 6: rack doctor"
+section "TEST 6: docket doctor"
 
-DOCTOR_OUTPUT=$("$RACK" doctor 2>&1) || true
+DOCTOR_OUTPUT=$("$DOCKET" doctor 2>&1) || true
 
 if echo "$DOCTOR_OUTPUT" | grep -q "openclaw"; then
   pass "doctor checks openclaw binary"
@@ -373,12 +373,12 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 7: rack cost
+# TEST 7: docket cost
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 7: rack cost"
+section "TEST 7: docket cost"
 
 # Test cost for all agents
-COST_ALL_OUTPUT=$("$RACK" cost 2>&1) || true
+COST_ALL_OUTPUT=$("$DOCKET" cost 2>&1) || true
 
 if echo "$COST_ALL_OUTPUT" | grep -q "AGENT"; then
   pass "cost (all) shows table header"
@@ -399,7 +399,7 @@ else
 fi
 
 # Test cost for single agent
-COST_SINGLE=$("$RACK" cost "$TEST_ID" 2>&1) || true
+COST_SINGLE=$("$DOCKET" cost "$TEST_ID" 2>&1) || true
 
 if echo "$COST_SINGLE" | grep -q "Model:"; then
   pass "cost (single) shows model info"
@@ -414,12 +414,12 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 8: rack profile
+# TEST 8: docket profile
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 8: rack profile $TEST_ID"
+section "TEST 8: docket profile $TEST_ID"
 
 # Show current model + intent (no change)
-PROFILE_SHOW=$("$RACK" profile "$TEST_ID" 2>&1) || true
+PROFILE_SHOW=$("$DOCKET" profile "$TEST_ID" 2>&1) || true
 
 if echo "$PROFILE_SHOW" | grep -q "Source:"; then
   pass "profile shows model source (policy/pinned)"
@@ -434,16 +434,16 @@ else
 fi
 
 # Pin to an explicit model
-"$RACK" profile "$TEST_ID" anthropic/claude-haiku-4-5 2>&1 || true
+"$DOCKET" profile "$TEST_ID" anthropic/claude-haiku-4-5 2>&1 || true
 
-PINNED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('model',''))" 2>/dev/null)
+PINNED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('model',''))" 2>/dev/null)
 if echo "$PINNED_MODEL" | grep -qi "haiku"; then
   pass "profile pin: model is haiku"
 else
   fail "profile pin: expected haiku, got $PINNED_MODEL"
 fi
 
-PINNED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('modelSource',''))" 2>/dev/null)
+PINNED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('modelSource',''))" 2>/dev/null)
 if [[ "$PINNED_SRC" == "pinned" ]]; then
   pass "profile pin: modelSource=pinned"
 else
@@ -465,7 +465,7 @@ else
 fi
 
 # Deprecated tier name still resolves (with a warning), as a pin
-TIER_OUT=$("$RACK" profile "$TEST_ID" economy 2>&1) || true
+TIER_OUT=$("$DOCKET" profile "$TEST_ID" economy 2>&1) || true
 if echo "$TIER_OUT" | grep -qi "deprecated\|No change"; then
   pass "profile accepts deprecated tier name with warning"
 else
@@ -473,10 +473,10 @@ else
 fi
 
 # Back to the role policy for clean state
-"$RACK" profile "$TEST_ID" default 2>&1 || true
+"$DOCKET" profile "$TEST_ID" default 2>&1 || true
 
-RESTORED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('model',''))" 2>/dev/null)
-RESTORED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('modelSource',''))" 2>/dev/null)
+RESTORED_MODEL=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('model',''))" 2>/dev/null)
+RESTORED_SRC=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('modelSource',''))" 2>/dev/null)
 if echo "$RESTORED_MODEL" | grep -qi "sonnet"; then
   pass "profile default: back on repo policy model"
 else
@@ -489,12 +489,12 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 9: rack scope (session key management)
+# TEST 9: docket scope (session key management)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 9: rack scope $TEST_ID"
+section "TEST 9: docket scope $TEST_ID"
 
 # Show current scope
-SCOPE_SHOW=$("$RACK" scope "$TEST_ID" show 2>&1) || true
+SCOPE_SHOW=$("$DOCKET" scope "$TEST_ID" show 2>&1) || true
 
 if echo "$SCOPE_SHOW" | grep -q "agent:$TEST_ID:default"; then
   pass "scope shows default session key"
@@ -503,10 +503,10 @@ else
 fi
 
 # Change scope to "alpha"
-"$RACK" scope "$TEST_ID" set alpha 2>&1 || true
+"$DOCKET" scope "$TEST_ID" set alpha 2>&1 || true
 
 # Verify session key updated in metadata
-ALPHA_KEY=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('sessionKey',''))" 2>/dev/null)
+ALPHA_KEY=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('sessionKey',''))" 2>/dev/null)
 if echo "$ALPHA_KEY" | grep -q "agent:$TEST_ID:alpha"; then
   pass "scope changed to alpha: $ALPHA_KEY"
 else
@@ -514,9 +514,9 @@ else
 fi
 
 # Reset to default
-"$RACK" scope "$TEST_ID" reset 2>&1 || true
+"$DOCKET" scope "$TEST_ID" reset 2>&1 || true
 
-RESET_KEY=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.rack-meta.json')).get('sessionKey',''))" 2>/dev/null)
+RESET_KEY=$(python3 -c "import json; print(json.load(open('$PROJECTS_DIR/$TEST_ID/.docket-meta.json')).get('sessionKey',''))" 2>/dev/null)
 if echo "$RESET_KEY" | grep -q "agent:$TEST_ID:default"; then
   pass "scope reset to default"
 else
@@ -524,12 +524,12 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 10: rack team (manager agent)
+# TEST 10: docket team (manager agent)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 10: rack team"
+section "TEST 10: docket team"
 
 # Check team status (should show specialist agents)
-TEAM_STATUS=$("$RACK" team status 2>&1) || true
+TEAM_STATUS=$("$DOCKET" team status 2>&1) || true
 
 if echo "$TEAM_STATUS" | grep -q "programmer"; then
   pass "team status shows programmer"
@@ -540,7 +540,7 @@ fi
 if echo "$TEAM_STATUS" | grep -q "Manager agent"; then
   pass "team status shows manager"
 else
-  skip "team init" "manager not initialized (run: rack team init)"
+  skip "team init" "manager not initialized (run: docket team init)"
 fi
 
 # Verify TASK_LIST.json exists if manager is initialized
@@ -558,12 +558,12 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 11: rack workflow (Lobster pipelines)
+# TEST 11: docket workflow (Lobster pipelines)
 # ═══════════════════════════════════════════════════════════════════════════════
-section "TEST 11: rack workflow $TEST_ID"
+section "TEST 11: docket workflow $TEST_ID"
 
 # List workflows (should be empty initially)
-WORKFLOW_LIST=$("$RACK" workflow "$TEST_ID" list 2>&1) || true
+WORKFLOW_LIST=$("$DOCKET" workflow "$TEST_ID" list 2>&1) || true
 
 if echo "$WORKFLOW_LIST" | grep -qi "no workflows\|0 workflows"; then
   pass "workflow list shows no workflows"
@@ -572,7 +572,7 @@ else
 fi
 
 # Create a test workflow
-"$RACK" workflow "$TEST_ID" create test-pipeline 2>&1 || true
+"$DOCKET" workflow "$TEST_ID" create test-pipeline 2>&1 || true
 
 if [[ -f "$PROJECTS_DIR/$TEST_ID/workflows/test-pipeline.lobster.yml" ]]; then
   pass "workflow created: test-pipeline.lobster.yml"
@@ -588,7 +588,7 @@ else
 fi
 
 # List workflows again (should show test-pipeline)
-WORKFLOW_LIST2=$("$RACK" workflow "$TEST_ID" list 2>&1) || true
+WORKFLOW_LIST2=$("$DOCKET" workflow "$TEST_ID" list 2>&1) || true
 
 if echo "$WORKFLOW_LIST2" | grep -q "test-pipeline"; then
   pass "workflow list shows created workflow"
@@ -597,7 +597,7 @@ else
 fi
 
 # Clean up workflow
-"$RACK" workflow "$TEST_ID" delete test-pipeline <<< "y" 2>&1 || true
+"$DOCKET" workflow "$TEST_ID" delete test-pipeline <<< "y" 2>&1 || true
 
 if [[ ! -f "$PROJECTS_DIR/$TEST_ID/workflows/test-pipeline.lobster.yml" ]]; then
   pass "workflow deleted successfully"
@@ -606,18 +606,18 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEST 12: rack delete
+# TEST 12: docket delete
 # ═══════════════════════════════════════════════════════════════════════════════
 if [[ "$KEEP" == true ]]; then
-  section "TEST 12: rack delete (SKIPPED — --keep flag)"
+  section "TEST 12: docket delete (SKIPPED — --keep flag)"
   skip "delete" "--keep flag passed"
 else
-  section "TEST 12: rack delete $TEST_ID"
+  section "TEST 12: docket delete $TEST_ID"
 
   # Interactive inputs for cmd_delete:
   #   1. Also delete workspace directory? [y/N] → y
-  #   2. Type the agent ID to confirm            → test-rack
-  DELETE_OUTPUT=$(printf 'y\n%s\n' "$TEST_ID" | "$RACK" delete "$TEST_ID" 2>&1) || true
+  #   2. Type the agent ID to confirm            → test-docket
+  DELETE_OUTPUT=$(printf 'y\n%s\n' "$TEST_ID" | "$DOCKET" delete "$TEST_ID" 2>&1) || true
 
   # Verify workspace removed
   if [[ ! -d "$PROJECTS_DIR/$TEST_ID" ]]; then

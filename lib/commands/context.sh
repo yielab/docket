@@ -110,11 +110,11 @@ _context_show() {
   echo ""
   echo "${BOLD}Quick Actions${RESET}"
   echo "────────────────────────────────────────────────────────────"
-  echo "  Search memory:    ${GREEN}rack context $id search <query>${RESET}"
-  echo "  Create snapshot:  ${GREEN}rack context $id snapshot${RESET}"
-  echo "  Index memory:     ${GREEN}rack context $id index${RESET}"
-  echo "  Compress old:     ${GREEN}rack context $id compress${RESET}"
-  echo "  Project summary:  ${GREEN}rack context $id project${RESET}"
+  echo "  Search memory:    ${GREEN}docket context $id search <query>${RESET}"
+  echo "  Create snapshot:  ${GREEN}docket context $id snapshot${RESET}"
+  echo "  Index memory:     ${GREEN}docket context $id index${RESET}"
+  echo "  Compress old:     ${GREEN}docket context $id compress${RESET}"
+  echo "  Project summary:  ${GREEN}docket context $id project${RESET}"
 }
 
 _context_index() {
@@ -178,11 +178,11 @@ _context_search() {
   local id="$1" workspace="$2"
   shift 2
   local query="$*"
-  [[ -z "$query" ]] && error "Search query required. Usage: rack context $id search <query>"
+  [[ -z "$query" ]] && error "Search query required. Usage: docket context $id search <query>"
 
   local memory_index="$workspace/.memory-index.json"
   if [[ ! -f "$memory_index" ]]; then
-    warn "Memory not indexed. Run: rack context $id index"
+    warn "Memory not indexed. Run: docket context $id index"
     return 1
   fi
 
@@ -333,6 +333,6 @@ _context_project() {
   echo "  Last update:   $(last_activity "$id")"
   echo "  Memory files:  $(find "$workspace/memory" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')"
   echo ""
-  dim "→ Full context: rack context $id snapshot"
+  dim "→ Full context: docket context $id snapshot"
   echo ""
 }

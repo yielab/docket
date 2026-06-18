@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Command: add
 
-# Core provisioning shared by interactive `rack add` and declarative
-# `rack add --from <file>`. Creates the workspace, stamps metadata, registers
+# Core provisioning shared by interactive `docket add` and declarative
+# `docket add --from <file>`. Creates the workspace, stamps metadata, registers
 # the agent with the daemon, and syncs its session key. Does NOT wire Telegram,
 # restart the gateway, or print a summary — callers own those so the declarative
 # path can batch a single restart across a whole fleet.
@@ -123,7 +123,7 @@ PY
 # was Telegram-wired.
 _add_from_file() {
   local spec="$1"
-  [[ -n "$spec" ]] || error "Usage: rack add --from <agents.yaml|agents.json>"
+  [[ -n "$spec" ]] || error "Usage: docket add --from <agents.yaml|agents.json>"
   [[ -f "$spec" ]] || error "Spec file not found: $spec"
   command -v python3 >/dev/null 2>&1 || error "python3 is required to parse spec files."
 
@@ -187,7 +187,7 @@ _add_from_file() {
 }
 
 cmd_add() {
-  # Declarative path: rack add --from <file>
+  # Declarative path: docket add --from <file>
   local from=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -226,7 +226,7 @@ cmd_add() {
   AGENT_ID="${AGENT_ID_INPUT:-$DEFAULT_SLUG}"
   AGENT_ID=$(slugify "$AGENT_ID")
 
-  [[ -d "$PROJECTS_DIR/$AGENT_ID" ]] && error "Project '$AGENT_ID' already exists. Use: rack repair $AGENT_ID"
+  [[ -d "$PROJECTS_DIR/$AGENT_ID" ]] && error "Project '$AGENT_ID' already exists. Use: docket repair $AGENT_ID"
 
   # Codebase
   CODEBASE_PATH=""

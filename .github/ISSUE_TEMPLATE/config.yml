@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/ox/rack-cli/tree/main/docs
+    url: https://github.com/ox/docket-cli/tree/main/docs
     about: Quick-start guide, workflow examples, and architecture docs

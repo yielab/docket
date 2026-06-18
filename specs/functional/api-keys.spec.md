@@ -13,7 +13,7 @@ auto-syncing them to all agents, so individual agents never need keys configured
 
 This specification covers:
 
-- Listing, adding, validating, removing, and exporting keys (`rack keys`)
+- Listing, adding, validating, removing, and exporting keys (`docket keys`)
 - The supported key names
 - Automatic propagation of keys to agents
 
@@ -27,7 +27,7 @@ This specification does NOT cover provider key *format* rules (see input-validat
    `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`.
 2. Listing keys **MUST** mask their values.
 
-### Operations (rack keys)
+### Operations (docket keys)
 
 1. `list` (default) **MUST** show all stored keys with masked values.
 2. `setup` **MUST** run an interactive wizard to set keys.
@@ -46,12 +46,12 @@ This specification does NOT cover provider key *format* rules (see input-validat
 ### CLI Command Signatures
 
 ```bash
-rack keys                       # List (masked) — default
-rack keys setup                 # Interactive wizard
-rack keys add <KEY_NAME>        # Add or update one key
-rack keys validate [KEY_NAME]   # Test keys
-rack keys remove <KEY_NAME>     # Remove a key
-rack keys export                # Print as env vars
+docket keys                       # List (masked) — default
+docket keys setup                 # Interactive wizard
+docket keys add <KEY_NAME>        # Add or update one key
+docket keys validate [KEY_NAME]   # Test keys
+docket keys remove <KEY_NAME>     # Remove a key
+docket keys export                # Print as env vars
 ```
 
 ### Return Codes
@@ -64,11 +64,11 @@ rack keys export                # Print as env vars
 ### Adding and listing keys
 
 ```bash
-$ rack keys add ANTHROPIC_API_KEY
+$ docket keys add ANTHROPIC_API_KEY
 Enter value for ANTHROPIC_API_KEY: ****
 [SUCCESS] Key stored and synced to all agents
 
-$ rack keys list
+$ docket keys list
   ANTHROPIC_API_KEY    sk-ant-...••••
   OPENAI_API_KEY       (not set)
 ```

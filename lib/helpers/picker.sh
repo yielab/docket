@@ -35,7 +35,7 @@ pick_project() {
   local prompt="${1:-Select project}"
   local ids; ids=$(project_ids)
   if [[ -z "$ids" ]]; then
-    error_hint "No projects found in $PROJECTS_DIR" "Run: rack add"
+    error_hint "No projects found in $PROJECTS_DIR" "Run: docket add"
   fi
 
   if command -v fzf &>/dev/null; then

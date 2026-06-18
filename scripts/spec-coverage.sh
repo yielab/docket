@@ -29,11 +29,11 @@ scan_commands() {
 
     # Check if each command has a spec.
     # A command counts as specified only if it has a structured spec entry — a markdown
-    # heading naming the command (e.g. "#### rack add" in the API contract) or a dedicated
+    # heading naming the command (e.g. "#### docket add" in the API contract) or a dedicated
     # functional spec file. A bare prose mention does NOT count, so the number reflects
     # commands that are actually specified, not merely referenced.
     for cmd in $commands; do
-        if grep -rqE "^#+[[:space:]].*\brack ${cmd}\b" specs/ 2>/dev/null \
+        if grep -rqE "^#+[[:space:]].*\bdocket ${cmd}\b" specs/ 2>/dev/null \
             || [[ -f "specs/functional/${cmd}.spec.md" ]]; then
             COMMANDS_COVERED["$cmd"]=1
             echo -e "${GREEN}✓${NC} $cmd - specified"
@@ -83,14 +83,14 @@ scan_test_coverage() {
     local test_files; test_files=$(find tests -name "*.sh" -type f 2>/dev/null)
 
     # Map of spec to test patterns. Patterns match how the integration suite actually
-    # exercises each feature (it drives real `rack <cmd>` invocations rather than defining
+    # exercises each feature (it drives real `docket <cmd>` invocations rather than defining
     # test_<cmd>() functions), so a match means the spec's behavior is covered by a test.
     declare -A SPEC_TEST_MAP
-    SPEC_TEST_MAP["agent-lifecycle"]="rack add|rack delete|rack info"
-    SPEC_TEST_MAP["session-scoping"]="rack scope"
-    SPEC_TEST_MAP["workflow"]="rack workflow"
-    SPEC_TEST_MAP["team-coordination"]="rack team"
-    SPEC_TEST_MAP["cost-tracking"]="rack cost"
+    SPEC_TEST_MAP["agent-lifecycle"]="docket add|docket delete|docket info"
+    SPEC_TEST_MAP["session-scoping"]="docket scope"
+    SPEC_TEST_MAP["workflow"]="docket workflow"
+    SPEC_TEST_MAP["team-coordination"]="docket team"
+    SPEC_TEST_MAP["cost-tracking"]="docket cost"
 
     for spec in "${!SPEC_TEST_MAP[@]}"; do
         local pattern="${SPEC_TEST_MAP[$spec]}"
@@ -149,7 +149,7 @@ generate_matrix() {
         fi
 
         # Check if command is in documentation
-        if grep -r "rack $cmd" docs/ README.md >/dev/null 2>&1; then
+        if grep -r "docket $cmd" docs/ README.md >/dev/null 2>&1; then
             doc_status=1
         fi
 
@@ -158,7 +158,7 @@ generate_matrix() {
         local test_symbol; test_symbol=$([[ $test_status -eq 1 ]] && echo "✓" || echo "✗")
         local doc_symbol; doc_symbol=$([[ $doc_status -eq 1 ]] && echo "✓" || echo "✗")
 
-        printf "%-25s %-10s %-10s %-10s\n" "rack $cmd" "$spec_symbol" "$test_symbol" "$doc_symbol"
+        printf "%-25s %-10s %-10s %-10s\n" "docket $cmd" "$spec_symbol" "$test_symbol" "$doc_symbol"
     done
 }
 
@@ -226,7 +226,7 @@ generate_recommendations() {
     # Check for missing command specs
     for cmd in "${!COMMANDS_COVERED[@]}"; do
         if [[ ${COMMANDS_COVERED[$cmd]} -eq 0 ]]; then
-            echo "• Create specification for 'rack $cmd' command"
+            echo "• Create specification for 'docket $cmd' command"
             has_recommendations=true
         fi
     done
@@ -284,10 +284,10 @@ export_report() {
         for cmd in "${!COMMANDS_COVERED[@]}"; do
             local spec_status="${COMMANDS_COVERED[$cmd]}"
             local test_status; test_status=$([[ $(grep -r "test.*$cmd" tests/ 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
-            local doc_status; doc_status=$([[ $(grep -r "rack $cmd" docs/ README.md 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
+            local doc_status; doc_status=$([[ $(grep -r "docket $cmd" docs/ README.md 2>/dev/null | wc -l) -gt 0 ]] && echo "✓" || echo "✗")
             local spec_symbol; spec_symbol=$([[ $spec_status -eq 1 ]] && echo "✓" || echo "✗")
 
-            echo "| rack $cmd | $spec_symbol | $test_status | $doc_status |"
+            echo "| docket $cmd | $spec_symbol | $test_status | $doc_status |"
         done
 
     } > "$report_file"
@@ -299,12 +299,12 @@ export_report() {
 # Main execution
 main() {
     # Check if in project root
-    if [[ ! -f "bin/rack" ]]; then
+    if [[ ! -f "bin/docket" ]]; then
         echo "Error: Must be run from project root directory"
         exit 1
     fi
 
-    echo -e "${BLUE}Rack CLI Specification Coverage Analysis${NC}"
+    echo -e "${BLUE}Docket CLI Specification Coverage Analysis${NC}"
     echo "========================================="
     echo ""
 

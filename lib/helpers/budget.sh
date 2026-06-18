@@ -2,7 +2,7 @@
 # Budget enforcement helpers
 
 # Check whether an agent has exceeded or approached its spending cap.
-# Reads budgetUsd from .rack-meta.json; 0/unset = no cap.
+# Reads budgetUsd from .docket-meta.json; 0/unset = no cap.
 # Returns: 0=ok, 1=warning (≥80%), 2=over budget (≥100%, agent flagged paused)
 # Idempotent: won't re-flag an already-paused agent with a redundant warning.
 check_budget() {
@@ -25,7 +25,7 @@ check_budget() {
       meta_set "$id" "paused" "true"
       meta_set "$id" "pausedReason" "budget"
       warn "Agent '$id' hit its \$${budget} budget cap (${pct}% used). Marked as paused."
-      warn "  Resume: rack profile $id --budget <higher-amount>"
+      warn "  Resume: docket profile $id --budget <higher-amount>"
     else
       warn "Agent '$id' is over budget (${pct}% of \$${budget}) and already paused."
     fi
@@ -38,7 +38,7 @@ check_budget() {
   return 0
 }
 
-# Run check_budget for every project agent. Used by rack doctor.
+# Run check_budget for every project agent. Used by docket doctor.
 # Returns the worst exit code seen (0=all ok, 1=warning, 2=over budget).
 check_all_budgets() {
   local ids; ids=$(project_ids)

@@ -141,7 +141,7 @@ What happened:
 
 Recommended action:
 \`\`\`bash
-rack reset [agent-id] 2  # Clear memory, keep identity
+docket reset [agent-id] 2  # Clear memory, keep identity
 \`\`\`
 
 This will help me respond faster and reduce costs.
@@ -166,8 +166,8 @@ Debug info:
 \`\`\`
 
 Next steps:
-1. Check gateway logs: `rack logs [agent-id]`
-2. Run diagnostics: `rack doctor`
+1. Check gateway logs: `docket logs [agent-id]`
+2. Run diagnostics: `docket doctor`
 3. Or provide more details about the request
 ```
 
@@ -280,8 +280,8 @@ Diagnosis:
 
 Recommended:
 1. Check troubleshooting guide: docs/troubleshooting.md
-2. Run: `rack doctor` and `openclaw doctor`
-3. Review logs: `rack logs [agent-id]`
+2. Run: `docket doctor` and `openclaw doctor`
+3. Review logs: `docket logs [agent-id]`
 
 Manual intervention may be required.
 ```
@@ -296,6 +296,6 @@ To add this to an existing agent:
 # Append to SOUL.md
 cat /path/to/this/template >> ~/.openclaw/workspaces/projects/AGENT-ID/SOUL.md
 
-# Or use rack repair
-rack repair AGENT-ID
+# Or use docket repair
+docket repair AGENT-ID
 ```

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Command: completions — emit a shell completion script for rack.
+# Command: completions — emit a shell completion script for docket.
 #
-#   rack completions bash   # source with: eval "$(rack completions bash)"
-#   rack completions zsh    # source with: eval "$(rack completions zsh)"
+#   docket completions bash   # source with: eval "$(docket completions bash)"
+#   docket completions zsh    # source with: eval "$(docket completions zsh)"
 #
 # The scripts are emitted (not shipped as dotfiles) so they always match the
 # installed version. Agent ids are completed live from the workspace dirs, so new
-# `rack add` agents are available to tab-completion immediately. The command and
+# `docket add` agents are available to tab-completion immediately. The command and
 # subcommand tables here are drift-guarded by tests/unit/test-helpers.sh.
 
-_rack_emit_bash() {
+_docket_emit_bash() {
   cat <<'BASH_EOF'
-# rack(1) bash completion — eval "$(rack completions bash)"
-_rack_complete() {
+# docket(1) bash completion — eval "$(docket completions bash)"
+_docket_complete() {
   local cur prev cword
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
@@ -58,15 +58,15 @@ _rack_complete() {
   esac
   mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")
 }
-complete -F _rack_complete rack
+complete -F _docket_complete docket
 BASH_EOF
 }
 
-_rack_emit_zsh() {
+_docket_emit_zsh() {
   cat <<'ZSH_EOF'
-#compdef rack
-# rack(1) zsh completion — eval "$(rack completions zsh)"
-_rack() {
+#compdef docket
+# docket(1) zsh completion — eval "$(docket completions zsh)"
+_docket() {
   local -a commands
   commands=(
     'install:Bootstrap OpenClaw + specialist agents'
@@ -97,7 +97,7 @@ _rack() {
     'help:Show help'
   )
 
-  _rack_ids() {
+  _docket_ids() {
     local oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
     local -a ids
     ids=(${oc}/workspaces/projects/*(/N:t) ${oc}/workspaces/*(/N:t))
@@ -106,44 +106,44 @@ _rack() {
   }
 
   if (( CURRENT == 2 )); then
-    _describe 'rack command' commands
+    _describe 'docket command' commands
     return
   fi
 
   case "${words[2]}" in
-    maintain)        (( CURRENT == 3 )) && _rack_ids || compadd check clean reset rebuild sessions ;;
-    scope)           (( CURRENT == 3 )) && _rack_ids || compadd show set reset ;;
-    context)         (( CURRENT == 3 )) && _rack_ids || compadd show search snapshot index compress ;;
-    workflow|wf)     (( CURRENT == 3 )) && _rack_ids || compadd list create show delete ;;
+    maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
+    scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
+    context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
+    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
     team)            compadd status delegate queue done ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd set preset reset ;;
     completions)     compadd bash zsh ;;
-    cost|usage)      (( CURRENT == 3 )) && { _rack_ids; compadd --history --json } || compadd --history --json --days ;;
+    cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
-                     (( CURRENT == 3 )) && _rack_ids ;;
+                     (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }
-_rack "$@"
+_docket "$@"
 ZSH_EOF
 }
 
 cmd_completions() {
   case "${1:-}" in
-    bash) _rack_emit_bash ;;
-    zsh)  _rack_emit_zsh ;;
+    bash) _docket_emit_bash ;;
+    zsh)  _docket_emit_zsh ;;
     ""|-h|--help|help)
       cat <<'USAGE'
-Usage: rack completions <bash|zsh>
+Usage: docket completions <bash|zsh>
 
 Enable now (current shell):
-  bash:  eval "$(rack completions bash)"
-  zsh:   eval "$(rack completions zsh)"
+  bash:  eval "$(docket completions bash)"
+  zsh:   eval "$(docket completions zsh)"
 
 Enable permanently:
-  bash:  echo 'eval "$(rack completions bash)"' >> ~/.bashrc
-  zsh:   echo 'eval "$(rack completions zsh)"' >> ~/.zshrc
+  bash:  echo 'eval "$(docket completions bash)"' >> ~/.bashrc
+  zsh:   echo 'eval "$(docket completions zsh)"' >> ~/.zshrc
 USAGE
       ;;
     *) error "Unknown shell '$1' (supported: bash, zsh)" ;;
