@@ -203,8 +203,8 @@ cmd_cost() {
     fi
 
     echo ""
-    dim "  Costs from session data in ~/.openclaw/agents/*/sessions/*.jsonl"
-    dim "  Pricing per configured tier — see: docket models"
+    dim "  Recorded spend from session data in ~/.openclaw/agents/*/sessions/*.jsonl"
+    dim "  Comparative estimates use a price snapshot (as of ${MODEL_PRICING_AS_OF:-unknown}) — see: docket models"
   fi
   echo ""
 }
