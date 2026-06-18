@@ -1,13 +1,13 @@
 # docket Documentation
 
-**docket** is a modular Bash CLI for managing OpenClaw autonomous agents with project
-isolation, role-based model routing, and cost tracking.
+**docket** is a modular Bash CLI for provisioning and isolating OpenClaw autonomous agents
+across multiple projects, with role-based model routing and budget guardrails.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
 
 <p align="center">
-  <img src="assets/hero.gif" alt="docket in action: create an agent with a budget cap, list the fleet, check cost, run a health check" width="720">
+  <img src="assets/hero.gif" alt="docket in action: provision an isolated project agent, list the fleet, inspect its per-project isolation, run a fleet health check, and set a budget guardrail" width="720">
 </p>
 
 ---
