@@ -1,6 +1,6 @@
 # docket-cli — the cost-aware ops layer for OpenClaw agent fleets
 
-[![CI](https://github.com/santiagoyie/docket-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/santiagoyie/docket-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/yielab/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/yielab/docket/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Shell: Bash 4+](https://img.shields.io/badge/shell-bash%204%2B-green.svg)](https://www.gnu.org/software/bash/)
 [![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
@@ -37,15 +37,15 @@ solve for you:
 
 ```bash
 # Homebrew (macOS/Linux) — recommended
-brew tap santiagoyie/docket-cli https://github.com/santiagoyie/docket-cli
+brew tap yielab/docket-cli https://github.com/yielab/docket
 brew install docket-cli
 
 # Or the install script (review it before piping to a shell)
-curl -fsSL https://raw.githubusercontent.com/santiagoyie/docket-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/main/install.sh | bash
 
 # Or from source
-git clone https://github.com/santiagoyie/docket-cli.git
-cd docket-cli && ./install.sh        # installs to ~/.local by default; DOCKET_PREFIX to override
+git clone https://github.com/yielab/docket.git
+cd docket && ./install.sh            # installs to ~/.local by default; DOCKET_PREFIX to override
 
 # Then bootstrap OpenClaw + the specialist team
 docket install

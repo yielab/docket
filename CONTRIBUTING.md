@@ -42,8 +42,8 @@ Enhancement suggestions are welcome! Please provide:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR-USERNAME/docket-cli.git
-cd docket-cli
+git clone https://github.com/YOUR-USERNAME/docket.git
+cd docket
 
 # Create a feature branch
 git checkout -b feature/your-feature
