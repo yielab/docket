@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Command: gates — manage exec-approval enforcement (Phase 0 G3)
 #
-# Opt-in, re-runnable front door for the daemon's exec-approval gates. rack
+# Opt-in, re-runnable front door for the daemon's exec-approval gates. docket
 # configures; the OpenClaw daemon enforces. See
 # internal-docs/SECURITY-GATES-FEASIBILITY.md and
 # specs/functional/security-gates.spec.md.
@@ -17,7 +17,7 @@ cmd_gates() {
     isolate) _gates_isolate "$@" ;;
     *)
       cat <<EOF
-${BOLD}Usage:${RESET} rack gates <command>
+${BOLD}Usage:${RESET} docket gates <command>
 
 ${BOLD}Commands:${RESET}
   ${GREEN}status${RESET}            Show current exec-approval policy and audit posture
@@ -32,7 +32,7 @@ ${BOLD}What 'enable' does:${RESET}
   with no approver reachable, are denied (fail-closed).
 
   ${DIM}Existing config is preserved; defaults are only overwritten with --force.${RESET}
-  ${DIM}Verify anytime with 'rack doctor' (Security gates section).${RESET}
+  ${DIM}Verify anytime with 'docket doctor' (Security gates section).${RESET}
 EOF
       ;;
   esac
@@ -48,7 +48,7 @@ _gates_status() {
     OK)    success "Policy: $gs_policy" ; echo "  $gs_counts" ;;
     OPEN)  warn "Policy: $gs_policy — host exec is ungated ($gs_counts)" ;;
     UNSET) warn "Gates inactive — no exec-approval policy configured"
-           echo "  Enable with: ${GREEN}rack gates enable${RESET}" ;;
+           echo "  Enable with: ${GREEN}docket gates enable${RESET}" ;;
     *)     dim "Status unavailable: ${gs_policy}" ;;
   esac
 
@@ -65,7 +65,7 @@ _gates_status() {
   case "$iso" in
     non-main|all) success "Workspace isolation: $iso (Docker sandbox)" ;;
     off)          dim "Workspace isolation: off" ;;
-    *)            dim "Workspace isolation: not configured — rack gates isolate on" ;;
+    *)            dim "Workspace isolation: not configured — docket gates isolate on" ;;
   esac
 }
 
@@ -84,7 +84,7 @@ _gates_isolate() {
 
   if ! command -v docker &>/dev/null; then
     fail "Docker not found — isolation requires Docker"
-    echo "  Install Docker, then re-run: ${GREEN}rack gates isolate on${RESET}"
+    echo "  Install Docker, then re-run: ${GREEN}docket gates isolate on${RESET}"
     return 1
   fi
 
@@ -94,7 +94,7 @@ _gates_isolate() {
   success "Sandbox isolation on (mode=non-main, scope=agent, workspaceAccess=rw)"
   echo "  Non-main sessions run tools in a per-agent container; only the workspace is mounted."
   warn "First sandboxed run builds/pulls the image (openclaw-sandbox:bookworm-slim)."
-  echo "  Disable: ${GREEN}rack gates isolate off${RESET}"
+  echo "  Disable: ${GREEN}docket gates isolate off${RESET}"
 }
 
 _gates_enable() {
@@ -135,7 +135,7 @@ _gates_enable() {
     if [[ "${tg_count:-0}" -gt 0 ]]; then
       echo "  ${tg_count} Telegram-bound agent(s) can approve with: /approve <id> allow-once|deny"
     else
-      warn "No Telegram-bound agents — wire one (rack wire <id>) so prompts are answerable."
+      warn "No Telegram-bound agents — wire one (docket wire <id>) so prompts are answerable."
     fi
   fi
 
@@ -143,8 +143,8 @@ _gates_enable() {
   audit_log "gates.enable" "security=allowlist seeded=${seeded:-}"
 
   echo ""
-  echo "  Verify:  ${GREEN}rack doctor${RESET}   ·   Tune:  ${GREEN}openclaw approvals allowlist add <glob>${RESET}"
-  echo "  Disable: ${GREEN}rack gates disable${RESET}"
+  echo "  Verify:  ${GREEN}docket doctor${RESET}   ·   Tune:  ${GREEN}openclaw approvals allowlist add <glob>${RESET}"
+  echo "  Disable: ${GREEN}docket gates disable${RESET}"
 }
 
 _gates_disable() {

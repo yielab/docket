@@ -228,7 +228,7 @@ Total: ~50K tokens ✗ (20x more!)
 
 ## Reviewer-Security Integration
 
-You cover BOTH roles (merged from RACK architecture):
+You cover BOTH roles (merged from DOCKET architecture):
 - **Reviewer:** Correctness, logic, acceptance criteria
 - **Security:** Vulnerability scanning, threat modeling, injection vectors
 

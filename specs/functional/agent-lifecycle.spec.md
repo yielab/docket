@@ -6,16 +6,16 @@
 
 ## Purpose
 
-This specification defines the complete lifecycle of rack agents from creation to deletion, including all state transitions and operations.
+This specification defines the complete lifecycle of docket agents from creation to deletion, including all state transitions and operations.
 
 ## Scope
 
 This specification covers:
-- Agent creation (`rack add`)
-- Agent listing (`rack list`)
-- Agent information display (`rack info`)
-- Agent deletion (`rack delete`)
-- Agent maintenance operations (`rack maintain`)
+- Agent creation (`docket add`)
+- Agent listing (`docket list`)
+- Agent information display (`docket info`)
+- Agent deletion (`docket delete`)
+- Agent maintenance operations (`docket maintain`)
 
 This specification does NOT cover:
 - Agent communication (see telegram-integration.spec.md)
@@ -24,7 +24,7 @@ This specification does NOT cover:
 
 ## Requirements
 
-### Agent Creation (rack add)
+### Agent Creation (docket add)
 
 1. **MUST** create a unique agent identifier
 2. **MUST** validate codebase path exists (for repo agents)
@@ -37,9 +37,9 @@ This specification does NOT cover:
 9. **SHOULD** suggest appropriate model profile based on project type
 10. **MAY** initialize with custom description
 11. **MUST** stamp the active template version into agent metadata so prompt drift is detectable
-12. **MAY** provision one or more agents declaratively from a spec file (`rack add --from <file>`)
+12. **MAY** provision one or more agents declaratively from a spec file (`docket add --from <file>`)
 
-#### Declarative Provisioning (rack add --from)
+#### Declarative Provisioning (docket add --from)
 
 1. **MUST** accept a JSON spec; **SHOULD** accept YAML when a YAML parser is available
 2. **MUST** support a list of agents, a `{agents: [...]}` mapping, or a single agent mapping
@@ -69,7 +69,7 @@ An agent **MUST** be in exactly one of these states:
 └─────────┘
 ```
 
-### Agent Listing (rack list)
+### Agent Listing (docket list)
 
 Output **MUST** include:
 - Agent ID (slugified, unique)
@@ -87,7 +87,7 @@ blog-writer   task        ~/.openclaw/.../blog       economy    active    3 days
 programmer    specialist  -                          premium    active    1 hour ago
 ```
 
-### Agent Information (rack info)
+### Agent Information (docket info)
 
 **MUST** display:
 1. Agent identifier
@@ -104,7 +104,7 @@ programmer    specialist  -                          premium    active    1 hour
 12. Creation timestamp
 13. Last activity timestamp
 
-### Agent Deletion (rack delete)
+### Agent Deletion (docket delete)
 
 1. **MUST** prompt for confirmation unless --force flag
 2. **MUST** remove workspace directory completely
@@ -113,9 +113,9 @@ programmer    specialist  -                          premium    active    1 hour
 5. **SHOULD** display deletion summary
 6. **MUST NOT** delete if agent has active tasks (unless --force)
 
-### Agent Maintenance (rack maintain)
+### Agent Maintenance (docket maintain)
 
-`rack maintain [agent-id] [mode]` consolidates the retired `reset`, `repair`, and `cleanup`
+`docket maintain [agent-id] [mode]` consolidates the retired `reset`, `repair`, and `cleanup`
 commands. Five modes **MUST** be supported, in increasing order of impact.
 
 #### check (Default) - Health and Auto-fix
@@ -130,7 +130,7 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 - Clear `memory/*.md` daily logs
 - Preserve SOUL.md, AGENTS.md, TOOLS.md
 - Preserve session and project keys
-- Preserve .rack-meta.json
+- Preserve .docket-meta.json
 
 #### reset - Deep Memory
 - Everything from `clean`
@@ -158,22 +158,22 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 
 ```bash
 # Create agent (interactive)
-rack add <agent-id> [codebase-path] [--type repo|task] [--model economy|standard|premium] [--description "text"]
+docket add <agent-id> [codebase-path] [--type repo|task] [--model economy|standard|premium] [--description "text"]
 
 # Create one or more agents declaratively from a spec file (JSON, or YAML when PyYAML is present)
-rack add --from <agents.yaml|agents.json>
+docket add --from <agents.yaml|agents.json>
 
 # List agents
-rack list [--format table|json|csv] [--filter active|stopped|all]
+docket list [--format table|json|csv] [--filter active|stopped|all]
 
 # Show agent info
-rack info <agent-id> [--format detailed|summary|json]
+docket info <agent-id> [--format detailed|summary|json]
 
 # Delete agent
-rack delete <agent-id> [--force] [--keep-logs]
+docket delete <agent-id> [--force] [--keep-logs]
 
 # Maintain agent (replaces reset/repair/cleanup)
-rack maintain <agent-id> [check|clean|reset|rebuild|sessions]
+docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
 ```
 
 ### Return Codes
@@ -192,7 +192,7 @@ rack maintain <agent-id> [check|clean|reset|rebuild|sessions]
 ### Creating a Repository Agent
 
 ```bash
-$ rack add mywebsite ~/projects/website
+$ docket add mywebsite ~/projects/website
 [INFO] Creating agent: mywebsite
 [INFO] Type: repo (detected)
 [INFO] Stack: node (detected: package.json)
@@ -204,7 +204,7 @@ $ rack add mywebsite ~/projects/website
 ### Maintaining an Agent
 
 ```bash
-$ rack maintain mywebsite reset
+$ docket maintain mywebsite reset
 [WARN] 'reset' will clear memory and tasks
 Continue? (y/N): y
 [INFO] Clearing memory logs...
@@ -224,14 +224,14 @@ Continue? (y/N): y
 After successful creation:
 - Workspace directory **MUST** exist at expected path
 - All core files **MUST** be present and valid
-- Agent **MUST** appear in `rack list` output
+- Agent **MUST** appear in `docket list` output
 - Agent **MUST** be registered in openclaw.json
 
 ### Invariants
 - Agent IDs **MUST** be unique across system
 - Session keys **MUST** follow format: `agent:<id>:<project>`
 - Workspace permissions **MUST** be 700 for directories, 600 for files
-- Metadata **MUST** be synchronized between .rack-meta.json and openclaw.json
+- Metadata **MUST** be synchronized between .docket-meta.json and openclaw.json
 
 ## Error Handling
 
@@ -242,7 +242,7 @@ After successful creation:
 | Agent already exists | Duplicate ID | Use different ID or delete existing |
 | Codebase not found | Invalid path | Verify path exists |
 | Permission denied | Insufficient rights | Check ~/.openclaw permissions |
-| Workspace corrupted | Missing files | Run `rack maintain check` |
+| Workspace corrupted | Missing files | Run `docket maintain check` |
 | Daemon not running | OpenClaw down | Start with `systemctl --user start openclaw-gateway` |
 
 ## Performance Criteria
@@ -257,12 +257,12 @@ After successful creation:
 ## Changelog
 
 ### Version 1.2.0 (2026-06-11)
-- Added template-version stamping requirement (drift surfaced in `rack doctor`)
-- Added declarative provisioning (`rack add --from <file>`): JSON/YAML specs, fleet lists,
+- Added template-version stamping requirement (drift surfaced in `docket doctor`)
+- Added declarative provisioning (`docket add --from <file>`): JSON/YAML specs, fleet lists,
   idempotent re-apply, shared defaults with interactive creation
 
 ### Version 1.1.0 (2026-06-09)
-- Replaced the retired `rack reset`/`rack repair` with `rack maintain` and its five modes
+- Replaced the retired `docket reset`/`docket repair` with `docket maintain` and its five modes
 - Updated interface signatures, examples, and recovery steps to match the shipped CLI
 
 ### Version 1.0.0 (2024-01-20)

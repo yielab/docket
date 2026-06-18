@@ -10,35 +10,35 @@ _serve_metrics() {
   service_ctl is-active &>/dev/null && gw=1
   local blob; blob=$(mktemp)
   _cost_json > "$blob" 2>/dev/null || echo '{"agents":[],"totalUsd":0}' > "$blob"
-  RACK_GW_UP="$gw" python3 - "$blob" <<'PY'
+  DOCKET_GW_UP="$gw" python3 - "$blob" <<'PY'
 import json, os, sys
 try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     d = {"agents": [], "totalUsd": 0}
-gw = os.environ.get("RACK_GW_UP", "0")
+gw = os.environ.get("DOCKET_GW_UP", "0")
 
 def esc(s):
     return str(s).replace("\\", "").replace('"', "")
 
 lines = [
-    "# HELP rack_agents_total Number of project agents",
-    "# TYPE rack_agents_total gauge",
-    "rack_agents_total " + str(len(d.get("agents", []))),
-    "# HELP rack_agent_cost_usd Cumulative cost per agent (USD)",
-    "# TYPE rack_agent_cost_usd gauge",
+    "# HELP docket_agents_total Number of project agents",
+    "# TYPE docket_agents_total gauge",
+    "docket_agents_total " + str(len(d.get("agents", []))),
+    "# HELP docket_agent_cost_usd Cumulative cost per agent (USD)",
+    "# TYPE docket_agent_cost_usd gauge",
 ]
 for a in d.get("agents", []):
     lab = 'agent="' + esc(a.get("id", "")) + '",model="' + esc(a.get("model", "")) + '"'
-    lines.append("rack_agent_cost_usd{" + lab + "} " + str(a.get("costUsd", 0)))
-    lines.append('rack_agent_turns_total{agent="' + esc(a.get("id", "")) + '"} ' + str(a.get("turns", 0)))
+    lines.append("docket_agent_cost_usd{" + lab + "} " + str(a.get("costUsd", 0)))
+    lines.append('docket_agent_turns_total{agent="' + esc(a.get("id", "")) + '"} ' + str(a.get("turns", 0)))
 lines += [
-    "# HELP rack_cost_usd_total Total cost across all agents (USD)",
-    "# TYPE rack_cost_usd_total gauge",
-    "rack_cost_usd_total " + str(d.get("totalUsd", 0)),
-    "# HELP rack_gateway_up Gateway service active (1) or not (0)",
-    "# TYPE rack_gateway_up gauge",
-    "rack_gateway_up " + gw,
+    "# HELP docket_cost_usd_total Total cost across all agents (USD)",
+    "# TYPE docket_cost_usd_total gauge",
+    "docket_cost_usd_total " + str(d.get("totalUsd", 0)),
+    "# HELP docket_gateway_up Gateway service active (1) or not (0)",
+    "# TYPE docket_gateway_up gauge",
+    "docket_gateway_up " + gw,
 ]
 print("\n".join(lines))
 PY
@@ -67,7 +67,7 @@ cmd_serve() {
   local tmpdir; tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"; kill $(jobs -p) 2>/dev/null; exit 0' INT TERM EXIT
 
-  info "rack serve  port=$port  refresh=${interval}s  (Ctrl-C to stop)"
+  info "docket serve  port=$port  refresh=${interval}s  (Ctrl-C to stop)"
   info "Endpoints: /status.json  /metrics  /health  →  http://localhost:${port}/"
   echo ""
 

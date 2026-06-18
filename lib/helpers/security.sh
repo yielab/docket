@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Security posture helpers.
 #
-# rack does not implement enforcement — the OpenClaw daemon provides exec
+# docket does not implement enforcement — the OpenClaw daemon provides exec
 # approvals, tool policy, and a security audit natively (see
 # internal-docs/SECURITY-GATES-FEASIBILITY.md). These helpers HARDEN the local
-# state files (G2) and SURFACE the daemon's gate/audit status for `rack doctor`
-# (G1). The daemon enforces; rack configures and reports.
+# state files (G2) and SURFACE the daemon's gate/audit status for `docket doctor`
+# (G1). The daemon enforces; docket configures and reports.
 
 # G2 — tighten permissions on sensitive OpenClaw state files.
 # chmod 600 any of openclaw.json / secrets.json that is currently accessible by
@@ -57,9 +57,9 @@ PYEOF
   printf '%s' "$json" | python3 -c "$_script" 2>/dev/null || echo "NA|approvals parse failed|"
 }
 
-# G1 — summarize `openclaw security audit --json` for `rack doctor`.
+# G1 — summarize `openclaw security audit --json` for `docket doctor`.
 # First line: "<crit>|<warn>|<info>". Then one "<title>|<remediation>" line per
-# critical finding (max 5). The config-perms finding is excluded — rack owns and
+# critical finding (max 5). The config-perms finding is excluded — docket owns and
 # reports that one itself (see secure_config_perms / the doctor perms check), so
 # excluding it here prevents double-counting. Empty output if audit unavailable.
 _security_audit_report() {
@@ -75,7 +75,7 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-OWNED = {"fs.config.perms_writable"}  # rack reports/fixes this natively
+OWNED = {"fs.config.perms_writable"}  # docket reports/fixes this natively
 ext = [f for f in (d.get("findings", []) or []) if f.get("checkId") not in OWNED]
 crit = sum(1 for f in ext if f.get("severity") == "critical")
 warn = sum(1 for f in ext if f.get("severity") == "warn")
@@ -150,8 +150,8 @@ apply_exec_approval_gates() {
 import json, os, sys, uuid
 existing_path, out_path = sys.argv[1], sys.argv[2]
 agent_ids = sys.argv[3:]
-force = os.environ.get("RACK_GATES_FORCE") == "1"
-paths = [p for p in os.environ.get("RACK_ALLOWLIST_PATHS", "").splitlines() if p.strip()]
+force = os.environ.get("DOCKET_GATES_FORCE") == "1"
+paths = [p for p in os.environ.get("DOCKET_ALLOWLIST_PATHS", "").splitlines() if p.strip()]
 
 try:
     with open(existing_path) as f:
@@ -202,7 +202,7 @@ PYEOF
 
   local tmp_out result
   tmp_out=$(mktemp)
-  result=$(RACK_ALLOWLIST_PATHS="$paths" RACK_GATES_FORCE="$force" \
+  result=$(DOCKET_ALLOWLIST_PATHS="$paths" DOCKET_GATES_FORCE="$force" \
     python3 -c "$_builder" "$appr_file" "$tmp_out" $agent_ids 2>/dev/null) \
     || { rm -f "$tmp_out"; fail "Failed to build exec-approval config"; return 1; }
   # Flatten the three result lines into one pipe-delimited summary.

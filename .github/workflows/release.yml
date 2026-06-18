@@ -26,8 +26,8 @@ jobs:
       - name: Build checksummed tarball
         run: |
           mkdir -p dist
-          name="rack-${GITHUB_REF_NAME}"
-          git archive --format=tar.gz --prefix="rack-cli/" -o "dist/${name}.tar.gz" HEAD
+          name="docket-${GITHUB_REF_NAME}"
+          git archive --format=tar.gz --prefix="docket-cli/" -o "dist/${name}.tar.gz" HEAD
           (cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256")
 
       - name: Create GitHub Release

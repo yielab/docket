@@ -54,14 +54,14 @@ for spec in sys.argv[3:]:
     if not os.path.isdir(spec_dir):
         print(f"ABSENT\t{spec}")
         continue
-    try:    meta = json.load(open(os.path.join(spec_dir, ".rack-meta.json")))
+    try:    meta = json.load(open(os.path.join(spec_dir, ".docket-meta.json")))
     except: meta = {}
     model = meta.get("model") or default_model
     print(f"SPEC\t{spec}\t{model}\t{meta.get('modelSource', '')}")
 PY
 }
 
-# Machine-readable agent inventory (rack list --json). A single Python pass over
+# Machine-readable agent inventory (docket list --json). A single Python pass over
 # all project metas + the daemon config — stable output for scripting/CI, and it
 # also avoids the per-field interpreter spawns the human view does.
 _list_json() {
@@ -114,7 +114,7 @@ cmd_list() {
   local ids; ids=$(project_ids)
   if [[ -z "$ids" ]]; then
     warn "No project agents found."
-    echo "Run: rack add"
+    echo "Run: docket add"
     exit 0
   fi
 
@@ -217,7 +217,7 @@ cmd_list() {
     fi
 
     # Short form for the card view: last path segment (e.g. "claude-sonnet-4-6", "gpt-4.1-mini")
-    # Full model ID is visible in `rack info` and `rack models`.
+    # Full model ID is visible in `docket info` and `docket models`.
     local model_short="${model##*/}"
 
     # ── Render card ──
@@ -256,10 +256,10 @@ cmd_list() {
     for entry in "${unwired[@]}"; do
       local uw_id="${entry%%|*}"
       local uw_name="${entry##*|}"
-      echo -e "    ${YELLOW}○${RESET} ${BOLD}${uw_id}${RESET}  ${DIM}→ create group \"${uw_name}\" then:${RESET} rack wire ${uw_id}"
+      echo -e "    ${YELLOW}○${RESET} ${BOLD}${uw_id}${RESET}  ${DIM}→ create group \"${uw_name}\" then:${RESET} docket wire ${uw_id}"
     done
     echo ""
-    dim "  Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) rack wire <id>"
+    dim "  Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) docket wire <id>"
   fi
 
   # ── Specialist agents section ──
@@ -270,14 +270,14 @@ cmd_list() {
   echo ""
 
   # One batch call replaces 6 per-specialist python3 -c spawns
-  local _spec_out; _spec_out=$(_list_spec_batch "${RACK_SPECIALISTS[@]}")
+  local _spec_out; _spec_out=$(_list_spec_batch "${DOCKET_SPECIALISTS[@]}")
   declare -A _spec_model _spec_src
   while IFS=$'\t' read -r rectype spec model src; do
     [[ "$rectype" == "SPEC" ]] && { _spec_model[$spec]="$model"; _spec_src[$spec]="$src"; }
   done <<< "$_spec_out"
 
   local spec
-  for spec in "${RACK_SPECIALISTS[@]}"; do
+  for spec in "${DOCKET_SPECIALISTS[@]}"; do
     [[ -z "${_spec_model[$spec]:-}" ]] && continue
     local model_short="${_spec_model[$spec]##*/}"
     local spec_src="${_spec_src[$spec]:-}"
@@ -290,10 +290,10 @@ cmd_list() {
 
   echo ""
   printf '%0.s─' {1..70}; echo ""
-  dim "  rack info <id>     detailed view"
-  dim "  rack cost          token usage"
-  dim "  rack models        role→model policy"
-  dim "  rack profile <id>  pin/unpin an agent's model"
+  dim "  docket info <id>     detailed view"
+  dim "  docket cost          token usage"
+  dim "  docket models        role→model policy"
+  dim "  docket profile <id>  pin/unpin an agent's model"
   echo ""
 }
 

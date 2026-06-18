@@ -6,7 +6,7 @@
 #                       secrets.json keeps a names-only index (empty values) so
 #                       listing/sync still enumerate keys without secrets at rest.
 #
-# Select the keyring backend with RACK_SECRETS_BACKEND=keyring; it transparently
+# Select the keyring backend with DOCKET_SECRETS_BACKEND=keyring; it transparently
 # falls back to file when no keyring tool is available. Secret VALUES are always
 # passed via stdin/env or assembled inside Python — never via argv (which is
 # world-readable through /proc) and never interpolated into source. See
@@ -22,7 +22,7 @@ _keyring_tool() {
 
 # Resolve the effective backend (with availability fallback).
 secrets_backend() {
-  case "${RACK_SECRETS_BACKEND:-file}" in
+  case "${DOCKET_SECRETS_BACKEND:-file}" in
     keyring) _keyring_tool >/dev/null 2>&1 && echo "keyring" || echo "file" ;;
     *)       echo "file" ;;
   esac
@@ -34,16 +34,16 @@ _secrets_ensure_index() {
   [[ -f "$f" ]] || { echo '{}' > "$f"; chmod 600 "$f"; }
 }
 
-# secret_put <KEY>   — store; value read from $RACK_KEY_VALUE.
+# secret_put <KEY>   — store; value read from $DOCKET_KEY_VALUE.
 secret_put() {
   local key="$1"
   _secrets_ensure_index
   local f; f=$(_secrets_file)
   if [[ "$(secrets_backend)" == "keyring" ]]; then
-    printf '%s' "${RACK_KEY_VALUE:-}" \
-      | secret-tool store --label="rack-cli: $key" service "${RACK_KEYRING_SERVICE:-rack-cli}" key "$key" >/dev/null 2>&1 \
+    printf '%s' "${DOCKET_KEY_VALUE:-}" \
+      | secret-tool store --label="docket-cli: $key" service "${DOCKET_KEYRING_SERVICE:-docket-cli}" key "$key" >/dev/null 2>&1 \
       || { fail "keyring store failed for $key"; return 1; }
-    RACK_KEY_VALUE="" _keys_store "$f" "$key"   # index entry only (no value at rest)
+    DOCKET_KEY_VALUE="" _keys_store "$f" "$key"   # index entry only (no value at rest)
   else
     _keys_store "$f" "$key"                      # injection-safe file writer (keys.sh)
   fi
@@ -53,7 +53,7 @@ secret_put() {
 secret_get() {
   local key="$1"
   if [[ "$(secrets_backend)" == "keyring" ]]; then
-    secret-tool lookup service "${RACK_KEYRING_SERVICE:-rack-cli}" key "$key" 2>/dev/null || true
+    secret-tool lookup service "${DOCKET_KEYRING_SERVICE:-docket-cli}" key "$key" 2>/dev/null || true
   else
     local f; f=$(_secrets_file)
     [[ -f "$f" ]] || return 0
@@ -74,7 +74,7 @@ secret_has() {
 # secret_del <KEY>   — remove from keyring (if applicable) and the index.
 secret_del() {
   local key="$1" f; f=$(_secrets_file)
-  [[ "$(secrets_backend)" == "keyring" ]] && secret-tool clear service "${RACK_KEYRING_SERVICE:-rack-cli}" key "$key" >/dev/null 2>&1
+  [[ "$(secrets_backend)" == "keyring" ]] && secret-tool clear service "${DOCKET_KEYRING_SERVICE:-docket-cli}" key "$key" >/dev/null 2>&1
   [[ -f "$f" ]] || return 0
   python3 - "$f" "$key" <<'PYEOF'
 import json, os, sys
@@ -108,7 +108,7 @@ secret_export_json() {
     python3 - "$f" <<'PYEOF'
 import json, os, subprocess, sys
 idx = json.load(open(sys.argv[1]))
-service = os.environ.get("RACK_KEYRING_SERVICE", "rack-cli")
+service = os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
 out = {}
 for k in idx:
     r = subprocess.run(["secret-tool", "lookup", "service", service, "key", k],

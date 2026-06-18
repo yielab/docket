@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Centralized API key management for rack CLI
+# Centralized API key management for docket CLI
 
 cmd_keys() {
   local subcmd="${1:-list}"
@@ -15,7 +15,7 @@ cmd_keys() {
     export)   _keys_export ;;
     *)
       cat <<EOF
-${BOLD}Usage:${RESET} rack keys <command>
+${BOLD}Usage:${RESET} docket keys <command>
 
 ${BOLD}Commands:${RESET}
   ${GREEN}setup${RESET}                Interactive setup wizard for all API keys
@@ -29,7 +29,7 @@ ${BOLD}Commands:${RESET}
 ${BOLD}Storage Backend:${RESET}
   ${CYAN}file${RESET}    (default)  ~/.openclaw/secrets.json (0600)
   ${CYAN}keyring${RESET}           OS keyring via libsecret; secrets.json holds names only
-  Select with ${GREEN}RACK_SECRETS_BACKEND=keyring${RESET} (falls back to file if unavailable).
+  Select with ${GREEN}DOCKET_SECRETS_BACKEND=keyring${RESET} (falls back to file if unavailable).
 
   Keys are automatically synced to:
     • Agent workspaces (.env files) — scoped: each agent gets only the
@@ -38,13 +38,13 @@ ${BOLD}Storage Backend:${RESET}
     • Shell environment (via 'export' command)
 
 ${BOLD}Quick Start:${RESET}
-  ${GREEN}rack keys setup${RESET}      Run interactive wizard (recommended)
-  ${GREEN}rack keys list${RESET}       See what keys you have
+  ${GREEN}docket keys setup${RESET}      Run interactive wizard (recommended)
+  ${GREEN}docket keys list${RESET}       See what keys you have
 
 ${BOLD}Configured models (role policy):${RESET}
   Cheap roles  : ${ROLE_MODELS[tester]:-${MODEL_PROFILES[economy]}}  (manager reviewer tester knowledge task)
   Strong roles : ${ROLE_MODELS[programmer]:-${MODEL_PROFILES[standard]}}  (programmer security repo)
-  Full table: rack models  ·  Switch provider: rack models preset [anthropic|openai|google|openrouter-free|openrouter]
+  Full table: docket models  ·  Switch provider: docket models preset [anthropic|openai|google|openrouter-free|openrouter]
 
 ${BOLD}Supported Providers:${RESET}
   ${CYAN}ANTHROPIC_API_KEY${RESET}     Anthropic Claude
@@ -57,8 +57,8 @@ ${BOLD}Supported Providers:${RESET}
 
 ${BOLD}Free option:${RESET}
   Use OpenRouter free-tier models (zero per-token cost):
-    rack models preset openrouter-free
-    rack keys add OPENROUTER_API_KEY   (free account at openrouter.ai)
+    docket models preset openrouter-free
+    docket keys add OPENROUTER_API_KEY   (free account at openrouter.ai)
 
 ${BOLD}Get API Keys:${RESET}
   Anthropic:  ${BLUE}https://console.anthropic.com/settings/keys${RESET}
@@ -74,7 +74,7 @@ EOF
 _keys_add() {
   local key_name="$1"
   if [[ -z "$key_name" ]]; then
-    error "Key name required. Usage: rack keys add <KEY_NAME>"
+    error "Key name required. Usage: docket keys add <KEY_NAME>"
   fi
 
   # Validate key name format (uppercase, alphanumeric + underscore)
@@ -94,7 +94,7 @@ _keys_add() {
   fi
 
   # Store via the active backend (value via environment — never interpolated).
-  RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
+  DOCKET_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "added"
   audit_log "keys.add" "$key_name"
   success "Added key: $key_name ($(secrets_backend) backend)"
@@ -108,16 +108,16 @@ _keys_add() {
 }
 
 # Safely write one key into secrets.json.
-# The value is read from $RACK_KEY_VALUE (environment), the name and path arrive
+# The value is read from $DOCKET_KEY_VALUE (environment), the name and path arrive
 # via argv — nothing user-controlled is ever interpolated into Python source.
 # Writes atomically (tmp + replace) and enforces 0600.
-# Usage: RACK_KEY_VALUE="$value" _keys_store <secrets-file> <KEY_NAME>
+# Usage: DOCKET_KEY_VALUE="$value" _keys_store <secrets-file> <KEY_NAME>
 _keys_store() {
   local secrets_file="$1" key_name="$2"
   python3 - "$secrets_file" "$key_name" <<'PYEOF'
 import json, os, sys
 path, key_name = sys.argv[1], sys.argv[2]
-value = os.environ.get("RACK_KEY_VALUE", "")
+value = os.environ.get("DOCKET_KEY_VALUE", "")
 try:
     with open(path) as f:
         secrets = json.load(f)
@@ -133,7 +133,7 @@ os.replace(tmp, path)
 PYEOF
 }
 
-# Record key lifecycle metadata in a sidecar (secrets.meta.json) so `rack doctor`
+# Record key lifecycle metadata in a sidecar (secrets.meta.json) so `docket doctor`
 # can report key age. Stores first-seen (added_at) and last-rotation (rotated_at)
 # timestamps. The timestamp arrives via the environment; nothing user-controlled
 # is interpolated into source. Atomic write, mode 0600.
@@ -143,10 +143,10 @@ _keys_touch_meta() {
   local meta_file="$OPENCLAW_DIR/secrets.meta.json"
   local now
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  RACK_META_NOW="$now" python3 - "$meta_file" "$key_name" "$event" <<'PYEOF'
+  DOCKET_META_NOW="$now" python3 - "$meta_file" "$key_name" "$event" <<'PYEOF'
 import json, os, sys
 path, key_name, event = sys.argv[1], sys.argv[2], sys.argv[3]
-now = os.environ.get("RACK_META_NOW", "")
+now = os.environ.get("DOCKET_META_NOW", "")
 try:
     with open(path) as f:
         meta = json.load(f)
@@ -169,20 +169,20 @@ os.replace(tmp, path)
 PYEOF
 }
 
-# Report stored-key age for `rack doctor`. Emits one machine-parseable line per
+# Report stored-key age for `docket doctor`. Emits one machine-parseable line per
 # key: "<STATE>|<KEY>|<detail>" where STATE is OK, STALE, or UNKNOWN. A key is
 # STALE when its last add/rotation is older than the threshold (default 90 days,
-# override with RACK_KEY_MAX_AGE_DAYS).
+# override with DOCKET_KEY_MAX_AGE_DAYS).
 _keys_age_report() {
   local secrets_file="$OPENCLAW_DIR/secrets.json"
   local meta_file="$OPENCLAW_DIR/secrets.meta.json"
   [[ -f "$secrets_file" ]] || return 0
-  RACK_KEY_THRESHOLD="${RACK_KEY_MAX_AGE_DAYS:-90}" \
+  DOCKET_KEY_THRESHOLD="${DOCKET_KEY_MAX_AGE_DAYS:-90}" \
     python3 - "$secrets_file" "$meta_file" <<'PYEOF'
 import json, os, sys
 from datetime import datetime, timezone
 secrets_path, meta_path = sys.argv[1], sys.argv[2]
-threshold = int(os.environ.get("RACK_KEY_THRESHOLD", "90"))
+threshold = int(os.environ.get("DOCKET_KEY_THRESHOLD", "90"))
 try:
     with open(secrets_path) as f:
         secrets = json.load(f)
@@ -220,7 +220,7 @@ _keys_list() {
   if [[ -z "$names" ]]; then
     echo -e "${DIM}No API keys stored yet.${RESET}"
     echo ""
-    echo -e "Add a key with: ${GREEN}rack keys add <KEY_NAME>${RESET}"
+    echo -e "Add a key with: ${GREEN}docket keys add <KEY_NAME>${RESET}"
     return
   fi
 
@@ -243,14 +243,14 @@ _keys_list() {
   done <<< "$names"
 
   echo ""
-  echo -e "${DIM}Tip: Remove a key with${RESET} rack keys remove <KEY_NAME>"
+  echo -e "${DIM}Tip: Remove a key with${RESET} docket keys remove <KEY_NAME>"
 }
 
 # Remove a key
 _keys_remove() {
   local key_name="$1"
   if [[ -z "$key_name" ]]; then
-    error "Key name required. Usage: rack keys remove <KEY_NAME>"
+    error "Key name required. Usage: docket keys remove <KEY_NAME>"
   fi
 
   if ! secret_has "$key_name"; then
@@ -285,7 +285,7 @@ _keys_remove() {
 _keys_rotate() {
   local key_name="$1"
   if [[ -z "$key_name" ]]; then
-    error "Key name required. Usage: rack keys rotate <KEY_NAME>"
+    error "Key name required. Usage: docket keys rotate <KEY_NAME>"
   fi
 
   if [[ ! "$key_name" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
@@ -294,7 +294,7 @@ _keys_rotate() {
 
   # Must already exist (rotation replaces an existing credential, never creates)
   if ! secret_has "$key_name"; then
-    error "Key '$key_name' not found. Use 'rack keys add $key_name' to create it."
+    error "Key '$key_name' not found. Use 'docket keys add $key_name' to create it."
   fi
 
   echo -e "${BOLD}Rotate API Key${RESET}"
@@ -308,7 +308,7 @@ _keys_rotate() {
   fi
 
   # Replace value (via environment — never interpolated into code) and stamp rotation
-  RACK_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
+  DOCKET_KEY_VALUE="$key_value" secret_put "$key_name" || return 1
   _keys_touch_meta "$key_name" "rotated"
   audit_log "keys.rotate" "$key_name"
   success "Rotated key: $key_name"
@@ -319,14 +319,14 @@ _keys_rotate() {
   restart_gateway
 }
 
-# Determine an agent's model provider from its .rack-meta.json.
+# Determine an agent's model provider from its .docket-meta.json.
 # Models are stored as "<provider>/<model>" (e.g. anthropic/claude-sonnet-4-6),
 # so the provider is the prefix. Falls back to the default model's provider when
 # the agent has no recorded model.
 # Usage: _agent_provider <workspace-dir>  ->  echoes provider (e.g. "anthropic")
 _agent_provider() {
   local workspace="$1"
-  local meta="$workspace/.rack-meta.json"
+  local meta="$workspace/.docket-meta.json"
   local model=""
   if [[ -f "$meta" ]]; then
     model=$(python3 -c "import json,sys
@@ -434,7 +434,7 @@ if os.path.exists(env_file):
                 continue  # drop any managed secret line (scoped or not)
             if stripped.startswith("#") and (
                 "Agent Environment Variables" in stripped
-                or "Managed by rack keys" in stripped
+                or "Managed by docket keys" in stripped
                 or "User-defined (preserved)" in stripped
             ):
                 continue
@@ -443,7 +443,7 @@ if os.path.exists(env_file):
 tmp = env_file + ".tmp"
 with open(tmp, "w") as f:
     f.write("# Agent Environment Variables\n")
-    f.write("# Managed by rack keys - do not edit secret lines manually\n\n")
+    f.write("# Managed by docket keys - do not edit secret lines manually\n\n")
     for key, value in scoped.items():
         f.write(f"{key}={value}\n")
     if preserved:
@@ -539,7 +539,7 @@ _keys_setup() {
       fi
 
       # Save key (value via environment — never interpolated into code)
-      RACK_KEY_VALUE="$key_value" secret_put "$key_name"
+      DOCKET_KEY_VALUE="$key_value" secret_put "$key_name"
       _keys_touch_meta "$key_name" "added"
 
       echo "${GREEN}✓${RESET} Saved $key_name"
@@ -577,9 +577,9 @@ _keys_setup() {
   success "Setup complete!"
   echo ""
   echo "${BOLD}Next steps:${RESET}"
-  echo "  • Validate keys: ${GREEN}rack keys validate${RESET}"
-  echo "  • View keys: ${GREEN}rack keys list${RESET}"
-  echo "  • Export to shell: ${GREEN}eval \$(rack keys export)${RESET}"
+  echo "  • Validate keys: ${GREEN}docket keys validate${RESET}"
+  echo "  • View keys: ${GREEN}docket keys list${RESET}"
+  echo "  • Export to shell: ${GREEN}eval \$(docket keys export)${RESET}"
 }
 
 # Validate API keys by testing them
@@ -587,7 +587,7 @@ _keys_validate() {
   local key_name="${1:-}"
 
   if [[ -z "$(secret_names)" ]]; then
-    error "No API keys found. Run: rack keys setup"
+    error "No API keys found. Run: docket keys setup"
   fi
 
   header "Validate API Keys"
@@ -656,7 +656,7 @@ _validate_single_key() {
 # Export keys as environment variables
 _keys_export() {
   if [[ -z "$(secret_names)" ]]; then
-    error "No API keys found. Run: rack keys setup"
+    error "No API keys found. Run: docket keys setup"
   fi
 
   # Materialise values (backend-agnostic) into a 0600 temp, then emit exports.

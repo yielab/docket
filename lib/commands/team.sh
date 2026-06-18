@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Command: team — Manage specialist agents and RACK architecture
+# Command: team — Manage specialist agents and DOCKET architecture
 
 cmd_team() {
   local subcommand="${1:-status}"
@@ -34,7 +34,7 @@ cmd_team() {
       _team_cancel "$@"
       ;;
     init)
-      warn "'team init' is deprecated. Use 'rack install' instead."
+      warn "'team init' is deprecated. Use 'docket install' instead."
       ;;
     *)
       _team_help
@@ -45,22 +45,22 @@ cmd_team() {
 _team_help() {
   header "Team Management"
   echo ""
-  echo "Manage specialist agents with RACK architecture"
+  echo "Manage specialist agents with DOCKET architecture"
   echo ""
   echo -e "${BOLD}Usage:${RESET}"
-  echo "  rack team status              Show specialist agent health"
-  echo "  rack team upgrade             Upgrade specialists to RACK templates"
-  echo "  rack team check               Verify all specialists exist"
-  echo "  rack team roles               Show agent roles and responsibilities"
+  echo "  docket team status              Show specialist agent health"
+  echo "  docket team upgrade             Upgrade specialists to DOCKET templates"
+  echo "  docket team check               Verify all specialists exist"
+  echo "  docket team roles               Show agent roles and responsibilities"
   echo ""
   echo -e "${BOLD}Task Delegation:${RESET}"
-  echo "  rack team delegate \"<task>\"            Add task (status: pending)"
-  echo "  rack team delegate --priority high \"<task>\"  High-priority task"
-  echo "  rack team queue                        Show active tasks"
-  echo "  rack team queue --all                  Include done + cancelled"
-  echo "  rack team start <task-id>              pending → in_progress"
-  echo "  rack team done <task-id>               pending/in_progress → done"
-  echo "  rack team cancel <task-id>             pending/in_progress → cancelled"
+  echo "  docket team delegate \"<task>\"            Add task (status: pending)"
+  echo "  docket team delegate --priority high \"<task>\"  High-priority task"
+  echo "  docket team queue                        Show active tasks"
+  echo "  docket team queue --all                  Include done + cancelled"
+  echo "  docket team start <task-id>              pending → in_progress"
+  echo "  docket team done <task-id>               pending/in_progress → done"
+  echo "  docket team cancel <task-id>             pending/in_progress → cancelled"
   echo ""
   echo "  Valid state transitions:"
   echo "    pending ──start──→ in_progress ──done──→ done"
@@ -88,9 +88,9 @@ _team_status() {
       continue
     fi
 
-    # Check if RACK-optimized (has RACK keywords or specialized patterns)
-    if grep -qE "RACK Architecture|Context Compression|Short-Circuit|veto power|Mandatory.*checklist|validation specialist|compressed brief|observe behavior" "$workspace/SOUL.md" 2>/dev/null; then
-      printf "  ${GREEN}✓${RESET} %-12s RACK-optimized\n" "$spec"
+    # Check if DOCKET-optimized (has DOCKET keywords or specialized patterns)
+    if grep -qE "DOCKET Architecture|Context Compression|Short-Circuit|veto power|Mandatory.*checklist|validation specialist|compressed brief|observe behavior" "$workspace/SOUL.md" 2>/dev/null; then
+      printf "  ${GREEN}✓${RESET} %-12s DOCKET-optimized\n" "$spec"
     else
       printf "  ${CYAN}○${RESET} %-12s Standard (upgrade available)\n" "$spec"
     fi
@@ -99,13 +99,13 @@ _team_status() {
   echo ""
 
   # Count upgraded vs total
-  local upgraded; upgraded=$(grep -lE "RACK Architecture|Context Compression|validation specialist|veto power|compressed brief|observe behavior" ~/.openclaw/workspaces/*/SOUL.md 2>/dev/null | wc -l | tr -d ' ')
+  local upgraded; upgraded=$(grep -lE "DOCKET Architecture|Context Compression|validation specialist|veto power|compressed brief|observe behavior" ~/.openclaw/workspaces/*/SOUL.md 2>/dev/null | wc -l | tr -d ' ')
   local total=${#specialists[@]}
 
   if [[ $upgraded -eq $total ]] || [[ $upgraded -ge 4 ]]; then
-    dim "All core specialists RACK-optimized (knowledge & security use standard templates)"
+    dim "All core specialists DOCKET-optimized (knowledge & security use standard templates)"
   else
-    dim "Run 'rack team upgrade' to apply RACK templates"
+    dim "Run 'docket team upgrade' to apply DOCKET templates"
   fi
   echo ""
 }
@@ -135,13 +135,13 @@ _team_check() {
   else
     error "Missing specialists: ${missing[*]}"
     echo ""
-    echo "Run: rack install"
+    echo "Run: docket install"
     exit 1
   fi
 }
 
 _team_roles() {
-  header "Specialist Agent Roles (RACK Architecture)"
+  header "Specialist Agent Roles (DOCKET Architecture)"
   echo ""
 
   echo -e "${BOLD}${GREEN}Manager (Atlas)${RESET}"
@@ -194,10 +194,10 @@ _team_roles() {
 }
 
 _team_upgrade() {
-  header "Upgrading Specialists to RACK Architecture"
+  header "Upgrading Specialists to DOCKET Architecture"
   echo ""
 
-  warn "This will replace SOUL.md files with RACK-optimized templates"
+  warn "This will replace SOUL.md files with DOCKET-optimized templates"
   echo ""
   echo "Changes:"
   echo "  • Manager: Add classifier logic + context compression rules"
@@ -213,8 +213,8 @@ _team_upgrade() {
 
   echo ""
 
-  # $LIB_DIR resolves correctly in both repo and installed layouts (bin/rack);
-  # $RACK_CLI_ROOT/lib/templates only exists in the repo layout.
+  # $LIB_DIR resolves correctly in both repo and installed layouts (bin/docket);
+  # $DOCKET_CLI_ROOT/lib/templates only exists in the repo layout.
   local template_dir="$LIB_DIR/templates"
   local upgraded=0
   local failed=0
@@ -228,8 +228,8 @@ _team_upgrade() {
       cp "$manager_workspace/SOUL.md" "$manager_workspace/SOUL.md.backup-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    # Apply RACK template
-    cp "$template_dir/rack-manager.md" "$manager_workspace/SOUL.md"
+    # Apply DOCKET template
+    cp "$template_dir/docket-manager.md" "$manager_workspace/SOUL.md"
     chmod 600 "$manager_workspace/SOUL.md"
 
     success "manager: upgraded (backup saved)"
@@ -247,7 +247,7 @@ _team_upgrade() {
       cp "$programmer_workspace/SOUL.md" "$programmer_workspace/SOUL.md.backup-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    cp "$template_dir/rack-programmer.md" "$programmer_workspace/SOUL.md"
+    cp "$template_dir/docket-programmer.md" "$programmer_workspace/SOUL.md"
     chmod 600 "$programmer_workspace/SOUL.md"
 
     success "programmer: upgraded"
@@ -265,7 +265,7 @@ _team_upgrade() {
       cp "$reviewer_workspace/SOUL.md" "$reviewer_workspace/SOUL.md.backup-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    cp "$template_dir/rack-reviewer.md" "$reviewer_workspace/SOUL.md"
+    cp "$template_dir/docket-reviewer.md" "$reviewer_workspace/SOUL.md"
     chmod 600 "$reviewer_workspace/SOUL.md"
 
     success "reviewer: upgraded"
@@ -283,7 +283,7 @@ _team_upgrade() {
       cp "$tester_workspace/SOUL.md" "$tester_workspace/SOUL.md.backup-$(date +%Y%m%d-%H%M%S)"
     fi
 
-    cp "$template_dir/rack-tester.md" "$tester_workspace/SOUL.md"
+    cp "$template_dir/docket-tester.md" "$tester_workspace/SOUL.md"
     chmod 600 "$tester_workspace/SOUL.md"
 
     success "tester: upgraded"
@@ -302,7 +302,7 @@ _team_upgrade() {
   if [[ $failed -gt 0 ]]; then
     warn "Upgraded: $upgraded, Failed: $failed"
     echo ""
-    echo "Missing agents? Run: rack install"
+    echo "Missing agents? Run: docket install"
   else
     success "All specialists upgraded! ($upgraded agents)"
   fi
@@ -312,12 +312,12 @@ _team_upgrade() {
   restart_gateway
 
   echo ""
-  success "RACK upgrade complete!"
+  success "DOCKET upgrade complete!"
   echo ""
   echo -e "${BOLD}Next Steps:${RESET}"
   echo "  1. Test specialist responses: Send a message to manager in Telegram"
   echo "  2. Verify context efficiency: Check token usage in next session"
-  echo "  3. Test bug-fix pipeline: rack workflow manager create bug-fix"
+  echo "  3. Test bug-fix pipeline: docket workflow manager create bug-fix"
   echo ""
   echo -e "${BOLD}What Changed:${RESET}"
   echo "  • Manager now compresses context before delegating (<500 tokens)"
@@ -343,7 +343,7 @@ _ensure_task_list() {
   local path; path=$(_task_list_path)
   local manager_ws="$OPENCLAW_DIR/workspaces/manager"
   if [[ ! -d "$manager_ws" ]]; then
-    error "Manager agent not initialized. Run: rack install"
+    error "Manager agent not initialized. Run: docket install"
   fi
   if [[ ! -f "$path" ]]; then
     echo '{"tasks":[]}' | json_atomic_write "$path"
@@ -364,7 +364,7 @@ _team_delegate() {
 
   local description="${rest[0]:-}"
   [[ -z "$description" ]] && \
-    error "Usage: rack team delegate [--priority high|normal|low] \"<task description>\""
+    error "Usage: docket team delegate [--priority high|normal|low] \"<task description>\""
 
   # Schema: validate priority
   case "$priority" in
@@ -383,14 +383,14 @@ _team_delegate() {
   local task_id; task_id="task-$(date +%s%N 2>/dev/null | cut -c1-13 || date +%s)"
   local created; created=$(date -Iseconds)
 
-  with_rack_lock _team_delegate_write "$path" "$task_id" "$description" "$priority" "$created"
+  with_docket_lock _team_delegate_write "$path" "$task_id" "$description" "$priority" "$created"
 
-  rack_audit "team.delegate" "{\"id\":\"$task_id\",\"priority\":\"$priority\"}"
+  docket_audit "team.delegate" "{\"id\":\"$task_id\",\"priority\":\"$priority\"}"
   success "Task queued: [$task_id] $description"
   echo "  Priority: $priority"
   echo "  Queue: $(_team_queue_count) task(s) pending"
   echo ""
-  info "View queue: rack team queue"
+  info "View queue: docket team queue"
 }
 
 _team_delegate_write() {
@@ -479,8 +479,8 @@ if show_all and (done or canc):
 PY
 
   echo ""
-  info "Mark done: rack team done <id>  |  Start: rack team start <id>  |  Cancel: rack team cancel <id>"
-  [[ "$show_all" -eq 0 ]] && dim "  Show completed/cancelled: rack team queue --all"
+  info "Mark done: docket team done <id>  |  Start: docket team start <id>  |  Cancel: docket team cancel <id>"
+  [[ "$show_all" -eq 0 ]] && dim "  Show completed/cancelled: docket team queue --all"
 }
 
 # ── State transitions (all locked + atomic) ────────────────────────────────
@@ -549,13 +549,13 @@ _team_cancel() {
 # Performs the transition and prints the sentinel line; returns 1 on error.
 _team_transition_result() {
   local new_state="$1" task_id="$2"
-  [[ -z "$task_id" ]] && error "Usage: rack team $new_state <task-id>"
+  [[ -z "$task_id" ]] && error "Usage: docket team $new_state <task-id>"
   _ensure_task_list
   local path; path=$(_task_list_path)
   local now; now=$(date -Iseconds)
   local sentinel_file; sentinel_file=$(mktemp)
   local ok=0
-  with_rack_lock _team_transition_write "$path" "$task_id" "$new_state" 2>"$sentinel_file" || ok=1
+  with_docket_lock _team_transition_write "$path" "$task_id" "$new_state" 2>"$sentinel_file" || ok=1
   local sentinel; sentinel=$(cat "$sentinel_file"); rm -f "$sentinel_file"
   if [[ "$sentinel" == NOTFOUND* || "$sentinel" == INVALID_TRANSITION* ]]; then
     local detail="${sentinel#*|}"
@@ -566,6 +566,6 @@ _team_transition_result() {
     fi
     return 1
   fi
-  rack_audit "team.$new_state" "{\"id\":\"$task_id\"}"
+  docket_audit "team.$new_state" "{\"id\":\"$task_id\"}"
   echo "$sentinel"
 }

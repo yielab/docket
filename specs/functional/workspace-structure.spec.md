@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This specification defines the on-disk layout of an agent workspace: the files rack creates,
+This specification defines the on-disk layout of an agent workspace: the files docket creates,
 their roles, and the permission and synchronization rules that keep a workspace valid.
 
 ## Scope
@@ -17,8 +17,8 @@ This specification covers:
 - The special manager-agent layout
 - Permission and metadata-sync invariants
 
-This specification does NOT cover the `.rack-meta.json` field schema in detail
-(see ../data/rack-meta.spec.md).
+This specification does NOT cover the `.docket-meta.json` field schema in detail
+(see ../data/docket-meta.spec.md).
 
 ## Requirements
 
@@ -30,7 +30,7 @@ This specification does NOT cover the `.rack-meta.json` field schema in detail
    - `AGENTS.md` — session protocol and delegation rules
    - `TOOLS.md` — project-specific commands
    - `HEARTBEAT.md` — active tasks/decisions for proactive monitoring
-   - `.rack-meta.json` — rack metadata (see data spec)
+   - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md`
 2. A `workflows/` directory **MAY** exist for Lobster pipelines.
 3. Repo agents and task agents **MUST** use different templates: repo agents have a codebase
@@ -49,16 +49,16 @@ This specification does NOT cover the `.rack-meta.json` field schema in detail
 
 ### Synchronization
 
-1. `.rack-meta.json` and `openclaw.json` **MUST** stay synchronized for each agent.
+1. `.docket-meta.json` and `openclaw.json` **MUST** stay synchronized for each agent.
 
 ## Interface Contracts
 
 Workspaces are created and repaired through commands, not edited by hand:
 
 ```bash
-rack add <agent-id> [codebase-path]     # Provision a workspace
-rack maintain <agent-id> check          # Verify/repair structure and permissions
-rack maintain <agent-id> rebuild        # Regenerate all files from metadata
+docket add <agent-id> [codebase-path]     # Provision a workspace
+docket maintain <agent-id> check          # Verify/repair structure and permissions
+docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 ```
 
 ## Examples
@@ -71,7 +71,7 @@ rack maintain <agent-id> rebuild        # Regenerate all files from metadata
 ├── AGENTS.md
 ├── TOOLS.md
 ├── HEARTBEAT.md
-├── .rack-meta.json
+├── .docket-meta.json
 ├── memory/
 │   └── 2026-06-09.md
 └── workflows/
@@ -85,8 +85,8 @@ rack maintain <agent-id> rebuild        # Regenerate all files from metadata
 
 ### Post-conditions
 
-- After `rack add`, all required core files **MUST** exist with `700`/`600` permissions.
-- After `rack maintain rebuild`, core files **MUST** be regenerated from metadata.
+- After `docket add`, all required core files **MUST** exist with `700`/`600` permissions.
+- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata.
 
 ### Invariants
 

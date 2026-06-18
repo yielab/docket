@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting an improvement to rack.
+        Thanks for suggesting an improvement to docket.
 
   - type: textarea
     id: problem
@@ -22,7 +22,7 @@ body:
       label: Proposed solution
       description: What would the ideal command or behavior look like?
       placeholder: |
-        rack <command> --flag
+        docket <command> --flag
         # or some other interface
     validations:
       required: true

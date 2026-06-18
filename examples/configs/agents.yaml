@@ -1,4 +1,4 @@
-# Declarative agent fleet — provision with:  rack add --from examples/configs/agents.yaml
+# Declarative agent fleet — provision with:  docket add --from examples/configs/agents.yaml
 #
 # Re-applying is safe: agents whose workspace already exists are skipped, so this
 # file can live in git as the source of truth for a reproducible fleet.
@@ -8,7 +8,7 @@
 #   type        task (use "repo" for an agent bound to a codebase)
 #   codebase    repo agents only; "~" is expanded
 #   stack       auto-detected from the codebase when omitted
-#   model       falls back to the rack default (sonnet)
+#   model       falls back to the docket default (sonnet)
 #   description, telegram, budgetUsd, projectKey  all optional
 
 agents:

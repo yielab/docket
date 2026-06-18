@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Model validation and fallback helpers
 #
-# Design: rack validates *format*, the OpenClaw daemon validates the actual model.
-# A well-formed provider/model ID that rack doesn't recognise gets a warning (no
+# Design: docket validates *format*, the OpenClaw daemon validates the actual model.
+# A well-formed provider/model ID that docket doesn't recognise gets a warning (no
 # pricing data) but is accepted and passed through — never rejected.
 
 # Regex for a well-formed model ID (matches OpenClaw catalog format, including
@@ -10,7 +10,7 @@
 _MODEL_ID_RE='^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$'
 
 # Legacy short-name aliases for backwards compat and typo healing.
-# These are the only aliases rack owns; the daemon has its own alias system.
+# These are the only aliases docket owns; the daemon has its own alias system.
 declare -A MODEL_ALIASES=(
   ["anthropic/claude-haiku-3-5"]="anthropic/claude-haiku-4-5"
   ["anthropic/claude-haiku-3"]="anthropic/claude-haiku-4-5"
@@ -36,7 +36,7 @@ validate_model() {
 
   # 1. Deprecated tier name → rank anchor
   if [[ -n "${MODEL_PROFILES[$model]:-}" ]]; then
-    warn "Tier names are deprecated. '$model' → ${MODEL_PROFILES[$model]}. Use role policy (rack models) or a provider/model ID."
+    warn "Tier names are deprecated. '$model' → ${MODEL_PROFILES[$model]}. Use role policy (docket models) or a provider/model ID."
     echo "${MODEL_PROFILES[$model]}"
     return 0
   fi
@@ -56,7 +56,7 @@ validate_model() {
   # 3. Well-formed provider/model — accepted, warn if unpriced
   if [[ "$model" =~ $_MODEL_ID_RE ]]; then
     if [[ -z "${MODEL_PRICING[$model]:-}" ]]; then
-      warn "Model '$model' is not in rack's pricing table — cost will show as n/a."
+      warn "Model '$model' is not in docket's pricing table — cost will show as n/a."
     fi
     echo "$model"
     return 0
@@ -64,14 +64,14 @@ validate_model() {
 
   # 4. Malformed
   local roles
-  roles=$(for r in "${RACK_ROLES[@]}"; do
+  roles=$(for r in "${DOCKET_ROLES[@]}"; do
     printf "  %-12s %s\n" "$r" "${ROLE_MODELS[$r]:-}"
   done)
   error "Invalid model: '$model'
 Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).
 Current role policy:
 $roles
-Change a role's model: rack models set <role> <provider/model>"
+Change a role's model: docket models set <role> <provider/model>"
   return 1
 }
 
@@ -125,7 +125,7 @@ agent_model_source() {
 policy_agent_ids() {
   project_ids
   local s
-  for s in "${RACK_SPECIALISTS[@]}"; do
+  for s in "${DOCKET_SPECIALISTS[@]}"; do
     [[ -d "$OPENCLAW_DIR/workspaces/$s" ]] && echo "$s"
   done
 }
@@ -146,7 +146,7 @@ reapply_role_policy() {
     if set_agent_model "$id" "$target" 2>/dev/null; then
       echo "  $id ($role): ${current:-unset} → $target"
     else
-      # Not in the daemon's agents.list — keep rack's view consistent anyway.
+      # Not in the daemon's agents.list — keep docket's view consistent anyway.
       meta_set "$id" "model" "$target"
       echo "  $id ($role): ${current:-unset} → $target (meta only — not registered)"
     fi

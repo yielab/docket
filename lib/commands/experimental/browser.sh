@@ -11,26 +11,26 @@ cmd_browser() {
     status)   _browser_status ;;
     clean)    _browser_clean ;;
     *)
-      header "Rack Browser — Manage OpenClaw Brave Connection"
+      header "Docket Browser — Manage OpenClaw Brave Connection"
       echo ""
       echo -e "${BOLD}Usage:${RESET}"
-      echo "  ${GREEN}rack browser status${RESET}      Show browser connection status"
-      echo "  ${GREEN}rack browser restart${RESET}     Restart browser (fixes disconnections)"
-      echo "  ${GREEN}rack browser kill${RESET}        Force kill all browser processes"
-      echo "  ${GREEN}rack browser clean${RESET}       Clean browser cache and data"
+      echo "  ${GREEN}docket browser status${RESET}      Show browser connection status"
+      echo "  ${GREEN}docket browser restart${RESET}     Restart browser (fixes disconnections)"
+      echo "  ${GREEN}docket browser kill${RESET}        Force kill all browser processes"
+      echo "  ${GREEN}docket browser clean${RESET}       Clean browser cache and data"
       echo ""
       echo -e "${BOLD}Common Issues:${RESET}"
       echo "  ${YELLOW}• Browser disconnects frequently${RESET}"
       echo "    → Old processes accumulate and cause memory issues"
-      echo "    → Solution: ${GREEN}rack browser restart${RESET}"
+      echo "    → Solution: ${GREEN}docket browser restart${RESET}"
       echo ""
       echo "  ${YELLOW}• Work not staying in same tab${RESET}"
       echo "    → Browser profile corrupted or session lost"
-      echo "    → Solution: ${GREEN}rack browser clean${RESET} then restart gateway"
+      echo "    → Solution: ${GREEN}docket browser clean${RESET} then restart gateway"
       echo ""
       echo "  ${YELLOW}• Brave shows 'Aw, Snap!' error${RESET}"
       echo "    → Shared memory exhausted"
-      echo "    → Solution: ${GREEN}rack browser kill${RESET} then restart gateway"
+      echo "    → Solution: ${GREEN}docket browser kill${RESET} then restart gateway"
       ;;
   esac
 }
@@ -125,7 +125,7 @@ _browser_status() {
     if [[ "$disconnect_count" -gt 10 ]]; then
       echo ""
       warn "Found $disconnect_count disconnect events in today's log"
-      echo "  ${DIM}Recommendation: ${RESET}${YELLOW}rack browser restart${RESET}"
+      echo "  ${DIM}Recommendation: ${RESET}${YELLOW}docket browser restart${RESET}"
     fi
   fi
 }

@@ -16,7 +16,7 @@ cmd_workflow() {
 
       if [[ ! -d "$workflows_dir" ]]; then
         warn "No workflows directory"
-        echo "  Create one: rack workflow $id create"
+        echo "  Create one: docket workflow $id create"
         return
       fi
 
@@ -25,7 +25,7 @@ cmd_workflow() {
         dim "  No workflows defined yet"
         echo ""
         echo "Create a workflow template:"
-        echo "  rack workflow $id create <workflow-name>"
+        echo "  docket workflow $id create <workflow-name>"
         return
       fi
 
@@ -44,14 +44,14 @@ cmd_workflow() {
 
     create)
       local workflow_name="${3:-}"
-      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: rack workflow $id create <name>"
+      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: docket workflow $id create <name>"
 
       mkdir -p "$workflows_dir"
       local wf_file="$workflows_dir/${workflow_name}.lobster.yml"
 
       if [[ -f "$wf_file" ]]; then
         warn "Workflow '$workflow_name' already exists"
-        echo "  Edit: rack edit $id"
+        echo "  Edit: docket edit $id"
         return
       fi
 
@@ -125,7 +125,7 @@ LOBSTER
 
     show)
       local workflow_name="${3:-}"
-      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: rack workflow $id show <name>"
+      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: docket workflow $id show <name>"
 
       local wf_file="$workflows_dir/${workflow_name}.lobster.yml"
       [[ ! -f "$wf_file" ]] && error "Workflow '$workflow_name' not found"
@@ -138,7 +138,7 @@ LOBSTER
 
     delete)
       local workflow_name="${3:-}"
-      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: rack workflow $id delete <name>"
+      [[ -z "$workflow_name" ]] && error_hint "Workflow name required" "Usage: docket workflow $id delete <name>"
 
       local wf_file="$workflows_dir/${workflow_name}.lobster.yml"
       [[ ! -f "$wf_file" ]] && error "Workflow '$workflow_name' not found"

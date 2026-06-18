@@ -213,7 +213,7 @@ generate_report() {
 # Main execution
 main() {
     # Check if in project root
-    if [[ ! -f "bin/rack" ]]; then
+    if [[ ! -f "bin/docket" ]]; then
         echo "Error: Must be run from project root directory"
         exit 1
     fi

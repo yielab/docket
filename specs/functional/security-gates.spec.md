@@ -6,20 +6,20 @@
 
 ## Purpose
 
-This specification defines the tool-approval and workspace-isolation model for rack agents:
+This specification defines the tool-approval and workspace-isolation model for docket agents:
 requiring explicit approval before dangerous tool calls and confining agents to their own
 workspace. It is implemented on the OpenClaw daemon's native exec-approval, approval-routing,
-and sandbox primitives — rack configures and verifies; the daemon enforces.
+and sandbox primitives — docket configures and verifies; the daemon enforces.
 
-> **Implementation status.** Shipped **opt-in**: `rack gates enable` (or `rack install --gates`)
+> **Implementation status.** Shipped **opt-in**: `docket gates enable` (or `docket install --gates`)
 > writes conservative exec-approval defaults (`security: allowlist`, `ask: on-miss`,
-> `askFallback: deny`) with a curated allowlist; `rack gates enable` also routes approval prompts
-> to each agent's session (`approvals.exec`, answerable via `/approve`); `rack gates isolate on`
-> applies Docker workspace isolation. `rack doctor` reports gate status, approval routing,
-> isolation, and config-permission hardening. **On-by-default in `rack install` is deferred**
+> `askFallback: deny`) with a curated allowlist; `docket gates enable` also routes approval prompts
+> to each agent's session (`approvals.exec`, answerable via `/approve`); `docket gates isolate on`
+> applies Docker workspace isolation. `docket doctor` reports gate status, approval routing,
+> isolation, and config-permission hardening. **On-by-default in `docket install` is deferred**
 > pending per-agent *headless* approval routing — session-mode delivery only answers prompts
 > during an interactive session, so default-on could deny an unattended agent with no approver.
-> Until that flip, default `rack install` does not enable enforcement, and gates **MUST NOT** be
+> Until that flip, default `docket install` does not enable enforcement, and gates **MUST NOT** be
 > described as on-by-default in user-facing material.
 
 ## Scope
@@ -51,21 +51,21 @@ is the intended channel for approval prompts.
 
 ### Enablement (target)
 
-1. `rack install` **MUST** apply the gate configuration by default once implemented.
-2. There **MUST** be a way to verify gate status (e.g. via `rack doctor`).
+1. `docket install` **MUST** apply the gate configuration by default once implemented.
+2. There **MUST** be a way to verify gate status (e.g. via `docket doctor`).
 
 ## Interface Contracts
 
-### `rack gates` command (implemented)
+### `docket gates` command (implemented)
 
 ```bash
-rack gates status            # MUST report exec-approval policy, routing, isolation, audit
-rack gates enable [--force]  # MUST apply conservative exec-approval defaults + curated
+docket gates status            # MUST report exec-approval policy, routing, isolation, audit
+docket gates enable [--force]  # MUST apply conservative exec-approval defaults + curated
                              #   allowlist and enable approval routing (opt-in)
-rack gates disable           # MUST reset gate defaults + routing (reversible escape hatch)
-rack gates isolate [on|off]  # MUST set/clear Docker workspace isolation (requires Docker)
-rack install --gates         # MUST apply the gate configuration during install (opt-in)
-rack doctor                  # MUST report whether security gates are configured
+docket gates disable           # MUST reset gate defaults + routing (reversible escape hatch)
+docket gates isolate [on|off]  # MUST set/clear Docker workspace isolation (requires Docker)
+docket install --gates         # MUST apply the gate configuration during install (opt-in)
+docket doctor                  # MUST report whether security gates are configured
 ```
 
 ## Examples
@@ -97,12 +97,12 @@ rack doctor                  # MUST report whether security gates are configured
 
 ### Version 0.2.0 (2026-06-10)
 
-- Implemented opt-in on native daemon primitives: `rack gates enable` / `isolate`,
-  `rack install --gates`, and config-permission hardening
+- Implemented opt-in on native daemon primitives: `docket gates enable` / `isolate`,
+  `docket install --gates`, and config-permission hardening
 - Exec-approval enforcement (allowlist + ask/on-miss + deny fallback), Telegram approval
   routing (`approvals.exec`, `/approve`), and Docker workspace isolation
-- `rack doctor` reports gate status, routing, isolation, and audit posture
-- On-by-default in `rack install` deferred pending per-agent headless approval routing
+- `docket doctor` reports gate status, routing, isolation, and audit posture
+- On-by-default in `docket install` deferred pending per-agent headless approval routing
 
 ### Version 0.1.0 (2026-06-09)
 

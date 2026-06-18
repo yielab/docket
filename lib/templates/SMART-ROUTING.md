@@ -129,15 +129,15 @@ openclaw config get models.routing
   "models": {
     "routing": {
       "enabled": true,
-      "default": "<economy-model>",  // set by rack models
+      "default": "<economy-model>",  // set by docket models
       "rules": [
         {
           "pattern": "write|implement|create|build|refactor",
-          "model": "<standard-model>"   // set by rack models
+          "model": "<standard-model>"   // set by docket models
         },
         {
           "pattern": "architecture|design system|optimize|security audit",
-          "model": "<premium-model>"    // set by rack models
+          "model": "<premium-model>"    // set by docket models
         }
       ]
     }

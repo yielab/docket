@@ -6,17 +6,17 @@
 
 ## Purpose
 
-This specification defines how rack manages Lobster workflows — deterministic YAML pipelines
+This specification defines how docket manages Lobster workflows — deterministic YAML pipelines
 stored per agent that allow repeatable, token-efficient execution of multi-step tasks.
 
 ## Scope
 
 This specification covers:
 
-- Creating a workflow template (`rack workflow <id> create <name>`)
-- Listing an agent's workflows (`rack workflow <id> list`)
-- Displaying a workflow (`rack workflow <id> show <name>`)
-- Deleting a workflow (`rack workflow <id> delete <name>`)
+- Creating a workflow template (`docket workflow <id> create <name>`)
+- Listing an agent's workflows (`docket workflow <id> list`)
+- Displaying a workflow (`docket workflow <id> show <name>`)
+- Deleting a workflow (`docket workflow <id> delete <name>`)
 - The on-disk location and structure of workflow files
 
 This specification does NOT cover:
@@ -33,7 +33,7 @@ This specification does NOT cover:
 2. The `workflows/` directory **MUST** be created on demand if absent.
 3. File permissions **MUST** follow the project convention (700 dirs, 600 files).
 
-### Create (rack workflow create)
+### Create (docket workflow create)
 
 1. **MUST** generate a valid Lobster YAML template named after the provided workflow name.
 2. **MUST** refuse to overwrite an existing workflow of the same name unless explicitly
@@ -57,10 +57,10 @@ This specification does NOT cover:
 ### CLI Command Signatures
 
 ```bash
-rack workflow <agent-id> create <name>   # Generate a new Lobster template
-rack workflow <agent-id> list            # List the agent's workflows
-rack workflow <agent-id> show <name>     # Print a workflow's YAML
-rack workflow <agent-id> delete <name>   # Remove a workflow
+docket workflow <agent-id> create <name>   # Generate a new Lobster template
+docket workflow <agent-id> list            # List the agent's workflows
+docket workflow <agent-id> show <name>     # Print a workflow's YAML
+docket workflow <agent-id> delete <name>   # Remove a workflow
 ```
 
 ### Return Codes
@@ -75,11 +75,11 @@ rack workflow <agent-id> delete <name>   # Remove a workflow
 ### Creating and listing a workflow
 
 ```bash
-$ rack workflow mywebsite create deploy
+$ docket workflow mywebsite create deploy
 [INFO] Creating workflow 'deploy' for agent 'mywebsite'
 [SUCCESS] Workflow created: workflows/deploy.yaml
 
-$ rack workflow mywebsite list
+$ docket workflow mywebsite list
 deploy
 release-notes
 ```
@@ -87,7 +87,7 @@ release-notes
 ### Showing a workflow
 
 ```bash
-$ rack workflow mywebsite show deploy
+$ docket workflow mywebsite show deploy
 name: deploy
 steps:
   - run: echo "configure steps here"

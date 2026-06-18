@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This specification defines all input validation rules for rack CLI commands to ensure data integrity, security, and proper error handling.
+This specification defines all input validation rules for docket CLI commands to ensure data integrity, security, and proper error handling.
 
 ## Rules
 
@@ -26,7 +26,7 @@ that consume it, the RFC 2119 rule set, and the reference implementation.
 - **MUST** be unique (for creation)
 
 **Reserved Words**:
-- system, rack, openclaw, manager
+- system, docket, openclaw, manager
 - admin, root, daemon, service
 - config, settings, help, version
 
@@ -60,7 +60,7 @@ validate_agent_id() {
     fi
 
     # Check reserved words
-    local reserved=("system" "rack" "openclaw" "manager" "admin" "root")
+    local reserved=("system" "docket" "openclaw" "manager" "admin" "root")
     for word in "${reserved[@]}"; do
         if [[ "$id" == "$word" ]]; then
             error "Agent ID '$id' is reserved"
@@ -517,7 +517,7 @@ validation_error() {
     echo "[ERROR] Validation failed for $field"
     echo "        Value: $value"
     echo "        Requirement: $requirement"
-    echo "        Use 'rack help' for usage information"
+    echo "        Use 'docket help' for usage information"
 }
 ```
 

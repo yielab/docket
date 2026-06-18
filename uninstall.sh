@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Rack CLI Uninstaller
-# Removes rack binary and library files from ~/.local/
+# Docket CLI Uninstaller
+# Removes docket binary and library files from ~/.local/
 
 set -euo pipefail
 
-# Honor the same prefix install.sh used (RACK_PREFIX), defaulting to ~/.local.
-INSTALL_DIR="${RACK_PREFIX:-${HOME}/.local}"
-BIN_FILE="${INSTALL_DIR}/bin/rack"
-LIB_DIR="${INSTALL_DIR}/lib/rack-cli"
-LEGACY_LIB_DIR="${INSTALL_DIR}/lib/rack"  # path used by installs predating this fix
+# Honor the same prefix install.sh used (DOCKET_PREFIX), defaulting to ~/.local.
+INSTALL_DIR="${DOCKET_PREFIX:-${HOME}/.local}"
+BIN_FILE="${INSTALL_DIR}/bin/docket"
+LIB_DIR="${INSTALL_DIR}/lib/docket-cli"
+LEGACY_LIB_DIR="${INSTALL_DIR}/lib/docket"  # path used by installs predating this fix
 
 echo ""
 echo "=================================="
-echo "  Rack CLI Uninstaller"
+echo "  Docket CLI Uninstaller"
 echo "=================================="
 echo ""
 
-# Check if rack is installed (current or legacy lib path)
+# Check if docket is installed (current or legacy lib path)
 if [[ ! -f "$BIN_FILE" ]] && [[ ! -d "$LIB_DIR" ]] && [[ ! -d "$LEGACY_LIB_DIR" ]]; then
-  echo "✓ Rack is not installed"
+  echo "✓ Docket is not installed"
   exit 0
 fi
 
@@ -44,7 +44,7 @@ echo ""
 
 # Remove binary
 if [[ -f "$BIN_FILE" ]]; then
-  echo "→ Removing rack binary..."
+  echo "→ Removing docket binary..."
   rm -f "$BIN_FILE"
   echo "  ✓ Removed $BIN_FILE"
 fi
@@ -61,7 +61,7 @@ if [[ -d "$LEGACY_LIB_DIR" ]]; then
 fi
 
 echo ""
-echo "✓ Rack uninstalled successfully"
+echo "✓ Docket uninstalled successfully"
 echo ""
 echo "Note: This does NOT remove:"
 echo "  • OpenClaw installation"

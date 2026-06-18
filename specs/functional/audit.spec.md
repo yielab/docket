@@ -6,8 +6,8 @@
 
 ## Purpose
 
-This specification defines the audit log that records every mutating rack operation —
-who changed what, and when — and the `rack audit` command that displays it. The audit
+This specification defines the audit log that records every mutating docket operation —
+who changed what, and when — and the `docket audit` command that displays it. The audit
 trail answers "what changed this agent/binding/key, and when" without granting access
 to any secret material.
 
@@ -17,8 +17,8 @@ This specification covers:
 
 - The `audit_log` helper called by every mutating command
 - The on-disk JSONL format and its permissions
-- Viewing the log (`rack audit [N]`, `rack audit --json`)
-- The opt-out switch (`RACK_NO_AUDIT=1`)
+- Viewing the log (`docket audit [N]`, `docket audit --json`)
+- The opt-out switch (`DOCKET_NO_AUDIT=1`)
 
 This specification does NOT cover the daemon's own security audit
 (see security-gates.spec.md).
@@ -38,16 +38,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 3. Each entry **MUST** record `ts` (UTC ISO-8601), `user`, `pid`, `action`, and `detail`.
 4. The log file **MUST** live at `$OPENCLAW_DIR/audit.log` and **MUST** be created with
    mode `0600`.
-5. `RACK_NO_AUDIT=1` **MUST** disable recording entirely.
+5. `DOCKET_NO_AUDIT=1` **MUST** disable recording entirely.
 6. Recording **MUST** be best-effort: a missing `python3`, missing directory, or write
    failure **MUST NOT** fail the calling command.
 
-### Viewing (rack audit)
+### Viewing (docket audit)
 
-1. `rack audit [N]` **MUST** print the last N entries (default 20) as a human-readable
+1. `docket audit [N]` **MUST** print the last N entries (default 20) as a human-readable
    table of timestamp, user, action, and detail. A non-numeric argument **MUST** fall
    back to the default count.
-2. `rack audit --json` **MUST** emit the raw JSONL unmodified (stable for scripting).
+2. `docket audit --json` **MUST** emit the raw JSONL unmodified (stable for scripting).
 3. When no log exists yet, the command **MUST** explain where entries will be recorded
    and exit 0.
 4. Malformed lines **MUST** be skipped, never crash the display.
@@ -57,9 +57,9 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 ### CLI Command Signatures
 
 ```bash
-rack audit            # Last 20 changes, human-readable
-rack audit <N>        # Last N changes
-rack audit --json     # Raw JSONL passthrough
+docket audit            # Last 20 changes, human-readable
+docket audit <N>        # Last N changes
+docket audit --json     # Raw JSONL passthrough
 ```
 
 ### Entry Schema (one JSON object per line)
@@ -78,10 +78,10 @@ rack audit --json     # Raw JSONL passthrough
 ### Recording and viewing changes
 
 ```bash
-$ rack keys add ANTHROPIC_API_KEY sk-...
-$ rack profile mywebsite anthropic/claude-opus-4-6
+$ docket keys add ANTHROPIC_API_KEY sk-...
+$ docket profile mywebsite anthropic/claude-opus-4-6
 
-$ rack audit 2
+$ docket audit 2
   2026-06-13T08:00:00Z  alice       keys.add          ANTHROPIC_API_KEY
   2026-06-13T08:00:11Z  alice       profile.model     mywebsite=anthropic/claude-opus-4-6
 ```
@@ -106,5 +106,5 @@ $ rack audit 2
 
 ### Version 1.0.0 (2026-06-13)
 
-- Initial audit-log specification (helper, JSONL schema, `rack audit` viewer,
-  `RACK_NO_AUDIT` opt-out); documents behavior shipped in Phase 4
+- Initial audit-log specification (helper, JSONL schema, `docket audit` viewer,
+  `DOCKET_NO_AUDIT` opt-out); documents behavior shipped in Phase 4

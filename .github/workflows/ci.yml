@@ -21,7 +21,7 @@ jobs:
 
       # Quality gate: warning severity. Excludes are inherent to a sourced-library
       # design, not style laziness:
-      #   SC1090/SC1091 — can't follow rack's dynamic `source "$LIB_DIR/..."`
+      #   SC1090/SC1091 — can't follow docket's dynamic `source "$LIB_DIR/..."`
       #   SC2034        — shared vars (colors, model tables) defined in one file
       #                   and consumed across sourced files; per-file analysis
       #                   can't see the cross-file use.
@@ -29,7 +29,7 @@ jobs:
         run: |
           shellcheck --version
           shellcheck -S warning -e SC1090,SC1091,SC2034 \
-            bin/rack \
+            bin/docket \
             lib/core/*.sh lib/helpers/*.sh lib/commands/*.sh \
             lib/commands/experimental/*.sh \
             scripts/*.sh tests/*.sh tests/unit/*.sh

@@ -15,7 +15,7 @@ This project strictly follows SSD (Spec-Driven Development) practices to ensure 
 ## Project Structure for SSD
 
 ```
-rack-cli/
+docket-cli/
 ├── specs/                          # All specifications
 │   ├── README.md                  # Spec overview and index
 │   ├── functional/                # Feature specifications
@@ -115,7 +115,7 @@ test_new_feature_must_requirement() {
     local input="test-data"
 
     # Act
-    local result=$(rack new-feature "$input" 2>&1)
+    local result=$(docket new-feature "$input" 2>&1)
     local exit_code=$?
 
     # Assert (from spec)
@@ -253,7 +253,7 @@ This specification does NOT cover:
 
 ### Command Syntax
 ```
-rack feature <required> [optional]
+docket feature <required> [optional]
 ```
 
 ### Options
@@ -267,7 +267,7 @@ rack feature <required> [optional]
 
 ### Basic Usage
 ```bash
-rack feature example
+docket feature example
 # Output: Success
 ```
 

@@ -49,50 +49,50 @@ route_command() {
 
     # ── Removed / renamed commands ──────────────────────────────────────────
     reset)
-      echo "rack reset was renamed → use: rack maintain [id] <clean|reset|rebuild>"
+      echo "docket reset was renamed → use: docket maintain [id] <clean|reset|rebuild>"
       exit 1
       ;;
     repair|fix)
-      echo "rack repair was renamed → use: rack maintain [id] check"
+      echo "docket repair was renamed → use: docket maintain [id] check"
       exit 1
       ;;
     cleanup|clean)
-      echo "rack cleanup was renamed → use: rack maintain [id] sessions"
+      echo "docket cleanup was renamed → use: docket maintain [id] sessions"
       exit 1
       ;;
     model)
-      echo "rack model was renamed → use: rack profile [id] <provider/model|default>, or rack models for the role policy"
+      echo "docket model was renamed → use: docket profile [id] <provider/model|default>, or docket models for the role policy"
       exit 1
       ;;
     billing|credits)
-      echo "rack billing was renamed → use: rack cost [id]"
+      echo "docket billing was renamed → use: docket cost [id]"
       exit 1
       ;;
     monitor|mon)
-      echo "rack monitor was renamed → use: rack cost [id]"
+      echo "docket monitor was renamed → use: docket cost [id]"
       exit 1
       ;;
     memory|mem)
-      echo "rack memory was renamed → use: rack context [id] <search|snapshot|index|compress>"
+      echo "docket memory was renamed → use: docket context [id] <search|snapshot|index|compress>"
       exit 1
       ;;
     smart|ai)
-      echo "rack smart was removed — smart routing was placebo (prose in SOUL.md does not change the gateway model)"
-      echo "Use: rack models (role policy) or rack profile [id] <provider/model> to set the actual model"
+      echo "docket smart was removed — smart routing was placebo (prose in SOUL.md does not change the gateway model)"
+      echo "Use: docket models (role policy) or docket profile [id] <provider/model> to set the actual model"
       exit 1
       ;;
     mode|terminal|term)
-      echo "rack mode / rack terminal has been removed."
-      echo "Use: rack models (role policy) or rack profile [id] <provider/model> to choose models."
+      echo "docket mode / docket terminal has been removed."
+      echo "Use: docket models (role policy) or docket profile [id] <provider/model> to choose models."
       exit 1
       ;;
     browser|brave)
-      if [[ "${RACK_EXPERIMENTAL:-0}" == "1" ]]; then
+      if [[ "${DOCKET_EXPERIMENTAL:-0}" == "1" ]]; then
         cmd_browser "$@"
       else
-        echo "rack browser is experimental"
-        echo "  Enable: RACK_EXPERIMENTAL=1 rack browser <status|restart|kill|clean>"
-        echo "  Or use: rack doctor  (browser health is section 8)"
+        echo "docket browser is experimental"
+        echo "  Enable: DOCKET_EXPERIMENTAL=1 docket browser <status|restart|kill|clean>"
+        echo "  Or use: docket doctor  (browser health is section 8)"
         exit 1
       fi
       ;;
@@ -100,7 +100,7 @@ route_command() {
     # Unknown command
     *)
       echo "Unknown command '$cmd'"
-      echo "Run: rack help"
+      echo "Run: docket help"
       exit 1
       ;;
   esac

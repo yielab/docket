@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Eval: tester role
 # Structural (always):  SOUL.md references behavior/PASS/FAIL validation.
-# Live (RACK_EVAL_LIVE=1): given a function signature and description, the
+# Live (DOCKET_EVAL_LIVE=1): given a function signature and description, the
 #   agent writes a test case with at least one assertion.
 # Exit 0=PASS  1=FAIL  2=SKIP
 
@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/eval-helpers.sh"
 
 WORKSPACE="$HOME/.openclaw/workspaces/tester"
 SOUL="$WORKSPACE/SOUL.md"
-TIER="${RACK_EVAL_TIER:-standard}"
+TIER="${DOCKET_EVAL_TIER:-standard}"
 
 eval_skip_unless_workspace "$WORKSPACE"
 [[ ! -f "$SOUL" ]] && { echo "FAIL: SOUL.md missing" >&2; exit 1; }

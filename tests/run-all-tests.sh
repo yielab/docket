@@ -15,7 +15,7 @@ RESET='\033[0m'
 
 echo ""
 echo "========================================"
-echo "  Rack CLI - Full Test Suite"
+echo "  Docket CLI - Full Test Suite"
 echo "========================================"
 echo ""
 

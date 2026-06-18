@@ -1,4 +1,4 @@
-# Agent Metadata (.rack-meta.json) Specification
+# Agent Metadata (.docket-meta.json) Specification
 
 **Version**: 1.0.0
 **Status**: Complete
@@ -6,28 +6,28 @@
 
 ## Purpose
 
-This specification defines the schema for `.rack-meta.json`, the per-agent metadata file
-that rack treats as its source of truth for an agent's identity and configuration. One file
-exists per agent at `~/.openclaw/workspaces/projects/<agent-id>/.rack-meta.json` and is read
+This specification defines the schema for `.docket-meta.json`, the per-agent metadata file
+that docket treats as its source of truth for an agent's identity and configuration. One file
+exists per agent at `~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json` and is read
 and written exclusively through the `meta_get` / `meta_set` helpers.
 
 ## Scope
 
 This specification covers:
 
-- The fields stored in `.rack-meta.json`, their types, and their meaning
+- The fields stored in `.docket-meta.json`, their types, and their meaning
 - Which fields are required versus optional
 - The synchronization relationship with `~/.openclaw/openclaw.json`
 - Validation rules applied on read and write
 
 It does NOT cover the OpenClaw daemon's own configuration schema (`openclaw.json`), which is
-owned by the daemon; rack only mirrors a subset of fields into it via `sync_session_key()`.
+owned by the daemon; docket only mirrors a subset of fields into it via `sync_session_key()`.
 
 ## Structure
 
-`.rack-meta.json` is a single flat JSON object. Identity fields are written once at agent
-creation (`rack add`); configuration fields are updated over the agent's lifetime by commands
-such as `rack profile`, `rack scope`, and `rack mode`.
+`.docket-meta.json` is a single flat JSON object. Identity fields are written once at agent
+creation (`docket add`); configuration fields are updated over the agent's lifetime by commands
+such as `docket profile`, `docket scope`, and `docket mode`.
 
 | Field | Type | Required | Written by | Description |
 |-------|------|----------|------------|-------------|
@@ -73,7 +73,7 @@ Field rules:
   `projectKey`.
 - `budgetUsd`, when present, MUST be a non-negative number.
 - Unknown fields SHOULD be preserved on write rather than dropped, so the daemon and future
-  rack versions can extend the object.
+  docket versions can extend the object.
 
 ## Validation
 
@@ -81,7 +81,7 @@ Field rules:
   than corrupt the file.
 - On read, a missing file MUST be treated as "agent not found" (return code 2), not an empty
   object.
-- `sessionKey` and `projectKey` MUST stay consistent; `rack scope` updates both atomically
+- `sessionKey` and `projectKey` MUST stay consistent; `docket scope` updates both atomically
   and then calls `sync_session_key()` to mirror the value into `openclaw.json`.
 - After any mutation, the writing command MUST call `restart_gateway()` so the daemon reloads
   the changed configuration.
@@ -91,7 +91,7 @@ Field rules:
 
 ## Examples
 
-A repo agent created by `rack add myshop ~/Sites/myshop`:
+A repo agent created by `docket add myshop ~/Sites/myshop`:
 
 ```json
 {
@@ -107,7 +107,7 @@ A repo agent created by `rack add myshop ~/Sites/myshop`:
 }
 ```
 
-The same agent after `rack profile myshop economy --budget 5` and being paused:
+The same agent after `docket profile myshop economy --budget 5` and being paused:
 
 ```json
 {
@@ -130,7 +130,7 @@ The same agent after `rack profile myshop economy --budget 5` and being paused:
 
 ### Version 1.0.0 (2026-06-09)
 
-- Initial `.rack-meta.json` schema specification
+- Initial `.docket-meta.json` schema specification
 - Documented all identity and configuration fields
 - Defined required/optional fields and the openclaw.json sync contract
 - Linked field-level validation to input-validation.spec.md

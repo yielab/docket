@@ -1,14 +1,14 @@
-# Quick Start: RACK Architecture
+# Quick Start: DOCKET Architecture
 
-**RACK = Routing, Autonomy, Context Compression, Knowledge**
+**DOCKET = Routing, Autonomy, Context Compression, Knowledge**
 
-Get started with RACK-optimized agents in under 5 minutes.
+Get started with DOCKET-optimized agents in under 5 minutes.
 
 ---
 
-## What is RACK?
+## What is DOCKET?
 
-RACK is an architecture for autonomous agent teams that:
+DOCKET is an architecture for autonomous agent teams that:
 - ✅ **Reduces token usage by 50-90%** through context compression
 - ✅ **Speeds up responses 6-20x** through short-circuit resolution
 - ✅ **Enforces security** through mandatory 6-point checklist
@@ -21,34 +21,34 @@ RACK is an architecture for autonomous agent teams that:
 
 ### If You Don't Have Specialists Yet
 ```bash
-cd ~/Sites/rack-cli
-./bin/rack install
+cd ~/Sites/docket-cli
+./bin/docket install
 ```
 
 This creates 6 specialists: manager, programmer, reviewer, tester, knowledge, security
 
 ### If You Already Have Specialists
 ```bash
-cd ~/Sites/rack-cli
-./bin/rack team upgrade
+cd ~/Sites/docket-cli
+./bin/docket team upgrade
 ```
 
-This applies RACK-optimized templates (backs up existing SOUL.md files).
+This applies DOCKET-optimized templates (backs up existing SOUL.md files).
 
 ---
 
 ## Verify Installation
 
 ```bash
-./bin/rack team status
+./bin/docket team status
 ```
 
 **Expected output:**
 ```
-✓ manager      RACK-optimized
-✓ programmer   RACK-optimized
-✓ reviewer     RACK-optimized
-✓ tester       RACK-optimized
+✓ manager      DOCKET-optimized
+✓ programmer   DOCKET-optimized
+✓ reviewer     DOCKET-optimized
+✓ tester       DOCKET-optimized
 ○ knowledge    Standard (already optimized)
 ○ security     Standard (already optimized)
 ```
@@ -57,7 +57,7 @@ This applies RACK-optimized templates (backs up existing SOUL.md files).
 
 ## How It Works
 
-### Before RACK (Traditional Agent Workflow)
+### Before DOCKET (Traditional Agent Workflow)
 
 ```
 User: "Fix the login bug"
@@ -75,7 +75,7 @@ TOTAL: ~320K tokens = $X (strong model class)
 TIME: ~4 minutes
 ```
 
-### After RACK (Optimized Workflow)
+### After DOCKET (Optimized Workflow)
 
 ```
 User: "Fix the login bug"
@@ -108,18 +108,18 @@ SAVINGS: 98% cost, 50% time
 
 ### Team Management
 ```bash
-rack team status        # Show RACK optimization status
-rack team upgrade       # Apply RACK templates
-rack team roles         # Show agent responsibilities
-rack team check         # Verify all agents exist
+docket team status        # Show DOCKET optimization status
+docket team upgrade       # Apply DOCKET templates
+docket team roles         # Show agent responsibilities
+docket team check         # Verify all agents exist
 ```
 
 ### Memory Management
 ```bash
-rack memory snapshot <project-id>   # Create fast-access context
-rack memory index <project-id>      # Index memory for search
-rack memory search <project-id> <q> # Search indexed memory
-rack memory compress <project-id>   # Archive old logs
+docket memory snapshot <project-id>   # Create fast-access context
+docket memory index <project-id>      # Index memory for search
+docket memory search <project-id> <q> # Search indexed memory
+docket memory compress <project-id>   # Archive old logs
 ```
 
 ---
@@ -129,7 +129,7 @@ rack memory compress <project-id>   # Archive old logs
 ### Test 1: Memory Snapshot
 ```bash
 # Create snapshot for a project
-rack memory snapshot <project-name>
+docket memory snapshot <project-name>
 
 # Verify it exists
 cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
@@ -347,7 +347,7 @@ systemctl --user restart openclaw-gateway.service
 ### Q: Can I customize the templates?
 **A:** Yes! Edit the SOUL.md files directly:
 ```bash
-rack edit manager    # Opens manager's SOUL.md in $EDITOR
+docket edit manager    # Opens manager's SOUL.md in $EDITOR
 ```
 
 Then restart the gateway to apply changes:
@@ -368,9 +368,9 @@ systemctl --user restart openclaw-gateway.service
 ### Agents Still Using Large Context?
 1. **Verify upgrade applied:**
    ```bash
-   rack team status
+   docket team status
    ```
-   All should show "RACK-optimized"
+   All should show "DOCKET-optimized"
 
 2. **Check SNAPSHOT.md exists:**
    ```bash
@@ -379,7 +379,7 @@ systemctl --user restart openclaw-gateway.service
 
 3. **Create snapshot if missing:**
    ```bash
-   rack memory snapshot <project-id>
+   docket memory snapshot <project-id>
    ```
 
 4. **Restart gateway:**
@@ -395,13 +395,13 @@ systemctl --user restart openclaw-gateway.service
 
 2. If missing, re-run upgrade:
    ```bash
-   rack team upgrade
+   docket team upgrade
    ```
 
 ### Memory Index Not Working?
 1. Create index first:
    ```bash
-   rack memory index <project-id>
+   docket memory index <project-id>
    ```
 
 2. Verify index file:
@@ -415,29 +415,29 @@ systemctl --user restart openclaw-gateway.service
 
 1. **Test with real project:** Send a bug report to Manager
 2. **Monitor token usage:** Check if costs reduced by 50-90%
-3. **Create snapshots:** Run `rack memory snapshot` for all projects
-4. **Index memory:** Run `rack memory index` for fast search
-5. **Read full docs:** See [RACK-IMPLEMENTATION-COMPLETE.md](RACK-IMPLEMENTATION-COMPLETE.md)
+3. **Create snapshots:** Run `docket memory snapshot` for all projects
+4. **Index memory:** Run `docket memory index` for fast search
+5. **Read full docs:** See [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
 
 ---
 
 ## Resources
 
-- **Full Implementation Guide:** [RACK-IMPLEMENTATION-COMPLETE.md](RACK-IMPLEMENTATION-COMPLETE.md)
-- **Architecture Analysis:** [RACK-ANALYSIS.md](RACK-ANALYSIS.md)
-- **Original Proposal:** [RACK.md](../RACK.md) (in manager's workspace)
-- **rack-cli Documentation:** [README.md](../README.md)
-- **Help Command:** `rack help`
+- **Full Implementation Guide:** [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
+- **Architecture Analysis:** [DOCKET-ANALYSIS.md](DOCKET-ANALYSIS.md)
+- **Original Proposal:** [DOCKET.md](../DOCKET.md) (in manager's workspace)
+- **docket-cli Documentation:** [README.md](../README.md)
+- **Help Command:** `docket help`
 
 ---
 
-**Questions?** Check the docs or run `rack help`
+**Questions?** Check the docs or run `docket help`
 
-**Issues?** File at https://github.com/your-repo/rack-cli/issues (adjust URL)
+**Issues?** File at https://github.com/your-repo/docket-cli/issues (adjust URL)
 
 ---
 
-**🎉 You're now running RACK-optimized agents!**
+**🎉 You're now running DOCKET-optimized agents!**
 
 Expect:
 - 50-90% reduction in token costs

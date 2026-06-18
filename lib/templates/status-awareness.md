@@ -29,7 +29,7 @@ What happened:
 
 How to fix:
 1. Check your provider's billing console and add credits
-2. Or switch to a free-tier provider: rack models preset openrouter-free
+2. Or switch to a free-tier provider: docket models preset openrouter-free
 3. I'll automatically resume when the account is active
 
 Current status: Waiting for credits...
@@ -61,7 +61,7 @@ I cannot respond due to:
 - [Specific issue: gateway down, config error, etc.]
 
 Recommended action:
-- Run: rack doctor
+- Run: docket doctor
 - Or: systemctl --user status openclaw-gateway
 
 Status: Investigating...
@@ -194,10 +194,10 @@ What happened:
 - The assigned model ID may be incorrect
 
 How to fix:
-1. Run: rack models  (check the role→model policy)
-2. Run: rack profile <id> default  (follow the role policy)
-   or:  rack profile <id> <provider/model>  (pin a specific model)
-3. Or:  rack models preset anthropic  (restore defaults)
+1. Run: docket models  (check the role→model policy)
+2. Run: docket profile <id> default  (follow the role policy)
+   or:  docket profile <id> <provider/model>  (pin a specific model)
+3. Or:  docket models preset anthropic  (restore defaults)
 
 I'll use the default model for now while you fix this.
 ```

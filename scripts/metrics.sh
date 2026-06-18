@@ -25,8 +25,8 @@ experimental_cmds=$(find lib/commands/experimental -name '*.sh' 2>/dev/null | wc
 helper_modules=$(find lib/helpers -maxdepth 1 -name '*.sh' | wc -l | tr -d ' ')
 
 # Lines of Bash: the shipped CLI (lib + bin) vs. everything (incl. tests/tooling).
-loc_cli=$(find lib bin -type f \( -name '*.sh' -o -name 'rack' \) -exec cat {} + | wc -l | tr -d ' ')
-loc_all=$(find lib bin tests scripts -type f \( -name '*.sh' -o -name 'rack' \) -exec cat {} + | wc -l | tr -d ' ')
+loc_cli=$(find lib bin -type f \( -name '*.sh' -o -name 'docket' \) -exec cat {} + | wc -l | tr -d ' ')
+loc_all=$(find lib bin tests scripts -type f \( -name '*.sh' -o -name 'docket' \) -exec cat {} + | wc -l | tr -d ' ')
 
 # Unit tests: trust the harness's own pass counter rather than grepping asserts.
 unit_tests=$(./tests/unit/test-helpers.sh 2>/dev/null | grep -oE 'Passed:[[:space:]]+[0-9]+' | grep -oE '[0-9]+' || echo 0)

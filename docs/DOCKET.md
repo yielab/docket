@@ -1,8 +1,8 @@
-# RACK Architecture
+# DOCKET Architecture
 
-**RACK = Routing, Autonomy, Context Compression, Knowledge**
+**DOCKET = Routing, Autonomy, Context Compression, Knowledge**
 
-Complete technical guide to rack's RACK architecture implementation.
+Complete technical guide to docket's DOCKET architecture implementation.
 
 ---
 
@@ -22,13 +22,13 @@ Complete technical guide to rack's RACK architecture implementation.
 
 ## Overview
 
-RACK is an architectural pattern for autonomous agent teams that achieves:
+DOCKET is an architectural pattern for autonomous agent teams that achieves:
 - **50-98% token reduction** through context compression
 - **6-20x faster** responses through short-circuit resolution
 - **Layered, convention-based security** through mandatory checklists
 - **Objective validation** through behavior-only testing
 
-### The Problem (Before RACK)
+### The Problem (Before DOCKET)
 
 ```
 Engineer: "Fix the login bug"
@@ -44,7 +44,7 @@ Total: ~220K tokens = $0.66
 Time: ~4 minutes
 ```
 
-### The Solution (After RACK)
+### The Solution (After DOCKET)
 
 ```
 Engineer: "Fix the login bug"
@@ -143,7 +143,7 @@ Tester ONLY reads:
 
 ### Token Usage (Before vs After)
 
-| Scenario | Before RACK | After RACK | Savings |
+| Scenario | Before DOCKET | After DOCKET | Savings |
 |----------|------------|------------|---------|
 | Memory query | ~100K tokens | ~2K tokens | **98%** |
 | Status check | ~50K tokens | ~2K tokens | **96%** |
@@ -159,7 +159,7 @@ Tester ONLY reads:
 - 20 simple changes/month
 - 10 bug fixes/month
 
-**Before RACK:**
+**Before DOCKET:**
 ```
 Queries:  50 × 100K × $3/MTok = $15.00
 Changes:  20 × 200K × $3/MTok = $12.00
@@ -168,7 +168,7 @@ Bugs:     10 × 1M × $3/MTok   = $30.00
 Total:                          $57.00/month
 ```
 
-**After RACK:**
+**After DOCKET:**
 ```
 Queries:  50 × 2K × $3/MTok    = $0.30
 Changes:  20 × 5K × $0.80/MTok = fraction of a cent (cheap model class)
@@ -348,7 +348,7 @@ Total:                          $6.68/month
 
 ### Problem: Large Context Passing
 
-**Before RACK:**
+**Before DOCKET:**
 ```
 Agent reads:
 - Full conversation history: 100K tokens
@@ -360,7 +360,7 @@ Total: 170K tokens per task
 
 ### Solution: SNAPSHOT.md
 
-**After RACK:**
+**After DOCKET:**
 ```
 Agent reads:
 - SNAPSHOT.md: 2K tokens
@@ -372,7 +372,7 @@ Total: 3.5K tokens per task (98% savings!)
 
 ### SNAPSHOT.md Contents
 
-Created by `rack memory snapshot <project>`:
+Created by `docket memory snapshot <project>`:
 
 ```markdown
 # Project Snapshot — 2026-03-06
@@ -414,7 +414,7 @@ Created by `rack memory snapshot <project>`:
 
 ### Memory Index
 
-Created by `rack memory index <project>`:
+Created by `docket memory index <project>`:
 
 ```json
 {
@@ -441,19 +441,19 @@ Created by `rack memory index <project>`:
 
 ```bash
 # Create fast-access snapshot
-rack memory snapshot <project>
+docket memory snapshot <project>
 
 # Index for search
-rack memory index <project>
+docket memory index <project>
 
 # Search indexed memory
-rack memory search <project> "authentication bug"
+docket memory search <project> "authentication bug"
 
 # Archive old logs (>30 days)
-rack memory compress <project>
+docket memory compress <project>
 
 # Show quick reference
-rack memory project <project>
+docket memory project <project>
 ```
 
 ---
@@ -515,7 +515,7 @@ Standard: moderate   - Complex reasoning
 Premium:  high cost  - Exceptionally complex (rarely used)
 ```
 
-**RACK routes work to cheap models aggressively:**
+**DOCKET routes work to cheap models aggressively:**
 - Programmer (simple changes)
 - Tester (validation)
 - Knowledge (pattern extraction)
@@ -555,18 +555,18 @@ Savings: 99%
 ### Validated Components ✅
 
 ```
-Manager:     ✓ RACK-optimized (context compression, routing)
-Programmer:  ✓ RACK-optimized (brief-only reading)
-Reviewer:    ✓ RACK-optimized (6-point checklist)
-Tester:      ✓ RACK-optimized (behavior-only validation)
+Manager:     ✓ DOCKET-optimized (context compression, routing)
+Programmer:  ✓ DOCKET-optimized (brief-only reading)
+Reviewer:    ✓ DOCKET-optimized (6-point checklist)
+Tester:      ✓ DOCKET-optimized (behavior-only validation)
 Knowledge:   ✓ Completed (tools + memory management)
 Security:    ✓ Completed (HITL gates + threat modeling)
 ```
 
 ### Features Implemented ✅
 
-- [x] Memory management system (`rack memory`)
-- [x] Team management (`rack team`)
+- [x] Memory management system (`docket memory`)
+- [x] Team management (`docket team`)
 - [x] SNAPSHOT.md generation
 - [x] Memory indexing & search
 - [x] Context compression protocols
@@ -581,7 +581,7 @@ Security:    ✓ Completed (HITL gates + threat modeling)
 - [x] Quick Start Guide
 - [x] Workflow Guide
 - [x] Security Model (Simple)
-- [x] RACK Architecture (this doc)
+- [x] DOCKET Architecture (this doc)
 - [x] Commands Reference
 - [x] Agent Validation Report
 
@@ -591,7 +591,7 @@ Security:    ✓ Completed (HITL gates + threat modeling)
 
 ### Agent Communication
 
-**Before RACK (wasteful):**
+**Before DOCKET (wasteful):**
 ```
 Manager → Programmer:
 {
@@ -601,7 +601,7 @@ Manager → Programmer:
 }
 ```
 
-**After RACK (efficient):**
+**After DOCKET (efficient):**
 ```
 Manager writes: memory/tasks/T001/BRIEF.md
 ─────────────────────────────────────────────
@@ -662,7 +662,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 
 ## Comparison: Before vs After
 
-### Before RACK
+### Before DOCKET
 
 **Problems:**
 - ❌ Agents read 100K+ tokens of history
@@ -674,7 +674,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 
 **Cost:** $57/month for active project
 
-### After RACK
+### After DOCKET
 
 **Solutions:**
 - ✅ Agents read SNAPSHOT.md (2K tokens)
@@ -690,7 +690,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 
 ## FAQ
 
-### Q: What does RACK stand for?
+### Q: What does DOCKET stand for?
 
 **A:** Routing, Autonomy, Context Compression, Knowledge
 - **R**outing: Classifier logic routes tasks efficiently
@@ -698,7 +698,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 - **C**ontext: Compression reduces token usage by 50-98%
 - **K**nowledge: Memory management enables fast access
 
-### Q: Is this the same as the original RACK.md proposal?
+### Q: Is this the same as the original DOCKET.md proposal?
 
 **A:** Similar spirit, adapted for OpenClaw's capabilities:
 - ✅ Kept: Agent roles, context compression, security focus
@@ -706,11 +706,11 @@ Reviewer → APPROVED? ──Yes──→ Tester
 - ✅ Changed: Classifier (embedded in Manager, not separate agent)
 - ✅ Changed: Security (separate specialist, not merged into Reviewer)
 
-See [Comparison Table](RACK-ANALYSIS.md#comparison-rackmd-vs-current-implementation) for details.
+See [Comparison Table](DOCKET-ANALYSIS.md#comparison-docketmd-vs-current-implementation) for details.
 
-### Q: Do I need to change how I use rack?
+### Q: Do I need to change how I use docket?
 
-**A:** No. Just run `rack team upgrade` once. Everything else works the same.
+**A:** No. Just run `docket team upgrade` once. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
@@ -731,17 +731,17 @@ See [Comparison Table](RACK-ANALYSIS.md#comparison-rackmd-vs-current-implementat
 
 ## Next Steps
 
-1. **If not installed:** `rack install` (creates specialists)
-2. **Upgrade to RACK:** `rack team upgrade` (applies templates)
-3. **Create snapshots:** `rack memory snapshot <project>` (for all projects)
+1. **If not installed:** `docket install` (creates specialists)
+2. **Upgrade to DOCKET:** `docket team upgrade` (applies templates)
+3. **Create snapshots:** `docket memory snapshot <project>` (for all projects)
 4. **Test workflow:** Assign bug fix, observe token usage
-5. **Monitor savings:** `rack cost` (check reduction)
+5. **Monitor savings:** `docket cost` (check reduction)
 
 ---
 
 ## References
 
-- [Quick Start Guide](QUICK-START-RACK.md) - Get started in 5 minutes
+- [Quick Start Guide](QUICK-START-DOCKET.md) - Get started in 5 minutes
 - [Workflow Guide](WORKFLOW-GUIDE.md) - Complete examples
 - [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands

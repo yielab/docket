@@ -1,6 +1,6 @@
 # Command Reference
 
-Complete reference for all rack commands with detailed examples and options.
+Complete reference for all docket commands with detailed examples and options.
 
 ## Table of Contents
 
@@ -21,7 +21,7 @@ Bootstrap a complete OpenClaw setup from scratch.
 
 **Syntax:**
 ```bash
-rack install
+docket install
 ```
 
 **What it does:**
@@ -35,7 +35,7 @@ rack install
 **Example:**
 ```bash
 # First-time setup
-rack install
+docket install
 
 # Output:
 # → Checking dependencies...
@@ -67,7 +67,7 @@ Display all project agents with status, model, and Telegram binding info.
 
 **Syntax:**
 ```bash
-rack list
+docket list
 ```
 
 **Output format:**
@@ -82,10 +82,10 @@ rack list
 
 **Example:**
 ```bash
-rack list
+docket list
 
 # With DEBUG mode
-DEBUG=1 rack list
+DEBUG=1 docket list
 ```
 
 **Aliases:** None
@@ -103,7 +103,7 @@ Interactively create a new project agent.
 
 **Syntax:**
 ```bash
-rack add
+docket add
 ```
 
 **Interactive prompts:**
@@ -117,7 +117,7 @@ rack add
 
 **Example:**
 ```bash
-rack add
+docket add
 
 # Interactive session:
 # → Select agent type:
@@ -152,8 +152,8 @@ Display detailed information about a specific project agent.
 
 **Syntax:**
 ```bash
-rack info <agent-id>
-rack info             # Interactive picker if ID omitted
+docket info <agent-id>
+docket info             # Interactive picker if ID omitted
 ```
 
 **Output:**
@@ -176,10 +176,10 @@ Telegram:          ✓ Wired to group -1001234567890
 **Example:**
 ```bash
 # With agent ID
-rack info myproject
+docket info myproject
 
 # Interactive picker
-rack info
+docket info
 # → Select project:
 #   1) myproject - My Awesome Project
 #   2) taskagent - Task Agent
@@ -191,7 +191,7 @@ rack info
 **Notes:**
 - Uses fzf for interactive selection if available
 - Falls back to numbered list otherwise
-- Displays metadata from .rack-meta.json
+- Displays metadata from .docket-meta.json
 
 ---
 
@@ -201,8 +201,8 @@ Remove an agent and optionally its workspace.
 
 **Syntax:**
 ```bash
-rack delete <agent-id>
-rack delete           # Interactive picker
+docket delete <agent-id>
+docket delete           # Interactive picker
 ```
 
 **Interactive prompts:**
@@ -211,7 +211,7 @@ rack delete           # Interactive picker
 
 **Example:**
 ```bash
-rack delete myproject
+docket delete myproject
 
 # Prompts:
 # ⚠ Delete agent 'myproject'? (yes/no): yes
@@ -237,12 +237,12 @@ Clear memory, repair, or rebuild an agent. Consolidates the retired `reset`, `re
 
 **Syntax:**
 ```bash
-rack maintain [agent-id] [mode]
+docket maintain [agent-id] [mode]
 ```
 
 **Modes:**
 - **`check`** (default): Health check and auto-fix — permissions (700/600), missing workspace
-  files, session-key sync between `.rack-meta.json` and `openclaw.json`, Telegram bindings
+  files, session-key sync between `.docket-meta.json` and `openclaw.json`, Telegram bindings
 - **`clean`**: Clear memory logs only (`memory/*.md`)
 - **`reset`**: Clear memory + MEMORY.md + HEARTBEAT.md
 - **`rebuild`**: Deep rebuild — regenerate SOUL.md, AGENTS.md, TOOLS.md from metadata
@@ -250,35 +250,35 @@ rack maintain [agent-id] [mode]
 
 **Example:**
 ```bash
-# Health check and auto-fix (was: rack repair)
-rack maintain myproject
-rack maintain myproject check
+# Health check and auto-fix (was: docket repair)
+docket maintain myproject
+docket maintain myproject check
 
-# Clear memory logs (was: rack reset 1)
-rack maintain myproject clean
+# Clear memory logs (was: docket reset 1)
+docket maintain myproject clean
 
-# Clear memory + heartbeat (was: rack reset 2)
-rack maintain myproject reset
+# Clear memory + heartbeat (was: docket reset 2)
+docket maintain myproject reset
 
-# Deep rebuild (was: rack reset 3)
-rack maintain myproject rebuild
+# Deep rebuild (was: docket reset 3)
+docket maintain myproject rebuild
 
-# Archive old sessions (was: rack cleanup safe)
-rack maintain myproject sessions
+# Archive old sessions (was: docket cleanup safe)
+docket maintain myproject sessions
 ```
 
 **Migration (deprecated → current):**
 
 | Old | New |
 |-----|-----|
-| `rack repair [id]` | `rack maintain [id] check` |
-| `rack reset [id]` / `reset [id] 1` | `rack maintain [id] clean` |
-| `rack reset [id] 2` | `rack maintain [id] reset` |
-| `rack reset [id] 3` | `rack maintain [id] rebuild` |
-| `rack cleanup [id]` | `rack maintain [id] sessions` |
+| `docket repair [id]` | `docket maintain [id] check` |
+| `docket reset [id]` / `reset [id] 1` | `docket maintain [id] clean` |
+| `docket reset [id] 2` | `docket maintain [id] reset` |
+| `docket reset [id] 3` | `docket maintain [id] rebuild` |
+| `docket cleanup [id]` | `docket maintain [id] sessions` |
 
 **Notes:**
-- Preserves identity (`.rack-meta.json`, `openclaw.json`)
+- Preserves identity (`.docket-meta.json`, `openclaw.json`)
 - `reset`/`rebuild` are destructive and prompt for confirmation
 - Restarts the gateway after structural changes
 
@@ -292,9 +292,9 @@ Manage session keys for multi-project isolation.
 
 **Syntax:**
 ```bash
-rack scope <agent-id> show                    # Display current scope
-rack scope <agent-id> set <project-key>       # Set new project scope
-rack scope <agent-id> reset                   # Reset to default
+docket scope <agent-id> show                    # Display current scope
+docket scope <agent-id> set <project-key>       # Set new project scope
+docket scope <agent-id> reset                   # Reset to default
 ```
 
 **Session key format:** `agent:<id>:<project>`
@@ -302,15 +302,15 @@ rack scope <agent-id> reset                   # Reset to default
 **Example:**
 ```bash
 # Show current scope
-rack scope myproject show
+docket scope myproject show
 # Output: agent:myproject:default
 
 # Set scope to "alpha"
-rack scope myproject set alpha
+docket scope myproject set alpha
 # ✓ Session key updated: agent:myproject:alpha
 
 # Reset to default
-rack scope myproject reset
+docket scope myproject reset
 # ✓ Session key reset: agent:myproject:default
 ```
 
@@ -318,7 +318,7 @@ rack scope myproject reset
 
 **Notes:**
 - Prevents cross-project contamination
-- Updates .rack-meta.json, openclaw.json, and SOUL.md
+- Updates .docket-meta.json, openclaw.json, and SOUL.md
 - Restarts gateway to apply changes
 - Use different keys for parallel project work
 
@@ -332,9 +332,9 @@ Manage the Manager agent and specialist team.
 
 **Syntax:**
 ```bash
-rack team status      # View team state and health
-rack team init        # Create Manager agent
-rack team check       # Health check for specialists
+docket team status      # View team state and health
+docket team init        # Create Manager agent
+docket team check       # Health check for specialists
 ```
 
 **Subcommands:**
@@ -343,7 +343,7 @@ rack team check       # Health check for specialists
 Display team coordination state.
 
 ```bash
-rack team status
+docket team status
 
 # Output:
 # Team Coordination Status
@@ -362,7 +362,7 @@ rack team status
 Create the Manager agent.
 
 ```bash
-rack team init
+docket team init
 
 # Output:
 # → Creating Manager agent...
@@ -376,7 +376,7 @@ rack team init
 Verify specialist agents exist and are healthy.
 
 ```bash
-rack team check
+docket team check
 
 # Output:
 # → Checking specialist agents...
@@ -405,10 +405,10 @@ Manage Lobster deterministic workflows.
 
 **Syntax:**
 ```bash
-rack workflow <agent-id> list                 # List all workflows
-rack workflow <agent-id> create <name>        # Create from template
-rack workflow <agent-id> show <name>          # Display workflow
-rack workflow <agent-id> delete <name>        # Remove workflow
+docket workflow <agent-id> list                 # List all workflows
+docket workflow <agent-id> create <name>        # Create from template
+docket workflow <agent-id> show <name>          # Display workflow
+docket workflow <agent-id> delete <name>        # Remove workflow
 ```
 
 **Subcommands:**
@@ -417,7 +417,7 @@ rack workflow <agent-id> delete <name>        # Remove workflow
 Show all workflows for an agent.
 
 ```bash
-rack workflow myproject list
+docket workflow myproject list
 
 # Output:
 # Workflows for 'myproject':
@@ -430,19 +430,19 @@ rack workflow myproject list
 Generate a new workflow from template.
 
 ```bash
-rack workflow myproject create ci-pipeline
+docket workflow myproject create ci-pipeline
 
 # Output:
 # → Creating workflow 'ci-pipeline'...
 # ✓ Template created: workflows/ci-pipeline.lobster.yml
-# → Edit with: rack edit myproject
+# → Edit with: docket edit myproject
 ```
 
 #### show
 Display workflow contents.
 
 ```bash
-rack workflow myproject show ci-pipeline
+docket workflow myproject show ci-pipeline
 
 # Output: (displays YAML contents)
 ```
@@ -451,7 +451,7 @@ rack workflow myproject show ci-pipeline
 Remove a workflow.
 
 ```bash
-rack workflow myproject delete ci-pipeline
+docket workflow myproject delete ci-pipeline
 
 # Prompt:
 # ⚠ Delete workflow 'ci-pipeline'? (yes/no): yes
@@ -476,8 +476,8 @@ Bind an agent to a Telegram group for notifications and approvals.
 
 **Syntax:**
 ```bash
-rack wire <agent-id>
-rack wire             # Interactive picker
+docket wire <agent-id>
+docket wire             # Interactive picker
 ```
 
 **Interactive prompts:**
@@ -492,7 +492,7 @@ tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 # Look for: "New group: -1001234567890"
 
 # Step 4: Wire agent
-rack wire myproject
+docket wire myproject
 # → Enter Telegram group ID: -1001234567890
 # ✓ Agent wired to group -1001234567890
 ```
@@ -513,13 +513,13 @@ Remove Telegram binding from an agent.
 
 **Syntax:**
 ```bash
-rack unwire <agent-id>
-rack unwire           # Interactive picker
+docket unwire <agent-id>
+docket unwire           # Interactive picker
 ```
 
 **Example:**
 ```bash
-rack unwire myproject
+docket unwire myproject
 # ✓ Telegram binding removed
 ```
 
@@ -541,8 +541,8 @@ View memory logs and gateway entries for an agent.
 
 **Syntax:**
 ```bash
-rack logs <agent-id>
-rack logs             # Interactive picker
+docket logs <agent-id>
+docket logs             # Interactive picker
 ```
 
 **What it shows:**
@@ -552,7 +552,7 @@ rack logs             # Interactive picker
 
 **Example:**
 ```bash
-rack logs myproject
+docket logs myproject
 
 # Output:
 # Memory Logs (2026-02-25)
@@ -588,8 +588,8 @@ Open agent workspace files in $EDITOR.
 
 **Syntax:**
 ```bash
-rack edit <agent-id>
-rack edit             # Interactive picker
+docket edit <agent-id>
+docket edit             # Interactive picker
 ```
 
 **What it opens:**
@@ -597,16 +597,16 @@ rack edit             # Interactive picker
 - AGENTS.md (delegation rules)
 - TOOLS.md (project commands)
 - HEARTBEAT.md (active tasks)
-- .rack-meta.json (metadata)
+- .docket-meta.json (metadata)
 
 **Example:**
 ```bash
 # Uses default editor
-rack edit myproject
+docket edit myproject
 
 # Set custom editor
-EDITOR=vim rack edit myproject
-EDITOR=code rack edit myproject
+EDITOR=vim docket edit myproject
+EDITOR=code docket edit myproject
 ```
 
 **Aliases:** None
@@ -615,14 +615,14 @@ EDITOR=code rack edit myproject
 - Respects $EDITOR environment variable
 - Falls back to `vi` if $EDITOR not set
 - Opens workspace directory in most editors
-- Be careful editing .rack-meta.json (use `rack maintain <id> check` to fix)
+- Be careful editing .docket-meta.json (use `docket maintain <id> check` to fix)
 
 ---
 
 ### model (retired)
 
-`rack model <id> <model-id>` has been retired. Use [`rack profile`](#profile) to pin a
-model on one agent, or `rack models` to change the role→model policy — see the next section.
+`docket model <id> <model-id>` has been retired. Use [`docket profile`](#profile) to pin a
+model on one agent, or `docket models` to change the role→model policy — see the next section.
 
 ---
 
@@ -635,33 +635,33 @@ Every agent follows its role's policy model by default (`modelSource: policy`). 
 
 **Syntax:**
 ```bash
-rack profile <agent-id>                    # Show current model, role, source, budget
-rack profile <agent-id> <provider/model>   # Pin this agent to a model
-rack profile <agent-id> default            # Follow the role policy again
-rack profile <agent-id> --budget <USD>     # Set a per-agent spend cap (0 = none)
+docket profile <agent-id>                    # Show current model, role, source, budget
+docket profile <agent-id> <provider/model>   # Pin this agent to a model
+docket profile <agent-id> default            # Follow the role policy again
+docket profile <agent-id> --budget <USD>     # Set a per-agent spend cap (0 = none)
 ```
 
 **Example:**
 ```bash
 # Show current model and intent
-rack profile myproject
+docket profile myproject
 # Current model:  anthropic/claude-sonnet-4-6
 # Role:           repo (project default for repo agents)
-# Source:         policy — follows the role's model (rack models)
+# Source:         policy — follows the role's model (docket models)
 
 # Pin a stronger model for a hard problem
-rack profile myproject anthropic/claude-opus-4-6
+docket profile myproject anthropic/claude-opus-4-6
 # ✓ Model pinned: anthropic/claude-sonnet-4-6 → anthropic/claude-opus-4-6
 
 # Back to the policy when done
-rack profile myproject default
+docket profile myproject default
 ```
 
 **Aliases:** `tier` (deprecated)
 
 **Notes:**
 - Tier names (economy/standard/premium) are deprecated but still accepted with a warning; they resolve to the internal rank anchors and create a pin
-- Updates .rack-meta.json and openclaw.json
+- Updates .docket-meta.json and openclaw.json
 - Restarts gateway after change
 
 ---
@@ -675,26 +675,26 @@ reviewer, tester, knowledge, task) on the cheap model class and reasoning-dense 
 
 **Syntax:**
 ```bash
-rack models                            # Show the role→model policy with pricing and WHY
-rack models set <role> <provider/model> # Change one role's model
-rack models set default <provider/model> # Change the fallback default model
-rack models preset [name]              # List or apply a provider preset
-rack models reset                      # Restore built-in defaults
+docket models                            # Show the role→model policy with pricing and WHY
+docket models set <role> <provider/model> # Change one role's model
+docket models set default <provider/model> # Change the fallback default model
+docket models preset [name]              # List or apply a provider preset
+docket models reset                      # Restore built-in defaults
 ```
 
 **Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`
 
 **Example:**
 ```bash
-rack models set programmer openai/gpt-4.1
+docket models set programmer openai/gpt-4.1
 # ✓ programmer → openai/gpt-4.1
 # → Re-resolving policy-following agents...
 #   (every agent with role 'programmer' that follows the policy is updated)
 ```
 
 **Notes:**
-- Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`rack profile <id> <model>`) are never touched
-- Overrides persist in `~/.openclaw/rack-models.json` (`roles:` map); delete it or run `rack models reset` to restore built-ins
+- Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`docket profile <id> <model>`) are never touched
+- Overrides persist in `~/.openclaw/docket-models.json` (`roles:` map); delete it or run `docket models reset` to restore built-ins
 - Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the actual model; pricing shows `n/a`
 
 ---
@@ -705,8 +705,8 @@ Display token usage and cost breakdown.
 
 **Syntax:**
 ```bash
-rack cost              # All agents (aggregate)
-rack cost <agent-id>   # Single agent
+docket cost              # All agents (aggregate)
+docket cost <agent-id>   # Single agent
 ```
 
 **Output format:**
@@ -730,10 +730,10 @@ Estimated savings with economy profile:
 **Example:**
 ```bash
 # Single agent
-rack cost myproject
+docket cost myproject
 
 # All agents
-rack cost
+docket cost
 
 # Output:
 # Token Usage (All Agents)
@@ -759,7 +759,7 @@ System-wide health check and diagnostics.
 
 **Syntax:**
 ```bash
-rack doctor
+docket doctor
 ```
 
 **What it checks:**
@@ -774,7 +774,7 @@ rack doctor
 
 **Example:**
 ```bash
-rack doctor
+docket doctor
 
 # Output:
 # System Health Check
@@ -795,11 +795,11 @@ rack doctor
 # ✓ reviewer OK
 # ✓ tester OK
 # ✓ knowledge OK
-# ⚠ security - Missing HEARTBEAT.md (run: rack maintain security check)
+# ⚠ security - Missing HEARTBEAT.md (run: docket maintain security check)
 #
 # Projects
 # ✓ myproject - OK
-# ⚠ taskagent - Permission issue (run: rack maintain taskagent check)
+# ⚠ taskagent - Permission issue (run: docket maintain taskagent check)
 #
 # Summary
 # ────────────────────────────────────────
@@ -827,14 +827,14 @@ Enable verbose debug output.
 
 **Syntax:**
 ```bash
-rack --debug <command>
-DEBUG=1 rack <command>
+docket --debug <command>
+DEBUG=1 docket <command>
 ```
 
 **Example:**
 ```bash
-rack --debug list
-DEBUG=1 rack add
+docket --debug list
+DEBUG=1 docket add
 ```
 
 **Output:**
@@ -851,9 +851,9 @@ Show help text.
 
 **Syntax:**
 ```bash
-rack --help
-rack -h
-rack help
+docket --help
+docket -h
+docket help
 ```
 
 ---
@@ -893,7 +893,7 @@ rack help
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DEBUG` | Enable debug output | `0` |
-| `EDITOR` | Text editor for `rack edit` | `vi` |
+| `EDITOR` | Text editor for `docket edit` | `vi` |
 | `OPENCLAW_DIR` | OpenClaw directory | `~/.openclaw` |
 
 ---
@@ -905,9 +905,9 @@ rack help
 If you have fzf installed, omit the agent-id for fuzzy search:
 
 ```bash
-rack info      # Opens fzf picker
-rack delete    # Opens fzf picker
-rack logs      # Opens fzf picker
+docket info      # Opens fzf picker
+docket delete    # Opens fzf picker
+docket logs      # Opens fzf picker
 ```
 
 ### Batch Operations
@@ -916,13 +916,13 @@ Use bash loops for batch operations:
 
 ```bash
 # Reset all agents
-for id in $(rack list | awk '{print $1}' | tail -n +2); do
-  rack maintain "$id" clean
+for id in $(docket list | awk '{print $1}' | tail -n +2); do
+  docket maintain "$id" clean
 done
 
 # Cheaper models fleet-wide: change the policy once — every
 # policy-following agent updates automatically (pins are untouched)
-rack models preset openrouter-free
+docket models preset openrouter-free
 ```
 
 ### Cost Monitoring
@@ -931,7 +931,7 @@ Track daily costs:
 
 ```bash
 # Add to crontab
-0 23 * * * rack cost >> ~/rack-costs-$(date +%Y-%m).log
+0 23 * * * docket cost >> ~/docket-costs-$(date +%Y-%m).log
 ```
 
 ### Backup Strategy
