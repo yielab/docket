@@ -6,7 +6,7 @@ set -euo pipefail
 version="${1:?Usage: $0 <version-tag>   e.g. v0.2.0}"
 version="${version#v}"  # strip leading 'v' if present
 
-repo="santiagoyie/docket-cli"
+repo="yielab/docket"
 tarball_url="https://github.com/${repo}/archive/refs/tags/v${version}.tar.gz"
 formula="Formula/docket-cli.rb"
 

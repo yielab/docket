@@ -104,7 +104,7 @@ The numbered phases are ordered by leverage. Earlier phases unblock later ones.
   cuts a GitHub Release on a `v*` tag (guards that the tag matches `VERSION`; uses the
   pre-installed `gh` CLI, no third-party action).
 - ✅ **Homebrew tap** — `Formula/docket-cli.rb` in the repo root; users install via
-  `brew tap santiagoyie/docket-cli https://github.com/santiagoyie/docket-cli && brew install docket-cli`.
+  `brew tap yielab/docket-cli https://github.com/yielab/docket && brew install docket-cli`.
   `scripts/update-homebrew-sha.sh` computes + patches the SHA256 before each release tag.
   `install.sh` also upgraded: portable `sed -i`, curl one-liner support, `--prefix` flag.
   🗓️ `nix` / `apt` remain stretch.

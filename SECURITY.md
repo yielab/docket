@@ -16,7 +16,7 @@ If you find a security issue in docket itself (for example, command injection, u
 of API keys, or path traversal in workspace handling), please report it privately rather than
 opening a public issue.
 
-- **Preferred:** open a [private security advisory](https://github.com/santiagoyie/docket-cli/security/advisories/new) on this repository.
+- **Preferred:** open a [private security advisory](https://github.com/yielab/docket/security/advisories/new) on this repository.
 - **Alternative:** email the maintainer at `info@yielab.com` with the subject `docket security`.
 
 Please include:

@@ -141,5 +141,5 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/santiagoyie/docket-cli/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/santiagoyie/docket-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/yielab/docket/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/yielab/docket/releases/tag/v0.1.0
