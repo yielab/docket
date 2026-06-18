@@ -719,21 +719,23 @@ docket cost <agent-id>   # Single agent
 
 **Output format:**
 ```
-Token Usage & Costs
+Token Usage: myproject
 ────────────────────────────────────────
-Agent: myproject
-Model: anthropic/claude-sonnet-4-6
+Model:            anthropic/claude-sonnet-4-6
+Source:           builtin
+Turns:            42
 
-Input:     125,000 tokens ($0.38)
-Output:     45,000 tokens ($0.68)
-Cache Write: 10,000 tokens ($0.04)
-Cache Read:  50,000 tokens ($0.01)
-─────────────────────────────────
-Total:    $1.11
+Input:            125,000 tokens
+Output:            45,000 tokens
+Cache read:        50,000 tokens
+Cache write:       10,000 tokens
 
-Estimated savings with economy profile:
-~$0.83 (75% reduction)
+Total cost:       $1.11 (recorded)
 ```
+
+The dollar total is the **recorded** spend reported by the OpenClaw daemon — not an estimate.
+docket does not print a projected "savings if you switched models" figure: that would depend on
+its hand-maintained pricing table, which has no live feed. For model choice, see `docket models`.
 
 **Example:**
 ```bash
