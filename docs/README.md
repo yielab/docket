@@ -6,6 +6,10 @@ isolation, role-based model routing, and cost tracking.
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
 
+<p align="center">
+  <img src="assets/hero.gif" alt="docket in action: create an agent with a budget cap, list the fleet, check cost, run a health check" width="720">
+</p>
+
 ---
 
 ## Guides
