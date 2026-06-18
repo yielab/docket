@@ -162,7 +162,10 @@ _maintain_check() {
   local soul_key=""
 
   if [[ -f "$workspace/SOUL.md" ]]; then
-    soul_key=$(grep -oP 'Session Key: \K.*' "$workspace/SOUL.md" 2>/dev/null || echo "")
+    # SOUL.md stores the key as: **Session Key:** `agent:<id>:<project>`
+    # Tolerate the markdown bold (**) and backtick wrapping; also match a
+    # plain `Session Key: <value>` line for older/regenerated workspaces.
+    soul_key=$(grep -oP 'Session Key:[*]*\s*`?\K[^`[:space:]]+' "$workspace/SOUL.md" 2>/dev/null || echo "")
   fi
 
   if [[ "$meta_key" != "$soul_key" ]]; then
@@ -173,9 +176,11 @@ _maintain_check() {
 
     local canonical_key="${meta_key:-$(generate_session_key "$id")}"
     sync_session_key "$id" "$canonical_key"
-    # Also write the canonical key back to SOUL.md so both sources agree
+    # Also write the canonical key back to SOUL.md so both sources agree,
+    # preserving the template's markdown format (**Session Key:** `value`).
     if [[ -f "$workspace/SOUL.md" ]]; then
-      portable_sed_i "s|^Session Key:.*|Session Key: $canonical_key|" "$workspace/SOUL.md" \
+      local soul_line="**Session Key:** \`${canonical_key}\`"
+      portable_sed_i "s|^\*\*Session Key:\*\*.*|${soul_line}|" "$workspace/SOUL.md" \
         || warn "  Could not update SOUL.md session key"
     fi
     success "  ✓ Session key synced"
