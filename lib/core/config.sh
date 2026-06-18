@@ -118,8 +118,16 @@ agent_workspace_dir() {
   fi
 }
 
-# ─── Model pricing (input:output:cache_write:cache_read per million tokens) ──
+# ─── Model pricing (input:output:cache_read:cache_write per million tokens) ──
 # Covers all built-in presets. Unknown models report "n/a" — never $0.00.
+# Field order matches _estimate_cost(): cache_READ before cache_WRITE.
+#
+# These prices are a hand-maintained SNAPSHOT, not a live feed. Recorded spend in
+# `docket cost` comes from the daemon's session logs and does NOT use this table;
+# this table only powers comparative *estimates* (e.g. "cost on a cheaper model").
+# Treat estimates as directional. Update procedure: internal-docs/MODEL-AGNOSTIC-NOTES.md.
+# Bump MODEL_PRICING_AS_OF whenever you edit a price so the CLI can flag staleness.
+MODEL_PRICING_AS_OF="2026-06-11"   # OpenClaw 2026.2.23 catalog
 declare -A MODEL_PRICING=(
   # Anthropic
   ["anthropic/claude-haiku-4-5"]="0.80:4.00:0.08:1.00"
