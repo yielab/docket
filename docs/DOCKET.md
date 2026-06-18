@@ -40,7 +40,7 @@ Programmer: Reads 100K tokens AGAIN + 20K brief
            → Implements fix
            ↓
 No security review → straight to engineer
-Total: ~220K tokens = $0.66
+Total: ~220K tokens
 Time: ~4 minutes
 ```
 
@@ -64,9 +64,9 @@ Tester: Reads reproduction steps (500 tokens)
        → Validates behavior
        → PASS
        ↓
-Total: ~6.5K tokens = $0.02
+Total: ~6.5K tokens
 Time: ~2 minutes
-Savings: 97% cost, 50% time
+Savings: ~97% fewer tokens, ~50% time
 ```
 
 ---
@@ -152,7 +152,11 @@ Tester ONLY reads:
 | Bug fix (full pipeline) | ~1M tokens | ~210K tokens | **79%** |
 | Feature (multi-file) | ~800K tokens | ~180K tokens | **77%** |
 
-### Cost Savings (Monthly)
+### Token Usage (Monthly)
+
+Token reduction is what compression controls and what you can measure. For dollars, read your
+**recorded** spend with `docket cost` — it depends on your models and current pricing, so we
+don't project it here.
 
 **Assumptions:**
 - 50 queries/month (status, memory)
@@ -161,23 +165,24 @@ Tester ONLY reads:
 
 **Before DOCKET:**
 ```
-Queries:  50 × 100K × $3/MTok = $15.00
-Changes:  20 × 200K × $3/MTok = $12.00
-Bugs:     10 × 1M × $3/MTok   = $30.00
+Queries:  50 × 100K =  5.0M tokens
+Changes:  20 × 200K =  4.0M tokens
+Bugs:     10 × 1M   = 10.0M tokens
 ────────────────────────────────────────
-Total:                          $57.00/month
+Total:               19.0M tokens/month
 ```
 
 **After DOCKET:**
 ```
-Queries:  50 × 2K × $3/MTok    = $0.30
-Changes:  20 × 5K × $0.80/MTok = fraction of a cent (cheap model class)
-Bugs:     10 × 210K × $3/MTok  = $6.30
+Queries:  50 × 2K   =  0.1M tokens
+Changes:  20 × 5K   =  0.1M tokens
+Bugs:     10 × 210K =  2.1M tokens
 ────────────────────────────────────────
-Total:                          $6.68/month
+Total:                2.3M tokens/month
 ```
 
-**Savings: $50.32/month (88% reduction)**
+**~88% fewer tokens** — plus routine work runs on the cheap model class, so the dollar
+reduction is larger still. Check the real number with `docket cost`.
 
 ### Response Time
 
@@ -367,7 +372,7 @@ Agent reads:
 - Specific task brief: 500 tokens
 - Target file: 1K tokens
 ────────────────────────────────────
-Total: 3.5K tokens per task (98% savings!)
+Total: 3.5K tokens per task (~98% fewer tokens)
 ```
 
 ### SNAPSHOT.md Contents
@@ -520,7 +525,8 @@ Premium:  high cost  - Exceptionally complex (rarely used)
 - Tester (validation)
 - Knowledge (pattern extraction)
 
-**Result:** 20x cost reduction for routine work
+**Result:** routine work runs on the cheap model class with compressed context — far fewer
+tokens at a lower per-token price. (Exact dollar savings depend on your models and pricing.)
 
 ### Context Compression Rules
 
@@ -672,7 +678,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 - ❌ Manager spawned agents for trivial queries
 - ❌ Overlapping work between specialists
 
-**Cost:** $57/month for active project
+**Token usage:** ~19M tokens/month for active project (see breakdown above)
 
 ### After DOCKET
 
@@ -684,7 +690,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 - ✅ Short-circuit 50% of queries
 - ✅ Linear pipeline (no overlap)
 
-**Cost:** $7/month for active project (88% savings)
+**Token usage:** ~2.3M tokens/month for active project (~88% fewer)
 
 ---
 
@@ -719,13 +725,18 @@ See [Comparison Table](DOCKET-ANALYSIS.md#comparison-docketmd-vs-current-impleme
 - Only modifies specialist agents (not project agents)
 - Can be reverted by restoring backups
 
-### Q: How much cost savings should I expect?
+### Q: How much will I save?
 
-**A:** Depends on usage:
-- Status queries: 98% savings
-- Simple changes: 97% savings
-- Bug fixes: 79% savings
-- Overall: 80-90% savings typical
+**A:** The reliable lever is **token reduction**, which depends on usage (figures from our
+examples):
+- Status queries: ~98% fewer tokens
+- Simple changes: ~97% fewer tokens
+- Bug fixes: ~79% fewer tokens
+- Overall: ~80-90% fewer tokens typical
+
+Dollar savings track tokens *and* which models you run, so they vary with current pricing.
+docket reports your **recorded** spend (`docket cost`) rather than promising a percentage —
+see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ---
 

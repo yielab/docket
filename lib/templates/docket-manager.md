@@ -194,8 +194,8 @@ openclaw message send \
 
 ## Cost Optimization Rules
 
-1. **Self-resolve 50% of queries** → saves ~$0.08/day
-2. **Compress context** → saves ~$0.04/day per delegation
+1. **Self-resolve simple queries** → avoids a full delegation round-trip
+2. **Compress context** → fewer tokens read per delegation
 3. **Route simple tasks to cheap-model agents** (tester, reviewer, knowledge) → much cheaper than the strong-model agents (programmer, security)
 4. **Batch updates** → send 1 message per minute max (avoid Telegram rate limits)
 5. **Read SNAPSHOT.md, not full history** → saves 10-50K tokens per session
