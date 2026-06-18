@@ -12,8 +12,11 @@
 
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
-<!-- DEMO: a 30-second asciinema cast (create agent → set budget → see cost) belongs here,
-     above the fold. Highest-ROI asset; record with `asciinema rec` and embed the SVG/player. -->
+<p align="center">
+  <img src="docs/assets/hero.gif" alt="docket in action: create an agent with a budget cap, list the fleet, check cost, run a health check" width="760">
+</p>
+
+<p align="center"><em>The whole loop in one terminal: <strong>create → cap → watch → keep healthy.</strong></em></p>
 
 ## Why
 
@@ -65,6 +68,45 @@ docket doctor                           # fleet health: drift, budget, runaway, 
 ```
 
 That's the loop docket is built around: **create → cap → watch → keep healthy.**
+
+## See it in action
+
+<table>
+<tr>
+<td width="50%">
+
+**`docket cost` — spend, budget caps & runaway detection**
+
+<img src="docs/assets/cost.png" alt="docket cost: per-agent token usage, dollar cost, budget caps, and a runaway-session warning" width="100%">
+
+</td>
+<td width="50%">
+
+**`docket models` — role→cheapest-adequate-model policy**
+
+<img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**`docket maintain <id> check` — health check & auto-fix**
+
+<img src="docs/assets/maintain.png" alt="docket maintain check: permissions, workspace files, session-key sync, and memory all healthy" width="100%">
+
+</td>
+<td width="50%">
+
+**`docket info <id>` — per-agent detail**
+
+<img src="docs/assets/info.png" alt="docket info: type, workspace, codebase, model, budget cap, session key, and workspace files" width="100%">
+
+</td>
+</tr>
+</table>
+
+> Screenshots are from a real run against a live OpenClaw install; project names are anonymized.
 
 ## How it relates to OpenClaw
 

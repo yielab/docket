@@ -150,6 +150,8 @@ docket add
 
 Display detailed information about a specific project agent.
 
+![docket info output: type, workspace, codebase, model, budget cap, session key, and workspace files](assets/info.png)
+
 **Syntax:**
 ```bash
 docket info <agent-id>
@@ -234,6 +236,8 @@ docket delete myproject
 
 Clear memory, repair, or rebuild an agent. Consolidates the retired `reset`, `repair`, and
 `cleanup` commands into one.
+
+![docket maintain check output: permissions, workspace files, session-key sync, and memory all healthy](assets/maintain.png)
 
 **Syntax:**
 ```bash
@@ -673,6 +677,8 @@ kind of agent runs on. Built-in defaults put high-volume/low-reasoning roles (ma
 reviewer, tester, knowledge, task) on the cheap model class and reasoning-dense roles
 (programmer, security, repo) on the strong class.
 
+![docket models output: role→model policy table with pricing, source, and rationale](assets/models.png)
+
 **Syntax:**
 ```bash
 docket models                            # Show the role→model policy with pricing and WHY
@@ -701,7 +707,9 @@ docket models set programmer openai/gpt-4.1
 
 ### cost
 
-Display token usage and cost breakdown.
+Display token usage and cost breakdown, with per-agent budget caps and runaway-session detection.
+
+![docket cost output: per-agent token usage, dollar cost, budget caps, and a runaway-session warning](assets/cost.png)
 
 **Syntax:**
 ```bash
