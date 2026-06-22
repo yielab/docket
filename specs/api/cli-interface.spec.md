@@ -158,13 +158,27 @@ docket [global-options] <command> [command-options] [arguments]
 ### Configuration Commands
 
 #### docket profile
-**Purpose**: Set model tier for agent
-**Syntax**: `docket profile <agent-id> [tier]`
+**Purpose**: Pin an agent's model or set a budget cap
+**Syntax**: `docket profile <agent-id> [<provider/model> | default] [--budget <USD>]`
 **Arguments**:
 - `agent-id` (required): Target agent
-- `tier` (optional): economy/standard/premium (shows current if omitted)
+- `provider/model` (optional): Pin to a specific model (e.g. `anthropic/claude-sonnet-4-6`); shows current if omitted
+- `default` (optional): Re-attach to the role policy model (unpin)
+**Options**:
+- `--budget <USD>`: Set per-agent spend cap; `0` or `--budget 0` removes it
 **Output**: Profile change confirmation or current profile
-**Return**: 0 on success, 2 if not found, 4 on invalid tier
+**Return**: 0 on success, 2 if not found, 4 on invalid model
+
+#### docket models
+**Purpose**: View and update the role→model policy; switch provider presets
+**Syntax**: `docket models [set <role> <provider/model> | preset <name> | reset]`
+**Actions**:
+- (no args): Show the current role→model table (role, model, price, source, why)
+- `set <role> <provider/model>`: Override the model for a specific role
+- `preset <name>`: Switch all roles to a preset (e.g. `openai`, `anthropic`, `economy`)
+- `reset`: Restore built-in defaults
+**Output**: Role→model table or update confirmation
+**Return**: 0 on success, 4 on invalid role or preset
 
 #### docket scope
 **Purpose**: Manage session keys for project isolation
@@ -294,7 +308,94 @@ docket [global-options] <command> [command-options] [arguments]
 **Output**: Serves `http://localhost:<port>/status.json`, refreshed on the interval
 **Return**: 0 on clean shutdown (Ctrl-C)
 
+### Security and Gates
+
+#### docket gates
+**Purpose**: Manage enforced exec-approval gates (opt-in; off by default)
+**Syntax**: `docket gates <action>`
+**Actions**:
+- `status`: Show current gates configuration
+- `enable`: Enable exec-approval gates (writes to openclaw.json)
+- `disable`: Disable exec-approval gates
+- `isolate <on|off>`: Toggle Docker workspace isolation
+**Output**: Gates status or update confirmation
+**Return**: 0 on success
+
+#### docket audit
+**Purpose**: Show recent operator-mutation events (keys, gates, profile, agents)
+**Syntax**: `docket audit [N]`
+**Arguments**:
+- `N` (optional): Number of recent entries to show (default: 20)
+**Output**: Timestamped log of mutating operations
+**Return**: 0 always
+
+#### docket eval
+**Purpose**: Run specialist-role structural checks and optional live golden tasks
+**Syntax**: `docket eval [--live]`
+**Options**:
+- `--live` (env: `DOCKET_EVAL_LIVE=1`): Run live tasks against the daemon (billable)
+**Output**: Pass/fail per specialist role; model optimization hints
+**Return**: 0 if all pass, 1 if any fail
+
+### Observability (Phase 8)
+
+#### docket trace
+**Purpose**: View, tail, export, or ingest agent-action JSONL traces
+**Syntax**: `docket trace <session-id | subcommand> [args]`
+**Subcommands**:
+- `<session-id>`: Render one session's events human-readable
+- `tail <project>`: Follow the most-recent open session live
+- `export <project> [--since YYYY-MM-DD]`: Print raw JSONL to stdout
+- `ingest <project>`: Pull daemon session logs into the trace store
+**Output**: Human-readable event log or raw JSONL
+**Return**: 0 on success, 2 if session not found
+
+#### docket metrics
+**Purpose**: Compute success rate, latency, cost, and guardrail trip counts
+**Syntax**: `docket metrics [--role <role>] [--project <project>] [--window <N>]`
+**Options**:
+- `--role <role>`: Filter to a specific agent role
+- `--project <project>`: Filter to a specific project
+- `--window <N>`: Rolling window size in sessions (default: `METRICS_WINDOW`)
+**Output**: Table of success rate, mean/p95 duration, total/mean cost, guardrail trips
+**Return**: 0 always
+
+#### docket policies
+**Purpose**: Manage declarative guardrail policies
+**Syntax**: `docket policies <subcommand> [args]`
+**Subcommands**:
+- `list`: List installed policies in `$POLICIES_DIR`
+- `show <name>`: Print one policy's JSON
+- `init`: Copy baseline policies (block-destructive, prompt-injection, secret-pii-redact)
+- `test <hook> <role> <text>`: Dry-run the evaluator (no traces emitted)
+**Output**: Policy listing, JSON, or evaluation result
+**Return**: 0 on success, 4 on invalid subcommand
+
+#### docket approve
+**Purpose**: Grant a pending HITL approval token
+**Syntax**: `docket approve <token>`
+**Arguments**:
+- `token` (required): The `apr-*` token from `approval_create` or Telegram notification
+**Output**: Approval confirmation
+**Return**: 0 on success, 2 if token not found or already resolved
+
+#### docket deny
+**Purpose**: Deny a pending HITL approval token
+**Syntax**: `docket deny <token>`
+**Arguments**:
+- `token` (required): The `apr-*` token from `approval_create` or Telegram notification
+**Output**: Denial confirmation
+**Return**: 0 on success, 2 if token not found or already resolved
+
 ### Telegram Commands
+
+#### docket telegram
+**Purpose**: Alias for `docket wire` — bind a Telegram group to an agent
+**Syntax**: `docket telegram [agent-id]`
+**Arguments**:
+- `agent-id` (optional): Target agent; interactive picker if omitted
+**Output**: Same as `docket wire`
+**Return**: Same as `docket wire`
 
 #### docket wire
 **Purpose**: Bind a Telegram group to an agent (see telegram-integration.spec.md)
@@ -311,6 +412,14 @@ docket [global-options] <command> [command-options] [arguments]
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Unbind confirmation; restarts gateway
 **Return**: 0 on success, 2 if not found
+
+#### docket completions
+**Purpose**: Emit a shell completion script for bash or zsh
+**Syntax**: `docket completions <bash|zsh>`
+**Arguments**:
+- `bash` or `zsh` (required): Target shell
+**Output**: Shell script — source with `eval "$(docket completions bash)"`
+**Return**: 0 on success, 4 on invalid shell
 
 ### Help
 
@@ -339,17 +448,11 @@ Levels:
 
 ### JSON Output Schema
 
-When `--format json` is specified:
+When `--json` is specified, commands emit bare JSON objects or arrays — **no envelope wrapper**.
+There is no `{success, data, error, version}` outer object. Each command's actual output shape
+is documented in [specs/data/cli-json-shapes.spec.md](../data/cli-json-shapes.spec.md).
 
-```json
-{
-  "success": boolean,
-  "data": object | array,
-  "error": string | null,
-  "timestamp": "ISO-8601",
-  "version": "1.0.0"
-}
-```
+Key naming: camelCase throughout (`costUsd`, `totalUsd`, `budgetUsd`, `sessionKey`).
 
 ### Table Output Format
 
