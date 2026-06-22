@@ -12,6 +12,27 @@ DEFAULT_MODEL="anthropic/claude-sonnet-4-6"
 META_FILE=".docket-meta.json"  # stored inside each project workspace
 MODEL_REGISTRY_FILE="${MODEL_REGISTRY_FILE:-$OPENCLAW_DIR/docket-models.json}"
 
+# ─── Observability paths ──────────────────────────────────────────────────────
+# DOCKET_HOME aliases OPENCLAW_DIR so spec paths read literally.
+DOCKET_HOME="${DOCKET_HOME:-$OPENCLAW_DIR}"
+TRACES_DIR="${TRACES_DIR:-$DOCKET_HOME/traces}"
+POLICIES_DIR="${POLICIES_DIR:-$DOCKET_HOME/policies}"
+APPROVALS_DIR="${APPROVALS_DIR:-$DOCKET_HOME/approvals}"
+
+# ─── Observability knobs (all env-overridable for CI hermeticity) ─────────────
+# SESSION_TIMEOUT: seconds before an open trace is coerced to aborted by sweep.
+SESSION_TIMEOUT="${SESSION_TIMEOUT:-3600}"
+# APPROVAL_TIMEOUT: seconds before a pending approval becomes expired (denied).
+APPROVAL_TIMEOUT="${APPROVAL_TIMEOUT:-900}"
+# METRICS_WINDOW: rolling terminal-session count for docket metrics.
+METRICS_WINDOW="${METRICS_WINDOW:-50}"
+# BASELINE_WINDOW: terminal sessions to establish the success-rate baseline.
+BASELINE_WINDOW="${BASELINE_WINDOW:-100}"
+# DRIFT_THRESHOLD: percentage-point drop from baseline that triggers a drift alert.
+DRIFT_THRESHOLD="${DRIFT_THRESHOLD:-15}"
+# DRIFT_COOLDOWN: seconds between drift alerts for the same role (86400 = 24 h).
+DRIFT_COOLDOWN="${DRIFT_COOLDOWN:-86400}"
+
 # Version of the SOUL/AGENTS/TOOLS/HEARTBEAT workspace templates emitted by
 # _create_workspace. Stamped into each agent's .docket-meta.json at creation /
 # rebuild; `docket doctor` flags agents whose stamp is older (prompt drift) and
@@ -125,7 +146,7 @@ agent_workspace_dir() {
 # These prices are a hand-maintained SNAPSHOT, not a live feed. Recorded spend in
 # `docket cost` comes from the daemon's session logs and does NOT use this table;
 # this table only powers comparative *estimates* (e.g. "cost on a cheaper model").
-# Treat estimates as directional. Update procedure: internal-docs/MODEL-AGNOSTIC-NOTES.md.
+# Treat estimates as directional.
 # Bump MODEL_PRICING_AS_OF whenever you edit a price so the CLI can flag staleness.
 MODEL_PRICING_AS_OF="2026-06-11"   # OpenClaw 2026.2.23 catalog
 declare -A MODEL_PRICING=(

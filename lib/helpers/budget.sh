@@ -26,12 +26,16 @@ check_budget() {
       meta_set "$id" "pausedReason" "budget"
       warn "Agent '$id' hit its \$${budget} budget cap (${pct}% used). Marked as paused."
       warn "  Resume: docket profile $id --budget <higher-amount>"
+      trace_event "$id" "budget-$id" "$(meta_get "$id" "type" "unknown")" "budget_exceeded" \
+        "{\"budget_usd\":$budget,\"cost_usd\":$c_cost,\"pct\":$pct}" "$c_cost" "" 2>/dev/null || true
     else
       warn "Agent '$id' is over budget (${pct}% of \$${budget}) and already paused."
     fi
     return 2
   elif [[ "$pct" -ge 80 ]]; then
     warn "Agent '$id' is at ${pct}% of its \$${budget} budget (\$${c_cost} used)."
+    trace_event "$id" "budget-$id" "$(meta_get "$id" "type" "unknown")" "budget_warning" \
+      "{\"budget_usd\":$budget,\"cost_usd\":$c_cost,\"pct\":$pct}" "$c_cost" "" 2>/dev/null || true
     return 1
   fi
 

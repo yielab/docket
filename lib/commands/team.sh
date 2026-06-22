@@ -382,8 +382,34 @@ _team_delegate() {
 
   local task_id; task_id="task-$(date +%s%N 2>/dev/null | cut -c1-13 || date +%s)"
   local created; created=$(date -Iseconds)
+  local source="${_team_delegate_source:-operator}"
 
-  with_docket_lock _team_delegate_write "$path" "$task_id" "$description" "$priority" "$created"
+  # OBS-7: Guard untrusted input through the policy engine.
+  local trusted_flag=""
+  [[ "$source" == "operator" ]] && trusted_flag="--trusted"
+  if [[ "$source" != "operator" ]]; then
+    local policy_action
+    policy_action=$(DOCKET_TRACE_PROJECT="manager" DOCKET_TRACE_SESSION="$task_id" \
+      policy_eval "manager" "pre_input" "$description" 2>/dev/null || echo "allow")
+    case "$policy_action" in
+      block)
+        error "Task rejected: guardrail policy blocked untrusted input."
+        ;;
+      require_approval)
+        warn "Task requires approval before dispatch (guardrail: require_approval)."
+        ;;
+      warn)
+        warn "Possible injection pattern detected in task description. Proceeding with caution."
+        ;;
+    esac
+  fi
+
+  with_docket_lock _team_delegate_write "$path" "$task_id" "$description" "$priority" "$created" "$source"
+
+  # Emit session_start into the trace for this dispatched task.
+  local trace_session="${task_id}"
+  trace_event "manager" "$trace_session" "manager" "session_start" \
+    "{\"task_id\":\"$task_id\",\"priority\":\"$priority\",\"source\":\"$source\"}" 2>/dev/null || true
 
   docket_audit "team.delegate" "{\"id\":\"$task_id\",\"priority\":\"$priority\"}"
   success "Task queued: [$task_id] $description"
@@ -394,15 +420,15 @@ _team_delegate() {
 }
 
 _team_delegate_write() {
-  local path="$1" task_id="$2" desc="$3" pri="$4" created="$5"
-  python3 - "$path" "$task_id" "$desc" "$pri" "$created" <<'PY' | json_atomic_write "$path"
+  local path="$1" task_id="$2" desc="$3" pri="$4" created="$5" source="${6:-operator}"
+  python3 - "$path" "$task_id" "$desc" "$pri" "$created" "$source" <<'PY' | json_atomic_write "$path"
 import sys, json
-path, tid, desc, pri, created = sys.argv[1:]
+path, tid, desc, pri, created, source = sys.argv[1:]
 data = json.load(open(path))
 data.setdefault("tasks", []).append({
     "id": tid, "description": desc, "priority": pri,
     "created": created, "startedAt": None, "completedAt": None,
-    "status": "pending"
+    "status": "pending", "source": source,
 })
 print(json.dumps(data, indent=2))
 PY
