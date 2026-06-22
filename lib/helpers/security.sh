@@ -3,9 +3,18 @@
 #
 # docket does not implement enforcement — the OpenClaw daemon provides exec
 # approvals, tool policy, and a security audit natively (see
-# internal-docs/SECURITY-GATES-FEASIBILITY.md). These helpers HARDEN the local
+# specs/functional/security-gates.spec.md). These helpers HARDEN the local
 # state files (G2) and SURFACE the daemon's gate/audit status for `docket doctor`
 # (G1). The daemon enforces; docket configures and reports.
+#
+# OBS-8 daemon dependency note:
+#   The block-destructive policy (pre_tool_call) maps onto the daemon's
+#   exec-approval allowlist via apply_exec_approval_gates: commands not on
+#   the safe-bin allowlist require approval (fail-closed under allowlist mode).
+#   Inline pre_output redaction and Telegram reply-routing are PENDING daemon
+#   support — until then those paths apply only to docket-written traces and
+#   outbound Telegram (tg_send), satisfying GR8 for those sinks only.
+#   This gap is documented and not overclaimed.
 
 # G2 — tighten permissions on sensitive OpenClaw state files.
 # chmod 600 any of openclaw.json / secrets.json that is currently accessible by

@@ -62,6 +62,18 @@ ${BOLD}MONITORING${RESET}
   ${GREEN}audit${RESET}    [N]       Recent mutating operations (keys, gates, profile, agents)
   ${GREEN}eval${RESET}               Specialist-role evals: structural checks + live golden tasks
 
+${BOLD}OBSERVABILITY (Phase 8)${RESET}
+  ${GREEN}trace${RESET}    <session>  Render one agent-action trace human-readable
+  ${GREEN}trace tail${RESET} <proj>   Follow the most-recent session live
+  ${GREEN}trace export${RESET} <proj> Export raw JSONL (--since YYYY-MM-DD)
+  ${GREEN}trace ingest${RESET} <proj> Ingest daemon session logs into traces
+  ${GREEN}metrics${RESET}            Success rate, latency, cost, guardrail trips (--role --window)
+  ${GREEN}policies list${RESET}      List installed guardrail policies
+  ${GREEN}policies init${RESET}      Install baseline policies (block-destructive, injection, redact)
+  ${GREEN}policies test${RESET}      Dry-run policy evaluator on any text
+  ${GREEN}approve${RESET}  <token>   Grant a pending HITL approval
+  ${GREEN}deny${RESET}     <token>   Deny a pending HITL approval
+
 ${BOLD}TEAM & WORKFLOWS${RESET}
   ${GREEN}team status${RESET}        Specialist agent health and DOCKET status
   ${GREEN}team upgrade${RESET}       Upgrade specialists to current templates
