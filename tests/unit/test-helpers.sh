@@ -1976,6 +1976,130 @@ rm -rf "$_obs_trace_tmpdir" "$_obs_notrace_tmpdir" "$_obs_pol_tmpdir" \
        "$_obs_apr_dir" "$_obs_old_apr_dir" "$_obs_ingest_dir" 2>/dev/null || true
 echo ""
 
+# ─── Phase 9 — Contract integrity (CDD-1 … CDD-6) ───────────────────────────
+echo ""
+echo "Phase 9 — Contract integrity (CDD-1…CDD-6)"
+echo "-------------------------------------------"
+
+# Source schema + json helpers so we can exercise them.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$LIB_DIR/core/schema.sh"
+# Re-source json.sh so _meta_set picks up the now-loaded schema_field function.
+source "$LIB_DIR/helpers/json.sh"
+
+# CDD-1: schema table sanity — every entry has name/type/enum/sync_class.
+_cdd_schema_ok=1
+for _cdd_entry in "${AGENT_SCHEMA[@]}"; do
+  _cdd_name=$(printf '%s' "$_cdd_entry" | cut -f1)
+  _cdd_type=$(printf '%s' "$_cdd_entry" | cut -f2)
+  _cdd_enum=$(printf '%s' "$_cdd_entry" | cut -f3)
+  _cdd_sync=$(printf '%s' "$_cdd_entry" | cut -f4)
+  if [[ -z "$_cdd_name" || -z "$_cdd_type" || -z "$_cdd_enum" || -z "$_cdd_sync" ]]; then
+    echo "✗ FAIL: CDD-1: schema entry missing a column: '$_cdd_entry'"
+    TESTS_FAILED=$((TESTS_FAILED + 1)); _cdd_schema_ok=0
+  fi
+done
+[[ "$_cdd_schema_ok" -eq 1 ]] && {
+  echo "✓ PASS: CDD-1: all AGENT_SCHEMA entries have 4 columns"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+}
+
+# CDD-1: known required fields exist in the schema.
+for _cdd_f in kind type name model modelSource sessionKey projectKey; do
+  _cdd_desc=$(schema_field "$_cdd_f" 2>/dev/null || true)
+  if [[ -n "$_cdd_desc" ]]; then
+    echo "✓ PASS: CDD-1: schema contains field '$_cdd_f'"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+  else
+    echo "✗ FAIL: CDD-1: schema missing field '$_cdd_f'"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+  fi
+done
+
+# CDD-1: synced fields are exactly {model, sessionKey}.
+_cdd_synced=$(schema_synced_fields | sort | tr '\n' ',')
+assert_equals "model,sessionKey," "$_cdd_synced" "CDD-1: synced fields are model + sessionKey"
+
+# CDD-1: spec field names match schema field names (both lists identical).
+# Extract field names from docket-meta.spec.md table rows using Python.
+_cdd_spec_fields=$(python3 - "$REPO_ROOT/specs/data/docket-meta.spec.md" <<'PY'
+import re, sys
+# Match table rows: | `fieldname` | ... (must have at least 3 pipe-separated cells)
+pat = re.compile(r'^\|\s*`([a-zA-Z][a-zA-Z0-9]*)`\s*\|')
+fields = set()
+with open(sys.argv[1]) as f:
+    for line in f:
+        m = pat.match(line)
+        if m:
+            fields.add(m.group(1))
+print(",".join(sorted(fields)) + ",")
+PY
+)
+_cdd_schema_fields=$(schema_field_names | sort | tr '\n' ',')
+assert_equals "$_cdd_schema_fields" "$_cdd_spec_fields" \
+  "CDD-1: schema table and docket-meta.spec.md list identical fields"
+
+# CDD-2: unknown field rejected.
+_cdd_meta_dir=$(mktemp -d)
+_cdd_meta_file="$_cdd_meta_dir/.docket-meta.json"
+echo '{}' > "$_cdd_meta_file"
+# Override agent_workspace_dir to point at our temp dir.
+agent_workspace_dir() { echo "$_cdd_meta_dir"; }
+_cdd_err=$( meta_set "_ignored_" "typoField" "val" 2>&1 ) && _cdd_rc=0 || _cdd_rc=$?
+if [[ "$_cdd_rc" -ne 0 ]]; then
+  echo "✓ PASS: CDD-2: unknown field rejected by meta_set"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "✗ FAIL: CDD-2: unknown field was accepted (expected rejection)"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# CDD-2: enum violation rejected (modelSource must be policy|pinned).
+_cdd_err2=$( meta_set "_ignored_" "modelSource" "warp-drive" 2>&1 ) && _cdd_rc2=0 || _cdd_rc2=$?
+if [[ "$_cdd_rc2" -ne 0 ]]; then
+  echo "✓ PASS: CDD-2: invalid enum value rejected for modelSource"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "✗ FAIL: CDD-2: invalid enum accepted for modelSource"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# CDD-2: negative budgetUsd rejected.
+_cdd_err3=$( meta_set "_ignored_" "budgetUsd" "-5" 2>&1 ) && _cdd_rc3=0 || _cdd_rc3=$?
+if [[ "$_cdd_rc3" -ne 0 ]]; then
+  echo "✓ PASS: CDD-2: negative budgetUsd rejected"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "✗ FAIL: CDD-2: negative budgetUsd was accepted"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# CDD-2: non-boolean paused rejected.
+_cdd_err4=$( meta_set "_ignored_" "paused" "yes" 2>&1 ) && _cdd_rc4=0 || _cdd_rc4=$?
+if [[ "$_cdd_rc4" -ne 0 ]]; then
+  echo "✓ PASS: CDD-2: non-boolean value rejected for paused"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo "✗ FAIL: CDD-2: non-boolean paused was accepted"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+# CDD-2: valid write succeeds.
+_cdd_rc5=0; meta_set "_ignored_" "modelSource" "pinned" 2>/dev/null || _cdd_rc5=$?
+assert_equals "0" "$_cdd_rc5" "CDD-2: valid enum write succeeds"
+_cdd_written=$(python3 -c "import json; print(json.load(open('$_cdd_meta_file')).get('modelSource',''))" 2>/dev/null)
+assert_equals "pinned" "$_cdd_written" "CDD-2: valid write is persisted"
+
+# CDD-5: spec-coverage linter exits 0 after CDD-6 (linter is green).
+_cdd_linter_rc=0
+bash "$REPO_ROOT/scripts/spec-coverage.sh" --ci >/dev/null 2>&1 || _cdd_linter_rc=$?
+assert_equals "0" "$_cdd_linter_rc" "CDD-5: spec-coverage linter exits 0 (all commands documented)"
+
+# Cleanup CDD temp dirs.
+unset -f agent_workspace_dir 2>/dev/null || true
+rm -rf "$_cdd_meta_dir" 2>/dev/null || true
+echo ""
+
 echo ""
 echo "========================================"
 echo "  Summary"

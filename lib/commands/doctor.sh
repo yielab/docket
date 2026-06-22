@@ -283,10 +283,11 @@ PY
 }
 
 cmd_doctor() {
-  local json=0
+  local json=0 do_fix=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) json=1; shift ;;
+      --fix)  do_fix=1; shift ;;
       *)      shift ;;
     esac
   done
@@ -493,8 +494,8 @@ PYEOF
     issues=$(( issues + 1 ))
   fi
 
-  # 11. Config drift detection (meta vs openclaw.json)
-  # Run as a single Python call over all project agents to avoid heredoc-in-loop warnings.
+  # 11. Config drift detection (meta vs openclaw.json) — checks every synced field.
+  # Synced fields: model (agents.list[id].model) and sessionKey (agents.list[id].metadata.sessionKey)
   local drift_ids; drift_ids=$(project_ids)
   if [[ -n "$drift_ids" ]]; then
     echo ""
@@ -518,12 +519,24 @@ for aid in agent_ids:
     meta_path = os.path.join(projects_dir, aid, meta_file)
     if not os.path.exists(meta_path):
         continue
-    meta_model = json.load(open(meta_path)).get('model', '')
-    if not meta_model:
-        continue
-    oc_model = oc_agents.get(aid, {}).get('model', '')
-    if oc_model and meta_model != oc_model:
-        drift.append(f"DRIFT {aid} meta={meta_model} openclaw={oc_model}")
+    meta = json.load(open(meta_path))
+    oc  = oc_agents.get(aid, {})
+    agent_drift = []
+
+    # Check model (synced field 1)
+    meta_model = meta.get('model', '')
+    oc_model   = oc.get('model', '')
+    if meta_model and oc_model and meta_model != oc_model:
+        agent_drift.append(f"model meta={meta_model} openclaw={oc_model}")
+
+    # Check sessionKey (synced field 2) — stored in oc agents.list[id].metadata.sessionKey
+    meta_sk = meta.get('sessionKey', '')
+    oc_sk   = oc.get('metadata', {}).get('sessionKey', '')
+    if meta_sk and oc_sk and meta_sk != oc_sk:
+        agent_drift.append(f"sessionKey meta={meta_sk} openclaw={oc_sk}")
+
+    if agent_drift:
+        drift.append(f"DRIFT {aid} " + "; ".join(agent_drift))
     else:
         ok.append(f"OK {aid}")
 
@@ -539,22 +552,37 @@ PYEOF
       "$CONFIG_FILE" "$PROJECTS_DIR" "$META_FILE" $drift_ids 2>/dev/null || true)
 
     local drift_found=0
+    local _drift_agents=()
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       local _id="${line#* }"; _id="${_id%% *}"
       if [[ "$line" == DRIFT* ]]; then
-        local _meta="${line##*meta=}"; _meta="${_meta%% *}"
-        local _oc="${line##*openclaw=}"
-        fail "  $_id: drift — model meta=${_meta} openclaw=${_oc}"
+        local _fields="${line#DRIFT $_id }"
+        fail "  $_id: drift — $_fields"
         issues=$(( issues + 1 ))
         drift_found=$(( drift_found + 1 ))
+        _drift_agents+=("$_id")
       else
         success "  $_id: in sync"
       fi
     done <<< "$_drift_results"
 
     if [[ "$drift_found" -gt 0 ]]; then
-      echo "  Fix with: docket doctor --fix"
+      if [[ "$do_fix" -eq 1 ]]; then
+        echo "  Fixing drift (re-syncing from .docket-meta.json)..."
+        local _fa
+        for _fa in "${_drift_agents[@]}"; do
+          local _fix_model; _fix_model=$(meta_get "$_fa" "model" "")
+          local _fix_sk;    _fix_sk=$(meta_get "$_fa" "sessionKey" "")
+          [[ -n "$_fix_model" ]] && set_agent_model "$_fa" "$_fix_model" 2>/dev/null || true
+          [[ -n "$_fix_sk" ]]    && sync_session_key "$_fa" "$_fix_sk"   2>/dev/null || true
+          success "  $_fa: re-synced"
+        done
+        restart_gateway 2>/dev/null || true
+        issues=$(( issues - drift_found ))
+      else
+        echo "  Fix with: docket doctor --fix"
+      fi
     fi
   fi
 

@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–7, 6b, and 8 complete ☑. **Phase 9 — contract integrity / de-ceremony — planned, audit-driven** (CDD-1…CDD-6). Other remaining: Phase 0 gates default-on flip (deferred), Phase 2 packaging stretch goals, Phase 3 CI gate promotion, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Status:** Phases 0–7, 6b, 8, and 9 complete ☑. Other remaining: Phase 0 gates default-on flip (deferred), Phase 2 packaging stretch goals, Phase 3 CI gate promotion, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
 **Last Updated:** 2026-06-22
 
 ## Tracked decisions (not yet scheduled)
@@ -772,7 +772,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 > on divergence, or the runtime refuses bad data) or *deletes the ceremony* (fix the spec to match
 > reality, drop a misleading metric). No new prose that code can ignore.
 
-#### ☐ CDD-1 — Single source of truth for the agent schema (kills the hand-duplication)
+#### ✅ CDD-1 — Single source of truth for the agent schema (kills the hand-duplication)
 
 - **Why:** F2/F3 — the `.docket-meta.json` field set is redefined implicitly in every command that touches it; nothing declares it once.
 - **Files:** new [lib/core/schema.sh](lib/core/schema.sh) (or a `declare -A AGENT_FIELDS` block in [lib/core/config.sh](lib/core/config.sh)); consumed by [lib/helpers/json.sh](lib/helpers/json.sh), [lib/commands/doctor.sh](lib/commands/doctor.sh); cross-checked against [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md).
@@ -780,7 +780,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 - **Acceptance:** adding a field to the spec but not the table (or vice-versa) fails a unit test; `doctor` and `meta_set` enumerate fields from the table, not from inline literals.
 - **Test:** Unit: table↔spec field-set equality; type/enum/sync-class present for every field.
 
-#### ☐ CDD-2 — Validated `meta_set` (reject bad writes at the boundary)
+#### ✅ CDD-2 — Validated `meta_set` (reject bad writes at the boundary)
 
 - **Why:** F3 — silent acceptance of malformed values is the kind of "looks fine until it isn't" bug specs are supposed to prevent.
 - **Files:** [lib/helpers/json.sh](lib/helpers/json.sh) (`_meta_set`).
@@ -788,7 +788,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 - **Acceptance:** `meta_set x budgetUsd not-a-number` and `meta_set x bugdetUsd 5` (typo) both fail loudly; valid writes unchanged.
 - **Test:** Unit: each invalid type/enum/unknown-field rejected; valid round-trips.
 
-#### ☐ CDD-3 — Sync completeness + full-field drift in `doctor`
+#### ✅ CDD-3 — Sync completeness + full-field drift in `doctor`
 
 - **Why:** F2 — drift detection that checks 1 of ~12 fields gives false confidence; the spec implies more is synced than is.
 - **Files:** [lib/commands/doctor.sh](lib/commands/doctor.sh), [lib/helpers/session.sh](lib/helpers/session.sh)/[lib/helpers/json.sh](lib/helpers/json.sh) (sync writers), [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md).
@@ -796,7 +796,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 - **Acceptance:** mutating any `synced` field in one source surfaces in `docket doctor`; `local` fields are labeled and not flagged.
 - **Test:** Integration: extend the existing drift test (P0-2 pattern) to a non-`model` synced field.
 
-#### ☐ CDD-4 — Resolve the `--json` output contract (F1)
+#### ✅ CDD-4 — Resolve the `--json` output contract (F1)
 
 - **Why:** A documented envelope that nothing emits is a lie in the API spec; consumers parse undocumented ad-hoc shapes.
 - **Files:** [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md), the `--json` emitters ([list.sh](lib/commands/list.sh), [cost.sh](lib/commands/cost.sh), [info.sh](lib/commands/info.sh), [doctor.sh](lib/commands/doctor.sh), [snapshot.sh](lib/commands/snapshot.sh)), [lib/commands/serve.sh](lib/commands/serve.sh) (`/status.json`, `/metrics`, `/health`).
@@ -804,7 +804,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 - **Acceptance:** spec and emitted JSON agree for every read command; a renamed field breaks a test.
 - **Test:** Unit/integration: `<cmd> --json | jq` keys equal the documented set; naming-consistency assertion across commands.
 
-#### ☐ CDD-5 — Mechanical spec↔code linter (replace the cosmetic coverage %)
+#### ✅ CDD-5 — Mechanical spec↔code linter (replace the cosmetic coverage %)
 
 - **Why:** F4/F5 — CI should fail when the command surface and the spec disagree, not report a misleading 92–100%.
 - **Files:** rewrite/extend [scripts/spec-coverage.sh](scripts/spec-coverage.sh); wire as a **blocking** step in [.github/workflows/ci.yml](.github/workflows/ci.yml).
@@ -812,7 +812,7 @@ committed with a conventional message. Tick the box in §5 and move on.
 - **Acceptance:** today's repo makes this linter **red** (it surfaces the 5 missing + the stale refs); after CDD-6 it's green; adding a command without a spec turns it red again.
 - **Test:** the linter is the test; a fixture proves it fails on an injected mismatch.
 
-#### ☐ CDD-6 — De-stale the specs (one-time truth pass)
+#### ✅ CDD-6 — De-stale the specs (one-time truth pass)
 
 - **Why:** F5 — make the specs match the shipped CLI so CDD-5 can go green and stay green.
 - **Files:** [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md) (add `gates`, `audit`, `eval`, `models`, `completions`; correct `profile` args to model-id/`default`, drop tier-as-arg), [specs/validation/input-validation.spec.md](specs/validation/input-validation.spec.md) (remove `reset`/`repair` from "Used By"), any functional spec describing removed behavior.
@@ -850,6 +850,16 @@ Tick boxes in §5 as you go. When a decision in §6 blocks you, apply the defaul
 
 ### Changelog
 
+- **2026-06-22** — **PHASE 9 complete** (CDD-1 … CDD-6): `lib/core/schema.sh` declares the full
+  `.docket-meta.json` field set once (name/type/enum/sync-class); `meta_set` validates every write
+  against it (unknown field → error, type mismatch → error, enum violation → error); `docket doctor`
+  now diffs all `synced` fields (model + sessionKey) not just model, and `--fix` re-syncs from
+  `.docket-meta.json`; phantom `{success,data,error,version}` envelope removed from spec, real per-
+  command shapes documented in `specs/data/cli-json-shapes.spec.md`; `scripts/spec-coverage.sh`
+  rewritten as a mechanical linter (router.sh case arms vs cli-interface.spec.md headings, exits 1
+  on mismatch); spec de-staled — gates/audit/eval/models/completions/telegram/trace/metrics/
+  policies/approve/deny added, profile tier-as-arg corrected to model-id/`default`, reset/repair
+  stale "Used By" entries removed. 17 new unit tests; 325 total, all green.
 - **2026-06-22** — Added **PHASE 9 — Contract integrity / de-ceremony** (CDD-1 … CDD-6), from a
   Contract-/Schema-Driven-Development audit. Scope-corrected the generic web-CDD brief to docket's
   reality: no OpenAPI/DB/codegen exist (so the "dead codegen loop" and "migration rigor" pillars
