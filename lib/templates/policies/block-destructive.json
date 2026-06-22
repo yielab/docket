@@ -1,0 +1,12 @@
+{
+  "id": "block-destructive",
+  "description": "Gate destructive shell commands behind explicit approval",
+  "applies_to": ["*"],
+  "hook": "pre_tool_call",
+  "match": {
+    "type": "regex",
+    "pattern": "\\brm\\s+-[rf]|\\bdrop\\s+table|\\btruncate\\s+table|\\bgit\\s+push\\s+--force|\\bsystemctl\\s+(stop|disable)|\\bdd\\s+if=|\\bshred\\b|\\bmkfs\\b|\\bkillall\\b|\\brmdir\\s+-p|chmod\\s+[0-7]{3,4}\\s+[/~]|chown\\s+.*\\s+[/~]|\\.env\\b.*write|\\.ssh\\/\\s*write"
+  },
+  "action": "require_approval",
+  "message": "Destructive command requires operator approval before execution."
+}

@@ -52,6 +52,13 @@ _serve_refresh() {
   cmd_snapshot > "$dir/status.json" 2>/dev/null || echo '{}' > "$dir/status.json"
   _serve_metrics > "$dir/metrics" 2>/dev/null || true
   printf '{"status":"ok","gateway":%s}\n' "$gw" > "$dir/health"
+
+  # Coerce stale open traces to aborted (OBS-3 timeout sweep).
+  _trace_sweep_all 2>/dev/null || true
+  # Expire pending approvals past APPROVAL_TIMEOUT (H5 fail-closed).
+  approval_sweep_expired 2>/dev/null || true
+  # Check for role success-rate drift (OBS-11).
+  drift_check_all 2>/dev/null || true
 }
 
 cmd_serve() {

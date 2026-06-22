@@ -45,6 +45,14 @@ route_command() {
     serve)             cmd_serve    "$@" ;;
     models)            cmd_models   "$@" ;;
     completions|completion) cmd_completions "$@" ;;
+
+    # Observability (Phase 8)
+    trace)             cmd_trace    "$@" ;;
+    metrics)           cmd_metrics  "$@" ;;
+    policies|policy)   cmd_policies "$@" ;;
+    approve)           cmd_approve  "$@" ;;
+    deny)              cmd_deny     "$@" ;;
+
     help|--help|-h)    cmd_help     "$@" ;;
 
     # ── Removed / renamed commands ──────────────────────────────────────────

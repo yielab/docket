@@ -17,7 +17,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire telegram scope profile keys team workflow logs edit cost doctor gates audit eval snapshot serve models completions help version"
+  local commands="install list add info delete maintain context wire unwire telegram scope profile keys team workflow logs edit cost doctor gates audit eval snapshot serve models trace metrics policies approve deny completions help version"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
@@ -50,6 +50,8 @@ _docket_complete() {
     gates|security)  words="status enable disable isolate" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="set preset reset" ;;
+    trace)           words="tail export ingest" ;;
+    policies|policy) words="list show init test" ;;
     completions)     words="bash zsh" ;;
     cost|usage)      [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
     info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
@@ -93,6 +95,11 @@ _docket() {
     'snapshot:Export a workspace snapshot'
     'serve:Local HTTP view'
     'models:Role→model policy'
+    'trace:View/tail/export agent-action traces'
+    'metrics:Success rate, latency, cost, guardrail stats'
+    'policies:Manage guardrail policies'
+    'approve:Grant a pending HITL approval'
+    'deny:Deny a pending HITL approval'
     'completions:Emit a shell completion script'
     'help:Show help'
   )
@@ -119,6 +126,8 @@ _docket() {
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd set preset reset ;;
+    trace)           compadd tail export ingest ;;
+    policies|policy) compadd list show init test ;;
     completions)     compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)

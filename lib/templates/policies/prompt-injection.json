@@ -1,0 +1,12 @@
+{
+  "id": "prompt-injection",
+  "description": "Detect instruction-override and exfiltration attempts in untrusted input",
+  "applies_to": ["*"],
+  "hook": "pre_input",
+  "match": {
+    "type": "regex",
+    "pattern": "ignore\\s+(previous|all|prior)\\s+instructions|disregard\\s+(your|the)\\s+(system|instructions)|you\\s+are\\s+now|new\\s+persona|act\\s+as\\s+(?!a\\s+helpful)|pretend\\s+(you\\s+are|to\\s+be)|jailbreak|DAN\\s+mode|send\\s+(all|the)\\s+(data|secrets|keys)\\s+to|exfiltrate|leak\\s+(your|the)\\s+(context|memory|keys)"
+  },
+  "action": "warn",
+  "message": "Possible prompt-injection pattern detected in untrusted input. Review before processing."
+}
