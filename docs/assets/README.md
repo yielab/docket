@@ -11,7 +11,7 @@
 ## Positioning rule for visuals
 
 These assets must lead with **provisioning + isolation** and keep cost as a *guardrail*, not the
-headline (see `internal-docs/COST-FEATURE-AUDIT.md`). When regenerating the hero GIF, do not make a
+headline. When regenerating the hero GIF, do not make a
 `docket cost` dollar table the centerpiece.
 
 ## Regenerating the hero GIF
