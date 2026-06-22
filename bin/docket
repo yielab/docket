@@ -65,6 +65,7 @@ export DOCKET_CLI_ROOT LIB_DIR
 # Source core modules
 source "$LIB_DIR/core/init.sh"
 source "$LIB_DIR/core/config.sh"
+source "$LIB_DIR/core/schema.sh"
 
 # Source helper modules
 source "$LIB_DIR/helpers/output.sh"

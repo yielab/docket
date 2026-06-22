@@ -16,7 +16,7 @@ that consume it, the RFC 2119 rule set, and the reference implementation.
 ### 1. Agent ID Validation
 
 **Field**: agent-id
-**Used By**: add, info, delete, reset, profile, scope, workflow, repair
+**Used By**: add, info, delete, maintain, profile, scope, workflow
 
 **Rules**:
 - **MUST** match pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
@@ -211,7 +211,7 @@ validate_model() {
 ### 4. Numeric Validation
 
 **Field**: level, period, timeout
-**Used By**: reset, cost, various
+**Used By**: cost, various
 
 **Rules**:
 - **MUST** be positive integer

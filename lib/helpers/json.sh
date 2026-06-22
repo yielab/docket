@@ -69,11 +69,57 @@ PY
   fi
 }
 
-# Write/update a field in .docket-meta.json (atomic + locked)
+# Write/update a field in .docket-meta.json (atomic + locked).
+# Validates the field name and value against AGENT_SCHEMA (lib/core/schema.sh)
+# before writing. Unknown fields and type/enum violations abort without writing.
+# Set DOCKET_NO_SCHEMA_CHECK=1 to skip validation (internal bootstrap only).
 meta_set() { with_docket_lock _meta_set "$@"; }
 _meta_set() {
   local id="$1" field="$2" value="$3"
   local meta; meta="$(agent_workspace_dir "$id")/$META_FILE"
+
+  # Schema validation — skip only during bootstrap (DOCKET_NO_SCHEMA_CHECK=1).
+  if [[ "${DOCKET_NO_SCHEMA_CHECK:-0}" != "1" ]] && \
+     [[ "$(type -t schema_field)" == "function" ]]; then
+    local _desc; _desc=$(schema_field "$field" 2>/dev/null || true)
+    if [[ -z "$_desc" ]]; then
+      error "meta_set: unknown field '$field' (not in AGENT_SCHEMA); check for typos"
+      return 1
+    fi
+    local _type; _type=$(printf '%s' "$_desc" | cut -f2)
+    local _enum; _enum=$(printf '%s' "$_desc" | cut -f3)
+    case "$_type" in
+      number)
+        # Allow empty string (field clear/unset). Non-empty must be a non-negative number.
+        if [[ -n "$value" ]] && ! printf '%s' "$value" | python3 -c "import sys; v=sys.stdin.read().strip(); sys.exit(0 if float(v)>=0 else 1)" 2>/dev/null; then
+          error "meta_set: field '$field' must be a non-negative number, got: $value"
+          return 1
+        fi
+        ;;
+      bool)
+        # Accept "true", "false", or "" (empty = unset/false for optional bools like `paused`).
+        if [[ "$value" != "true" && "$value" != "false" && "$value" != "" ]]; then
+          error "meta_set: field '$field' must be 'true', 'false', or '' (unset), got: $value"
+          return 1
+        fi
+        ;;
+      enum)
+        if [[ "$_enum" != "-" ]]; then
+          local _valid=0
+          local _opt
+          IFS='|' read -ra _opts <<< "$_enum"
+          for _opt in "${_opts[@]}"; do
+            [[ "$value" == "$_opt" ]] && { _valid=1; break; }
+          done
+          if [[ "$_valid" -eq 0 ]]; then
+            error "meta_set: field '$field' must be one of: ${_enum//|/, }; got: $value"
+            return 1
+          fi
+        fi
+        ;;
+    esac
+  fi
+
   python3 - "$meta" "$field" "$value" <<'PY' | json_atomic_write "$meta"
 import json, sys, os
 path, field, value = sys.argv[1], sys.argv[2], sys.argv[3]
