@@ -3,7 +3,6 @@
 #
 # Opt-in, re-runnable front door for the daemon's exec-approval gates. docket
 # configures; the OpenClaw daemon enforces. See
-# internal-docs/SECURITY-GATES-FEASIBILITY.md and
 # specs/functional/security-gates.spec.md.
 
 cmd_gates() {

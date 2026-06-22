@@ -9,8 +9,8 @@
 # Select the keyring backend with DOCKET_SECRETS_BACKEND=keyring; it transparently
 # falls back to file when no keyring tool is available. Secret VALUES are always
 # passed via stdin/env or assembled inside Python — never via argv (which is
-# world-readable through /proc) and never interpolated into source. See
-# internal-docs/SECURITY-GATES-FEASIBILITY.md siblings / ROADMAP Phase 0.
+# world-readable through /proc) and never interpolated into source.
+# See specs/functional/security-gates.spec.md and ROADMAP Phase 0.
 
 _secrets_file() { echo "$OPENCLAW_DIR/secrets.json"; }
 
