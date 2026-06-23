@@ -22,6 +22,30 @@ SPECIALIST_ROLES: frozenset[str] = frozenset(
 
 META_FILE = ".docket-meta.json"
 
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
+
+# Display order for specialist agents (matches DOCKET_SPECIALISTS in config.sh).
+SPECIALIST_ORDER: tuple[str, ...] = (
+    "manager",
+    "programmer",
+    "reviewer",
+    "tester",
+    "knowledge",
+    "security",
+)
+
+# One-line rationale for each role's model-class choice (mirrors ROLE_WHY in config.sh).
+ROLE_WHY: dict[str, str] = {
+    "manager": "high-volume coordination, shallow reasoning",
+    "reviewer": "triage and review, low reasoning density",
+    "tester": "run tests and report",
+    "knowledge": "retrieval and summarization",
+    "task": "project default for task agents",
+    "programmer": "code generation",
+    "security": "audit depth",
+    "repo": "project default for repo agents",
+}
+
 
 def is_specialist(agent_id: str) -> bool:
     return agent_id in SPECIALIST_ROLES

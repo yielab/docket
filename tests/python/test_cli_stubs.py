@@ -6,8 +6,10 @@ import sys
 import pytest
 
 COMMANDS = [
-    ["list"],
-    ["info"],
+    # M3 commands are fully ported — they no longer exit 127.
+    # ["list"],  # ported
+    # ["info"],  # ported
+    # ["cost"],  # ported
     ["add"],
     ["delete"],
     ["maintain"],
@@ -23,7 +25,6 @@ COMMANDS = [
     ["workflow"],
     ["logs"],
     ["edit"],
-    ["cost"],
     ["doctor"],
     ["gates"],
     ["audit"],
