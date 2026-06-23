@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Fake systemctl for golden tests.
+# Handles the subset docket calls: is-active, restart, status, start, stop.
+
+# docket always uses: systemctl --user <verb> openclaw-gateway.service
+# Strip --user and the service name; dispatch on the verb.
+
+args=()
+for a in "$@"; do
+  [[ "$a" == "--user" ]] && continue
+  [[ "$a" == "openclaw-gateway.service" ]] && continue
+  args+=("$a")
+done
+
+verb="${args[0]:-status}"
+
+case "$verb" in
+  is-active)
+    echo "active"
+    exit 0
+    ;;
+  status)
+    echo "● openclaw-gateway.service - OpenClaw Gateway (fake)"
+    echo "   Loaded: loaded"
+    echo "   Active: active (running)"
+    exit 0
+    ;;
+  restart|start)
+    echo "restarted openclaw-gateway.service (fake)"
+    exit 0
+    ;;
+  stop)
+    echo "stopped openclaw-gateway.service (fake)"
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
