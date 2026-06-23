@@ -9,15 +9,29 @@ class DocketCli < Formula
 
   # macOS ships with Bash 3.2 (GPL-3 license change); docket requires 4.0+
   depends_on "bash"
-  depends_on "python@3"
+  depends_on "python@3.11"
 
   # fzf is optional — docket falls back to a numbered picker without it
   depends_on "fzf" => :optional
 
+  # Python core (M1+): every command except `install` dispatches to the Python
+  # package, so it must be installed alongside the thin Bash bootstrap.
+  include Language::Python::Virtualenv
+
   def install
-    # Keep the relative bin/../lib layout so the entry point can resolve its modules
+    # Thin Bash bootstrap: the launcher + sourced modules (resolves <prefix>/lib).
     prefix.install "lib"
-    bin.install "bin/docket"
+
+    # Python core in an isolated venv (pulls typer/rich/pydantic/filelock).
+    venv = virtualenv_create(libexec, "python3.11")
+    venv.pip_install buildpath
+
+    # Install the launcher and point its Python dispatcher at the venv. bin/docket
+    # honors $DOCKET_PYTHON (see the dispatcher seam) and $DOCKET_LIB_DIR.
+    libexec.install "bin/docket" => "docket.sh"
+    (bin/"docket").write_env_script libexec/"docket.sh",
+      DOCKET_PYTHON:  "#{libexec}/bin/python",
+      DOCKET_LIB_DIR: "#{prefix}/lib"
   end
 
   def caveats

@@ -94,13 +94,12 @@ def _setup_agent(
 
     if with_memory:
         import datetime
+
         today = datetime.date.today().strftime("%Y-%m-%d")
         (ws / "memory" / f"{today}.md").write_text(
             "# Memory\n\n**key-concept** and `code-snippet` used here.\n"
         )
-        (ws / "MEMORY.md").write_text(
-            "# MEMORY.md\n\n## Architecture\n\n## Known Issues\n"
-        )
+        (ws / "MEMORY.md").write_text("# MEMORY.md\n\n## Architecture\n\n## Known Issues\n")
 
     oc_config: dict[str, Any] = {
         "agents": {
@@ -193,13 +192,13 @@ class TestCmdContext:
 
     def test_show_exits_0_and_shows_recent_activity(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "show"], _make_env(oc_dir))
+        rc, out, _err = _run(["context", "test-agent", "show"], _make_env(oc_dir))
         assert rc == 0
         assert "Recent Activity" in out
 
     def test_index_creates_memory_index_json(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "index"], _make_env(oc_dir))
+        rc, _out, _err = _run(["context", "test-agent", "index"], _make_env(oc_dir))
         assert rc == 0
         ws = oc_dir / "workspaces" / "projects" / "test-agent"
         index_file = ws / ".memory-index.json"
@@ -222,13 +221,13 @@ class TestCmdContext:
         # First index
         _run(["context", "test-agent", "index"], _make_env(oc_dir))
         # Then search
-        rc, out, err = _run(["context", "test-agent", "search", "key-concept"], _make_env(oc_dir))
+        rc, out, _err = _run(["context", "test-agent", "search", "key-concept"], _make_env(oc_dir))
         assert rc == 0
         assert "key-concept" in out or "match" in out.lower() or "keyword" in out.lower()
 
     def test_snapshot_creates_snapshot_md(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "snapshot"], _make_env(oc_dir))
+        rc, _out, _err = _run(["context", "test-agent", "snapshot"], _make_env(oc_dir))
         assert rc == 0
         ws = oc_dir / "workspaces" / "projects" / "test-agent"
         snap = ws / "SNAPSHOT.md"
@@ -248,7 +247,11 @@ class TestCmdContext:
         rc, out, err = _run(["context", "test-agent", "project"], _make_env(oc_dir))
         assert rc == 0
         combined = out + err
-        assert "codebase" in combined.lower() or "model" in combined.lower() or "project" in combined.lower()
+        assert (
+            "codebase" in combined.lower()
+            or "model" in combined.lower()
+            or "project" in combined.lower()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +297,7 @@ class TestCmdMaintain:
 
     def test_rebuild_non_tty_aborts(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "rebuild"], _make_env(oc_dir))
+        _rc, out, err = _run(["maintain", "test-agent", "rebuild"], _make_env(oc_dir))
         # Should either exit 0 (with cancel message) or 1
         combined = out + err
         assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
@@ -316,12 +319,18 @@ class TestCmdKeys:
         rc, out, err = _run(["keys", "list"], _make_env(oc_dir))
         assert rc == 0
         combined = out + err
-        assert "no api keys" in combined.lower() or "no keys" in combined.lower() or "stored" in combined.lower()
+        assert (
+            "no api keys" in combined.lower()
+            or "no keys" in combined.lower()
+            or "stored" in combined.lower()
+        )
 
     def test_list_with_secrets_shows_masked(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
-        self._write_secrets(oc_dir, {"ANTHROPIC_API_KEY": "sk-ant-api03-ABC123456789abcdefghijklmnopqrstuvwxyz"})
-        rc, out, err = _run(["keys", "list"], _make_env(oc_dir))
+        self._write_secrets(
+            oc_dir, {"ANTHROPIC_API_KEY": "sk-ant-api03-ABC123456789abcdefghijklmnopqrstuvwxyz"}
+        )
+        rc, out, _err = _run(["keys", "list"], _make_env(oc_dir))
         assert rc == 0
         assert "ANTHROPIC_API_KEY" in out
         # Should show masked value (not the full key)
@@ -333,12 +342,18 @@ class TestCmdKeys:
         rc, out, err = _run(["keys", "add"], _make_env(oc_dir))
         assert rc == 1
         combined = out + err
-        assert "usage" in combined.lower() or "key_name" in combined.lower() or "required" in combined.lower()
+        assert (
+            "usage" in combined.lower()
+            or "key_name" in combined.lower()
+            or "required" in combined.lower()
+        )
 
     def test_validate_with_valid_key(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
         # Write a valid-format key
-        self._write_secrets(oc_dir, {"ANTHROPIC_API_KEY": "sk-ant-valid-key-abcdefghijklmnopqrstuvwxyz0123456"})
+        self._write_secrets(
+            oc_dir, {"ANTHROPIC_API_KEY": "sk-ant-valid-key-abcdefghijklmnopqrstuvwxyz0123456"}
+        )
         rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], _make_env(oc_dir))
         assert rc == 0
         combined = out + err
@@ -351,12 +366,17 @@ class TestCmdKeys:
         rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], _make_env(oc_dir))
         assert rc == 1
         combined = out + err
-        assert "⚠" in combined or "should start" in combined or "invalid" in combined.lower() or "prefix" in combined.lower()
+        assert (
+            "⚠" in combined
+            or "should start" in combined
+            or "invalid" in combined.lower()
+            or "prefix" in combined.lower()
+        )
 
     def test_export_prints_export_statements(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
         self._write_secrets(oc_dir, {"MY_CUSTOM_KEY": "abc123"})
-        rc, out, err = _run(["keys", "export"], _make_env(oc_dir))
+        rc, out, _err = _run(["keys", "export"], _make_env(oc_dir))
         assert rc == 0
         assert "export MY_CUSTOM_KEY=" in out
         assert "abc123" in out
@@ -388,7 +408,7 @@ class TestCmdAdd:
                 }
             ),
         )
-        rc, out, err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
+        rc, _out, _err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
         assert rc == 0
         # Check workspace created
         ws = oc_dir / "workspaces" / "projects" / "myshop"
@@ -426,7 +446,11 @@ class TestCmdAdd:
         rc, out, err = _run(["add"], _make_env(oc_dir))
         assert rc == 1
         combined = out + err
-        assert "tty" in combined.lower() or "interactive" in combined.lower() or "requires" in combined.lower()
+        assert (
+            "tty" in combined.lower()
+            or "interactive" in combined.lower()
+            or "requires" in combined.lower()
+        )
 
     def test_from_yaml_without_pyyaml_gives_error(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
@@ -436,6 +460,7 @@ class TestCmdAdd:
         # Try importing yaml — if PyYAML is installed this test won't test the error path
         try:
             import yaml  # noqa: F401
+
             pytest.skip("PyYAML installed; cannot test missing-pyyaml error path")
         except ImportError:
             pass
@@ -443,7 +468,11 @@ class TestCmdAdd:
         rc, out, err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
         assert rc == 1
         combined = out + err
-        assert "pyyaml" in combined.lower() or "yaml" in combined.lower() or "install" in combined.lower()
+        assert (
+            "pyyaml" in combined.lower()
+            or "yaml" in combined.lower()
+            or "install" in combined.lower()
+        )
 
     def test_from_list_of_agents(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
@@ -456,7 +485,7 @@ class TestCmdAdd:
                 ]
             ),
         )
-        rc, out, err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
+        rc, _out, _err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
         assert rc == 0
         assert (oc_dir / "workspaces" / "projects" / "agent-a").is_dir()
         assert (oc_dir / "workspaces" / "projects" / "agent-b").is_dir()

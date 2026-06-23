@@ -19,11 +19,10 @@ Usage:
 SCRUB_HOME defaults to $DOCKET_FAKE_HOME env var, then $HOME.
 """
 
+import argparse
+import os
 import re
 import sys
-import os
-import argparse
-
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mKHFJA-Z]|\x1b\[[0-9;]*m")
 
@@ -42,7 +41,10 @@ def build_rules(home: str) -> list[tuple[re.Pattern, str]]:
         (re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)"), "<TIMESTAMP>"),
         # Relative times: "3h ago", "2 days ago", "just now", "moments ago"
         (re.compile(r"\bjust now\b|\bmoments? ago\b"), "<RELATIVE_TIME>"),
-        (re.compile(r"\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b"), "<RELATIVE_TIME>"),
+        (
+            re.compile(r"\b\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b"),
+            "<RELATIVE_TIME>",
+        ),
         (re.compile(r"\b\d+[smhd]\s+ago\b"), "<RELATIVE_TIME>"),
         # Date-only  2026-03-05
         (re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), "<DATE>"),
@@ -63,12 +65,20 @@ def scrub(text: str, rules: list[tuple[re.Pattern, str]]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrub volatile fields from docket output")
-    parser.add_argument("--home", default=os.environ.get("DOCKET_FAKE_HOME", os.environ.get("HOME", "")))
+    parser.add_argument(
+        "--home", default=os.environ.get("DOCKET_FAKE_HOME", os.environ.get("HOME", ""))
+    )
     args = parser.parse_args()
 
     rules = build_rules(args.home)
-    for line in sys.stdin:
-        sys.stdout.write(scrub(strip_ansi(line), rules))
+    for raw in sys.stdin:
+        line = scrub(strip_ansi(raw), rules)
+        # Strip trailing horizontal whitespace. Bash `printf` pads columns by
+        # BYTE width while Python pads by code points, so any column holding a
+        # multibyte glyph (e.g. the "—" budget cell) differs only in the count
+        # of trailing spaces. That whitespace is invisible and not part of the
+        # behavioural contract, so we normalise it away on both sides.
+        sys.stdout.write(line.rstrip() + "\n")
 
 
 if __name__ == "__main__":

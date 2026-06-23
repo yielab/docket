@@ -12,12 +12,21 @@ from __future__ import annotations
 
 from rich.console import Console
 
+# The Bash CLI built each output line as a complete string and emitted it
+# verbatim — the terminal soft-wrapped for display but no newline was ever
+# inserted into the byte stream. Rich, by contrast, hard-wraps at the detected
+# console width (falling back to 80 columns when stdout is piped), which breaks
+# byte-parity with the goldens. We build full lines ourselves and never rely on
+# Rich for layout (no Tables/rules), so we pin a very large width to disable
+# wrapping entirely and reproduce the Bash behaviour on any terminal.
+_NO_WRAP_WIDTH = 10_000
+
 # Primary output (stdout) — highlight=False keeps Rich from auto-colourising
 # numbers, strings, etc. so our explicit markup stays authoritative.
-console = Console(highlight=False)
+console = Console(highlight=False, width=_NO_WRAP_WIDTH, soft_wrap=True)
 
 # Diagnostic stream (stderr) — same Console API, different fd.
-_err = Console(stderr=True, highlight=False)
+_err = Console(stderr=True, highlight=False, width=_NO_WRAP_WIDTH, soft_wrap=True)
 
 
 def header(text: str) -> None:
@@ -39,6 +48,11 @@ def warn(text: str) -> None:
 def error(text: str) -> None:
     """Red cross + 'Error:' prefix to stderr (mirrors Bash error(), no exit)."""
     _err.print(f"[red]✗[/red] [red]Error:[/red] {text}")
+
+
+def fail(text: str) -> None:
+    """Red cross prefix to stderr, no 'Error:' label (mirrors Bash fail())."""
+    _err.print(f"[red]✗[/red] {text}")
 
 
 def info(text: str) -> None:

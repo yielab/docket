@@ -17,6 +17,21 @@ MODEL_REGISTRY_FILE = OPENCLAW_DIR / "docket-models.json"
 PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
 LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 
+# DOCKET_HOME aliases OPENCLAW_DIR so spec paths read literally (config.sh).
+DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", OPENCLAW_DIR))
+# Per-session JSONL trace store: $TRACES_DIR/<project>/<session_id>.jsonl
+TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
+# Mutating-operation audit log (one JSON line per change).
+AUDIT_LOG = OPENCLAW_DIR / "audit.log"
+# Declarative guardrail policy store: $POLICIES_DIR/*.json (config.sh).
+POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
+# Durable pending-approval store: $APPROVALS_DIR/<token>.json (config.sh).
+APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
+# Seconds before an open trace is coerced to "aborted" by the sweep.
+SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
+# Seconds before a pending approval becomes expired (denied — fail-closed).
+APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
+
 SPECIALIST_ROLES: frozenset[str] = frozenset(
     ["manager", "programmer", "reviewer", "tester", "knowledge", "security"]
 )
@@ -47,6 +62,12 @@ ROLE_WHY: dict[str, str] = {
     "repo": "project default for repo agents",
 }
 
+# Expected Telegram group names for agents that should be wired (mirrors
+# TELEGRAM_GROUP_NAMES in config.sh). Drives the "Telegram Setup Needed" hint.
+TELEGRAM_GROUP_NAMES: dict[str, str] = {
+    "manager": "Manager",
+}
+
 
 def is_specialist(agent_id: str) -> bool:
     return agent_id in SPECIALIST_ROLES
@@ -71,3 +92,19 @@ def meta_path(agent_id: str) -> Path:
 
 def auth_profiles_path(agent_id: str = "main") -> Path:
     return OPENCLAW_DIR / "agents" / agent_id / "agent" / "auth-profiles.json"
+
+
+def cli_root() -> Path:
+    """Repo root that holds lib/ (mirrors LIB_DIR resolution in bin/docket).
+
+    Honours DOCKET_CLI_ROOT, else walks up from this module to the package root.
+    """
+    override = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
+    if override.is_dir():
+        return override
+    return Path(__file__).resolve().parents[2]
+
+
+def policy_templates_dir() -> Path:
+    """Baseline policy templates shipped with docket (lib/templates/policies)."""
+    return cli_root() / "lib" / "templates" / "policies"

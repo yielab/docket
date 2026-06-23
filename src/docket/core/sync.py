@@ -18,9 +18,9 @@ SYNCED_FIELDS = ("model", "sessionKey")
 @dataclass
 class Drift:
     agent_id: str
-    field: str          # camelCase field name (matches JSON key)
-    meta_value: str     # value in .docket-meta.json
-    oc_value: str       # value in openclaw.json
+    field: str  # camelCase field name (matches JSON key)
+    meta_value: str  # value in .docket-meta.json
+    oc_value: str  # value in openclaw.json
 
 
 def check_agent(agent_id: str) -> list[Drift]:

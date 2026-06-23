@@ -75,7 +75,7 @@ def _make_meta(workspace: Path, overrides: dict | None = None) -> Path:
 
 class TestAgentMeta:
     def test_round_trip_camel_case(self) -> None:
-        from docket.core.models import AgentMeta, AgentKind
+        from docket.core.models import AgentKind, AgentMeta
 
         raw = {
             "kind": "project",
@@ -106,13 +106,13 @@ class TestAgentMeta:
         assert dumped.get("futureField") == "x"
 
     def test_schema_version_defaults(self) -> None:
-        from docket.core.models import AgentMeta, SCHEMA_VERSION
+        from docket.core.models import SCHEMA_VERSION, AgentMeta
 
         meta = AgentMeta.model_validate({"kind": "specialist", "role": "reviewer"})
         assert meta.schema_version == SCHEMA_VERSION
 
     def test_specialist_kind(self) -> None:
-        from docket.core.models import AgentMeta, AgentKind
+        from docket.core.models import AgentKind, AgentMeta
 
         meta = AgentMeta.model_validate({"kind": "specialist", "role": "security"})
         assert meta.kind == AgentKind.specialist
@@ -221,6 +221,7 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # docket.edges.adapters.openclaw (where CONFIG_FILE was captured at import time).
     import docket.config as _cfg
     import docket.edges.adapters.openclaw as _oc
+
     config_file = oc_dir / "openclaw.json"
     projects_dir = oc_dir / "workspaces" / "projects"
     monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
@@ -336,8 +337,8 @@ class TestACL:
         assert val == "fallback"
 
     def test_meta_read(self, oc_env: Path) -> None:
-        from docket.edges.adapters import openclaw as oc
         from docket.core.models import AgentKind
+        from docket.edges.adapters import openclaw as oc
 
         meta = oc.meta_read("myshop")
         assert meta.kind == AgentKind.project
@@ -379,10 +380,9 @@ class TestSync:
         assert drifts == []
 
     def test_model_drift_detected(self, oc_env: Path) -> None:
-        from docket.core.sync import check_agent
-        from docket.edges.adapters import openclaw as oc
-        from docket.edges import store
         import docket.config as cfg
+        from docket.core.sync import check_agent
+        from docket.edges import store
 
         # Manually corrupt meta.json model without touching openclaw.json
         meta_file = cfg.PROJECTS_DIR / "myshop" / ".docket-meta.json"
@@ -475,7 +475,7 @@ class TestJsonBridge:
 
     def test_gates_set_true(self) -> None:
         self._run("gates-set", "true")
-        rc, out, _ = self._run("gates-get")
+        _rc, out, _ = self._run("gates-get")
         assert out == "true"
 
     def test_unknown_verb_exits_2(self) -> None:

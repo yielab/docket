@@ -32,18 +32,10 @@ COMMANDS = [
     # ["context"],  # ported
     # ["keys"],     # ported
     # ["auth"],     # ported
-    ["doctor"],
-    ["gates"],
-    ["audit"],
-    ["eval"],
-    ["serve"],
-    ["completions"],
-    ["trace"],
-    ["metrics"],
-    ["policies"],
-    ["approve"],
-    ["deny"],
-    ["help"],
+    # M3 T3.4 + M5 — fully ported:
+    # ["doctor"], ["serve"], ["gates"], ["audit"], ["eval"], ["completions"],
+    # ["trace"], ["metrics"], ["policies"], ["approve"], ["deny"], ["help"]  # ported
+    # Only install remains on Bash (M5 T5.5).
     ["install"],
 ]
 
