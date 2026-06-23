@@ -1,0 +1,11 @@
+# Ported commands registry — one command name per line.
+# The bin/docket dispatcher routes any command listed here to the Python
+# entry point (python -m docket) instead of the Bash cmd_* functions.
+#
+# Rules:
+#   - Add a name only after its M0 golden is green on the Python path.
+#   - Use the primary command name (not aliases).
+#   - Empty = all commands route to Bash (current state during M0–M1).
+#
+# Example (uncomment when list is ported):
+# list
