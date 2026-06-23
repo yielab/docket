@@ -204,8 +204,34 @@ PY
 
   echo ""
 
-  # Step 6: Configure security best practices
-  header "Step 6: Configuring security best practices"
+  # Step 6: Model authentication
+  # Agents authenticate to the model provider through OpenClaw auth profiles
+  # (openclaw models auth → auth-profiles.json), NOT docket's secrets store.
+  # With no usable profile, every agent request is rejected — the #1 reason a
+  # fresh install can't answer in Telegram. Offer to set one up now.
+  header "Step 6: Model authentication"
+
+  local _auth_missing=0
+  if auth_profiles_summary | grep -q '|ok$'; then
+    success "Claude auth already configured:"
+    auth_print_profiles
+  elif [[ -n "$(auth_profiles_summary)" ]]; then
+    _auth_missing=1
+    warn "All Claude auth profiles are currently disabled (usage/billing):"
+    auth_print_profiles
+    echo "  ${DIM}Add subscription usage: ${BLUE}https://claude.ai/settings/usage${RESET}${DIM}  ·  or re-fund your API key.${RESET}"
+    echo "  Reconfigure anytime: ${GREEN}docket auth${RESET}"
+  else
+    _auth_missing=1
+    warn "No Claude auth configured — agents cannot answer yet."
+    auth_setup_interactive
+    auth_profiles_summary | grep -q '|ok$' && _auth_missing=0
+  fi
+
+  echo ""
+
+  # Step 7: Configure security best practices
+  header "Step 7: Configuring security best practices"
 
   # Harden permissions on sensitive state files so another local user can't read
   # secrets or rewrite tool/auth policy (G2). Enforcement gates (exec approvals,
@@ -245,8 +271,8 @@ PY
 
   echo ""
 
-  # Step 7: Set up gateway service
-  header "Step 7: Gateway service"
+  # Step 8: Set up gateway service
+  header "Step 8: Gateway service"
   if [[ "$(service_manager)" == "none" ]]; then
     warn "No service manager detected — start the OpenClaw gateway yourself:"
     echo "  $(service_hint start)"
@@ -272,20 +298,29 @@ PY
 
   echo ""
 
-  # Step 8: Summary
+  # Step 9: Summary
   header "Installation Complete!"
   echo ""
   echo -e "${BOLD}Next Steps:${RESET}"
   echo ""
-  echo "  1. Add your first project agent:"
+  local _step=1
+  if [[ "$_auth_missing" -eq 1 ]]; then
+    echo "  ${_step}. Set up Claude auth (agents can't reply without it):"
+    echo "     ${GREEN}docket auth${RESET}   ${DIM}(subscription or API key)${RESET}"
+    echo ""
+    _step=$(( _step + 1 ))
+  fi
+  echo "  ${_step}. Add your first project agent:"
   echo "     ${GREEN}docket add${RESET}"
   echo ""
-  echo "  2. Configure Telegram (optional but recommended):"
+  _step=$(( _step + 1 ))
+  echo "  ${_step}. Configure Telegram (optional but recommended):"
   echo "     - Create groups for each agent (manager, programmer, etc.)"
   echo "     - Add your bot to each group"
   echo "     - Wire agents: ${GREEN}docket wire <agent-id>${RESET}"
   echo ""
-  echo "  3. Check system health:"
+  _step=$(( _step + 1 ))
+  echo "  ${_step}. Check system health:"
   echo "     ${GREEN}docket doctor${RESET}"
   echo ""
   echo -e "${BOLD}Specialist Agents (auto-created):${RESET}"
