@@ -60,6 +60,27 @@ SPECIALIST_ORDER: tuple[str, ...] = (
     "security",
 )
 
+# Phase 10 (AA-2): the scope split of the specialist roles — the fix for the
+# shared-singleton isolation defect.
+#   ORG_ROLES     — genuinely cross-cutting; installed once as shared singletons
+#                   (`scope: org`) by `docket install`.
+#   PROJECT_ROLES — become per-pod workers provisioned by `docket add` (AA-3);
+#                   NOT installed as global workspaces.
+# `manager` stays in ORG_ROLES transitionally; AA-5 converts it to per-pod Leads
+# and AA-6 adds an optional org Portfolio Manager.
+ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager"])
+PROJECT_ROLES: frozenset[str] = frozenset(["programmer", "reviewer", "tester"])
+
+# Install order for the shared org agents (a subset of SPECIALIST_ORDER).
+ORG_SPECIALIST_ORDER: tuple[str, ...] = tuple(r for r in SPECIALIST_ORDER if r in ORG_ROLES)
+
+
+def role_scope(role: str) -> str:
+    """Scope a specialist role resolves to (Phase 10). Mirrors the AgentMeta
+    backfill in core/models.py: project workers vs. cross-cutting org agents."""
+    return "project" if role in PROJECT_ROLES else "org"
+
+
 # One-line rationale for each role's model-class choice (mirrors ROLE_WHY in config.sh).
 ROLE_WHY: dict[str, str] = {
     "manager": "high-volume coordination, shallow reasoning",
