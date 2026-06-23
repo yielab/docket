@@ -14,6 +14,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -1178,7 +1179,58 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
 @app.command("edit")
 def cmd_edit(agent_id: str | None = typer.Argument(None)) -> None:
     """Open workspace files in $EDITOR."""
-    _not_ported("edit")
+    import shlex as _shlex
+    import subprocess as _sub
+
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Edit workspace for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    # Resolve display name from IDENTITY.md or SOUL.md (specialists have IDENTITY.md)
+    name = aid
+    for candidate in [ws / "IDENTITY.md", ws / "SOUL.md"]:
+        if candidate.exists():
+            for line in candidate.read_text(encoding="utf-8").splitlines():
+                if line.startswith("# "):
+                    name = line[2:].strip()
+                    break
+            break
+
+    _WORKSPACE_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md"]
+    files = [ws / f for f in _WORKSPACE_FILES if (ws / f).is_file()]
+
+    ui.header(f"Edit: {name} ({aid})")
+    ui.console.print()
+
+    if not files:
+        ui.warn("No workspace files found.")
+        raise typer.Exit(0)
+
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+    editor_parts = _shlex.split(editor)
+
+    ui.console.print(f"Opening files in {editor_parts[0]}:")
+    for f in files:
+        ui.console.print(f"  {f.name}")
+    ui.console.print()
+
+    try:
+        _sub.run(editor_parts + [str(f) for f in files])
+    except FileNotFoundError:
+        ui.error(f"Editor '{editor_parts[0]}' not found. Set $EDITOR or install nano.")
+        raise typer.Exit(1) from None
+
+    ui.success("Edits saved.")
+    ui.console.print()
+    ui.info("Restart gateway to apply changes: systemctl --user restart openclaw-gateway.service")
 
 
 @app.command("cost")
@@ -1462,9 +1514,93 @@ def cmd_eval(sub: str | None = typer.Argument(None)) -> None:
 
 
 @app.command("snapshot")
-def cmd_snapshot(agent_id: str | None = typer.Argument(None)) -> None:
-    """Export agent workspace snapshot."""
-    _not_ported("snapshot")
+def cmd_snapshot(
+    output: str | None = typer.Option(None, "--output", "-o", help="Write JSON to file"),
+) -> None:
+    """Export system state snapshot as JSON."""
+    import datetime as _dt
+
+    gw = "active" if gateway_active() else "inactive"
+
+    try:
+        raw_cfg: dict[str, Any] = store.read_json(_cfg.CONFIG_FILE)
+        channels = list(raw_cfg.get("channels", {}).keys())
+    except Exception:
+        channels = []
+
+    oc = _oc.load_config()
+    registered_ids = {a.id for a in _oc.list_agents(oc)}
+
+    def _agent_bindings(aid: str) -> list[dict[str, Any]]:
+        return [
+            {"channel": b.match.channel, "peerId": b.match.peer.id}
+            for b in oc.bindings
+            if b.agent_id == aid
+        ]
+
+    agents_out: list[dict[str, Any]] = []
+    total_cost = 0.0
+
+    for pid in project_ids():
+        try:
+            raw = store.read_json(_cfg.meta_path(pid))
+        except Exception:
+            raw = {}
+        cost = aggregate_cost(pid).cost_usd
+        total_cost += cost
+        agents_out.append(
+            {
+                "id": pid,
+                "name": str(raw.get("name", pid)),
+                "type": str(raw.get("type", "repo")),
+                "kind": "project",
+                "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
+                "registered": pid in registered_ids,
+                "bindings": _agent_bindings(pid),
+                "lastActivity": last_activity(pid),
+                "costUsd": round(cost, 6),
+            }
+        )
+
+    for spec in _cfg.SPECIALIST_ORDER:
+        ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        if not ws.is_dir():
+            continue
+        try:
+            raw = store.read_json(ws / _cfg.META_FILE)
+        except Exception:
+            raw = {}
+        cost = aggregate_cost(spec).cost_usd
+        total_cost += cost
+        agents_out.append(
+            {
+                "id": spec,
+                "name": str(raw.get("name", spec)),
+                "type": "specialist",
+                "kind": "specialist",
+                "model": str(raw.get("model", "")),
+                "registered": spec in registered_ids,
+                "bindings": _agent_bindings(spec),
+                "lastActivity": last_activity(spec),
+                "costUsd": round(cost, 6),
+            }
+        )
+
+    timestamp = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = {
+        "timestamp": timestamp,
+        "gateway": gw,
+        "channels": channels,
+        "agents": agents_out,
+        "totalCostUsd": round(total_cost, 6),
+    }
+
+    out = _json.dumps(result, indent=2)
+    if output:
+        Path(output).write_text(out + "\n", encoding="utf-8")
+        ui.success(f"Snapshot written to {output}")
+    else:
+        print(out)
 
 
 @app.command("serve")

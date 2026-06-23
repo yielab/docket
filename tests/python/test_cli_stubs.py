@@ -18,6 +18,9 @@ COMMANDS = [
     # ["delete"],   # ported
     # ["wire"],     # ported
     # ["unwire"],   # ported
+    # M4 wave 3a — fully ported:
+    # ["edit"],     # ported
+    # ["snapshot"], # ported
     ["add"],
     ["maintain"],
     ["context"],
@@ -26,12 +29,10 @@ COMMANDS = [
     ["team"],
     ["workflow"],
     ["logs"],
-    ["edit"],
     ["doctor"],
     ["gates"],
     ["audit"],
     ["eval"],
-    ["snapshot"],
     ["serve"],
     ["completions"],
     ["trace"],
