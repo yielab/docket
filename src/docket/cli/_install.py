@@ -286,12 +286,18 @@ def _step_gateway() -> None:
 
 
 def _provision_specialists() -> None:
-    """Step 5 — register specialist agents + backfill their .docket-meta.json.
+    """Step 5 — register the shared **org** specialist agents + backfill their meta.
+
+    Phase 10 (AA-2): install provisions only the cross-cutting org roles
+    (security, knowledge, manager) as shared singletons. The project roles
+    (programmer, reviewer, tester) are NO LONGER installed globally — they become
+    per-pod workers provisioned by `docket add` (AA-3), so one programmer never
+    serves two projects.
 
     Models come from the role→model policy so a provider preset switched before
-    install provisions specialists on that provider. Mirrors Step 5 of install.sh.
+    install provisions specialists on that provider.
     """
-    for spec in _cfg.SPECIALIST_ORDER:
+    for spec in _cfg.ORG_SPECIALIST_ORDER:
         spec_model = _mp.resolve_role_model(spec)
         spec_dir = _cfg.OPENCLAW_DIR / "workspaces" / spec
 
@@ -315,6 +321,7 @@ def _provision_specialists() -> None:
                 meta_file,
                 {
                     "kind": "specialist",
+                    "scope": _cfg.role_scope(spec),
                     "role": spec,
                     "name": spec,
                     "model": spec_model,
@@ -344,7 +351,7 @@ def run_install(want_gates: bool = False, assume_yes: bool = False) -> int:
         needs_update: list[str] = []
         if not _oc.has_agent_defaults():
             needs_update.append("agent defaults")
-        missing_specialists = [s for s in _cfg.SPECIALIST_ORDER if not _oc.agent_registered(s)]
+        missing_specialists = [s for s in _cfg.ORG_SPECIALIST_ORDER if not _oc.agent_registered(s)]
         if missing_specialists:
             needs_update.append("specialist agents: " + " ".join(missing_specialists))
 
