@@ -38,13 +38,18 @@ class ApprovalNoop(Exception):
 
 
 def _redact(text: str) -> str:
-    """Best-effort secret redaction (the Python trace/redact port is pending).
+    """Best-effort secret redaction via the trace/redact port.
 
-    Mirrors the ``redact "$action" 2>/dev/null || echo "$action"`` guard: until
-    a real redactor lands, return the text unchanged. Isolated here so callers
-    and tests have one seam to stub.
+    Mirrors the Bash ``redact "$action" 2>/dev/null || echo "$action"`` guard:
+    a redaction failure must never break approval, so on any error the original
+    text is returned unchanged. Local import avoids an import cycle with trace.
     """
-    return text
+    try:
+        from docket.core import trace as _trace
+
+        return _trace.redact(text)
+    except Exception:
+        return text
 
 
 def _emit_trace(
@@ -54,13 +59,19 @@ def _emit_trace(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    """Best-effort trace hook (no-op until the Python trace writer is ported).
+    """Best-effort trace hook → docket.core.trace.trace_event.
 
     The Bash emitted approval_requested / approval_granted / approval_denied as
-    a side-effect; those writes were always guarded with ``|| true``. Kept as a
-    mockable seam so behaviour stays identical and tests can assert on calls.
+    a side-effect, always guarded with ``|| true``. The payload dict is JSON
+    encoded (the Bash passed a literal JSON string). Any failure is swallowed so
+    a trace problem never breaks the approval. Local import avoids a cycle.
     """
-    return None
+    try:
+        from docket.core import trace as _trace
+
+        _trace.trace_event(project, session, role, event_type, json.dumps(payload))
+    except Exception:
+        return None
 
 
 # ── persistence ───────────────────────────────────────────────────────────────

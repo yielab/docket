@@ -33,6 +33,14 @@ APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 # Seconds before a pending approval becomes expired (denied — fail-closed).
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
+# METRICS_WINDOW: rolling terminal-session count for drift's "current" rate.
+METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
+# BASELINE_WINDOW: terminal sessions establishing the success-rate baseline.
+BASELINE_WINDOW = int(os.environ.get("BASELINE_WINDOW", "100"))
+# DRIFT_THRESHOLD: percentage-point drop from baseline that triggers an alert.
+DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "15"))
+# DRIFT_COOLDOWN: seconds between drift alerts for the same role (86400 = 24 h).
+DRIFT_COOLDOWN = int(os.environ.get("DRIFT_COOLDOWN", "86400"))
 
 SPECIALIST_ROLES: frozenset[str] = frozenset(
     ["manager", "programmer", "reviewer", "tester", "knowledge", "security"]

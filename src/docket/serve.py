@@ -14,8 +14,10 @@ ACL — this module never parses ``openclaw.json`` directly.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import json
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -24,6 +26,7 @@ from docket.core import utils
 from docket.edges.adapters import openclaw as oc
 
 DEFAULT_PORT = 7331
+DEFAULT_INTERVAL = 30
 
 # Specialist roles, in the same order cmd_snapshot iterates them.
 _SPECIALISTS = ("manager", "programmer", "reviewer", "tester", "knowledge", "security")
@@ -196,6 +199,33 @@ def render_status() -> str:
     return json.dumps(build_status(), indent=2)
 
 
+# ── periodic sweeps (mirror _serve_refresh) ───────────────────────────────────
+
+
+def _run_sweeps() -> None:
+    """Run the three _serve_refresh sweeps once, each best-effort.
+
+    Mirrors _serve_refresh's tail: coerce stale open traces to aborted (OBS-3),
+    expire pending approvals past APPROVAL_TIMEOUT (H5), and check role drift
+    (OBS-11). Every sweep is guarded so one failure never aborts the others or
+    the server (matching the Bash ``2>/dev/null || true`` guards).
+    """
+    from docket.core import approval, drift, trace
+
+    with contextlib.suppress(Exception):
+        trace.sweep_all()
+    with contextlib.suppress(Exception):
+        approval.approval_sweep_expired()
+    with contextlib.suppress(Exception):
+        drift.drift_check_all()
+
+
+def _sweep_loop(interval: int, stop: threading.Event) -> None:
+    """Run _run_sweeps every *interval* seconds until *stop* is set."""
+    while not stop.wait(interval):
+        _run_sweeps()
+
+
 # ── HTTP server ───────────────────────────────────────────────────────────────
 
 
@@ -229,17 +259,27 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self.do_GET()
 
 
-def run_serve(port: int | None = None, *, bind: str = "127.0.0.1") -> None:
+def run_serve(
+    port: int | None = None, *, bind: str = "127.0.0.1", interval: int = DEFAULT_INTERVAL
+) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
 
     Mirrors cmd_serve: binds to 127.0.0.1 on the given port (default 7331) and
     serves /status.json, /metrics, /health. Responses are built on each request
-    (no background refresh loop is needed since the functions are cheap and
-    index-backed). Runs until interrupted (Ctrl-C / SIGTERM).
+    (cheap, index-backed). The Bash also ran _serve_refresh once at startup and
+    then every *interval* seconds (default 30); we mirror those periodic sweeps
+    (trace/approval/drift) with a daemon thread. Runs until interrupted.
     """
     actual_port = DEFAULT_PORT if port is None else port
+
+    # Run the sweeps once at startup, then on each interval (mirrors cmd_serve).
+    _run_sweeps()
+    stop = threading.Event()
+    sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop), daemon=True)
+    sweeper.start()
+
     server = ThreadingHTTPServer((bind, actual_port), _DocketHandler)
-    print(f"docket serve  port={actual_port}  (Ctrl-C to stop)")
+    print(f"docket serve  port={actual_port}  refresh={interval}s  (Ctrl-C to stop)")
     print(f"Endpoints: /status.json  /metrics  /health  ->  http://localhost:{actual_port}/")
     print("")
     try:
@@ -247,4 +287,5 @@ def run_serve(port: int | None = None, *, bind: str = "127.0.0.1") -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        stop.set()
         server.server_close()
