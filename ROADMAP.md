@@ -995,13 +995,18 @@ address exactly those.
 - **Acceptance:** fresh `docket install` registers the org set only; `docket list --all` shows them with `scope: org`; no global `programmer`/`reviewer`/`tester` singleton is created on a clean install.
 - **Test:** pytest/integration: clean install → org roles present, project-roles absent as singletons; existing-install migration path doesn't delete live workspaces.
 
-#### 🟡 AA-3 — Pod provisioning in `docket add`
+#### 🟡 AA-3 — Pod provisioning in `docket add` + a configurable pod (decided 2026-06-23)
 
-- **Why:** A project must come up as an isolated pod, not a lone agent that's told to delegate to a global singleton.
-- **Files:** [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (`cmd_add` / `_create_workspace`, ~516-770), [src/docket/core/sync.py](src/docket/core/sync.py).
-- **Requirements:** `docket add <project>` provisions the pod: the **Lead** (AA-5) plus the project-scoped role workspaces (AA-4) — programmer/reviewer/tester — **all sharing the pod session key `agent:<id>:<project>`** ([cli/__init__.py:702](src/docket/cli/__init__.py#L702)), each with `scope: project`, `kind: project`, `role: <name>`. Register each through the ACL with its session key (the multi-session answer from AA-0 decides whether these are distinct registered agents or one Lead that spawns workers; provision accordingly). One gateway restart at the end. `docket delete <project>` tears the whole pod down.
-- **Acceptance:** `docket add demo` yields a pod whose every member shares `agent:demo:default`; `docket delete demo` removes all of them and both config sources are clean.
-- **Test:** integration: add → all pod members present with the shared session key + correct scope/role; delete → none remain, no orphan bindings.
+- **Why:** A project must come up as an isolated pod, not a lone agent told to delegate to a global singleton. But a full 4-agent pod is overkill (and over-cost) for many projects — so the pod is **configurable with a lean default**.
+- **Pod composition (the options, made explicit):**
+  - **Default (`docket add <project>`):** a **2-agent lean pod** — **Lead + Implementer**. The Lead orchestrates; the Implementer runs *in* the project workspace and writes code. This is enough to be useful and cheap.
+  - **Extend later (`docket pod <project> add <role> [--count N]`):** add **Reviewer**, **Tester**, or **another Implementer** to an existing pod with one clear command. Roles may be **duplicated** — e.g. two Implementers — provisioned as indexed agent ids (`<project>-implementer`, `<project>-implementer-2`).
+  - **Inspect (`docket pod <project>`):** show the pod's members, roles, models, scope.
+  - **Opt-in full pod:** `docket add <project> --pod full` (or `--with reviewer,tester`) provisions the 4-role pod up front for those who want it.
+- **Files:** [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (`cmd_add` / `_create_workspace`, ~516-770; new `pod` command group), [src/docket/edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py) (provision/teardown via `openclaw agents add --workspace` / `agents delete`), [src/docket/core/sync.py](src/docket/core/sync.py).
+- **Requirements:** Per the AA-0 verdict, provision each pod member as a **distinct registered agent** (own workspace — the real isolation primitive), id `<project>-<role>[-N]`, `kind: project`, `scope: project`, `role: <lead|implementer|reviewer|tester>`, model from the role→model policy, session key in the `agent:<project>:…` namespace. The load-bearing guarantee: **no worker agent serves two projects.** One gateway restart per command. `docket delete <project>` tears down **every** pod member; `docket pod <project> remove <member-id>` removes one. Adding a role requires its template (AA-4/AA-5) to exist — refuse with a clear message otherwise.
+- **Acceptance:** `docket add demo` yields a 2-member pod (`demo-lead`, `demo-implementer`), each `scope: project`, own workspace; `docket pod demo add implementer` creates `demo-implementer-2`; `docket pod demo add reviewer` adds a reviewer; `docket pod demo` lists them; `docket delete demo` removes all, both config sources clean.
+- **Test:** integration: default add → 2 members with correct ids/scope/role + distinct workspaces; `pod add` (incl. duplicate implementer → indexed id); `pod remove`; delete → none remain, no orphan bindings.
 
 #### 🟡 AA-4 — Project-scoped role templates (Implementer knows the code)
 
