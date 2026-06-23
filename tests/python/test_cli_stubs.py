@@ -14,12 +14,13 @@ COMMANDS = [
     # ["profile"],  # ported
     # ["scope"],    # ported
     # ["models"],   # ported
+    # M4 wave 2 — fully ported:
+    # ["delete"],   # ported
+    # ["wire"],     # ported
+    # ["unwire"],   # ported
     ["add"],
-    ["delete"],
     ["maintain"],
     ["context"],
-    ["wire"],
-    ["unwire"],
     ["keys"],
     ["auth"],
     ["team"],

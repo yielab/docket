@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import json as _json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from docket.core.utils import (
     model_source,
     project_ids,
     restart_gateway,
+    scan_telegram_groups,
     si_format,
 )
 from docket.edges import store
@@ -419,7 +421,64 @@ def _cmd_info_human(agent_id: str) -> None:
 @app.command("delete")
 def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
     """Remove agent and optionally its workspace."""
-    _not_ported("delete")
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Delete project")
+
+    aid: str = agent_id
+
+    if _cfg.is_specialist(aid):
+        ui.error(
+            f"'{aid}' is a specialist agent — shared team infrastructure managed by"
+            " 'docket install'. It cannot be deleted with 'docket delete'."
+        )
+        raise typer.Exit(1)
+
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Project '{aid}' not found.")
+        raise typer.Exit(1)
+
+    name = _oc.meta_get(aid, "name", aid)
+    tg = _oc.get_binding(aid)
+    registered = _oc.agent_registered(aid)
+
+    ui.header(f"Delete: {name} ({aid})")
+    ui.console.print()
+    ui.console.print(f"  Workspace:    {ws}")
+    ui.console.print(f"  Registered:   {'yes' if registered else 'no'}")
+    ui.console.print(f"  Telegram:     {tg or 'none'}")
+    ui.console.print()
+    ui.warn("This will:")
+    ui.console.print("  - Remove agent registration from openclaw.json")
+    ui.console.print("  - Remove Telegram binding (if any)")
+    ui.console.print()
+
+    del_ws = input("Also delete workspace directory? [y/N]: ").strip()
+    ui.console.print()
+    confirm = input(f"Type the agent ID to confirm deletion [{aid}]: ").strip()
+
+    if confirm != aid:
+        ui.warn("Aborted.")
+        raise typer.Exit(0)
+
+    _oc.remove_agent(aid)
+    ui.success("Removed from agent registry")
+
+    if tg:
+        _oc.remove_binding(aid)
+        ui.success("Telegram binding removed")
+
+    if del_ws.lower() == "y":
+        shutil.rmtree(ws, ignore_errors=True)
+        ui.success(f"Workspace deleted: {ws}")
+    else:
+        ui.warn(f"Workspace kept at: {ws}")
+
+    _do_restart_gateway()
+    ui.success(f"Done. Project '{aid}' deleted.")
 
 
 # ── maintenance ────────────────────────────────────────────────────────────────
@@ -444,15 +503,193 @@ def cmd_context(
 
 # ── telegram ───────────────────────────────────────────────────────────────────
 @app.command("wire")
-def cmd_wire(agent_id: str | None = typer.Argument(None)) -> None:
-    """Wire or update a Telegram group binding."""
-    _not_ported("wire")
+def cmd_wire(
+    agent_id: str | None = typer.Argument(None),
+    channel: str = typer.Option("telegram", "--channel", help="Channel to wire (default: telegram)"),
+) -> None:
+    """Wire or update a channel group binding."""
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Wire channel group")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    name = _oc.meta_get(aid, "name", aid)
+    existing = _oc.get_binding(aid, channel)
+
+    ui.header(f"Wire {channel.capitalize()}: {name} ({aid})")
+    ui.console.print()
+    if existing:
+        ui.warn(f"Currently wired to: {existing}")
+
+    peer_id = ""
+
+    if channel == "telegram":
+        groups = scan_telegram_groups()
+
+        if not groups:
+            ui.warn("No Telegram groups found in OpenClaw logs.")
+            ui.console.print()
+            ui.console.print("[bold]To wire a group:[/bold]")
+            ui.console.print("  1. Create a Telegram group")
+            ui.console.print("  2. Add your OpenClaw bot to the group")
+            ui.console.print("  3. Send a message in the group")
+            ui.console.print(f"  4. Wait a few seconds, then run: docket wire {aid}")
+            ui.console.print()
+            ui.warn("Aborted - no groups available.")
+            raise typer.Exit(0)
+
+        unbound = [(gid, title) for gid, title, bound in groups if not bound]
+
+        if not unbound:
+            # All groups are already bound — show all and allow override.
+            ui.console.print("[yellow]All groups are already bound:[/yellow]")
+            ui.console.print()
+            for i, (gid, title, bound) in enumerate(groups, 1):
+                ui.console.print(
+                    f"  [bold]{i:2}.[/bold] {gid:<22} {title:<28}"
+                    f" → [cyan]{bound or '<unbound>'}[/cyan]"
+                )
+            ui.console.print()
+            ui.console.print("You can:")
+            ui.console.print(
+                f"  • Create a new Telegram group, add bot, send message,"
+                f" then run: docket wire {aid}"
+            )
+            ui.console.print("  • Unbind an existing group: docket unwire <agent-id>")
+            ui.console.print("  • Override an existing binding (select number above)")
+            ui.console.print()
+            choice = input(f"Select group (1-{len(groups)}) or press Enter to cancel: ").strip()
+            if not choice:
+                ui.warn("Aborted.")
+                raise typer.Exit(0)
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(groups):
+                    peer_id = groups[idx][0]
+                    prev_bound = groups[idx][2]
+                    if prev_bound:
+                        ui.warn(
+                            f"This will unbind '{prev_bound}' from group '{groups[idx][1]}'"
+                        )
+                        ok = input("Continue? [y/N]: ").strip()
+                        if ok.lower() != "y":
+                            ui.warn("Aborted.")
+                            raise typer.Exit(0)
+                else:
+                    ui.warn("Invalid choice. Aborted.")
+                    raise typer.Exit(0)
+            except ValueError:
+                ui.warn("Invalid choice. Aborted.")
+                raise typer.Exit(0) from None
+
+        elif len(unbound) == 1:
+            gid, title = unbound[0]
+            ui.console.print("[green]Found 1 unbound group:[/green]")
+            ui.console.print(f"  {gid} - {title}")
+            ui.console.print()
+            ok = input("Wire to this group? [Y/n]: ").strip()
+            if ok.lower() == "n":
+                ui.warn("Aborted.")
+                raise typer.Exit(0)
+            peer_id = gid
+
+        else:
+            ui.console.print("[green]Available unbound groups:[/green]")
+            ui.console.print()
+            for i, (gid, title) in enumerate(unbound, 1):
+                ui.console.print(f"  [bold]{i:2}.[/bold] {gid:<22} {title}")
+            ui.console.print()
+            ui.console.print("  [bold] 0.[/bold] Enter group ID manually")
+            ui.console.print()
+            while True:
+                choice = input(
+                    f"Select group (1-{len(unbound)}, 0 for manual, or Enter to cancel): "
+                ).strip()
+                if not choice:
+                    ui.warn("Aborted.")
+                    raise typer.Exit(0)
+                if choice == "0":
+                    peer_id = input("Telegram group ID: ").strip()
+                    if not peer_id:
+                        ui.warn("Aborted.")
+                        raise typer.Exit(0)
+                    break
+                try:
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(unbound):
+                        peer_id = unbound[idx][0]
+                        break
+                    else:
+                        ui.warn(f"Invalid choice. Please enter 1-{len(unbound)} or 0.")
+                except ValueError:
+                    ui.warn(f"Invalid choice. Please enter 1-{len(unbound)} or 0.")
+
+    else:
+        # Non-Telegram: manual peer ID entry.
+        ui.dim(
+            f"No log-based discovery for {channel}."
+            f" Enter the peer/group ID from your {channel} setup."
+        )
+        ui.console.print()
+        peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
+        if not peer_id:
+            ui.warn("Aborted.")
+            raise typer.Exit(0)
+
+    allowlist_ok = _oc.wire_group(aid, peer_id, channel)
+    if allowlist_ok:
+        ui.success(f"Group {peer_id} added to allowlist")
+    else:
+        ui.warn("Could not set allowlist entry — check manually")
+    ui.success(f"Binding: {aid} ← {channel} group {peer_id}")
+    _do_restart_gateway()
+    ui.success(f"Done. '{aid}' is now wired to {channel} peer {peer_id}")
 
 
 @app.command("unwire")
-def cmd_unwire(agent_id: str | None = typer.Argument(None)) -> None:
-    """Remove Telegram binding."""
-    _not_ported("unwire")
+def cmd_unwire(
+    agent_id: str | None = typer.Argument(None),
+    channel: str = typer.Option("telegram", "--channel", help="Channel to unwire (default: telegram)"),
+) -> None:
+    """Remove a channel binding."""
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Unwire channel")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    name = _oc.meta_get(aid, "name", aid)
+    peer = _oc.get_binding(aid, channel)
+
+    if not peer:
+        ui.warn(f"'{aid}' has no {channel} binding.")
+        raise typer.Exit(0)
+
+    ui.header(f"Unwire {channel.capitalize()}: {name} ({aid})")
+    ui.console.print()
+    ui.warn(f"This will remove the {channel} binding for peer {peer}")
+    confirm = input("Confirm? [y/N]: ").strip()
+
+    if confirm.lower() != "y":
+        ui.warn("Aborted.")
+        raise typer.Exit(0)
+
+    _oc.remove_binding(aid, channel)
+    ui.success("Binding removed")
+    _do_restart_gateway()
 
 
 # ── configuration ──────────────────────────────────────────────────────────────
