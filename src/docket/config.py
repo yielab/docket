@@ -15,6 +15,8 @@ OPENCLAW_DIR = Path(os.environ.get("OPENCLAW_DIR", Path.home() / ".openclaw"))
 CONFIG_FILE = OPENCLAW_DIR / "openclaw.json"
 MODEL_REGISTRY_FILE = OPENCLAW_DIR / "docket-models.json"
 PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
+# Default work directory for task agents (mirrors SITES_DIR in config.sh).
+SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
 LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 
 # DOCKET_HOME aliases OPENCLAW_DIR so spec paths read literally (config.sh).

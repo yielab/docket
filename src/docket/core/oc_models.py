@@ -8,6 +8,8 @@ what openclaw.json and auth-profiles.json look like today; the ACL
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
@@ -55,7 +57,10 @@ class OcAgent(BaseModel):
 class OcAgentDefaults(BaseModel):
     model_config = _LENIENT
 
-    model: str = ""
+    # OpenClaw stores the default model either as a bare id string or as a
+    # {"primary": "<id>", ...} object (what `docket install` writes). Accept both
+    # so a real openclaw.json round-trips; the ACL normalises to a string on read.
+    model: str | dict[str, Any] = ""
 
 
 class OcAgents(BaseModel):
