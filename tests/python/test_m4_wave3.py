@@ -197,7 +197,17 @@ class TestCmdSnapshot:
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
-        for key in ("id", "name", "type", "kind", "model", "registered", "bindings", "lastActivity", "costUsd"):
+        for key in (
+            "id",
+            "name",
+            "type",
+            "kind",
+            "model",
+            "registered",
+            "bindings",
+            "lastActivity",
+            "costUsd",
+        ):
             assert key in agent, f"Agent missing key: {key}"
         assert agent["kind"] == "project"
         assert agent["name"] == "My Shop"
@@ -265,6 +275,7 @@ class TestCmdSnapshot:
 
     def test_timestamp_format(self, tmp_path: Path) -> None:
         import re
+
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
         assert rc == 0
@@ -278,7 +289,9 @@ class TestCmdSnapshot:
         (oc_dir / "openclaw.json").write_text(
             json.dumps({"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []})
         )
-        rc, out, _ = _run(["snapshot"], {**os.environ, "OPENCLAW_DIR": str(oc_dir), "DOCKET_NO_RESTART": "1"})
+        rc, out, _ = _run(
+            ["snapshot"], {**os.environ, "OPENCLAW_DIR": str(oc_dir), "DOCKET_NO_RESTART": "1"}
+        )
         assert rc == 0
         data = json.loads(out)
         assert data["agents"] == []

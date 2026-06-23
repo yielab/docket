@@ -27,9 +27,7 @@ def project_ids() -> list[str]:
     if not cfg.PROJECTS_DIR.is_dir():
         return []
     return sorted(
-        d.name
-        for d in cfg.PROJECTS_DIR.iterdir()
-        if d.is_dir() and (d / cfg.META_FILE).is_file()
+        d.name for d in cfg.PROJECTS_DIR.iterdir() if d.is_dir() and (d / cfg.META_FILE).is_file()
     )
 
 
@@ -50,22 +48,43 @@ def last_activity(agent_id: str) -> str:
 
 
 # ── gateway status ────────────────────────────────────────────────────────────
+#
+# The canonical implementations now live in docket.edges.adapters.system; these
+# thin re-exports preserve the historical `from docket.core.utils import
+# gateway_active, restart_gateway` import surface.
 
 
 _GATEWAY_UNIT = "openclaw-gateway.service"
 
 
 def gateway_active() -> bool:
-    """Return True if openclaw-gateway.service is active (systemctl --user)."""
+    """Return True if openclaw-gateway.service is active (systemctl --user).
+
+    Delegates to the system adapter (the canonical home).
+    """
+    from docket.edges.adapters import system as _system
+
+    return _system.gateway_active()
+
+
+def openclaw_version() -> str:
+    """Return `openclaw --version` output, or '?' if unavailable.
+
+    Mirrors the Bash `openclaw --version 2>/dev/null || echo '?'`. The caller
+    prepends a 'v', so the fake's `openclaw 0.0.0-fake` renders as
+    `vopenclaw 0.0.0-fake` exactly as in the Bash header.
+    """
     try:
         result = subprocess.run(
-            ["systemctl", "--user", "is-active", _GATEWAY_UNIT],
+            ["openclaw", "--version"],
             capture_output=True,
+            text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        out = result.stdout.strip()
+        return out if (result.returncode == 0 and out) else "?"
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
+        return "?"
 
 
 def restart_gateway() -> bool:
@@ -73,27 +92,12 @@ def restart_gateway() -> bool:
 
     Honors DOCKET_NO_RESTART=1 for test hermeticity (prints a dry-run notice).
     Returns True on success or when the service is already down.
-    Mirrors restart_gateway() in service.sh.
+    Delegates to the system adapter (the canonical home); mirrors
+    restart_gateway() in service.sh.
     """
-    if os.environ.get("DOCKET_NO_RESTART") == "1":
-        print("[dry-run] restart_gateway called")
-        return True
-    try:
-        chk = subprocess.run(
-            ["systemctl", "--user", "is-active", _GATEWAY_UNIT],
-            capture_output=True,
-            timeout=5,
-        )
-        if chk.returncode != 0:
-            return True  # service not running — nothing to restart
-        res = subprocess.run(
-            ["systemctl", "--user", "restart", _GATEWAY_UNIT],
-            capture_output=True,
-            timeout=15,
-        )
-        return res.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
+    from docket.edges.adapters import system as _system
+
+    return _system.restart_gateway()
 
 
 # ── SI number formatting ──────────────────────────────────────────────────────
@@ -211,9 +215,7 @@ def _parse_session_file(path: Path) -> dict[str, Any]:
                 t["cacheWrite"] = int(t["cacheWrite"]) + int(usage.get("cacheWrite", 0))
                 cost_field = usage.get("cost", {})
                 t["cost"] = float(t["cost"]) + (
-                    float(cost_field.get("total", 0))
-                    if isinstance(cost_field, dict)
-                    else 0.0
+                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
                 )
                 t["turns"] = int(t["turns"]) + 1
     except Exception:
@@ -290,9 +292,7 @@ def cost_history(agent_id: str) -> list[DayRecord]:
                 except Exception:
                     continue
                 msg = d.get("message", {})
-                usage: dict[str, Any] = (
-                    msg.get("usage", {}) if isinstance(msg, dict) else {}
-                )
+                usage: dict[str, Any] = msg.get("usage", {}) if isinstance(msg, dict) else {}
                 if not usage:
                     continue
                 ts = d.get("timestamp", "")
@@ -303,9 +303,7 @@ def cost_history(agent_id: str) -> list[DayRecord]:
                 b["output"] = int(b["output"]) + int(usage.get("output", 0))
                 cost_field = usage.get("cost", {})
                 b["cost"] = float(b["cost"]) + (
-                    float(cost_field.get("total", 0))
-                    if isinstance(cost_field, dict)
-                    else 0.0
+                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
                 )
         if use_index:
             _write_hist_index(hist_path, sigs, hist)
@@ -330,9 +328,7 @@ def _write_hist_index(
     hist_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = hist_path.with_suffix(".json.tmp")
     try:
-        tmp.write_text(
-            json.dumps({"sigs": sigs, "history": hist}), encoding="utf-8"
-        )
+        tmp.write_text(json.dumps({"sigs": sigs, "history": hist}), encoding="utf-8")
         os.chmod(tmp, 0o600)
         os.replace(tmp, hist_path)
     except Exception:
@@ -378,9 +374,7 @@ def scan_telegram_groups() -> list[tuple[str, str, str]]:
         for m in _re.finditer(r'"chatId":(-[0-9]+)', text):
             gid = m.group(1)
             if gid not in chat_ids:
-                title_m = _re.search(
-                    rf'"chatId":{_re.escape(gid)},"title":"([^"]*)"', text
-                )
+                title_m = _re.search(rf'"chatId":{_re.escape(gid)},"title":"([^"]*)"', text)
                 chat_ids[gid] = title_m.group(1) if title_m else "unknown"
 
     if not chat_ids:
@@ -388,9 +382,7 @@ def scan_telegram_groups() -> list[tuple[str, str, str]]:
 
     oc_cfg = _oc.load_config()
     binding_map: dict[str, str] = {
-        b.match.peer.id: b.agent_id
-        for b in oc_cfg.bindings
-        if b.match.channel == "telegram"
+        b.match.peer.id: b.agent_id for b in oc_cfg.bindings if b.match.channel == "telegram"
     }
 
     return [(gid, title, binding_map.get(gid, "")) for gid, title in chat_ids.items()]

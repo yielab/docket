@@ -113,6 +113,4 @@ class AuthProfiles(BaseModel):
     model_config = _LENIENT
 
     profiles: dict[str, AuthProfile] = Field(default_factory=dict)
-    usage_stats: dict[str, AuthProfileUsage] = Field(
-        default_factory=dict, alias="usageStats"
-    )
+    usage_stats: dict[str, AuthProfileUsage] = Field(default_factory=dict, alias="usageStats")

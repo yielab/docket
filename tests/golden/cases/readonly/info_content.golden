@@ -4,8 +4,8 @@ Project: Content Blog (content)
 
   Type:              task
   Workspace:         <HOME>/.openclaw/workspaces/projects/content
-  Codebase:          
-  Stack:             
+  Codebase:
+  Stack:
   Model:             anthropic/claude-haiku-4-5
   Budget cap:        $10.00
   Session Key:       agent:content:blog

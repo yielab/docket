@@ -29,6 +29,7 @@ from docket.core.utils import (
     gateway_active,
     last_activity,
     model_source,
+    openclaw_version,
     project_ids,
     restart_gateway,
     scan_telegram_groups,
@@ -158,6 +159,7 @@ def _cmd_list_human() -> None:
     ui.console.print(
         f"  [bold]OpenClaw[/bold]  {gw_badge}  {tg_badge}  [dim]│[/dim]"
         f"  {total_agents} agents  {tg_binding_count} binding(s)"
+        f"  [dim]│[/dim]  v{openclaw_version()}"
     )
     ui.console.print(f"  [dim]{'─' * 66}[/dim]")
     ui.console.print(
@@ -185,20 +187,12 @@ def _cmd_list_human() -> None:
         ws = _cfg.workspace_dir(aid)
         has_memory = (ws / "MEMORY.md").is_file()
         has_reqs = (ws / "REQUIREMENTS.md").is_file()
-        mem_days = (
-            sum(1 for _ in (ws / "memory").glob("*.md"))
-            if (ws / "memory").is_dir()
-            else 0
-        )
+        mem_days = sum(1 for _ in (ws / "memory").glob("*.md")) if (ws / "memory").is_dir() else 0
 
         model_short = model.split("/")[-1] if "/" in model else model
         path_short = codebase.replace(home, "~") if codebase else "[dim]none[/dim]"
 
-        reg_badge = (
-            "[green]● registered[/green]"
-            if registered
-            else "[red]○ not registered[/red]"
-        )
+        reg_badge = "[green]● registered[/green]" if registered else "[red]○ not registered[/red]"
         tg_b = (
             f"[green]● telegram[/green] [dim]({tg})[/dim]"
             if tg
@@ -216,6 +210,37 @@ def _cmd_list_human() -> None:
         ui.console.print(f"  path: {path_short}  │  active: {activity}")
         ui.console.print(f"  {reg_badge}  {tg_b}  {mem_b}  {req_b}")
 
+    # ── Telegram setup summary ── agents with an expected group but no binding
+    unwired: list[tuple[str, str]] = []
+    for aid in ids:
+        if tg_bindings.get(aid):
+            continue
+        expected = _cfg.TELEGRAM_GROUP_NAMES.get(aid)
+        if expected:
+            unwired.append((aid, expected))
+    # Manager is a specialist (not in the project list) — check it directly.
+    if not tg_bindings.get("manager") and _cfg.TELEGRAM_GROUP_NAMES.get("manager"):
+        unwired.append(("manager", _cfg.TELEGRAM_GROUP_NAMES["manager"]))
+
+    if unwired:
+        ui.console.print()
+        ui.console.print(f"  [dim]{'─' * 66}[/dim]")
+        ui.console.print(
+            f"  [bold yellow]Telegram Setup Needed[/bold yellow]  "
+            f"[dim]({len(unwired)} agent(s) without groups)[/dim]"
+        )
+        ui.console.print()
+        for uw_id, uw_name in unwired:
+            ui.console.print(
+                f"    [yellow]○[/yellow] [bold]{uw_id}[/bold]  "
+                f'[dim]→ create group "{uw_name}" then:[/dim] docket wire {uw_id}'
+            )
+        ui.console.print()
+        ui.dim(
+            "  Steps: 1) Create Telegram group  2) Add bot"
+            "  3) Get group ID from logs  4) docket wire <id>"
+        )
+
     # Specialist agents section
     ui.console.print()
     ui.console.print(
@@ -224,8 +249,7 @@ def _cmd_list_human() -> None:
     )
     ui.console.print()
     ui.console.print(
-        "  [dim]These work across ALL your projects."
-        " Don't wire them to individual groups.[/dim]"
+        "  [dim]These work across ALL your projects. Don't wire them to individual groups.[/dim]"
     )
     ui.console.print()
 
@@ -239,13 +263,10 @@ def _cmd_list_human() -> None:
         spec_raw = store.read_json(spec_meta)
         spec_model = str(spec_raw.get("model", _cfg.DEFAULT_MODEL))
         spec_src = str(spec_raw.get("modelSource", ""))
-        spec_model_short = (
-            spec_model.split("/")[-1] if "/" in spec_model else spec_model
-        )
+        spec_model_short = spec_model.split("/")[-1] if "/" in spec_model else spec_model
         why = _cfg.ROLE_WHY.get(spec, "")
         ui.console.print(
-            f"  [green]✓[/green] {spec:<12}"
-            f" [dim]{spec_model_short:<28} ({spec_src}) — {why}[/dim]"
+            f"  [green]✓[/green] {spec:<12} [dim]{spec_model_short:<28} ({spec_src}) — {why}[/dim]"
         )
 
     ui.console.print()
@@ -274,7 +295,7 @@ def cmd_add(ctx: typer.Context) -> None:
     while i < len(all_args):
         arg = all_args[i]
         if arg.startswith("--from="):
-            from_file = arg[len("--from="):]
+            from_file = arg[len("--from=") :]
             i += 1
         elif arg == "--from" and i + 1 < len(all_args):
             from_file = all_args[i + 1]
@@ -343,8 +364,16 @@ def cmd_add(ctx: typer.Context) -> None:
     tg_group = input("Telegram group ID (Enter to skip): ").strip()
 
     _provision_agent(
-        aid, agent_type, name, codebase, stack, model_input,
-        description, "default", "", "interactive",
+        aid,
+        agent_type,
+        name,
+        codebase,
+        stack,
+        model_input,
+        description,
+        "default",
+        "",
+        "interactive",
     )
 
     if tg_group:
@@ -376,6 +405,7 @@ def _cmd_add_declarative(from_file: str) -> None:
     if from_file.endswith((".yaml", ".yml")):
         try:
             import yaml as _yaml  # type: ignore[import-untyped]
+
             spec_obj = _yaml.safe_load(content)
         except ImportError:
             ui.error(
@@ -427,8 +457,16 @@ def _cmd_add_declarative(from_file: str) -> None:
         project_key = str(spec.get("projectKey", "default"))
 
         _provision_agent(
-            aid, agent_type, name, codebase, stack, model,
-            description, project_key, budget, "declarative",
+            aid,
+            agent_type,
+            name,
+            codebase,
+            stack,
+            model,
+            description,
+            project_key,
+            budget,
+            "declarative",
         )
         created.append(aid)
 
@@ -670,9 +708,14 @@ def _provision_agent(
         try:
             result = _sub.run(
                 [
-                    "openclaw", "agents", "add", agent_id,
-                    "--workspace", ws_path,
-                    "--model", model,
+                    "openclaw",
+                    "agents",
+                    "add",
+                    agent_id,
+                    "--workspace",
+                    ws_path,
+                    "--model",
+                    model,
                     "--non-interactive",
                 ],
                 capture_output=True,
@@ -681,7 +724,9 @@ def _provision_agent(
             if result.returncode == 0:
                 ui.success(f"Registered '{agent_id}' with openclaw")
             else:
-                ui.warn(f"openclaw agent add exited {result.returncode} — register manually if needed")
+                ui.warn(
+                    f"openclaw agent add exited {result.returncode} — register manually if needed"
+                )
         except (OSError, _sub.TimeoutExpired):
             ui.warn("openclaw agent add timed out — register manually if needed")
     else:
@@ -787,11 +832,7 @@ def _cmd_info_human(agent_id: str) -> None:
     tg = _oc.get_binding(agent_id)
     activity = last_activity(agent_id)
 
-    mem_count = (
-        sum(1 for _ in (ws / "memory").glob("*.md"))
-        if (ws / "memory").is_dir()
-        else 0
-    )
+    mem_count = sum(1 for _ in (ws / "memory").glob("*.md")) if (ws / "memory").is_dir() else 0
     has_memory = "yes" if (ws / "MEMORY.md").is_file() else "no"
     has_reqs = "yes" if (ws / "REQUIREMENTS.md").is_file() else "no"
 
@@ -806,9 +847,7 @@ def _cmd_info_human(agent_id: str) -> None:
         ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] ${float(budget):.2f}")
     if paused:
         reason_str = f" ({paused_reason})" if paused_reason else ""
-        ui.console.print(
-            f"  [bold]{'Status:':<18}[/bold] [red]PAUSED[/red]{reason_str}"
-        )
+        ui.console.print(f"  [bold]{'Status:':<18}[/bold] [red]PAUSED[/red]{reason_str}")
     ui.console.print(f"  [bold]{'Session Key:':<18}[/bold] {session_key}")
     ui.console.print(f"  [bold]{'Project Scope:':<18}[/bold] {project_key}")
     ui.console.print()
@@ -819,9 +858,7 @@ def _cmd_info_human(agent_id: str) -> None:
     if tg:
         ui.console.print(f"  [bold]{'Telegram:':<18}[/bold] [green]{tg}[/green]")
     else:
-        ui.console.print(
-            f"  [bold]{'Telegram:':<18}[/bold] [yellow]not wired[/yellow]"
-        )
+        ui.console.print(f"  [bold]{'Telegram:':<18}[/bold] [yellow]not wired[/yellow]")
 
     ui.console.print(f"  [bold]{'Last active:':<18}[/bold] {activity}")
     ui.console.print(f"  [bold]{'Memory days:':<18}[/bold] {mem_count}")
@@ -950,7 +987,9 @@ def cmd_maintain(
     elif action == "sessions":
         _maintain_sessions(aid)
     else:
-        ui.error(f"Unknown maintain subcommand '{action}'. Use: check, clean, reset, rebuild, sessions")
+        ui.error(
+            f"Unknown maintain subcommand '{action}'. Use: check, clean, reset, rebuild, sessions"
+        )
         raise typer.Exit(1)
 
 
@@ -1014,6 +1053,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
             if "Session Key:" in ln or "session_key" in ln.lower():
                 # Grab the backtick-wrapped value
                 import re as _re
+
                 m = _re.search(r"`([^`]+)`", ln)
                 if m:
                     soul_session = m.group(1)
@@ -1099,7 +1139,9 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
 
     memory_md = ws / "MEMORY.md"
     if memory_md.is_file():
-        memory_md.write_text("# MEMORY.md\n\n_Cleared by docket maintain reset._\n", encoding="utf-8")
+        memory_md.write_text(
+            "# MEMORY.md\n\n_Cleared by docket maintain reset._\n", encoding="utf-8"
+        )
         memory_md.chmod(0o600)
 
     raw = store.read_json(_cfg.meta_path(agent_id))
@@ -1115,7 +1157,9 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
     hb.write_text(heartbeat_text, encoding="utf-8")
     hb.chmod(0o600)
 
-    ui.success(f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, HEARTBEAT.md reset.")
+    ui.success(
+        f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, HEARTBEAT.md reset."
+    )
 
 
 def _maintain_rebuild(agent_id: str, ws: Path) -> None:
@@ -1314,8 +1358,7 @@ def _context_show(agent_id: str, ws: Path) -> None:
     hb = ws / "HEARTBEAT.md"
     if hb.is_file():
         task_lines = [
-            ln for ln in hb.read_text(encoding="utf-8").splitlines()
-            if ln.startswith("- [")
+            ln for ln in hb.read_text(encoding="utf-8").splitlines() if ln.startswith("- [")
         ][:5]
         if task_lines:
             for tl in task_lines:
@@ -1596,8 +1639,7 @@ def _context_project(agent_id: str, ws: Path) -> None:
     hb = ws / "HEARTBEAT.md"
     if hb.is_file():
         task_lines = [
-            ln for ln in hb.read_text(encoding="utf-8").splitlines()
-            if ln.startswith("- [")
+            ln for ln in hb.read_text(encoding="utf-8").splitlines() if ln.startswith("- [")
         ]
         ui.console.print("[bold]Active Tasks[/bold]")
         if task_lines:
@@ -1632,7 +1674,9 @@ def _context_project(agent_id: str, ws: Path) -> None:
 @app.command("wire")
 def cmd_wire(
     agent_id: str | None = typer.Argument(None),
-    channel: str = typer.Option("telegram", "--channel", help="Channel to wire (default: telegram)"),
+    channel: str = typer.Option(
+        "telegram", "--channel", help="Channel to wire (default: telegram)"
+    ),
 ) -> None:
     """Wire or update a channel group binding."""
     if agent_id is None:
@@ -1702,9 +1746,7 @@ def cmd_wire(
                     peer_id = groups[idx][0]
                     prev_bound = groups[idx][2]
                     if prev_bound:
-                        ui.warn(
-                            f"This will unbind '{prev_bound}' from group '{groups[idx][1]}'"
-                        )
+                        ui.warn(f"This will unbind '{prev_bound}' from group '{groups[idx][1]}'")
                         ok = input("Continue? [y/N]: ").strip()
                         if ok.lower() != "y":
                             ui.warn("Aborted.")
@@ -1783,7 +1825,9 @@ def cmd_wire(
 @app.command("unwire")
 def cmd_unwire(
     agent_id: str | None = typer.Argument(None),
-    channel: str = typer.Option("telegram", "--channel", help="Channel to unwire (default: telegram)"),
+    channel: str = typer.Option(
+        "telegram", "--channel", help="Channel to unwire (default: telegram)"
+    ),
 ) -> None:
     """Remove a channel binding."""
     if agent_id is None:
@@ -1853,9 +1897,7 @@ def cmd_scope(
         ui.console.print(
             "This session key prevents the agent from accessing other project contexts."
         )
-        ui.console.print(
-            "Each project scope gets isolated workspace memory and routing."
-        )
+        ui.console.print("Each project scope gets isolated workspace memory and routing.")
         ui.console.print()
         ui.console.print("Usage:")
         ui.console.print(f"  docket scope {aid} set <project-key>    # Change project scope")
@@ -1917,9 +1959,7 @@ def cmd_profile(
             if bval < 0:
                 raise ValueError
         except ValueError:
-            ui.error(
-                f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50)."
-            )
+            ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
             raise typer.Exit(1) from None
         _oc.meta_set(aid, "budgetUsd", budget)
         if budget != "0":
@@ -1946,8 +1986,7 @@ def cmd_profile(
         ui.console.print()
         ui.console.print(f"  [bold]{'Current model:':<18}[/bold] {current}")
         ui.console.print(
-            f"  [bold]{'Role:':<18}[/bold] {role}"
-            f"  [dim]({_cfg.ROLE_WHY.get(role, '')})[/dim]"
+            f"  [bold]{'Role:':<18}[/bold] {role}  [dim]({_cfg.ROLE_WHY.get(role, '')})[/dim]"
         )
         if src == "policy":
             ui.console.print(
@@ -2205,7 +2244,9 @@ def _keys_add(name: str) -> None:
     import re as _re
 
     if not _re.match(r"^[A-Z][A-Z0-9_]*$", name):
-        ui.error(f"Invalid key name '{name}'. Use UPPERCASE_WITH_UNDERSCORES (e.g. ANTHROPIC_API_KEY).")
+        ui.error(
+            f"Invalid key name '{name}'. Use UPPERCASE_WITH_UNDERSCORES (e.g. ANTHROPIC_API_KEY)."
+        )
         raise typer.Exit(1)
 
     secrets = _load_secrets()
@@ -2473,9 +2514,7 @@ def cmd_auth(
             ui.warn("Cancelled.")
             return
         method = "paste-token" if choice == "2" else "setup-token"
-        result = _sub.run(
-            ["openclaw", "models", "auth", method, "--provider", "anthropic"]
-        )
+        result = _sub.run(["openclaw", "models", "auth", method, "--provider", "anthropic"])
         if result.returncode == 0:
             ui.success("Authentication configured.")
             _do_restart_gateway()
@@ -2517,6 +2556,8 @@ def cmd_models(ctx: typer.Context) -> None:
         _cmd_models_preset(rest[0] if rest else None)
     elif sub == "reset":
         _cmd_models_reset()
+    elif sub == "provider":
+        _cmd_models_provider(rest)
     else:
         ui.error(
             f"Unknown models subcommand '{sub}'.\n"
@@ -2524,9 +2565,52 @@ def cmd_models(ctx: typer.Context) -> None:
             "  docket models                            # show role→model policy\n"
             "  docket models set <role> <model>         # change a role's model\n"
             "  docket models preset [name]              # list or apply a provider preset\n"
-            "  docket models reset                      # restore built-in defaults"
+            "  docket models reset                      # restore built-in defaults\n"
+            "  docket models provider add <name> <url>  # register a local provider"
         )
         raise typer.Exit(1)
+
+
+def _cmd_models_provider(rest: list[str]) -> None:
+    """Wire `docket models provider add <name> <base-url> [--opts]` (T5.6)."""
+    from docket.core import provider as _prov
+
+    if len(rest) < 1 or rest[0] != "add":
+        ui.error(
+            "Usage: docket models provider add <name> <base-url> "
+            "[--model ID] [--name NAME] [--ctx N] [--max-tokens N]"
+        )
+        raise typer.Exit(1)
+
+    pos: list[str] = []
+    opts: dict[str, str] = {}
+    i = 1
+    while i < len(rest):
+        tok = rest[i]
+        if tok.startswith("--"):
+            key = tok[2:]
+            if "=" in key:
+                k, v = key.split("=", 1)
+                opts[k] = v
+            else:
+                opts[key] = rest[i + 1] if i + 1 < len(rest) else ""
+                i += 1
+        else:
+            pos.append(tok)
+        i += 1
+
+    name = pos[0] if len(pos) > 0 else _prov.DEFAULT_PROVIDER
+    base_url = pos[1] if len(pos) > 1 else _prov.DEFAULT_BASE_URL
+    raise typer.Exit(
+        _prov.register_local_provider(
+            name=name,
+            base_url=base_url,
+            model_id=opts.get("model", _prov.DEFAULT_MODEL_ID),
+            model_name=opts.get("name", _prov.DEFAULT_MODEL_NAME),
+            ctx=int(opts.get("ctx", _prov.DEFAULT_CTX)),
+            max_tokens=int(opts.get("max-tokens", _prov.DEFAULT_MAX_TOKENS)),
+        )
+    )
 
 
 def _cmd_models_list() -> None:
@@ -2547,9 +2631,10 @@ def _cmd_models_list() -> None:
         if reg_exists:
             try:
                 import json as _j
-                reg_roles = _j.loads(
-                    _cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8")
-                ).get("roles", {})
+
+                reg_roles = _j.loads(_cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8")).get(
+                    "roles", {}
+                )
             except Exception:
                 pass
         source = "user" if role in reg_roles and reg_roles[role] == m else "builtin"
@@ -2604,9 +2689,7 @@ def _cmd_models_set(key: str, model: str) -> None:
         ui.warn("Tier names are deprecated — the role policy is the source of truth.")
         for role in _mp.ALL_ROLES:
             cls = _mp.ROLE_CLASS.get(role, "strong")
-            if (key == "economy" and cls == "cheap") or (
-                key == "standard" and cls == "strong"
-            ):
+            if (key == "economy" and cls == "cheap") or (key == "standard" and cls == "strong"):
                 updates[f"role.{role}"] = validated
                 touched_roles.append(role)
         if key == "premium":
@@ -2641,14 +2724,14 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.header("Provider presets")
         ui.console.print()
         fmt = "  {:<18}  {:<8}  {:<20}  {}"
-        ui.console.print(f"[bold]{fmt.format('PRESET', 'COST', 'KEY NEEDED', 'DESCRIPTION')}[/bold]")
+        ui.console.print(
+            f"[bold]{fmt.format('PRESET', 'COST', 'KEY NEEDED', 'DESCRIPTION')}[/bold]"
+        )
         ui.console.print(fmt.format("------", "----", "----------", "-----------"))
         for p in _mp.KNOWN_PRESETS:
             t = _mp.PRESET_TABLE[p]
             marker = " (default)" if p == "anthropic" else ""
-            ui.console.print(
-                fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"])
-            )
+            ui.console.print(fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"]))
         ui.console.print()
         ui.console.print("Apply: docket models preset <name>")
         ui.console.print()
@@ -2713,9 +2796,8 @@ def _cmd_models_preset(preset: str | None) -> None:
         if secrets_path.exists():
             try:
                 import json as _j
-                key_present = key_name in _j.loads(
-                    secrets_path.read_text(encoding="utf-8")
-                )
+
+                key_present = key_name in _j.loads(secrets_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
         if not key_present:
@@ -2812,7 +2894,9 @@ def _team_help_text() -> None:
     ui.console.print("  docket team queue --all                       Include done + cancelled")
     ui.console.print("  docket team start <task-id>                   pending → in_progress")
     ui.console.print("  docket team done <task-id>                    pending/in_progress → done")
-    ui.console.print("  docket team cancel <task-id>                  pending/in_progress → cancelled")
+    ui.console.print(
+        "  docket team cancel <task-id>                  pending/in_progress → cancelled"
+    )
     ui.console.print()
 
 
@@ -2857,7 +2941,9 @@ def _team_status() -> None:
             ui.console.print(f"  [cyan]○[/cyan] {spec:<12} Standard (upgrade available)")
     ui.console.print()
     if upgraded >= 4:
-        ui.dim("All core specialists DOCKET-optimized (knowledge & security use standard templates)")
+        ui.dim(
+            "All core specialists DOCKET-optimized (knowledge & security use standard templates)"
+        )
     else:
         ui.dim("Run 'docket team upgrade' to apply DOCKET templates")
     ui.console.print()
@@ -2901,7 +2987,9 @@ def _team_roles() -> None:
     ui.console.print("  • Embedded classifier logic (routes tasks efficiently)")
     ui.console.print("  • Context compression before delegation")
     ui.console.print("  • Short-circuit resolution for simple queries")
-    ui.console.print(f"  • Model: {_model('manager')} (role policy) | Tools: read (memory), message")
+    ui.console.print(
+        f"  • Model: {_model('manager')} (role policy) | Tools: read (memory), message"
+    )
     ui.console.print()
 
     ui.console.print("[bold green]Programmer[/bold green]")
@@ -2923,7 +3011,9 @@ def _team_roles() -> None:
     ui.console.print("  • Behavior-only validation (doesn't read code!)")
     ui.console.print("  • Executes reproduction steps")
     ui.console.print("  • Binary verdict: PASS or FAIL")
-    ui.console.print(f"  • Model: {_model('tester')} (role policy) | Tools: exec, browser (read-only)")
+    ui.console.print(
+        f"  • Model: {_model('tester')} (role policy) | Tools: exec, browser (read-only)"
+    )
     ui.console.print()
 
     ui.console.print("[bold green]Knowledge[/bold green]")
@@ -3165,7 +3255,9 @@ def _team_queue(extra: list[str]) -> None:
             ui.console.print(f"  {tid:<16}  {st:<12}  {cdate:<22}  {desc}")
 
     ui.console.print()
-    ui.info("Mark done: docket team done <id>  |  Start: docket team start <id>  |  Cancel: docket team cancel <id>")
+    ui.info(
+        "Mark done: docket team done <id>  |  Start: docket team start <id>  |  Cancel: docket team cancel <id>"
+    )
     if not show_all:
         ui.dim("  Show completed/cancelled: docket team queue --all")
 
@@ -3266,7 +3358,9 @@ def cmd_workflow(
             for ext in (".lobster.yml", ".lobster.yaml"):
                 wf_name = wf_name.replace(ext, "")
             try:
-                steps = sum(1 for ln in wf.read_text(encoding="utf-8").splitlines() if ln.startswith("  - "))
+                steps = sum(
+                    1 for ln in wf.read_text(encoding="utf-8").splitlines() if ln.startswith("  - ")
+                )
             except OSError:
                 steps = 0
             ui.console.print(f"  [green]●[/green] {wf_name:<24} {steps} steps")
@@ -3298,7 +3392,9 @@ def cmd_workflow(
         ui.console.print()
         ui.info("Next steps:")
         ui.console.print(f"  1. Edit workflow: $EDITOR {wf_file}")
-        ui.console.print(f"  2. Run workflow:  lobster run --workspace {ws} --workflow {workflow_name}")
+        ui.console.print(
+            f"  2. Run workflow:  lobster run --workspace {ws} --workflow {workflow_name}"
+        )
         ui.console.print()
 
     elif action == "show":
@@ -3338,6 +3434,7 @@ def cmd_workflow(
 def _test_cmd_for_stack(stack: str) -> str:
     """Return a sensible default test command for a detected stack."""
     import re as _re
+
     if _re.search(r"pytest|Python|FastAPI|Django|Flask", stack, _re.I):
         return "pytest -v"
     if _re.search(r"Node|npm|Next|React|Express|Fastify", stack, _re.I):
@@ -3463,7 +3560,9 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
                 all_lines = []
             matched = [ln for ln in all_lines if tg_peer in ln]
             ui.console.print()
-            ui.console.print(f"[bold]Gateway log:[/bold] {len(matched)} entries today for group {tg_peer}")
+            ui.console.print(
+                f"[bold]Gateway log:[/bold] {len(matched)} entries today for group {tg_peer}"
+            )
             for ln in matched[-10:]:
                 ui.console.print(f"  {ln}")
             if len(matched) > 10:
@@ -3559,11 +3658,7 @@ def _cmd_cost_json() -> None:
         totals: CostTotals = aggregate_cost(pid)
         cost = totals.cost_usd
         total += cost
-        budget_val = (
-            float(budget_raw)
-            if budget_raw and str(budget_raw) not in ("", "0")
-            else None
-        )
+        budget_val = float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
         agents_out.append(
             {
                 "id": pid,
@@ -3625,7 +3720,9 @@ def _cmd_cost_all() -> None:
         if budget_raw and str(budget_raw) not in ("", "0"):
             bval = float(budget_raw)
             pct = int(totals.cost_usd / bval * 100) if bval > 0 else 0
-            budget_col = f"${bval:.2f} ({pct}%)"
+            # Display the raw budget value (e.g. "10", "10.50") exactly as Bash
+            # does — not a forced .2f — so "$10 (0%)" matches the contract.
+            budget_col = f"${budget_raw} ({pct}%)"
 
         ui.console.print(
             f"{pid:<16} {model_short:<10} {si_format(totals.input_tokens):>10}"
@@ -3641,7 +3738,9 @@ def _cmd_cost_all() -> None:
             runaway.append(f"{pid} ({totals.turns} turns, ${totals.cost_usd:.4f})")
 
     ui.console.print()
-    ui.console.print(f"[bold]{'Total:':>81} ${total_cost:.4f}[/bold]")
+    # Mirrors Bash `printf "%69s %12s" "Total:" "$<total>"`.
+    total_amount = f"${total_cost:.4f}"
+    ui.console.print(f"[bold]{'Total:':>69} {total_amount:>12}[/bold]")
 
     if runaway:
         ui.console.print()
@@ -3650,7 +3749,10 @@ def _cmd_cost_all() -> None:
 
     ui.console.print()
     ui.dim("  Recorded spend from session data in ~/.openclaw/agents/*/sessions/*.jsonl")
-    ui.dim("  Comparative estimates use a price snapshot — see: docket models")
+    ui.dim(
+        f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"
+        " — see: docket models"
+    )
     ui.console.print()
 
 
@@ -3764,9 +3866,7 @@ def _cmd_cost_history(
         ui.console.print()
         return
 
-    ui.console.print(
-        f"  {'DATE':<12} {'TURNS':>7} {'INPUT':>12} {'OUTPUT':>12} {'COST (USD)':>12}"
-    )
+    ui.console.print(f"  {'DATE':<12} {'TURNS':>7} {'INPUT':>12} {'OUTPUT':>12} {'COST (USD)':>12}")
     costs = [r.cost_usd for r in ordered]
     for i, r in enumerate(ordered):
         flag = ""
@@ -3778,34 +3878,64 @@ def _cmd_cost_history(
             f"  {r.date:<12} {r.turns:>7} {r.input_tokens:>12}"
             f" {r.output_tokens:>12} {r.cost_usd:>12.4f}{flag}"
         )
-    ui.console.print(
-        f"  {'':12} {'':>7} {'':>12} {'':>12} {sum(costs):>12.4f}  total"
-    )
+    ui.console.print(f"  {'':12} {'':>7} {'':>12} {'':>12} {sum(costs):>12.4f}  total")
     ui.console.print()
 
 
 @app.command("doctor")
-def cmd_doctor() -> None:
+def cmd_doctor(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable health probe"),
+    fix: bool = typer.Option(False, "--fix", help="Apply auto-fixes for detected drift"),
+) -> None:
     """System-wide health check with auto-fix."""
-    _not_ported("doctor")
+    from docket.cli._doctor import run_doctor
+
+    raise typer.Exit(run_doctor(json_out=json_out, do_fix=fix))
 
 
-@app.command("gates")
-def cmd_gates(sub: str | None = typer.Argument(None)) -> None:
+@app.command(
+    "gates",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_gates(ctx: typer.Context) -> None:
     """Manage tool-approval security gates."""
-    _not_ported("gates")
+    from docket.cli._gates import run_gates
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    force = "--force" in args
+    rest = [a for a in args[1:] if a != "--force"]
+    want = rest[0] if rest else "on"
+    raise typer.Exit(run_gates(sub, want=want, force=force))
 
 
 @app.command("audit")
-def cmd_audit(sub: str | None = typer.Argument(None)) -> None:
+def cmd_audit(
+    arg: str | None = typer.Argument(None, help="Last-N count, or --json"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+) -> None:
     """Show audit log."""
-    _not_ported("audit")
+    from docket.cli._audit import run_audit
+
+    limit: int | None = None
+    if arg == "--json":
+        json_out = True
+    elif arg and arg.isdigit():
+        limit = int(arg)
+    raise typer.Exit(run_audit(limit=limit, json_out=json_out))
 
 
 @app.command("eval")
-def cmd_eval(sub: str | None = typer.Argument(None)) -> None:
+def cmd_eval(
+    live: bool = typer.Option(False, "--live", help="Run live golden-task evals"),
+    tier: str = typer.Option("standard", "--tier", help="Model tier"),
+    role: str = typer.Option("", "--role", help="Restrict to one role"),
+    recommend: bool = typer.Option(False, "--recommend", help="Emit tier recommendations"),
+) -> None:
     """Run specialist-role evaluation stubs."""
-    _not_ported("eval")
+    from docket.cli._eval import run_eval
+
+    raise typer.Exit(run_eval(live=live, tier=tier, role=role, recommend=recommend))
 
 
 @app.command("snapshot")
@@ -3899,53 +4029,96 @@ def cmd_snapshot(
 
 
 @app.command("serve")
-def cmd_serve() -> None:
+def cmd_serve(
+    port: int = typer.Option(7331, "--port", "-p", help="Port to bind (default 7331)"),
+) -> None:
     """Local HTTP endpoints: /status.json /metrics /health."""
-    _not_ported("serve")
+    from docket.serve import run_serve
+
+    run_serve(port=port)
 
 
 @app.command("completions")
 def cmd_completions(shell: str | None = typer.Argument(None)) -> None:
     """Shell completion helpers."""
-    _not_ported("completions")
+    from docket.cli._completions import run_completions
+
+    raise typer.Exit(run_completions(shell))
 
 
 # ── observability ──────────────────────────────────────────────────────────────
-@app.command("trace")
-def cmd_trace(sub: str | None = typer.Argument(None)) -> None:
+@app.command(
+    "trace",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_trace(ctx: typer.Context) -> None:
     """View agent execution traces."""
-    _not_ported("trace")
+    from docket.cli._trace import run_trace
+
+    args = list(ctx.args)
+    since: str | None = None
+    pos: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--since":
+            since = args[i + 1] if i + 1 < len(args) else None
+            i += 2
+            continue
+        pos.append(args[i])
+        i += 1
+    sub = pos[0] if pos else None
+    target = pos[1] if len(pos) > 1 else None
+    raise typer.Exit(run_trace(sub, target, since))
 
 
 @app.command("metrics")
-def cmd_metrics() -> None:
+def cmd_metrics(
+    role: str = typer.Option("", "--role", "-r", help="Restrict to one role"),
+    project: str = typer.Option("", "--project", "-p", help="Restrict to one project"),
+    window: int | None = typer.Option(None, "--window", "-w", help="Window in days"),
+) -> None:
     """Show session success-rate and drift metrics."""
-    _not_ported("metrics")
+    from docket.cli._metrics import run_metrics
+
+    raise typer.Exit(run_metrics(role=role, project=project, window=window))
 
 
-@app.command("policies")
-def cmd_policies(sub: str | None = typer.Argument(None)) -> None:
+@app.command(
+    "policies",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_policies(ctx: typer.Context) -> None:
     """Manage tool-approval policies."""
-    _not_ported("policies")
+    from docket.cli._policies import run_policies
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_policies(sub, args=args[1:]))
 
 
 @app.command("approve")
 def cmd_approve(approval_id: str | None = typer.Argument(None)) -> None:
     """Approve a pending tool-action."""
-    _not_ported("approve")
+    from docket.cli._approve import run_approve
+
+    raise typer.Exit(run_approve(approval_id))
 
 
 @app.command("deny")
 def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
     """Deny a pending tool-action."""
-    _not_ported("deny")
+    from docket.cli._deny import run_deny
+
+    raise typer.Exit(run_deny(approval_id))
 
 
 # ── help ───────────────────────────────────────────────────────────────────────
 @app.command("help")
 def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     """Show help."""
-    _not_ported("help")
+    from docket.cli._help import run_help
+
+    raise typer.Exit(run_help())
 
 
 # ── hidden: data-layer bridge (M2/T2.6) ───────────────────────────────────────
@@ -4010,9 +4183,7 @@ def cmd_json(ctx: typer.Context) -> None:
         elif verb == "agent-add":
             if len(a) < 2:
                 _die("usage: agent-add <id> <model> [session_key] [project_key]")
-            _oc.add_agent(
-                a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else ""
-            )
+            _oc.add_agent(a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else "")
 
         elif verb == "agent-remove":
             if not a:

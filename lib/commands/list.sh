@@ -10,6 +10,11 @@ _list_meta_batch() {
 import json, os, sys
 projects_dir, config_file, default_model, meta_file = sys.argv[1:5]
 agent_ids = sys.argv[5:]
+# ASCII Unit Separator: a NON-whitespace delimiter so Bash `read` does not
+# collapse empty fields (stack/codebase/tg). With a tab (IFS-whitespace) Bash
+# silently merges consecutive empties, shifting every later column for agents
+# that have no stack or codebase — a real display bug. US (\x1f) avoids it.
+US = "\x1f"
 try:
     cfg = json.load(open(config_file))
 except Exception:
@@ -23,13 +28,13 @@ for b in cfg.get("bindings", []):
     m = b.get("match", {}) or {}
     if m.get("channel") == "telegram":
         tg_map[b.get("agentId")] = str((m.get("peer", {}) or {}).get("id", ""))
-print(f"HEADER\t{total_agents}\t{bindings_count}\t{tg_enabled}")
-def safe(v): return str(v).replace("\t", " ")
+print(f"HEADER{US}{total_agents}{US}{bindings_count}{US}{tg_enabled}")
+def safe(v): return str(v).replace("\t", " ").replace(US, " ")
 for aid in agent_ids:
     meta_path = os.path.join(projects_dir, aid, meta_file)
     try:    meta = json.load(open(meta_path))
     except: meta = {}
-    print("\t".join([
+    print(US.join([
         "AGENT", safe(aid),
         safe(meta.get("name", aid)),
         safe(meta.get("type", "repo")),
@@ -126,7 +131,8 @@ cmd_list() {
 
   local _hdr_agents="?" _hdr_bindings="0" _hdr_tgenabled="no"
   declare -A _b_name _b_type _b_model _b_stack _b_codebase _b_tg _b_reg _b_src
-  while IFS=$'\t' read -r rectype f1 f2 f3 f4 f5 f6 f7 f8 f9; do
+  # US (\x1f) separator — non-whitespace so empty fields are preserved (see _list_meta_batch).
+  while IFS=$'\x1f' read -r rectype f1 f2 f3 f4 f5 f6 f7 f8 f9; do
     case "$rectype" in
       HEADER) _hdr_agents="$f1"; _hdr_bindings="$f2"; _hdr_tgenabled="$f3" ;;
       AGENT)

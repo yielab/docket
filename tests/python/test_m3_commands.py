@@ -14,8 +14,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -117,9 +115,7 @@ class TestCmdList:
         oc_dir = _setup_agent(tmp_path)
         # Write openclaw.json with empty agents list
         (oc_dir / "openclaw.json").write_text(
-            json.dumps(
-                {"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []}
-            )
+            json.dumps({"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []})
         )
         rc, out, _ = _run(["list", "--json"], oc_dir)
         assert rc == 0
@@ -159,9 +155,7 @@ class TestCmdList:
     def test_list_empty_no_agents(self, tmp_path: Path) -> None:
         oc_dir = tmp_path / ".openclaw"
         oc_dir.mkdir()
-        (oc_dir / "openclaw.json").write_text(
-            json.dumps({"agents": {"list": []}, "bindings": []})
-        )
+        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
         rc, _out, err = _run(["list"], oc_dir)
         assert rc == 0
         assert "No project agents" in err

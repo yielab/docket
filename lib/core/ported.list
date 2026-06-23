@@ -33,3 +33,17 @@ context
 maintain
 keys
 add
+# M3 T3.4 (late) + M5: doctor, serve.
+doctor
+serve
+# M5 T5.4/T5.3/T5.6 + leftovers.
+trace
+audit
+gates
+policies
+approve
+deny
+completions
+eval
+metrics
+help

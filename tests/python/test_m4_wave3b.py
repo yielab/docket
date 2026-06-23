@@ -143,6 +143,7 @@ class TestCmdLogs:
         oc_dir = _setup_agent(tmp_path)
         # Write a fake log file for today
         import datetime as dt
+
         today = dt.date.today().strftime("%Y-%m-%d")
         log_dir = tmp_path / "oclog"
         log_dir.mkdir()
@@ -200,7 +201,7 @@ class TestCmdWorkflow:
 
     def test_create_generates_file(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["workflow", "myshop", "create", "deploy"], _make_env(oc_dir))
+        rc, _out, _ = _run(["workflow", "myshop", "create", "deploy"], _make_env(oc_dir))
         assert rc == 0
         wf_file = oc_dir / "workspaces" / "projects" / "myshop" / "workflows" / "deploy.lobster.yml"
         assert wf_file.exists()
@@ -268,7 +269,7 @@ class TestCmdWorkflow:
 
     def test_default_action_is_list(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["workflow", "myshop"], _make_env(oc_dir))
+        rc, _out, _ = _run(["workflow", "myshop"], _make_env(oc_dir))
         assert rc == 0
         # "list" shows either "No workflows directory" or a list header
         assert rc == 0

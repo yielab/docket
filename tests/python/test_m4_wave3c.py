@@ -13,8 +13,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -86,14 +84,10 @@ def _setup_specialists(
     for role in all_roles:
         ws = ws_root / role
         ws.mkdir(parents=True, exist_ok=True)
-        (ws / ".docket-meta.json").write_text(
-            json.dumps({"kind": "specialist", "name": role})
-        )
+        (ws / ".docket-meta.json").write_text(json.dumps({"kind": "specialist", "name": role}))
         if with_soul:
             soul_text = (
-                "# DOCKET Architecture\n# role soul\n"
-                if docket_optimized
-                else "# role soul\n"
+                "# DOCKET Architecture\n# role soul\n" if docket_optimized else "# role soul\n"
             )
             (ws / "SOUL.md").write_text(soul_text)
     return oc_dir
@@ -191,9 +185,7 @@ class TestCmdTeamDelegate:
         rc, out, _ = _run(["team", "delegate", "Fix the login bug"], _make_env(oc_dir))
         assert rc == 0
         assert "Task queued" in out
-        task_list = json.loads(
-            (oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text()
-        )
+        task_list = json.loads((oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text())
         assert len(task_list["tasks"]) == 1
         assert task_list["tasks"][0]["description"] == "Fix the login bug"
         assert task_list["tasks"][0]["status"] == "pending"
@@ -202,18 +194,18 @@ class TestCmdTeamDelegate:
         oc_dir = _setup_manager_with_tasks(tmp_path)
         rc, _, err = _run(["team", "delegate"], _make_env(oc_dir))
         assert rc == 1
-        assert "usage" in err.lower() or "required" in err.lower() or "task description" in err.lower()
+        assert (
+            "usage" in err.lower() or "required" in err.lower() or "task description" in err.lower()
+        )
 
     def test_priority_flag_accepted(self, tmp_path: Path) -> None:
         oc_dir = _setup_manager_with_tasks(tmp_path)
-        rc, out, _ = _run(
+        rc, _out, _ = _run(
             ["team", "delegate", "--priority", "high", "Urgent task"],
             _make_env(oc_dir),
         )
         assert rc == 0
-        task_list = json.loads(
-            (oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text()
-        )
+        task_list = json.loads((oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text())
         assert task_list["tasks"][0]["priority"] == "high"
 
     def test_invalid_priority_exits_1(self, tmp_path: Path) -> None:
@@ -307,9 +299,7 @@ class TestCmdTeamTransitions:
         rc, out, _ = _run(["team", "start", "task-abc"], _make_env(oc_dir))
         assert rc == 0
         assert "in_progress" in out
-        data = json.loads(
-            (oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text()
-        )
+        data = json.loads((oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text())
         assert data["tasks"][0]["status"] == "in_progress"
         assert data["tasks"][0]["startedAt"] is not None
 
@@ -318,9 +308,7 @@ class TestCmdTeamTransitions:
         rc, out, _ = _run(["team", "done", "task-xyz"], _make_env(oc_dir))
         assert rc == 0
         assert "done" in out
-        data = json.loads(
-            (oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text()
-        )
+        data = json.loads((oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text())
         assert data["tasks"][0]["status"] == "done"
 
     def test_cancel_moves_to_cancelled(self, tmp_path: Path) -> None:
@@ -328,9 +316,7 @@ class TestCmdTeamTransitions:
         rc, out, _ = _run(["team", "cancel", "task-zzz"], _make_env(oc_dir))
         assert rc == 0
         assert "cancelled" in out
-        data = json.loads(
-            (oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text()
-        )
+        data = json.loads((oc_dir / "workspaces" / "manager" / "TASK_LIST.json").read_text())
         assert data["tasks"][0]["status"] == "cancelled"
 
     def test_start_requires_task_id(self, tmp_path: Path) -> None:

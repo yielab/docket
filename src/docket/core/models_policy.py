@@ -182,9 +182,7 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     return role_models, tiers, default_model
 
 
-def resolve_role_model(
-    role: str, role_models: dict[str, str] | None = None
-) -> str:
+def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> str:
     """Return the effective model for a role (loads registry if not supplied)."""
     if role_models is None:
         role_models, _, _ = load_registry()
@@ -265,9 +263,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
 
     # 4. Malformed.
     role_models, _, _ = load_registry()
-    lines = "\n".join(
-        f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES
-    )
+    lines = "\n".join(f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES)
     raise ValueError(
         f"Invalid model: '{model}'\n"
         "Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).\n"
@@ -341,9 +337,7 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     """
     path = cfg.MODEL_REGISTRY_FILE
     try:
-        reg: dict[str, Any] = (
-            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        )
+        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception:
         reg = {}
 

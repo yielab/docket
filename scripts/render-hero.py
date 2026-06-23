@@ -12,23 +12,25 @@ centerpiece screen is `docket info` (session-key isolation), NOT a cost table.
 Usage:  python3 scripts/render-hero.py
 Deps:   Pillow.  Style: Catppuccin Mocha, FiraCode Nerd Font.
 """
+
 import os
+
 from PIL import Image, ImageDraw, ImageFont
 
 # ─── Catppuccin Mocha palette ────────────────────────────────────────────────
-BASE     = (30, 30, 46)      # #1e1e2e  background
-TITLEBAR = (43, 43, 64)      # #2b2b40  title bar
-TEXT     = (205, 214, 244)   # #cdd6f4
-SUBTEXT  = (186, 194, 222)   # #bac2de
-OVERLAY  = (108, 112, 134)   # #6c7086  dim / prompts / (policy)
-GREEN    = (166, 227, 161)   # #a6e3a1  ✓ / ● up
-SKY      = (137, 220, 235)   # #89dceb  subcommand
-BLUE     = (137, 180, 250)   # #89b4fa  agent ids / docket
-MAUVE    = (203, 166, 247)   # #cba6f7
-YELLOW   = (249, 226, 175)   # #f9e2af  flags / values
-PEACH    = (250, 179, 135)   # #fab387  isolation callout
-RED      = (243, 139, 168)
-TEAL     = (148, 226, 213)
+BASE = (30, 30, 46)  # #1e1e2e  background
+TITLEBAR = (43, 43, 64)  # #2b2b40  title bar
+TEXT = (205, 214, 244)  # #cdd6f4
+SUBTEXT = (186, 194, 222)  # #bac2de
+OVERLAY = (108, 112, 134)  # #6c7086  dim / prompts / (policy)
+GREEN = (166, 227, 161)  # #a6e3a1  ✓ / ● up
+SKY = (137, 220, 235)  # #89dceb  subcommand
+BLUE = (137, 180, 250)  # #89b4fa  agent ids / docket
+MAUVE = (203, 166, 247)  # #cba6f7
+YELLOW = (249, 226, 175)  # #f9e2af  flags / values
+PEACH = (250, 179, 135)  # #fab387  isolation callout
+RED = (243, 139, 168)
+TEAL = (148, 226, 213)
 
 W, H = 940, 868
 PAD_X = 30
@@ -41,18 +43,31 @@ REG = ImageFont.truetype(os.path.join(FONT_DIR, "FiraCodeNerdFont-Retina.ttf"), 
 BOLD = ImageFont.truetype(os.path.join(FONT_DIR, "FiraCodeNerdFont-Bold.ttf"), FONT_SIZE)
 TITLE_FONT = ImageFont.truetype(os.path.join(FONT_DIR, "FiraCodeNerdFont-Retina.ttf"), 17)
 
+
 # A "span" is (text, color, bold?). A "line" is a list of spans.
 def S(text, color=TEXT, bold=False):
     return (text, color, bold)
+
 
 # ─── The narrative (final state of each command block) ───────────────────────
 # Each block = (prompt_spans, [output_line_spans, ...])
 BLOCKS = [
     # 1. Provision an isolated agent — the core purpose, first.
     (
-        [S("$ ", OVERLAY), S("docket ", BLUE, True), S("add ", SKY), S("webapp ", BLUE), S("~/code/webapp", SUBTEXT)],
         [
-            [S("✓ ", GREEN), S("Provisioned: ", TEXT), S("webapp ", BLUE), S("(repo, claude-sonnet-4-6)", OVERLAY)],
+            S("$ ", OVERLAY),
+            S("docket ", BLUE, True),
+            S("add ", SKY),
+            S("webapp ", BLUE),
+            S("~/code/webapp", SUBTEXT),
+        ],
+        [
+            [
+                S("✓ ", GREEN),
+                S("Provisioned: ", TEXT),
+                S("webapp ", BLUE),
+                S("(repo, claude-sonnet-4-6)", OVERLAY),
+            ],
             [S("  ", TEXT), S("isolated workspace + session key", PEACH)],
             [S("✓ ", GREEN), S("Done — 1 added.", TEXT)],
         ],
@@ -61,10 +76,39 @@ BLOCKS = [
     (
         [S("$ ", OVERLAY), S("docket ", BLUE, True), S("list", SKY)],
         [
-            [S("OpenClaw  ", TEXT, True), S("● ", GREEN), S("gateway up  ", SUBTEXT), S("● ", GREEN), S("telegram on  ", SUBTEXT), S("│  ", OVERLAY), S("3 agents", SUBTEXT)],
-            [S("  webapp  ", BLUE), S("repo  ", SUBTEXT), S("claude-sonnet-4-6  ", TEXT), S("(policy)   ", OVERLAY), S("● ", GREEN), S("isolated", SUBTEXT)],
-            [S("  api     ", BLUE), S("repo  ", SUBTEXT), S("claude-sonnet-4-6  ", TEXT), S("(policy)   ", OVERLAY), S("● ", GREEN), S("isolated", SUBTEXT)],
-            [S("  blog    ", BLUE), S("task  ", SUBTEXT), S("claude-haiku-4-5   ", TEXT), S("(policy)   ", OVERLAY), S("● ", GREEN), S("isolated", SUBTEXT)],
+            [
+                S("OpenClaw  ", TEXT, True),
+                S("● ", GREEN),
+                S("gateway up  ", SUBTEXT),
+                S("● ", GREEN),
+                S("telegram on  ", SUBTEXT),
+                S("│  ", OVERLAY),
+                S("3 agents", SUBTEXT),
+            ],
+            [
+                S("  webapp  ", BLUE),
+                S("repo  ", SUBTEXT),
+                S("claude-sonnet-4-6  ", TEXT),
+                S("(policy)   ", OVERLAY),
+                S("● ", GREEN),
+                S("isolated", SUBTEXT),
+            ],
+            [
+                S("  api     ", BLUE),
+                S("repo  ", SUBTEXT),
+                S("claude-sonnet-4-6  ", TEXT),
+                S("(policy)   ", OVERLAY),
+                S("● ", GREEN),
+                S("isolated", SUBTEXT),
+            ],
+            [
+                S("  blog    ", BLUE),
+                S("task  ", SUBTEXT),
+                S("claude-haiku-4-5   ", TEXT),
+                S("(policy)   ", OVERLAY),
+                S("● ", GREEN),
+                S("isolated", SUBTEXT),
+            ],
         ],
     ),
     # 3. Isolation — the centerpiece (replaces the old cost-table screen).
@@ -72,9 +116,21 @@ BLOCKS = [
         [S("$ ", OVERLAY), S("docket ", BLUE, True), S("info ", SKY), S("webapp", BLUE)],
         [
             [S("  Codebase:     ", SUBTEXT, True), S("~/code/webapp", TEXT)],
-            [S("  Workspace:    ", SUBTEXT, True), S("~/.openclaw/workspaces/projects/webapp  ", TEXT), S("(700)", OVERLAY)],
-            [S("  Session key:  ", SUBTEXT, True), S("agent:webapp:webapp   ", TEXT), S("← no cross-project leak", PEACH)],
-            [S("  Model:        ", SUBTEXT, True), S("claude-sonnet-4-6 ", TEXT), S("(policy)", OVERLAY)],
+            [
+                S("  Workspace:    ", SUBTEXT, True),
+                S("~/.openclaw/workspaces/projects/webapp  ", TEXT),
+                S("(700)", OVERLAY),
+            ],
+            [
+                S("  Session key:  ", SUBTEXT, True),
+                S("agent:webapp:webapp   ", TEXT),
+                S("← no cross-project leak", PEACH),
+            ],
+            [
+                S("  Model:        ", SUBTEXT, True),
+                S("claude-sonnet-4-6 ", TEXT),
+                S("(policy)", OVERLAY),
+            ],
             [S("  Memory:       ", SUBTEXT, True), S("isolated · daily logs", TEXT)],
         ],
     ),
@@ -90,9 +146,22 @@ BLOCKS = [
     ),
     # 5. Budget guardrail — last, not the headline.
     (
-        [S("$ ", OVERLAY), S("docket ", BLUE, True), S("profile ", SKY), S("webapp ", BLUE), S("--budget ", SUBTEXT), S("10", YELLOW)],
         [
-            [S("✓ ", GREEN), S("Budget guardrail set: ", TEXT), S("webapp ", BLUE), S("pauses if spend exceeds ", TEXT), S("$10", YELLOW)],
+            S("$ ", OVERLAY),
+            S("docket ", BLUE, True),
+            S("profile ", SKY),
+            S("webapp ", BLUE),
+            S("--budget ", SUBTEXT),
+            S("10", YELLOW),
+        ],
+        [
+            [
+                S("✓ ", GREEN),
+                S("Budget guardrail set: ", TEXT),
+                S("webapp ", BLUE),
+                S("pauses if spend exceeds ", TEXT),
+                S("$10", YELLOW),
+            ],
         ],
     ),
 ]
@@ -115,7 +184,7 @@ def draw_line(d, y, spans, cursor_after=None):
     last partial span (typing effect) — if set, only that span is truncated
     and a block cursor is drawn."""
     x = PAD_X
-    for i, (text, color, bold) in enumerate(spans):
+    for _i, (text, color, bold) in enumerate(spans):
         f = BOLD if bold else REG
         d.text((x, y), text, font=f, fill=color)
         x += d.textlength(text, font=f)
@@ -176,10 +245,15 @@ def main():
     # Additive frames (disposal=1) let the optimizer store only per-frame diffs
     # instead of repainting the full 940x868 canvas each frame — much smaller.
     frames[0].save(
-        out, save_all=True, append_images=frames[1:],
-        duration=durations, loop=0, optimize=True, disposal=1,
+        out,
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=0,
+        optimize=True,
+        disposal=1,
     )
-    print(f"wrote {out}: {len(frames)} frames, {sum(durations)/1000:.1f}s")
+    print(f"wrote {out}: {len(frames)} frames, {sum(durations) / 1000:.1f}s")
 
 
 if __name__ == "__main__":

@@ -2,10 +2,10 @@ EXIT:0
 
 Token Usage — All Project Agents
 
-AGENT            MODEL           INPUT     OUTPUT   COST (USD)  SOURCE    BUDGET      
+AGENT            MODEL           INPUT     OUTPUT   COST (USD)  SOURCE    BUDGET
 ──────────────────────────────────────────────────────────────────────────────────────────
-content          claude-haiku-4-5          0          0      $0.0000  pinned    $10 (0%)    
-myshop           claude-sonnet-4-6          0          0      $0.0000  policy    —         
+content          claude-haiku-4-5          0          0      $0.0000  pinned    $10 (0%)
+myshop           claude-sonnet-4-6          0          0      $0.0000  policy    —
 
                                                                Total:      $0.0000
 
