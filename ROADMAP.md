@@ -10,8 +10,14 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–7, 6b, 8, and 9 complete ☑. Other remaining: Phase 0 gates default-on flip (deferred), Phase 2 packaging stretch goals, Phase 3 CI gate promotion, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
-**Last Updated:** 2026-06-22
+**Status:** Phases 0–9 complete ☑ (including the **Bash→Python core migration**, M0–M6, now cut over — see §0). **Phase 10 — Agent architecture (pods) is the active next phase** 🟡; its executable task board is [TODO.md](TODO.md). Other remaining: Phase 0 gates default-on flip (deferred), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Last Updated:** 2026-06-23
+
+> **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
+> `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
+> here and removed — their durable content lives in §0 (completed migration) and §4.5
+> (architectural principles); their executable task boards are spent (the migration shipped).
+> Git history retains the originals.
 
 ## Tracked decisions (not yet scheduled)
 
@@ -29,6 +35,29 @@ Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned
 > here **without reading anything else first** and not lose scope. Read §1–§4 once, then
 > work the tasks in §5 top to bottom. Every task has: goal, exact files, technical
 > requirements, acceptance criteria, and tests. Do not skip the acceptance criteria.
+
+---
+
+## 0. Completed initiatives (historical record)
+
+> Folded in from the now-removed `ARCHITECTURE-AUDIT.md` + `MIGRATION-PLAN-PYTHON.md` +
+> `MIGRATION-TASKS.md`. Kept short — the durable *principles* are in §4.5; this is just the record.
+
+### Bash → Python core migration (M0–M6) — ✅ complete
+
+- **Why it happened:** an architecture audit found docket had outgrown Bash — ~14.7K lines of shell
+  with **135 embedded `python3` heredocs** forming a "Bash + inline Python" seam with a stringly-typed
+  boundary; `serve`/metrics, dual-source sync, schema validation and budgets were app logic Bash was
+  fighting. Verdict: the lowest-risk real-language target was **Python** (already a hard dependency),
+  not Go/Rust. The migration was executed as a strangler-fig with a golden-parity net.
+- **What shipped:** the three-layer `cli/ → core/ → edges/` package (§2), the single **Anti-Corruption
+  Layer** for all OpenClaw formats, Pydantic models replacing the hand-rolled schema, `store.py`
+  (atomic + filelocked), `serve.py` on stdlib `http.server`, and `ruff`/`mypy`/`pytest`/golden gates.
+  M6 deleted the entire Bash `lib/` tree and collapsed `bin/docket` to a launcher.
+- **Result:** 416 pytest tests + 17 golden parity cases; OpenClaw knowledge confined to one module.
+- **Reserved (not done, by design):** a Go/Rust single-binary rewrite — revisit **only** if zero-runtime-deps
+  single-artifact distribution becomes a hard product requirement (see §4.5). Python is the destination
+  until then.
 
 ---
 
@@ -51,33 +80,40 @@ language, replacing OpenClaw, adding features not listed here. If tempted, stop 
 
 ## 2. Ground truth about the system (read once)
 
-- **Language/stack:** pure Bash 4+, `python3` for JSON (embedded heredocs). No build/lint step.
-- **Entry point:** [bin/docket](bin/docket) sources `lib/core/*` then `lib/helpers/*` then `lib/commands/*`, then calls `route_command` ([lib/core/router.sh](lib/core/router.sh)).
-- **Two config sources that must stay in sync:**
-  - `~/.openclaw/openclaw.json` — the OpenClaw daemon's truth. **Verified top-level keys:** `meta, wizard, auth, models, agents, bindings, messages, commands, session, hooks, channels, gateway, skills`. **`agents` has subkeys `defaults` and `list`** (an array of `{id, model, workspace, …}`). There is **no** `agents.registered`.
-  - `~/.openclaw/workspaces/projects/<id>/.docket-meta.json` — docket's per-agent truth (name, type, codebase, stack, model, description, sessionKey, projectKey).
-- **Key helpers** (`lib/helpers/`):
-  - `json.sh`: `meta_get id field [default]`, `meta_set id field value`, `get_tg_binding id`, `upsert_binding`, `remove_binding`, `remove_agent_config`, `agent_registered id` (these already correctly use `agents.list`).
-  - `service.sh`: `restart_gateway` (restarts `openclaw-gateway.service`).
-  - `output.sh`: `info success warn error fail dbg header dim` — use these, never raw echo for status.
-  - `workspace.sh`: `_create_workspace`, `_aggregate_cost`, `_estimate_cost`.
-  - `config.sh`: `MODEL_PROFILES`, `MODEL_PRICING`, `resolve_model`, `model_to_profile`, paths (`CONFIG_FILE`, `PROJECTS_DIR`, `META_FILE`, `LOG_FILE`).
+> **Post-M6 (Python core).** Phases 0–9 below were authored against the **Bash** codebase;
+> their file paths (`lib/**/*.sh`) refer to the pre-cutover tree, now **deleted**. They are
+> retained verbatim as completed-work record. **For any new work (Phase 10+), the ground truth
+> is the Python package described here**, and the canonical source is [CLAUDE.md](CLAUDE.md).
+
+- **Language/stack:** Python 3.11+ (`docket` package under `src/docket/`), Typer + Rich + Pydantic + pydantic-settings + filelock. Installed via `uv`/pip; `bin/docket` is a thin Bash launcher that execs `python -m docket "$@"`. Gated by `ruff` + `mypy --strict` + `pytest`.
+- **Three layers, dependencies point inward only** — `cli/` → `core/` → `edges/`. A CLI command may call core and edges; core never imports cli; **nothing imports OpenClaw config except the ACL**.
+  - `cli/` ([src/docket/cli/](src/docket/cli/)) — Typer commands; the only layer that talks to the user. `__main__.py` maps aliases/removed-commands then hands to the Typer `app` in `cli/__init__.py`. Larger groups split out (`_install.py`, `_doctor.py`, `_gates.py`, `_trace.py`, …).
+  - `core/` ([src/docket/core/](src/docket/core/)) — Pydantic models + pure services: `models.py` (`AgentMeta`, `AgentKind`, `ModelSource`), `oc_models.py`, `policy.py`/`provider.py`/`models_policy.py` (role→model), `sync.py`, `security.py`, `approval.py`, `audit.py`, `trace.py`, `utils.py`.
+  - `edges/` ([src/docket/edges/](src/docket/edges/)) — the only side-effecting layer: `store.py` (atomic, filelocked, 0600 JSON I/O — the single chokepoint for docket-owned JSON), `adapters/openclaw.py` (**the ACL**), `adapters/system.py` (typed systemctl/docker/git wrappers, degrade gracefully).
+- **Two config sources that must stay in sync** (via the ACL + `core/sync.py`):
+  - `~/.openclaw/openclaw.json` — the OpenClaw daemon's truth. **`agents` has subkeys `defaults` and `list`** (an array of `{id, model, workspace, …}`). Reached **only** through `edges/adapters/openclaw.py`.
+  - `~/.openclaw/workspaces/projects/<id>/.docket-meta.json` — docket's per-agent truth (`kind`, `type`/`role`, `name`, `codebase`, `stack`, `model`, `modelSource`, `sessionKey`, `projectKey`, …). Read/written **only** through `edges/store.py`. Specialists have one too (`kind: specialist`, under `~/.openclaw/workspaces/<role>/`).
+- **The ACL invariant (hard boundary):** `edges/adapters/openclaw.py` is the **only** module that knows OpenClaw's file formats (`openclaw.json`, auth-profiles, provider config). No other module may import or reference those formats. Extend the ACL; never reach around it.
 - **Tests** (`tests/`):
-  - `tests/unit/test-helpers.sh` — bash asserts: `assert_equals expected actual name`, `assert_contains haystack needle name`, `assert_not_empty value name`; counters `TESTS_PASSED/TESTS_FAILED`.
-  - `tests/test-lifecycle.sh` — integration (supports `--keep`).
-  - `tests/run-all-tests.sh` — runs both; **this must stay green.**
+  - `tests/python/` — pytest suite (416 tests). `uv run pytest`.
+  - `tests/golden/` — byte-parity golden suite (`bash tests/golden/run.sh verify-all`, 17 cases) — the net that catches a behaviour change.
+  - `tests/evals/` — specialist-role eval stubs (non-blocking). CI gates on `ruff check` + `ruff format --check` + `mypy src` + `pytest` + goldens.
 
 ---
 
 ## 3. Conventions (follow exactly)
 
-- Strict mode is on (`set -euo pipefail`). Quote variables. Use `local` for function vars.
-- **Never write JSON by hand** — go through a helper (you will build one in P0-3). Always write with `json.dump(..., indent=2)`.
-- After any change to `openclaw.json`, call `restart_gateway` **once** (batch writes; see P0-4).
-- Use `error()` to exit on fatal, `fail()` to report without exit, `warn()` for non-fatal.
+> Python-core conventions (Phase 10+). The Bash-era rules below this list are preserved inside the
+> historical phases; do not apply them to new Python work.
+
+- **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
+- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600). `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
+- **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no file-format knowledge.
+- After any change to `openclaw.json`, restart the gateway **once** via `system.restart_gateway()` ([edges/adapters/system.py](src/docket/edges/adapters/system.py)); it degrades gracefully on non-systemd hosts.
+- User-facing status goes through the Rich helpers in [ui.py](src/docket/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.
 - Permissions: workspace dirs `700`, files `600`.
-- Commit style: conventional commits (`fix:`, `feat:`, `refactor:`, `test:`, `docs:`). One task ≈ one commit. End commit messages with the Co-Authored-By trailer.
-- **Every code task adds or updates a test.** No exceptions in Phase 0/1.
+- Commit style: `Type: description` (`Add:`/`Fix:`/`Docs:`/`Refactor:`/`Test:`), detailed body. One task ≈ one commit. **Public repo** — scrub real client names, `/home/<user>` paths, and usernames before committing.
+- **Every code task adds or updates a test** (pytest; add a golden case when output changes).
 
 ---
 
@@ -86,6 +122,55 @@ language, replacing OpenClaw, adding features not listed here. If tempted, stop 
 A task is done when: (a) acceptance criteria all pass, (b) a test covers the change, (c)
 `./tests/run-all-tests.sh` is green, (d) `DEBUG=1 docket doctor` runs without regression, (e)
 committed with a conventional message. Tick the box in §5 and move on.
+
+---
+
+## 4.5 Architectural principles (durable — read before any structural change)
+
+> Folded from the removed audit/migration docs. These outlive any single phase; a PR that violates
+> one needs an explicit decision entry in §6, not a silent exception.
+
+### Build vs. wrap: docket wraps OpenClaw, decisively — but wraps *cleanly*
+
+- **The moat is the control plane, not the engine.** OpenClaw owns the *execution plane* (the agent
+  loop, LLM/provider calls + model routing, tool execution + sandbox, the gateway, session/channel
+  plumbing, approval-hook enforcement) — large, security-critical, changing *weekly*. docket owns the
+  *control plane* (provisioning, multi-project isolation, cost guardrails, opinionated UX,
+  Telegram-first ops, fleet health). That control plane is the product's differentiator; none of it
+  requires owning the agent loop.
+- **Why not rebuild the runtime:** velocity/treadmill risk (LLM runtimes churn; wrapping inherits
+  provider support for free), security surface (sandbox + isolation + gates are the most expensive
+  things to get right), and time-to-value. "No direct OpenClaw CLI or JSON editing" is itself the
+  sellable proposition.
+- **The boundary makes it reversible:** the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py))
+  is the single place OpenClaw's shape lives, so build-vs-wrap stays a *reversible* bet, not a
+  load-bearing assumption smeared across the codebase. **Do not build a plugin/`AbstractBackend`
+  framework** — there is exactly one runtime; one concrete ACL behind a thin boundary is enough.
+- **When standalone *would* become right (triggers, not dates):** OpenClaw stalls / repeatedly breaks
+  compatibility / changes license or direction; the roadmap needs runtime-level capabilities upstream
+  consistently refuses; or the ACL ends up working *around* OpenClaw more than *with* it. Even then,
+  prefer absorbing a thin slice behind the existing ACL port over a full rebuild.
+- **Critical consequence for every phase:** docket is **not in the agent execution path**. The daemon
+  executes every tool call. So any feature with a runtime aspect splits into *pure-docket* (config,
+  provisioning, metadata, templates, policy authoring — ships first, fully testable) vs
+  *daemon-gated* (anything that intercepts or spawns at runtime — isolated behind a spike, never
+  overclaimed). Phases 8 and 10 are both shaped by this split.
+
+### Anti-overengineering guardrails (the "we will NOT" list)
+
+| We will NOT | Because |
+|---|---|
+| Add a DI/IoC framework | Plain constructor/function args suffice at this size |
+| Build a plugin system / `AbstractBackend` | One backend (OpenClaw); one concrete ACL behind a thin boundary — no speculative generality |
+| Use FastAPI/async for `serve` | 3 endpoints; stdlib `http.server` + `prometheus_client`, synchronous |
+| Add an ORM / database | JSON files modeled by Pydantic *are* the store (the filesystem is the trace/policy store too) |
+| Event sourcing / message bus / CQRS | It's a CLI that edits two JSON files |
+| Deep package nesting / DDD ceremony | Keep it flat: `cli/ core/ edges/`. Split a module only when it actually hurts |
+| Abstract before the second caller exists | Rule of three. Make it work, then generalize |
+
+The target is **boring, typed, obvious Python.** "Scale" here is not throughput (single-host CLI) —
+it's more *commands*, more *agents*, more *contributors*; the three-layer split + types + tests
+address exactly those.
 
 ---
 
@@ -823,6 +908,153 @@ committed with a conventional message. Tick the box in §5 and move on.
 
 ---
 
+### PHASE 10 — Agent architecture: project pods (scope ≠ role ≠ lifecycle)  *(🟡 active — Python core; work top to bottom)*
+
+> **Executable task board:** [TODO.md](TODO.md) (self-contained
+> cards, claimable by separate agents). **Rationale long-form:** `internal-docs/agent-structure-analysis.md`.
+> This section is the authoritative plan; the task board is the how/claim/status surface.
+>
+> **The problem (three structural defects in today's agent model).** docket has two agent kinds that
+> overlap and contradict:
+>
+> - **Project agents** (`docket add`) — one per codebase, persistent, full read/write/edit on their
+>   own repo. Template says it "knows this project deeply" **and** "Delegate: implementation → programmer."
+> - **Specialist agents** (`docket install`) — manager, programmer, reviewer, tester, knowledge,
+>   security ([config.py:45-46](src/docket/config.py#L45-L46)) — single **shared** instances at
+>   `~/.openclaw/workspaces/<role>/`, used by every project.
+>
+> | # | Defect | Evidence |
+> | - | ------ | -------- |
+> | A | **Two doers, neither complete.** The repo project agent has write access + deep context but is told to delegate; the shared programmer "implements an exact <500-tok brief" in a sandbox with **no git** and "does NOT investigate or design." The knower can't build; the builder doesn't know. | `templates/docket-programmer.md`; repo SOUL at [cli/__init__.py:533-563](src/docket/cli/__init__.py#L533) |
+> | B | **Shared specialists break the core isolation guarantee.** docket's headline is context isolation via session keys (`agent:<id>:<project>`, [cli/__init__.py:702](src/docket/cli/__init__.py#L702)). But specialists are **singletons with hardcoded keys** (`specialist:<role>:…`, `manager:atlas:coordination`). One programmer instance serves project A and B in the *same* session — the exact cross-project contamination the product exists to prevent. | `_provision_specialists` writes one shared workspace per role ([cli/_install.py:288-325](src/docket/cli/_install.py#L288)) |
+> | C | **"Delegation" is instruction-only; no runtime exists.** `TASK_LIST.json` is written *only* by CLI commands; no code makes the manager read it, route work, or message specialists. The "team" is markdown hoping agents talk over Telegram. | `team delegate/queue/done` are the only `TASK_LIST.json` writers ([cli/__init__.py](src/docket/cli/__init__.py)); `grep TASK_LIST templates/` → nothing |
+>
+> **Root cause:** the design flattens **three independent dimensions** into one "agent type" —
+> **role** (what it does) · **scope** (whose data it may see) · **lifecycle** (persistent vs per-task).
+> "Programmer" is modeled as a global persistent singleton when it is really a *role* that should be
+> instantiated *per project, per task*. The role *definitions* are good; their *deployment* is wrong.
+>
+> **Target structure — pods (one team per product, roles inside, a small shared platform layer):**
+>
+> ```text
+> ORG layer — shared by design, persistent, FEW (read-only / advisory)
+>   • Portfolio Manager  — cross-project queue/budgets/priorities (sees metadata, not code)   [optional]
+>   • Security Auditor    — cross-cutting, read-only; WANTS the global view
+>   • Knowledge/Librarian — shared standards, templates, post-mortems
+>
+> PER PRODUCT — one isolated pod, session-scoped to agent:<id>:<project>
+>   • Lead / Orchestrator (persistent, 1)  — owns context+memory+human comms; decomposes & dispatches; NEVER edits code
+>   └ Workers (EPHEMERAL — spawned per task, inherit the pod's session key)
+>       • Implementer (was: programmer) — runs INSIDE the product workspace, so it knows the code
+>       • Reviewer    — read-only veto, scoped to the diff
+>       • Tester      — behaviour-only PASS/FAIL
+> ```
+>
+> **Mapping from today's six specialists:** security + knowledge → stay **org-scoped persistent**
+> (cross-cutting is correct); programmer/reviewer/tester → **project-scoped ephemeral roles** (same
+> templates, different deployment); manager → splits into a **per-product Lead** (the common case) +
+> an optional single **org Portfolio Manager**.
+>
+> **The constraint that shapes this phase (same as Phase 8):** docket is **not in the agent execution
+> path** — the daemon spawns and runs agents. So the work splits:
+>
+> | Capability | Pure-docket? | How |
+> | ---------- | ------------ | --- |
+> | Scope axis on the taxonomy (org vs project) | ✅ yes | `AgentMeta` field + install/add provisioning + `list`/`doctor` |
+> | Project-scoped role workers inherit the pod session key | ✅ yes | workspace provisioning + templates → **fixes Defect B** |
+> | Lead merges manager; Implementer runs in the workspace | ✅ yes | templates + provisioning → **fixes Defect A** |
+> | Ephemeral per-task spawning + runtime dispatch | ❌ daemon | needs OpenClaw sub-agent spawn / per-task session override → spike (AA-0), gated (AA-7) → **Defect C** |
+>
+> Work order de-risks the daemon dependency: **spike → taxonomy → provisioning (ships the isolation
+> fix) → Lead/Implementer roles → org agents → dispatch (daemon-gated, isolated last) → list/doctor →
+> docs.** Reuse, don't reinvent: the `AgentMeta`/`AgentKind` model, the `kind`/`role`/`modelSource`
+> precedent, `core/sync.py`, `_create_workspace`, the role→model policy, and the Phase-8 trace for
+> dispatch events.
+
+#### 🟡 AA-0 — Spike: daemon capabilities for pods & ephemeral workers  *(blocking; do first)*
+
+- **Why:** AA-7 (real dispatch) and the ephemeral-worker model hinge on what the OpenClaw daemon can do; everything else must not assume a capability that isn't there (the Defect-C trap that produced today's instruction-only "delegation").
+- **Files:** scratch findings doc `internal-docs/POD-DAEMON-NOTES.md` (not shipped in the wheel).
+- **Requirements:** Against `openclaw --help`, the live `~/.openclaw/openclaw.json`, and <https://docs.openclaw.ai/>, answer with evidence: (a) can the daemon **spawn a sub-agent / ephemeral agent** on demand, or are all agents statically registered? (b) can one agent **send a message / dispatch work** to another through the daemon (not just Telegram), and is that programmable from docket? (c) can a single registered role run **multiple concurrent isolated sessions** keyed by different session keys (the multi-tenant programmer question), or is session state per-agent-singleton? (d) how is a **per-task session** created/torn down? Record each as supported / not-supported / unknown, with the exact config or CLI that enables it. Explicitly decide the AA-7 path: **real daemon dispatch** vs **operator-driven queue** (documented honestly).
+- **Acceptance:** `POD-DAEMON-NOTES.md` exists with a verified capability table and a one-line AA-7 verdict; at least one claim proven against the live daemon (e.g. a second session key on one role accepted, or shown impossible).
+- **Test:** N/A (research). The doc is the deliverable; AA-2…AA-7 cite it.
+
+#### 🟡 AA-1 — Add the `scope` axis to the taxonomy (the root fix)
+
+- **Why:** Defect root cause — scope is conflated with role/kind. Make scope a first-class, validated field so "shared vs project-isolated" is data, not convention.
+- **Files:** [src/docket/core/models.py](src/docket/core/models.py) (`AgentScope` enum + `scope` field on `AgentMeta`, alias-preserving; `AgentKind`/`ModelSource` are the precedent at lines 14/24/29), [src/docket/cli/_install.py](src/docket/cli/_install.py) + [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (write it at creation), `specs/data/docket-meta.spec.md` (schema doc — keep spec↔model in sync per Phase 9 CDD-1).
+- **Requirements:** `scope ∈ {org, project}` (default `project` for project agents; `org` for shared specialists). Validation rejects unknown values. Backfill rule for existing installs (lazy on read + a `doctor` fix): `kind==specialist` → derive from the role table in AA-2; `kind==project` → `project`. Document the field as `local` (docket-only) sync-class. Do **not** remove `kind`/`role` — `scope` is orthogonal to both.
+- **Acceptance:** a new agent's `.docket-meta.json` carries a valid `scope`; an unknown `scope` is rejected at the boundary; existing metas without `scope` resolve to a correct value on read.
+- **Test:** pytest: model round-trip + validation error for bad scope; backfill inference both ways.
+
+#### 🟡 AA-2 — Reclassify the six specialists: org vs project-role
+
+- **Why:** Fix Defect B at the source — only genuinely cross-cutting roles stay shared singletons.
+- **Files:** [src/docket/config.py](src/docket/config.py) (`SPECIALIST_ROLES`/`SPECIALIST_ORDER` at lines 45-77 → split into `ORG_ROLES = {security, knowledge}` + `PROJECT_ROLES = {programmer, reviewer, tester}`; `manager` handled by AA-5/AA-6), [src/docket/cli/_install.py](src/docket/cli/_install.py) (`_provision_specialists` installs only the org set as shared workspaces).
+- **Requirements:** `docket install` provisions **only** org-scoped agents (security, knowledge, + optional Portfolio Manager per AA-6) as shared singletons with `scope: org`. programmer/reviewer/tester are **no longer installed as global workspaces** — they become per-pod role templates instantiated by AA-3/AA-4. Migration: an existing install keeps its old specialist workspaces working (don't break running fleets) but `doctor` flags the project-roles as "to be re-scoped into pods" with guidance. Preserve the role→model policy mapping for every role regardless of scope.
+- **Acceptance:** fresh `docket install` registers the org set only; `docket list --all` shows them with `scope: org`; no global `programmer`/`reviewer`/`tester` singleton is created on a clean install.
+- **Test:** pytest/integration: clean install → org roles present, project-roles absent as singletons; existing-install migration path doesn't delete live workspaces.
+
+#### 🟡 AA-3 — Pod provisioning in `docket add`
+
+- **Why:** A project must come up as an isolated pod, not a lone agent that's told to delegate to a global singleton.
+- **Files:** [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (`cmd_add` / `_create_workspace`, ~516-770), [src/docket/core/sync.py](src/docket/core/sync.py).
+- **Requirements:** `docket add <project>` provisions the pod: the **Lead** (AA-5) plus the project-scoped role workspaces (AA-4) — programmer/reviewer/tester — **all sharing the pod session key `agent:<id>:<project>`** ([cli/__init__.py:702](src/docket/cli/__init__.py#L702)), each with `scope: project`, `kind: project`, `role: <name>`. Register each through the ACL with its session key (the multi-session answer from AA-0 decides whether these are distinct registered agents or one Lead that spawns workers; provision accordingly). One gateway restart at the end. `docket delete <project>` tears the whole pod down.
+- **Acceptance:** `docket add demo` yields a pod whose every member shares `agent:demo:default`; `docket delete demo` removes all of them and both config sources are clean.
+- **Test:** integration: add → all pod members present with the shared session key + correct scope/role; delete → none remain, no orphan bindings.
+
+#### 🟡 AA-4 — Project-scoped role templates (Implementer knows the code)
+
+- **Why:** Fix Defect A — the role that implements must run *in* the project workspace with real context, not from a 500-token brief in a sandbox.
+- **Files:** `src/docket/templates/docket-programmer.md` → an in-pod **Implementer** template; `docket-reviewer.md`, `docket-tester.md` re-scoped; the workspace-emission path in `_create_workspace`.
+- **Requirements:** Re-author the three role templates as **pod members**: identity bound to the project + pod session key (inherit the workspace's `SOUL.md` context, not a compressed brief); the Implementer has read/write/edit on the project codebase (it *is* in the workspace) and the agreed git posture; Reviewer stays read-only veto on the diff; Tester stays behaviour-only PASS/FAIL. Remove the "shared specialist / `specialist:<role>:…` key" language and the sandbox-only/no-context framing. Bump the template version so `doctor` flags existing agents for `maintain rebuild`.
+- **Acceptance:** a freshly added pod's role files reference the project + pod session key and contain **zero** "shared specialist" / hardcoded-`specialist:` language; the Implementer template grants in-workspace code access.
+- **Test:** pytest: render each role template into a pod → asserts session-key/scope substitution and absence of the old singleton phrasing.
+
+#### 🟡 AA-5 — The Lead role (merge project-agent + manager)
+
+- **Why:** Collapse the "two doers" into one clear orchestrator per pod; the global Atlas manager becomes a per-product Lead.
+- **Files:** `src/docket/templates/docket-manager.md` → reworked into a per-pod **Lead** template; project repo/task SOUL/AGENTS emission in [cli/__init__.py:533-643](src/docket/cli/__init__.py#L533).
+- **Requirements:** The Lead is the persistent, project-scoped orchestrator: owns the pod's context/memory and human comms, decomposes work, dispatches to pod workers, and **never edits code** (keep the manager's no-edit/HITL constraints). It replaces the standalone "project agent that may implement OR delegate" — implementation is always a worker's job. The Lead's `role: lead`, `scope: project`, shares the pod session key. Keep `type` (repo/task) as the policy role for model resolution.
+- **Acceptance:** an added pod has exactly one Lead with the no-edit constraint and the pod session key; the old "delegate → global programmer" instruction is gone from the project SOUL.
+- **Test:** pytest: Lead template renders with no-edit constraint + pod session key; integration: added pod has one `role: lead` member.
+
+#### 🟡 AA-6 — Org Portfolio Manager (optional, single)
+
+- **Why:** Cross-product prioritization/budget needs *one* org view — but it must not be the per-pod bottleneck the single global Atlas is today.
+- **Files:** [src/docket/cli/_install.py](src/docket/cli/_install.py), [src/docket/config.py](src/docket/config.py).
+- **Requirements:** Optionally provision **one** `scope: org`, `role: portfolio-manager` agent that sees fleet metadata/queue/budgets (not project code). It does **not** dispatch into pods at runtime in v1 (that's AA-7/daemon); it's the cross-pod planning/visibility surface. Gate behind an install flag if you want it opt-in. Keep it distinct from per-pod Leads.
+- **Acceptance:** with the flag, install creates one org Portfolio Manager visible in `docket list --all` with `scope: org`; without it, none exists and pods still function.
+- **Test:** integration: flag on → one portfolio-manager; flag off → none; it never appears as a pod member.
+
+#### 🟡 AA-7 — Real dispatch (DAEMON-gated; decision from AA-0)
+
+- **Why:** Turn Defect C's instruction-only delegation into something reliable — *if* the daemon supports it; otherwise document the ceiling honestly instead of overclaiming.
+- **Files:** [src/docket/serve.py](src/docket/serve.py) (dispatch loop), [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (`team`/`TASK_LIST.json`), [src/docket/core/trace.py](src/docket/core/trace.py) (emit dispatch events, reuse Phase 8).
+- **Requirements:** **If AA-0 says yes:** the `docket serve` loop reads the pod's `TASK_LIST.json`, dispatches each task to the right pod worker via the daemon (Lead → Implementer → Reviewer → Tester pipeline), collects completion markers, and emits trace events at each hop. **If AA-0 says no:** keep the queue + Lead as the operator-driven surface, file an upstream daemon-hook request, and **document** in help/README that runtime routing is operator-mediated (the Phase 8 honesty rule — no overclaiming inline enforcement). Either way, dispatch happens **within a pod** (shared session key), never across pods.
+- **Acceptance:** (yes-path) a queued pod task is dispatched and traced end-to-end without manual Telegram relay; (no-path) docs state precisely that dispatch is operator-driven and the queue is the contract.
+- **Test:** (yes) integration with a faked daemon dispatch → trace shows the pipeline; (no) docs grep audit asserts no "automatic routing" overclaim.
+
+#### 🟡 AA-8 — `docket list` / `doctor` taxonomy view + migration
+
+- **Why:** "What agents exist, what scope, what role, in which pod" must be answerable at a glance, and existing installs must migrate safely.
+- **Files:** [src/docket/cli/__init__.py](src/docket/cli/__init__.py) (`list`), [src/docket/cli/_doctor.py](src/docket/cli/_doctor.py).
+- **Requirements:** `docket list --all` gains SCOPE and POD columns (org agents listed once; pod members grouped under their project). `doctor` backfills `scope` for pre-Phase-10 metas (AA-1 rule), flags legacy global programmer/reviewer/tester singletons with the re-scope guidance from AA-2, and verifies pod members share one session key (drift check, reuse the Phase 9 pattern). `--fix` performs the safe backfills.
+- **Acceptance:** on a pre-Phase-10 install, `doctor` backfills scope and flags legacy singletons; `list --all` renders the org/pod taxonomy correctly.
+- **Test:** integration: meta-less-scope install → doctor backfills + flags; list groups pods.
+
+#### 🟡 AA-9 — Docs / help / CLAUDE.md truth pass
+
+- **Why:** The current docs describe the flawed shared-specialist model; they must teach the pod model and stay honest about pure-docket vs daemon-gated.
+- **Files:** `CLAUDE.md` ("Agent Types" + architecture), `README.md`, `docs/` (WORKFLOW-GUIDE, DOCKET), [src/docket/cli/_help.py](src/docket/cli/_help.py).
+- **Requirements:** Rewrite the agent-type narrative to **pods**: org-scoped shared agents (security, knowledge, optional Portfolio Manager) vs per-product pods (Lead + project-scoped Implementer/Reviewer/Tester). State plainly what's enforced by provisioning/isolation (scope, session-key inheritance) vs what's daemon-gated (runtime dispatch, per AA-7). Remove "specialists are shared resources that work across all projects" for the project-roles. Keep claims honest (no dollar-savings, no overclaimed runtime routing).
+- **Acceptance:** `grep -ri "shared resource" CLAUDE.md docs/` no longer describes programmer/reviewer/tester as global; docs describe pods + the daemon caveat; tests green.
+- **Test:** docs grep audit + `uv run pytest` green.
+
+**Phase 10 exit criteria:** scope is a validated first-class axis on every agent; a clean install creates only org-scoped shared agents; `docket add` provisions an isolated pod whose Lead + Implementer/Reviewer/Tester share one session key (no shared singleton serves two projects); the Implementer runs in the project workspace (knower == builder); the single global Atlas manager is replaced by per-pod Leads + an optional org Portfolio Manager; runtime dispatch is either real-via-daemon or documented as operator-driven (never overclaimed); `docket list`/`doctor` show and migrate the org/pod taxonomy; docs teach the pod model honestly.
+
+---
+
 ## 7. Backlog (deferred indefinitely)
 
 - New channel auth flows (Discord OAuth, Slack app install) — OpenClaw owns this entirely; docket just writes bindings.
@@ -831,25 +1063,43 @@ committed with a conventional message. Tick the box in §5 and move on.
 
 ---
 
-## 8. How to start (first session)
+## 8. How to start (current — Phase 10)
+
+Phases 0–9 are complete (§5 is the record). The active work is **Phase 10 — Agent architecture
+(pods)**; claim tasks from [TODO.md](TODO.md).
 
 ```bash
-git checkout -b phase-0-correctness
-# Work P0-1 first — it's the smallest, highest-confidence fix.
-grep -rn "registered" lib/            # find all the bad keys
-# ...fix, add test, run:
-./tests/run-all-tests.sh
-git commit -m "fix: use agents.list instead of agents.registered (live config key)"
-# Then P0-2 … P0-6 in order.
+git checkout -b pc/aa-0-daemon-spike        # one branch per AA-task
+# AA-0 first — it gates the dispatch design (do NOT assume daemon capabilities).
+uv run pytest                                # baseline green before you start
+# ...do the task, add tests, then:
+uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
+bash tests/golden/run.sh verify-all          # byte-parity net
+git commit -m "Feat: AA-0 — spike daemon pod/dispatch capabilities"
 ```
 
-Work tasks **in order within a phase**; phases are gated (finish Phase 0 before Phase 1).
-Tick boxes in §5 as you go. When a decision in §6 blocks you, apply the default and note it.
+Work AA-tasks **in dependency order** (AA-0 spike → AA-1 taxonomy → AA-2/3/4 provisioning →
+AA-5/6 roles → AA-7 dispatch → AA-8/9). Tick boxes in the task board as you go. When a decision
+blocks you, record it (§6 pattern) and apply the documented default.
 
 ---
 
 ### Changelog
 
+- **2026-06-23** — **Consolidation + PHASE 10 added.** Folded the three standalone planning docs into
+  this roadmap and removed them: `ARCHITECTURE-AUDIT.md` (language verdict — *migrate to Python* —
+  executed by M6; build-vs-wrap + the language reasoning survive in §4.5/§0), `MIGRATION-PLAN-PYTHON.md`
+  and `MIGRATION-TASKS.md` (the Bash→Python strangler-fig plan + task board — fully shipped; recorded in
+  §0). Refreshed the stale Bash ground-truth (§2) and conventions (§3) to the Python three-layer/ACL
+  reality; added §0 (completed migration) and §4.5 (durable architectural principles + anti-overengineering
+  guardrails). **Added PHASE 10 — Agent architecture (pods)** (AA-0 … AA-9): fixes the three structural
+  defects in the agent model — (A) "two doers" split between project agent and shared programmer, (B)
+  shared specialist singletons break the session-key isolation guarantee, (C) "delegation" is instruction-only
+  with no runtime. Plan: make **scope** a first-class axis (org vs project), reclassify the six specialists
+  (security/knowledge → org; programmer/reviewer/tester → project-scoped pod roles; manager → per-pod Lead +
+  optional org Portfolio Manager), provision each project as an isolated **pod** sharing one session key, and
+  gate runtime dispatch behind a daemon-capability spike (AA-0). Executable cards in
+  [TODO.md](TODO.md); rationale in `internal-docs/agent-structure-analysis.md`.
 - **2026-06-22** — **PHASE 9 complete** (CDD-1 … CDD-6): `lib/core/schema.sh` declares the full
   `.docket-meta.json` field set once (name/type/enum/sync-class); `meta_set` validates every write
   against it (unknown field → error, type mismatch → error, enum violation → error); `docket doctor`
