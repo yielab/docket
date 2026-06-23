@@ -47,3 +47,5 @@ completions
 eval
 metrics
 help
+# M6: install ported — cutover complete.
+install
