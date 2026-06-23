@@ -1,0 +1,31 @@
+EXIT:0
+{
+  "agents": [
+    {
+      "id": "content",
+      "kind": "project",
+      "name": "Content Blog",
+      "type": "task",
+      "model": "anthropic/claude-haiku-4-5",
+      "modelSource": "pinned",
+      "stack": "",
+      "codebase": "",
+      "budgetUsd": 10,
+      "telegram": null,
+      "registered": true
+    },
+    {
+      "id": "myshop",
+      "kind": "project",
+      "name": "My Shop",
+      "type": "repo",
+      "model": "anthropic/claude-sonnet-4-6",
+      "modelSource": "policy",
+      "stack": "Docker,git",
+      "codebase": "<HOME>/Sites/myshop",
+      "budgetUsd": "",
+      "telegram": "-1001234567890",
+      "registered": true
+    }
+  ]
+}

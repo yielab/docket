@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Fake openclaw binary for golden tests.
+# Returns canned, deterministic output for every subcommand docket calls.
+# Unknown subcommands exit 0 silently (safe default for golden parity).
+
+FAKE_HOME="${HOME:-/tmp/fake-home}"
+OC_DIR="${OPENCLAW_DIR:-$FAKE_HOME/.openclaw}"
+
+case "${1:-}" in
+  # ── gateway / service ────────────────────────────────────────────────────────
+  gateway)
+    case "${2:-}" in
+      status) echo '{"running":true,"pid":12345,"uptime":"2h"}' ;;
+      start)  echo "gateway started" ;;
+      stop)   echo "gateway stopped" ;;
+      *)      echo "gateway ok" ;;
+    esac
+    ;;
+
+  # ── agent listing ────────────────────────────────────────────────────────────
+  list|agents)
+    cat "$OC_DIR/openclaw.json" 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for a in d.get('agents',{}).get('list',[]):
+    print(a['id'])
+" || true
+    ;;
+
+  # ── workspace info ───────────────────────────────────────────────────────────
+  workspace)
+    case "${2:-}" in
+      info)
+        local_id="${3:-unknown}"
+        echo '{"id":"'"$local_id"'","status":"ok"}'
+        ;;
+      *)
+        echo "workspace ok"
+        ;;
+    esac
+    ;;
+
+  # ── config get / set ─────────────────────────────────────────────────────────
+  config)
+    case "${2:-}" in
+      get)
+        # Return the value at the dotted path from openclaw.json
+        python3 -c "
+import json,sys
+d=json.load(open('$OC_DIR/openclaw.json'))
+path='${3:-}'
+for k in path.split('.'):
+    d=d.get(k,{}) if isinstance(d,dict) else {}
+print(json.dumps(d) if isinstance(d,(dict,list)) else d)
+" 2>/dev/null || echo ""
+        ;;
+      set)
+        # No-op in tests — callers verify state via JSON file directly
+        echo "config set: ${3:-} = ${4:-} (fake)"
+        ;;
+      *)
+        echo "config ok"
+        ;;
+    esac
+    ;;
+
+  # ── models / auth ────────────────────────────────────────────────────────────
+  models)
+    case "${2:-}" in
+      auth)
+        case "${3:-}" in
+          status)
+            echo '{"profiles":[{"name":"main","type":"api-key","enabled":true}]}'
+            ;;
+          *)
+            echo "models auth ok"
+            ;;
+        esac
+        ;;
+      list)
+        echo '["anthropic/claude-sonnet-4-6","anthropic/claude-haiku-4-5","anthropic/claude-opus-4-8"]'
+        ;;
+      *)
+        echo "models ok"
+        ;;
+    esac
+    ;;
+
+  # ── onboard ──────────────────────────────────────────────────────────────────
+  onboard)
+    echo "onboard ok (fake)"
+    ;;
+
+  # ── version ──────────────────────────────────────────────────────────────────
+  --version|version|-V)
+    echo "openclaw 0.0.0-fake"
+    ;;
+
+  # ── unknown — silent pass ────────────────────────────────────────────────────
+  *)
+    exit 0
+    ;;
+esac
