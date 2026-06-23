@@ -1,179 +1,32 @@
 #!/usr/bin/env bash
-# docket — OpenClaw project agent manager (Modular Edition)
+# docket — thin launcher.
 #
-# Lifecycle commands:
-#   docket list                  List all project agents
-#   docket add                   Add a new project agent (interactive)
-#   docket info   [id]           Detailed status of one project
-#   docket delete [id]           Remove agent and optionally its workspace
-#   docket reset  [id]           Clear memory, reset heartbeat (keep identity)
-#   docket repair [id]           Fix permissions, routing, missing files
+# Since the Bash→Python cutover (M6), every command is implemented in the
+# Python package `docket` (src/docket/). This shim only resolves an interpreter
+# and execs the module; all argument handling, aliasing, version and help live
+# in Python (docket.__main__ / docket.cli).
 #
-#
-# Session management:
-#   docket scope [id] show       Display current scope
-#   docket scope [id] set <key>  Change project scope
-#   docket scope [id] reset      Reset to default
-#
-# Workflows:
-#   docket workflow [id] list            List workflows
-#   docket workflow [id] create <name>   Create from template
-#   docket workflow [id] show <name>     Display workflow
-#   docket workflow [id] delete <name>   Remove workflow
-#
-# Telegram commands:
-#   docket wire   [id]           Wire or update a Telegram group binding
-#   docket unwire [id]           Remove Telegram binding
-#
-# Utility commands:
-#   docket logs    [id]           View memory logs and gateway entries
-#   docket edit    [id]           Open workspace files in $EDITOR
-#   docket profile [id] [tier]    Set model profile (economy/standard/premium)
-#   docket cost    [id]           Token usage and cost breakdown
-#   docket doctor                 System-wide health check
-#
-# Usage:  docket <command> [agent-id] [args]
-#         docket                 (shows list)
+# Interpreter resolution order:
+#   1. $DOCKET_PYTHON           — explicit override (Homebrew points this at its venv)
+#   2. uv run python            — when uv + pyproject are co-located (repo/dev layout)
+#   3. python3 -m docket        — installed layout (package on sys.path)
 
-# Get script directory for sourcing (handle symlinks)
-# Resolve symlinks portably (macOS readlink has no -f) by following the chain.
+set -euo pipefail
+
+# Resolve symlinks to find this script's directory, then the project root.
 REAL_SCRIPT="${BASH_SOURCE[0]}"
 while [[ -L "$REAL_SCRIPT" ]]; do
   _link="$(readlink "$REAL_SCRIPT")"
-  if [[ "$_link" == /* ]]; then
-    REAL_SCRIPT="$_link"
-  else
-    REAL_SCRIPT="$(dirname "$REAL_SCRIPT")/$_link"
-  fi
+  if [[ "$_link" == /* ]]; then REAL_SCRIPT="$_link"; else REAL_SCRIPT="$(dirname "$REAL_SCRIPT")/$_link"; fi
 done
 SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
-
-# Resolve LIB_DIR for both layouts — no installer source-patching required:
-#   • DOCKET_LIB_DIR env override wins (packagers / tests)
-#   • installed layout:  <prefix>/bin/docket  +  <prefix>/lib/docket-cli/
-#   • repo/clone layout: <repo>/bin/docket    +  <repo>/lib/
-if [[ -n "${DOCKET_LIB_DIR:-}" ]]; then
-  LIB_DIR="$DOCKET_LIB_DIR"
-elif [[ -d "$SCRIPT_DIR/../lib/docket-cli" ]]; then
-  LIB_DIR="$(cd "$SCRIPT_DIR/../lib/docket-cli" && pwd)"
-else
-  LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
-fi
 DOCKET_CLI_ROOT="${DOCKET_CLI_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-export DOCKET_CLI_ROOT LIB_DIR
+export DOCKET_CLI_ROOT
 
-# Source core modules
-source "$LIB_DIR/core/init.sh"
-source "$LIB_DIR/core/config.sh"
-source "$LIB_DIR/core/schema.sh"
-
-# Source helper modules
-source "$LIB_DIR/helpers/output.sh"
-source "$LIB_DIR/helpers/json.sh"
-source "$LIB_DIR/helpers/session.sh"
-source "$LIB_DIR/helpers/picker.sh"
-source "$LIB_DIR/helpers/service.sh"
-source "$LIB_DIR/helpers/utils.sh"
-source "$LIB_DIR/helpers/workspace.sh"
-source "$LIB_DIR/helpers/models.sh"
-source "$LIB_DIR/helpers/budget.sh"
-source "$LIB_DIR/helpers/secrets.sh"
-source "$LIB_DIR/helpers/auth.sh"
-source "$LIB_DIR/helpers/security.sh"
-source "$LIB_DIR/helpers/audit.sh"
-source "$LIB_DIR/helpers/redact.sh"
-source "$LIB_DIR/helpers/trace.sh"
-source "$LIB_DIR/helpers/policy.sh"
-source "$LIB_DIR/helpers/approval.sh"
-source "$LIB_DIR/helpers/telegram.sh"
-source "$LIB_DIR/helpers/drift.sh"
-
-# Source command modules
-source "$LIB_DIR/commands/list.sh"
-source "$LIB_DIR/commands/info.sh"
-source "$LIB_DIR/commands/add.sh"
-source "$LIB_DIR/commands/delete.sh"
-source "$LIB_DIR/commands/wire.sh"
-source "$LIB_DIR/commands/unwire.sh"
-source "$LIB_DIR/commands/logs.sh"
-source "$LIB_DIR/commands/edit.sh"
-source "$LIB_DIR/commands/profile.sh"
-source "$LIB_DIR/commands/scope.sh"
-source "$LIB_DIR/commands/workflow.sh"
-source "$LIB_DIR/commands/keys.sh"
-source "$LIB_DIR/commands/auth.sh"
-source "$LIB_DIR/commands/cost.sh"
-source "$LIB_DIR/commands/doctor.sh"
-source "$LIB_DIR/commands/gates.sh"
-source "$LIB_DIR/commands/audit.sh"
-source "$LIB_DIR/commands/eval.sh"
-source "$LIB_DIR/commands/install.sh"
-source "$LIB_DIR/commands/help.sh"
-source "$LIB_DIR/commands/team.sh"
-source "$LIB_DIR/commands/maintain.sh"
-source "$LIB_DIR/commands/context.sh"
-source "$LIB_DIR/commands/snapshot.sh"
-source "$LIB_DIR/commands/serve.sh"
-source "$LIB_DIR/commands/models.sh"
-source "$LIB_DIR/commands/completions.sh"
-source "$LIB_DIR/commands/trace.sh"
-source "$LIB_DIR/commands/metrics.sh"
-source "$LIB_DIR/commands/policies.sh"
-source "$LIB_DIR/commands/approve.sh"
-source "$LIB_DIR/commands/deny.sh"
-# Experimental commands — gate behind DOCKET_EXPERIMENTAL=1
-if [[ "${DOCKET_EXPERIMENTAL:-0}" == "1" ]]; then
-  source "$LIB_DIR/commands/experimental/browser.sh"
+if [[ -n "${DOCKET_PYTHON:-}" ]]; then
+  exec $DOCKET_PYTHON -m docket "$@"
+elif command -v uv >/dev/null 2>&1 && [[ -f "$DOCKET_CLI_ROOT/pyproject.toml" ]]; then
+  exec uv run --project "$DOCKET_CLI_ROOT" python -m docket "$@"
+else
+  exec python3 -m docket "$@"
 fi
-
-# Source router
-source "$LIB_DIR/core/router.sh"
-
-# Parse arguments
-declare -a _ARGS=("$@")
-CMD="${_ARGS[0]:-list}"
-
-# Version flag — read from the VERSION file at the repo root.
-if [[ "$CMD" == "--version" || "$CMD" == "-V" || "$CMD" == "version" ]]; then
-  # VERSION lives at the repo root (clone) or beside lib/ (installed layout).
-  _vfile=""
-  for _c in "$DOCKET_CLI_ROOT/VERSION" "$LIB_DIR/VERSION"; do
-    [[ -f "$_c" ]] && { _vfile="$_c"; break; }
-  done
-  if [[ -n "$_vfile" ]]; then
-    echo "docket $(cat "$_vfile")"
-  else
-    echo "docket (version unknown)"
-  fi
-  exit 0
-fi
-
-# Handle --debug flag
-if [[ "$CMD" == "--debug" ]]; then
-  DEBUG=1
-  CMD="${_ARGS[1]:-list}"
-  _ARGS=("${_ARGS[@]:1}")
-fi
-
-# ── Python dispatcher seam (M1 / T1.4) ──────────────────────────────────────
-# If the command appears in lib/core/ported.list, exec the Python entry point.
-# An empty registry means all commands still route through Bash (safe default).
-#
-# Python is resolved in order:
-#   1. $DOCKET_PYTHON override (for dev/CI)
-#   2. uv run python (if uv and pyproject.toml are co-located with the repo)
-#   3. python3 on PATH
-_PORTED_LIST="$LIB_DIR/core/ported.list"
-if [[ -f "$_PORTED_LIST" ]] && grep -qxF "$CMD" "$_PORTED_LIST" 2>/dev/null; then
-  if [[ -n "${DOCKET_PYTHON:-}" ]]; then
-    _PY="$DOCKET_PYTHON"
-  elif command -v uv >/dev/null 2>&1 && [[ -f "$DOCKET_CLI_ROOT/pyproject.toml" ]]; then
-    _PY="uv run python"
-  else
-    _PY="python3"
-  fi
-  exec $_PY -m docket "$CMD" "${_ARGS[@]:1}"
-fi
-
-# Route command (Bash path)
-route_command "$CMD" "${_ARGS[@]:1}"
