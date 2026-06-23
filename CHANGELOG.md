@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Bash → Python rewrite (M6 cutover).** docket is now a Python package (`src/docket/`)
+  built on Typer + Rich + Pydantic (plus pydantic-settings and filelock), installed via
+  `uv`/pip. `bin/docket` is now a thin Bash launcher that execs `python -m docket "$@"`; all
+  command logic moved to Python and the entire Bash `lib/` (commands, helpers, core) was
+  removed. The code is organized in three layers — `cli/` (Typer commands) → `core/` (Pydantic
+  models + pure services) → `edges/` (atomic JSON store + adapters) — with
+  `edges/adapters/openclaw.py` as an **Anti-Corruption Layer**: the single module allowed to
+  know the `openclaw.json` / auth-profiles / provider-config formats. Templates moved from
+  `lib/templates/` to `src/docket/templates/` and ship in the wheel. Command aliases and
+  removed-command notices live in `src/docket/__main__.py`.
+  - **User-facing behavior is unchanged.** A 17-case golden suite (`tests/golden/run.sh
+    verify-all`) diffs CLI output byte-for-byte against frozen pre-cutover goldens, and every
+    prior command and alias still works exactly as before.
+  - **Testing/tooling:** the Bash unit/lifecycle tests are replaced by a 416-test `pytest`
+    suite (`tests/python/`), the golden parity suite, and the eval harness. New quality gates
+    `ruff check` + `ruff format --check` + `mypy --strict` run in CI. CI jobs are now
+    `python`, `golden`, `shell`, and `macos`.
+  - The remaining shell surface is just the launcher, `install.sh`/`uninstall.sh`,
+    `scripts/*.sh`, and the golden/eval harnesses (all ShellCheck-linted).
+
 - **README repositioned around the ops layer** — leads with the one-line positioning
   ("cost-aware ops layer for OpenClaw agent fleets"), a pain-first *Why*, a 60-second tour,
   and a *How it relates to OpenClaw* differentiation table, with the command reference demoted

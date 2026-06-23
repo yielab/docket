@@ -25,7 +25,7 @@ docket install
 ```
 
 **What it does:**
-1. Checks for required dependencies (bash, python3, openclaw, systemctl)
+1. Checks for required dependencies (python3 3.11+, openclaw, systemctl; bash for the launcher)
 2. Initializes OpenClaw configuration at `~/.openclaw/openclaw.json`
 3. Creates specialist agents (programmer, reviewer, tester, knowledge, security)
 4. Sets up specialist agents and best-practice defaults (enforced security gates are planned — see specs/functional/security-gates.spec.md)
@@ -39,8 +39,7 @@ docket install
 
 # Output:
 # → Checking dependencies...
-# ✓ bash 5.1.16 found
-# ✓ python3 3.10.12 found
+# ✓ python3 3.11+ found
 # ✓ openclaw 0.4.2 found
 # → Creating OpenClaw config...
 # → Creating specialist agents...
@@ -773,7 +772,7 @@ docket doctor
 ```
 
 **What it checks:**
-1. Required dependencies (bash, python3, openclaw, systemctl)
+1. Required dependencies (openclaw, python3; fzf optional)
 2. OpenClaw config file exists and is valid JSON
 3. Gateway service status
 4. Workspace permissions (700/600)
@@ -790,10 +789,9 @@ docket doctor
 # System Health Check
 # ════════════════════════════════════════
 # Dependencies
-# ✓ bash 5.1.16
-# ✓ python3 3.10.12
-# ✓ openclaw 0.4.2
-# ✓ systemctl available
+# ✓ openclaw: /usr/local/bin/openclaw
+# ✓ python3: /usr/bin/python3
+# ✓ fzf: /usr/bin/fzf
 #
 # OpenClaw
 # ✓ Config file exists
