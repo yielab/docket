@@ -2065,7 +2065,8 @@ def _secrets_meta_path() -> Path:
 
 def _load_secrets() -> dict[str, str]:
     try:
-        return _json.loads(_secrets_path().read_text(encoding="utf-8"))
+        data: dict[str, str] = _json.loads(_secrets_path().read_text(encoding="utf-8"))
+        return data
     except Exception:
         return {}
 
@@ -2080,7 +2081,8 @@ def _save_secrets(secrets: dict[str, str]) -> None:
 
 def _load_secrets_meta() -> dict[str, Any]:
     try:
-        return _json.loads(_secrets_meta_path().read_text(encoding="utf-8"))
+        data: dict[str, Any] = _json.loads(_secrets_meta_path().read_text(encoding="utf-8"))
+        return data
     except Exception:
         return {}
 
