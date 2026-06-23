@@ -51,15 +51,46 @@ def last_activity(agent_id: str) -> str:
 # ── gateway status ────────────────────────────────────────────────────────────
 
 
+_GATEWAY_UNIT = "openclaw-gateway.service"
+
+
 def gateway_active() -> bool:
     """Return True if openclaw-gateway.service is active (systemctl --user)."""
     try:
         result = subprocess.run(
-            ["systemctl", "--user", "is-active", "openclaw-gateway.service"],
+            ["systemctl", "--user", "is-active", _GATEWAY_UNIT],
             capture_output=True,
             timeout=5,
         )
         return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def restart_gateway() -> bool:
+    """Restart openclaw-gateway.service if it is running.
+
+    Honors DOCKET_NO_RESTART=1 for test hermeticity (prints a dry-run notice).
+    Returns True on success or when the service is already down.
+    Mirrors restart_gateway() in service.sh.
+    """
+    if os.environ.get("DOCKET_NO_RESTART") == "1":
+        print("[dry-run] restart_gateway called")
+        return True
+    try:
+        chk = subprocess.run(
+            ["systemctl", "--user", "is-active", _GATEWAY_UNIT],
+            capture_output=True,
+            timeout=5,
+        )
+        if chk.returncode != 0:
+            return True  # service not running — nothing to restart
+        res = subprocess.run(
+            ["systemctl", "--user", "restart", _GATEWAY_UNIT],
+            capture_output=True,
+            timeout=15,
+        )
+        return res.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
 

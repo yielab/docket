@@ -8,6 +8,7 @@ recognises as "fall through to Bash". Once a command is fully ported it:
 
 from __future__ import annotations
 
+import contextlib
 import json as _json
 import os
 import sys
@@ -17,6 +18,7 @@ import typer
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import models_policy as _mp
 from docket.core.utils import (
     CostTotals,
     DayRecord,
@@ -26,6 +28,7 @@ from docket.core.utils import (
     last_activity,
     model_source,
     project_ids,
+    restart_gateway,
     si_format,
 )
 from docket.edges import store
@@ -47,6 +50,31 @@ def _not_ported(cmd: str) -> None:
     """Signal to the dispatcher that this command is not yet on the Python path."""
     print(f"docket-py: {cmd} not yet ported — falling through to Bash", file=sys.stderr)
     raise typer.Exit(_NOT_PORTED)
+
+
+def _do_restart_gateway() -> None:
+    if not restart_gateway():
+        ui.warn("Gateway restart failed or gateway not running.")
+
+
+def _pick_agent(prompt: str) -> str:
+    """Interactive numbered picker for agent IDs (TTY only)."""
+    ids = project_ids()
+    if not ids:
+        ui.warn("No project agents found.")
+        raise typer.Exit(0)
+    ui.console.print(f"{prompt}:")
+    for i, pick in enumerate(ids, 1):
+        ui.console.print(f"  {i}) {pick}")
+    raw = input("Enter number: ").strip()
+    try:
+        idx = int(raw) - 1
+        if 0 <= idx < len(ids):
+            return ids[idx]
+    except ValueError:
+        pass
+    ui.error("Invalid selection.")
+    raise typer.Exit(1)
 
 
 # ── default (no subcommand) → list ────────────────────────────────────────────
@@ -432,18 +460,182 @@ def cmd_unwire(agent_id: str | None = typer.Argument(None)) -> None:
 def cmd_scope(
     agent_id: str | None = typer.Argument(None),
     sub: str | None = typer.Argument(None),
+    project_key: str | None = typer.Argument(None),
 ) -> None:
     """Manage session scope / project isolation key."""
-    _not_ported("scope")
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Manage scope for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Project '{aid}' not found.")
+        raise typer.Exit(1)
+
+    action = sub or "show"
+    name = _oc.meta_get(aid, "name", aid)
+    current_key = _oc.meta_get(aid, "projectKey", "default")
+    current_session = _oc.meta_get(aid, "sessionKey", f"agent:{aid}:default")
+
+    if action == "show":
+        ui.header(f"Session Scope: {name} ({aid})")
+        ui.console.print()
+        ui.console.print(f"  [bold]{'Current Scope:':<18}[/bold] {current_key}")
+        ui.console.print(f"  [bold]{'Session Key:':<18}[/bold] {current_session}")
+        ui.console.print()
+        ui.console.print(
+            "This session key prevents the agent from accessing other project contexts."
+        )
+        ui.console.print(
+            "Each project scope gets isolated workspace memory and routing."
+        )
+        ui.console.print()
+        ui.console.print("Usage:")
+        ui.console.print(f"  docket scope {aid} set <project-key>    # Change project scope")
+        ui.console.print(f"  docket scope {aid} reset                # Reset to 'default'")
+        ui.console.print()
+
+    elif action == "set":
+        if not project_key:
+            ui.error(f"Project key required. Usage: docket scope {aid} set <project-key>")
+            raise typer.Exit(1)
+        new_session = f"agent:{aid}:{project_key}"
+        _oc.meta_set(aid, "projectKey", project_key)
+        _oc.meta_set(aid, "sessionKey", new_session)
+        with contextlib.suppress(KeyError):
+            _oc.sync_session_key(aid, new_session, project_key)
+        ui.success(f"Session scope updated: {current_key} → {project_key}")
+        ui.success(f"Session key: {new_session}")
+        ui.info("Update SOUL.md to reflect the new scope if needed.")
+        _do_restart_gateway()
+
+    elif action == "reset":
+        new_session = f"agent:{aid}:default"
+        _oc.meta_set(aid, "projectKey", "default")
+        _oc.meta_set(aid, "sessionKey", new_session)
+        with contextlib.suppress(KeyError):
+            _oc.sync_session_key(aid, new_session, "default")
+        ui.success("Session scope reset to: default")
+        ui.success(f"Session key: {new_session}")
+        _do_restart_gateway()
+
+    else:
+        ui.error(f"Unknown action '{action}'. Use: show, set, or reset")
+        raise typer.Exit(1)
 
 
 @app.command("profile")
 def cmd_profile(
     agent_id: str | None = typer.Argument(None),
     model: str | None = typer.Argument(None),
+    budget: str | None = typer.Option(None, "--budget", help="USD cap (0 = remove)"),
 ) -> None:
-    """Pin or unpin an agent's model; set a budget."""
-    _not_ported("profile")
+    """Pin or unpin an agent's model; set a budget cap."""
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Set model for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    # ── --budget ──────────────────────────────────────────────────────────────
+    if budget is not None:
+        try:
+            bval = float(budget)
+            if bval < 0:
+                raise ValueError
+        except ValueError:
+            ui.error(
+                f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50)."
+            )
+            raise typer.Exit(1) from None
+        _oc.meta_set(aid, "budgetUsd", budget)
+        if budget != "0":
+            _oc.meta_set(aid, "paused", False)
+            _oc.meta_set(aid, "pausedReason", "")
+            ui.success(f"Budget cap set to ${budget} for '{aid}'.")
+        else:
+            ui.success(f"Budget cap removed for '{aid}'.")
+        if model is None:
+            return  # budget-only change, nothing more to do
+
+    # ── read current state ─────────────────────────────────────────────────────
+    name = _oc.meta_get(aid, "name", aid)
+    current = _oc.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
+    role = _mp.agent_role(aid)
+    src = _mp.agent_model_source(aid)
+    bud = _oc.meta_get(aid, "budgetUsd", "")
+
+    # ── no model given → show status ──────────────────────────────────────────
+    if model is None:
+        role_models, _, _ = _mp.load_registry()
+        policy_model = _mp.resolve_role_model(role, role_models)
+        ui.header(f"Model: {name} ({aid})")
+        ui.console.print()
+        ui.console.print(f"  [bold]{'Current model:':<18}[/bold] {current}")
+        ui.console.print(
+            f"  [bold]{'Role:':<18}[/bold] {role}"
+            f"  [dim]({_cfg.ROLE_WHY.get(role, '')})[/dim]"
+        )
+        if src == "policy":
+            ui.console.print(
+                f"  [bold]{'Source:':<18}[/bold] policy — follows the role's model (docket models)"
+            )
+        else:
+            ui.console.print(
+                f"  [bold]{'Source:':<18}[/bold] pinned — unaffected by policy changes"
+            )
+        if bud and bud != "0":
+            ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] ${float(bud):.2f}")
+        else:
+            ui.console.print(f"  [bold]{'Budget cap:':<18}[/bold] none")
+        ui.console.print()
+        ui.console.print(f"  [bold]Policy for role '{role}':[/bold] {policy_model}")
+        ui.console.print()
+        ui.console.print(f"  docket profile {aid} <provider/model>   # pin this agent")
+        ui.console.print(f"  docket profile {aid} default            # follow role policy")
+        ui.console.print(f"  docket profile {aid} --budget <USD>     # spending cap (0=none)")
+        ui.console.print("  docket models                         # view/change role policy")
+        ui.console.print()
+        return
+
+    # ── resolve the requested model ───────────────────────────────────────────
+    if model in ("default", "policy"):
+        role_models, _, _ = _mp.load_registry()
+        new_model = _mp.resolve_role_model(role, role_models)
+        new_src = "policy"
+    else:
+        try:
+            new_model, warnings = _mp.validate_model(model)
+        except ValueError as exc:
+            ui.error(str(exc))
+            raise typer.Exit(1) from None
+        for w in warnings:
+            ui.warn(w)
+        new_src = "pinned"
+
+    # ── no-op guard ───────────────────────────────────────────────────────────
+    if new_model == current and new_src == src:
+        ui.warn(f"Already using {new_model} ({new_src}). No change.")
+        return
+
+    # ── write to both stores ──────────────────────────────────────────────────
+    _oc.set_model_both(aid, new_model)
+    _oc.meta_set(aid, "modelSource", new_src)
+
+    if new_src == "policy":
+        ui.success(f"Model: {current} → {new_model} (follows role policy '{role}')")
+    else:
+        ui.success(f"Model pinned: {current} → {new_model}")
+    _do_restart_gateway()
 
 
 @app.command("keys")
@@ -459,10 +651,268 @@ def cmd_auth(sub: str | None = typer.Argument(None)) -> None:
 
 
 # ── models / policy ────────────────────────────────────────────────────────────
-@app.command("models")
-def cmd_models(sub: str | None = typer.Argument(None)) -> None:
+@app.command(
+    "models",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_models(ctx: typer.Context) -> None:
     """View and edit the role→model policy."""
-    _not_ported("models")
+    args = ctx.args
+    sub = args[0] if args else "list"
+    rest = args[1:]
+
+    if sub in ("list", "ls", ""):
+        _cmd_models_list()
+    elif sub == "set":
+        if len(rest) < 2:
+            ui.error("Usage: docket models set <role|default> <provider/model>")
+            raise typer.Exit(1)
+        _cmd_models_set(rest[0], rest[1])
+    elif sub == "preset":
+        _cmd_models_preset(rest[0] if rest else None)
+    elif sub == "reset":
+        _cmd_models_reset()
+    else:
+        ui.error(
+            f"Unknown models subcommand '{sub}'.\n"
+            "Usage:\n"
+            "  docket models                            # show role→model policy\n"
+            "  docket models set <role> <model>         # change a role's model\n"
+            "  docket models preset [name]              # list or apply a provider preset\n"
+            "  docket models reset                      # restore built-in defaults"
+        )
+        raise typer.Exit(1)
+
+
+def _cmd_models_list() -> None:
+    role_models, tiers, default_model = _mp.load_registry()
+    reg_exists = _cfg.MODEL_REGISTRY_FILE.exists()
+
+    ui.header("Role→model policy")
+    ui.console.print()
+    fmt = "  {:<12}  {:<38}  {:<14}  {:<8}  {}"
+    ui.console.print(f"[bold]{fmt.format('ROLE', 'MODEL', 'PRICE', 'SOURCE', 'WHY')}[/bold]")
+    ui.console.print(fmt.format("----", "-----", "-----", "------", "---"))
+
+    for role in _mp.ALL_ROLES:
+        m = role_models.get(role, _cfg.DEFAULT_MODEL)
+        price = _mp.pricing_label(m)
+        # source: 'user' if the registry has an explicit role override, else 'builtin'
+        reg_roles: dict[str, str] = {}
+        if reg_exists:
+            try:
+                import json as _j
+                reg_roles = _j.loads(
+                    _cfg.MODEL_REGISTRY_FILE.read_text(encoding="utf-8")
+                ).get("roles", {})
+            except Exception:
+                pass
+        source = "user" if role in reg_roles and reg_roles[role] == m else "builtin"
+        why = _cfg.ROLE_WHY.get(role, "")
+        ui.console.print(fmt.format(role, m, price, source, why))
+
+    ui.console.print()
+    ui.console.print(f"  {'default':<12}  {default_model}")
+    ui.console.print(
+        f"  {'fallback':<12}  "
+        f"{tiers.get('premium', '')} → {tiers.get('standard', '')} → {tiers.get('economy', '')}"
+    )
+    ui.console.print()
+    ui.console.print(f"  Registry file: {_cfg.MODEL_REGISTRY_FILE}")
+    if reg_exists:
+        ui.console.print("  (user overrides active)")
+    else:
+        ui.console.print("  (no user overrides — using built-in defaults)")
+    ui.dim(
+        f"  PRICE column is an estimate from a snapshot (as of {_mp.MODEL_PRICING_AS_OF});"
+        f" override in docket-models.json"
+    )
+    ui.console.print()
+    ui.console.print("Change: docket models set <role|default> <provider/model>")
+    ui.console.print(
+        "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]"
+    )
+    ui.console.print(
+        "Pin one agent instead: docket profile <id> <provider/model>"
+        "   (back: docket profile <id> default)"
+    )
+
+
+def _cmd_models_set(key: str, model: str) -> None:
+    try:
+        validated, warnings = _mp.validate_model(model)
+    except ValueError as exc:
+        ui.error(str(exc))
+        raise typer.Exit(1) from None
+    for w in warnings:
+        ui.warn(w)
+
+    updates: dict[str, str] = {}
+    touched_roles: list[str] = []
+
+    if key == "default":
+        updates["default"] = validated
+    elif _mp.is_role(key):
+        updates[f"role.{key}"] = validated
+        touched_roles.append(key)
+    elif key in ("economy", "standard", "premium"):
+        ui.warn("Tier names are deprecated — the role policy is the source of truth.")
+        for role in _mp.ALL_ROLES:
+            cls = _mp.ROLE_CLASS.get(role, "strong")
+            if (key == "economy" and cls == "cheap") or (
+                key == "standard" and cls == "strong"
+            ):
+                updates[f"role.{role}"] = validated
+                touched_roles.append(role)
+        if key == "premium":
+            ui.info(
+                "premium is a fallback anchor only — no role uses it by default."
+                " Pin an agent instead: docket profile <id> <provider/model>"
+            )
+        updates[f"tier.{key}"] = validated
+        if touched_roles:
+            ui.info(f"Mapped to role(s): {' '.join(touched_roles)}")
+    else:
+        all_r = " ".join(_mp.ALL_ROLES)
+        ui.error(f"Unknown key '{key}'. Use a role ({all_r}) or 'default'.")
+        raise typer.Exit(1)
+
+    _mp.write_registry(updates)
+    ui.success(f"{key} → {validated}")
+    if validated not in _mp.MODEL_PRICING:
+        ui.info(f"No pricing data for {validated} — cost will show as n/a.")
+
+    if touched_roles:
+        ui.console.print()
+        ui.info("Re-resolving policy-following agents...")
+        n = _mp.reapply_role_policy()
+        if n:
+            ui.console.print(f"  {n} agent(s) updated.")
+        _do_restart_gateway()
+
+
+def _cmd_models_preset(preset: str | None) -> None:
+    if preset is None:
+        ui.header("Provider presets")
+        ui.console.print()
+        fmt = "  {:<18}  {:<8}  {:<20}  {}"
+        ui.console.print(f"[bold]{fmt.format('PRESET', 'COST', 'KEY NEEDED', 'DESCRIPTION')}[/bold]")
+        ui.console.print(fmt.format("------", "----", "----------", "-----------"))
+        for p in _mp.KNOWN_PRESETS:
+            t = _mp.PRESET_TABLE[p]
+            marker = " (default)" if p == "anthropic" else ""
+            ui.console.print(
+                fmt.format(f"{p}{marker}", t["cost"], t["key"], t["note"])
+            )
+        ui.console.print()
+        ui.console.print("Apply: docket models preset <name>")
+        ui.console.print()
+        ui.console.print(
+            "Free options: openrouter-free (zero per-token cost, free account at openrouter.ai)"
+        )
+        return
+
+    if preset not in _mp.PRESET_TABLE:
+        valid = " ".join(_mp.KNOWN_PRESETS)
+        ui.error(f"Unknown preset '{preset}'. Valid: {valid}")
+        raise typer.Exit(1)
+
+    t = _mp.PRESET_TABLE[preset]
+    econ, std, prem = t["economy"], t["standard"], t["premium"]
+    cost, note = t["cost"], t["note"]
+
+    cheap_roles = [r for r in _mp.ALL_ROLES if _mp.ROLE_CLASS.get(r) == "cheap"]
+    strong_roles = [r for r in _mp.ALL_ROLES if _mp.ROLE_CLASS.get(r) == "strong"]
+
+    updates: dict[str, str] = {
+        "tier.economy": econ,
+        "tier.standard": std,
+        "tier.premium": prem,
+        "default": std,
+    }
+    for r in cheap_roles:
+        updates[f"role.{r}"] = econ
+    for r in strong_roles:
+        updates[f"role.{r}"] = std
+
+    ui.console.print()
+    ui.info(f"Applying preset: {preset}")
+    ui.console.print(f"  {' '.join(cheap_roles)}")
+    ui.console.print(f"    → {econ}")
+    ui.console.print(f"  {' '.join(strong_roles)}")
+    ui.console.print(f"    → {std}")
+    ui.console.print(f"  fallback ceiling → {prem}")
+    if cost == "free":
+        ui.console.print("  cost → free per-token (zero cost on free-tier models)")
+    else:
+        ui.console.print("  cost → paid")
+    if note:
+        ui.console.print(f"  note → {note}")
+    ui.console.print()
+
+    _mp.write_registry(updates)
+    ui.success(f"Preset '{preset}' applied.")
+
+    ui.console.print()
+    ui.info("Re-resolving policy-following agents...")
+    n = _mp.reapply_role_policy()
+    if n:
+        ui.console.print(f"  {n} agent(s) updated.")
+    _do_restart_gateway()
+
+    # Key check — warn if the required API key isn't stored.
+    key_name = t.get("key", "")
+    if key_name:
+        secrets_path = _cfg.OPENCLAW_DIR / "secrets.json"
+        key_present = False
+        if secrets_path.exists():
+            try:
+                import json as _j
+                key_present = key_name in _j.loads(
+                    secrets_path.read_text(encoding="utf-8")
+                )
+            except Exception:
+                pass
+        if not key_present:
+            ui.console.print()
+            ui.warn(f"API key {key_name} is not stored yet.")
+            ui.console.print(f"  Add it: docket keys add {key_name} <your-key>")
+            if preset in ("openrouter-free", "openrouter"):
+                ui.console.print("  Get one: https://openrouter.ai/keys (free account available)")
+
+    ui.console.print()
+    ui.info("Pinned agents kept their model. Pin or unpin one agent:")
+    ui.console.print("  docket profile <id> <provider/model>   # pin")
+    ui.console.print("  docket profile <id> default            # follow the role policy again")
+
+
+def _cmd_models_reset() -> None:
+    if not _cfg.MODEL_REGISTRY_FILE.exists():
+        ui.info("No user overrides found (already using built-in defaults).")
+        return
+
+    ui.console.print()
+    ui.warn(
+        "This will remove all user model overrides and restore the built-in role policy"
+        " (Anthropic defaults)."
+    )
+    ui.console.print()
+    confirm = input("Continue? [y/N] ").strip()
+    if confirm.lower() not in ("y", "yes"):
+        ui.info("Aborted.")
+        return
+
+    _mp.write_registry({}, reset=True)
+    with contextlib.suppress(FileNotFoundError):
+        _cfg.MODEL_REGISTRY_FILE.unlink()
+    ui.success("Restored built-in model defaults.")
+
+    ui.console.print()
+    ui.info("Re-resolving policy-following agents...")
+    n = _mp.reapply_role_policy()
+    if n:
+        ui.console.print(f"  {n} agent(s) updated.")
+    _do_restart_gateway()
 
 
 # ── team ───────────────────────────────────────────────────────────────────────
