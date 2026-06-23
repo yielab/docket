@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "docket"
+version = "0.1.0"
+description = "OpenClaw project agent manager"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "filelock>=3.13",
+]
+
+[project.scripts]
+docket-py = "docket.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/docket"]
+
+# ── ruff ──────────────────────────────────────────────────────────────────────
+[tool.ruff]
+src = ["src"]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # typer.Argument/Option calls in defaults are the intended Typer pattern
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["docket"]
+
+# ── mypy ──────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+files = ["src/docket"]
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "-ra -q"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.18",
+]
