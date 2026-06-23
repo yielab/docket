@@ -22,3 +22,6 @@ unwire
 # M4 wave 3a: edit + snapshot.
 edit
 snapshot
+# M4 wave 3b: logs + workflow.
+logs
+workflow

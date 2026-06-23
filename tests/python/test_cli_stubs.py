@@ -21,14 +21,15 @@ COMMANDS = [
     # M4 wave 3a — fully ported:
     # ["edit"],     # ported
     # ["snapshot"], # ported
+    # M4 wave 3b — fully ported:
+    # ["logs"],     # ported
+    # ["workflow"], # ported
     ["add"],
     ["maintain"],
     ["context"],
     ["keys"],
     ["auth"],
     ["team"],
-    ["workflow"],
-    ["logs"],
     ["doctor"],
     ["gates"],
     ["audit"],
