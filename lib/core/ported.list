@@ -25,3 +25,5 @@ snapshot
 # M4 wave 3b: logs + workflow.
 logs
 workflow
+# M4 wave 3c: team.
+team
