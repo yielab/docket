@@ -107,14 +107,20 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 
 ---
 
-### AA-3 — Pod provisioning in `docket add`
-- **Depends on:** AA-1, AA-2 (and read AA-0's verdict for the registration shape) · **Parallel-safe with:** AA-6
+### AA-3 — Pod provisioning in `docket add` + configurable pod (lean default, decided 2026-06-23)
+- **Depends on:** AA-1, AA-2 (read AA-0's verdict for the registration shape) · **Parallel-safe with:** AA-6
 - **Read:** `src/docket/cli/__init__.py` (`cmd_add`/`_create_workspace` ~516-770; session key `agent:{id}:{project}`@702; meta write incl. `sessionKey`@716; `_oc.add_agent`/`sync_session_key`@760-763), `src/docket/core/sync.py`, `edges/adapters/openclaw.py`.
-- **Do:** `docket add <project>` provisions an isolated **pod** as **distinct registered worker agents** (AA-0 verdict: workspace, not session key, is the real isolation primitive). Create the **Lead** (AA-5) + project-scoped Implementer/Reviewer/Tester (AA-4) via the ACL wrapping `openclaw agents add <project>-<role> --workspace ~/.openclaw/workspaces/pods/<project>/<role> --model <role-policy> --non-interactive --json`. Each gets its **own** workspace under the pod (none shared across projects — this is the Defect-B fix), `scope: project`, `kind: project`, `role: <name>`, and a `agent:<project>:<…>`-namespaced session key. The load-bearing guarantee is **"no worker agent serves two projects."** One `system.restart_gateway()` at the end. `docket delete <project>` tears the whole pod down via `openclaw agents delete` (both config sources clean).
-- **Out of scope:** template content (AA-4); the Lead's instruction text (AA-5).
-- **Deliverables:** edited `cli/__init__.py` (add/delete), `core/sync.py` if needed, integration tests.
-- **Acceptance gate:** [ ] `docket add demo` → every pod member shares `agent:demo:default`, correct scope/role; [ ] exactly one gateway restart; [ ] `docket delete demo` removes all members + bindings from both sources.
-- **Size:** L (split add/delete if needed) · **Status:** TODO
+- **Pod composition (configurable — the options, explicit):**
+  - **Default `docket add <project>` → 2-agent lean pod: Lead + Implementer.** Lead orchestrates; Implementer runs *in* the project workspace and writes code. Useful and cheap.
+  - **`docket pod <project> add <role> [--count N]`** → add **reviewer**, **tester**, or **another implementer** later. Roles may be **duplicated** (e.g. 2 implementers) → indexed ids `<project>-implementer`, `<project>-implementer-2`.
+  - **`docket pod <project>`** → list members (id, role, model, scope).
+  - **`docket pod <project> remove <member-id>`** → remove one member.
+  - **`docket add <project> --pod full`** (or `--with reviewer,tester`) → provision the 4-role pod up front.
+- **Do:** Provision each pod member as a **distinct registered agent** (AA-0: workspace, not session key, is the real isolation primitive) via the ACL wrapping `openclaw agents add <project>-<role>[-N] --workspace ~/.openclaw/workspaces/pods/<project>/<role>[-N] --model <role-policy> --non-interactive --json`. Each: own workspace (Defect-B fix), `kind: project`, `scope: project`, `role: <lead|implementer|reviewer|tester>`, `agent:<project>:…`-namespaced session key. Guarantee: **no worker agent serves two projects.** One `system.restart_gateway()` per command. `docket delete <project>` tears down **every** member via `openclaw agents delete`; `pod remove` removes one. Adding a role whose template (AA-4/AA-5) is missing → refuse with a clear message.
+- **Out of scope:** template *content* (AA-4 Implementer/Reviewer/Tester; AA-5 Lead) beyond the minimal Lead+Implementer needed for the default pod to render.
+- **Deliverables:** ACL `provision_pod_agent`/`teardown_pod_agent`; edited `cmd_add`; new `pod` command group (`add`/`remove`/list); edited `cmd_delete`; integration tests.
+- **Acceptance gate:** [ ] `docket add demo` → 2 members (`demo-lead`, `demo-implementer`), each `scope: project` + distinct workspace; [ ] `docket pod demo add implementer` → `demo-implementer-2`; [ ] `docket pod demo add reviewer` works; [ ] `docket pod demo` lists members; [ ] one gateway restart per command; [ ] `docket delete demo` removes all members + bindings from both sources.
+- **Size:** L · **Status:** TODO
 
 ---
 
