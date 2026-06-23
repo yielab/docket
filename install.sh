@@ -46,47 +46,42 @@ if [[ ! -f "${SCRIPT_DIR}/bin/docket" ]]; then
 fi
 
 echo ""
-echo "Installing docket-cli to ${PREFIX}..."
+echo "Installing docket to ${PREFIX}..."
 
-# The CLI is now a thin Bash launcher that execs the Python package. Only the
-# launcher is copied; all command logic lives in the `docket` Python module
-# installed below. (The Bash lib/ was removed at the M6 cutover.)
-mkdir -p "$BIN_DIR"
-cp "${SCRIPT_DIR}/bin/docket" "$BIN_DIR/docket"
+# docket is a Python package behind a thin launcher. Install the package into a
+# dedicated venv — isolated, and avoids PEP 668 "externally-managed-environment"
+# errors common on Homebrew/Debian Python — then generate a launcher that execs
+# that venv's interpreter via `python -m docket` (so aliases/--version, handled
+# in docket.__main__, work). The Bash lib/ was removed at the M6 cutover.
+VENV_DIR="${PREFIX}/lib/docket/venv"
+mkdir -p "$BIN_DIR" "$(dirname "$VENV_DIR")"
+
+echo "→ Creating Python venv at ${VENV_DIR} ..."
+rm -rf "$VENV_DIR"
+python3 -m venv "$VENV_DIR"
+"$VENV_DIR/bin/python" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
+
+echo "→ Installing the docket package ..."
+if ! "$VENV_DIR/bin/python" -m pip install --quiet "${SCRIPT_DIR}"; then
+  echo "Error: failed to install the docket Python package into the venv."
+  exit 1
+fi
+"$VENV_DIR/bin/python" -c 'import docket' 2>/dev/null \
+  || { echo "Error: docket not importable after install."; exit 1; }
+
+echo "→ Writing launcher ${BIN_DIR}/docket ..."
+cat > "$BIN_DIR/docket" <<LAUNCHER
+#!/usr/bin/env bash
+# docket launcher — execs the packaged CLI in its dedicated venv.
+exec "${VENV_DIR}/bin/python" -m docket "\$@"
+LAUNCHER
 chmod 755 "$BIN_DIR/docket"
 
-# ── Python core ──
-# Every command is dispatched to `python3 -m docket` by the launcher, so the
-# package MUST be importable by python3 or the CLI is non-functional. Prefer uv
-# (fast) when present; otherwise pip --user.
 echo ""
-echo "Installing the docket Python core..."
-_py_installed=0
-if command -v uv >/dev/null 2>&1; then
-  # Build+install into the user environment uv manages; --python pins 3.11+.
-  if uv pip install --system "${SCRIPT_DIR}" >/dev/null 2>&1 \
-     || uv pip install "${SCRIPT_DIR}" >/dev/null 2>&1; then
-    _py_installed=1
-  fi
-fi
-if [[ "$_py_installed" -eq 0 ]]; then
-  if python3 -m pip install --user --upgrade "${SCRIPT_DIR}" >/dev/null 2>&1; then
-    _py_installed=1
-  fi
-fi
-if [[ "$_py_installed" -eq 1 ]] && python3 -c 'import docket' 2>/dev/null; then
-  echo "✓ Python core installed (python3 -m docket)."
-else
-  echo "⚠ Could not install the docket Python package automatically."
-  echo "  The CLI needs it — install manually with ONE of:"
-  echo "    uv pip install --system \"${SCRIPT_DIR}\""
-  echo "    python3 -m pip install --user \"${SCRIPT_DIR}\""
-  echo "  (or set DOCKET_PYTHON to a Python that can 'import docket')."
-fi
-
 echo "✓ Installation complete."
 echo ""
 echo "  Binary:  $BIN_DIR/docket"
+echo "  Venv:    $VENV_DIR"
 echo "  Version: $("$BIN_DIR/docket" --version 2>/dev/null || echo 'n/a')"
 echo ""
 
