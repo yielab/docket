@@ -203,6 +203,18 @@ docket [global-options] <command> [command-options] [arguments]
 **Key names**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`
 **Output**: Key status or update confirmation
 **Return**: 0 on success, 4 on invalid key name
+**Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
+
+#### docket auth
+**Purpose**: Manage how agents authenticate to the Claude model provider (front-end over `openclaw models auth`). Distinct from `docket keys`, which manages workspace secrets, not model auth.
+**Syntax**: `docket auth [action]`
+**Actions**:
+- `status`: Show configured auth profiles and whether any is usable — default
+- `setup`: Interactive chooser — Claude subscription or API key
+- `login`: Configure a Claude subscription token (`setup-token`)
+- `key`: Configure an API key (`paste-token`)
+**Output**: Profile status or setup confirmation
+**Return**: 0 on success, non-zero if the underlying flow fails or is cancelled
 
 ### Workflow Commands
 

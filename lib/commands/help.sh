@@ -45,7 +45,8 @@ ${BOLD}CONFIGURATION${RESET}
                         follow the role policy; --budget <USD> sets a spending cap
   ${GREEN}models${RESET}             View/change the role→model policy; switch provider presets
   ${GREEN}scope${RESET}    [id] [a]  Manage session scopes for multi-project isolation
-  ${GREEN}keys${RESET}     <action>  Manage API keys — syncs to all agents
+  ${GREEN}auth${RESET}     <action>  Configure Claude model auth (subscription or API key)
+  ${GREEN}keys${RESET}     <action>  Manage workspace secrets — syncs to all agents
 
 ${BOLD}CONTEXT & MEMORY  (docket context [id] <subcommand>)${RESET}
   ${GREEN}show${RESET}               Recent activity, active tasks, stats (default)
