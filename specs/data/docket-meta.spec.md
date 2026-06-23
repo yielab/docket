@@ -37,6 +37,7 @@ The field table below is the authoritative source. The same set is declared in
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
 | `kind` | enum | `project` or `specialist` | local | Yes | `add`, `install` | Whether this is a project or specialist agent |
+| `scope` | enum | `org` or `project` | local | No (backfilled) | `add`, `install`, `doctor` | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent on legacy records → derived from `kind`+`role` on read |
 | `role` | string | — | local | specialist only | `install` | Specialist role name (e.g. `programmer`) |
 | `type` | enum | `repo` or `task` | local | Yes | `add` | Agent sub-type: codebase-bound or free-roaming |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |

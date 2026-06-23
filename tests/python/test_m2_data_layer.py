@@ -118,6 +118,57 @@ class TestAgentMeta:
         assert meta.kind == AgentKind.specialist
         assert meta.role == "security"
 
+    # ── AA-1: the scope axis (Phase 10) ──────────────────────────────────────
+
+    def test_scope_round_trips_when_explicit(self) -> None:
+        from docket.core.models import AgentMeta, AgentScope
+
+        meta = AgentMeta.model_validate(
+            {"kind": "project", "type": "repo", "scope": "project"}
+        )
+        assert meta.scope == AgentScope.project
+        assert meta.model_dump(by_alias=True)["scope"] == "project"
+
+    def test_scope_explicit_value_is_respected_over_inference(self) -> None:
+        # A specialist explicitly marked org stays org even if its role would
+        # otherwise infer project — explicit always wins.
+        from docket.core.models import AgentMeta, AgentScope
+
+        meta = AgentMeta.model_validate(
+            {"kind": "specialist", "role": "programmer", "scope": "org"}
+        )
+        assert meta.scope == AgentScope.org
+
+    def test_scope_rejects_unknown_value(self) -> None:
+        from pydantic import ValidationError
+
+        from docket.core.models import AgentMeta
+
+        with pytest.raises(ValidationError):
+            AgentMeta.model_validate({"kind": "project", "scope": "global"})
+
+    def test_scope_backfill_project_agent(self) -> None:
+        from docket.core.models import AgentMeta, AgentScope
+
+        meta = AgentMeta.model_validate({"kind": "project", "type": "task"})
+        assert meta.scope == AgentScope.project
+
+    def test_scope_backfill_org_specialist(self) -> None:
+        # security/knowledge (and, for now, manager) are cross-cutting → org.
+        from docket.core.models import AgentMeta, AgentScope
+
+        for role in ("security", "knowledge", "manager"):
+            meta = AgentMeta.model_validate({"kind": "specialist", "role": role})
+            assert meta.scope == AgentScope.org, role
+
+    def test_scope_backfill_project_specialist(self) -> None:
+        # programmer/reviewer/tester become per-pod project workers → project.
+        from docket.core.models import AgentMeta, AgentScope
+
+        for role in ("programmer", "reviewer", "tester"):
+            meta = AgentMeta.model_validate({"kind": "specialist", "role": role})
+            assert meta.scope == AgentScope.project, role
+
 
 # ── T2.2: OpenClaw models ─────────────────────────────────────────────────────
 
