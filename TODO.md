@@ -91,8 +91,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Add `AgentScope` StrEnum (`org`, `project`) and a `scope: AgentScope` field on `AgentMeta` (default `project`, alias-preserving like `modelSource`/`sessionKey`). Validation rejects unknown values. Add a backfill rule used on read + by `doctor` (AA-8): `kind==specialist` → look up the role in AA-2's org/project split (`security`/`knowledge` → `org`, `programmer`/`reviewer`/`tester` → `project`, `manager` → `org` for now); `kind==project` → `project`. Document `scope` as `local` sync-class in `docket-meta.spec.md`. **Do not** remove or repurpose `kind`/`role` — scope is orthogonal.
 - **Out of scope:** changing install/add behaviour (AA-2/AA-3); migrating existing workspaces.
 - **Deliverables:** edited `core/models.py`, updated `specs/data/docket-meta.spec.md`, pytest.
-- **Acceptance gate:** [ ] new meta carries a valid `scope`; [ ] bad `scope` rejected at the model boundary; [ ] meta without `scope` resolves correctly on read; [ ] spec↔model field-set test (CDD-1) still green.
-- **Size:** S–M · **Status:** TODO
+- **Acceptance gate:** [x] new meta carries a valid `scope`; [x] bad `scope` rejected at the model boundary; [x] meta without `scope` resolves correctly on read; [x] spec updated (no automated CDD-1 parity test exists in the Python port — manual sync).
+- **Size:** S–M · **Status:** ✅ DONE (commit b84565c) — `AgentScope` enum + `scope` field + backfill validator; spec row added; 6 tests.
 
 ---
 
@@ -102,8 +102,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Split the role taxonomy in `config.py`: `ORG_ROLES = {security, knowledge}` (+ Portfolio Manager via AA-6) and `PROJECT_ROLES = {programmer, reviewer, tester}`; `manager` is handled by AA-5 (per-pod Lead). `docket install` provisions **only** org-scoped agents as shared singleton workspaces (`scope: org`). programmer/reviewer/tester are **no longer installed as global workspaces**. **Migration safety:** an existing install with the old global specialists must keep working — do not delete live workspaces; instead `doctor` (AA-8) flags the legacy project-role singletons with re-scope guidance. Keep the role→model policy mapping intact for every role regardless of scope.
 - **Out of scope:** pod creation (AA-3); template rewrites (AA-4).
 - **Deliverables:** edited `config.py` + `_install.py`, pytest + an integration test for clean-install vs existing-install.
-- **Acceptance gate:** [ ] clean `docket install` registers org roles only (`scope: org`); [ ] no global programmer/reviewer/tester singleton on a clean install; [ ] `docket list --all` shows org roles with scope; [ ] existing-install migration doesn't delete workspaces.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] clean `docket install` registers org roles only (`scope: org`); [x] no global programmer/reviewer/tester singleton on a clean install; [ ] `docket list --all` shows org roles with scope (→ AA-8 adds the SCOPE column); [x] existing-install migration doesn't delete workspaces (install only adds; legacy workspaces untouched — doctor flagging is AA-8).
+- **Size:** M · **Status:** ✅ DONE (commit 733c609) — `ORG_ROLES`/`PROJECT_ROLES`/`ORG_SPECIALIST_ORDER` + `role_scope()`; install provisions org roles only and stamps `scope`; install tests updated.
 
 ---
 
