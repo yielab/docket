@@ -1,0 +1,16 @@
+EXIT:0
+{
+  "id": "myshop",
+  "name": "My Shop",
+  "type": "repo",
+  "codebase": "<HOME>/Sites/myshop",
+  "stack": "Docker,git",
+  "model": "anthropic/claude-sonnet-4-6",
+  "budgetUsd": "",
+  "paused": false,
+  "sessionKey": "agent:myshop:default",
+  "projectKey": "default",
+  "registered": true,
+  "telegram": "-1001234567890",
+  "lastActive": "\u2014"
+}

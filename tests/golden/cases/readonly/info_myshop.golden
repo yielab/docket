@@ -1,0 +1,32 @@
+EXIT:0
+
+Project: My Shop (myshop)
+
+  Type:              repo
+  Workspace:         <HOME>/.openclaw/workspaces/projects/myshop
+  Codebase:          <HOME>/Sites/myshop
+  Stack:             Docker,git
+  Model:             anthropic/claude-sonnet-4-6
+  Session Key:       agent:myshop:default
+  Project Scope:     default
+
+  Registered:        yes
+  Telegram:          -1001234567890
+  Last active:       —
+  Memory days:       0
+  MEMORY.md:         no
+  REQUIREMENTS:      no
+
+
+Workspace files
+  .docket-meta.json              14 lines
+  HEARTBEAT.md                   0 lines
+  SOUL.md                        0 lines
+
+
+First-run prompt (send in Telegram group if MEMORY.md is missing)
+
+  Read the codebase at <HOME>/Sites/myshop and update your
+  SOUL.md and MEMORY.md with: tech stack, entry points,
+  architecture, current state, recent git activity.
+

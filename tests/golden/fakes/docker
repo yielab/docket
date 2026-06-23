@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Fake docker for golden tests.
+case "${1:-}" in
+  ps)       echo "CONTAINER ID   IMAGE   COMMAND   CREATED   STATUS   PORTS   NAMES" ;;
+  info)     echo '{"ServerVersion":"fake"}' ;;
+  version)  echo "Docker version 0.0.0-fake, build 000000" ;;
+  *)        exit 0 ;;
+esac

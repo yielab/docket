@@ -1,0 +1,41 @@
+EXIT:0
+
+  OpenClaw  ● gateway up  ○ telegram off  │  8 agents  1 binding(s)  │  vopenclaw 0.0.0-fake
+  ──────────────────────────────────────────────────────────────────
+PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
+
+
+  content  (Content Blog)
+  task  │  claude-haiku-4-5 (policy)  │  stack: 1  │  0 day-log(s)
+  path: pinned  │  active: —
+  ○ not registered  ○ no telegram  ○ no memory  ○ no reqs
+
+  myshop  (My Shop)
+  repo  │  claude-sonnet-4-6 (policy)  │  stack: Docker,git  │  0 day-log(s)
+  path: ~/Sites/myshop  │  active: —
+  ● registered  ● telegram (-1001234567890)  ○ no memory  ○ no reqs
+
+  ──────────────────────────────────────────────────────────────────
+  Telegram Setup Needed  (1 agent(s) without groups)
+
+    ○ manager  → create group "Manager" then: docket wire manager
+
+  Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) docket wire <id>
+
+SPECIALIST AGENTS (the team - shared across all projects)
+
+  These work across ALL your projects. Don't wire them to individual groups.
+
+  ✓ manager      claude-haiku-4-5             (policy) — high-volume coordination, shallow reasoning
+  ✓ programmer   claude-sonnet-4-6            (policy) — code generation
+  ✓ reviewer     claude-haiku-4-5             (policy) — triage and review, low reasoning density
+  ✓ tester       claude-haiku-4-5             (policy) — run tests and report
+  ✓ knowledge    claude-haiku-4-5             (policy) — retrieval and summarization
+  ✓ security     claude-sonnet-4-6            (policy) — audit depth
+
+──────────────────────────────────────────────────────────────────────
+  docket info <id>     detailed view
+  docket cost          token usage
+  docket models        role→model policy
+  docket profile <id>  pin/unpin an agent's model
+

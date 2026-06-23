@@ -1,0 +1,25 @@
+EXIT:0
+
+Project: Content Blog (content)
+
+  Type:              task
+  Workspace:         <HOME>/.openclaw/workspaces/projects/content
+  Codebase:          
+  Stack:             
+  Model:             anthropic/claude-haiku-4-5
+  Budget cap:        $10.00
+  Session Key:       agent:content:blog
+  Project Scope:     blog
+
+  Registered:        yes
+  Telegram:          not wired
+  Last active:       —
+  Memory days:       0
+  MEMORY.md:         no
+  REQUIREMENTS:      no
+
+
+Workspace files
+  .docket-meta.json              15 lines
+  HEARTBEAT.md                   0 lines
+  SOUL.md                        0 lines
