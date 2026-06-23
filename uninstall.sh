@@ -7,8 +7,8 @@ set -euo pipefail
 # Honor the same prefix install.sh used (DOCKET_PREFIX), defaulting to ~/.local.
 INSTALL_DIR="${DOCKET_PREFIX:-${HOME}/.local}"
 BIN_FILE="${INSTALL_DIR}/bin/docket"
-LIB_DIR="${INSTALL_DIR}/lib/docket-cli"
-LEGACY_LIB_DIR="${INSTALL_DIR}/lib/docket"  # path used by installs predating this fix
+LIB_DIR="${INSTALL_DIR}/lib/docket-cli"     # Bash lib (pre-cutover installs)
+LEGACY_LIB_DIR="${INSTALL_DIR}/lib/docket"  # Python venv (current) / very old layout
 
 echo ""
 echo "=================================="
