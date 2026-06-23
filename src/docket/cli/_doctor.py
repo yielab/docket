@@ -15,6 +15,7 @@ import contextlib
 import json as _json
 import os
 import shutil
+from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
@@ -175,6 +176,53 @@ def _check_project_agents(ids: list[str]) -> int:
         else:
             ui.success(f"  {aid}: OK  →  group {tg}")
     return issues
+
+
+def _check_brave_browser() -> int:
+    """Brave-browser process scan for the OpenClaw web UI (section 8, advisory).
+
+    Ports doctor.sh section 8: counts `openclaw/browser` processes via ps, warns
+    when the oldest is stale (>2 days). Never bumps the issue count (returns 0).
+    """
+    import subprocess as _sp
+
+    ui.console.print()
+
+    def _ps() -> str:
+        try:
+            return _sp.run(["ps", "aux"], capture_output=True, text=True, timeout=10).stdout
+        except (OSError, _sp.SubprocessError):
+            return ""
+
+    procs = [ln for ln in _ps().splitlines() if "openclaw/browser" in ln and "grep" not in ln]
+    count = len(procs)
+    if count <= 0:
+        ui.dim("  Brave browser: not running (OpenClaw will auto-start when needed)")
+        return 0
+
+    # Oldest process age in days via `ps -eo pid,etimes,cmd`.
+    oldest_etimes = 0
+    try:
+        out = _sp.run(
+            ["ps", "-eo", "pid,etimes,cmd"], capture_output=True, text=True, timeout=10
+        ).stdout
+    except (OSError, _sp.SubprocessError):
+        out = ""
+    for ln in out.splitlines():
+        if "openclaw/browser" not in ln or "grep" in ln:
+            continue
+        parts = ln.split()
+        if len(parts) >= 2 and parts[1].isdigit():
+            oldest_etimes = max(oldest_etimes, int(parts[1]))
+    days_old = oldest_etimes // 86400
+
+    if days_old > 2:
+        ui.warn(f"Brave browser: {count} processes (oldest: {days_old} days old)")
+        ui.dim("  Old browser processes can cause disconnections")
+        ui.console.print("  [yellow]Fix: DOCKET_EXPERIMENTAL=1 docket browser restart[/yellow]")
+    else:
+        ui.success(f"Brave browser: {count} processes running")
+    return 0
 
 
 def _check_today_log() -> int:
@@ -512,7 +560,87 @@ def _check_metadata_backfill(ids: list[str]) -> int:
     return 0
 
 
+def _check_eval_results() -> int:
+    """Eval-results model-tier recommendations (section 16, advisory).
+
+    Ports doctor.sh section 16: when tests/evals/results/*.jsonl exist, prints
+    per-role minimum passing tier from the latest results file. Purely advisory
+    (returns 0 — never affects the issue count).
+    """
+    import collections
+
+    results_dir = _eval_results_dir()
+    if results_dir is None:
+        return 0
+    files = sorted(results_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        return 0
+    latest = files[0]
+
+    ui.console.print()
+    results_date = latest.name[: -len(".jsonl")]
+    ui.console.print(f"[bold]Eval results ({results_date}):[/bold]")
+
+    recs: list[dict[str, Any]] = []
+    try:
+        for line in latest.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            with contextlib.suppress(Exception):
+                recs.append(_json.loads(line))
+    except OSError:
+        recs = []
+    if not recs:
+        ui.console.print("  (no records in results file)")
+        return 0
+
+    tier_order = {"economy": 0, "standard": 1, "premium": 2}
+    by_role: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for r in recs:
+        by_role[str(r["role"])].append(r)
+
+    for role, results in sorted(by_role.items()):
+        passing = [r for r in results if r.get("passed")]
+        failing = [r for r in results if not r.get("passed")]
+        if not passing and not failing:
+            continue
+        if not passing:
+            ui.console.print(f"  {role}: all {len(failing)} run(s) FAILED")
+            continue
+        min_tier = min(passing, key=lambda r: tier_order.get(str(r.get("tier", "standard")), 1))[
+            "tier"
+        ]
+        avg_cost = sum(float(r.get("costUsd", 0)) for r in passing) / len(passing)
+        current_tier = results[-1].get("tier", "?")
+        if tier_order.get(str(min_tier), 1) < tier_order.get(str(current_tier), 1):
+            ui.console.print(
+                f"  [yellow]⚠[/yellow]  {role}: passes on a cheaper model class "
+                f"({min_tier}, avg ${avg_cost:.4f}/run) — docket models set {role} <provider/model>"
+            )
+        else:
+            ui.console.print(
+                f"  [green]✓[/green]  {role}: {min_tier} minimum "
+                f"(avg ${avg_cost:.4f}/run, {len(passing)}/{len(results)} passed)"
+            )
+    ui.dim("  Re-run: DOCKET_EVAL_LIVE=1 docket eval")
+    return 0
+
+
 # ── helpers ────────────────────────────────────────────────────────────────────
+
+
+def _eval_results_dir() -> Path | None:
+    """Locate tests/evals/results/ — repo root via DOCKET_CLI_ROOT or package layout.
+
+    Mirrors doctor.sh's `cd "$(dirname …)/../../tests/evals/results"` resolution.
+    """
+    root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
+    if not root.is_dir():
+        # src/docket/cli/_doctor.py → parents[3] == repo root.
+        root = Path(__file__).resolve().parents[3]
+    results = root / "tests" / "evals" / "results"
+    return results if results.is_dir() else None
 
 
 def _fmt_num(s: str) -> str:
@@ -773,6 +901,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_gateway()
     issues += _check_telegram()
     issues += _check_project_agents(ids)
+    _check_brave_browser()
     _check_today_log()
     issues += _check_models()
     issues += _check_drift(ids, do_fix)
@@ -783,6 +912,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_security_gates()
     _check_template_version(ids)
     _check_metadata_backfill(ids)
+    _check_eval_results()
 
     ui.console.print()
     if issues == 0:

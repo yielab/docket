@@ -46,8 +46,9 @@ EVENT_TYPES: frozenset[str] = frozenset(
 )
 
 # Secret-shape patterns stripped from payloads before writing (redact.sh, always-on
-# portion). The Bash also redacts exact stored-key values via an optional hook that
-# is a no-op unless secrets.sh is sourced; that best-effort step is not ported.
+# portion). The Bash also redacts the exact VALUES of stored secrets (the
+# ``_docket_stored_key_values`` hook), which redact() now applies after the regex
+# pass via the OpenClaw ACL — see _stored_secret_values.
 _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)\s*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
@@ -66,12 +67,33 @@ def _now_iso() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _stored_secret_values() -> list[str]:
+    """Stored secret values longer than 8 chars (redact.sh's >8 filter).
+
+    Best-effort: reads through the OpenClaw ACL (local import avoids a cycle) and
+    returns [] on any error, so redaction never fails a trace write.
+    """
+    try:
+        from docket.edges.adapters import openclaw as _oc
+
+        return [v for v in (s.strip() for s in _oc.secrets_values()) if len(v) > 8]
+    except Exception:
+        return []
+
+
 def redact(text: str) -> str:
-    """Strip secret-shaped substrings from *text* (always-on patterns of redact.sh)."""
+    """Strip secret-shaped substrings from *text*.
+
+    Applies redact.sh's always-on regex patterns, then redacts the exact VALUES
+    of any stored secrets (replaced after the regex pass, matching the Bash
+    ordering note).
+    """
     if not text:
         return text
     for pat in _REDACT_PATTERNS:
         text = pat.sub("[REDACTED]", text)
+    for value in _stored_secret_values():
+        text = text.replace(value, "[REDACTED]")
     return text
 
 
