@@ -81,9 +81,39 @@ def _pick_agent(prompt: str) -> str:
     raise typer.Exit(1)
 
 
+def _resolve_version() -> str:
+    """docket version — package metadata, falling back to the VERSION file."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("docket")
+    except PackageNotFoundError:
+        for cand in (
+            Path(__file__).resolve().parents[3] / "VERSION",
+            _cfg.OPENCLAW_DIR / "VERSION",
+        ):
+            if cand.is_file():
+                return cand.read_text(encoding="utf-8").strip()
+    return "unknown"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"docket {_resolve_version()}")
+        raise typer.Exit(0)
+
+
 # ── default (no subcommand) → list ────────────────────────────────────────────
 @app.callback(invoke_without_command=True)
-def _default(ctx: typer.Context) -> None:
+def _default(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output"),
+) -> None:
+    if debug:
+        os.environ["DEBUG"] = "1"
     if ctx.invoked_subcommand is None:
         cmd_list(json_out=False)
 
@@ -3048,10 +3078,7 @@ def _team_upgrade() -> None:
     import datetime as _dt
     import shutil as _shutil
 
-    cli_root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
-    if not cli_root.is_dir():
-        cli_root = Path(__file__).parents[3]
-    tmpl_dir = cli_root / "lib" / "templates"
+    tmpl_dir = _cfg.templates_dir()
 
     ui.header("Upgrading Specialists to DOCKET Architecture")
     ui.console.print()

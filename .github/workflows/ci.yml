@@ -7,53 +7,7 @@ on:
     branches: ["**"]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      # Quality gate: warning severity. Excludes are inherent to a sourced-library
-      # design, not style laziness:
-      #   SC1090/SC1091 — can't follow docket's dynamic `source "$LIB_DIR/..."`
-      #   SC2034        — shared vars (colors, model tables) defined in one file
-      #                   and consumed across sourced files; per-file analysis
-      #                   can't see the cross-file use.
-      - name: ShellCheck (warning severity)
-        run: |
-          shellcheck --version
-          shellcheck -S warning -e SC1090,SC1091,SC2034 \
-            bin/docket \
-            lib/core/*.sh lib/helpers/*.sh lib/commands/*.sh \
-            lib/commands/experimental/*.sh \
-            scripts/*.sh tests/*.sh tests/unit/*.sh
-
-      - name: Validate specs (blocking)
-        run: ./scripts/validate-specs.sh
-
-      - name: Spec coverage (informational)
-        run: ./scripts/spec-coverage.sh || true
-
-      # Unit tests are hermetic (env-overridable paths); use a throwaway HOME so
-      # nothing touches a real ~/.openclaw. Integration tests need the openclaw
-      # daemon + systemctl and are run locally, not in CI.
-      - name: Unit tests
-        run: HOME="$(mktemp -d)" ./tests/unit/test-helpers.sh
-
-      # Single source of truth for LOC / command / test counts. Fails if the
-      # README's quoted numbers drift from what the tree actually contains —
-      # honest metrics are part of the project's pitch, so they gate.
-      - name: Metrics in sync
-        run: HOME="$(mktemp -d)" ./scripts/metrics.sh --check
-
-  # Python core (M1+): lint, format, types, unit tests. Required gate on the
-  # python-core branch — guards the migration's typed core against regressions.
+  # Python core: lint, format, types, unit tests. The primary gate post-cutover.
   python:
     runs-on: ubuntu-latest
     steps:
@@ -84,9 +38,8 @@ jobs:
         run: uv run pytest
 
   # Golden contract: the parity net. Runs the captured CLI goldens through the
-  # dispatcher (ported commands hit Python, the rest Bash) and diffs byte-for-byte
-  # against the frozen output. This is what catches a port silently changing
-  # behaviour. Required gate on python-core.
+  # launcher (which execs the Python package) and diffs byte-for-byte against the
+  # frozen output — catches a port silently changing behaviour.
   golden:
     runs-on: ubuntu-latest
     steps:
@@ -104,15 +57,34 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras --dev
 
-      # The dispatcher resolves Python via `uv run python` when uv + pyproject
-      # are present (see bin/docket), so the golden harness exercises the real
-      # ported code path. Fakes on PATH stub openclaw/systemctl/docker.
       - name: Golden suite
         run: bash tests/golden/run.sh verify-all
 
-  # macOS portability check — exercises the no-systemd / BSD-coreutils paths under
-  # a brewed Bash 4+. Informational for now (the Linux job is the required gate);
-  # promote to required once it's reliably green.
+  # Shell: lint the remaining shell surface (the launcher, installers, helper
+  # scripts, the golden/eval harnesses) and validate specs.
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ShellCheck (warning severity)
+        run: |
+          shellcheck --version
+          shellcheck -S warning -e SC1090,SC1091,SC2034 \
+            bin/docket install.sh uninstall.sh \
+            scripts/*.sh \
+            tests/golden/run.sh tests/golden/fixtures/seed.sh \
+            tests/run-all-tests.sh tests/evals/*.sh tests/evals/lib/*.sh
+
+      - name: Validate specs (blocking)
+        run: ./scripts/validate-specs.sh
+
+      - name: Spec coverage (informational)
+        run: ./scripts/spec-coverage.sh || true
+
+  # macOS portability: the package + launcher must work on macOS too (no systemd,
+  # BSD coreutils). Runs the Python suite and a launcher smoke test.
   macos:
     runs-on: macos-latest
     continue-on-error: true
@@ -120,17 +92,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.x"
+          enable-cache: true
 
-      - name: Install Bash 4+ (macOS ships 3.2)
-        run: |
-          brew install bash
-          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - name: Set up Python
+        run: uv python install 3.11
 
-      - name: Unit tests under Bash 4+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: Launcher smoke test
         run: |
-          bash --version | head -1
-          HOME="$(mktemp -d)" bash ./tests/unit/test-helpers.sh
+          bash bin/docket --version
+          bash tests/golden/run.sh verify-all

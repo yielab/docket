@@ -17,7 +17,6 @@ PREFIX="${DOCKET_PREFIX:-${HOME}/.local}"
 [[ "${1:-}" == "--prefix" ]] && { PREFIX="${2:?--prefix requires a path}"; shift 2; }
 
 BIN_DIR="${PREFIX}/bin"
-LIB_DIR="${PREFIX}/lib/docket-cli"
 
 # Resolve the repo root (works from clone or from piped curl)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-./install.sh}")" && pwd 2>/dev/null)" || SCRIPT_DIR="$PWD"
@@ -49,25 +48,17 @@ fi
 echo ""
 echo "Installing docket-cli to ${PREFIX}..."
 
-mkdir -p "$BIN_DIR" "$LIB_DIR"
-cp -r "${SCRIPT_DIR}/lib/"* "$LIB_DIR/"
-cp    "${SCRIPT_DIR}/bin/docket" "$BIN_DIR/docket"
+# The CLI is now a thin Bash launcher that execs the Python package. Only the
+# launcher is copied; all command logic lives in the `docket` Python module
+# installed below. (The Bash lib/ was removed at the M6 cutover.)
+mkdir -p "$BIN_DIR"
+cp "${SCRIPT_DIR}/bin/docket" "$BIN_DIR/docket"
 chmod 755 "$BIN_DIR/docket"
 
-# Ship VERSION beside lib/ so `docket --version` works post-install (the launcher
-# checks $LIB_DIR/VERSION in the installed layout). No source-patching needed:
-# bin/docket auto-detects the <prefix>/lib/docket-cli layout at runtime.
-cp "${SCRIPT_DIR}/VERSION" "$LIB_DIR/VERSION" 2>/dev/null || true
-
-find "$LIB_DIR" -type d -exec chmod 755 {} \;
-find "$LIB_DIR" -type f -exec chmod 644 {} \;
-
-# ── Python core (M1+) ──
-# Since the Bash→Python migration, every command except `install` is dispatched
-# to `python3 -m docket` by bin/docket. The Bash bootstrap above stays thin, but
-# the Python package MUST be importable by python3 or the CLI is non-functional.
-# Prefer uv (fast, isolated) when present; otherwise pip --user. Both leave the
-# `docket` module importable for the launcher's `python3 -m docket` path.
+# ── Python core ──
+# Every command is dispatched to `python3 -m docket` by the launcher, so the
+# package MUST be importable by python3 or the CLI is non-functional. Prefer uv
+# (fast) when present; otherwise pip --user.
 echo ""
 echo "Installing the docket Python core..."
 _py_installed=0
@@ -96,7 +87,6 @@ fi
 echo "✓ Installation complete."
 echo ""
 echo "  Binary:  $BIN_DIR/docket"
-echo "  Library: $LIB_DIR"
 echo "  Version: $("$BIN_DIR/docket" --version 2>/dev/null || echo 'n/a')"
 echo ""
 

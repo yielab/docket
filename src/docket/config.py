@@ -97,16 +97,18 @@ def auth_profiles_path(agent_id: str = "main") -> Path:
 
 
 def cli_root() -> Path:
-    """Repo root that holds lib/ (mirrors LIB_DIR resolution in bin/docket).
-
-    Honours DOCKET_CLI_ROOT, else walks up from this module to the package root.
-    """
+    """Repo/install root (honours DOCKET_CLI_ROOT, else the package parent)."""
     override = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
     if override.is_dir():
         return override
     return Path(__file__).resolve().parents[2]
 
 
+def templates_dir() -> Path:
+    """Templates shipped inside the package (specialist .md, policy JSON, …)."""
+    return Path(__file__).resolve().parent / "templates"
+
+
 def policy_templates_dir() -> Path:
-    """Baseline policy templates shipped with docket (lib/templates/policies)."""
-    return cli_root() / "lib" / "templates" / "policies"
+    """Baseline policy templates shipped with docket."""
+    return templates_dir() / "policies"
