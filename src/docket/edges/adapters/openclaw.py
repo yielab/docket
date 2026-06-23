@@ -5,7 +5,7 @@ openclaw.json, auth-profiles.json, or any other OpenClaw-owned file format.
 All knowledge of those formats lives here and nowhere else.
 
 Inventory of all Bash operations this module replaces
-(cross-reference with the grep census in MIGRATION-PLAN-PYTHON.md):
+(historical census from the Bash→Python migration, now complete; see ROADMAP.md §0):
 
   openclaw.json
     [oc-01]  list all agents                        cmd_list, cmd_info, cmd_team
