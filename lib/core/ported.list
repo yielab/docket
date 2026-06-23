@@ -7,5 +7,7 @@
 #   - Use the primary command name (not aliases).
 #   - Empty = all commands route to Bash (current state during M0–M1).
 #
-# Example (uncomment when list is ported):
-# list
+# M3: read-only commands fully ported to Python.
+list
+info
+cost

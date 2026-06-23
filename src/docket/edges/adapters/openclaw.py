@@ -65,6 +65,11 @@ from docket.edges import store
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 
+def load_config() -> OpenClawConfig:
+    """Return the full openclaw.json as a validated model (public entry point)."""
+    return _load_oc()
+
+
 def _load_oc() -> OpenClawConfig:
     raw = store.read_json(CONFIG_FILE)
     return OpenClawConfig.model_validate(raw)
@@ -347,6 +352,24 @@ def add_local_provider(
         "Local provider registration is not yet implemented (T5.6). "
         "Use `openclaw models provider add` directly for now."
     )
+
+
+# ── telegram channel status ───────────────────────────────────────────────────
+
+
+def get_telegram_enabled() -> bool:
+    """Read channels.telegram.enabled from openclaw.json.
+
+    Not modelled in OpenClawConfig (OpenClaw-internal); read via raw dict.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    channels = raw.get("channels")
+    if not isinstance(channels, dict):
+        return False
+    telegram = channels.get("telegram")
+    if not isinstance(telegram, dict):
+        return False
+    return bool(telegram.get("enabled", False))
 
 
 # ── generic dotted-path access (escape hatch for Bash bridge) ─────────────────
