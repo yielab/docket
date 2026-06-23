@@ -27,3 +27,9 @@ logs
 workflow
 # M4 wave 3c: team.
 team
+# M4 final: auth, context, maintain, keys, add.
+auth
+context
+maintain
+keys
+add

@@ -26,11 +26,12 @@ COMMANDS = [
     # ["workflow"], # ported
     # M4 wave 3c — fully ported:
     # ["team"],     # ported
-    ["add"],
-    ["maintain"],
-    ["context"],
-    ["keys"],
-    ["auth"],
+    # M4 final wave — fully ported:
+    # ["add"],      # ported
+    # ["maintain"], # ported
+    # ["context"],  # ported
+    # ["keys"],     # ported
+    # ["auth"],     # ported
     ["doctor"],
     ["gates"],
     ["audit"],
