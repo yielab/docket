@@ -25,12 +25,22 @@ INTEGRATION_PASSED=true
 EVALS_PASSED=true
 
 # Run unit tests
-echo -e "${BOLD}Running Unit Tests...${RESET}"
+echo -e "${BOLD}Running Unit Tests (pytest)...${RESET}"
 echo "----------------------------------------"
-if "$SCRIPT_DIR/unit/test-helpers.sh"; then
+if (cd "$PROJECT_ROOT" && uv run pytest -q); then
   echo -e "${GREEN}✓ Unit tests passed${RESET}"
 else
   echo -e "${RED}✗ Unit tests failed${RESET}"
+  UNIT_PASSED=false
+fi
+
+echo ""
+echo -e "${BOLD}Running Golden Parity Suite...${RESET}"
+echo "----------------------------------------"
+if bash "$SCRIPT_DIR/golden/run.sh" verify-all; then
+  echo -e "${GREEN}✓ Golden suite passed${RESET}"
+else
+  echo -e "${RED}✗ Golden suite failed${RESET}"
   UNIT_PASSED=false
 fi
 
