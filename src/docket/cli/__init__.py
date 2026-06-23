@@ -1164,16 +1164,253 @@ def cmd_team(sub: str | None = typer.Argument(None)) -> None:
 def cmd_workflow(
     agent_id: str | None = typer.Argument(None),
     sub: str | None = typer.Argument(None),
+    workflow_name: str | None = typer.Argument(None),
 ) -> None:
-    """Manage Lobster YAML pipelines."""
-    _not_ported("workflow")
+    """Manage Lobster YAML pipelines (list/create/show/delete)."""
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Manage workflows for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    action = sub or "list"
+    wf_dir = ws / "workflows"
+
+    try:
+        raw = store.read_json(_cfg.meta_path(aid))
+        agent_name = str(raw.get("name", aid))
+    except Exception:
+        agent_name = aid
+
+    if action == "list":
+        ui.header(f"Workflows: {agent_name}")
+        ui.console.print()
+        if not wf_dir.is_dir():
+            ui.warn("No workflows directory")
+            ui.console.print(f"  Create one: docket workflow {aid} create")
+            return
+        wfs = sorted(wf_dir.glob("*.lobster.y*ml"))
+        if not wfs:
+            ui.console.print("  No workflows defined yet")
+            ui.console.print()
+            ui.console.print("Create a workflow template:")
+            ui.console.print(f"  docket workflow {aid} create <workflow-name>")
+            return
+        ui.console.print("[bold]Defined workflows:[/bold]")
+        for wf in wfs:
+            wf_name = wf.name
+            for ext in (".lobster.yml", ".lobster.yaml"):
+                wf_name = wf_name.replace(ext, "")
+            try:
+                steps = sum(1 for ln in wf.read_text(encoding="utf-8").splitlines() if ln.startswith("  - "))
+            except OSError:
+                steps = 0
+            ui.console.print(f"  [green]●[/green] {wf_name:<24} {steps} steps")
+        ui.console.print()
+        ui.console.print(f"Run a workflow:  lobster run --workspace {ws} --workflow <name>")
+        ui.console.print()
+
+    elif action == "create":
+        if not workflow_name:
+            ui.error(f"Workflow name required.  Usage: docket workflow {aid} create <name>")
+            raise typer.Exit(1)
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        wf_file = wf_dir / f"{workflow_name}.lobster.yml"
+        if wf_file.exists():
+            ui.warn(f"Workflow '{workflow_name}' already exists")
+            ui.console.print(f"  Edit: docket edit {aid}")
+            return
+        try:
+            raw2 = store.read_json(_cfg.meta_path(aid))
+        except Exception:
+            raw2 = {}
+        stack = str(raw2.get("stack", ""))
+        codebase = str(raw2.get("codebase", ""))
+        test_cmd = _test_cmd_for_stack(stack)
+        template = _workflow_template(workflow_name, agent_name, codebase, test_cmd)
+        wf_file.write_text(template, encoding="utf-8")
+        wf_file.chmod(0o600)
+        ui.success(f"Workflow created: {wf_file}")
+        ui.console.print()
+        ui.info("Next steps:")
+        ui.console.print(f"  1. Edit workflow: $EDITOR {wf_file}")
+        ui.console.print(f"  2. Run workflow:  lobster run --workspace {ws} --workflow {workflow_name}")
+        ui.console.print()
+
+    elif action == "show":
+        if not workflow_name:
+            ui.error(f"Workflow name required.  Usage: docket workflow {aid} show <name>")
+            raise typer.Exit(1)
+        wf_file = wf_dir / f"{workflow_name}.lobster.yml"
+        if not wf_file.is_file():
+            ui.error(f"Workflow '{workflow_name}' not found")
+            raise typer.Exit(1)
+        ui.header(f"Workflow: {workflow_name}")
+        ui.console.print()
+        ui.console.print(wf_file.read_text(encoding="utf-8"))
+        ui.console.print()
+
+    elif action == "delete":
+        if not workflow_name:
+            ui.error(f"Workflow name required.  Usage: docket workflow {aid} delete <name>")
+            raise typer.Exit(1)
+        wf_file = wf_dir / f"{workflow_name}.lobster.yml"
+        if not wf_file.is_file():
+            ui.error(f"Workflow '{workflow_name}' not found")
+            raise typer.Exit(1)
+        if sys.stdin.isatty():
+            answer = input(f"Delete workflow '{workflow_name}'? [y/N]: ").strip().lower()
+            if answer != "y":
+                ui.warn("Aborted.")
+                return
+        wf_file.unlink()
+        ui.success(f"Workflow '{workflow_name}' deleted")
+
+    else:
+        ui.error(f"Unknown action '{action}'.  Use: list, create, show, or delete")
+        raise typer.Exit(1)
+
+
+def _test_cmd_for_stack(stack: str) -> str:
+    """Return a sensible default test command for a detected stack."""
+    import re as _re
+    if _re.search(r"pytest|Python|FastAPI|Django|Flask", stack, _re.I):
+        return "pytest -v"
+    if _re.search(r"Node|npm|Next|React|Express|Fastify", stack, _re.I):
+        return "npm test"
+    if _re.search(r"PHP|Drupal|Laravel", stack, _re.I):
+        return "./vendor/bin/phpunit"
+    if _re.search(r"\bGo\b", stack):
+        return "go test ./..."
+    if _re.search(r"Rust", stack, _re.I):
+        return "cargo test"
+    return "# add test command"
+
+
+def _workflow_template(name: str, agent_name: str, codebase: str, test_cmd: str) -> str:
+    return f"""\
+# Lobster Workflow: {name}
+# Project: {agent_name}
+#
+# Deterministic pipeline — zero tokens for plumbing
+# Only calls LLM for creative work
+
+name: {name}
+description: "Automated workflow for {agent_name}"
+
+steps:
+  - id: check-status
+    type: shell
+    command: |
+      cd {codebase}
+      git status --short
+
+  - id: run-tests
+    type: shell
+    command: |
+      cd {codebase}
+      {test_cmd}
+    continueOnError: false
+
+  - id: llm-analysis
+    type: llm
+    prompt: |
+      Analyze the test results and codebase state.
+      Provide a brief summary and suggest next steps.
+    approval: required
+    # Pauses here and sends Telegram notification
+
+  - id: apply-changes
+    type: shell
+    command: |
+      cd {codebase}
+      # Apply any changes suggested by LLM
+      echo "Changes applied"
+
+  - id: verify
+    type: shell
+    command: |
+      cd {codebase}
+      {test_cmd}
+
+outputs:
+  - testResults
+  - analysis
+
+notifications:
+  onComplete: telegram
+  onError: telegram
+"""
 
 
 # ── utilities ──────────────────────────────────────────────────────────────────
 @app.command("logs")
 def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     """View memory logs and gateway entries."""
-    _not_ported("logs")
+    import datetime as _dt
+
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("View logs for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    try:
+        raw = store.read_json(_cfg.meta_path(aid))
+        name = str(raw.get("name", aid))
+    except Exception:
+        name = aid
+
+    ui.header(f"Logs: {name} ({aid})")
+
+    # ── memory logs ──────────────────────────────────────────────────────────
+    mem_dir = ws / "memory"
+    mem_files = sorted(mem_dir.glob("*.md")) if mem_dir.is_dir() else []
+    ui.console.print()
+    if mem_files:
+        latest = mem_files[-1]
+        ui.console.print(f"[bold]Latest memory log:[/bold] {latest.name}")
+        try:
+            lines = latest.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            lines = []
+        for ln in lines[:40]:
+            ui.console.print(f"  {ln}")
+        if len(lines) > 40:
+            ui.console.print(f"  [dim]... ({len(lines) - 40} more lines)[/dim]")
+    else:
+        ui.console.print("  [dim]No memory logs yet.[/dim]")
+
+    # ── gateway log (today's) ─────────────────────────────────────────────────
+    tg_peer = _oc.get_binding(aid)
+    if tg_peer:
+        today = _dt.date.today().strftime("%Y-%m-%d")
+        log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
+        if log_file.is_file():
+            try:
+                all_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                all_lines = []
+            matched = [ln for ln in all_lines if tg_peer in ln]
+            ui.console.print()
+            ui.console.print(f"[bold]Gateway log:[/bold] {len(matched)} entries today for group {tg_peer}")
+            for ln in matched[-10:]:
+                ui.console.print(f"  {ln}")
+            if len(matched) > 10:
+                ui.console.print(f"  [dim]... ({len(matched) - 10} more entries)[/dim]")
+    ui.console.print()
 
 
 @app.command("edit")
