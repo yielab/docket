@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Bump when adding required fields or changing semantics of existing ones.
 # Records without this field are implicitly version 1 (the current shape).
@@ -26,6 +26,24 @@ class ModelSource(StrEnum):
     pinned = "pinned"
 
 
+class AgentScope(StrEnum):
+    """Whose data an agent may see (Phase 10). Orthogonal to ``kind``/``role``.
+
+    ``org``     — a shared, cross-cutting agent (one instance serves all projects).
+    ``project`` — scoped to a single project/pod; never shared across projects.
+    """
+
+    org = "org"
+    project = "project"
+
+
+# Backfill inference for legacy metas written before ``scope`` existed. Specialist
+# roles that become per-pod project workers vs. genuinely cross-cutting org agents.
+# NOTE: AA-2 moves the authoritative org/project role split to ``config.py``; this
+# inline set exists only so a pre-Phase-10 record can resolve its scope on read.
+_PROJECT_SPECIALIST_ROLES = frozenset({"programmer", "reviewer", "tester"})
+
+
 class AgentMeta(BaseModel):
     """Canonical in-memory representation of .docket-meta.json.
 
@@ -40,6 +58,7 @@ class AgentMeta(BaseModel):
 
     # --- identity ---
     kind: AgentKind
+    scope: AgentScope = Field(AgentScope.project)
     name: str = ""
 
     # --- project agent ---
@@ -67,3 +86,21 @@ class AgentMeta(BaseModel):
 
     # --- internal ---
     template_version: str = Field("", alias="templateVersion")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _backfill_scope(cls, data: object) -> object:
+        """Derive ``scope`` for records written before it existed (Phase 10 AA-1).
+
+        Only fills when absent — an explicit ``scope`` is always respected. A
+        specialist's scope is inferred from its role (project workers vs. org
+        agents); a project agent is always ``project``.
+        """
+        if not isinstance(data, dict) or "scope" in data:
+            return data
+        if str(data.get("kind", "")) == AgentKind.specialist.value:
+            role = str(data.get("role", ""))
+            scope = AgentScope.project if role in _PROJECT_SPECIALIST_ROLES else AgentScope.org
+        else:
+            scope = AgentScope.project
+        return {**data, "scope": scope.value}
