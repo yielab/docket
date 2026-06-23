@@ -1,0 +1,13 @@
+EXIT:0
+
+Specialist Team Status
+
+  ○ manager      Standard (upgrade available)
+  ○ programmer   Standard (upgrade available)
+  ○ reviewer     Standard (upgrade available)
+  ○ tester       Standard (upgrade available)
+  ○ knowledge    Standard (upgrade available)
+  ○ security     Standard (upgrade available)
+
+Run 'docket team upgrade' to apply DOCKET templates
+

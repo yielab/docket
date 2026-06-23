@@ -416,6 +416,6 @@ class TestFullRun:
         monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         rc = _doctor.run_doctor(json_out=False)
         captured = capsys.readouterr()
-        # The "no agents" notice is a warn() → stderr.
-        assert "No project agents found" in captured.err
+        # The "no agents" notice is a warn() → stdout (mirrors Bash).
+        assert "No project agents found" in captured.out
         assert rc == 0

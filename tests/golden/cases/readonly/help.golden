@@ -1,0 +1,121 @@
+EXIT:0
+
+docket — OpenClaw project manager
+
+AGENT TYPES
+  Specialist Agents   Created by 'docket install' — shared team members
+                        → programmer, reviewer, tester, knowledge, security, manager
+                        → Work across ALL projects (don't create/delete manually)
+
+  Project Agents      Created by 'docket add' — one per project/codebase
+                        → Each has its own workspace, memory, and Telegram group
+
+USAGE
+  docket [--debug] <command> [agent-id] [args]
+  If agent-id is omitted an interactive picker is shown (fzf or numbered list).
+
+SETUP
+  install            Bootstrap OpenClaw + create specialist agents
+
+LIFECYCLE
+  list               List all project agents and their status
+  add                Add a new project agent (interactive)
+  add --from <f>     Provision agent(s) from a YAML/JSON spec (declarative)
+  info     [id]      Detailed status for a project
+  delete   [id]      Remove a project agent
+  maintain [id]      Health check & maintenance (see subcommands below)
+
+MAINTENANCE  (docket maintain [id] <subcommand>)
+  check              Health check + auto-fix (default)
+  clean              Clear memory logs only
+  reset              Clear memory + heartbeat
+  rebuild            Deep rebuild from .docket-meta.json
+  sessions           Archive large/old sessions (>5 MB or >30 days)
+
+TELEGRAM
+  wire   [id]        Wire or update a Telegram group binding
+  unwire [id]        Remove Telegram binding from a project
+
+CONFIGURATION
+  profile  [id] [m]  Pin an agent's model (<provider/model>) or 'default' to
+                        follow the role policy; --budget <USD> sets a spending cap
+  models             View/change the role→model policy; switch provider presets
+  scope    [id] [a]  Manage session scopes for multi-project isolation
+  auth     <action>  Configure Claude model auth (subscription or API key)
+  keys     <action>  Manage workspace secrets — syncs to all agents
+
+CONTEXT & MEMORY  (docket context [id] <subcommand>)
+  show               Recent activity, active tasks, stats (default)
+  search  <query>    Search indexed memory
+  snapshot           Create SNAPSHOT.md for fast agent context
+  index              Index memory files for search
+  compress           Archive logs older than 30 days
+  project            Quick-reference: codebase, stack, decisions
+
+MONITORING
+  cost     [id]      Token usage and cost breakdown with budget status
+  doctor             System health: gateway, config, drift, budget, runaway
+  gates              Exec-approval gates: status / enable / disable (opt-in)
+  audit    [N]       Recent mutating operations (keys, gates, profile, agents)
+  eval               Specialist-role evals: structural checks + live golden tasks
+
+OBSERVABILITY (Phase 8)
+  trace    <session>  Render one agent-action trace human-readable
+  trace tail <proj>   Follow the most-recent session live
+  trace export <proj> Export raw JSONL (--since YYYY-MM-DD)
+  trace ingest <proj> Ingest daemon session logs into traces
+  metrics            Success rate, latency, cost, guardrail trips (--role --window)
+  policies list      List installed guardrail policies
+  policies init      Install baseline policies (block-destructive, injection, redact)
+  policies test      Dry-run policy evaluator on any text
+  approve  <token>   Grant a pending HITL approval
+  deny     <token>   Deny a pending HITL approval
+
+TEAM & WORKFLOWS
+  team status        Specialist agent health and DOCKET status
+  team upgrade       Upgrade specialists to current templates
+  team roles         Show agent roles
+  team check         Verify all specialists exist
+  team delegate      Queue a task for the manager agent
+  team queue         Show pending manager tasks
+  team done          Mark a task as complete
+  workflow [id]      Manage Lobster YAML pipelines
+
+UTILITIES
+  logs      [id]     View memory logs and gateway entries
+  edit      [id]     Open workspace files in $EDITOR
+  snapshot           JSON dump of all agents, bindings, costs (--output <file>)
+  serve              Live JSON endpoint for dashboards (--port 7331 --interval 30)
+  completions        Shell completion script — eval "$(docket completions bash|zsh)"
+  help               This help message
+
+MODEL POLICY  (default: Anthropic — change with 'docket models preset')
+  Each agent role maps to the cheapest adequate model:
+  cheap   anthropic/claude-haiku-4-5   manager reviewer tester knowledge task
+  strong  anthropic/claude-sonnet-4-6  programmer security repo
+  'docket models' shows the full role→model table with pricing; 'docket profile <id>'
+  pins one agent to any model (incl. opus-class) without changing the policy.
+
+FLAGS
+  --debug         Verbose mode — or set DEBUG=1 in env
+
+EXAMPLES
+  docket                            # show project list
+  docket add                        # add a new project (interactive)
+  docket add --from agents.yaml     # provision a fleet from a spec file
+  docket doctor                     # full health check
+  docket info myproject             # inspect one project
+  docket maintain myproject clean   # clear memory logs
+  docket profile myproject default  # follow the role policy model
+  docket profile myproject anthropic/claude-opus-4-6  # pin a stronger model
+  docket profile myproject --budget 5  # set $5 spending cap
+  docket context myproject search "auth bug"  # search memory
+  docket cost                       # cost breakdown for all agents
+  docket team delegate "Fix login bug"  # queue task for manager
+  docket team queue                 # show pending tasks
+
+PATHS
+  Workspaces:  ~/.openclaw/workspaces/projects/
+  Config:      ~/.openclaw/openclaw.json
+  Logs:        <TMP>
+

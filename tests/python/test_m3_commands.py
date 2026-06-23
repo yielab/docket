@@ -156,9 +156,9 @@ class TestCmdList:
         oc_dir = tmp_path / ".openclaw"
         oc_dir.mkdir()
         (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-        rc, _out, err = _run(["list"], oc_dir)
+        rc, out, _err = _run(["list"], oc_dir)
         assert rc == 0
-        assert "No project agents" in err
+        assert "No project agents" in out  # warn() → stdout (mirrors Bash)
 
     def test_list_json_multiple_agents(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, "myshop")
