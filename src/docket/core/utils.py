@@ -348,3 +348,48 @@ def model_source(agent_id: str) -> str:
     """
     raw = store.read_json(cfg.meta_path(agent_id))
     return str(raw.get("modelSource", "policy")) or "policy"
+
+
+# ── Telegram group discovery ──────────────────────────────────────────────────
+
+
+def scan_telegram_groups() -> list[tuple[str, str, str]]:
+    """Scan OpenClaw log files for Telegram group IDs.
+
+    Returns a list of (chat_id, title, bound_agent_id) tuples.
+    bound_agent_id is '' if the group has no docket binding.
+    Mirrors _get_all_groups() in workspace.sh.
+    """
+    import re as _re
+
+    from docket.edges.adapters import openclaw as _oc
+
+    log_dir = cfg.LOG_DIR
+    if not log_dir.is_dir():
+        return []
+
+    chat_ids: dict[str, str] = {}  # chat_id → title
+    for log_file in sorted(log_dir.glob("openclaw-*.log")):
+        try:
+            text = log_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _re.finditer(r'"chatId":(-[0-9]+)', text):
+            gid = m.group(1)
+            if gid not in chat_ids:
+                title_m = _re.search(
+                    rf'"chatId":{_re.escape(gid)},"title":"([^"]*)"', text
+                )
+                chat_ids[gid] = title_m.group(1) if title_m else "unknown"
+
+    if not chat_ids:
+        return []
+
+    oc_cfg = _oc.load_config()
+    binding_map: dict[str, str] = {
+        b.match.peer.id: b.agent_id
+        for b in oc_cfg.bindings
+        if b.match.channel == "telegram"
+    }
+
+    return [(gid, title, binding_map.get(gid, "")) for gid, title in chat_ids.items()]

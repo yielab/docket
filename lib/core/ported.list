@@ -15,3 +15,7 @@ cost
 profile
 scope
 models
+# M4 wave 2: delete + channel binding management.
+delete
+wire
+unwire
