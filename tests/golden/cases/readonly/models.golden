@@ -1,0 +1,25 @@
+EXIT:0
+
+Role→model policy
+
+  ROLE          MODEL                                   PRICE           SOURCE    WHY
+  ----          -----                                   -----           ------    ---
+  manager       anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   high-volume coordination, shallow reasoning
+  programmer    anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   code generation
+  reviewer      anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   triage and review, low reasoning density
+  tester        anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   run tests and report
+  knowledge     anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   retrieval and summarization
+  security      anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   audit depth
+  repo          anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   project default for repo agents
+  task          anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   project default for task agents
+
+  default       anthropic/claude-sonnet-4-6
+  fallback      anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 → anthropic/claude-haiku-4-5
+
+  Registry file: <HOME>/.openclaw/docket-models.json
+  (user overrides active)
+  PRICE column is an estimate from a snapshot (as of <DATE>); override in docket-models.json
+
+Change: docket models set <role|default> <provider/model>
+Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]
+Pin one agent instead: docket profile <id> <provider/model>   (back: docket profile <id> default)

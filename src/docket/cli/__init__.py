@@ -2659,8 +2659,10 @@ def _cmd_models_list() -> None:
     )
     ui.console.print()
     ui.console.print("Change: docket models set <role|default> <provider/model>")
+    # markup=False: the literal [anthropic|...] must not be parsed as Rich markup.
     ui.console.print(
-        "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]"
+        "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]",
+        markup=False,
     )
     ui.console.print(
         "Pin one agent instead: docket profile <id> <provider/model>"

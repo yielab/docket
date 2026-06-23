@@ -1,0 +1,14 @@
+EXIT:0
+
+Session Scope: My Shop (myshop)
+
+  Current Scope:     default
+  Session Key:       agent:myshop:default
+
+This session key prevents the agent from accessing other project contexts.
+Each project scope gets isolated workspace memory and routing.
+
+Usage:
+  docket scope myshop set <project-key>    # Change project scope
+  docket scope myshop reset                # Reset to 'default'
+

@@ -1,0 +1,70 @@
+EXIT:0
+#compdef docket
+# docket(1) zsh completion — eval "$(docket completions zsh)"
+_docket() {
+  local -a commands
+  commands=(
+    'install:Bootstrap OpenClaw + specialist agents'
+    'list:List project agents'
+    'add:Add a new project agent'
+    'info:Detailed status of one project'
+    'delete:Remove an agent (and optionally its workspace)'
+    'maintain:Health/clean/reset/rebuild/sessions'
+    'context:Show/search/snapshot/index/compress memory'
+    'wire:Wire a Telegram group binding'
+    'unwire:Remove a Telegram binding'
+    'scope:Manage session scope keys'
+    'profile:Pin/unpin an agent model'
+    'keys:Manage API keys'
+    'team:Coordinate specialist agents'
+    'workflow:Lobster pipelines'
+    'logs:View memory + gateway logs'
+    'edit:Open workspace files in $EDITOR'
+    'cost:Token usage and cost'
+    'doctor:System health check'
+    'gates:Security exec-approval gates'
+    'audit:Audit log'
+    'eval:Specialist-role evals'
+    'snapshot:Export a workspace snapshot'
+    'serve:Local HTTP view'
+    'models:Role→model policy'
+    'trace:View/tail/export agent-action traces'
+    'metrics:Success rate, latency, cost, guardrail stats'
+    'policies:Manage guardrail policies'
+    'approve:Grant a pending HITL approval'
+    'deny:Deny a pending HITL approval'
+    'completions:Emit a shell completion script'
+    'help:Show help'
+  )
+
+  _docket_ids() {
+    local oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
+    local -a ids
+    ids=(${oc}/workspaces/projects/*(/N:t) ${oc}/workspaces/*(/N:t))
+    ids=(${ids:#projects})
+    compadd -a ids
+  }
+
+  if (( CURRENT == 2 )); then
+    _describe 'docket command' commands
+    return
+  fi
+
+  case "${words[2]}" in
+    maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
+    scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
+    context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
+    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
+    team)            compadd status delegate queue done ;;
+    gates|security)  compadd status enable disable isolate ;;
+    keys|key|secret) compadd add list remove rotate setup validate export ;;
+    models)          compadd set preset reset ;;
+    trace)           compadd tail export ingest ;;
+    policies|policy) compadd list show init test ;;
+    completions)     compadd bash zsh ;;
+    cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
+    info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
+                     (( CURRENT == 3 )) && _docket_ids ;;
+  esac
+}
+_docket "$@"

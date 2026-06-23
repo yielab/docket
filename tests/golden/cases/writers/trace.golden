@@ -1,0 +1,12 @@
+EXIT:0
+
+docket trace
+
+  docket trace <session_id>              Render one trace human-readable
+  docket trace tail <project>            Follow the most-recent session
+  docket trace export <project>          Raw JSONL passthrough
+    [--since YYYY-MM-DD]                 Filter by date
+  docket trace ingest <project>          Manually ingest daemon session logs
+
+  Traces live at: <HOME>/.openclaw/traces/<project>/<session_id>.jsonl
+
