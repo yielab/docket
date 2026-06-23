@@ -1,7 +1,7 @@
 # docket Documentation
 
-**docket** is a modular Bash CLI for provisioning and isolating OpenClaw autonomous agents
-across multiple projects, with role-based model routing and budget guardrails.
+**docket** is a Python CLI (Typer + Rich + Pydantic) for provisioning and isolating OpenClaw
+autonomous agents across multiple projects, with role-based model routing and budget guardrails.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
