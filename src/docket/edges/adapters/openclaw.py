@@ -149,22 +149,37 @@ def set_agent_model(agent_id: str, model: str) -> None:
 
 def set_agent_session_key(agent_id: str, session_key: str) -> None:
     """[oc-05] Update metadata.sessionKey for one agent."""
-    cfg = _load_oc()
-    for agent in cfg.agents.items:
+    oc = _load_oc()
+    for agent in oc.agents.items:
         if agent.id == agent_id:
             agent.metadata.session_key = session_key
-            _save_oc(cfg)
+            _save_oc(oc)
             return
     raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
 
 
 def set_agent_project_key(agent_id: str, project_key: str) -> None:
     """[oc-06] Update metadata.projectKey for one agent."""
-    cfg = _load_oc()
-    for agent in cfg.agents.items:
+    oc = _load_oc()
+    for agent in oc.agents.items:
         if agent.id == agent_id:
             agent.metadata.project_key = project_key
-            _save_oc(cfg)
+            _save_oc(oc)
+            return
+    raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
+
+
+def sync_session_key(agent_id: str, session_key: str, project_key: str) -> None:
+    """[oc-05,oc-06] Write both sessionKey and projectKey in one round-trip.
+
+    Mirrors sync_session_key() in session.sh (avoids two separate read-write cycles).
+    """
+    oc = _load_oc()
+    for agent in oc.agents.items:
+        if agent.id == agent_id:
+            agent.metadata.session_key = session_key
+            agent.metadata.project_key = project_key
+            _save_oc(oc)
             return
     raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
 

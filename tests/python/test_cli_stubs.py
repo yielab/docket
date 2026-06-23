@@ -6,21 +6,22 @@ import sys
 import pytest
 
 COMMANDS = [
-    # M3 commands are fully ported — they no longer exit 127.
+    # M3 — fully ported, no longer exit 127:
     # ["list"],  # ported
     # ["info"],  # ported
     # ["cost"],  # ported
+    # M4 wave 1 — fully ported:
+    # ["profile"],  # ported
+    # ["scope"],    # ported
+    # ["models"],   # ported
     ["add"],
     ["delete"],
     ["maintain"],
     ["context"],
     ["wire"],
     ["unwire"],
-    ["scope"],
-    ["profile"],
     ["keys"],
     ["auth"],
-    ["models"],
     ["team"],
     ["workflow"],
     ["logs"],
