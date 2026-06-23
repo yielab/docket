@@ -40,8 +40,9 @@ def last_activity(agent_id: str) -> str:
     """Return the most recent memory-log date (YYYY-MM-DD) or '—'.
 
     Mirrors lib/helpers/utils.sh last_activity().
+    Works for both project agents and specialists via workspace_dir().
     """
-    mem_dir = cfg.PROJECTS_DIR / agent_id / "memory"
+    mem_dir = cfg.workspace_dir(agent_id) / "memory"
     if not mem_dir.is_dir():
         return "—"
     files = sorted(mem_dir.glob("*.md"))
