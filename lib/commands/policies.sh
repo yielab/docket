@@ -100,7 +100,8 @@ _policies_init() {
   local installed=0 skipped=0
   for f in "$template_dir"/*.json; do
     [[ -f "$f" ]] || continue
-    local dest="$POLICIES_DIR/$(basename "$f")"
+    local dest
+    dest="$POLICIES_DIR/$(basename "$f")"
     if [[ -f "$dest" ]]; then
       dim "  skip (exists): $(basename "$f")"
       skipped=$((skipped + 1))

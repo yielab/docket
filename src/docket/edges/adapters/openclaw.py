@@ -35,14 +35,16 @@ Inventory of all Bash operations this module replaces
     [ap-01]  list profiles + disabled state         cmd_auth, cmd_doctor
     [ap-02]  has_usable_profile check               cmd_add, cmd_install
 
-  Provider config (future / T5.6 — stub only)
+  Provider config
     [pc-01]  add local provider                     models provider add
 """
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from docket.config import (
@@ -209,9 +211,7 @@ def add_agent(
             OcAgent(
                 id=agent_id,
                 model=model,
-                metadata=OcAgentMetadata(
-                    session_key=session_key, project_key=project_key
-                ),
+                metadata=OcAgentMetadata(session_key=session_key, project_key=project_key),
             )
         )
         _save_oc(cfg)
@@ -227,9 +227,7 @@ def remove_agent(agent_id: str) -> None:
 # ── binding operations [oc-09 … oc-11] ────────────────────────────────────────
 
 
-def get_binding(
-    agent_id: str, channel: str = "telegram", cfg: OpenClawConfig | None = None
-) -> str:
+def get_binding(agent_id: str, channel: str = "telegram", cfg: OpenClawConfig | None = None) -> str:
     """[oc-11] Return the peer id for a channel binding, or '' if none."""
     for b in (cfg or _load_oc()).bindings:
         if b.agent_id == agent_id and b.match.channel == channel:
@@ -246,9 +244,7 @@ def upsert_binding(
     """[oc-09] Add or replace a channel binding for an agent."""
     cfg = _load_oc()
     cfg.bindings = [
-        b
-        for b in cfg.bindings
-        if not (b.agent_id == agent_id and b.match.channel == channel)
+        b for b in cfg.bindings if not (b.agent_id == agent_id and b.match.channel == channel)
     ]
     cfg.bindings.append(
         OcBinding(
@@ -269,9 +265,7 @@ def remove_binding(agent_id: str, channel: str | None = None) -> None:
         cfg.bindings = [b for b in cfg.bindings if b.agent_id != agent_id]
     else:
         cfg.bindings = [
-            b
-            for b in cfg.bindings
-            if not (b.agent_id == agent_id and b.match.channel == channel)
+            b for b in cfg.bindings if not (b.agent_id == agent_id and b.match.channel == channel)
         ]
     _save_oc(cfg)
 
@@ -384,24 +378,91 @@ def has_usable_profile(agent: str = "main") -> bool:
     return any(not p.disabled for p in auth_profiles_summary(agent))
 
 
-# ── provider config [pc-*] — stub, T5.6 ───────────────────────────────────────
+# ── provider config [pc-*] ─────────────────────────────────────────────────────
+#
+# OpenClaw stores provider definitions under models.providers.<name>. That block
+# is OpenClaw-internal (not modelled in OpenClawConfig), so — like the sandbox /
+# approvals / channels reads above — it is accessed via the raw dict here, and
+# ONLY here. No other module may touch models.providers.*.
+
+
+def local_provider_config(
+    base_url: str,
+    model_id: str,
+    model_name: str,
+    ctx: int,
+    max_tokens: int,
+) -> dict[str, Any]:
+    """Build the provider definition for a local OpenAI-compatible endpoint.
+
+    Mirrors the PROVIDER_JSON Python heredoc in scripts/wire-local-provider.sh.
+    apiKey is a literal dummy ("local") — llama.cpp ignores it but OpenClaw
+    requires the field present. Cost is zero (local/free).
+    """
+    return {
+        "baseUrl": base_url,
+        "apiKey": "local",
+        "api": "openai-completions",
+        "models": [
+            {
+                "id": model_id,
+                "name": model_name,
+                "reasoning": False,
+                "input": ["text"],
+                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                "contextWindow": int(ctx),
+                "maxTokens": int(max_tokens),
+            }
+        ],
+    }
+
+
+def get_local_provider(name: str) -> dict[str, Any] | None:
+    """[pc-01] Return the stored models.providers.<name> block, or None if absent."""
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    providers = (raw.get("models") or {}).get("providers")
+    if not isinstance(providers, dict):
+        return None
+    entry = providers.get(name)
+    return entry if isinstance(entry, dict) else None
 
 
 def add_local_provider(
     name: str,
     base_url: str,
     model_id: str,
-    api_key: str = "",
-) -> None:
-    """[pc-01] Register a local (Ollama / LM Studio / vLLM) provider.
+    model_name: str,
+    ctx: int,
+    max_tokens: int,
+) -> bool:
+    """[pc-01] Register a local (llama.cpp / LM Studio / vLLM) provider.
 
-    Full implementation: T5.6 (wire-local-provider → docket models provider add).
-    Placeholder raises so callers know this surface is not yet wired.
+    Writes models.providers.<name> in openclaw.json. Idempotent: returns False
+    (and writes nothing) when the existing block already matches the desired
+    definition, True when it created or updated the entry.
+
+    Mirrors `openclaw config set models.providers.<name> <json>` in
+    scripts/wire-local-provider.sh (written directly so no openclaw CLI is
+    required and the operation is transactional with docket's other writes).
     """
-    raise NotImplementedError(
-        "Local provider registration is not yet implemented (T5.6). "
-        "Use `openclaw models provider add` directly for now."
-    )
+    desired = local_provider_config(base_url, model_id, model_name, ctx, max_tokens)
+
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    models = raw.get("models")
+    if not isinstance(models, dict):
+        models = {}
+        raw["models"] = models
+    providers = models.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+        models["providers"] = providers
+
+    if providers.get(name) == desired:
+        return False
+
+    providers[name] = desired
+    store.write_json(CONFIG_FILE, raw)
+    return True
 
 
 # ── telegram channel status ───────────────────────────────────────────────────
@@ -420,6 +481,195 @@ def get_telegram_enabled() -> bool:
     if not isinstance(telegram, dict):
         return False
     return bool(telegram.get("enabled", False))
+
+
+def channel_names() -> list[str]:
+    """Return the configured channel keys from openclaw.json `channels`.
+
+    Mirrors the `list(c.get('channels', {}).keys())` read in cmd_snapshot.
+    Not modelled in OpenClawConfig (OpenClaw-internal); read via raw dict.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    channels = raw.get("channels")
+    if not isinstance(channels, dict):
+        return []
+    return list(channels.keys())
+
+
+def agent_bindings(agent_id: str, cfg: OpenClawConfig | None = None) -> list[dict[str, str]]:
+    """Return [{channel, peerId}, ...] for one agent's bindings.
+
+    Mirrors the agent_bindings() helper inside cmd_snapshot.
+    """
+    return [
+        {"channel": b.match.channel, "peerId": b.match.peer.id}
+        for b in (cfg or _load_oc()).bindings
+        if b.agent_id == agent_id
+    ]
+
+
+# ── doctor: read-only posture reads ───────────────────────────────────────────
+
+
+def get_config_perms() -> str:
+    """Return the octal permission string of openclaw.json (e.g. '600'), or ''.
+
+    Mirrors the `stat -c '%a'` call in cmd_doctor's config-hardening check.
+    """
+    import os as _os
+    import stat as _stat
+
+    if not CONFIG_FILE.exists():
+        return ""
+    try:
+        mode = _stat.S_IMODE(_os.stat(CONFIG_FILE).st_mode)
+    except OSError:
+        return ""
+    return format(mode, "o")
+
+
+def get_isolation_mode() -> str:
+    """Return agents.defaults.sandbox.mode from openclaw.json ('unset' if absent).
+
+    Mirrors _isolation_status() in security.sh. The sandbox block is
+    OpenClaw-internal and not modelled, so this reads the raw dict.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    agents = raw.get("agents")
+    defaults = agents.get("defaults") if isinstance(agents, dict) else None
+    sandbox = defaults.get("sandbox") if isinstance(defaults, dict) else None
+    if not isinstance(sandbox, dict):
+        return "unset"
+    mode = sandbox.get("mode")
+    return str(mode) if mode else "unset"
+
+
+def get_approval_routing() -> tuple[str, str]:
+    """Return (state, mode) for approvals.exec routing.
+
+    state is 'on' | 'off' | 'unset'. Mirrors _approval_routing_status() in
+    security.sh. approvals is OpenClaw-internal; read from the raw dict.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    approvals = raw.get("approvals")
+    exec_cfg = approvals.get("exec") if isinstance(approvals, dict) else None
+    if not isinstance(exec_cfg, dict) or not exec_cfg:
+        return ("unset", "")
+    state = "on" if exec_cfg.get("enabled") else "off"
+    return (state, str(exec_cfg.get("mode") or ""))
+
+
+def secrets_keys() -> set[str]:
+    """Return the set of key names stored in secrets.json (empty if absent)."""
+    path = CONFIG_FILE.parent / "secrets.json"
+    raw = store.read_json(path)
+    return set(raw.keys())
+
+
+def secrets_meta() -> dict[str, Any]:
+    """Return the raw secrets.meta.json contents (empty if absent)."""
+    path = CONFIG_FILE.parent / "secrets.meta.json"
+    return store.read_json(path)
+
+
+def security_gate_report() -> tuple[str, str, str]:
+    """Return (state, policy, counts) for the daemon exec-approval policy.
+
+    state: OK | OPEN | UNSET | NA. Mirrors _security_gate_report() in
+    security.sh — shells out to `openclaw approvals get --json`.
+    """
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _sp
+
+    if not _shutil.which("openclaw"):
+        return ("NA", "openclaw CLI not found", "")
+    try:
+        res = _sp.run(
+            ["openclaw", "approvals", "get", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, _sp.TimeoutExpired):
+        return ("NA", "approvals snapshot unavailable", "")
+    out = res.stdout.strip()
+    if not out:
+        return ("NA", "approvals snapshot unavailable", "")
+    try:
+        d: dict[str, Any] = _json.loads(out)
+    except Exception:
+        return ("NA", "approvals snapshot unparseable", "")
+    f = d.get("file") or {}
+    defaults = (f.get("defaults") or {}) if isinstance(f, dict) else {}
+    agents = (f.get("agents") or {}) if isinstance(f, dict) else {}
+    sec = defaults.get("security") or "unset"
+    ask = defaults.get("ask") or "unset"
+    fb = defaults.get("askFallback") or "unset"
+    allow_total = 0
+    if isinstance(agents, dict):
+        for a in agents.values():
+            allow_total += len((a or {}).get("allowlist", []) or [])
+    state = "OK" if sec in ("deny", "allowlist") else ("OPEN" if sec == "full" else "UNSET")
+    policy = f"security={sec} ask={ask} askFallback={fb}"
+    counts = f"agents={len(agents)} allowlisted={allow_total}"
+    return (state, policy, counts)
+
+
+@dataclass
+class AuditFinding:
+    title: str
+    remediation: str
+
+
+@dataclass
+class SecurityAudit:
+    available: bool
+    critical: int
+    warn: int
+    info: int
+    findings: list[AuditFinding]
+
+
+def security_audit_report() -> SecurityAudit:
+    """Summarise `openclaw security audit --json` (config-perms finding excluded).
+
+    Mirrors _security_audit_report() in security.sh. Returns available=False
+    when the audit cannot be run/parsed.
+    """
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _sp
+
+    none = SecurityAudit(False, 0, 0, 0, [])
+    if not _shutil.which("openclaw"):
+        return none
+    try:
+        res = _sp.run(
+            ["openclaw", "security", "audit", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, _sp.TimeoutExpired):
+        return none
+    out = res.stdout.strip()
+    if not out:
+        return none
+    try:
+        d: dict[str, Any] = _json.loads(out)
+    except Exception:
+        return none
+    owned = {"fs.config.perms_writable"}
+    ext = [f for f in (d.get("findings") or []) if f.get("checkId") not in owned]
+    crit = sum(1 for f in ext if f.get("severity") == "critical")
+    warn = sum(1 for f in ext if f.get("severity") == "warn")
+    info = sum(1 for f in ext if f.get("severity") == "info")
+    findings: list[AuditFinding] = []
+    for f in ext:
+        if f.get("severity") == "critical" and len(findings) < 5:
+            findings.append(AuditFinding(str(f.get("title", "?")), str(f.get("remediation", ""))))
+    return SecurityAudit(True, crit, warn, info, findings)
 
 
 # ── generic dotted-path access (escape hatch for Bash bridge) ─────────────────
@@ -479,3 +729,142 @@ def set_model_both(agent_id: str, model: str) -> None:
     """
     set_agent_model(agent_id, model)
     meta_set(agent_id, "model", model)
+
+
+# ── exec-approval gates (G3) — exec-approvals.json + daemon apply ──────────────
+
+
+def exec_approvals_path() -> Path:
+    """Path to the daemon's exec-approvals.json (OpenClaw-owned)."""
+    return CONFIG_FILE.parent / "exec-approvals.json"
+
+
+def read_exec_approvals() -> dict[str, Any]:
+    """Return the parsed exec-approvals.json ({} if absent/malformed)."""
+    raw = store.read_json(exec_approvals_path())
+    return raw if isinstance(raw, dict) else {}
+
+
+def write_exec_approvals(data: dict[str, Any]) -> bool:
+    """Write exec-approvals.json, preferring the validated daemon path.
+
+    Tries ``openclaw approvals set <tmp>`` first; on success returns True
+    (applied-via-daemon). If the CLI is absent or fails, writes the file
+    directly (0600) and returns False (applied-direct). Mirrors the
+    daemon-vs-direct branch in apply_exec_approval_gates().
+    """
+    import json as _json
+    import os as _os
+    import shutil as _shutil
+    import subprocess as _sp
+    import tempfile as _tempfile
+
+    path = exec_approvals_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    serialised = _json.dumps(data, indent=2) + "\n"
+
+    if _shutil.which("openclaw"):
+        fd, tmp_name = _tempfile.mkstemp(suffix=".json")
+        try:
+            with _os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(serialised)
+            try:
+                res = _sp.run(
+                    ["openclaw", "approvals", "set", tmp_name],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except (OSError, _sp.TimeoutExpired):
+                res = None
+            if res is not None and res.returncode == 0:
+                return True
+        finally:
+            with contextlib.suppress(OSError):
+                _os.unlink(tmp_name)
+
+    # Direct write (gateway not reached).
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(serialised, encoding="utf-8")
+    _os.chmod(tmp, 0o600)
+    _os.replace(tmp, path)
+    return False
+
+
+# ── approval routing + sandbox isolation (G4 / G5) — openclaw.json writes ──────
+
+
+def set_approval_routing(enabled: bool, mode: str = "session") -> None:
+    """Write approvals.exec = {enabled, mode} in openclaw.json (G4)."""
+    raw = store.read_json(CONFIG_FILE)
+    approvals = raw.setdefault("approvals", {})
+    if not isinstance(approvals, dict):
+        approvals = {}
+        raw["approvals"] = approvals
+    approvals["exec"] = {"enabled": enabled, "mode": mode}
+    store.write_json(CONFIG_FILE, raw)
+
+
+def disable_approval_routing() -> None:
+    """Set approvals.exec.enabled = false (escape hatch, G4)."""
+    if not CONFIG_FILE.exists():
+        return
+    raw = store.read_json(CONFIG_FILE)
+    approvals = raw.get("approvals")
+    exec_cfg = approvals.get("exec") if isinstance(approvals, dict) else None
+    if not isinstance(exec_cfg, dict):
+        return
+    exec_cfg["enabled"] = False
+    store.write_json(CONFIG_FILE, raw)
+
+
+def set_sandbox_isolation(
+    mode: str = "non-main",
+    scope: str = "agent",
+    workspace_access: str = "rw",
+) -> None:
+    """Write agents.defaults.sandbox = {mode, scope, workspaceAccess} (G5)."""
+    raw = store.read_json(CONFIG_FILE)
+    agents = raw.setdefault("agents", {})
+    if not isinstance(agents, dict):
+        agents = {}
+        raw["agents"] = agents
+    defaults = agents.setdefault("defaults", {})
+    if not isinstance(defaults, dict):
+        defaults = {}
+        agents["defaults"] = defaults
+    defaults["sandbox"] = {
+        "mode": mode,
+        "scope": scope,
+        "workspaceAccess": workspace_access,
+    }
+    store.write_json(CONFIG_FILE, raw)
+
+
+def disable_sandbox_isolation() -> None:
+    """Set agents.defaults.sandbox.mode = "off" (escape hatch, G5)."""
+    if not CONFIG_FILE.exists():
+        return
+    raw = store.read_json(CONFIG_FILE)
+    agents = raw.get("agents")
+    defaults = agents.get("defaults") if isinstance(agents, dict) else None
+    sandbox = defaults.get("sandbox") if isinstance(defaults, dict) else None
+    if not isinstance(sandbox, dict):
+        return
+    sandbox["mode"] = "off"
+    store.write_json(CONFIG_FILE, raw)
+
+
+def all_agent_ids() -> list[str]:
+    """Return agent ids registered in openclaw.json (always including 'main').
+
+    Mirrors _all_agent_ids() in security.sh: the explicit 'main' agent is
+    appended so the curated allowlist is always seeded for it.
+    """
+    if not CONFIG_FILE.exists():
+        return ["main"]
+    try:
+        ids = [a.id for a in list_agents() if a.id]
+    except Exception:
+        return []
+    return ids

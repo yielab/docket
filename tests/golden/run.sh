@@ -152,14 +152,39 @@ cmd_list() {
   done
 }
 
+# Verify every golden case in one pass. The command + args are recovered from
+# each case-id by turning underscores back into spaces (the inverse of case_id,
+# which is lossless for our flag-bearing names, e.g. list_--json → "list --json").
+# Exits non-zero if any case fails — the single entry point CI calls.
+cmd_verify_all() {
+  local failed=0 total=0 case_file id args
+  while IFS= read -r case_file; do
+    id="$(basename "$case_file" .golden)"
+    args="${id//_/ }"
+    total=$((total + 1))
+    # shellcheck disable=SC2086
+    if ! cmd_verify $args; then
+      failed=$((failed + 1))
+    fi
+  done < <(find "$GOLDEN_DIR/cases" -name '*.golden' | sort)
+  echo "" >&2
+  if [[ "$failed" -gt 0 ]]; then
+    echo "GOLDEN SUITE: $failed/$total failed" >&2
+    return 1
+  fi
+  echo "GOLDEN SUITE: all $total cases passed" >&2
+  return 0
+}
+
 # ── entrypoint ─────────────────────────────────────────────────────────────────
 
 MODE="${1:-}"
 shift || true
 
 case "$MODE" in
-  capture) cmd_capture "$@" ;;
-  verify)  cmd_verify  "$@" ;;
-  list)    cmd_list ;;
-  *)       die "usage: run.sh <capture|verify|list> [cmd args...]" ;;
+  capture)    cmd_capture "$@" ;;
+  verify)     cmd_verify  "$@" ;;
+  verify-all) cmd_verify_all ;;
+  list)       cmd_list ;;
+  *)          die "usage: run.sh <capture|verify|verify-all|list> [cmd args...]" ;;
 esac

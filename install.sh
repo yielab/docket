@@ -30,6 +30,12 @@ if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
 fi
 command -v python3 >/dev/null 2>&1 || { echo "Error: python3 is required."; exit 1; }
 
+# Python 3.11+ is required by the docket package (pyproject requires-python >=3.11).
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "Error: Python 3.11+ is required (found $(python3 -V 2>&1))."
+  exit 1
+fi
+
 # When piped from curl, download the tarball instead
 if [[ ! -f "${SCRIPT_DIR}/bin/docket" ]]; then
   command -v curl >/dev/null 2>&1 || { echo "Error: curl is required for remote install."; exit 1; }
@@ -55,6 +61,37 @@ cp "${SCRIPT_DIR}/VERSION" "$LIB_DIR/VERSION" 2>/dev/null || true
 
 find "$LIB_DIR" -type d -exec chmod 755 {} \;
 find "$LIB_DIR" -type f -exec chmod 644 {} \;
+
+# ── Python core (M1+) ──
+# Since the Bash→Python migration, every command except `install` is dispatched
+# to `python3 -m docket` by bin/docket. The Bash bootstrap above stays thin, but
+# the Python package MUST be importable by python3 or the CLI is non-functional.
+# Prefer uv (fast, isolated) when present; otherwise pip --user. Both leave the
+# `docket` module importable for the launcher's `python3 -m docket` path.
+echo ""
+echo "Installing the docket Python core..."
+_py_installed=0
+if command -v uv >/dev/null 2>&1; then
+  # Build+install into the user environment uv manages; --python pins 3.11+.
+  if uv pip install --system "${SCRIPT_DIR}" >/dev/null 2>&1 \
+     || uv pip install "${SCRIPT_DIR}" >/dev/null 2>&1; then
+    _py_installed=1
+  fi
+fi
+if [[ "$_py_installed" -eq 0 ]]; then
+  if python3 -m pip install --user --upgrade "${SCRIPT_DIR}" >/dev/null 2>&1; then
+    _py_installed=1
+  fi
+fi
+if [[ "$_py_installed" -eq 1 ]] && python3 -c 'import docket' 2>/dev/null; then
+  echo "✓ Python core installed (python3 -m docket)."
+else
+  echo "⚠ Could not install the docket Python package automatically."
+  echo "  The CLI needs it — install manually with ONE of:"
+  echo "    uv pip install --system \"${SCRIPT_DIR}\""
+  echo "    python3 -m pip install --user \"${SCRIPT_DIR}\""
+  echo "  (or set DOCKET_PYTHON to a Python that can 'import docket')."
+fi
 
 echo "✓ Installation complete."
 echo ""

@@ -128,7 +128,7 @@ class TestCmdProfile:
         # First pin it
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         # Then reset to policy
-        rc, out, _ = _run(["profile", "myshop", "default"], oc_dir)
+        rc, _out, _ = _run(["profile", "myshop", "default"], oc_dir)
         assert rc == 0
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
@@ -157,7 +157,7 @@ class TestCmdProfile:
 
     def test_profile_budget_set(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["profile", "myshop", "--budget", "5.00"], oc_dir)
+        rc, _out, _ = _run(["profile", "myshop", "--budget", "5.00"], oc_dir)
         assert rc == 0
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
@@ -179,7 +179,7 @@ class TestCmdProfile:
 
     def test_profile_budget_negative_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["profile", "myshop", "--budget", "-1"], oc_dir)
+        rc, _, _err = _run(["profile", "myshop", "--budget", "-1"], oc_dir)
         assert rc == 1
 
     def test_profile_alias_resolves(self, tmp_path: Path) -> None:
@@ -216,7 +216,7 @@ class TestCmdScope:
 
     def test_scope_set_updates_meta(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["scope", "myshop", "set", "billing"], oc_dir)
+        rc, _out, err = _run(["scope", "myshop", "set", "billing"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         meta = json.loads(
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
@@ -285,7 +285,16 @@ class TestCmdModels:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["models"], oc_dir)
         assert rc == 0
-        for role in ("manager", "programmer", "reviewer", "tester", "knowledge", "security", "repo", "task"):
+        for role in (
+            "manager",
+            "programmer",
+            "reviewer",
+            "tester",
+            "knowledge",
+            "security",
+            "repo",
+            "task",
+        ):
             assert role in out
 
     def test_models_list_shows_pricing(self, tmp_path: Path) -> None:
@@ -296,9 +305,7 @@ class TestCmdModels:
 
     def test_models_set_role(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(
-            ["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir
-        )
+        rc, _out, err = _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         assert reg["roles"]["programmer"] == "anthropic/claude-haiku-4-5"
@@ -333,7 +340,7 @@ class TestCmdModels:
 
     def test_models_set_missing_args_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["models", "set", "programmer"], oc_dir)
+        rc, _, _err = _run(["models", "set", "programmer"], oc_dir)
         assert rc == 1
 
     def test_models_preset_list_exits_zero(self, tmp_path: Path) -> None:
@@ -345,7 +352,7 @@ class TestCmdModels:
 
     def test_models_preset_apply(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["models", "preset", "openai"], oc_dir)
+        rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         reg = json.loads((oc_dir / "docket-models.json").read_text())
         # strong roles get gpt-4.1-mini (standard for openai)
@@ -377,9 +384,7 @@ class TestCmdModels:
 
     def test_models_set_dry_run_gateway(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(
-            ["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir
-        )
+        rc, out, _ = _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0
         assert "[dry-run]" in out
 

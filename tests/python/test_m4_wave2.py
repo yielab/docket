@@ -296,9 +296,7 @@ class TestCmdWire:
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         oc = json.loads((oc_dir / "openclaw.json").read_text())
-        binding = next(
-            (b for b in oc["bindings"] if b["agentId"] == "myshop"), None
-        )
+        binding = next((b for b in oc["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
         assert binding["match"]["peer"]["id"] == "-123456789"
 
@@ -411,7 +409,7 @@ class TestM4Wave2CommandsPortedFromStubs:
         "cmd",
         [
             ["delete", "ghost"],  # exits 1 (not found) — not 127
-            ["wire", "ghost"],    # exits 1 (not found) — not 127
+            ["wire", "ghost"],  # exits 1 (not found) — not 127
             ["unwire", "ghost"],  # exits 1 (not found) — not 127
         ],
     )

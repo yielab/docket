@@ -6,9 +6,9 @@ PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
 
 
   content  (Content Blog)
-  task  │  claude-haiku-4-5 (policy)  │  stack: 1  │  0 day-log(s)
-  path: pinned  │  active: —
-  ○ not registered  ○ no telegram  ○ no memory  ○ no reqs
+  task  │  claude-haiku-4-5 (pinned)  │  stack: —  │  0 day-log(s)
+  path: none  │  active: —
+  ● registered  ○ no telegram  ○ no memory  ○ no reqs
 
   myshop  (My Shop)
   repo  │  claude-sonnet-4-6 (policy)  │  stack: Docker,git  │  0 day-log(s)
