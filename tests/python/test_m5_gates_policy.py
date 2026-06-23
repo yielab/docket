@@ -226,7 +226,7 @@ class TestPolicies:
         rc = _policies.run_policies("list")
         captured = capsys.readouterr()
         assert rc == 0
-        assert "No policies installed." in captured.err
+        assert "No policies installed." in captured.out  # warn() → stdout
 
     def test_init_then_list(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = _policies.run_policies("init")
@@ -368,7 +368,7 @@ class TestApprove:
         rc = _approve.run_approve(token)
         captured = capsys.readouterr()
         assert rc == 0
-        assert "Already granted" in captured.err
+        assert "Already granted" in captured.out  # warn() → stdout
 
     def test_grant_missing_token_errors(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -417,7 +417,7 @@ class TestDeny:
         rc = _deny.run_deny(token)
         captured = capsys.readouterr()
         assert rc == 0
-        assert "Already denied" in captured.err
+        assert "Already denied" in captured.out  # warn() → stdout
 
 
 class TestSweep:

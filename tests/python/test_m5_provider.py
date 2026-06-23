@@ -158,8 +158,8 @@ def test_ping_failure_is_non_fatal(
     rc = _prov.register_local_provider()
     assert rc == 0
     assert "local" in _providers(oc_dir)
-    err = capsys.readouterr().err
-    assert "Could not reach" in err
+    out = capsys.readouterr().out
+    assert "Could not reach" in out  # warn() → stdout (mirrors Bash)
 
 
 def test_other_config_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

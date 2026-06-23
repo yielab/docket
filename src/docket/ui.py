@@ -41,8 +41,8 @@ def success(text: str) -> None:
 
 
 def warn(text: str) -> None:
-    """Yellow warning prefix to stderr (mirrors Bash warn())."""
-    _err.print(f"[yellow]⚠[/yellow]  {text}")
+    """Yellow warning prefix to stdout (mirrors Bash warn(), which is not >&2)."""
+    console.print(f"[yellow]⚠[/yellow] {text}")
 
 
 def error(text: str) -> None:
@@ -57,7 +57,7 @@ def fail(text: str) -> None:
 
 def info(text: str) -> None:
     """Cyan arrow prefix to stdout (mirrors Bash info())."""
-    console.print(f"[cyan]→[/cyan]  {text}")
+    console.print(f"[cyan]→[/cyan] {text}")
 
 
 def dim(text: str) -> None:
