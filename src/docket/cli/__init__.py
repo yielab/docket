@@ -90,9 +90,14 @@ def _default(ctx: typer.Context) -> None:
 
 # ── lifecycle ──────────────────────────────────────────────────────────────────
 @app.command("install")
-def cmd_install() -> None:
+def cmd_install(
+    gates: bool = typer.Option(False, "--gates/--no-gates", help="Enable exec-approval gates"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
     """Bootstrap OpenClaw + specialist agents."""
-    _not_ported("install")
+    from docket.cli._install import run_install
+
+    raise typer.Exit(run_install(want_gates=gates, assume_yes=yes))
 
 
 @app.command("list")

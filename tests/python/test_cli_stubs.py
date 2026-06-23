@@ -1,54 +1,22 @@
-"""M1 smoke tests: every command stub exits 127 (not-ported signal)."""
+"""Cutover guard: every command is ported — no `_not_ported` stubs remain.
 
-import subprocess
-import sys
+This file used to assert that un-ported commands exited 127. After M6 every
+command (including `install`) dispatches to Python, so the inverse is now the
+invariant: the CLI module must contain zero `_not_ported(` call sites.
+"""
 
-import pytest
+from pathlib import Path
 
-COMMANDS = [
-    # M3 — fully ported, no longer exit 127:
-    # ["list"],  # ported
-    # ["info"],  # ported
-    # ["cost"],  # ported
-    # M4 wave 1 — fully ported:
-    # ["profile"],  # ported
-    # ["scope"],    # ported
-    # ["models"],   # ported
-    # M4 wave 2 — fully ported:
-    # ["delete"],   # ported
-    # ["wire"],     # ported
-    # ["unwire"],   # ported
-    # M4 wave 3a — fully ported:
-    # ["edit"],     # ported
-    # ["snapshot"], # ported
-    # M4 wave 3b — fully ported:
-    # ["logs"],     # ported
-    # ["workflow"], # ported
-    # M4 wave 3c — fully ported:
-    # ["team"],     # ported
-    # M4 final wave — fully ported:
-    # ["add"],      # ported
-    # ["maintain"], # ported
-    # ["context"],  # ported
-    # ["keys"],     # ported
-    # ["auth"],     # ported
-    # M3 T3.4 + M5 — fully ported:
-    # ["doctor"], ["serve"], ["gates"], ["audit"], ["eval"], ["completions"],
-    # ["trace"], ["metrics"], ["policies"], ["approve"], ["deny"], ["help"]  # ported
-    # Only install remains on Bash (M5 T5.5).
-    ["install"],
-]
+_CLI = Path(__file__).resolve().parents[2] / "src" / "docket" / "cli" / "__init__.py"
 
 
-@pytest.mark.parametrize("cmd", COMMANDS, ids=[c[0] for c in COMMANDS])
-def test_stub_exits_127(cmd: list[str]) -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *cmd],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 127, (
-        f"Expected 127 (not-ported) for `docket {' '.join(cmd)}`, "
-        f"got {result.returncode}.\nstderr: {result.stderr}"
-    )
-    assert "not yet ported" in result.stderr
+def test_no_not_ported_callsites() -> None:
+    source = _CLI.read_text(encoding="utf-8")
+    # The helper definition may remain; assert it is never CALLED.
+    # A real call passes a command-name string literal, e.g. _not_ported("serve").
+    call_sites = [
+        line.strip()
+        for line in source.splitlines()
+        if '_not_ported("' in line or "_not_ported('" in line
+    ]
+    assert call_sites == [], f"un-ported command stubs remain: {call_sites}"

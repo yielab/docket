@@ -187,8 +187,15 @@ def sync_session_key(agent_id: str, session_key: str, project_key: str) -> None:
 
 
 def get_default_model(cfg: OpenClawConfig | None = None) -> str:
-    """[oc-07] Return agents.defaults.model."""
-    return (cfg or _load_oc()).agents.defaults.model
+    """[oc-07] Return agents.defaults.model (normalised to a bare id string).
+
+    OpenClaw may store this as a string or a {"primary": "<id>"} object; both
+    are accepted and reduced to the model id here.
+    """
+    model = (cfg or _load_oc()).agents.defaults.model
+    if isinstance(model, dict):
+        return str(model.get("primary", ""))
+    return model
 
 
 def set_default_model(model: str) -> None:
@@ -670,6 +677,134 @@ def security_audit_report() -> SecurityAudit:
         if f.get("severity") == "critical" and len(findings) < 5:
             findings.append(AuditFinding(str(f.get("title", "?")), str(f.get("remediation", ""))))
     return SecurityAudit(True, crit, warn, info, findings)
+
+
+# ── install bootstrap (cmd_install) ───────────────────────────────────────────
+
+
+def config_exists() -> bool:
+    """True if openclaw.json is present (the Bash `[[ -f $CONFIG_FILE ]]` gate)."""
+    return CONFIG_FILE.is_file()
+
+
+def has_agent_defaults() -> bool:
+    """True if openclaw.json already carries agents.defaults.
+
+    Mirrors the inline `'agents' in c and 'defaults' in c['agents']` probe in
+    cmd_install (Step: detect-existing). Tolerant of a malformed/absent file.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    agents = raw.get("agents")
+    return isinstance(agents, dict) and "defaults" in agents
+
+
+def agent_count() -> int:
+    """Return the number of registered agents (len of agents.list).
+
+    Mirrors the `len(c.get('agents', {}).get('list', []))` read in cmd_install.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+    agents = raw.get("agents")
+    items = agents.get("list") if isinstance(agents, dict) else None
+    return len(items) if isinstance(items, list) else 0
+
+
+def configure_agent_defaults(default_model: str) -> None:
+    """Write agents.defaults + ensure channels.telegram (cmd_install Step 4).
+
+    Faithful port of the embedded Python heredoc in install.sh: sets the default
+    model, workspace, safeguard compaction, concurrency caps, and an enabled
+    Telegram channel with an empty groups map. These blocks are OpenClaw-internal
+    (not modelled in OpenClawConfig), so they are written via the raw dict here.
+    """
+    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
+
+    agents = raw.get("agents")
+    if not isinstance(agents, dict):
+        agents = {}
+        raw["agents"] = agents
+
+    workspace = raw.get("workspacesDir", "~/.openclaw/workspace")
+    agents["defaults"] = {
+        "model": {"primary": default_model},
+        "workspace": workspace,
+        "compaction": {"mode": "safeguard"},
+        "maxConcurrent": 4,
+        "subagents": {"maxConcurrent": 8},
+    }
+
+    channels = raw.get("channels")
+    if not isinstance(channels, dict):
+        channels = {}
+        raw["channels"] = channels
+    if "telegram" not in channels:
+        channels["telegram"] = {"enabled": True, "groups": {}}
+
+    store.write_json(CONFIG_FILE, raw)
+
+
+def register_agent_cli(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
+    """Register an agent via `openclaw agents add` (cmd_install Step 5).
+
+    Shells out to the OpenClaw CLI — the daemon owns agent registration, so this
+    lives behind the ACL. Returns (ok, message): ok is False with a reason when
+    the CLI is missing or the command fails. Mirrors the `openclaw agents add`
+    invocation in install.sh.
+    """
+    import shutil as _shutil
+    import subprocess as _sp
+
+    if not _shutil.which("openclaw"):
+        return (False, "openclaw CLI not found")
+    try:
+        res = _sp.run(
+            [
+                "openclaw",
+                "agents",
+                "add",
+                agent_id,
+                "--workspace",
+                workspace,
+                "--model",
+                model,
+                "--non-interactive",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, _sp.TimeoutExpired) as ex:
+        return (False, str(ex))
+    if res.returncode != 0:
+        return (False, (res.stderr or res.stdout or f"exit {res.returncode}").strip())
+    return (True, "")
+
+
+def harden_config_perms() -> list[str]:
+    """chmod 600 openclaw.json / secrets.json if group/other-accessible (G2).
+
+    Returns the list of paths it tightened (empty if all were already owner-only).
+    Only tightens, never loosens. Mirrors secure_config_perms() in security.sh.
+    """
+    import os as _os
+    import stat as _stat
+
+    hardened: list[str] = []
+    for path in (CONFIG_FILE, CONFIG_FILE.parent / "secrets.json"):
+        if not path.is_file():
+            continue
+        try:
+            mode = _stat.S_IMODE(_os.stat(path).st_mode)
+        except OSError:
+            continue
+        # Any group/other bit set => the low 6 mode bits are non-zero.
+        if mode & 0o077:
+            try:
+                _os.chmod(path, 0o600)
+            except OSError:
+                continue
+            hardened.append(str(path))
+    return hardened
 
 
 # ── generic dotted-path access (escape hatch for Bash bridge) ─────────────────
