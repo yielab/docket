@@ -19,3 +19,6 @@ models
 delete
 wire
 unwire
+# M4 wave 3a: edit + snapshot.
+edit
+snapshot
