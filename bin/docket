@@ -155,5 +155,25 @@ if [[ "$CMD" == "--debug" ]]; then
   _ARGS=("${_ARGS[@]:1}")
 fi
 
-# Route command
+# ── Python dispatcher seam (M1 / T1.4) ──────────────────────────────────────
+# If the command appears in lib/core/ported.list, exec the Python entry point.
+# An empty registry means all commands still route through Bash (safe default).
+#
+# Python is resolved in order:
+#   1. $DOCKET_PYTHON override (for dev/CI)
+#   2. uv run python (if uv and pyproject.toml are co-located with the repo)
+#   3. python3 on PATH
+_PORTED_LIST="$LIB_DIR/core/ported.list"
+if [[ -f "$_PORTED_LIST" ]] && grep -qxF "$CMD" "$_PORTED_LIST" 2>/dev/null; then
+  if [[ -n "${DOCKET_PYTHON:-}" ]]; then
+    _PY="$DOCKET_PYTHON"
+  elif command -v uv >/dev/null 2>&1 && [[ -f "$DOCKET_CLI_ROOT/pyproject.toml" ]]; then
+    _PY="uv run python"
+  else
+    _PY="python3"
+  fi
+  exec $_PY -m docket "$CMD" "${_ARGS[@]:1}"
+fi
+
+# Route command (Bash path)
 route_command "$CMD" "${_ARGS[@]:1}"
