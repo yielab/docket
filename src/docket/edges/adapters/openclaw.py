@@ -276,6 +276,41 @@ def remove_binding(agent_id: str, channel: str | None = None) -> None:
     _save_oc(cfg)
 
 
+def wire_group(
+    agent_id: str,
+    peer_id: str,
+    channel: str = "telegram",
+    peer_kind: str = "group",
+) -> bool:
+    """Wire an agent to a channel peer: allowlist entry + binding upsert.
+
+    Returns True if the openclaw allowlist step succeeded, False if unavailable.
+    The binding is always written regardless of the allowlist result.
+    Mirrors _wire_group() in workspace.sh.
+    """
+    import subprocess as _sp
+
+    allowlist_ok = False
+    try:
+        result = _sp.run(
+            [
+                "openclaw",
+                "config",
+                "set",
+                f"channels.{channel}.groups.{peer_id}",
+                '{"requireMention": false}',
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        allowlist_ok = result.returncode == 0
+    except (FileNotFoundError, OSError, _sp.TimeoutExpired):
+        pass
+
+    upsert_binding(agent_id, peer_id, channel, peer_kind)
+    return allowlist_ok
+
+
 # ── security config [oc-14 … oc-17] ───────────────────────────────────────────
 
 

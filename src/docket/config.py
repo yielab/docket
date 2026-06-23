@@ -15,6 +15,7 @@ OPENCLAW_DIR = Path(os.environ.get("OPENCLAW_DIR", Path.home() / ".openclaw"))
 CONFIG_FILE = OPENCLAW_DIR / "openclaw.json"
 MODEL_REGISTRY_FILE = OPENCLAW_DIR / "docket-models.json"
 PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
+LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 
 SPECIALIST_ROLES: frozenset[str] = frozenset(
     ["manager", "programmer", "reviewer", "tester", "knowledge", "security"]
