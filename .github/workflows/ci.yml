@@ -52,6 +52,64 @@ jobs:
       - name: Metrics in sync
         run: HOME="$(mktemp -d)" ./scripts/metrics.sh --check
 
+  # Python core (M1+): lint, format, types, unit tests. Required gate on the
+  # python-core branch — guards the migration's typed core against regressions.
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy (strict)
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest
+
+  # Golden contract: the parity net. Runs the captured CLI goldens through the
+  # dispatcher (ported commands hit Python, the rest Bash) and diffs byte-for-byte
+  # against the frozen output. This is what catches a port silently changing
+  # behaviour. Required gate on python-core.
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      # The dispatcher resolves Python via `uv run python` when uv + pyproject
+      # are present (see bin/docket), so the golden harness exercises the real
+      # ported code path. Fakes on PATH stub openclaw/systemctl/docker.
+      - name: Golden suite
+        run: bash tests/golden/run.sh verify-all
+
   # macOS portability check — exercises the no-systemd / BSD-coreutils paths under
   # a brewed Bash 4+. Informational for now (the Linux job is the required gate);
   # promote to required once it's reliably green.
