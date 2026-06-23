@@ -79,8 +79,9 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
   Then make the call for AA-7: **real daemon dispatch** vs **operator-driven queue**. Prove ≥1 claim against the live daemon (e.g. a second session key accepted on one role, or shown impossible).
 - **Out of scope:** any code change to docket; building dispatch (that's AA-7).
 - **Deliverables:** `internal-docs/POD-DAEMON-NOTES.md` (capability table + AA-7 verdict). Not shipped in the wheel.
-- **Acceptance gate:** [ ] capability table with evidence; [ ] explicit AA-7 verdict line; [ ] ≥1 claim proven against the live daemon.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] capability table with evidence; [x] explicit AA-7 verdict line; [x] ≥1 claim proven against the live daemon.
+- **Size:** M · **Status:** ✅ DONE (2026-06-23) → `internal-docs/POD-DAEMON-NOTES.md`
+- **Result:** Real dispatch is **feasible** (docket-orchestrated via `openclaw agent --agent <w> --session-id <key> -m … --json`). `openclaw agents add --workspace/--model/--non-interactive/--json` [proven] provisions per-pod worker agents; `agents list --json` [proven] shows **workspace is per-agent** (the shared `programmer` has one workspace for all projects — Defect B confirmed). **→ AA-7 = build the yes-path; AA-3 = provision distinct per-pod worker *agents*, not one agent with N sessions.**
 
 ---
 
@@ -109,7 +110,7 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 ### AA-3 — Pod provisioning in `docket add`
 - **Depends on:** AA-1, AA-2 (and read AA-0's verdict for the registration shape) · **Parallel-safe with:** AA-6
 - **Read:** `src/docket/cli/__init__.py` (`cmd_add`/`_create_workspace` ~516-770; session key `agent:{id}:{project}`@702; meta write incl. `sessionKey`@716; `_oc.add_agent`/`sync_session_key`@760-763), `src/docket/core/sync.py`, `edges/adapters/openclaw.py`.
-- **Do:** `docket add <project>` provisions an isolated **pod**: the **Lead** (AA-5) + the project-scoped roles (AA-4) programmer/reviewer/tester — **all sharing `agent:<id>:<project>`**, each with `scope: project`, `kind: project`, `role: <name>`. Register each through the ACL with that session key. The exact shape (N distinct registered agents sharing a key, vs one Lead that the daemon spawns workers under) follows AA-0's finding — provision to match. One `system.restart_gateway()` at the end. `docket delete <project>` tears down the whole pod (both config sources clean).
+- **Do:** `docket add <project>` provisions an isolated **pod** as **distinct registered worker agents** (AA-0 verdict: workspace, not session key, is the real isolation primitive). Create the **Lead** (AA-5) + project-scoped Implementer/Reviewer/Tester (AA-4) via the ACL wrapping `openclaw agents add <project>-<role> --workspace ~/.openclaw/workspaces/pods/<project>/<role> --model <role-policy> --non-interactive --json`. Each gets its **own** workspace under the pod (none shared across projects — this is the Defect-B fix), `scope: project`, `kind: project`, `role: <name>`, and a `agent:<project>:<…>`-namespaced session key. The load-bearing guarantee is **"no worker agent serves two projects."** One `system.restart_gateway()` at the end. `docket delete <project>` tears the whole pod down via `openclaw agents delete` (both config sources clean).
 - **Out of scope:** template content (AA-4); the Lead's instruction text (AA-5).
 - **Deliverables:** edited `cli/__init__.py` (add/delete), `core/sync.py` if needed, integration tests.
 - **Acceptance gate:** [ ] `docket add demo` → every pod member shares `agent:demo:default`, correct scope/role; [ ] exactly one gateway restart; [ ] `docket delete demo` removes all members + bindings from both sources.
@@ -150,14 +151,14 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 
 ---
 
-### AA-7 — Real dispatch (DAEMON-gated; decision from AA-0)
-- **Depends on:** AA-0 (verdict), AA-3, AA-4, AA-5
-- **Read:** AA-0's `POD-DAEMON-NOTES.md`, `src/docket/serve.py` (background loop), `src/docket/cli/__init__.py` (`team`/`TASK_LIST.json`), `src/docket/core/trace.py` (Phase 8 trace events — reuse).
-- **Do:** **If AA-0 = yes:** the `docket serve` loop reads a pod's `TASK_LIST.json`, dispatches each task to the right pod worker via the daemon (Lead → Implementer → Reviewer → Tester), collects completion markers, and emits a trace event per hop. **If AA-0 = no:** keep the queue + Lead as the operator-driven surface, file an upstream daemon-hook request, and **document** (help/README) that runtime routing is operator-mediated — no overclaiming (Phase 8 honesty rule). Either way, dispatch happens **within a pod** (shared session key), never across pods.
-- **Out of scope:** cross-pod dispatch; reintroducing prompt-level SMART-ROUTING (cut in Phase 2).
-- **Deliverables:** (yes) edited `serve.py` + trace wiring + integration test with a faked daemon; (no) docs + an upstream-request note + a docs grep-audit test.
-- **Acceptance gate:** [ ] (yes) a queued pod task dispatches + traces end-to-end without manual relay; [ ] (no) docs state dispatch is operator-driven and the queue is the contract; [ ] no cross-pod dispatch path exists.
-- **Size:** L (yes-path) / S (no-path) · **Status:** BLOCKED (needs AA-0)
+### AA-7 — Real dispatch (DAEMON-gated; **AA-0 verdict = YES, build the yes-path**)
+- **Depends on:** AA-0 ✅ (feasible), AA-3, AA-4, AA-5
+- **Read:** AA-0's `internal-docs/POD-DAEMON-NOTES.md`, `src/docket/serve.py` (background loop), `src/docket/cli/__init__.py` (`team`/`TASK_LIST.json`), `src/docket/core/trace.py` (Phase 8 trace events — reuse), `src/docket/edges/adapters/openclaw.py` (add `agent_run`).
+- **Do:** Add `agent_run(agent_id, session_key, message, timeout) -> json` to the ACL wrapping `openclaw agent --agent <id> --session-id <key> -m <text> --json --timeout N`. The `docket serve` loop reads a pod's `TASK_LIST.json` and drives the pipeline Lead → Implementer → Reviewer → Tester by calling `agent_run` **per hop**, capturing each JSON result, emitting a Phase-8 trace event per hop. **Respect per-pod budget** before each hop (each hop is a real, costed agent turn). Dispatch happens **within a pod** only, never across pods.
+- **Out of scope:** cross-pod dispatch; reintroducing prompt-level SMART-ROUTING (cut in Phase 2). First confirm the `openclaw agent --json` result schema by capturing one real run in a throwaway agent (AA-0 follow-up) before wiring.
+- **Deliverables:** `agent_run` in the ACL; serve-loop dispatch driver; per-hop trace wiring; integration test with a faked `openclaw agent` returning canned JSON.
+- **Acceptance gate:** [ ] a queued pod task dispatches through the pipeline + traces end-to-end without manual Telegram relay; [ ] budget checked before each hop; [ ] no cross-pod dispatch path exists; [ ] only the ACL invokes `openclaw agent`.
+- **Size:** L · **Status:** TODO (unblocked by AA-0)
 
 ---
 
