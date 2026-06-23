@@ -257,10 +257,442 @@ def _cmd_list_human() -> None:
     ui.console.print()
 
 
-@app.command("add")
-def cmd_add(agent_id: str | None = typer.Argument(None)) -> None:
-    """Add a new project agent (interactive)."""
-    _not_ported("add")
+@app.command(
+    "add",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_add(ctx: typer.Context) -> None:
+    """Add a new project agent (interactive or --from <spec-file>)."""
+    import re as _re
+
+    # All args come through ctx.args when using ignore_unknown_options
+    all_args: list[str] = list(ctx.args)
+
+    # ── parse --from <file> ────────────────────────────────────────────────────
+    from_file: str | None = None
+    i = 0
+    while i < len(all_args):
+        arg = all_args[i]
+        if arg.startswith("--from="):
+            from_file = arg[len("--from="):]
+            i += 1
+        elif arg == "--from" and i + 1 < len(all_args):
+            from_file = all_args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    if from_file is not None:
+        _cmd_add_declarative(from_file)
+        return
+
+    # ── interactive path ───────────────────────────────────────────────────────
+    if not sys.stdin.isatty():
+        ui.error("interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.")
+        raise typer.Exit(1)
+
+    ui.console.print()
+    ui.console.print("[bold]Agent type:[/bold]")
+    ui.console.print("  1) repo  — tied to a codebase, has stack detection")
+    ui.console.print("  2) task  — general-purpose work agent, no fixed codebase")
+    ui.console.print()
+    type_choice = input("Type (1=repo / 2=task) [1]: ").strip() or "1"
+    agent_type = "task" if type_choice == "2" else "repo"
+
+    name = input("Display name (e.g. 'My Shop API'): ").strip()
+    if not name:
+        ui.error("Name is required.")
+        raise typer.Exit(1)
+
+    def _slugify(s: str) -> str:
+        s = s.lower()
+        s = _re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+        return s
+
+    slug = _slugify(name)
+    aid_input = input(f"Agent ID [{slug}]: ").strip() or slug
+    aid: str = aid_input
+
+    if (_cfg.PROJECTS_DIR / aid).is_dir():
+        ui.error(f"Agent '{aid}' already exists.")
+        raise typer.Exit(1)
+
+    codebase = ""
+    stack = ""
+    if agent_type == "repo":
+        default_cb = str(_cfg.OPENCLAW_DIR.parent / "Sites" / slug)
+        codebase = input(f"Codebase path [{default_cb}]: ").strip() or default_cb
+        cb_path = Path(codebase)
+        if cb_path.is_dir():
+            if (cb_path / "package.json").is_file():
+                stack = "Node.js"
+            elif (cb_path / "requirements.txt").is_file() or (cb_path / "pyproject.toml").is_file():
+                stack = "Python"
+            elif (cb_path / "composer.json").is_file():
+                stack = "PHP"
+            elif (cb_path / "go.mod").is_file():
+                stack = "Go"
+            elif (cb_path / "Cargo.toml").is_file():
+                stack = "Rust"
+        stack = input(f"Stack [{stack or 'unknown'}]: ").strip() or stack or "unknown"
+
+    description = input("Description (one line): ").strip()
+    role = "repo" if agent_type == "repo" else "task"
+    policy_model = _mp.resolve_role_model(role)
+    model_input = input(f"Model [{policy_model}]: ").strip() or policy_model
+    tg_group = input("Telegram group ID (Enter to skip): ").strip()
+
+    _provision_agent(
+        aid, agent_type, name, codebase, stack, model_input,
+        description, "default", "", "interactive",
+    )
+
+    if tg_group:
+        _oc.upsert_binding(aid, tg_group, "telegram", "group")
+        ui.success(f"Telegram binding: {aid} ← group {tg_group}")
+        _do_restart_gateway()
+
+    ui.console.print()
+    ui.success(f"Agent '{aid}' created!")
+    ui.console.print(f"  Type:       {agent_type}")
+    ui.console.print(f"  Workspace:  {_cfg.PROJECTS_DIR / aid}")
+    if codebase:
+        ui.console.print(f"  Codebase:   {codebase}")
+    ui.console.print()
+    ui.console.print(f"  docket info {aid}")
+    ui.console.print(f"  docket wire {aid}   (if no Telegram group yet)")
+
+
+def _cmd_add_declarative(from_file: str) -> None:
+    """Provision agents from a JSON (or YAML) spec file."""
+    path = Path(from_file)
+    if not path.is_file():
+        ui.error(f"Spec file not found: {from_file}")
+        raise typer.Exit(1)
+
+    content = path.read_text(encoding="utf-8")
+    spec_obj: Any
+
+    if from_file.endswith((".yaml", ".yml")):
+        try:
+            import yaml as _yaml  # type: ignore[import-untyped]
+            spec_obj = _yaml.safe_load(content)
+        except ImportError:
+            ui.error(
+                "PyYAML is not installed. Install it with: pip install pyyaml\n"
+                "Or convert your spec to JSON."
+            )
+            raise typer.Exit(1) from None
+    else:
+        try:
+            spec_obj = _json.loads(content)
+        except _json.JSONDecodeError as exc:
+            ui.error(f"Invalid JSON in spec file: {exc}")
+            raise typer.Exit(1) from None
+
+    agents_spec: list[dict[str, Any]]
+    if isinstance(spec_obj, list):
+        agents_spec = spec_obj
+    elif isinstance(spec_obj, dict) and "agents" in spec_obj:
+        agents_spec = list(spec_obj["agents"])
+    elif isinstance(spec_obj, dict):
+        agents_spec = [spec_obj]
+    else:
+        ui.error("Spec file must be a JSON object or array of agent specs.")
+        raise typer.Exit(1)
+
+    created: list[str] = []
+    skipped: list[str] = []
+    wired: bool = False
+
+    for spec in agents_spec:
+        aid = str(spec.get("id", "")).strip()
+        if not aid:
+            ui.warn("Skipping spec entry with no 'id' field.")
+            continue
+
+        if (_cfg.PROJECTS_DIR / aid).is_dir():
+            ui.warn(f"'{aid}' already exists — skipping.")
+            skipped.append(aid)
+            continue
+
+        agent_type = str(spec.get("type", "repo"))
+        name = str(spec.get("name", aid))
+        codebase = str(spec.get("codebase", ""))
+        stack = str(spec.get("stack", ""))
+        model = str(spec.get("model", ""))
+        description = str(spec.get("description", ""))
+        tg_group = str(spec.get("telegram", "")).strip()
+        budget = str(spec.get("budgetUsd", ""))
+        project_key = str(spec.get("projectKey", "default"))
+
+        _provision_agent(
+            aid, agent_type, name, codebase, stack, model,
+            description, project_key, budget, "declarative",
+        )
+        created.append(aid)
+
+        if tg_group:
+            _oc.upsert_binding(aid, tg_group, "telegram", "group")
+            ui.success(f"Telegram binding: {aid} ← group {tg_group}")
+            wired = True
+
+    if wired:
+        _do_restart_gateway()
+
+    ui.console.print()
+    if created:
+        ui.success(f"Created {len(created)} agent(s): {', '.join(created)}")
+    if skipped:
+        ui.warn(f"Skipped {len(skipped)} existing agent(s): {', '.join(skipped)}")
+    if not created and not skipped:
+        ui.warn("No agents provisioned.")
+
+
+def _create_workspace(
+    agent_id: str,
+    agent_type: str,
+    name: str,
+    codebase: str,
+    stack: str,
+    description: str,
+    model: str,
+) -> None:
+    """Create workspace directory and template files.
+
+    Mirrors _create_workspace() in lib/helpers/workspace.sh.
+    """
+    ws = _cfg.PROJECTS_DIR / agent_id
+    ws.mkdir(parents=True, exist_ok=True)
+    (ws / "memory").mkdir(exist_ok=True)
+
+    session_key = f"agent:{agent_id}:default"
+    test_cmd = _test_cmd_for_stack(stack)
+
+    if agent_type == "repo":
+        soul = (
+            f"# SOUL.md — {name}\n\n"
+            "## Identity\n"
+            f"You are the autonomous agent for **{name}**. "
+            "You know this project deeply. You do not discuss or act on other projects.\n\n"
+            f"**Session Key:** `{session_key}`\n\n"
+            "This session key isolates you from other project contexts. "
+            "You may only access resources and memory within this coordinate space.\n\n"
+            "## Description\n"
+            f"{description}\n\n"
+            "## Codebase\n"
+            f"{codebase}\n\n"
+            "## Stack\n"
+            f"{stack}\n\n"
+            "## Test Command\n"
+            f"`{test_cmd}`\n\n"
+            "## Traits\n"
+            "- Read files before making any changes. Never assume structure.\n"
+            "- Delegate: implementation → programmer, review → reviewer, tests → tester.\n"
+            "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
+            "- Proactive: check HEARTBEAT.md every session.\n"
+            f"- Scope: never act outside {codebase}.\n"
+            "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
+            "## Safety\n"
+            "- Never push to main/master without HITL approval.\n"
+            "- Never delete files without explicit instruction.\n"
+        )
+        agents = (
+            f"# AGENTS.md — {name}\n\n"
+            "## Every Session\n"
+            "1. Read SOUL.md\n"
+            "2. Read HEARTBEAT.md — any pending tasks?\n"
+            "3. Read memory/YYYY-MM-DD.md (today + yesterday)\n"
+            "4. Read MEMORY.md if it exists\n\n"
+            "## Project Path\n"
+            f"{codebase}\n\n"
+            "## Delegation\n"
+            "| Task              | Delegate to  |\n"
+            "|-------------------|--------------|\n"
+            "| Code              | programmer   |\n"
+            "| Review            | reviewer     |\n"
+            "| Tests             | tester       |\n"
+            "| Memory/patterns   | knowledge    |\n"
+            "| Risky actions     | security     |\n\n"
+            "## Scope Rule\n"
+            f"Only act on {name}. Redirect other project questions to the correct group.\n\n"
+            "## First Run\n"
+            "If MEMORY.md is missing, read the codebase and write it:\n"
+            "1. Check package.json / requirements.txt / composer.json\n"
+            "2. Read key entry points\n"
+            "3. Check git log --oneline -20\n"
+            "4. Write MEMORY.md: architecture, current state, key files, known issues\n"
+        )
+        tools = (
+            f"# TOOLS.md — {name}\n\n"
+            "## Project Path\n"
+            f"{codebase}\n\n"
+            "## Stack\n"
+            f"{stack}\n\n"
+            "## Commands\n"
+            "```bash\n"
+            f"{test_cmd}       # run tests\n"
+            "git log --oneline -10  # recent history\n"
+            "git diff HEAD          # review before commit\n"
+            "```\n\n"
+            "## Environment Notes\n"
+            "_Add: DB name, ports, env vars, dev server command, seed scripts._\n"
+        )
+    else:
+        soul = (
+            f"# SOUL.md — {name}\n\n"
+            "## Identity\n"
+            f"You are the autonomous agent for **{name}**. "
+            "You handle tasks, research, and file operations for this context only.\n\n"
+            f"**Session Key:** `{session_key}`\n\n"
+            "This session key isolates you from other project contexts. "
+            "You may only access resources and memory within this coordinate space.\n\n"
+            "## Description\n"
+            f"{description}\n\n"
+            "## Work Directory\n"
+            f"~/Sites/{agent_id}/\n\n"
+            "## Traits\n"
+            "- Break requests into numbered steps and execute them.\n"
+            "- Log all completed tasks to memory/YYYY-MM-DD.md.\n"
+            "- Proactive: check HEARTBEAT.md every session.\n"
+            "- Scope: stay within this context. Do not reference other projects.\n"
+            "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
+            "## Safety\n"
+            "- Never post publicly or send external messages without HITL approval.\n"
+            "- Ask before overwriting existing files.\n"
+        )
+        agents = (
+            f"# AGENTS.md — {name}\n\n"
+            "## Every Session\n"
+            "1. Read SOUL.md\n"
+            "2. Read HEARTBEAT.md\n"
+            "3. Read memory/YYYY-MM-DD.md (today + yesterday)\n\n"
+            "## Work Directory\n"
+            f"~/Sites/{agent_id}/\n\n"
+            "## Task Protocol\n"
+            "1. Break request into numbered steps\n"
+            "2. Execute each step\n"
+            "3. Log results to memory/YYYY-MM-DD.md\n"
+            "4. Report blockers immediately\n\n"
+            "## Scope Rule\n"
+            f"Only handle {name} tasks.\n"
+        )
+        tools = (
+            f"# TOOLS.md — {name}\n\n"
+            "## Work Directory\n"
+            f"~/Sites/{agent_id}/\n\n"
+            "## Notes\n"
+            "_Add: API keys needed, URLs to monitor, file locations, tools to use._\n"
+        )
+
+    heartbeat = (
+        f"# HEARTBEAT.md — {name}\n\n"
+        "Check every session. Delete items when done.\n\n"
+        "## Active Tasks\n"
+        "_none yet_\n\n"
+        "## Pending Decisions\n"
+        "_none_\n\n"
+        "## Notes\n"
+        "_none_\n"
+    )
+
+    for fname, text in [
+        ("SOUL.md", soul),
+        ("AGENTS.md", agents),
+        ("TOOLS.md", tools),
+        ("HEARTBEAT.md", heartbeat),
+    ]:
+        fpath = ws / fname
+        fpath.write_text(text, encoding="utf-8")
+        fpath.chmod(0o600)
+
+    ws.chmod(0o700)
+    (ws / "memory").chmod(0o700)
+
+
+def _provision_agent(
+    agent_id: str,
+    agent_type: str,
+    name: str,
+    codebase: str,
+    stack: str,
+    model: str,
+    description: str,
+    project_key: str,
+    budget: str,
+    source: str,
+) -> None:
+    """Create workspace, write metadata, register with openclaw."""
+    import subprocess as _sub
+
+    role = "repo" if agent_type == "repo" else "task"
+    if not model:
+        model = _mp.resolve_role_model(role)
+        model_source_val = "policy"
+    else:
+        with contextlib.suppress(Exception):
+            model = _mp.validate_model(model)[0]
+        policy_model = _mp.resolve_role_model(role)
+        model_source_val = "policy" if model == policy_model else "pinned"
+
+    session_key = f"agent:{agent_id}:{project_key}"
+
+    _create_workspace(agent_id, agent_type, name, codebase, stack, description, model)
+
+    meta_data: dict[str, Any] = {
+        "schemaVersion": 1,
+        "kind": "project",
+        "type": agent_type,
+        "name": name,
+        "codebase": codebase,
+        "stack": stack,
+        "model": model,
+        "modelSource": model_source_val,
+        "description": description,
+        "sessionKey": session_key,
+        "projectKey": project_key,
+        "templateVersion": 1,
+    }
+    if budget and budget not in ("", "0"):
+        meta_data["budgetUsd"] = budget
+
+    meta_file = _cfg.PROJECTS_DIR / agent_id / ".docket-meta.json"
+    meta_file.write_text(_json.dumps(meta_data, indent=2), encoding="utf-8")
+    meta_file.chmod(0o600)
+
+    # Create sessions dir
+    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    # Register with openclaw daemon (best-effort)
+    if shutil.which("openclaw"):
+        ws_path = str(_cfg.PROJECTS_DIR / agent_id)
+        try:
+            result = _sub.run(
+                [
+                    "openclaw", "agents", "add", agent_id,
+                    "--workspace", ws_path,
+                    "--model", model,
+                    "--non-interactive",
+                ],
+                capture_output=True,
+                timeout=15,
+            )
+            if result.returncode == 0:
+                ui.success(f"Registered '{agent_id}' with openclaw")
+            else:
+                ui.warn(f"openclaw agent add exited {result.returncode} — register manually if needed")
+        except (OSError, _sub.TimeoutExpired):
+            ui.warn("openclaw agent add timed out — register manually if needed")
+    else:
+        with contextlib.suppress(Exception):
+            _oc.add_agent(agent_id, model, session_key, project_key)
+
+    with contextlib.suppress(Exception):
+        _oc.sync_session_key(agent_id, session_key, project_key)
+
+    if not _oc.has_usable_profile():
+        ui.warn("No usable auth profile found. Run: docket auth login")
 
 
 @app.command("info")
@@ -483,23 +915,717 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
 
 
 # ── maintenance ────────────────────────────────────────────────────────────────
-@app.command("maintain")
+@app.command(
+    "maintain",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 def cmd_maintain(
+    ctx: typer.Context,
     agent_id: str | None = typer.Argument(None),
-    sub: str | None = typer.Argument(None),
+    mode: str | None = typer.Argument(None),
 ) -> None:
-    """Maintain an agent workspace (clean/reset/rebuild/check/sessions)."""
-    _not_ported("maintain")
+    """Maintain an agent workspace (check/clean/reset/rebuild/sessions)."""
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Maintain workspace for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Project '{aid}' not found.")
+        raise typer.Exit(1)
+
+    action = mode or "check"
+
+    if action == "check":
+        _maintain_check(aid, ws)
+    elif action == "clean":
+        _maintain_clean(aid, ws)
+    elif action == "reset":
+        _maintain_reset(aid, ws)
+    elif action == "rebuild":
+        _maintain_rebuild(aid, ws)
+    elif action == "sessions":
+        _maintain_sessions(aid)
+    else:
+        ui.error(f"Unknown maintain subcommand '{action}'. Use: check, clean, reset, rebuild, sessions")
+        raise typer.Exit(1)
+
+
+def _maintain_check(agent_id: str, ws: Path) -> None:
+    """check: verify permissions, missing files, session key sync, memory dir."""
+    import stat as _stat
+
+    ui.header(f"Health Check: {agent_id}")
+    ui.console.print()
+
+    issues: list[str] = []
+
+    # Check permissions
+    perm_ok = True
+    for dirpath in ws.rglob("*"):
+        try:
+            mode = dirpath.stat().st_mode
+            if dirpath.is_dir():
+                if _stat.S_IMODE(mode) != 0o700:
+                    dirpath.chmod(0o700)
+            elif dirpath.is_file() and _stat.S_IMODE(mode) != 0o600:
+                dirpath.chmod(0o600)
+        except OSError:
+            perm_ok = False
+    if perm_ok:
+        ui.console.print("  [green]✓[/green] Permissions: ok (dirs 700, files 600)")
+    else:
+        ui.console.print("  [yellow]⚠[/yellow] Permissions: some could not be set")
+
+    # Check required files
+    required = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", ".docket-meta.json"]
+    missing_files = [f for f in required if not (ws / f).is_file()]
+    if missing_files:
+        issues.extend(missing_files)
+        for mf in missing_files:
+            ui.console.print(f"  [red]✗[/red] Missing file: {mf}")
+        if sys.stdin.isatty():
+            ans = input("  Regenerate missing workspace files? [y/N]: ").strip().lower()
+            if ans == "y":
+                raw = store.read_json(_cfg.meta_path(agent_id))
+                _create_workspace(
+                    agent_id,
+                    str(raw.get("type", "repo")),
+                    str(raw.get("name", agent_id)),
+                    str(raw.get("codebase", "")),
+                    str(raw.get("stack", "")),
+                    str(raw.get("description", "")),
+                    str(raw.get("model", _cfg.DEFAULT_MODEL)),
+                )
+                ui.success("Workspace files regenerated.")
+                missing_files = []
+    else:
+        ui.console.print("  [green]✓[/green] Required files: all present")
+
+    # Check session key sync
+    meta_session = _oc.meta_get(agent_id, "sessionKey", "")
+    soul_path = ws / "SOUL.md"
+    soul_session = ""
+    if soul_path.is_file():
+        for ln in soul_path.read_text(encoding="utf-8").splitlines():
+            if "Session Key:" in ln or "session_key" in ln.lower():
+                # Grab the backtick-wrapped value
+                import re as _re
+                m = _re.search(r"`([^`]+)`", ln)
+                if m:
+                    soul_session = m.group(1)
+                    break
+
+    if meta_session and soul_session and meta_session != soul_session:
+        ui.console.print(
+            f"  [yellow]⚠[/yellow] Session key mismatch:\n"
+            f"     meta:   {meta_session}\n"
+            f"     SOUL.md: {soul_session}"
+        )
+        issues.append("session key mismatch")
+    else:
+        ui.console.print("  [green]✓[/green] Session key: in sync")
+
+    # Check memory directory
+    mem_dir = ws / "memory"
+    if mem_dir.is_dir():
+        mem_count = sum(1 for _ in mem_dir.glob("*.md"))
+        ui.console.print(f"  [green]✓[/green] Memory directory: {mem_count} log(s)")
+    else:
+        ui.console.print("  [yellow]⚠[/yellow] Memory directory: missing")
+        mem_dir.mkdir(exist_ok=True)
+        mem_dir.chmod(0o700)
+        ui.console.print("       → created memory/")
+
+    ui.console.print()
+    if not issues:
+        ui.success(f"HEALTHY — {agent_id} workspace looks good")
+    else:
+        ui.warn(f"ISSUES FOUND: {len(issues)} problem(s) detected")
+        ui.console.print("  Run 'docket maintain <id> rebuild' to fully regenerate.")
+
+
+def _maintain_clean(agent_id: str, ws: Path) -> None:
+    """clean: delete memory/*.md log files."""
+    if not sys.stdin.isatty():
+        ui.console.print("Cancelled (non-interactive).")
+        return
+
+    mem_dir = ws / "memory"
+    if not mem_dir.is_dir():
+        ui.warn("No memory directory found.")
+        return
+
+    logs = sorted(mem_dir.glob("*.md"))
+    if not logs:
+        ui.info("No memory logs to clean.")
+        return
+
+    ui.warn(f"This will delete {len(logs)} memory log file(s).")
+    ans = input("Continue? [y/N]: ").strip().lower()
+    if ans != "y":
+        ui.warn("Cancelled.")
+        return
+
+    for f in logs:
+        f.unlink()
+    ui.success(f"Deleted {len(logs)} memory log file(s).")
+
+
+def _maintain_reset(agent_id: str, ws: Path) -> None:
+    """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md."""
+    if not sys.stdin.isatty():
+        ui.console.print("Cancelled (non-interactive).")
+        return
+
+    ui.warn("This will:")
+    ui.console.print("  - Delete all memory/*.md log files")
+    ui.console.print("  - Clear MEMORY.md")
+    ui.console.print("  - Reset HEARTBEAT.md to empty template")
+    ans = input("Continue? [y/N]: ").strip().lower()
+    if ans != "y":
+        ui.warn("Cancelled.")
+        return
+
+    mem_dir = ws / "memory"
+    removed = 0
+    if mem_dir.is_dir():
+        for f in mem_dir.glob("*.md"):
+            f.unlink()
+            removed += 1
+
+    memory_md = ws / "MEMORY.md"
+    if memory_md.is_file():
+        memory_md.write_text("# MEMORY.md\n\n_Cleared by docket maintain reset._\n", encoding="utf-8")
+        memory_md.chmod(0o600)
+
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    name = str(raw.get("name", agent_id))
+    heartbeat_text = (
+        f"# HEARTBEAT.md — {name}\n\n"
+        "Check every session. Delete items when done.\n\n"
+        "## Active Tasks\n_none_\n\n"
+        "## Pending Decisions\n_none_\n\n"
+        "## Notes\n_none_\n"
+    )
+    hb = ws / "HEARTBEAT.md"
+    hb.write_text(heartbeat_text, encoding="utf-8")
+    hb.chmod(0o600)
+
+    ui.success(f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, HEARTBEAT.md reset.")
+
+
+def _maintain_rebuild(agent_id: str, ws: Path) -> None:
+    """rebuild: backup existing files then regenerate workspace from metadata."""
+    import datetime as _dt
+    import shutil as _shutil
+
+    if not sys.stdin.isatty():
+        ui.console.print("Confirmation failed. Aborted.")
+        return
+
+    ui.warn("This will backup and regenerate all workspace files from metadata.")
+    confirm = input(f"Type agent ID to confirm [{agent_id}]: ").strip()
+    if confirm != agent_id:
+        ui.warn("Aborted.")
+        return
+
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_dir = ws / f".backup-{stamp}"
+    backup_dir.mkdir(exist_ok=True)
+
+    for fname in ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"]:
+        src = ws / fname
+        if src.is_file():
+            _shutil.copy2(src, backup_dir / fname)
+
+    ui.success(f"Backup saved to: {backup_dir}")
+
+    _create_workspace(
+        agent_id,
+        str(raw.get("type", "repo")),
+        str(raw.get("name", agent_id)),
+        str(raw.get("codebase", "")),
+        str(raw.get("stack", "")),
+        str(raw.get("description", "")),
+        str(raw.get("model", _cfg.DEFAULT_MODEL)),
+    )
+
+    # Clear memory logs
+    mem_dir = ws / "memory"
+    for f in mem_dir.glob("*.md"):
+        f.unlink()
+
+    ui.success(f"Workspace rebuilt for '{agent_id}'.")
+
+
+def _maintain_sessions(agent_id: str) -> None:
+    """sessions: find large/old session JSONL files and optionally archive them."""
+    import datetime as _dt
+    import gzip as _gzip
+    import shutil as _shutil
+
+    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
+    if not sessions_dir.is_dir():
+        ui.info(f"No sessions directory found for '{agent_id}'.")
+        return
+
+    now = _dt.datetime.now()
+    cutoff_days = 30
+    size_threshold = 5 * 1024 * 1024  # 5 MB
+
+    candidates: list[Path] = []
+    for f in sessions_dir.glob("*.jsonl"):
+        try:
+            size = f.stat().st_size
+            mtime = _dt.datetime.fromtimestamp(f.stat().st_mtime)
+            age_days = (now - mtime).days
+            if size > size_threshold or age_days > cutoff_days:
+                candidates.append(f)
+        except OSError:
+            pass
+
+    ui.header(f"Sessions: {agent_id}")
+    ui.console.print()
+
+    if not candidates:
+        ui.info("No large or old session files found.")
+        return
+
+    for f in candidates:
+        size = f.stat().st_size
+        age = (now - _dt.datetime.fromtimestamp(f.stat().st_mtime)).days
+        ui.console.print(f"  {f.name}  ({size // 1024}KB, {age}d old)")
+
+    ui.console.print()
+    ui.console.print(f"  {len(candidates)} file(s) to archive")
+
+    if not sys.stdin.isatty():
+        ui.info("Non-interactive mode — reported only (no archiving).")
+        return
+
+    ans = input("Archive these sessions? [y/N]: ").strip().lower()
+    if ans != "y":
+        ui.warn("Cancelled.")
+        return
+
+    archive_dir = sessions_dir / "archive"
+    archive_dir.mkdir(exist_ok=True)
+
+    archived = 0
+    for f in candidates:
+        dest = archive_dir / (f.name + ".gz")
+        with f.open("rb") as f_in, _gzip.open(dest, "wb") as f_out:
+            _shutil.copyfileobj(f_in, f_out)
+        f.unlink()
+        archived += 1
+
+    ui.success(f"Archived {archived} session file(s) to {archive_dir}")
 
 
 # ── context / memory ──────────────────────────────────────────────────────────
-@app.command("context")
+@app.command(
+    "context",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 def cmd_context(
+    ctx: typer.Context,
     agent_id: str | None = typer.Argument(None),
     sub: str | None = typer.Argument(None),
 ) -> None:
-    """Show/search/snapshot/index/compress agent memory."""
-    _not_ported("context")
+    """Agent context and memory management (show/search/index/snapshot/compress/project)."""
+
+    extra: list[str] = list(ctx.args)
+
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Manage context for")
+
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"'{aid}' not found.")
+        raise typer.Exit(1)
+
+    _CONTEXT_SUBS = {"show", "search", "index", "snapshot", "compress", "project"}
+    action = sub or "show"
+
+    # If sub is not a known subcommand keyword → treat as search query
+    if action not in _CONTEXT_SUBS:
+        query_parts = [action, *extra]
+        _context_search(aid, ws, query_parts)
+        return
+
+    if action == "show":
+        _context_show(aid, ws)
+    elif action == "search":
+        _context_search(aid, ws, extra)
+    elif action == "index":
+        _context_index(aid, ws)
+    elif action == "snapshot":
+        _context_snapshot(aid, ws)
+    elif action == "compress":
+        _context_compress(aid, ws)
+    elif action == "project":
+        _context_project(aid, ws)
+
+
+def _context_show(agent_id: str, ws: Path) -> None:
+    import datetime as _dt
+
+    try:
+        raw = store.read_json(_cfg.meta_path(agent_id))
+        name = str(raw.get("name", agent_id))
+    except Exception:
+        name = agent_id
+
+    ui.header(f"Context: {name}")
+    ui.console.print()
+
+    # Recent Activity
+    ui.console.print("[bold]Recent Activity[/bold]")
+    mem_dir = ws / "memory"
+    if mem_dir.is_dir():
+        mem_files = sorted(mem_dir.glob("*.md"), reverse=True)[:3]
+        if mem_files:
+            for mf in mem_files:
+                ui.console.print(f"  [dim]{mf.name}[/dim]")
+                try:
+                    lines = mf.read_text(encoding="utf-8").splitlines()[-5:]
+                    for ln in lines:
+                        ui.console.print(f"    {ln}")
+                except OSError:
+                    pass
+        else:
+            ui.console.print("  [dim]No memory logs yet.[/dim]")
+    else:
+        ui.console.print("  [dim]No memory directory.[/dim]")
+
+    ui.console.print()
+
+    # Active Tasks
+    ui.console.print("[bold]Active Tasks[/bold]")
+    hb = ws / "HEARTBEAT.md"
+    if hb.is_file():
+        task_lines = [
+            ln for ln in hb.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("- [")
+        ][:5]
+        if task_lines:
+            for tl in task_lines:
+                ui.console.print(f"  {tl}")
+        else:
+            ui.console.print("  [dim]No active tasks.[/dim]")
+    else:
+        ui.console.print("  [dim]HEARTBEAT.md not found.[/dim]")
+
+    ui.console.print()
+
+    # Gateway Activity
+    ui.console.print("[bold]Gateway Activity[/bold]")
+    today = _dt.date.today().strftime("%Y-%m-%d")
+    log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
+    if log_file.is_file():
+        try:
+            all_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            matched = [ln for ln in all_lines if agent_id in ln][-5:]
+            if matched:
+                for ln in matched:
+                    ui.console.print(f"  [dim]{ln}[/dim]")
+            else:
+                ui.console.print(f"  [dim]No entries today for '{agent_id}'.[/dim]")
+        except OSError:
+            ui.console.print("  [dim]Cannot read log file.[/dim]")
+    else:
+        ui.console.print(f"  [dim]No log for {today}.[/dim]")
+
+    ui.console.print()
+
+    # Context Statistics
+    ui.console.print("[bold]Context Statistics[/bold]")
+    mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
+    activity = last_activity(agent_id)
+
+    # Session size (latest session file)
+    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
+    session_size = "n/a"
+    if sessions_dir.is_dir():
+        session_files = sorted(sessions_dir.glob("*.jsonl"))
+        if session_files:
+            try:
+                size_bytes = session_files[-1].stat().st_size
+                session_size = f"{size_bytes // 1024}KB"
+            except OSError:
+                pass
+
+    ui.console.print(f"  Log files:    {mem_count}")
+    ui.console.print(f"  Session size: {session_size}")
+    ui.console.print(f"  Last active:  {activity}")
+
+    ui.console.print()
+    ui.console.print("[bold]Quick Actions[/bold]")
+    ui.console.print(f"  docket context {agent_id} search <query>  — search memory")
+    ui.console.print(f"  docket context {agent_id} index            — build search index")
+    ui.console.print(f"  docket context {agent_id} snapshot         — export SNAPSHOT.md")
+    ui.console.print(f"  docket context {agent_id} compress         — gzip old logs")
+    ui.console.print()
+
+
+def _context_search(agent_id: str, ws: Path, query_parts: list[str]) -> None:
+    query = " ".join(query_parts).strip()
+    if not query:
+        ui.error("Usage: docket context <id> search <query>")
+        raise typer.Exit(1)
+
+    index_path = ws / ".memory-index.json"
+    if not index_path.is_file():
+        ui.warn("Memory not indexed yet. Run: docket context <id> index")
+        raise typer.Exit(0)
+
+    try:
+        index = _json.loads(index_path.read_text(encoding="utf-8"))
+    except Exception:
+        ui.error("Failed to read memory index.")
+        raise typer.Exit(1) from None
+
+    keywords = index.get("keywords", {})
+    decisions = index.get("decisions", [])
+    files = index.get("files", [])
+
+    query_lower = query.lower()
+    matches: list[str] = []
+
+    # Search keywords
+    for kw, occurrences in keywords.items():
+        if query_lower in kw.lower():
+            for occ in occurrences:
+                matches.append(f"[keyword] {kw} in {occ}")
+
+    # Search decisions
+    for dec in decisions:
+        if query_lower in dec.lower():
+            matches.append(f"[decision] {dec}")
+
+    # Search file names
+    for fname in files:
+        if query_lower in fname.lower():
+            matches.append(f"[file] {fname}")
+
+    ui.header(f"Search: {query}")
+    ui.console.print()
+    if matches:
+        for m in matches[:20]:
+            ui.console.print(f"  {m}")
+        if len(matches) > 20:
+            ui.console.print(f"  [dim]... {len(matches) - 20} more matches[/dim]")
+    else:
+        ui.console.print(f"  [dim]No matches for '{query}'.[/dim]")
+    ui.console.print()
+
+
+def _context_index(agent_id: str, ws: Path) -> None:
+    import datetime as _dt
+    import re as _re
+
+    mem_dir = ws / "memory"
+    files: list[str] = []
+    keywords: dict[str, list[str]] = {}
+    decisions: list[str] = []
+
+    if mem_dir.is_dir():
+        for mf in sorted(mem_dir.glob("*.md")):
+            files.append(mf.name)
+            try:
+                content = mf.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            # Keywords: bold or backtick words
+            for word in _re.findall(r"\*\*([^*]+)\*\*|`([^`]+)`", content):
+                kw = (word[0] or word[1]).strip()
+                if kw:
+                    kw_lower = kw.lower()
+                    keywords.setdefault(kw_lower, [])
+                    if mf.name not in keywords[kw_lower]:
+                        keywords[kw_lower].append(mf.name)
+
+    # Decisions from MEMORY.md
+    memory_md = ws / "MEMORY.md"
+    if memory_md.is_file():
+        try:
+            for ln in memory_md.read_text(encoding="utf-8").splitlines():
+                if ln.startswith("## "):
+                    decisions.append(ln[3:].strip())
+        except OSError:
+            pass
+
+    index = {
+        "indexed_at": _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "files": files,
+        "keywords": keywords,
+        "decisions": decisions,
+    }
+
+    index_path = ws / ".memory-index.json"
+    index_path.write_text(_json.dumps(index, indent=2), encoding="utf-8")
+    index_path.chmod(0o600)
+
+    ui.success(
+        f"Index built: {len(files)} file(s), {len(keywords)} keyword(s), {len(decisions)} decision(s)"
+    )
+
+
+def _context_snapshot(agent_id: str, ws: Path) -> None:
+    import datetime as _dt
+
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    name = str(raw.get("name", agent_id))
+    now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    lines: list[str] = [
+        f"# SNAPSHOT.md — {name}",
+        "",
+        f"Generated: {now}",
+        "",
+        "## Metadata",
+        f"- Agent ID: {agent_id}",
+        f"- Type: {raw.get('type', 'repo')}",
+        f"- Model: {raw.get('model', _cfg.DEFAULT_MODEL)}",
+        f"- Session Key: {raw.get('sessionKey', '')}",
+        f"- Codebase: {raw.get('codebase', '')}",
+        "",
+    ]
+
+    # Recent Activity
+    lines.append("## Recent Activity")
+    mem_dir = ws / "memory"
+    if mem_dir.is_dir():
+        for mf in sorted(mem_dir.glob("*.md"), reverse=True)[:3]:
+            lines.append("")
+            lines.append(f"### {mf.name}")
+            try:
+                for ln in mf.read_text(encoding="utf-8").splitlines()[-10:]:
+                    lines.append(ln)
+            except OSError:
+                pass
+    lines.append("")
+
+    # HEARTBEAT content
+    hb = ws / "HEARTBEAT.md"
+    if hb.is_file():
+        lines.append("## HEARTBEAT")
+        with contextlib.suppress(OSError):
+            lines.extend(hb.read_text(encoding="utf-8").splitlines())
+        lines.append("")
+
+    # MEMORY.md content
+    mem_md = ws / "MEMORY.md"
+    if mem_md.is_file():
+        lines.append("## MEMORY")
+        with contextlib.suppress(OSError):
+            lines.extend(mem_md.read_text(encoding="utf-8").splitlines())
+        lines.append("")
+
+    # Stats
+    mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
+    lines.append("## Stats")
+    lines.append(f"- Memory log files: {mem_count}")
+    lines.append(f"- Last active: {last_activity(agent_id)}")
+
+    snap_path = ws / "SNAPSHOT.md"
+    snap_path.write_text("\n".join(lines), encoding="utf-8")
+    snap_path.chmod(0o600)
+    ui.success(f"Snapshot written: {snap_path}")
+
+
+def _context_compress(agent_id: str, ws: Path) -> None:
+    import datetime as _dt
+    import gzip as _gzip
+    import shutil as _shutil
+
+    mem_dir = ws / "memory"
+    if not mem_dir.is_dir():
+        ui.info("No memory directory.")
+        return
+
+    cutoff = _dt.datetime.now() - _dt.timedelta(days=30)
+    old_files: list[Path] = []
+    for f in mem_dir.glob("*.md"):
+        try:
+            mtime = _dt.datetime.fromtimestamp(f.stat().st_mtime)
+            if mtime < cutoff:
+                old_files.append(f)
+        except OSError:
+            pass
+
+    if not old_files:
+        ui.info("No old logs to compress (all memory logs are < 30 days old).")
+        return
+
+    archive_dir = mem_dir / "archive"
+    archive_dir.mkdir(exist_ok=True)
+    archive_dir.chmod(0o700)
+
+    for f in old_files:
+        dest = archive_dir / (f.name + ".gz")
+        with f.open("rb") as f_in, _gzip.open(dest, "wb") as f_out:
+            _shutil.copyfileobj(f_in, f_out)
+        f.unlink()
+
+    ui.success(f"Compressed {len(old_files)} old log(s) → memory/archive/")
+
+
+def _context_project(agent_id: str, ws: Path) -> None:
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    name = str(raw.get("name", agent_id))
+
+    ui.header(f"Project Context: {name}")
+    ui.console.print()
+    ui.console.print(f"  [bold]{'Codebase:':<16}[/bold] {raw.get('codebase', '—')}")
+    ui.console.print(f"  [bold]{'Stack:':<16}[/bold] {raw.get('stack', '—')}")
+    ui.console.print(f"  [bold]{'Model:':<16}[/bold] {raw.get('model', '—')}")
+    ui.console.print(f"  [bold]{'Session Key:':<16}[/bold] {raw.get('sessionKey', '—')}")
+    ui.console.print()
+
+    # Active tasks from HEARTBEAT
+    hb = ws / "HEARTBEAT.md"
+    if hb.is_file():
+        task_lines = [
+            ln for ln in hb.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("- [")
+        ]
+        ui.console.print("[bold]Active Tasks[/bold]")
+        if task_lines:
+            for tl in task_lines[:5]:
+                ui.console.print(f"  {tl}")
+        else:
+            ui.console.print("  [dim]No active tasks.[/dim]")
+        ui.console.print()
+
+    # Decision headers from MEMORY.md
+    mem_md = ws / "MEMORY.md"
+    if mem_md.is_file():
+        headers = [
+            ln[3:].strip()
+            for ln in mem_md.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("## ")
+        ]
+        ui.console.print("[bold]Memory Sections[/bold]")
+        for h in headers:
+            ui.console.print(f"  ## {h}")
+        ui.console.print()
+
+    # Activity stats
+    mem_dir = ws / "memory"
+    mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
+    ui.console.print(f"  Memory logs: {mem_count}")
+    ui.console.print(f"  Last active: {last_activity(agent_id)}")
+    ui.console.print()
 
 
 # ── telegram ───────────────────────────────────────────────────────────────────
@@ -876,16 +2002,495 @@ def cmd_profile(
     _do_restart_gateway()
 
 
-@app.command("keys")
-def cmd_keys(sub: str | None = typer.Argument(None)) -> None:
-    """Manage centralised API keys."""
-    _not_ported("keys")
+@app.command(
+    "keys",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_keys(
+    ctx: typer.Context,
+    sub: str | None = typer.Argument(None),
+) -> None:
+    """API key management (add/list/remove/rotate/validate/export/setup)."""
+    extra: list[str] = list(ctx.args)
+    action = sub or "list"
+
+    if action == "list":
+        _keys_list()
+    elif action == "add":
+        name = extra[0] if extra else None
+        if not name:
+            ui.error("Usage: docket keys add <KEY_NAME>")
+            raise typer.Exit(1)
+        _keys_add(name)
+    elif action == "remove":
+        name = extra[0] if extra else None
+        if not name:
+            ui.error("Usage: docket keys remove <KEY_NAME>")
+            raise typer.Exit(1)
+        _keys_remove(name)
+    elif action == "rotate":
+        name = extra[0] if extra else None
+        if not name:
+            ui.error("Usage: docket keys rotate <KEY_NAME>")
+            raise typer.Exit(1)
+        _keys_rotate(name)
+    elif action == "validate":
+        name = extra[0] if extra else None
+        _keys_validate(name)
+    elif action == "export":
+        _keys_export()
+    elif action == "setup":
+        _keys_setup()
+    else:
+        ui.console.print("[bold]docket keys — API key management[/bold]")
+        ui.console.print()
+        ui.console.print("  docket keys list                  Show stored keys (masked)")
+        ui.console.print("  docket keys add <KEY_NAME>        Store a new key")
+        ui.console.print("  docket keys remove <KEY_NAME>     Remove a key")
+        ui.console.print("  docket keys rotate <KEY_NAME>     Update an existing key")
+        ui.console.print("  docket keys validate [KEY_NAME]   Check format validity")
+        ui.console.print("  docket keys export                Print export statements")
+        ui.console.print("  docket keys setup                 Interactive setup wizard")
+        ui.console.print()
+        raise typer.Exit(1)
 
 
-@app.command("auth")
-def cmd_auth(sub: str | None = typer.Argument(None)) -> None:
-    """Manage model authentication (via OpenClaw auth profiles)."""
-    _not_ported("auth")
+def _secrets_path() -> Path:
+    return _cfg.OPENCLAW_DIR / "secrets.json"
+
+
+def _secrets_meta_path() -> Path:
+    return _cfg.OPENCLAW_DIR / "secrets.meta.json"
+
+
+def _load_secrets() -> dict[str, str]:
+    try:
+        return _json.loads(_secrets_path().read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_secrets(secrets: dict[str, str]) -> None:
+    path = _secrets_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(secrets, indent=2) + "\n", encoding="utf-8")
+    tmp.chmod(0o600)
+    tmp.replace(path)
+
+
+def _load_secrets_meta() -> dict[str, Any]:
+    try:
+        return _json.loads(_secrets_meta_path().read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _touch_secrets_meta(name: str, event: str) -> None:
+    import datetime as _dt
+
+    meta = _load_secrets_meta()
+    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if event == "removed":
+        meta.pop(name, None)
+    else:
+        entry: dict[str, Any] = meta.get(name) or {}
+        entry.setdefault("added_at", now)
+        if event == "rotated":
+            entry["rotated_at"] = now
+        meta[name] = entry
+    path = _secrets_meta_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    tmp.chmod(0o600)
+    tmp.replace(path)
+
+
+# Known provider → key name mapping
+_PROVIDER_KEYS: dict[str, str] = {
+    "ANTHROPIC_API_KEY": "anthropic",
+    "OPENAI_API_KEY": "openai",
+    "GOOGLE_AI_API_KEY": "google",
+    "OPENROUTER_API_KEY": "openrouter",
+    "GROQ_API_KEY": "groq",
+    "MISTRAL_API_KEY": "mistral",
+    "XAI_API_KEY": "xai",
+    "CEREBRAS_API_KEY": "cerebras",
+    "HUGGINGFACE_TOKEN": "huggingface",
+}
+
+# Expected key prefix validation rules
+_KEY_PREFIXES: dict[str, tuple[str, int]] = {
+    "ANTHROPIC_API_KEY": ("sk-ant-", 40),
+    "OPENAI_API_KEY": ("sk-", 40),
+    "GOOGLE_AI_API_KEY": ("AIza", 0),
+    "OPENROUTER_API_KEY": ("sk-or-", 0),
+}
+
+
+def _mask_key(value: str) -> str:
+    if len(value) > 12:
+        return value[:4] + "****" + value[-4:]
+    return "****"
+
+
+def _validate_key_format(name: str, value: str) -> tuple[bool, str]:
+    """Return (ok, reason). reason is empty if ok."""
+    if name in _KEY_PREFIXES:
+        prefix, min_len = _KEY_PREFIXES[name]
+        if not value.startswith(prefix):
+            return False, f"should start with '{prefix}'"
+        if min_len and len(value) < min_len:
+            return False, f"too short (< {min_len} chars)"
+    return True, ""
+
+
+def _sync_keys_to_agents() -> None:
+    """Write .env files to agent workspaces with their provider keys."""
+    secrets = _load_secrets()
+    if not secrets:
+        return
+
+    for aid in project_ids():
+        ws = _cfg.workspace_dir(aid)
+        if not ws.is_dir():
+            continue
+        raw = store.read_json(_cfg.meta_path(aid))
+        model = str(raw.get("model", _cfg.DEFAULT_MODEL))
+        agent_provider = model.split("/")[0] if "/" in model else ""
+
+        env_lines: list[str] = []
+        for key_name, key_provider in _PROVIDER_KEYS.items():
+            if key_name not in secrets:
+                continue
+            # Include if this is the agent's provider OR it's a non-provider key
+            if key_provider == agent_provider or key_provider not in _PROVIDER_KEYS.values():
+                env_lines.append(f'{key_name}="{secrets[key_name]}"')
+
+        # Also include any custom keys not in the provider map
+        for key_name, value in secrets.items():
+            if key_name not in _PROVIDER_KEYS:
+                env_lines.append(f'{key_name}="{value}"')
+
+        env_file = ws / ".env"
+        env_file.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        env_file.chmod(0o600)
+
+
+def _keys_list() -> None:
+    secrets = _load_secrets()
+    if not secrets:
+        ui.info("No API keys stored yet.")
+        ui.console.print("  Add a key: docket keys add <KEY_NAME>")
+        ui.console.print("  Interactive setup: docket keys setup")
+        return
+
+    ui.header("Stored API Keys")
+    ui.console.print()
+    meta = _load_secrets_meta()
+    for name, value in sorted(secrets.items()):
+        masked = _mask_key(value)
+        entry = meta.get(name, {})
+        added = entry.get("added_at", "")[:10] if entry else ""
+        date_str = f"  added {added}" if added else ""
+        ok, _ = _validate_key_format(name, value)
+        badge = "[green]✓[/green]" if ok else "[yellow]⚠[/yellow]"
+        ui.console.print(f"  {badge} {name:<32}  {masked}{date_str}")
+    ui.console.print()
+
+
+def _keys_add(name: str) -> None:
+    import getpass as _getpass
+    import re as _re
+
+    if not _re.match(r"^[A-Z][A-Z0-9_]*$", name):
+        ui.error(f"Invalid key name '{name}'. Use UPPERCASE_WITH_UNDERSCORES (e.g. ANTHROPIC_API_KEY).")
+        raise typer.Exit(1)
+
+    secrets = _load_secrets()
+    if name in secrets:
+        ui.warn(f"Key '{name}' already exists. Use 'docket keys rotate' to update it.")
+        raise typer.Exit(1)
+
+    try:
+        value = _getpass.getpass(f"Enter value for {name} (hidden): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        ui.warn("\nAborted.")
+        raise typer.Exit(0) from None
+
+    if not value:
+        ui.error("Value cannot be empty.")
+        raise typer.Exit(1)
+
+    ok, reason = _validate_key_format(name, value)
+    if not ok:
+        ui.warn(f"Key format warning: {reason}")
+
+    secrets[name] = value
+    _save_secrets(secrets)
+    _touch_secrets_meta(name, "added")
+    _sync_keys_to_agents()
+    _do_restart_gateway()
+    ui.success(f"Key '{name}' stored.")
+
+
+def _keys_remove(name: str) -> None:
+    secrets = _load_secrets()
+    if name not in secrets:
+        ui.error(f"Key '{name}' not found.")
+        raise typer.Exit(1)
+
+    if sys.stdin.isatty():
+        ans = input(f"Remove '{name}'? [y/N]: ").strip().lower()
+        if ans != "y":
+            ui.warn("Cancelled.")
+            return
+
+    del secrets[name]
+    _save_secrets(secrets)
+    _touch_secrets_meta(name, "removed")
+    _sync_keys_to_agents()
+    _do_restart_gateway()
+    ui.success(f"Key '{name}' removed.")
+
+
+def _keys_rotate(name: str) -> None:
+    import getpass as _getpass
+
+    secrets = _load_secrets()
+    if name not in secrets:
+        ui.error(f"Key '{name}' does not exist. Use 'docket keys add' to create it.")
+        raise typer.Exit(1)
+
+    try:
+        value = _getpass.getpass(f"Enter new value for {name} (hidden): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        ui.warn("\nAborted.")
+        raise typer.Exit(0) from None
+
+    if not value:
+        ui.error("Value cannot be empty.")
+        raise typer.Exit(1)
+
+    ok, reason = _validate_key_format(name, value)
+    if not ok:
+        ui.warn(f"Key format warning: {reason}")
+
+    secrets[name] = value
+    _save_secrets(secrets)
+    _touch_secrets_meta(name, "rotated")
+    _sync_keys_to_agents()
+    _do_restart_gateway()
+    ui.success(f"Key '{name}' rotated.")
+
+
+def _keys_validate(name: str | None) -> None:
+    secrets = _load_secrets()
+    if not secrets:
+        ui.info("No keys stored.")
+        return
+
+    targets = {name: secrets[name]} if name and name in secrets else secrets
+    if name and name not in secrets:
+        ui.error(f"Key '{name}' not found.")
+        raise typer.Exit(1)
+
+    any_fail = False
+    for key_name, value in sorted(targets.items()):
+        ok, reason = _validate_key_format(key_name, value)
+        if ok:
+            ui.console.print(f"  [green]✓[/green] {key_name}")
+        else:
+            ui.console.print(f"  [yellow]⚠[/yellow] {key_name}: {reason}")
+            any_fail = True
+
+    if any_fail:
+        raise typer.Exit(1)
+
+
+def _keys_export() -> None:
+    secrets = _load_secrets()
+    if not secrets:
+        ui.info("No keys stored.")
+        return
+
+    for name, value in sorted(secrets.items()):
+        # Shell-safe: escape single quotes
+        safe_value = value.replace("'", "'\\''")
+        print(f"export {name}='{safe_value}'")
+
+
+def _keys_setup() -> None:
+    import getpass as _getpass
+
+    if not sys.stdin.isatty():
+        ui.error("docket keys setup requires an interactive TTY.")
+        raise typer.Exit(1)
+
+    ui.header("API Key Setup Wizard")
+    ui.console.print()
+    ui.console.print("Walk through key providers. Press Enter to skip any.")
+    ui.console.print()
+
+    providers = [
+        ("ANTHROPIC_API_KEY", "Anthropic (Claude)", "sk-ant-"),
+        ("OPENAI_API_KEY", "OpenAI (GPT)", "sk-"),
+        ("GOOGLE_AI_API_KEY", "Google AI (Gemini)", "AIza"),
+        ("OPENROUTER_API_KEY", "OpenRouter", "sk-or-"),
+    ]
+
+    secrets = _load_secrets()
+    changed = False
+
+    for key_name, label, _prefix in providers:
+        exists = key_name in secrets
+        status = f"[already set: {_mask_key(secrets[key_name])}]" if exists else "[not set]"
+        ui.console.print(f"[bold]{label}[/bold] {status}")
+        action = input(f"  Configure {key_name}? [y/N]: ").strip().lower()
+        if action != "y":
+            ui.console.print()
+            continue
+
+        try:
+            value = _getpass.getpass(f"  {key_name}: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            ui.warn("\nAborted.")
+            return
+
+        if not value:
+            ui.warn("  Skipped (empty).")
+            ui.console.print()
+            continue
+
+        ok, reason = _validate_key_format(key_name, value)
+        if not ok:
+            ui.warn(f"  Format warning: {reason}")
+            if input("  Save anyway? [y/N]: ").strip().lower() != "y":
+                ui.console.print()
+                continue
+
+        secrets[key_name] = value
+        event = "rotated" if exists else "added"
+        _touch_secrets_meta(key_name, event)
+        changed = True
+        ui.success(f"  {key_name} saved.")
+        ui.console.print()
+
+    if changed:
+        _save_secrets(secrets)
+        _sync_keys_to_agents()
+        _do_restart_gateway()
+        ui.success("Keys saved and synced to agent workspaces.")
+    else:
+        ui.info("No changes made.")
+
+
+@app.command(
+    "auth",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_auth(
+    ctx: typer.Context,
+    sub: str | None = typer.Argument(None),
+) -> None:
+    """Claude model authentication (status/login/key/setup)."""
+    import subprocess as _sub
+
+    extra: list[str] = list(ctx.args)
+    action = sub or "status"
+
+    if action == "status":
+        profiles = _oc.auth_profiles_summary()
+        if not profiles:
+            ui.warn("No auth profiles configured.")
+            ui.console.print("  Run: docket auth login")
+            return
+
+        ui.console.print()
+        any_ok = False
+        for p in profiles:
+            if p.disabled:
+                badge = "[yellow]●[/yellow]"
+                detail = f"(disabled: {p.disabled_reason})" if p.disabled_reason else "(disabled)"
+            else:
+                badge = "[green]●[/green]"
+                detail = ""
+                any_ok = True
+            ui.console.print(f"  {badge} {p.id}  ({p.provider}, {p.type}) {detail}")
+
+        ui.console.print()
+        if any_ok:
+            ui.success("At least one profile is usable.")
+        else:
+            ui.warn("All profiles are disabled.")
+
+    elif action == "login":
+        if not shutil.which("openclaw"):
+            ui.error("'openclaw' not found in PATH. Is it installed?")
+            raise typer.Exit(1)
+        ui.info("Authenticating with Anthropic (setup-token)...")
+        result = _sub.run(
+            ["openclaw", "models", "auth", "setup-token", "--provider", "anthropic", *extra]
+        )
+        if result.returncode == 0:
+            ui.success("Authentication successful.")
+            _do_restart_gateway()
+        else:
+            ui.error(f"Authentication failed (exit {result.returncode}).")
+            raise typer.Exit(1)
+
+    elif action == "key":
+        if not shutil.which("openclaw"):
+            ui.error("'openclaw' not found in PATH. Is it installed?")
+            raise typer.Exit(1)
+        ui.info("Authenticating with Anthropic (paste-token)...")
+        result = _sub.run(
+            ["openclaw", "models", "auth", "paste-token", "--provider", "anthropic", *extra]
+        )
+        if result.returncode == 0:
+            ui.success("Key stored successfully.")
+            _do_restart_gateway()
+        else:
+            ui.error(f"Key storage failed (exit {result.returncode}).")
+            raise typer.Exit(1)
+
+    elif action in ("setup", "choose"):
+        if not shutil.which("openclaw"):
+            ui.error("'openclaw' not found in PATH. Is it installed?")
+            raise typer.Exit(1)
+        if not sys.stdin.isatty():
+            ui.error("docket auth setup requires an interactive TTY.")
+            raise typer.Exit(1)
+        ui.console.print()
+        ui.console.print("[bold]Authentication setup:[/bold]")
+        ui.console.print("  1) Setup token (recommended — automatic token refresh)")
+        ui.console.print("  2) Paste API key (manual — no refresh)")
+        ui.console.print("  3) Cancel")
+        ui.console.print()
+        choice = input("Choose [1]: ").strip() or "1"
+        if choice == "3":
+            ui.warn("Cancelled.")
+            return
+        method = "paste-token" if choice == "2" else "setup-token"
+        result = _sub.run(
+            ["openclaw", "models", "auth", method, "--provider", "anthropic"]
+        )
+        if result.returncode == 0:
+            ui.success("Authentication configured.")
+            _do_restart_gateway()
+        else:
+            ui.error(f"Authentication failed (exit {result.returncode}).")
+            raise typer.Exit(1)
+
+    else:
+        ui.error(
+            f"Unknown auth subcommand '{action}'.\n"
+            "Usage:\n"
+            "  docket auth              — show auth profile status\n"
+            "  docket auth login        — setup-token (OAuth-like refresh)\n"
+            "  docket auth key          — paste-token (manual API key)\n"
+            "  docket auth setup        — interactive choice"
+        )
+        raise typer.Exit(1)
 
 
 # ── models / policy ────────────────────────────────────────────────────────────
