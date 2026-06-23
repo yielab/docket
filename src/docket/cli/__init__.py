@@ -1154,10 +1154,461 @@ def _cmd_models_reset() -> None:
 
 
 # ── team ───────────────────────────────────────────────────────────────────────
-@app.command("team")
-def cmd_team(sub: str | None = typer.Argument(None)) -> None:
-    """Specialist team coordination (status/delegate/queue/done)."""
-    _not_ported("team")
+@app.command(
+    "team",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_team(
+    ctx: typer.Context,
+    sub: str | None = typer.Argument(None),
+) -> None:
+    """Specialist team coordination (status/check/roles/upgrade/delegate/queue/start/done/cancel)."""
+    action = sub or "status"
+    extra: list[str] = list(ctx.args)
+
+    if action == "status":
+        _team_status()
+    elif action == "check":
+        _team_check()
+    elif action == "roles":
+        _team_roles()
+    elif action == "upgrade":
+        _team_upgrade()
+    elif action == "delegate":
+        _team_delegate(extra)
+    elif action == "queue":
+        _team_queue(extra)
+    elif action in ("start", "done", "cancel"):
+        state_map = {"start": "in_progress", "done": "done", "cancel": "cancelled"}
+        _team_transition(state_map[action], extra)
+    elif action == "init":
+        ui.warn("'team init' is deprecated. Use 'docket install' instead.")
+    else:
+        _team_help_text()
+
+
+def _team_help_text() -> None:
+    ui.header("Team Management")
+    ui.console.print()
+    ui.console.print("Manage specialist agents with DOCKET architecture")
+    ui.console.print()
+    ui.console.print("[bold]Usage:[/bold]")
+    ui.console.print("  docket team status              Show specialist agent health")
+    ui.console.print("  docket team upgrade             Upgrade specialists to DOCKET templates")
+    ui.console.print("  docket team check               Verify all specialists exist")
+    ui.console.print("  docket team roles               Show agent roles and responsibilities")
+    ui.console.print()
+    ui.console.print("[bold]Task Delegation:[/bold]")
+    ui.console.print('  docket team delegate "<task>"                 Add task (status: pending)')
+    ui.console.print('  docket team delegate --priority high "<task>" High-priority task')
+    ui.console.print("  docket team queue                             Show active tasks")
+    ui.console.print("  docket team queue --all                       Include done + cancelled")
+    ui.console.print("  docket team start <task-id>                   pending → in_progress")
+    ui.console.print("  docket team done <task-id>                    pending/in_progress → done")
+    ui.console.print("  docket team cancel <task-id>                  pending/in_progress → cancelled")
+    ui.console.print()
+
+
+_DOCKET_SOUL_RE = None
+
+
+def _docket_soul_pattern() -> Any:
+    import re as _re
+
+    global _DOCKET_SOUL_RE
+    if _DOCKET_SOUL_RE is None:
+        _DOCKET_SOUL_RE = _re.compile(
+            r"DOCKET Architecture|Context Compression|Short-Circuit|veto power"
+            r"|Mandatory.*checklist|validation specialist|compressed brief|observe behavior",
+            _re.IGNORECASE,
+        )
+    return _DOCKET_SOUL_RE
+
+
+def _team_status() -> None:
+    specialists = list(_cfg.SPECIALIST_ORDER)
+    ui.header("Specialist Team Status")
+    ui.console.print()
+    upgraded = 0
+    for spec in specialists:
+        ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        if not ws.is_dir():
+            ui.console.print(f"  [red]✗[/red] {spec:<12} Not installed")
+            continue
+        soul = ws / "SOUL.md"
+        if not soul.is_file():
+            ui.console.print(f"  [yellow]⚠[/yellow] {spec:<12} Missing SOUL.md")
+            continue
+        try:
+            content = soul.read_text(encoding="utf-8")
+        except OSError:
+            content = ""
+        if _docket_soul_pattern().search(content):
+            ui.console.print(f"  [green]✓[/green] {spec:<12} DOCKET-optimized")
+            upgraded += 1
+        else:
+            ui.console.print(f"  [cyan]○[/cyan] {spec:<12} Standard (upgrade available)")
+    ui.console.print()
+    if upgraded >= 4:
+        ui.dim("All core specialists DOCKET-optimized (knowledge & security use standard templates)")
+    else:
+        ui.dim("Run 'docket team upgrade' to apply DOCKET templates")
+    ui.console.print()
+
+
+def _team_check() -> None:
+    specialists = ["programmer", "reviewer", "tester", "knowledge", "security", "manager"]
+    ui.header("Specialist Agent Health Check")
+    ui.console.print()
+    missing: list[str] = []
+    healthy = 0
+    for spec in specialists:
+        if _oc.agent_registered(spec):
+            ui.success(f"{spec}: registered")
+            healthy += 1
+        else:
+            ui.warn(f"{spec}: NOT registered")
+            missing.append(spec)
+    ui.console.print()
+    if not missing:
+        ui.success(f"All specialists healthy ({healthy}/6)")
+    else:
+        ui.error(f"Missing specialists: {' '.join(missing)}")
+        ui.console.print()
+        ui.console.print("Run: docket install")
+        raise typer.Exit(1)
+
+
+def _team_roles() -> None:
+    ui.header("Specialist Agent Roles (DOCKET Architecture)")
+    ui.console.print()
+
+    def _model(role: str) -> str:
+        try:
+            return _mp.resolve_role_model(role)
+        except Exception:
+            return "?"
+
+    ui.console.print("[bold green]Manager (Atlas)[/bold green]")
+    ui.console.print("  • Orchestrates tasks and delegates to specialists")
+    ui.console.print("  • Embedded classifier logic (routes tasks efficiently)")
+    ui.console.print("  • Context compression before delegation")
+    ui.console.print("  • Short-circuit resolution for simple queries")
+    ui.console.print(f"  • Model: {_model('manager')} (role policy) | Tools: read (memory), message")
+    ui.console.print()
+
+    ui.console.print("[bold green]Programmer[/bold green]")
+    ui.console.print("  • Implements code changes from compressed briefs")
+    ui.console.print("  • Reads <5K tokens per task (file + brief only)")
+    ui.console.print("  • Signals completion via memory files")
+    ui.console.print(f"  • Model: {_model('programmer')} (role policy)")
+    ui.console.print("  • Tools: read, write, edit, exec (sandbox)")
+    ui.console.print()
+
+    ui.console.print("[bold green]Reviewer (Auditor)[/bold green]")
+    ui.console.print("  • Security + correctness gatekeeper")
+    ui.console.print("  • 6-point mandatory checklist")
+    ui.console.print("  • Veto power (bad code doesn't proceed)")
+    ui.console.print(f"  • Model: {_model('reviewer')} (role policy) | Tools: read (diff only)")
+    ui.console.print()
+
+    ui.console.print("[bold green]Tester (Validator)[/bold green]")
+    ui.console.print("  • Behavior-only validation (doesn't read code!)")
+    ui.console.print("  • Executes reproduction steps")
+    ui.console.print("  • Binary verdict: PASS or FAIL")
+    ui.console.print(f"  • Model: {_model('tester')} (role policy) | Tools: exec, browser (read-only)")
+    ui.console.print()
+
+    ui.console.print("[bold green]Knowledge[/bold green]")
+    ui.console.print("  • Memory distillation and indexing")
+    ui.console.print("  • Pattern extraction from logs")
+    ui.console.print("  • Architectural decision tracking")
+    ui.console.print(f"  • Model: {_model('knowledge')} (role policy) | Tools: read, memory search")
+    ui.console.print()
+
+    ui.console.print("[bold green]Security[/bold green]")
+    ui.console.print("  • Deep threat modeling (beyond code review)")
+    ui.console.print("  • Penetration testing coordination")
+    ui.console.print("  • Compliance audits (GDPR, HIPAA)")
+    ui.console.print(f"  • Model: {_model('security')} (role policy) | Tools: read, browser")
+    ui.console.print()
+
+    ui.console.print(
+        "[dim]Note: Reviewer handles routine security checks. Security specialist\n"
+        "      handles deep audits, compliance, and threat modeling.[/dim]"
+    )
+    ui.console.print()
+
+
+def _team_upgrade() -> None:
+    import datetime as _dt
+    import shutil as _shutil
+
+    cli_root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
+    if not cli_root.is_dir():
+        cli_root = Path(__file__).parents[3]
+    tmpl_dir = cli_root / "lib" / "templates"
+
+    ui.header("Upgrading Specialists to DOCKET Architecture")
+    ui.console.print()
+    ui.warn("This will replace SOUL.md files with DOCKET-optimized templates")
+    ui.console.print()
+    ui.console.print("Changes:")
+    ui.console.print("  • Manager: Add classifier logic + context compression rules")
+    ui.console.print("  • Programmer: Add brief-only reading + <5K token targets")
+    ui.console.print("  • Reviewer: Add 6-point security checklist + veto power")
+    ui.console.print("  • Tester: Add behavior-only validation (no code reading)")
+    ui.console.print("  • Knowledge: No changes (already efficient)")
+    ui.console.print("  • Security: No changes (focused on deep audits)")
+    ui.console.print()
+
+    if sys.stdin.isatty():
+        answer = input("Proceed with upgrade? [y/N]: ").strip().lower()
+        if answer != "y":
+            ui.warn("Aborted.")
+            return
+    else:
+        ui.warn("Non-interactive mode — aborting upgrade (requires TTY confirmation).")
+        return
+
+    ui.console.print()
+
+    upgrades = [
+        ("manager", "docket-manager.md"),
+        ("programmer", "docket-programmer.md"),
+        ("reviewer", "docket-reviewer.md"),
+        ("tester", "docket-tester.md"),
+    ]
+    upgraded = 0
+    failed = 0
+
+    for role, tmpl_name in upgrades:
+        ui.info(f"Upgrading {role}...")
+        ws = _cfg.OPENCLAW_DIR / "workspaces" / role
+        if not ws.is_dir():
+            ui.warn(f"{role}: workspace not found")
+            failed += 1
+            continue
+        tmpl = tmpl_dir / tmpl_name
+        if not tmpl.is_file():
+            ui.warn(f"{role}: template not found ({tmpl})")
+            failed += 1
+            continue
+        soul = ws / "SOUL.md"
+        if soul.is_file():
+            stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            _shutil.copy2(soul, soul.with_name(f"SOUL.md.backup-{stamp}"))
+        _shutil.copy2(tmpl, soul)
+        soul.chmod(0o600)
+        ui.success(f"{role}: upgraded (backup saved)")
+        upgraded += 1
+
+    ui.info("knowledge: no upgrade needed (already optimized)")
+    ui.info("security: no upgrade needed (already optimized)")
+    ui.console.print()
+
+    if failed:
+        ui.warn(f"Upgraded: {upgraded}, Failed: {failed}")
+        ui.console.print()
+        ui.console.print("Missing agents? Run: docket install")
+    else:
+        ui.success(f"All specialists upgraded! ({upgraded} agents)")
+
+    ui.console.print()
+    ui.info("Restarting gateway to apply changes...")
+    _do_restart_gateway()
+    ui.console.print()
+    ui.success("DOCKET upgrade complete!")
+    ui.console.print()
+
+
+def _task_list_path() -> Path:
+    return _cfg.OPENCLAW_DIR / "workspaces" / "manager" / "TASK_LIST.json"
+
+
+def _ensure_task_list() -> None:
+    mgr_ws = _cfg.OPENCLAW_DIR / "workspaces" / "manager"
+    if not mgr_ws.is_dir():
+        ui.error("Manager agent not initialized. Run: docket install")
+        raise typer.Exit(1)
+    path = _task_list_path()
+    if not path.is_file():
+        path.write_text(_json.dumps({"tasks": []}, indent=2), encoding="utf-8")
+        path.chmod(0o600)
+
+
+def _atomic_write_json(path: Path, data: object) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(data, indent=2), encoding="utf-8")
+    tmp.chmod(0o600)
+    tmp.replace(path)
+
+
+def _team_delegate(extra: list[str]) -> None:
+    import datetime as _dt
+
+    priority = "normal"
+    rest: list[str] = []
+    i = 0
+    while i < len(extra):
+        if extra[i] in ("--priority", "-p") and i + 1 < len(extra):
+            priority = extra[i + 1]
+            i += 2
+        else:
+            rest.append(extra[i])
+            i += 1
+
+    description = rest[0] if rest else ""
+    if not description:
+        ui.error('Usage: docket team delegate [--priority high|normal|low] "<task description>"')
+        raise typer.Exit(1)
+
+    if priority not in ("high", "normal", "low"):
+        ui.error(f"Invalid priority '{priority}'. Use: high | normal | low")
+        raise typer.Exit(1)
+
+    if len(description) > 500:
+        ui.error(f"Description too long ({len(description)} chars). Limit: 500.")
+        raise typer.Exit(1)
+
+    _ensure_task_list()
+    path = _task_list_path()
+
+    import time as _time
+
+    task_id = f"task-{int(_time.time() * 1000)}"
+    created = _dt.datetime.now().astimezone().isoformat()
+
+    data: dict[str, Any] = _json.loads(path.read_text(encoding="utf-8"))
+    data.setdefault("tasks", []).append(
+        {
+            "id": task_id,
+            "description": description,
+            "priority": priority,
+            "created": created,
+            "startedAt": None,
+            "completedAt": None,
+            "status": "pending",
+            "source": "operator",
+        }
+    )
+    _atomic_write_json(path, data)
+
+    queue_count = sum(
+        1 for t in data.get("tasks", []) if t.get("status") in ("pending", "in_progress")
+    )
+    ui.success(f"Task queued: [{task_id}] {description}")
+    ui.console.print(f"  Priority: {priority}")
+    ui.console.print(f"  Queue: {queue_count} task(s) pending")
+    ui.console.print()
+    ui.info("View queue: docket team queue")
+
+
+def _team_queue(extra: list[str]) -> None:
+    show_all = "--all" in extra or "-a" in extra
+    _ensure_task_list()
+    path = _task_list_path()
+
+    ui.header("Manager Task Queue")
+    ui.console.print()
+
+    tasks: list[dict[str, Any]] = _json.loads(path.read_text(encoding="utf-8")).get("tasks", [])
+    pri_order = {"high": 0, "normal": 1, "low": 2}
+
+    active = [t for t in tasks if t.get("status") in ("pending", "in_progress")]
+    done = [t for t in tasks if t.get("status") == "done"]
+    cancelled = [t for t in tasks if t.get("status") == "cancelled"]
+
+    if not active:
+        ui.console.print("  No active tasks.")
+    else:
+        active.sort(
+            key=lambda t: (
+                0 if t["status"] == "in_progress" else 1,
+                pri_order.get(t.get("priority", "normal"), 1),
+            )
+        )
+        ui.console.print(f"  {'ID':<16}  {'PRI':<8}  {'CREATED':<22}  DESCRIPTION")
+        ui.console.print("  " + "─" * 80)
+        for t in active:
+            tid = t.get("id", "?")[:14]
+            pri = t.get("priority", "normal")
+            cdate = (t.get("created", "?")[:19]).replace("T", " ")
+            desc = t.get("description", "")
+            prefix = "▶ " if t["status"] == "in_progress" else "  "
+            ui.console.print(f"  {prefix.strip()}{tid:<16}  {pri:<8}  {cdate:<22}  {desc}")
+
+    ui.console.print()
+    pending_count = sum(1 for t in active if t["status"] == "pending")
+    in_prog_count = sum(1 for t in active if t["status"] == "in_progress")
+    summary = f"  Pending: {pending_count}   In progress: {in_prog_count}   Done: {len(done)}"
+    if cancelled:
+        summary += f"   Cancelled: {len(cancelled)}"
+    ui.console.print(summary)
+
+    if show_all and (done or cancelled):
+        ui.console.print()
+        ui.console.print(f"  {'ID':<16}  {'STATUS':<12}  {'COMPLETED':<22}  DESCRIPTION")
+        ui.console.print("  " + "─" * 80)
+        for t in done + cancelled:
+            tid = t.get("id", "?")[:14]
+            st = t.get("status", "?")
+            cdate = (t.get("completedAt") or t.get("created", "?"))[:19].replace("T", " ")
+            desc = t.get("description", "")
+            ui.console.print(f"  {tid:<16}  {st:<12}  {cdate:<22}  {desc}")
+
+    ui.console.print()
+    ui.info("Mark done: docket team done <id>  |  Start: docket team start <id>  |  Cancel: docket team cancel <id>")
+    if not show_all:
+        ui.dim("  Show completed/cancelled: docket team queue --all")
+
+
+_TRANSITION_ALLOWED: dict[str, set[str]] = {
+    "in_progress": {"pending"},
+    "done": {"pending", "in_progress"},
+    "cancelled": {"pending", "in_progress"},
+}
+
+
+def _team_transition(new_state: str, extra: list[str]) -> None:
+    import datetime as _dt
+
+    task_id = extra[0] if extra else ""
+    if not task_id:
+        ui.error(f"Usage: docket team {new_state} <task-id>")
+        raise typer.Exit(1)
+
+    _ensure_task_list()
+    path = _task_list_path()
+
+    data: dict[str, Any] = _json.loads(path.read_text(encoding="utf-8"))
+    tasks: list[dict[str, Any]] = data.get("tasks", [])
+    now = _dt.datetime.now().astimezone().isoformat()
+
+    found: dict[str, Any] | None = None
+    for t in tasks:
+        tid = t.get("id", "")
+        if tid == task_id or tid.startswith(task_id):
+            found = t
+            break
+
+    if found is None:
+        ui.error(f"Task '{task_id}' not found")
+        raise typer.Exit(1)
+
+    cur = found.get("status", "pending")
+    if cur not in _TRANSITION_ALLOWED.get(new_state, set()):
+        ui.error(f"Cannot move '{task_id}' to {new_state} (current status: {cur})")
+        raise typer.Exit(1)
+
+    found["status"] = new_state
+    if new_state == "in_progress":
+        found["startedAt"] = now
+    elif new_state in ("done", "cancelled"):
+        found["completedAt"] = now
+
+    _atomic_write_json(path, data)
+    ui.success(f"Task → {new_state}: {found.get('description', task_id)}")
 
 
 @app.command("workflow")
