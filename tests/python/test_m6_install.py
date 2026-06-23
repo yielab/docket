@@ -22,7 +22,10 @@ from docket.edges.adapters import system as _sys
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
-_SPECIALISTS = ("manager", "programmer", "reviewer", "tester", "knowledge", "security")
+# Phase 10 (AA-2): install provisions only the shared **org** roles. The project
+# roles (programmer/reviewer/tester) become per-pod workers via `docket add` (AA-3).
+_ORG_SPECIALISTS = ("manager", "knowledge", "security")
+_PROJECT_ROLES = ("programmer", "reviewer", "tester")
 
 
 @pytest.fixture(autouse=True)
@@ -98,9 +101,10 @@ def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 # ── full install run ────────────────────────────────────────────────────────────
 
 
-def test_install_creates_all_specialists(
+def test_install_creates_only_org_specialists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # AA-2: install registers the org roles only; project roles are NOT global.
     oc_dir = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth(monkeypatch)
 
@@ -109,7 +113,9 @@ def test_install_creates_all_specialists(
 
     raw = json.loads((oc_dir / "openclaw.json").read_text())
     ids = {a["id"] for a in raw["agents"]["list"]}
-    assert ids == set(_SPECIALISTS)
+    assert ids == set(_ORG_SPECIALISTS)
+    # No global programmer/reviewer/tester singleton (the Defect-B fix).
+    assert not (ids & set(_PROJECT_ROLES))
 
 
 def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,16 +124,21 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
 
     _install.run_install(want_gates=False, assume_yes=True)
 
-    for spec in _SPECIALISTS:
+    for spec in _ORG_SPECIALISTS:
         meta_file = oc_dir / "workspaces" / spec / _cfg.META_FILE
         assert meta_file.is_file(), f"missing meta for {spec}"
         meta: dict[str, Any] = json.loads(meta_file.read_text())
         assert meta["kind"] == "specialist"
+        assert meta["scope"] == "org"  # AA-2: stamped at provisioning
         assert meta["role"] == spec
         assert meta["name"] == spec
         assert meta["modelSource"] == "policy"
         assert meta["model"].startswith("anthropic/") or "/" in meta["model"]
         assert meta.get("created")  # ISO timestamp present
+
+    # Project roles are not provisioned as global workspaces.
+    for role in _PROJECT_ROLES:
+        assert not (oc_dir / "workspaces" / role / _cfg.META_FILE).is_file()
 
 
 def test_install_configures_agent_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -167,7 +178,7 @@ def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     raw = json.loads((oc_dir / "openclaw.json").read_text())
     ids = [a["id"] for a in raw["agents"]["list"]]
     # No duplicate registrations on the second pass.
-    assert sorted(ids) == sorted(_SPECIALISTS)
+    assert sorted(ids) == sorted(_ORG_SPECIALISTS)
 
 
 # ── Step 6 auth branches ────────────────────────────────────────────────────────
