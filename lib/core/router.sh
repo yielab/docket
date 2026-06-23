@@ -28,6 +28,7 @@ route_command() {
     scope)             cmd_scope   "$@" ;;
     profile|tier)      cmd_profile "$@" ;;
     keys|key|secret)   cmd_keys    "$@" ;;
+    auth)              cmd_auth    "$@" ;;
 
     # Team & Workflows
     team)              cmd_team     "$@" ;;

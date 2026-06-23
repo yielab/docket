@@ -52,6 +52,13 @@ _provision_agent() {
   local session_key; session_key=$(meta_get "$id" "sessionKey" "agent:${id}:${projectkey}")
   sync_session_key "$id" "$session_key"
   dbg "Session key synced to OpenClaw: $session_key"
+
+  # Surface missing model auth now — agents authenticate via OpenClaw auth
+  # profiles (openclaw models auth), not docket secrets. Without a usable
+  # profile the agent registers but its first LLM request fails. Non-fatal.
+  if ! openclaw_has_model_auth; then
+    warn "No usable Claude auth profile — '$id' can't reply until you set one up: docket auth"
+  fi
 }
 
 # Parse a declarative agent spec file into TSV (one line per agent). Accepts JSON
