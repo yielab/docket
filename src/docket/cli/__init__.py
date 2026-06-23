@@ -1,9 +1,9 @@
-"""docket CLI — Typer application with all 33 command stubs.
+"""docket CLI — the Typer application.
 
-Each stub exits with code 127 (DOCKET_NOT_PORTED) which the bin/docket dispatcher
-recognises as "fall through to Bash". Once a command is fully ported it:
-  1. Implements real logic here instead of calling _not_ported().
-  2. Is added to lib/core/ported.list so the dispatcher routes to Python.
+Every command is implemented in Python (the Bash→Python migration is complete);
+bin/docket is a thin launcher that execs ``python -m docket``. Command modules
+live alongside this one in docket.cli; shared services are in docket.core and
+docket.edges.
 """
 
 from __future__ import annotations
@@ -45,15 +45,6 @@ app = typer.Typer(
     no_args_is_help=False,
     invoke_without_command=True,
 )
-
-# Exit code the dispatcher checks: "not yet ported, fall to Bash"
-_NOT_PORTED = 127
-
-
-def _not_ported(cmd: str) -> None:
-    """Signal to the dispatcher that this command is not yet on the Python path."""
-    print(f"docket-py: {cmd} not yet ported — falling through to Bash", file=sys.stderr)
-    raise typer.Exit(_NOT_PORTED)
 
 
 def _do_restart_gateway() -> None:
@@ -4065,11 +4056,14 @@ def cmd_snapshot(
 @app.command("serve")
 def cmd_serve(
     port: int = typer.Option(7331, "--port", "-p", help="Port to bind (default 7331)"),
+    interval: int = typer.Option(
+        30, "--interval", "-i", help="Sweep refresh interval in seconds (default 30)"
+    ),
 ) -> None:
     """Local HTTP endpoints: /status.json /metrics /health."""
     from docket.serve import run_serve
 
-    run_serve(port=port)
+    run_serve(port=port, interval=interval)
 
 
 @app.command("completions")

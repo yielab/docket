@@ -579,6 +579,44 @@ def secrets_meta() -> dict[str, Any]:
     return store.read_json(path)
 
 
+def secrets_values() -> list[str]:
+    """Return the stored secret VALUES (for trace/Telegram redaction).
+
+    Mirrors the ``_docket_stored_key_values`` hook redact.sh consults: the file
+    backend stores ``{KEY: value}`` in secrets.json, so the values are the dict
+    values; the keyring backend keeps only an index there (no values at rest),
+    so it returns nothing. Empty/short values are the caller's concern.
+    """
+    import os as _os
+    import shutil as _shutil
+    import subprocess as _sp
+
+    path = CONFIG_FILE.parent / "secrets.json"
+    raw = store.read_json(path)
+    if not raw:
+        return []
+    backend = "file"
+    if _os.environ.get("DOCKET_SECRETS_BACKEND") == "keyring" and _shutil.which("secret-tool"):
+        backend = "keyring"
+    if backend == "keyring":
+        service = _os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
+        out: list[str] = []
+        for key in raw:
+            try:
+                res = _sp.run(
+                    ["secret-tool", "lookup", "service", service, "key", str(key)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except (OSError, _sp.SubprocessError):
+                continue
+            if res.stdout:
+                out.append(res.stdout)
+        return out
+    return [str(v) for v in raw.values() if v]
+
+
 def security_gate_report() -> tuple[str, str, str]:
     """Return (state, policy, counts) for the daemon exec-approval policy.
 
