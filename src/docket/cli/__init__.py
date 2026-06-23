@@ -258,13 +258,158 @@ def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     _not_ported("help")
 
 
-# ── hidden: data-layer bridge (T2.6) ──────────────────────────────────────────
-# Used by bin/docket to replace the 136 inline python3 heredocs.
-# Full implementation comes in M2/T2.6; stub here so imports resolve.
-@app.command("_json", hidden=True)
-def cmd_json(
-    verb: str = typer.Argument(...),
-    args: list[str] = typer.Argument(default=None),
-) -> None:
-    """Internal: JSON store bridge for Bash layer (M2/T2.6)."""
-    _not_ported("_json")
+# ── hidden: data-layer bridge (M2/T2.6) ───────────────────────────────────────
+# Used by bin/docket (and eventually lib/helpers/json.sh) to replace the 136
+# inline python3 heredocs.  All openclaw.json / .docket-meta.json knowledge
+# lives in edges/adapters/openclaw.py; this command is just the CLI surface.
+#
+# Invocation: python -m docket _json <verb> [arg ...]
+# Exit codes: 0 = success, 1 = error, 2 = unknown verb.
+@app.command(
+    "_json",
+    hidden=True,
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_json(ctx: typer.Context) -> None:
+    """Internal: JSON store bridge for the Bash layer."""
+    import json as _json
+    import sys as _sys
+
+    from docket.edges.adapters import openclaw as _oc
+
+    argv = ctx.args
+    if not argv:
+        print("_json: verb required", file=_sys.stderr)
+        raise typer.Exit(2)
+
+    verb = argv[0]
+    a = argv[1:]
+
+    def _die(msg: str) -> None:
+        print(f"_json {verb}: {msg}", file=_sys.stderr)
+        raise typer.Exit(1)
+
+    try:
+        # ── .docket-meta.json ──────────────────────────────────────────────────
+        if verb == "meta-get":
+            # meta-get <agent_id> <field> [default]
+            if len(a) < 2:
+                _die("usage: meta-get <id> <field> [default]")
+            print(_oc.meta_get(a[0], a[1], a[2] if len(a) > 2 else ""))
+
+        elif verb == "meta-set":
+            # meta-set <agent_id> <field> <value>
+            if len(a) < 3:
+                _die("usage: meta-set <id> <field> <value>")
+            _oc.meta_set(a[0], a[1], a[2])
+
+        # ── openclaw.json — dotted-path (Bash compat escape hatch) ────────────
+        elif verb == "oc-get":
+            # oc-get <dotpath> [default]
+            if not a:
+                _die("usage: oc-get <dotpath> [default]")
+            print(_oc.oc_get_path(a[0], a[1] if len(a) > 1 else ""))
+
+        elif verb == "oc-set":
+            # oc-set <dotpath> <json-value>
+            if len(a) < 2:
+                _die("usage: oc-set <dotpath> <json-value>")
+            _oc.oc_set_path(a[0], a[1])
+
+        # ── agents.list ───────────────────────────────────────────────────────
+        elif verb == "agent-registered":
+            if not a:
+                _die("usage: agent-registered <id>")
+            if _oc.agent_registered(a[0]):
+                print("1")
+            else:
+                print("0")
+                raise typer.Exit(1)
+
+        elif verb == "agent-add":
+            # agent-add <id> <model> [session_key] [project_key]
+            if len(a) < 2:
+                _die("usage: agent-add <id> <model> [session_key] [project_key]")
+            _oc.add_agent(a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else "")
+
+        elif verb == "agent-remove":
+            if not a:
+                _die("usage: agent-remove <id>")
+            _oc.remove_agent(a[0])
+
+        elif verb == "model-set-both":
+            # model-set-both <id> <model>  — updates openclaw.json AND meta.json
+            if len(a) < 2:
+                _die("usage: model-set-both <id> <model>")
+            _oc.set_model_both(a[0], a[1])
+
+        # ── bindings ──────────────────────────────────────────────────────────
+        elif verb == "binding-get":
+            # binding-get <agent_id> [channel]
+            if not a:
+                _die("usage: binding-get <id> [channel]")
+            print(_oc.get_binding(a[0], a[1] if len(a) > 1 else "telegram"))
+
+        elif verb == "binding-upsert":
+            # binding-upsert <agent_id> <peer_id> [channel] [peer_kind]
+            if len(a) < 2:
+                _die("usage: binding-upsert <id> <peer_id> [channel] [peer_kind]")
+            _oc.upsert_binding(
+                a[0], a[1],
+                a[2] if len(a) > 2 else "telegram",
+                a[3] if len(a) > 3 else "group",
+            )
+
+        elif verb == "binding-remove":
+            # binding-remove <agent_id> [channel]
+            if not a:
+                _die("usage: binding-remove <id> [channel]")
+            _oc.remove_binding(a[0], a[1] if len(a) > 1 else None)
+
+        # ── security ──────────────────────────────────────────────────────────
+        elif verb == "gates-get":
+            print(_json.dumps(_oc.get_gates_enabled()))
+
+        elif verb == "gates-set":
+            if not a:
+                _die("usage: gates-set <true|false>")
+            _oc.set_gates_enabled(a[0].lower() in ("1", "true", "yes"))
+
+        elif verb == "isolation-get":
+            print(_json.dumps(_oc.get_isolation_enabled()))
+
+        elif verb == "isolation-set":
+            if not a:
+                _die("usage: isolation-set <true|false>")
+            _oc.set_isolation_enabled(a[0].lower() in ("1", "true", "yes"))
+
+        # ── defaults ──────────────────────────────────────────────────────────
+        elif verb == "default-model-get":
+            print(_oc.get_default_model())
+
+        elif verb == "default-model-set":
+            if not a:
+                _die("usage: default-model-set <model>")
+            _oc.set_default_model(a[0])
+
+        # ── auth-profiles.json ────────────────────────────────────────────────
+        elif verb == "auth-summary":
+            agent = a[0] if a else "main"
+            for p in _oc.auth_profiles_summary(agent):
+                state = f"disabled:{p.disabled_reason}" if p.disabled else "ok"
+                print(f"{p.id}|{p.provider}|{p.type}|{state}")
+
+        elif verb == "auth-has-usable":
+            agent = a[0] if a else "main"
+            if not _oc.has_usable_profile(agent):
+                raise typer.Exit(1)
+
+        else:
+            print(f"_json: unknown verb '{verb}'", file=_sys.stderr)
+            raise typer.Exit(2)
+
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        print(f"_json {verb}: {exc}", file=_sys.stderr)
+        raise typer.Exit(1) from exc
