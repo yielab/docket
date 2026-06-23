@@ -77,8 +77,34 @@ def _load_oc() -> OpenClawConfig:
     return OpenClawConfig.model_validate(raw)
 
 
+def _strip_empty_modeled_keys(data: dict[str, Any]) -> None:
+    """Drop the modeled-but-empty `metadata`/`security` objects before writing.
+
+    docket models these so it can carry a sessionKey / gate flags, but recent
+    OpenClaw versions REJECT unrecognised keys and refuse to start. Emitting an
+    empty `metadata: {sessionKey:"", projectKey:""}` on every agent, or a default
+    (all-off) `security` block, crash-loops the gateway. So we strip them when
+    empty; a real sessionKey or an enabled gate keeps the key. This is surgical
+    (other empty defaults like an empty `bindings` list are untouched).
+    """
+    for agent in data.get("agents", {}).get("list", []):
+        md = agent.get("metadata")
+        if isinstance(md, dict) and not any(md.values()):
+            agent.pop("metadata", None)
+    sec = data.get("security")
+    if (
+        isinstance(sec, dict)
+        and set(sec) <= {"gates", "isolation"}
+        and not sec.get("gates", {}).get("enabled")
+        and not sec.get("isolation", {}).get("enabled")
+    ):
+        data.pop("security", None)
+
+
 def _save_oc(cfg: OpenClawConfig) -> None:
-    store.write_json(CONFIG_FILE, cfg.model_dump(by_alias=True, exclude_none=False))
+    data = cfg.model_dump(by_alias=True, exclude_none=False)
+    _strip_empty_modeled_keys(data)
+    store.write_json(CONFIG_FILE, data)
 
 
 # ── .docket-meta.json operations [dm-*] ───────────────────────────────────────
