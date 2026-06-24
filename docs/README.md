@@ -1,7 +1,9 @@
 # docket Documentation
 
-**docket** is a Python CLI (Typer + Rich + Pydantic) for provisioning and isolating OpenClaw
-autonomous agents across multiple projects, with role-based model routing and budget guardrails.
+**docket** is a Python CLI (Typer + Rich + Pydantic) for provisioning and isolating **teams** of
+OpenClaw autonomous agents — an isolated per-project pod (Lead + Implementer, optionally Reviewer
++ Tester) for each codebase, not just single agents — with role-based model routing and budget
+guardrails.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
@@ -17,6 +19,7 @@ autonomous agents across multiple projects, with role-based model routing and bu
 | Doc | What it covers |
 |-----|----------------|
 | [Quick Start](QUICK-START-DOCKET.md) | 5-minute setup: install, create your first project agent, assign work |
+| **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
 | [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: routing, context management, agent roles |
@@ -39,6 +42,12 @@ docket add                     # Create a project agent
 docket list                    # Show all agents
 docket info <id>               # Agent details
 docket context snapshot <id>   # Create fast-access context
+
+# Pod teams (see Agent Teams guide)
+docket add <project>                       # Provision a pod (Lead + Implementer)
+docket pod <project>                       # Inspect / resize the pod
+docket pod <project> delegate "<task>"     # Queue a task for the pod
+docket pod <project> dispatch              # Run the pod's pipeline once
 
 # Configuration
 docket models                  # Role→model policy (set <role> <model>, presets)

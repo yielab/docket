@@ -24,9 +24,16 @@
 Running one OpenClaw agent is easy. Running a fleet across several projects surfaces three
 problems OpenClaw doesn't solve for you:
 
+- **A lone agent isn't a team.** Building *enterprise-grade* software with agents needs the same
+  separation of duties a human team has — someone who plans and talks to people, someone who
+  writes the code, someone who reviews it, someone who tests it. docket makes that structure
+  first-class: each project is an isolated **pod** (Lead plans, Implementer writes,
+  Reviewer/Tester gate) and a few **org specialists** are shared across the fleet. That
+  separation of duties is what makes agent work enterprise-grade — see
+  **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
 - **Per-project provisioning is manual and repetitive.** Each project needs its own agent with
   the right workspace, stack detection, memory, and scope. docket bootstraps a properly
-  configured project agent in one command (`docket add`, or `docket add --from agents.yaml` for
+  configured project pod in one command (`docket add`, or `docket add --from agents.yaml` for
   a declarative, version-controlled fleet) plus a shared specialist team via `docket install`.
 - **Context leak across projects.** One agent's memory bleeding into another's is the
   "noisy neighbor" problem. docket assigns each agent a session key (`agent:<id>:<project>`)
@@ -167,6 +174,8 @@ comparisons as directional.
 | Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
 | Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
+| Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` runs Lead→Implementer→Reviewer→Tester, one real costed turn per hop — budget-gated, traced, pod-local |
+| Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod planning/visibility over fleet metadata (advisory, never a pod member) |
 | Lobster workflow integration | ✅ Working | YAML pipeline support |
 | Cost tracking & budget caps | ✅ Working | Role→model policy, per-agent budget, runaway detection |
 | API key management | ✅ Working | Centralized key distribution |
@@ -174,17 +183,33 @@ comparisons as directional.
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `docket wire` |
 | Security gates | ✅ Opt-in | Exec-approval enforcement + curated allowlist, Telegram approval routing, and Docker workspace isolation via `docket gates enable` / `isolate`; status in `docket doctor`. Opt-in by design (on-by-default pending headless approval routing) |
 | Secret storage backends | ✅ Working | `file` (0600 JSON, default) or `keyring` (libsecret, no plaintext at rest) via `DOCKET_SECRETS_BACKEND` |
-| Manager coordination | ✅ Working | Full delegation state machine (`docket team delegate` → queue → done) |
+| Manager coordination | ✅ Working | Org task queue with a full delegation state machine (`docket team delegate` → queue → start → done); per-pod work runs through `docket pod <p> dispatch` |
 
 ## Concepts
 
+**Agent teams are the heart of docket** — everything else (isolation, cost guardrails, health
+checks) exists to keep *teams of agents* running reliably across many projects. The separation of
+duties — **Lead plans, Implementer writes, Reviewer/Tester gate** — is what turns "an agent
+changed the code" into "a change was reviewed and validated before it landed," and that line is
+exactly what makes agent work enterprise-grade. The full model is in
+**[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
+
 - **Project pod** — each project is an isolated pod of project-scoped agents (`docket add`
   provisions a lean **Lead + Implementer** by default; add Reviewer/Tester/extra Implementers
-  with `docket pod <project> add <role>`). Every member has its own permission-locked workspace
-  (`700`/`600`) with `SOUL.md` (identity + session key), `AGENTS.md`, `HEARTBEAT.md`,
+  with `docket pod <project> add <role>` or `--pod full` / `--with`). The **Lead never edits
+  code** (it plans, owns context/memory + human comms, and dispatches work); the **Implementer
+  runs in the workspace and writes the code**. Every member has its own permission-locked
+  workspace (`700`/`600`) with `SOUL.md` (identity + session key), `AGENTS.md`, `HEARTBEAT.md`,
   `.docket-meta.json`, and a `memory/` log — so no role is shared across projects.
+- **Real dispatch** — docket actually runs a pod's pipeline, one real costed agent turn per hop:
+  Lead → Implementer → Reviewer (if present) → Tester (if present). `docket pod <id> delegate`
+  queues a task, `docket pod <id> dispatch` runs it once, and `docket serve --dispatch` drives
+  every pod's queue in the background. Each dispatch is budget-gated, traced, and **pod-local
+  (no cross-pod path)** — and always explicit/opt-in, never silent.
 - **Org specialists** — `security`, `knowledge`, and `manager`, created once by `docket install`
-  and shared across the fleet (genuinely cross-cutting; `scope: org`).
+  and shared across the fleet (genuinely cross-cutting; `scope: org`). An optional org
+  **Portfolio Manager** (`docket install --portfolio`) adds a cross-pod planning/visibility
+  surface over fleet *metadata* — advisory only, never a pod member, and it never edits code.
 - **Session key** (`agent:<id>:<project>`) — the isolation primitive; prevents cross-project
   contamination and enables parallel work. Change with `docket scope <id> set <key>`.
 - **Role→model policy** — each role maps to the cheapest adequate model; change a role once and
@@ -201,6 +226,7 @@ view) and `~/.openclaw/openclaw.json` (the OpenClaw daemon's view).
 
 ```bash
 docket install              # Bootstrap OpenClaw + org specialists (security, knowledge, manager)
+docket install --portfolio  # + an optional org Portfolio Manager (cross-pod planning/visibility)
 docket add [id] [path]      # Create a project pod (Lead + Implementer; --pod full / --with for more)
 docket add --from spec.yaml # Provision a fleet from a YAML/JSON spec (declarative)
 docket pod <id>             # Inspect a pod; `pod <id> add <role>` / `remove <member>` to resize
@@ -257,7 +283,12 @@ docket context [id] search <q>   # Search indexed memory
 docket context [id] snapshot     # Create SNAPSHOT.md for fast agent context
 docket context [id] compress     # Archive logs older than 30 days
 
-docket team delegate "Fix login bug"   # Queue task for manager (--priority high)
+docket pod <id> delegate "Fix login bug"  # Queue a task for the project pod (--priority high)
+docket pod <id> queue                   # Show the pod's queue + per-task status/cost
+docket pod <id> dispatch                # Run the pod pipeline once (Lead→Implementer→Reviewer→Tester)
+docket serve --dispatch                 # Background: drive every pod's queue (opt-in; plain serve is read-only)
+
+docket team delegate "Fix login bug"   # Queue task for the org manager (--priority high)
 docket team queue                       # Show pending tasks
 docket team done <task-id>              # Mark task complete
 
@@ -315,16 +346,16 @@ See [specs/README.md](specs/README.md) for the full SSD documentation and
 
 ### By the numbers
 
-- **~11,000 lines** of Python in the shipped `docket` package (`src/docket/`)
+- **~12,700 lines** of Python in the shipped `docket` package (`src/docket/`)
 - The full command surface from the Bash era — every command and alias is preserved
   (run `docket help` for the live list)
-- **416 tests** in the pytest suite (`tests/python/`) + a **17-case golden parity suite**
+- **491 tests** in the pytest suite (`tests/python/`) + a **17-case golden parity suite**
   (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
 - Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
-- **15 specifications** (RFC 2119), validated in CI
+- **16 specifications** (RFC 2119), validated in CI
 
 ```bash
-uv run pytest                      # 416-test Python suite
+uv run pytest                      # 491-test Python suite
 uv run ruff check . && uv run ruff format --check .   # lint + format
 uv run mypy src                    # strict type check
 bash tests/golden/run.sh verify-all   # 17-case byte-parity suite

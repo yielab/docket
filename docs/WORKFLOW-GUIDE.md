@@ -1,36 +1,51 @@
-# Complete Workflow Guide: Project Agents + Specialists + Engineer
+# Complete Workflow Guide: Pods, Dispatch, and the Org Team
 
-**Date:** 2026-03-06
 **Status:** Production Guide
+
+> **See also:** [Agent Teams (Pods)](AGENT-TEAMS.md) is the canonical reference for docket's
+> agent-team model (scope vs. role, the pipeline, isolation). This guide shows that model in
+> **end-to-end use** — provisioning a pod, growing it, queueing work, and running the real
+> dispatch loop. Read Agent Teams first; read this for the worked examples.
 
 ---
 
 ## The Three Actors
 
-### 1. **Engineer (You)** 👤
-The main user who:
-- Creates projects
-- Assigns tasks via Telegram
-- Reviews and commits code
-- Makes architectural decisions
-- Approves HITL gates
+### 1. Engineer (You)
+The human who:
+- Creates projects (each becomes a **pod**)
+- Sends tasks (CLI `docket pod … delegate`, or Telegram to a pod's Lead)
+- Reviews diffs and commits the code
+- Makes architectural decisions and approves any HITL gates
+- Sets budget caps and watches recorded spend
 
-### 2. **Project Agents** 📁
-One per project/codebase (created with `docket add`):
-- **Examples:** `mywebsite`, `mobile-app`, `content-blog`
-- **Role:** Project coordinator for ONE specific codebase
-- **Telegram:** Each has own dedicated group
-- **Works on:** Single project only (session-scoped)
-- **Delegates to:** Specialist agents for implementation
+### 2. Project Pods
+One **pod per project/codebase**, created with `docket add`. A pod is a small team of
+project-scoped agents (`scope: project`) that owns exactly one codebase — never shared with
+another project:
 
-### 3. **Specialist Agents** 🛠️
-Shared team (created with `docket install`):
-- **manager** - Orchestrates cross-project work
-- **programmer** - Implements code
-- **reviewer** - Reviews + security checks
-- **tester** - Runs tests + validation
-- **knowledge** - Memory distillation
-- **security** - Deep security audits
+- **Lead** (`<project>-lead`) — orchestrates the pod, owns its memory + human (Telegram) comms,
+  decomposes work and dispatches it. **Never edits code.**
+- **Implementer** (`<project>-implementer`) — runs *inside* the project workspace and writes the code.
+- **Reviewer** *(optional)* — read-only veto on the diff (correctness + security gate).
+- **Tester** *(optional)* — behaviour-only PASS / FAIL validation.
+
+The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the work warrants it.
+
+### 3. Org Specialists
+A **shared team** created once by `docket install` — genuinely cross-cutting, one instance for
+the whole fleet (`scope: org`):
+
+- **manager** — cross-cutting coordination and the org task queue (`docket team …`).
+- **knowledge** — documentation, research, pattern extraction across projects.
+- **security** — deep security audits and threat modelling.
+- **portfolio-manager** *(optional, `docket install --portfolio`)* — advisory cross-pod
+  planner over fleet *metadata* (which pods exist, their queues, budgets, health). Never a pod
+  member, never edits code, never dispatches into pods.
+
+> The old "shared `programmer`/`reviewer`/`tester` workers" are **gone**. Implement/review/test
+> are now per-pod roles, each with its own isolated workspace, so no worker agent ever serves
+> two projects. `docket doctor` flags any leftover global worker from a pre-pods install.
 
 ---
 
@@ -38,854 +53,516 @@ Shared team (created with `docket install`):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ENGINEER (You)                           │
-│  • Sends tasks via Telegram                                 │
-│  • Reviews code changes                                     │
-│  • Commits to git                                           │
-│  • Approves HITL gates                                      │
-└────────────┬────────────────────────────────────────────────┘
-             │
-             ├─► Project Agent: mywebsite (Telegram group)
-             │   └─► Delegates to specialists
-             │
-             ├─► Project Agent: mobile-app (Telegram group)
-             │   └─► Delegates to specialists
-             │
-             └─► Manager Agent (Telegram group)
-                 └─► Coordinates specialists directly
-
-┌─────────────────────────────────────────────────────────────┐
-│              SPECIALIST AGENTS (Shared Team)                │
-├─────────────────────────────────────────────────────────────┤
-│  programmer  │  reviewer  │  tester  │  knowledge  │  security│
-│ (Eco/Std)    │ (Standard) │ (Economy)│  (Economy)  │(Standard)│
-└─────────────────────────────────────────────────────────────┘
+│                      ENGINEER (You)                          │
+│  • delegate tasks (CLI or Telegram)   • review diffs + commit│
+│  • set budget caps                    • approve HITL gates    │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │                                │
+   per-project │ pod pipeline      cross-cutting│ org queue
+               ▼                                ▼
+┌──────────────────────────┐        ┌──────────────────────────┐
+│  Pod: myapp              │        │  Org specialists (shared)│
+│  ┌────────────────────┐  │        │  manager · knowledge ·   │
+│  │ lead  (never edits)│  │        │  security · portfolio-mgr│
+│  └─────────┬──────────┘  │        │  (advisory, no code)     │
+│            ▼             │        └──────────────────────────┘
+│  implementer → reviewer? │
+│            → tester?     │  ← `docket pod myapp dispatch`
+└──────────────────────────┘     one real agent turn per hop
 ```
+
+Each pod is isolated: its own per-member workspaces (`700`/`600`), its own session-key
+namespace (`agent:<project>:…`), its own queue. **There is no cross-pod dispatch path.**
 
 ---
 
-## Two Workflow Models
+## End-to-End: a pod from `add` to committed code
 
-### Model A: Direct to Project Agent (Recommended for Most Tasks)
-**Use when:** Working on a specific project/codebase
+This is the headline workflow — provision a pod, grow it when the work earns it, queue a task,
+**dispatch the real pipeline**, then inspect the trace, queue, and cost.
 
-```
-Engineer → Project Agent → Specialists → Done
-```
+### Step 1 — Provision a lean pod
 
-### Model B: Via Manager Agent (Recommended for Multi-Project)
-**Use when:** Coordinating across multiple projects
-
-```
-Engineer → Manager → Project Agent(s) → Specialists → Done
-```
-
----
-
-## Model A: Direct to Project Agent (Detailed)
-
-### Setup
 ```bash
-# Create project agent
-docket add
-  Name: mywebsite
-  Type: repo
-  Codebase: ~/Sites/mywebsite
-  Stack: Next.js
-  Model: strong class (role policy)
+docket add myapp ~/code/myapp
+# creates two project-scoped agents:
+#   myapp-lead          (orchestrator, never edits code)
+#   myapp-implementer   (writes code inside ~/code/myapp)
 
-# Wire to Telegram
-docket wire mywebsite
-  → Create Telegram group: "MyWebsite Project"
-  → Add your bot
-  → Run command to link
+docket pod myapp            # inspect the pod and its roles
+docket list                 # every pod member shows up like any other agent
 ```
 
-### Workflow: Feature Request
+A lean pod is the right default for prototyping and low-risk changes: one owner of completion
+(the Lead) and one doer (the Implementer).
 
-**Step 1: Engineer sends task (Telegram)**
-```
-Telegram group: "MyWebsite Project"
+### Step 2 — Set a budget cap on the Lead
 
-Engineer:
-Add a dark mode toggle to the settings page
-```
+Dispatch is budget-gated against the **Lead's** cap, so set it before you run work:
 
-**Step 2: Project Agent acknowledges**
-```
-Project Agent (mywebsite):
-✓ Got it - adding dark mode toggle
-→ Analyzing current settings page...
-👥 Will delegate: programmer, reviewer
-⏱ ETA: ~10 minutes
-```
-
-**Step 3: Project Agent creates brief**
-```
-[Internal - Project Agent reads:]
-- SNAPSHOT.md (project state)
-- ~/Sites/mywebsite/src/pages/settings.tsx (current code)
-- MEMORY.md (past decisions)
-
-[Project Agent creates compressed brief:]
-TASK: Add dark mode toggle
-FILE: src/pages/settings.tsx
-COMPONENT: SettingsPanel
-CHANGE: Add toggle button + useTheme hook
-ACCEPTANCE:
-  • Toggle visible in settings
-  • Theme persists across sessions
-  • No layout breaks
-
-[Saves to: memory/tasks/T001/BRIEF.md]
-```
-
-**Step 4: Project Agent delegates to programmer**
-```
-[Via Telegram to "Programmer Team" group OR via memory file]
-
-Project Agent → Programmer:
-Read brief: memory/tasks/T001/BRIEF.md
-Project: mywebsite
-Codebase: ~/Sites/mywebsite
-Signal completion: memory/tasks/T001/DONE.md
-```
-
-**Step 5: Programmer implements**
-```
-Programmer:
-✓ Got it - implementing dark mode toggle
-→ Reading settings.tsx...
-[30s] Writing toggle component...
-[60s] Adding theme context...
-[90s] Testing in browser...
-
-✓ Done - dark mode toggle implemented
-→ Files changed:
-  • src/pages/settings.tsx
-  • src/contexts/ThemeContext.tsx
-  • src/styles/themes.css
-
-→ memory/tasks/T001/DONE.md written
-```
-
-**Step 6: Project Agent delegates to reviewer**
-```
-Project Agent → Reviewer:
-Review task: T001
-Read: memory/tasks/T001/DONE.md
-Check: Security, correctness, acceptance criteria
-```
-
-**Step 7: Reviewer audits**
-```
-Reviewer:
-✓ Got it - reviewing dark mode toggle
-→ Running security checklist...
-[20%] Checking prompt injection vectors... OK
-[40%] Checking XSS risks... OK
-[60%] Verifying acceptance criteria... OK
-[80%] Checking test coverage... WARNING (no tests)
-[100%] Done
-
-✓ APPROVED (with note: add tests)
-→ memory/tasks/T001/APPROVED.md
-
-Suggestion: Add unit tests for ThemeContext
-(Non-blocking - can be done later)
-```
-
-**Step 8: Project Agent delegates to tester**
-```
-Project Agent → Tester:
-Validate task: T001
-Reproduction steps:
-  1. Navigate to /settings
-  2. Click dark mode toggle
-  3. Verify theme changes
-  4. Reload page
-  5. Verify theme persists
-
-DO NOT read implementation code!
-```
-
-**Step 9: Tester validates**
-```
-Tester:
-✓ Got it - validating dark mode toggle
-→ Running browser tests...
-[25%] Opening /settings... OK
-[50%] Clicking toggle... Theme changed ✓
-[75%] Reloading page... Theme persisted ✓
-[100%] Done
-
-✓ VALIDATION PASSED
-→ All acceptance criteria met
-→ memory/tasks/T001/VALIDATED.md
-```
-
-**Step 10: Project Agent reports to Engineer**
-```
-Project Agent → Engineer (Telegram):
-✅ Dark mode toggle complete!
-
-**Changes:**
-• src/pages/settings.tsx - Added toggle button
-• src/contexts/ThemeContext.tsx - Theme state management
-• src/styles/themes.css - Dark theme styles
-
-**Pipeline:**
-• Programmer: Implemented ✓
-• Reviewer: Approved ✓ (suggested adding tests)
-• Tester: Validated ✓
-
-**Next Steps:**
-1. Review changes: cd ~/Sites/mywebsite
-2. Test locally: npm run dev
-3. Commit: git commit -m "Add dark mode toggle"
-
-**Evidence:**
-memory/tasks/T001/ contains full task history
-```
-
-**Step 11: Engineer reviews and commits**
 ```bash
-# Engineer (in terminal):
-cd ~/Sites/mywebsite
-git diff  # Review changes
+docket profile myapp-lead --budget 5     # cap pod spend at $5 (recorded spend)
+```
 
-# If looks good:
-git add src/pages/settings.tsx src/contexts/ThemeContext.tsx src/styles/themes.css
-git commit -m "Add dark mode toggle to settings
+Before *each* hop, docket compares the pod's recorded spend to this cap. Over budget → the task
+stays **pending** (blocked), never silently run.
 
-- Add ThemeContext for state management
-- Add toggle button in settings panel
-- Theme persists across sessions"
+### Step 3 — Grow the pod when the work warrants it
 
+A login bug touching auth deserves a correctness/security gate and independent validation, so
+add a Reviewer and a Tester:
+
+```bash
+docket pod myapp add reviewer     # adds myapp-reviewer (read-only veto on the diff)
+docket pod myapp add tester       # adds myapp-tester  (behaviour-only PASS/FAIL)
+
+docket pod myapp                  # now: lead, implementer, reviewer, tester
+```
+
+> You could have provisioned this up front with `docket add myapp ~/code/myapp --pod full` or
+> `--with reviewer,tester`. The pod also scales doers: `docket pod myapp add implementer` adds
+> `myapp-implementer-2` for parallel work. A pod always has **exactly one Lead.**
+
+### Step 4 — Delegate a task to the pod
+
+```bash
+docket pod myapp delegate "Fix the null-token login crash"
+docket pod myapp delegate --priority high "Patch the open-redirect on /auth/callback"
+```
+
+The task lands on the pod's own queue (owned by the Lead). Nothing runs yet — delegation only
+queues. Each task gets its own per-task session (`agent:myapp:<task_id>`) so tasks never bleed
+into each other.
+
+### Step 5 — Inspect the queue
+
+```bash
+docket pod myapp queue
+```
+
+```
+Pod: myapp                         budget: $5.00 cap · $0.00 spent
+┌──────┬──────────┬──────────────────────────────────────┬─────────┬────────┐
+│ id   │ priority │ task                                 │ status  │  cost  │
+├──────┼──────────┼──────────────────────────────────────┼─────────┼────────┤
+│ t-02 │ high     │ Patch the open-redirect on /auth/... │ pending │  $0.00 │
+│ t-01 │ normal   │ Fix the null-token login crash       │ pending │  $0.00 │
+└──────┴──────────┴──────────────────────────────────────┴─────────┴────────┘
+```
+
+### Step 6 — Dispatch the pipeline (the real hand-off)
+
+```bash
+docket pod myapp dispatch
+```
+
+docket drives the highest-priority pending task through the pod's pipeline, **one real,
+costed agent turn per hop** — and only through the roles this pod actually has:
+
+```
+Lead  →  Implementer  →  Reviewer  →  Tester
+```
+
+```
+▶ dispatch  myapp  ·  t-02  "Patch the open-redirect on /auth/callback"
+  budget ok ($0.00 / $5.00)
+  → lead          plan + decompose ........... done   $0.04
+  budget ok ($0.04 / $5.00)
+  → implementer   edit ~/code/myapp ........... done   $0.31
+  budget ok ($0.35 / $5.00)
+  → reviewer      veto on diff ............... APPROVED $0.05
+  budget ok ($0.40 / $5.00)
+  → tester        PASS/FAIL .................. PASS    $0.03
+  ✓ t-02 complete   pod spend now $0.43 / $5.00
+```
+
+docket stays the orchestrator: it invokes each hop via the OpenClaw daemon, captures the
+result, and threads it to the next role. The Lead plans, the Implementer is the **single
+writer**, the Reviewer can **veto** the diff, the Tester gives an independent PASS/FAIL.
+
+### Step 7 — Budget gating in action
+
+Say `t-01` runs while the pod is near its cap:
+
+```bash
+docket pod myapp dispatch
+```
+
+```
+▶ dispatch  myapp  ·  t-01  "Fix the null-token login crash"
+  → lead          plan + decompose ........... done   $0.04
+  budget EXCEEDED ($5.02 / $5.00) before implementer hop
+  ✗ t-01 left PENDING — raise the cap to continue
+```
+
+Over-budget tasks are blocked **between hops**, not abandoned mid-write. Raise the cap and
+re-dispatch:
+
+```bash
+docket profile myapp-lead --budget 10
+docket pod myapp dispatch
+```
+
+### Step 8 — Inspect the trace
+
+Every hop emits a trace event on the per-task session, so a run is fully auditable with no
+manual Telegram relay:
+
+```bash
+docket trace                          # recent dispatch activity across pods
+docket trace --session agent:myapp:t-02   # just this task's pipeline
+```
+
+```
+agent:myapp:t-02
+  12:01:04  lead         dispatch.hop  start
+  12:01:09  lead         dispatch.hop  done       $0.04
+  12:01:09  implementer  dispatch.hop  start
+  12:01:38  implementer  dispatch.hop  done       $0.31   (3 files changed)
+  12:01:38  reviewer     dispatch.hop  APPROVED   $0.05
+  12:01:41  tester       dispatch.hop  PASS       $0.03
+```
+
+### Step 9 — Check the cost
+
+```bash
+docket pod myapp queue     # per-task status + recorded cost, vs the cap
+docket cost                # recorded spend across the whole fleet
+docket cost myapp-implementer   # one agent's recorded spend
+```
+
+Dollar figures are the daemon's **recorded** spend, not a projection. (The bundled pricing
+table only powers comparative model estimates — docket never projects dollar *savings*.)
+
+### Step 10 — Review and commit
+
+docket leaves the commit to you — the Implementer wrote the code, but you own the merge:
+
+```bash
+cd ~/code/myapp
+git diff                  # review the Implementer's changes
+git add -p
+git commit -m "Fix open-redirect on /auth/callback"
 git push
 ```
 
-**Step 12: Project Agent updates memory**
-```
-[Automatic after engineer commits]
-
-Project Agent writes to memory/2026-03-06.md:
-## [17:45] Dark mode toggle - DEPLOYED
-
-**Task:** Add dark mode toggle
-**Status:** ✅ Committed and pushed
-**Commit:** abc123f
-**Team:** programmer, reviewer, tester
-**Time:** 12 minutes (brief → deployed)
-**Cost:** ~8K tokens
-```
+The Lead records the outcome in the pod's memory log
+(`~/.openclaw/workspaces/projects/myapp-lead/memory/YYYY-MM-DD.md`).
 
 ---
 
-## Model B: Via Manager Agent (Detailed)
+## Autonomous dispatch (opt-in)
 
-### Setup
+`docket pod <project> dispatch` is a one-shot, run-it-now command. To let docket drain every
+pod's queue continuously, run the background loop with the dispatch flag:
+
 ```bash
-# Manager already exists (created by docket install)
-# Wire to Telegram
-docket wire manager
-  → Create Telegram group: "Manager"
-  → Add your bot
-  → Run command to link
+docket serve --dispatch    # background: drive every pod's queue on each refresh
 ```
 
-### Workflow: Cross-Project Task
-
-**Use case:** "Implement authentication across all projects"
-
-**Step 1: Engineer sends to Manager**
-```
-Telegram group: "Manager"
-
-Engineer:
-Implement OAuth2 authentication for mywebsite and mobile-app projects
-Use the same auth service for both
+```bash
+docket serve               # READ-ONLY monitor — health checks only, never dispatches
 ```
 
-**Step 2: Manager analyzes**
-```
-Manager:
-✓ Got it - cross-project auth implementation
-→ Analyzing affected projects...
-
-[Manager reads:]
-- ~/.openclaw/workspaces/projects/mywebsite/SNAPSHOT.md
-- ~/.openclaw/workspaces/projects/mobile-app/SNAPSHOT.md
-
-[Manager identifies:]
-Projects: mywebsite (Next.js), mobile-app (React Native)
-Scope: OAuth2 + shared auth service
-HITL needed: Architecture decision (which auth provider?)
-
-⚠️ Architecture Decision Required
-
-**Options:**
-A) Auth0 (easiest, $25/month, 7K users free)
-B) Supabase Auth (open source, self-host, complex setup)
-C) Custom OAuth2 (full control, most work)
-
-**Recommendation:** A (Auth0)
-
-Please approve before proceeding.
-```
-
-**Step 3: Engineer approves**
-```
-Engineer (in Telegram):
-Approved - use Auth0
-```
-
-**Step 4: Manager creates task breakdown**
-```
-Manager:
-✓ Approved - proceeding with Auth0
-
-**Task Breakdown:**
-T001: Set up Auth0 tenant + configure apps
-T002: Implement auth in mywebsite (Next.js)
-T003: Implement auth in mobile-app (React Native)
-T004: Create shared auth library (npm package)
-T005: Test end-to-end (both apps)
-
-⏱ Total ETA: ~2 hours
-
-Starting with T001...
-```
-
-**Step 5: Manager delegates to Project Agents**
-```
-Manager → mywebsite Project Agent:
-Task: T002 - Implement Auth0 in Next.js
-Brief: memory/tasks/T002/BRIEF.md
-Dependencies: T001 (Auth0 setup) must complete first
-Codebase: ~/Sites/mywebsite
+> Because every hop is a real, costed LLM turn, dispatch is **never silent**: it is either
+> explicit (`docket pod … dispatch`) or opt-in (`docket serve --dispatch`). Plain `docket serve`
+> only watches health. Budget caps gate the autonomous loop exactly as they gate a manual
+> dispatch — an over-budget pod's tasks stay pending until you raise the cap.
 
 ---
 
-Manager → mobile-app Project Agent:
-Task: T003 - Implement Auth0 in React Native
-Brief: memory/tasks/T003/BRIEF.md
-Dependencies: T001, T002 (learn from mywebsite implementation)
-Codebase: ~/Sites/mobile-app
+## The org queue vs. per-pod dispatch
+
+There are **two distinct queues**, and they don't overlap:
+
+| | **Per-pod dispatch** | **Org manager queue** |
+|---|---|---|
+| Command | `docket pod <project> delegate / queue / dispatch` | `docket team delegate / queue / start / done / cancel` |
+| Scope | one project's pod (`scope: project`) | cross-cutting org work (`scope: org`) |
+| Runs code? | yes — Implementer writes inside the project workspace | no — coordination/planning only |
+| Isolation | pod-local; no cross-pod path | fleet-wide |
+
+Use **per-pod dispatch** for "do this work in *this* codebase." Use the **org queue**
+(`docket team …`) for genuinely cross-cutting coordination that isn't a single project's code —
+e.g. "draft a fleet-wide security-audit plan," handled by the shared `manager`.
+
+```bash
+# Per-pod (writes code in one project):
+docket pod myapp delegate "Add a contact form to the homepage"
+docket pod myapp dispatch
+
+# Org-level (cross-cutting coordination, no code):
+docket team delegate "Plan an auth-hardening pass across the fleet"
+docket team queue
 ```
 
-**Step 6: Project Agents delegate to Specialists**
-```
-[Each Project Agent follows Model A workflow internally]
+### Cross-pod planning, the honest way
 
-mywebsite Agent → programmer → reviewer → tester → done
-mobile-app Agent → programmer → reviewer → tester → done
-```
+There is **no command that runs one pod's work from another pod.** When you need a cross-pod
+*plan* (where to focus, what to rebalance or pause), use the advisory
+**Portfolio Manager** (`docket install --portfolio`). It reads fleet *metadata* and recommends —
+in words, for you — which pods to prioritise. **You** then `delegate` into the chosen pods and
+`dispatch` each one. The Portfolio Manager never dispatches and never touches code.
 
-**Step 7: Manager monitors progress**
-```
-Manager (updates every 60s):
-[15 min] T001 complete - Auth0 configured ✓
-[30 min] T002 in progress - programmer implementing...
-[45 min] T002 complete - validated ✓
-[60 min] T003 in progress - mobile-app auth...
-[90 min] T003 complete - validated ✓
-[100 min] T004 starting - shared library...
-[120 min] All tasks complete ✓
-```
-
-**Step 8: Manager reports final status**
-```
-Manager → Engineer:
-✅ OAuth2 authentication complete!
-
-**Completed Tasks:**
-• T001: Auth0 tenant configured
-• T002: mywebsite - Auth0 integration ✓
-• T003: mobile-app - Auth0 integration ✓
-• T004: Shared auth library created
-• T005: End-to-end tests passing
-
-**Projects Modified:**
-• mywebsite: 8 files changed
-• mobile-app: 6 files changed
-• auth-lib: New package created
-
-**Next Steps:**
-1. Review mywebsite: cd ~/Sites/mywebsite
-2. Review mobile-app: cd ~/Sites/mobile-app
-3. Test login flow in both apps
-4. Commit both projects
-
-**Total Time:** 2h 3min
-**Total Cost:** ~180K tokens
+```bash
+docket install --portfolio          # add the optional advisory planner (one-time)
+# ask it (via Telegram or its workspace) which pods need attention this week,
+# then act on its advice:
+docket pod myapp dispatch
+docket pod mywebsite dispatch
 ```
 
 ---
 
-## When to Use Which Model?
+## Composing a team — how big should a pod be?
 
-### Use Model A (Direct to Project Agent)
-✅ **Single project tasks:**
-- "Add feature X to mywebsite"
-- "Fix bug Y in mobile-app"
-- "Refactor component Z"
-- "Update dependencies"
+Start lean; grow only when the work earns it.
 
-✅ **Quick iterations:**
-- "Change button color"
-- "Update copy on homepage"
-- "Add logging to API"
+| Situation | Pod |
+|-----------|-----|
+| Prototyping, low-risk changes, solo project | **lean** (Lead + Implementer) — the default |
+| Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
+| Behaviour you want validated independently of the diff | add a **Tester** (`--with tester`) |
+| Production-grade, regulated, or high-blast-radius work | **full** pod (`--pod full`) |
+| One Implementer is the bottleneck | `docket pod <p> add implementer` (parallel doers) |
 
-✅ **Project-specific work:**
-- Anything scoped to one codebase
-
-**Why:** Faster (no manager overhead), simpler communication
-
-### Use Model B (Via Manager)
-✅ **Cross-project coordination:**
-- "Implement auth across all projects"
-- "Update API contracts in backend + frontend"
-- "Standardize error handling"
-
-✅ **Strategic planning:**
-- "Plan Q1 roadmap"
-- "Audit security across all projects"
-- "Generate architecture diagrams"
-
-✅ **Resource allocation:**
-- "Prioritize which bug to fix first"
-- "Estimate effort for feature X"
-
-**Why:** Manager has cross-project context, can coordinate specialists
+The Reviewer and Tester are the line between "an agent changed the code" and "a change was
+reviewed and validated before it landed."
 
 ---
 
-## Project Agent Configuration
+## Pod configuration
 
-### What Makes a Project Agent?
+### What makes a pod member
 
-**Identity (SOUL.md):**
-```markdown
-## Identity
-You are the autonomous agent for **MyWebsite**.
-You know this project deeply.
-You do not discuss or act on other projects.
+Each member is an ordinary registered agent with its **own** permission-locked workspace, so
+`docket list` / `info` / `cost` / `doctor` see every member for free.
 
-**Session Key:** `agent:mywebsite:main`
 ```
-
-**Scope (Session Key):**
-- `agent:mywebsite:main` - Isolates this agent to mywebsite only
-- Cannot access other projects' memory/files
-- Change with: `docket scope mywebsite set mywebsite-staging`
-
-**Codebase Path:**
-- Hardcoded in SOUL.md: `~/Sites/mywebsite`
-- Agent only operates within this directory
-- Cannot modify files outside this path
-
-**Delegation Rules (AGENTS.md):**
-```markdown
-## Delegation
-| Task              | Delegate to  |
-|-------------------|--------------|
-| Code              | programmer   |
-| Review            | reviewer     |
-| Tests             | tester       |
-| Memory/patterns   | knowledge    |
-| Risky actions     | security     |
-```
-
-**Memory (Project-Specific):**
-```
-~/.openclaw/workspaces/projects/mywebsite/
-├── SOUL.md              # Identity + scope
-├── AGENTS.md            # Delegation rules
-├── HEARTBEAT.md         # Active tasks
-├── MEMORY.md            # Architectural decisions
-├── SNAPSHOT.md          # Fast-access context
+~/.openclaw/workspaces/projects/myapp-implementer/
+├── SOUL.md              # identity + scope + session key
+├── AGENTS.md            # session protocol, role boundaries
+├── TOOLS.md             # project-specific commands
+├── HEARTBEAT.md         # active tasks/decisions
+├── .docket-meta.json    # docket metadata (role, codebase, model, sessionKey, projectKey)
 ├── memory/
-│   ├── 2026-03-06.md   # Today's log
-│   ├── 2026-03-05.md   # Yesterday
-│   └── tasks/
-│       └── T001/       # Task coordination
-│           ├── BRIEF.md
-│           ├── DONE.md
-│           ├── APPROVED.md
-│           └── VALIDATED.md
-└── workflows/          # Lobster pipelines (optional)
+│   └── 2026-06-24.md    # daily log
+└── workflows/           # Lobster pipelines (optional, deterministic execution)
 ```
+
+### Session keys & isolation
+
+Pod members share the project's session-key namespace (`agent:myapp:<key>`), which keeps the
+pod's conversation context together and **isolated from every other project**. Dispatch runs
+each task on its own per-task session (`agent:myapp:<task_id>`). Change a member's scope with:
+
+```bash
+docket scope myapp-implementer set myapp-staging
+```
+
+The load-bearing isolation primitive is the **per-member workspace** — session keys isolate
+conversation; separate workspaces isolate files, memory, and identity.
+
+### Per-role model policy
+
+Each role maps to the **cheapest model adequate for its workload**. Change a role once and every
+policy-following agent re-resolves; pin one agent with `docket profile`.
+
+| Role | Policy key | Default class |
+|------|-----------|---------------|
+| Lead | manager | cheap (coordination) |
+| Implementer | programmer | strong (reasoning-dense) |
+| Reviewer | reviewer | cheap |
+| Tester | tester | cheap |
+| Portfolio Manager | portfolio-manager | cheap |
+
+```bash
+docket models                                   # show the role→model policy
+docket models set programmer anthropic/claude-… # re-resolves every policy-following Implementer
+docket profile myapp-implementer anthropic/…    # pin ONE agent
+docket profile myapp-implementer default        # re-attach it to the role policy
+```
+
+Agents record intent in `modelSource`: `policy` (follow the role) or `pinned` (explicit choice).
+`docket models set …` never touches pins.
 
 ---
 
-## Specialist Agent Behavior
+## Engineer's daily workflow
 
-### Context Isolation (Critical!)
+### Morning
 
-**Specialists are session-scoped:**
-```
-When programmer receives:
-  "Project: mywebsite"
-  "Brief: memory/tasks/T001/BRIEF.md"
-
-Programmer ONLY:
-  • Reads brief file
-  • Reads files in ~/Sites/mywebsite/
-  • Writes to ~/Sites/mywebsite/
-  • Cannot access other projects
-```
-
-**Why this matters:**
-- Prevents context contamination
-- Ensures changes stay scoped
-- Reduces token usage (no irrelevant memory)
-
-### Delegation Format (DOCKET-Optimized)
-
-**Before DOCKET (wasteful):**
-```
-Project Agent → Programmer:
-[Sends full conversation history: 100K tokens]
-[Sends investigation notes: 20K tokens]
-[Sends brief: 2K tokens]
-Total: 122K tokens
-```
-
-**After DOCKET (efficient):**
-```
-Project Agent → Programmer:
-Read brief: memory/tasks/T001/BRIEF.md
-
-[Brief contains only:]
-TASK: Add dark mode
-FILE: src/settings.tsx
-LINE: 42
-CHANGE: Add toggle button
-ACCEPTANCE: Toggle works, theme persists
-
-Total: 500 tokens
-```
-
-**Token savings: 99.6%!**
-
----
-
-## Engineer's Daily Workflow (Recommended)
-
-### Morning Routine
 ```bash
-# Check all projects
-docket list
-
-# Check specialists + pods and their health
-docket list
-docket doctor
-
-# Create snapshots (if not recent)
-for project in mywebsite mobile-app; do
-  docket memory snapshot $project
-done
+docket list                     # every pod member + org specialist
+docket doctor                   # health + auto-fix; flags legacy global workers
 ```
 
-### Assigning Work
+### Assign and run work
 
-**Option 1: Direct to project (most common)**
-```
-Telegram → "MyWebsite Project"
-Message: "Add contact form to homepage"
-```
-
-**Option 2: Via Manager (multi-project)**
-```
-Telegram → "Manager"
-Message: "Implement contact forms in all projects"
-```
-
-### Monitoring Progress
-
-**Via Telegram:**
-- Project agents send updates every 60s
-- Final notification when done
-
-**Via CLI:**
 ```bash
-# Check recent activity
-docket logs mywebsite
+# Queue and run a single project's work:
+docket pod myapp delegate "Add contact form to homepage"
+docket pod myapp dispatch
 
-# Check task status
-cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/STATUS.md
+# Or let the background loop drain every pod's queue:
+docket serve --dispatch
 ```
 
-### Reviewing Changes
+You can also drive a pod's Lead from Telegram — wire it once with `docket wire myapp-lead` and
+send tasks to its group; the Lead queues them on the same pod queue.
 
-**After notification:**
+### Monitor
+
 ```bash
-# Navigate to project
-cd ~/Sites/mywebsite
+docket pod myapp queue          # this pod's queue + per-task status/cost
+docket trace                    # recent dispatch hops across pods
+docket logs myapp-lead          # the Lead's activity
+```
 
-# Review diff
+### Review and commit
+
+```bash
+cd ~/code/myapp
 git diff
-
-# Review task evidence
-cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/DONE.md
-cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/APPROVED.md
-cat ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/T001/VALIDATED.md
-
-# If approved:
-git add .
-git commit -m "Feature: Contact form"
-git push
+git add -p && git commit -m "Feature: contact form" && git push
 ```
 
-### End of Day
+### End of day
 
 ```bash
-# Compress old memory (optional)
-docket memory compress mywebsite
-
-# Check cost
-docket cost
-
-# Check for any alerts
-docket doctor
+docket cost                     # recorded spend across the fleet
+docket doctor                   # any alerts?
 ```
 
 ---
 
-## Advanced Patterns
+## Token & cost notes
 
-### Pattern 1: Feature Branches (Manual)
-
-```bash
-# Engineer creates branch
-cd ~/Sites/mywebsite
-git checkout -b feature/dark-mode
-
-# Tell Project Agent
-Telegram → "MyWebsite Project"
-Message: "Work on branch feature/dark-mode for dark mode implementation"
-
-# Agent works on that branch
-# When done, engineer reviews PR
-git push origin feature/dark-mode
-gh pr create
-```
-
-### Pattern 2: Parallel Tasks
-
-```bash
-# Send multiple tasks to same project
-Telegram → "MyWebsite Project"
-Message: "Task A: Add contact form
-Task B: Update footer
-Task C: Fix navigation bug
-
-Please work on these in parallel where possible"
-
-# Project Agent creates multiple task IDs
-# Delegates to programmer (may use same or different instances)
-```
-
-### Pattern 3: HITL Gates
-
-**Trigger:** Architectural decision needed
-
-```
-Project Agent → Engineer:
-⚠️ HITL Required
-
-**Decision:** Should we use REST or GraphQL for new API?
-
-**Context:**
-- Current: REST
-- Proposed: GraphQL (better for mobile app)
-- Impact: Requires refactoring 12 endpoints
-
-**Options:**
-A) Keep REST (less work, familiar)
-B) Switch to GraphQL (better DX, more setup)
-
-Please approve A or B to proceed.
-```
-
-**Engineer responds:**
-```
-Approved: B (GraphQL)
-Reason: Mobile team requested it
-```
-
-**Project Agent continues:**
-```
-✓ Approved - proceeding with GraphQL
-→ Creating task breakdown...
-```
-
----
-
-## Token Management
-
-These are **token** estimates — the thing docket's compression and routing actually control.
-For dollars, read your **recorded** spend with `docket cost`; it depends on your models and
-current pricing, so we don't project it here. See
+These are **token** estimates — the thing docket's routing actually controls. For dollars, read
+your **recorded** spend with `docket cost`; it depends on your models and current pricing, so we
+don't project it here. See
 [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
-### Per-Task Estimates
+A dispatched task is the sum of its hops, each a real costed turn:
 
-**Simple Task (CSS change):**
 ```
-Project Agent: 2K tokens (read SNAPSHOT, create brief)
-Programmer: 2K tokens (cheap model - implement)
-Reviewer: 1K tokens (quick check)
-Tester: 1K tokens (cheap model - validate)
----
-Total: ~6K tokens
-Time: 2 minutes
-```
+Simple change (lean pod, 2 hops):
+  lead         ~2K   (plan + decompose, cheap model)
+  implementer  ~2K   (small edit, strong model)
+  ── total    ~4K · ~2 min
 
-**Medium Task (feature):**
-```
-Project Agent: 5K tokens
-Programmer: 20K tokens (strong model - complex logic)
-Reviewer: 5K tokens (strong model - thorough)
-Tester: 3K tokens (cheap model - tests)
----
-Total: ~33K tokens
-Time: 10 minutes
-```
+Feature (full pod, 4 hops):
+  lead         ~5K
+  implementer ~20K   (multi-step logic, strong model)
+  reviewer     ~5K   (veto on diff)
+  tester       ~3K   (PASS/FAIL)
+  ── total   ~33K · ~10 min
 
-**Complex Task (refactor):**
-```
-Project Agent: 10K tokens
-Programmer: 50K tokens (strong model - multi-file)
-Reviewer: 10K tokens (strong model - security critical)
-Tester: 5K tokens (extensive tests)
----
-Total: ~75K tokens
-Time: 20 minutes
+Refactor (full pod, high blast radius):
+  lead        ~10K
+  implementer ~50K   (multi-file)
+  reviewer    ~10K   (security-critical)
+  tester       ~5K
+  ── total   ~75K · ~20 min
 ```
 
-### Monthly Token Estimate
-
-**Typical project (active development):**
-```
-Simple tasks:   30/month × 6K   = 180K tokens
-Medium tasks:   15/month × 33K  = 495K tokens
-Complex tasks:   5/month × 75K  = 375K tokens
-Queries/status: 50/month × 6K   = 300K tokens
----
-Total per project: ~1.35M tokens/month
-```
-
-For three projects, budget roughly ~4M tokens/month plus manager overhead. To turn that into a
-dollar figure for your setup, set a cap with `docket profile <id> --budget <usd>` and watch
-actual spend with `docket cost`.
+To bound the dollar cost of any of these, set a per-pod cap on the Lead
+(`docket profile <project>-lead --budget <usd>`) and watch actual spend with `docket cost`. The
+cap is enforced between hops on every dispatch.
 
 ---
 
 ## Troubleshooting
 
-### Project Agent Not Responding?
+### Pod not running a delegated task?
 
-1. **Check if agent exists:**
+1. **Confirm the pod and its members exist and are healthy:**
    ```bash
-   docket list
-   ```
-
-2. **Check Telegram binding:**
-   ```bash
-   docket list  # Shows wire status
-   ```
-
-3. **Re-wire if needed:**
-   ```bash
-   docket wire mywebsite
-   ```
-
-4. **Check gateway:**
-   ```bash
-   systemctl --user status openclaw-gateway.service
-   ```
-
-### Project Agent Working on Wrong Project?
-
-1. **Check session key:**
-   ```bash
-   docket scope mywebsite show
-   ```
-
-2. **Reset if needed:**
-   ```bash
-   docket scope mywebsite reset
-   ```
-
-3. **Verify SOUL.md:**
-   ```bash
-   grep "Session Key" ~/.openclaw/workspaces/projects/mywebsite/SOUL.md
-   ```
-
-### Specialists Not Receiving Tasks?
-
-1. **Check that specialists and pods exist and are healthy:**
-   ```bash
-   docket list
+   docket pod myapp
    docket doctor
    ```
-
-2. **Inspect a project's pod:**
+2. **Check the queue — is the task pending because of budget?**
    ```bash
-   docket pod mywebsite
+   docket pod myapp queue        # look at status + the budget header
+   ```
+3. **If over budget, raise the cap and re-dispatch:**
+   ```bash
+   docket profile myapp-lead --budget 10
+   docket pod myapp dispatch
+   ```
+4. **Did you actually dispatch?** `delegate` only queues — `dispatch` runs the pipeline (or
+   start the background loop with `docket serve --dispatch`).
+
+### Pipeline stops after the Implementer?
+
+That's expected for a **lean** pod — it only has two hops. Add the gate roles if you want them:
+
+```bash
+docket pod myapp add reviewer
+docket pod myapp add tester
+```
+
+### Implementer touching the wrong project?
+
+1. **Check its session key / scope:**
+   ```bash
+   docket scope myapp-implementer show
+   ```
+2. **Reset if needed:**
+   ```bash
+   docket scope myapp-implementer reset
+   ```
+3. **Verify the workspace identity:**
+   ```bash
+   grep "Session Key" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
    ```
 
-3. **Check delegation logic in Project Agent:**
-   ```bash
-   grep "Delegation" ~/.openclaw/workspaces/projects/mywebsite/AGENTS.md
-   ```
+### Leftover global `programmer`/`reviewer`/`tester`?
 
-4. **Check task files:**
-   ```bash
-   ls ~/.openclaw/workspaces/projects/mywebsite/memory/tasks/
-   ```
+A pre-pods install may have left a shared worker workspace. `docket doctor` flags it and
+backfills `scope` on legacy metadata — run it and follow its advice:
+
+```bash
+docket doctor
+```
+
+### Gateway / Telegram issues
+
+```bash
+docket list                                   # shows wire status per agent
+docket wire myapp-lead                         # (re)wire a Lead to Telegram
+systemctl --user status openclaw-gateway.service
+```
 
 ---
 
 ## Summary
 
-**Project Agents:**
-- One per project/codebase
-- Coordinates work for that project only
-- Delegates to specialists
-- Reports to engineer
+**Project pods** (`scope: project`, one per codebase):
+- Lead orchestrates and owns comms — **never edits code**.
+- Implementer is the **single writer**, inside the project workspace.
+- Reviewer/Tester are optional gates you add when the work warrants it.
+- `docket pod <p> delegate` queues; `docket pod <p> dispatch` runs the real pipeline,
+  one costed turn per hop, **budget-gated, traced, and pod-local**.
 
-**Specialists:**
-- Shared across all projects
-- Receive compressed briefs
-- Work in isolated sessions
-- Signal completion via memory files
+**Org specialists** (`scope: org`, shared once):
+- manager / knowledge / security; optional advisory portfolio-manager.
+- The org queue (`docket team …`) is for cross-cutting coordination, **not** a project's code.
 
 **Engineer:**
-- Assigns tasks (Telegram or CLI)
-- Reviews changes (git diff)
-- Commits code (git commit)
-- Approves HITL gates
+- Sets budget caps, delegates and dispatches, reviews diffs, commits, approves HITL gates.
 
-**Workflow:**
 ```
-Engineer → Project Agent → Specialists → Done → Engineer Reviews → Commit
+delegate → dispatch → Lead → Implementer → (Reviewer) → (Tester) → you review + commit
 ```
 
-**Or:**
-```
-Engineer → Manager → Project Agents → Specialists → Done → Engineer Reviews → Commit
-```
-
-**Key Benefits:**
-- ✅ 50-98% token reduction (DOCKET optimization)
-- ✅ 6-20x faster responses (SNAPSHOT.md, compression)
-- ✅ Autonomous execution (minimal engineer intervention)
-- ✅ Security-first (mandatory 6-point checklist)
-- ✅ Token-efficient (compression + cheap-model routing; cap spend with `--budget`)
+**Key guarantees:**
+- One owner of completion (Lead) and one doer (Implementer) — no two-doer ambiguity.
+- Per-member workspaces — no worker agent ever serves two projects.
+- Real hand-off — the pipeline actually runs; every hop is costed, budget-gated, and traced.
+- No cross-pod dispatch — one pod can never run another pod's agents.
 
 ---
 
-**Next:** Read [QUICK-START-DOCKET.md](QUICK-START-DOCKET.md) to test your first workflow!
+**Next:** Read [Agent Teams (Pods)](AGENT-TEAMS.md) for the canonical model, or
+[QUICK-START-DOCKET.md](QUICK-START-DOCKET.md) to run your first pod.
