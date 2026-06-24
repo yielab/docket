@@ -34,7 +34,7 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show search snapshot index compress" ;;
     workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show delete" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove delegate queue dispatch" ;;
     team)            words="delegate queue start done cancel" ;;
     gates|security)  words="status enable disable isolate" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;

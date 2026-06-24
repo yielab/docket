@@ -3888,11 +3888,21 @@ def cmd_serve(
     interval: int = typer.Option(
         30, "--interval", "-i", help="Sweep refresh interval in seconds (default 30)"
     ),
+    dispatch: bool = typer.Option(
+        False,
+        "--dispatch",
+        help="Also drive each pod's queued tasks through its pipeline (real, costed agent turns)",
+    ),
 ) -> None:
-    """Local HTTP endpoints: /status.json /metrics /health."""
+    """Local HTTP endpoints: /status.json /metrics /health.
+
+    With --dispatch, each refresh also runs every pod's queue through the
+    Lead→Implementer→Reviewer→Tester pipeline (AA-7). Each hop is a real agent
+    turn and is budget-gated; leave it off for a read-only monitor.
+    """
     from docket.serve import run_serve
 
-    run_serve(port=port, interval=interval)
+    run_serve(port=port, interval=interval, dispatch=dispatch)
 
 
 @app.command("completions")

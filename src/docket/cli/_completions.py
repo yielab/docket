@@ -50,7 +50,7 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show search snapshot index compress" ;;
     workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show delete" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove delegate queue dispatch" ;;
     team)            words="delegate queue start done cancel" ;;
     gates|security)  words="status enable disable isolate" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
@@ -127,7 +127,7 @@ _docket() {
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove delegate queue dispatch ;;
     team)            compadd delegate queue start done cancel ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
