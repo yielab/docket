@@ -29,8 +29,15 @@ _PROJECT_ROLES = ("programmer", "reviewer", "tester")
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Never touch systemctl or a real openclaw CLI during install tests."""
+def _hermetic(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
+    """Never touch systemctl during install tests.
+
+    ``fake_openclaw`` puts a real `openclaw` shim on PATH so Step 1's dependency
+    probe and the version read run their REAL code (they pass because they
+    genuinely find the binary — no stubbing of docket's own logic). The daemon's
+    state-mutating ``agents add`` is simulated at the ACL boundary by
+    ``_fake_registration`` (the only thing that needs a running daemon).
+    """
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     # No registry file → built-in role→model defaults apply.
@@ -319,3 +326,27 @@ def test_install_no_service_manager_hints(
     out = capsys.readouterr().out
     assert "No service manager detected" in out
     assert _sys.service_manager() == "none"
+
+
+# ── dependency detection (Step 1) — real probe, both ways ────────────────────────
+
+
+def test_check_dependencies_passes_with_openclaw(fake_openclaw: Path) -> None:
+    """The real Step-1 probe finds `openclaw` on PATH and does not flag it."""
+    assert "openclaw" not in _install._check_dependencies()
+
+
+def test_check_dependencies_flags_missing_openclaw(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no `openclaw` on PATH, the real probe reports it missing — and a full
+    install aborts with a non-zero exit (the genuine 'daemon not installed' path)."""
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))  # nothing — not even python3/git
+    assert "openclaw" in _install._check_dependencies()
+
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("PATH", str(empty))  # _seed_fresh ran with a real PATH; re-empty it
+    assert oc_dir.exists()
+    assert _install.run_install(want_gates=False, assume_yes=True) == 1

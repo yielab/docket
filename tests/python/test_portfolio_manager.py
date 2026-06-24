@@ -18,7 +18,10 @@ PM = "portfolio-manager"
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
+def _hermetic(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
+    # fake_openclaw puts a real `openclaw` shim on PATH so install's Step 1
+    # dependency probe runs its real code (CI has no daemon). Only the daemon's
+    # agents-add is simulated at the ACL boundary (register_agent_cli).
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
