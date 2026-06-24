@@ -21,7 +21,6 @@ echo ""
 
 # Track results
 UNIT_PASSED=true
-INTEGRATION_PASSED=true
 EVALS_PASSED=true
 
 # Run unit tests
@@ -48,19 +47,9 @@ echo ""
 echo "========================================"
 echo ""
 
-# Run integration tests
-echo -e "${BOLD}Running Integration Tests...${RESET}"
-echo "----------------------------------------"
-if "$SCRIPT_DIR/test-lifecycle.sh"; then
-  echo -e "${GREEN}✓ Integration tests passed${RESET}"
-else
-  echo -e "${RED}✗ Integration tests failed${RESET}"
-  INTEGRATION_PASSED=false
-fi
-
-echo ""
-echo "========================================"
-echo ""
+# Note: command/lifecycle behaviour is covered by the pytest suite (tests/python/)
+# and the golden parity suite above — the old Bash integration test was retired in
+# the Python cutover.
 
 # Run evals (non-blocking — SKIP is acceptable; only FAIL counts)
 echo -e "${BOLD}Running Eval Harness...${RESET}"
@@ -77,7 +66,7 @@ echo "========================================"
 echo "  Final Summary"
 echo "========================================"
 
-if $UNIT_PASSED && $INTEGRATION_PASSED; then
+if $UNIT_PASSED; then
   echo -e "${GREEN}${BOLD}✓ ALL TESTS PASSED${RESET}"
   $EVALS_PASSED || echo -e "  ${YELLOW}⚠ Evals: some failures (non-blocking — run: ./tests/evals/run-evals.sh)${RESET}"
   echo ""
@@ -85,8 +74,7 @@ if $UNIT_PASSED && $INTEGRATION_PASSED; then
 else
   echo -e "${RED}${BOLD}✗ SOME TESTS FAILED${RESET}"
   echo ""
-  $UNIT_PASSED || echo -e "  ${RED}• Unit tests failed${RESET}"
-  $INTEGRATION_PASSED || echo -e "  ${RED}• Integration tests failed${RESET}"
+  $UNIT_PASSED || echo -e "  ${RED}• Unit/golden tests failed${RESET}"
   $EVALS_PASSED || echo -e "  ${YELLOW}⚠ Evals: some failures (non-blocking)${RESET}"
   echo ""
   exit 1

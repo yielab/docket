@@ -34,10 +34,11 @@ docket-cli/
 ├── scripts/                     # SSD automation
 │   ├── validate-specs.sh       # Validate spec format
 │   └── spec-coverage.sh        # Check coverage
+├── src/docket/                  # Python package (cli/ → core/ → edges/)
 └── tests/                       # Test implementation
-    ├── unit/                    # Unit tests from specs
-    ├── integration/             # Integration tests
-    └── acceptance/              # Acceptance tests
+    ├── python/                  # pytest suite (unit + integration)
+    ├── golden/                  # Byte-parity golden suite
+    └── evals/                   # Specialist-role evals
 ```
 
 ## Workflow Steps
@@ -100,59 +101,55 @@ Before implementation:
 
 Write tests BEFORE implementation:
 
-```bash
-# Create test file
-cat > tests/integration/test-new-feature.sh << 'EOF'
-#!/usr/bin/env bash
+```python
+# tests/python/test_new_feature.py
+from typer.testing import CliRunner
 
-source tests/lib/assertions.sh
+from docket.cli import app
 
-# Test based on spec requirements
-test_new_feature_must_requirement() {
-    # This test should FAIL initially (red phase)
+runner = CliRunner()
 
-    # Arrange
-    local input="test-data"
 
+def test_new_feature_must_requirement():
+    """This test should FAIL initially (red phase)."""
     # Act
-    local result=$(docket new-feature "$input" 2>&1)
-    local exit_code=$?
+    result = runner.invoke(app, ["new-feature", "test-data"])
 
     # Assert (from spec)
-    assert_equals 0 $exit_code "should succeed"
-    assert_contains "$result" "expected output"
-}
+    assert result.exit_code == 0, "should succeed"
+    assert "expected output" in result.stdout
+```
 
-# Run tests
-run_tests
-EOF
-
-# Run test (should fail)
-./tests/integration/test-new-feature.sh
+```bash
+# Run the test (should fail — red phase)
+uv run pytest tests/python/test_new_feature.py
 # ✗ Test fails - this is expected!
 ```
 
 ### 4. Implementation Phase
 
-Now implement to make tests pass:
+Now implement to make tests pass. Commands are Typer functions in `src/docket/cli/`; domain
+logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket JSON, the ACL
+`edges/adapters/openclaw.py` for OpenClaw state, `edges/adapters/system.py` for shell-outs).
+
+```python
+# src/docket/cli/__init__.py  (or a cli/_<group>.py module for a larger group)
+import typer
+
+from docket import ui
+from docket.cli import app
+
+
+@app.command("new-feature")
+def new_feature(value: str = typer.Argument(...)) -> None:
+    """Implementation that satisfies the spec."""
+    # Pure logic lives in core/; I/O goes through edges/.
+    ui.success("Feature executed successfully")
+```
 
 ```bash
-# Create implementation
-cat > lib/commands/new-feature.sh << 'EOF'
-#!/usr/bin/env bash
-
-cmd_new_feature() {
-    local input="${1:-}"
-
-    # Implementation that satisfies spec
-    # ...
-
-    success "Feature executed successfully"
-}
-EOF
-
-# Run tests again
-./tests/integration/test-new-feature.sh
+# Run the tests again
+uv run pytest tests/python/test_new_feature.py
 # ✓ Tests pass!
 ```
 
@@ -167,8 +164,15 @@ Ensure everything is aligned:
 # Check coverage
 ./scripts/spec-coverage.sh
 
-# Run all tests
+# Run all tests (pytest + golden parity + evals)
 ./tests/run-all-tests.sh
+
+# Run the CI gates (all blocking)
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+uv run pytest
+bash tests/golden/run.sh verify-all
 
 # Update spec status
 sed -i 's/Status: Draft/Status: Complete/' specs/functional/new-feature.spec.md
@@ -181,7 +185,7 @@ Update user-facing documentation:
 ```bash
 # Update README
 # Update CHANGELOG
-# Update help text in lib/commands/help.sh
+# Update help text in src/docket/cli/_help.py
 # Commit with spec reference
 
 git add .
@@ -363,10 +367,10 @@ jobs:
 ### Adding a New Command
 
 1. Create spec: `specs/functional/command-name.spec.md`
-2. Write tests: `tests/integration/test-command.sh`
-3. Implement: `lib/commands/command.sh`
-4. Update docs: README.md, help.sh
-5. Validate: `./scripts/validate-specs.sh`
+2. Write tests: `tests/python/test_command.py`
+3. Implement: a Typer command in `src/docket/cli/` (logic in `core/`, I/O via `edges/`)
+4. Update docs: README.md, `src/docket/cli/_help.py`
+5. Validate: `./scripts/validate-specs.sh` + the CI gates
 
 ### Modifying Existing Feature
 
@@ -437,7 +441,7 @@ jobs:
 grep "MUST\|SHALL" specs/functional/feature.spec.md
 
 # Ensure each MUST has a test
-grep "test_" tests/integration/test-feature.sh
+grep "def test_" tests/python/test_feature.py
 
 # Update tests to match specs exactly
 ```
