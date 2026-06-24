@@ -360,8 +360,8 @@ def cmd_add(ctx: typer.Context) -> None:
     aid_input = input(f"Agent ID [{slug}]: ").strip() or slug
     aid: str = aid_input
 
-    if (_cfg.PROJECTS_DIR / aid).is_dir():
-        ui.error(f"Agent '{aid}' already exists.")
+    if (_cfg.PROJECTS_DIR / aid).is_dir() or (_cfg.PROJECTS_DIR / f"{aid}-lead").is_dir():
+        ui.error(f"A project or pod '{aid}' already exists.")
         raise typer.Exit(1)
 
     codebase = ""
@@ -384,38 +384,35 @@ def cmd_add(ctx: typer.Context) -> None:
         stack = input(f"Stack [{stack or 'unknown'}]: ").strip() or stack or "unknown"
 
     description = input("Description (one line): ").strip()
-    role = "repo" if agent_type == "repo" else "task"
-    policy_model = _mp.resolve_role_model(role)
-    model_input = input(f"Model [{policy_model}]: ").strip() or policy_model
     tg_group = input("Telegram group ID (Enter to skip): ").strip()
 
-    _provision_agent(
-        aid,
-        agent_type,
-        name,
-        codebase,
-        stack,
-        model_input,
-        description,
-        "default",
-        "",
-        "interactive",
-    )
+    # Phase 10: `docket add` provisions a pod, not a lone agent. Pod members
+    # follow the role→model policy (Lead = coordination model, Implementer =
+    # codegen model), so there is no single-model prompt.
+    from docket.cli import _pod
 
+    roles = _pod.parse_pod_roles(all_args)
+    ui.console.print()
+    ui.info(f"Provisioning pod '{aid}' ({', '.join(roles)})...")
+    created = _pod.build_pod(aid, roles, codebase=codebase, stack=stack, description=description)
+    if not created:
+        ui.error("Pod provisioning failed — no members were registered.")
+        raise typer.Exit(1)
+
+    lead_id = f"{aid}-lead"
     if tg_group:
-        _oc.upsert_binding(aid, tg_group, "telegram", "group")
-        ui.success(f"Telegram binding: {aid} ← group {tg_group}")
+        _oc.upsert_binding(lead_id, tg_group, "telegram", "group")
+        ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
         _do_restart_gateway()
 
     ui.console.print()
-    ui.success(f"Agent '{aid}' created!")
-    ui.console.print(f"  Type:       {agent_type}")
-    ui.console.print(f"  Workspace:  {_cfg.PROJECTS_DIR / aid}")
-    if codebase:
-        ui.console.print(f"  Codebase:   {codebase}")
+    ui.success(f"Pod '{aid}' created with {len(created)} members!")
+    for mid in created:
+        ui.console.print(f"  - {mid}")
     ui.console.print()
-    ui.console.print(f"  docket info {aid}")
-    ui.console.print(f"  docket wire {aid}   (if no Telegram group yet)")
+    ui.console.print(f"  docket pod {aid}              # inspect the pod")
+    ui.console.print(f"  docket pod {aid} add reviewer # add a role")
+    ui.console.print(f"  docket wire {lead_id}   (if no Telegram group yet)")
 
 
 def _cmd_add_declarative(from_file: str) -> None:
@@ -914,9 +911,41 @@ def _cmd_info_human(agent_id: str) -> None:
         ui.console.print()
 
 
+def _delete_pod(project: str, members: list[str]) -> None:
+    """Tear down every member of a pod (Phase 10). One gateway restart at the end."""
+    from docket.cli import _pod
+
+    ui.header(f"Delete pod: {project}  ({len(members)} members)")
+    ui.console.print()
+    for mid in members:
+        role = _oc.meta_get(mid, "role", "?")
+        ui.console.print(f"  - {mid}  [{role}]")
+    ui.console.print()
+    ui.warn("This removes every member's registration, binding, and workspace.")
+    ui.console.print()
+
+    if sys.stdin.isatty():
+        confirm = input(f"Type the pod id to confirm deletion [{project}]: ").strip()
+        if confirm != project:
+            ui.warn("Aborted.")
+            raise typer.Exit(0)
+
+    for mid in members:
+        if _oc.get_binding(mid):
+            _oc.remove_binding(mid)
+        ok, msg = _pod.teardown_member(mid)
+        if ok:
+            ui.success(f"Removed {mid}")
+        else:
+            ui.warn(f"{mid}: daemon delete reported: {msg} (workspace cleaned)")
+
+    _do_restart_gateway()
+    ui.success(f"Pod '{project}' deleted.")
+
+
 @app.command("delete")
 def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
-    """Remove agent and optionally its workspace."""
+    """Remove a project agent or a whole pod, and optionally its workspace."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -931,6 +960,14 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
             " 'docket install'. It cannot be deleted with 'docket delete'."
         )
         raise typer.Exit(1)
+
+    # Phase 10: if `aid` names a pod, tear down every member.
+    from docket.cli import _pod
+
+    members = _pod.pod_member_ids(aid)
+    if members:
+        _delete_pod(aid, members)
+        return
 
     ws = _cfg.workspace_dir(aid)
     if not ws.is_dir():

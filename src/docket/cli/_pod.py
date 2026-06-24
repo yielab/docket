@@ -204,6 +204,35 @@ def pod_member_ids(project: str) -> list[str]:
     return [mid for mid, _role, _idx in pod.members_of(all_ids, project)]
 
 
+def parse_pod_roles(args: list[str]) -> tuple[str, ...]:
+    """Pod composition from `docket add` flags.
+
+    Default = lean pod (lead + implementer). ``--pod full`` = the four-role pod.
+    ``--with reviewer,tester`` = lean pod plus the named roles. Unknown role names
+    are ignored (the lean default still applies).
+    """
+    if "--pod" in args:
+        i = args.index("--pod")
+        if i + 1 < len(args) and args[i + 1].lower() == "full":
+            return pod.FULL_POD_ROLES
+    extras: list[str] = []
+    for i, tok in enumerate(args):
+        spec = ""
+        if tok.startswith("--with="):
+            spec = tok[len("--with=") :]
+        elif tok == "--with" and i + 1 < len(args):
+            spec = args[i + 1]
+        if spec:
+            for raw in spec.split(","):
+                try:
+                    role = pod.normalize_role(raw)
+                except pod.PodError:
+                    continue
+                if role not in ("lead", "implementer") and role not in extras:
+                    extras.append(role)
+    return (*pod.DEFAULT_POD_ROLES, *extras)
+
+
 def build_pod(
     project: str,
     roles: tuple[str, ...],
