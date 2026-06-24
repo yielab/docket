@@ -10,7 +10,8 @@ This specification defines the schema for `.docket-meta.json`, the per-agent met
 that docket treats as its source of truth for an agent's identity and configuration. One file
 exists per agent at `~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json` (project
 agents) or `~/.openclaw/workspaces/<role>/.docket-meta.json` (specialist agents), and is read
-and written exclusively through the `meta_get` / `meta_set` helpers in `lib/helpers/json.sh`.
+and written exclusively through the typed ACL helpers (`meta_get` / `meta_set` / `meta_read`) in
+`src/docket/edges/adapters/openclaw.py`, over the atomic JSON store in `src/docket/edges/store.py`.
 
 ## Scope
 
@@ -84,7 +85,7 @@ and reports drift. `--fix` re-syncs from `.docket-meta.json` (the source of trut
 
 ## Validation
 
-`meta_set` validates every write against the schema table in `lib/core/schema.sh`:
+`meta_set` validates every write against the `AgentMeta` model in `src/docket/core/models.py`:
 
 - **Unknown field** → `error` (typo guard; exits non-zero without writing).
 - **Type mismatch**: `budgetUsd` non-numeric or negative → `error`; `paused` non-boolean → `error`.

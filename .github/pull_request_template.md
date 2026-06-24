@@ -8,14 +8,17 @@
 
 ## Test plan
 
-- [ ] `./tests/unit/test-helpers.sh` passes (all N tests green)
-- [ ] `./tests/test-lifecycle.sh` passes (or explain why not run)
+- [ ] `uv run pytest` passes
+- [ ] `bash tests/golden/run.sh verify-all` passes (recapture goldens if output changed intentionally)
+- [ ] `uv run ruff check . && uv run ruff format --check .` clean
+- [ ] `uv run mypy src` clean
 - [ ] Manually tested: `docket <command>` with the affected path
 
 ## Checklist
 
-- [ ] No hardcoded model names (use `economy`/`standard`/`premium` tier language in templates)
-- [ ] JSON writes go through `json_atomic_write` + `with_docket_lock`
-- [ ] Mutating ops emit an `docket_audit` line
-- [ ] New commands have a `--json` flag if they read structured data
-- [ ] `bash -n lib/commands/<file>.sh` passes (no syntax errors)
+- [ ] Model choices follow the role→model policy (no hardcoded models; tier names economy/standard/premium are deprecated)
+- [ ] All docket-owned JSON I/O goes through `edges/store.py` (atomic + filelock + 0600)
+- [ ] Any `openclaw.json` / auth-profile / provider access goes through the ACL (`edges/adapters/openclaw.py`) — no other module touches those formats
+- [ ] Mutating operations emit an audit entry (`core/audit.py`)
+- [ ] New read commands expose a `--json` flag with a shape documented in `specs/data/cli-json-shapes.spec.md`
+- [ ] Spec-first: behaviour is specified under `specs/` (validated by `./scripts/validate-specs.sh`)

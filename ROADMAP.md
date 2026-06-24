@@ -182,9 +182,9 @@ address exactly those.
 
 - **Why:** Live config uses `agents.list`. Code that reads `agents.registered` silently sees zero agents.
 - **Files & lines:**
-  - [lib/commands/install.sh:41](lib/commands/install.sh#L41) — `agents.registered` → `agents.list`
-  - [lib/commands/smart.sh:139](lib/commands/smart.sh#L139) — `config.get('agents', {}).get('registered', [])` → `...get('list', [])`
-  - [lib/commands/doctor.sh:177](lib/commands/doctor.sh#L177) — `for agent in config.get('agents', {}).get('registered', [])` → `...get('list', [])`
+  - `lib/commands/install.sh:41` — `agents.registered` → `agents.list` (pre-migration Bash; now `src/docket/cli/_install.py`)
+  - `lib/commands/smart.sh:139` — `config.get('agents', {}).get('registered', [])` → `...get('list', [])` (pre-migration Bash; smart routing later removed)
+  - `lib/commands/doctor.sh:177` — `for agent in config.get('agents', {}).get('registered', [])` → `...get('list', [])` (pre-migration Bash; now `src/docket/cli/_doctor.py`)
   - Grep the whole repo: `grep -rn "registered" lib/` and fix every agent-list usage. (Leave unrelated uses of the word alone.)
 - **Requirements:** Standardize on `agents.list`. Each agent object is `{"id": str, "model": str, ...}`.
 - **Acceptance:**
@@ -196,19 +196,19 @@ address exactly those.
 #### ☑ P0-2 — Add config **drift detection** to `docket doctor`
 
 - **Why:** `.docket-meta.json` and `openclaw.json` can disagree silently (e.g. model changed in one only).
-- **File:** [lib/commands/doctor.sh](lib/commands/doctor.sh) — add a new check section (after the per-project block, ~line 112).
+- **File:** `lib/commands/doctor.sh` — add a new check section (after the per-project block, ~line 112). (pre-migration Bash; now `src/docket/cli/_doctor.py`)
 - **Requirements:** For each project id, compare:
   - `meta_get id model` vs the agent's `model` in `openclaw.json` `agents.list`.
   - `meta_get id sessionKey` presence vs gateway metadata (best-effort; warn if absent).
   - TG binding in meta (if tracked) vs `get_tg_binding id`.
   - On mismatch: `fail "  <id>: drift — model meta=<x> openclaw=<y>"` and increment `issues`. Print hint: `Fix with: docket doctor --fix`.
 - **Acceptance:** Manually set a different model in one source → `docket doctor` reports the drift and exits non-zero. Aligned config → no drift reported.
-- **Test:** Integration case in `tests/test-lifecycle.sh`: create agent, mutate `.docket-meta.json` model, assert `docket doctor` output contains `drift` and exit code `1`.
+- **Test:** Integration case (pre-migration `tests/test-lifecycle.sh`; now pytest under `tests/python/`): create agent, mutate `.docket-meta.json` model, assert `docket doctor` output contains `drift` and exit code `1`.
 
 #### ☑ P0-3 — Single audited config write path
 
 - **Why:** Config writes are scattered inline python heredocs with no verification; root cause of drift and the P0-1 bug.
-- **File:** new helper functions in [lib/helpers/json.sh](lib/helpers/json.sh).
+- **File:** new helper functions in `lib/helpers/json.sh` (pre-migration Bash; docket-owned JSON I/O now in `src/docket/edges/store.py`).
 - **Requirements:** Implement and document:
   - `oc_get <jsonpath> [default]` — read a dotted path from `openclaw.json`.
   - `oc_set <jsonpath> <json-value>` — write a dotted path; **always** `json.dump(indent=2)`; validate the file parses *after* writing (re-open + `json.load`); on parse failure, restore from a `.bak` and `error`.
@@ -220,7 +220,7 @@ address exactly those.
 #### ☑ P0-4 — Batch gateway restarts (de-couple `restart_gateway`)
 
 - **Why:** Multi-step ops restart the systemd unit repeatedly.
-- **Files:** [lib/helpers/service.sh](lib/helpers/service.sh) and callers.
+- **Files:** `lib/helpers/service.sh` and callers (pre-migration Bash; service/gateway control now in `src/docket/edges/adapters/system.py`).
 - **Requirements:** Introduce a "dirty" flag pattern: helpers that mutate config set `DOCKET_GATEWAY_DIRTY=1` instead of restarting inline; `restart_gateway` is called **once** at the end of a command if dirty. Provide `mark_gateway_dirty` and `restart_gateway_if_dirty`. Update commands that currently call `restart_gateway` mid-flow.
 - **Acceptance:** A command that changes 3 config values restarts the gateway exactly once (verify via a log/echo in a dry-run env var `DOCKET_NO_RESTART=1` that prints instead of restarting).
 - **Test:** Unit test asserts `restart_gateway_if_dirty` is a no-op when not dirty and prints exactly one restart line when dirty (use `DOCKET_NO_RESTART=1`).
@@ -250,21 +250,21 @@ address exactly those.
 
 #### ☑ P1-1 — Per-agent budget field
 
-- **Files:** [lib/commands/profile.sh](lib/commands/profile.sh), `.docket-meta.json` schema, `json.sh`.
+- **Files:** `lib/commands/profile.sh`, `.docket-meta.json` schema, `json.sh` (pre-migration Bash; now `src/docket/cli/` + `core/`/`edges/`).
 - **Requirements:** Add `docket profile <id> --budget <USD>` storing `budgetUsd` in `.docket-meta.json` (via `meta_set`). `0`/unset = no cap. Show budget in `docket info` and `docket cost`.
 - **Acceptance:** `docket profile x --budget 5` then `docket info x` shows `Budget: $5.00`.
 - **Test:** Unit: set budget, `meta_get x budgetUsd` returns `5`.
 
 #### ☑ P1-2 — Budget check + auto-pause
 
-- **Files:** new helper `lib/helpers/budget.sh`; hook into `cost.sh`.
+- **Files:** new helper `lib/helpers/budget.sh`; hook into `cost.sh` (pre-migration Bash; budget logic now in `src/docket/core/`, cost in `src/docket/cli/`).
 - **Requirements:** `check_budget <id>` compares `_aggregate_cost` total vs `budgetUsd`. At ≥100%: pause the agent (preferred: an OpenClaw gateway mechanism — research `openclaw agents` subcommands for disable/pause; fallback: set the agent's model to a sentinel/disabled state and `warn` loudly) and record a flag in meta (`pausedReason=budget`). At ≥80%: `warn`. Must be idempotent.
 - **Acceptance:** Simulated usage over cap flips the agent to paused exactly once and reports it; under cap does nothing.
 - **Test:** Integration with a fake sessions dir producing a known cost; assert pause triggers at the threshold.
 
 #### ☑ P1-3 — Runaway-session detection
 
-- **Files:** `lib/commands/cost.sh` (or `maintain`), reuse session JSONL parsing from `_aggregate_cost`.
+- **Files:** `lib/commands/cost.sh` (or `maintain`), reuse session JSONL parsing from `_aggregate_cost` (pre-migration Bash; now `src/docket/cli/`).
 - **Requirements:** Detect burn anomalies: e.g. turns growing past a threshold (the docs mention a 258-turn / ~$28 bloat) or cost-per-hour spike. Surface in `docket doctor` and `docket cost`. Document thresholds as constants in `config.sh`.
 - **Acceptance:** A session JSONL with >N turns triggers a warning naming the agent and turn count.
 - **Test:** Unit on the parser with a crafted JSONL.
@@ -275,7 +275,7 @@ address exactly those.
 
 ### PHASE 2 — Finish consolidation & resolve "smart routing"
 
-> Context: [router.sh](lib/core/router.sh) deprecates 10 commands in favor of `maintain, mode, context, cost, profile, doctor`, but ships both. "Smart routing" ([smart.sh](lib/commands/smart.sh)) injects prose into SOUL.md and does not actually change the model — it's placebo.
+> Context: `router.sh` (pre-migration Bash dispatch; now the alias/removed-command map in `src/docket/__main__.py`) deprecates 10 commands in favor of `maintain, mode, context, cost, profile, doctor`, but ships both. "Smart routing" (`smart.sh`) injects prose into SOUL.md and does not actually change the model — it's placebo.
 
 #### ☑ P2-1 — Complete the new verbs
 
@@ -310,7 +310,7 @@ address exactly those.
 
 #### ☑ P3-1 — Move `terminal` (584 LOC) and `browser` (260 LOC) to `experimental/`
 
-- **Requirements:** Create `lib/commands/experimental/`; move files; gate behind `DOCKET_EXPERIMENTAL=1` or a clear "experimental" warning. Fold browser *health* into `doctor` (it already partly is, doctor.sh:114-133).
+- **Requirements:** Create `lib/commands/experimental/`; move files; gate behind `DOCKET_EXPERIMENTAL=1` or a clear "experimental" warning. Fold browser *health* into `doctor` (it already partly is, doctor.sh:114-133). (pre-migration Bash paths; commands now live under `src/docket/cli/`)
 - **Acceptance:** Core help no longer lists experimental commands as first-class; they still work when explicitly enabled.
 
 #### ☑ P3-2 — Telegram: finish or document-as-manual
@@ -334,7 +334,7 @@ address exactly those.
 
 #### ☑ P4-2 — Basic team delegation (manager task queue)
 
-- **Files:** `lib/commands/team.sh` — added `_team_delegate`, `_team_queue`, `_team_done`, `_task_list_path`, `_ensure_task_list`.
+- **Files:** `lib/commands/team.sh` — added `_team_delegate`, `_team_queue`, `_team_done`, `_task_list_path`, `_ensure_task_list`. (pre-migration Bash; team commands now in `src/docket/cli/`)
 - **Interface:** `docket team delegate "<task>"`, `docket team delegate --priority high "<task>"`, `docket team queue`, `docket team done <task-id>`.
 - **Storage:** Writes to `~/.openclaw/workspaces/manager/TASK_LIST.json` (per-object array, `{id, description, priority, created, status}`).
 - **Acceptance:** delegate → queue shows the task, sorted by priority; `done` marks it complete; idempotent on empty queue.
@@ -373,7 +373,7 @@ address exactly those.
 #### ☑ P5-1 — Channel-aware wire/unwire
 
 - **Why:** `upsert_binding` hardcodes `"channel": "telegram"` and `get_tg_binding` only reads Telegram bindings. OpenClaw supports 50+ channels; docket should not be Telegram-only at the binding layer.
-- **Files:** `lib/helpers/json.sh` (generalize `upsert_binding`, add `get_channel_binding`, keep `get_tg_binding` as alias); `lib/helpers/workspace.sh` (`_wire_group` gains `channel` arg); `lib/commands/wire.sh` (detect channels via `openclaw channels list`, offer picker when >1); `lib/commands/unwire.sh` (`--channel` flag).
+- **Files:** `lib/helpers/json.sh` (generalize `upsert_binding`, add `get_channel_binding`, keep `get_tg_binding` as alias); `lib/helpers/workspace.sh` (`_wire_group` gains `channel` arg); `lib/commands/wire.sh` (detect channels via `openclaw channels list`, offer picker when >1); `lib/commands/unwire.sh` (`--channel` flag). (pre-migration Bash; bindings now go through the ACL `src/docket/edges/adapters/openclaw.py`, commands in `src/docket/cli/`)
 - **Requirements:** For Telegram: existing group discovery flow unchanged. For non-Telegram: prompt for peer ID manually (no log-based discovery). `get_tg_binding` remains as a thin wrapper over `get_channel_binding` for backwards compat.
 - **Acceptance:** `docket wire myproject` with only Telegram configured behaves identically to today. Adding a second channel (e.g. Discord) would offer a channel picker before the group selection.
 - **Tests:** 3 unit tests — `upsert_binding` with explicit channel arg; `get_channel_binding` retrieves correct peer; `get_tg_binding` still works as alias.
@@ -381,7 +381,7 @@ address exactly those.
 #### ☑ P5-2 — `docket snapshot` command
 
 - **Why:** No machine-readable export of system state exists. Teams need to pipe agent status into dashboards, CI artifacts, or monitoring scripts without installing docket.
-- **Files:** new `lib/commands/snapshot.sh` (`cmd_snapshot()`); wire into `lib/core/router.sh` and `lib/commands/help.sh`.
+- **Files:** new `lib/commands/snapshot.sh` (`cmd_snapshot()`); wire into `lib/core/router.sh` and `lib/commands/help.sh`. (pre-migration Bash; now `src/docket/cli/` + the `src/docket/__main__.py` command map)
 - **Interface:** `docket snapshot` → JSON to stdout. `docket snapshot --output <file>` → write to file.
 - **JSON shape:** `{timestamp, gateway, channels[], agents:[{id,name,type,model,bindings,lastActivity,costUsd}], totalCostUsd}`.
 - **Acceptance:** `docket snapshot | python3 -m json.tool` exits 0 (valid JSON). All project + specialist agents appear in the output.
@@ -390,7 +390,7 @@ address exactly those.
 #### ☑ P5-3 — `docket serve` command
 
 - **Why:** Closes the "multi-user" backlog item with a minimal server that shares live agent state without requiring docket on every machine.
-- **Files:** new `lib/commands/serve.sh` (`cmd_serve()`); wire into router and help.
+- **Files:** new `lib/commands/serve.sh` (`cmd_serve()`); wire into router and help. (pre-migration Bash; now `src/docket/serve.py`)
 - **Interface:** `docket serve [--port 7331] [--interval 30]`. Starts Python built-in HTTP server; refreshes snapshot JSON every `--interval` seconds; Ctrl-C stops cleanly.
 - **Requirements:** Uses `python3 -m http.server` in a temp dir. Background loop rewrites `status.json` every interval. `GET /status.json` returns fresh snapshot.
 - **Acceptance:** `docket serve` starts without error; `curl localhost:7331/status.json` returns valid JSON; Ctrl-C exits without leaving background processes.
@@ -411,21 +411,21 @@ address exactly those.
 > instruction template, README, and help text. Anthropic stays the *default* (it works today),
 > but it must become *one option among several*, clearly labeled.
 >
-> **Where the Claude dependency lives today (verified against source, 2026-06-11):**
+> **Where the Claude dependency lives today (verified against source, 2026-06-11; pre-migration Bash paths — the model layer now lives in `src/docket/core/` `models_policy.py`/`policy.py`/`provider.py`, install in `src/docket/cli/_install.py`, list/keys in `src/docket/cli/`):**
 >
 > | Layer | File / lines | Problem |
 > | ----- | ------------ | ------- |
-> | Hard whitelist | [lib/helpers/models.sh:5-9](lib/helpers/models.sh#L5-L9) `VALID_MODELS` | `validate_model()` **errors on any non-Anthropic model** — the single hardest blocker |
-> | Fallback chain | [lib/helpers/models.sh:55-69](lib/helpers/models.sh#L55-L69) `get_fallback_model` | hardcoded opus→sonnet→haiku IDs |
-> | Alias/fix table | [lib/helpers/models.sh:12-22](lib/helpers/models.sh#L12-L22), `fix_invalid_models()` py heredoc | Claude-only aliases duplicated in bash + python |
-> | Default model | [lib/core/config.sh:11](lib/core/config.sh#L11) `DEFAULT_MODEL="anthropic/claude-sonnet-4-6"` | fine as a default, but not overridable per install |
-> | Tier mapping | [lib/core/config.sh:41-45](lib/core/config.sh#L41-L45) `MODEL_PROFILES` | economy/standard/premium → Claude only |
-> | Pricing | [lib/core/config.sh:48-54](lib/core/config.sh#L48-L54) `MODEL_PRICING` | Claude-only; unknown model silently costs $0 |
-> | Install | [lib/commands/install.sh:175-181](lib/commands/install.sh#L175-L181) `specialist_models` | 6 specialists hardcoded to Claude IDs |
-> | Display | [lib/commands/list.sh:158](lib/commands/list.sh#L158), [list.sh:219-224](lib/commands/list.sh#L219-L224) | strips only the `anthropic/claude-` prefix |
-> | Key sync | [lib/commands/keys.sh](lib/commands/keys.sh) `PROVIDER_KEYS` (~line 391), `_agent_provider` (~309) | **already half-agnostic** (anthropic/openai/google/openrouter) — extend, don't rewrite |
+> | Hard whitelist | `lib/helpers/models.sh:5-9` `VALID_MODELS` | `validate_model()` **errors on any non-Anthropic model** — the single hardest blocker |
+> | Fallback chain | `lib/helpers/models.sh:55-69` `get_fallback_model` | hardcoded opus→sonnet→haiku IDs |
+> | Alias/fix table | `lib/helpers/models.sh:12-22`, `fix_invalid_models()` py heredoc | Claude-only aliases duplicated in bash + python |
+> | Default model | `lib/core/config.sh:11` `DEFAULT_MODEL="anthropic/claude-sonnet-4-6"` | fine as a default, but not overridable per install |
+> | Tier mapping | `lib/core/config.sh:41-45` `MODEL_PROFILES` | economy/standard/premium → Claude only |
+> | Pricing | `lib/core/config.sh:48-54` `MODEL_PRICING` | Claude-only; unknown model silently costs $0 |
+> | Install | `lib/commands/install.sh:175-181` `specialist_models` | 6 specialists hardcoded to Claude IDs |
+> | Display | `lib/commands/list.sh:158`, `list.sh:219-224` | strips only the `anthropic/claude-` prefix |
+> | Key sync | `lib/commands/keys.sh` `PROVIDER_KEYS` (~line 391), `_agent_provider` (~309) | **already half-agnostic** (anthropic/openai/google/openrouter) — extend, don't rewrite |
 > | Templates | `lib/templates/SMART-ROUTING.md`, `docket-programmer.md`, `docket-tester.md`, `status-awareness.md`, `SOUL-error-handling.md` | prompts say "haiku/sonnet/opus", link `console.anthropic.com` |
-> | Docs | `README.md` (~216-218), `docs/commands.md`, `docs/troubleshooting.md`, `CLAUDE.md`, `lib/commands/help.sh` | profile tables and examples are Claude-only; never states other providers work |
+> | Docs | `README.md` (~216-218), `docs/commands.md`, `docs/troubleshooting.md`, `CLAUDE.md`, `lib/commands/help.sh` (now `src/docket/cli/_help.py`) | profile tables and examples are Claude-only; never states other providers work |
 >
 > **Design rules for this phase (do not violate):**
 >
@@ -455,7 +455,7 @@ address exactly those.
 #### ✅ MA-2 — Data-driven model registry (kill the whitelist)
 
 - **Goal:** Replace hardcoded `VALID_MODELS` / `MODEL_PROFILES` / `MODEL_PRICING` / `DEFAULT_MODEL` with built-in defaults + a user-editable registry file.
-- **Files:** [lib/core/config.sh](lib/core/config.sh), [lib/helpers/models.sh](lib/helpers/models.sh), new registry file `$OPENCLAW_DIR/docket-models.json` (created on first write, not by install).
+- **Files:** `lib/core/config.sh`, `lib/helpers/models.sh`, new registry file `$OPENCLAW_DIR/docket-models.json` (created on first write, not by install). (pre-migration Bash; model layer now `src/docket/core/models_policy.py`/`policy.py`/`provider.py`)
 - **Requirements:**
   - Registry schema (all keys optional; absent → built-in default):
 
@@ -481,7 +481,7 @@ address exactly those.
 #### ✅ MA-3 — `docket models` command (make the mapping visible and editable)
 
 - **Goal:** One place to see and change which models docket uses — no more silent defaults buried in source.
-- **Files:** new `lib/commands/models.sh` (`cmd_models()`); wire into [lib/core/router.sh](lib/core/router.sh) and [lib/commands/help.sh](lib/commands/help.sh).
+- **Files:** new `lib/commands/models.sh` (`cmd_models()`); wire into `lib/core/router.sh` and `lib/commands/help.sh`. (pre-migration Bash; now `src/docket/cli/`, the `src/docket/__main__.py` command map, and `src/docket/cli/_help.py`)
 - **Interface:**
   - `docket models` / `docket models list` — table: TIER | MODEL | PROVIDER | PRICE (in/out per MTok, or `free/local`, or `n/a`) | SOURCE (`builtin` | `user`). Plus the default model and the registry file path.
   - `docket models set <economy|standard|premium|default> <provider/model>` — validates via `validate_model`, writes `docket-models.json` via `json_atomic_write`, audit-logs (`models.set`), prints the new effective mapping. Note in output: existing agents keep their current model; affects new agents and future `docket profile <tier>` calls.
@@ -493,7 +493,7 @@ address exactly those.
 #### ✅ MA-4 — Provider presets, including a free/local path
 
 - **Goal:** One command to switch the whole tier mapping to a provider, with **free vs paid clearly labeled** at the moment of choice.
-- **Files:** `lib/commands/models.sh` (extend), `lib/core/config.sh` (preset tables).
+- **Files:** `lib/commands/models.sh` (extend), `lib/core/config.sh` (preset tables). (pre-migration Bash; now `src/docket/cli/` + `src/docket/core/`)
 - **Requirements:**
   - `docket models preset` (no arg) lists presets with cost class, e.g.:
     - `anthropic` — paid, API key required *(default)*
@@ -509,7 +509,7 @@ address exactly those.
 #### ✅ MA-5 — Cost honesty for unknown and local models
 
 - **Goal:** Never report a made-up $0.00 for a model docket can't price.
-- **Files:** [lib/helpers/workspace.sh](lib/helpers/workspace.sh) (`_aggregate_cost`, `_estimate_cost`), [lib/commands/cost.sh](lib/commands/cost.sh), [lib/commands/list.sh](lib/commands/list.sh), `lib/helpers/budget.sh`.
+- **Files:** `lib/helpers/workspace.sh` (`_aggregate_cost`, `_estimate_cost`), `lib/commands/cost.sh`, `lib/commands/list.sh`, `lib/helpers/budget.sh`. (pre-migration Bash; now `src/docket/cli/` + `src/docket/core/`)
 - **Requirements:**
   - Model in `MODEL_PRICING` → price as today. Model whose provider is in `localProviders` → `$0 (local)`. Otherwise → display `n/a (no pricing data)`; in `--json` output emit `"costUsd": null, "pricingKnown": false` (not `0`).
   - Budget enforcement (`check_budget`): if an agent's model is unpriced and a budget is set, `warn` once that the budget **cannot be enforced** for that agent (and say why) instead of silently never triggering.
@@ -520,7 +520,7 @@ address exactly those.
 #### ✅ MA-6 — Provider-agnostic key plumbing & doctor checks
 
 - **Goal:** Scoped key sync and health checks work for every registry provider; local providers don't nag about keys.
-- **Files:** [lib/commands/keys.sh](lib/commands/keys.sh) (`PROVIDER_KEYS` py dict ~line 391, `_agent_provider`, help text ~44-51), [lib/commands/doctor.sh](lib/commands/doctor.sh), [lib/commands/install.sh](lib/commands/install.sh).
+- **Files:** `lib/commands/keys.sh` (`PROVIDER_KEYS` py dict ~line 391, `_agent_provider`, help text ~44-51), `lib/commands/doctor.sh`, `lib/commands/install.sh`. (pre-migration Bash; now `src/docket/cli/` + `src/docket/cli/_doctor.py`/`_install.py`)
 - **Requirements:**
   - Single source of truth for provider→key-env mapping (extend per MA-1 findings; at minimum anthropic, openai, google, openrouter + the local set needing none). Generate the python `PROVIDER_KEYS` dict from it rather than a second hardcoded copy, or document why the duplication stays.
   - `docket keys sync`: agent on a local provider gets no provider key and **no warning**. Agent on provider X with no X key stored → one clear `warn` naming `docket keys add <KEY>`.
@@ -532,7 +532,7 @@ address exactly those.
 #### ✅ MA-7 — Neutralize Claude-isms in agent templates
 
 - **Goal:** Agent instruction prompts speak in **tiers**, not Claude model names, and don't hardcode Anthropic URLs — so a fleet on any provider gets correct instructions.
-- **Files:** `lib/templates/SMART-ROUTING.md`, `lib/templates/docket-programmer.md`, `lib/templates/docket-tester.md`, `lib/templates/status-awareness.md`, `lib/templates/SOUL-error-handling.md`; [lib/helpers/workspace.sh](lib/helpers/workspace.sh) (`_create_workspace`); [lib/core/config.sh](lib/core/config.sh) (`TEMPLATE_VERSION`).
+- **Files:** `lib/templates/SMART-ROUTING.md`, `lib/templates/docket-programmer.md`, `lib/templates/docket-tester.md`, `lib/templates/status-awareness.md`, `lib/templates/SOUL-error-handling.md`; `lib/helpers/workspace.sh` (`_create_workspace`); `lib/core/config.sh` (`TEMPLATE_VERSION`). (pre-migration Bash; templates now ship under `src/docket/templates/`, provisioning in `src/docket/cli/`/`core/`)
 - **Requirements:**
   - Replace literal `haiku-4-5`/`sonnet-4-6`/`opus-4-6` and their prices with placeholders rendered at workspace-creation time from the live registry: `{{MODEL_ECONOMY}}`, `{{MODEL_STANDARD}}`, `{{MODEL_PREMIUM}}`, `{{PRICE_…}}` (render via the existing template-emission path in `_create_workspace`; portable sed or the python pass). Prose should say "the economy tier (currently {{MODEL_ECONOMY}})".
   - `console.anthropic.com` links become provider-resolved: a small provider→billing/console URL table; unknown provider → generic "check your provider's billing console".
@@ -543,7 +543,7 @@ address exactly those.
 #### ✅ MA-8 — Docs, help & README truth pass
 
 - **Goal:** A new user reading any entry point learns within one screen: docket is model-agnostic, what the default is, what the free option is, and how to switch.
-- **Files:** `README.md`, `docs/QUICK-START-DOCKET.md`, `docs/commands.md`, `docs/troubleshooting.md`, `docs/DOCKET.md`, `CLAUDE.md`, [lib/commands/help.sh](lib/commands/help.sh).
+- **Files:** `README.md`, `docs/QUICK-START-DOCKET.md`, `docs/commands.md`, `docs/troubleshooting.md`, `docs/DOCKET.md`, `CLAUDE.md`, `lib/commands/help.sh` (now `src/docket/cli/_help.py`).
 - **Requirements:**
   - README gains a **"Model support"** section near the top: explicit statement that docket works with any OpenClaw-supported provider — local/free (per MA-1/MA-4 reality) or remote/paid; the default mapping table gains a PROVIDER column and a row/callout for the free option; `docket models` + `docket models preset` documented with copy-paste examples.
   - The existing profile table (README ~216-218) is regenerated from the *current* built-in registry and labeled "default (Anthropic) — change with `docket models`".
@@ -564,8 +564,8 @@ address exactly those.
 >
 > | Gap | Where | Symptom |
 > | --- | ----- | ------- |
-> | Specialists hardcode literal Anthropic IDs | [lib/commands/install.sh:175-182](lib/commands/install.sh#L175-L182) | `docket models preset openai` then `docket install` → specialists still get Claude models |
-> | `docket add` ignores agent type | [lib/commands/add.sh:139](lib/commands/add.sh#L139), [add.sh:247-248](lib/commands/add.sh#L247-L248) | `repo` and `task` agents both get `$DEFAULT_MODEL`; no per-kind default |
+> | Specialists hardcode literal Anthropic IDs | `lib/commands/install.sh:175-182` (now `src/docket/cli/_install.py`) | `docket models preset openai` then `docket install` → specialists still get Claude models |
+> | `docket add` ignores agent type | `lib/commands/add.sh:139`, `add.sh:247-248` (now `src/docket/cli/`) | `repo` and `task` agents both get `$DEFAULT_MODEL`; no per-kind default |
 > | Agents store a resolved model, not an intent | `.docket-meta.json` `model` field; `models.sh` "existing agents keep their current model" notices | Remapping silently strands every existing agent on the old model (drift) |
 > | Specialists outside the meta system | no `.docket-meta.json` under `~/.openclaw/workspaces/<spec>/` | `docket list`/`profile`/`doctor` don't see them; two tooling paths |
 >
@@ -615,7 +615,7 @@ address exactly those.
 #### ✅ MA-9 — Role→model policy map (taxonomy + policy data, tiers out)
 
 - **Goal:** A single data structure answers "what model should this kind of agent run on, and why", replacing every hardcoded per-agent model choice *and* the tier ladder.
-- **Files:** [lib/core/config.sh](lib/core/config.sh) (`ROLE_MODELS` replaces `MODEL_PROFILES`; registry overlay), [lib/commands/models.sh](lib/commands/models.sh) (presets become role→model tables; deprecated tier aliases), [lib/helpers/models.sh](lib/helpers/models.sh) (`validate_model`, `get_fallback_model`), [lib/commands/install.sh](lib/commands/install.sh) (kill `specialist_models` array), [lib/commands/add.sh](lib/commands/add.sh) (default by type), [lib/commands/profile.sh](lib/commands/profile.sh), templates touched by MA-7 (`{{MODEL_ECONOMY}}`-style placeholders → role-based).
+- **Files:** `lib/core/config.sh` (`ROLE_MODELS` replaces `MODEL_PROFILES`; registry overlay), `lib/commands/models.sh` (presets become role→model tables; deprecated tier aliases), `lib/helpers/models.sh` (`validate_model`, `get_fallback_model`), `lib/commands/install.sh` (kill `specialist_models` array), `lib/commands/add.sh` (default by type), `lib/commands/profile.sh`, templates touched by MA-7 (`{{MODEL_ECONOMY}}`-style placeholders → role-based). (pre-migration Bash; model layer now `src/docket/core/models_policy.py`/`policy.py`, commands in `src/docket/cli/`, templates under `src/docket/templates/`)
 - **Requirements:**
   - `declare -A ROLE_MODELS` in config.sh with the built-in defaults above + a short WHY string per role (shown in `docket models`); `docket-models.json` `roles:` key (role → model ID) overlaid by `load_model_registry` (same validation as today; unknown role names ignored with a warn). Old `profiles:` key still read → migrated to nearest roles with a deprecation warn.
   - `resolve_role_model <role>` helper: policy → model; unknown role → `DEFAULT_MODEL`.
@@ -624,13 +624,13 @@ address exactly those.
   - add.sh: default model for a new agent = `resolve_role_model <type>` (repo/task); interactive prompt shows role default + resolved model.
   - `docket models` lists ROLE | MODEL | PRICE | WHY | SOURCE (builtin/user); `docket models set <role> <model>` replaces `set <tier>`.
   - MA-7 template placeholders: `{{MODEL_ECONOMY}}` etc. replaced by role-resolved placeholders (e.g. `{{MODEL_SELF}}`, `{{MODEL_PROGRAMMER}}`…); bump `TEMPLATE_VERSION` so doctor flags drift.
-- **Acceptance:** `docket models preset openai && docket install` on a clean system registers all six specialists with OpenAI models; `docket add` of a task agent defaults to a cheaper model than a repo agent; `grep -n "anthropic/claude" lib/commands/install.sh` returns nothing; `docket profile <id> economy` still works but prints a deprecation warning.
+- **Acceptance:** `docket models preset openai && docket install` on a clean system registers all six specialists with OpenAI models; `docket add` of a task agent defaults to a cheaper model than a repo agent; `grep -n "anthropic/claude" lib/commands/install.sh` returns nothing (pre-migration Bash check; now `src/docket/cli/_install.py`); `docket profile <id> economy` still works but prints a deprecation warning.
 - **Test:** Unit: `resolve_role_model` per built-in role + unknown + user-overridden; tier-alias resolution warns and resolves; fallback walks the rank list. Integration: repo vs task agents get different default models.
 
 #### ✅ MA-10 — Policy-following agents + auto re-resolve
 
 - **Goal:** Agents record *intent* — follow role policy or an explicit pin — and re-resolve when policy changes; drift becomes impossible by construction.
-- **Files:** [lib/helpers/json.sh](lib/helpers/json.sh) / meta schema, [lib/commands/profile.sh](lib/commands/profile.sh), [lib/commands/models.sh](lib/commands/models.sh) (`_models_set`, `_models_preset`), [lib/commands/add.sh](lib/commands/add.sh), migration in [lib/commands/doctor.sh](lib/commands/doctor.sh) or `maintain check`.
+- **Files:** `lib/helpers/json.sh` / meta schema, `lib/commands/profile.sh`, `lib/commands/models.sh` (`_models_set`, `_models_preset`), `lib/commands/add.sh`, migration in `lib/commands/doctor.sh` or `maintain check`. (pre-migration Bash; meta schema now `src/docket/core/models.py`, commands in `src/docket/cli/`/`_doctor.py`)
 - **Requirements:**
   - `.docket-meta.json` gains `modelSource` (`policy` | `pinned`); `model` stays as the resolved cache. `docket profile <id> <provider/model>` → pin; `docket profile <id> default` → back to policy; bare `docket profile <id>` shows role, model, source, budget.
   - `docket models set/preset` after writing the registry: iterate all agents (specialist + project), re-resolve every `modelSource: policy` agent via `set_agent_model`, single `restart_gateway()` at the end; per-agent change summary; `audit_log` each change. Pinned agents untouched.
@@ -642,7 +642,7 @@ address exactly those.
 #### ✅ MA-11 — Specialists join the meta system (one taxonomy)
 
 - **Goal:** `docket list`/`profile`/`doctor` manage specialists and project agents through the same metadata, making "what kinds of agents exist and what type" answerable from one command.
-- **Files:** [lib/commands/install.sh](lib/commands/install.sh) (write meta at creation), [lib/commands/list.sh](lib/commands/list.sh), [lib/commands/profile.sh](lib/commands/profile.sh), [lib/commands/doctor.sh](lib/commands/doctor.sh) (backfill), [lib/helpers/workspace.sh](lib/helpers/workspace.sh).
+- **Files:** `lib/commands/install.sh` (write meta at creation), `lib/commands/list.sh`, `lib/commands/profile.sh`, `lib/commands/doctor.sh` (backfill), `lib/helpers/workspace.sh`. (pre-migration Bash; now `src/docket/cli/`/`_install.py`/`_doctor.py` + `src/docket/core/`)
 - **Requirements:**
   - Specialist workspaces get `.docket-meta.json` with `kind: specialist`, `role`, `modelSource`, `model`, `sessionKey`; written by `docket install`, backfilled by `docket doctor` for existing installs.
   - Project agent meta gains `kind: project` (backfilled the same way); `type` (repo/task) unchanged and doubles as the policy role.
@@ -683,10 +683,10 @@ address exactly those.
 > Work order de-risks that daemon dependency: foundations → observability (zero behavior change,
 > ships first) → policy engine (pure, fully testable) → enforcement+HITL (the only hard daemon
 > dependency, isolated so the rest is not held hostage) → drift (needs only traces). **Reuse, do
-> not reinvent:** `audit_log`'s append + never-log-secrets idiom ([lib/helpers/audit.sh](lib/helpers/audit.sh)) → `trace_event`;
-> `json_atomic_write` / `with_docket_lock` ([lib/helpers/json.sh](lib/helpers/json.sh)); `_aggregate_cost` / `check_budget` for
-> cost→trace; the `exec-approvals.json` gate ([lib/helpers/security.sh](lib/helpers/security.sh)) for G2; `get_tg_binding` /
-> `upsert_binding` for routing; the `docket serve` background loop ([lib/commands/serve.sh](lib/commands/serve.sh)) for the
+> not reinvent:** `audit_log`'s append + never-log-secrets idiom (`lib/helpers/audit.sh`; now `src/docket/core/audit.py`) → `trace_event`;
+> `json_atomic_write` / `with_docket_lock` (`lib/helpers/json.sh`; now `src/docket/edges/store.py`); `_aggregate_cost` / `check_budget` for
+> cost→trace; the `exec-approvals.json` gate (`lib/helpers/security.sh`; now `src/docket/core/security.py`) for G2; `get_tg_binding` /
+> `upsert_binding` for routing; the `docket serve` background loop (`lib/commands/serve.sh`; now `src/docket/serve.py`) for the
 > timeout watcher — **no new service** (G5).
 >
 > **Collision decisions (the spec's CLI clashes with shipped commands — resolved):**
@@ -708,7 +708,7 @@ address exactly those.
 #### ✅ OBS-0 — `session_id` spike + base wiring
 
 - **Why:** Everything keys off a per-run `session_id` that does not exist yet (O2/O5).
-- **Files:** [lib/core/config.sh](lib/core/config.sh).
+- **Files:** `lib/core/config.sh` (pre-migration Bash; config now `src/docket/config.py`).
 - **Requirements:** Inspect a live `~/.openclaw/agents/<id>/sessions/` dir; confirm whether one file == one bounded run. Decide `session_id` = `s_<sha1(agent,project,basename)>` derived from the session file (no daemon change) if so; docket-minted id at dispatch/workflow-run if not. Add to `config.sh`: `DOCKET_HOME`, `TRACES_DIR`, `POLICIES_DIR` and the knobs with defaults — `SESSION_TIMEOUT`, `APPROVAL_TIMEOUT=900` (15 m, H5), `METRICS_WINDOW=50` (O8), `BASELINE_WINDOW=100`, `DRIFT_THRESHOLD=15`, `DRIFT_COOLDOWN=86400` (D1–D3). All env-overridable (CI hermeticity).
 - **Acceptance:** notes doc records the verified session→run mapping + chosen `session_id` rule; new config vars resolve and are overridable.
 - **Test:** Unit: each new config var has its documented default and honors an env override.
@@ -716,7 +716,7 @@ address exactly those.
 #### ✅ OBS-1 — `redact` + `trace_event` helpers
 
 - **Why:** Single source of truth for the O3 event shape and GR8 redaction; sibling to `audit_log`.
-- **Files:** new [lib/helpers/redact.sh](lib/helpers/redact.sh), new [lib/helpers/trace.sh](lib/helpers/trace.sh); source both in [bin/docket](bin/docket).
+- **Files:** new `lib/helpers/redact.sh`, new `lib/helpers/trace.sh`; source both in `bin/docket`. (pre-migration Bash; redact/trace now in `src/docket/core/trace.py`)
 - **Requirements:** `redact <text>` — strip API-key/token shapes, emails, and every value in the `docket keys` registry; pure, no I/O. `trace_event <project> <session_id> <agent_role> <event_type> <payload-json> [cost_usd] [duration_ms]` — build the O3 record (UTC `ts`, all required fields), run `payload` through `redact`, validate `event_type` against the O4 closed set (`session_start, tool_call, tool_result, guardrail_check, guardrail_block, approval_requested, approval_granted, approval_denied, cost_charged, budget_warning, budget_exceeded, drift_alert, error, session_end`), append one line to `$TRACES_DIR/<project>/<session_id>.jsonl` (mkdir -p, 0600, `DOCKET_NO_TRACE=1` escape hatch). One file per session = atomic vs concurrent sessions (O1).
 - **Acceptance:** event is valid one-line JSON with all required fields; unknown `event_type` rejected; a secret in `payload` is redacted on disk.
 - **Test:** Unit (seeds T4): each assertion above; `redact` positive per pattern + negative on clean text.
@@ -726,7 +726,7 @@ address exactly those.
 #### ✅ OBS-2 — Session lifecycle + cost folded into traces (O5, O6)
 
 - **Why:** A trace must open with `session_start` and close with a terminal `session_end`; cost stops being a parallel system.
-- **Files:** [lib/commands/team.sh](lib/commands/team.sh) (dispatch), [lib/helpers/budget.sh](lib/helpers/budget.sh), [lib/commands/cost.sh](lib/commands/cost.sh).
+- **Files:** `lib/commands/team.sh` (dispatch), `lib/helpers/budget.sh`, `lib/commands/cost.sh`. (pre-migration Bash; now `src/docket/cli/` + `src/docket/core/`)
 - **Requirements:** Where docket initiates a bounded run it owns (`docket team delegate` dispatch, `docket workflow … run` if invoked through docket), emit `session_start` (first line) and `session_end` carrying `status: success|failure|aborted` (O5). In the cost path emit `cost_charged` per accounted turn (O6); in `check_budget` emit `budget_warning` (≥80%) and `budget_exceeded` (≥100%) **into the trace** instead of only flipping `paused`. Offset-track per session file (reuse `.cost-index.json` discipline) so re-runs don't double-emit.
 - **Acceptance:** a run produces `session_start`…`session_end`; a costed session emits `cost_charged`; crossing the cap emits exactly one `budget_exceeded`.
 - **Test:** Integration: fake sessions dir → expected event sequence; cap crossing emits one `budget_exceeded`.
@@ -734,7 +734,7 @@ address exactly those.
 #### ✅ OBS-3 — Ingestion bridge + timeout sweep (O5)
 
 - **Why:** Most runs are started by the daemon, not docket — G1 must cover them without a daemon change.
-- **Files:** [lib/helpers/trace.sh](lib/helpers/trace.sh) (`trace_ingest <project>`), [lib/commands/serve.sh](lib/commands/serve.sh) (sweep in the existing loop).
+- **Files:** `lib/helpers/trace.sh` (`trace_ingest <project>`), `lib/commands/serve.sh` (sweep in the existing loop). (pre-migration Bash; now `src/docket/core/trace.py` + `src/docket/serve.py`)
 - **Requirements:** `trace_ingest` reads the project's agents' `sessions/*.jsonl`, projects each into trace events (`tool_call`/`tool_result` where the daemon log distinguishes them, else a coarse `tool_call` per turn), idempotently (offset-tracked), redacted. Document the fidelity ceiling (reconstructed from logs; richer events are a daemon enhancement). The `docket serve` loop marks any trace with no `session_end` after `SESSION_TIMEOUT` as `status: aborted` (synthetic `session_end`) — no new service (G5).
 - **Acceptance:** ingesting a sample sessions dir yields a valid trace per session; a stale open trace is coerced to `aborted` by the sweep.
 - **Test:** Unit: ingestion is idempotent (second run adds nothing); sweep writes exactly one synthetic `session_end`.
@@ -742,7 +742,7 @@ address exactly those.
 #### ✅ OBS-4 — `docket trace` + `docket metrics` (O7, O8, O9)
 
 - **Why:** The CLI surface that makes traces queryable and metrics derivable from traces alone (NG1/NG2).
-- **Files:** new [lib/commands/trace.sh](lib/commands/trace.sh) (`cmd_trace`), new [lib/commands/metrics.sh](lib/commands/metrics.sh) (`cmd_metrics`); wire both into [lib/core/router.sh](lib/core/router.sh), [bin/docket](bin/docket) (explicit `source`, not a glob), [lib/commands/help.sh](lib/commands/help.sh).
+- **Files:** new `lib/commands/trace.sh` (`cmd_trace`), new `lib/commands/metrics.sh` (`cmd_metrics`); wire both into `lib/core/router.sh`, `bin/docket` (explicit `source`, not a glob), `lib/commands/help.sh`. (pre-migration Bash; now `src/docket/cli/_trace.py`/`_metrics.py`, the `src/docket/__main__.py` command map, and `src/docket/cli/_help.py`)
 - **Requirements:** `docket trace <session_id>` renders one trace human-readable (ts · event_type · summary · cost/duration, colorized via `output.sh`); `docket trace tail <project>` follows the most-recent session (`tail -f`); `docket trace export <project> [--since DATE]` is raw JSONL passthrough filtered by `ts` (the §2.1 accountability artifact). `docket metrics [--role R] [--project P] [--window N]` computes over the rolling window (default `METRICS_WINDOW=50` terminal sessions): success rate (`session_end{success}` / terminal), mean & p95 `duration_ms`, total & mean `cost_usd`, guardrail trip count by action — pure python-over-JSONL, no store.
 - **Acceptance:** `docket trace <id>` renders; `trace tail` follows live; `trace export --since` filters; `docket metrics` returns correct numbers on a synthetic trace set; `scripts/metrics.sh --check` passes (README command count bumped).
 - **Test:** Unit: synthetic traces → known success rate, p95, cost, trip counts (T-style).
@@ -754,7 +754,7 @@ address exactly those.
 #### ✅ OBS-5 — Policy schema, loader & most-restrictive-wins evaluator (GR1–GR6)
 
 - **Why:** Guardrails must be declarative flat files, not hardcoded (GR1); the evaluator is pure and testable before any daemon work.
-- **Files:** new [lib/helpers/policy.sh](lib/helpers/policy.sh).
+- **Files:** new `lib/helpers/policy.sh` (pre-migration Bash; now `src/docket/core/policy.py`/`security.py`).
 - **Requirements:** Load `$POLICIES_DIR/*.json`; each policy = `id`, `applies_to[]` (roles + `*`, GR2), `hook` ∈ {pre_input,pre_tool_call,pre_output} (GR3), `match` ({type:"regex",pattern} — leave `type` open for a future `classifier`, F1), `action` ∈ {allow,warn,redact,require_approval,block} (GR4), `message`. Validate on load (bad policy = loud error, not silent skip). `policy_eval <role> <hook> <text>` returns the single winning action by `block > require_approval > redact > warn > allow` (GR5). Every eval emits `guardrail_check`; any non-allow additionally emits the matching event (`guardrail_block`/`approval_requested`/…) via `trace_event` (GR6).
 - **Acceptance:** overlapping policies resolve to the most restrictive; every eval leaves a `guardrail_check` in the trace.
 - **Test:** Unit — overlapping-policy resolution (**T2**); malformed policy errors on load.
@@ -762,7 +762,7 @@ address exactly those.
 #### ✅ OBS-6 — Baseline policies + `docket policies` command (GR7, GR9)
 
 - **Why:** Ship the required default policy set and a way to author/inspect/dry-run it.
-- **Files:** new `lib/templates/policies/*.json` (baselines), new [lib/commands/policies.sh](lib/commands/policies.sh) (`cmd_policies`); wire into router/bin/help; install via `docket policies init` (and optionally `docket install`).
+- **Files:** new `lib/templates/policies/*.json` (baselines), new `lib/commands/policies.sh` (`cmd_policies`); wire into router/bin/help; install via `docket policies init` (and optionally `docket install`). (pre-migration Bash; now `src/docket/templates/` + `src/docket/cli/_policies.py`)
 - **Requirements:** Baselines — `block-destructive.json` (pre_tool_call, require_approval: `rm -rf`, `git push --force`, `DROP|TRUNCATE`, `systemctl stop|disable`, mass deletion, credential-file writes — aligned with the `_GATES_SAFE_BINS` exclusions); `prompt-injection.json` (pre_input, warn by default / block configurable: instruction-override + exfiltration phrasings) — **untrusted inputs only (GR9)**; `secret-pii-redact.json` (pre_output, redact: keys, tokens, emails, key-registry values — wired to `redact`, GR8). `docket policies`: `list`, `show <id>`, `init` (install baselines), `test <hook> <role> "<text>"` (dry-run the evaluator).
 - **Acceptance:** each baseline trips on a positive case and passes a negative; `policies test` dry-runs without side effects.
 - **Test:** Unit per baseline — positive trips, negative passes (**T1**).
@@ -770,7 +770,7 @@ address exactly those.
 #### ✅ OBS-7 — Trust boundary on the task queue (GR9; answers spec Q2 / D-7)
 
 - **Why:** Injection heuristics must run on untrusted input only; the queue is the ingress docket owns.
-- **Files:** [lib/commands/team.sh](lib/commands/team.sh) (TASK_LIST.json schema).
+- **Files:** `lib/commands/team.sh` (TASK_LIST.json schema). (pre-migration Bash; now `src/docket/cli/`)
 - **Requirements:** Add `source` ∈ {operator,telegram,api,fetched} to each task. `operator` = trusted → pre_input/injection policies skip it; everything else = untrusted → they run. `docket team delegate` defaults `source=operator`; the field is settable for ingested tasks.
 - **Acceptance:** an `operator` task bypasses injection policies; a `fetched` task is evaluated.
 - **Test:** Unit: schema accepts `source`; evaluator gating honors trusted vs untrusted.
@@ -780,7 +780,7 @@ address exactly those.
 #### ✅ OBS-8 — pre_input enforcement at the queue + DAEMON gate binding
 
 - **Why:** Deliver G3 at the ingress docket controls now; map G2 onto the daemon hook that already exists.
-- **Files:** [lib/commands/team.sh](lib/commands/team.sh), [lib/helpers/security.sh](lib/helpers/security.sh) (translate policy → `exec-approvals.json`). Record what is native vs pending inline in this task.
+- **Files:** `lib/commands/team.sh`, `lib/helpers/security.sh` (translate policy → `exec-approvals.json`). Record what is native vs pending inline in this task. (pre-migration Bash; now `src/docket/cli/` + `src/docket/core/security.py`)
 - **Requirements:** In `docket team delegate`, for untrusted `source` run `policy_eval <role> pre_input <task-text>`: `block` → reject; `warn` → annotate; `require_approval` → HITL (OBS-10). **DAEMON:** translate the `block-destructive` policy into `apply_exec_approval_gates` allowlist/deny + `approvals.exec` routing (reuse the opt-in mechanism). Where exec-approval is too coarse (regex on full command; pre_output redaction), file an upstream daemon-hook request and document the gap. Do **not** claim inline `pre_output` redaction until the daemon supports it — until then pre_output redaction applies to docket-written traces + outbound Telegram only (still satisfies GR8 for those sinks).
 - **Acceptance:** an untrusted task matching a `block` policy is rejected before dispatch; a destructive command maps to the daemon gate; the feasibility doc states precisely what is enforced natively vs pending.
 - **Test:** Unit: queue rejects a `block` match; integration: gate config written matches the policy.
@@ -788,7 +788,7 @@ address exactly those.
 #### ✅ OBS-9 — Approval store + Telegram send (H1, H2; GR8)
 
 - **Why:** HITL needs a durable pending-approval record and an outbound channel — docket has no send function today.
-- **Files:** new [lib/helpers/approval.sh](lib/helpers/approval.sh), new [lib/helpers/telegram.sh](lib/helpers/telegram.sh).
+- **Files:** new `lib/helpers/approval.sh`, new `lib/helpers/telegram.sh`. (pre-migration Bash; approval now `src/docket/core/approval.py`, Telegram routing via the ACL `src/docket/edges/adapters/openclaw.py`)
 - **Requirements:** `approval_create <project> <role> <action>` mints an opaque `approval_token`, persists `{token,project,role,action,state:pending,created}` to `$DOCKET_HOME/approvals/<token>.json` (atomic, 0600), emits `approval_requested` + a pause marker (H1/H2). `tg_send <agent_id> <text>` resolves `get_tg_binding`, POSTs via bot `sendMessage` (curl), **always `redact` first** (GR8); message carries project, role, redacted action, token. If no send capability is configured, degrade to CLI-only approval — never hard-fail.
 - **Acceptance:** an approval persists with state `pending` and an opaque token; the Telegram message contains no secret; missing bot config degrades gracefully.
 - **Test:** Unit: token minted + persisted; **T4** — secret reaches neither the trace nor a captured `tg_send` payload.
@@ -796,7 +796,7 @@ address exactly those.
 #### ✅ OBS-10 — Grant/deny + fail-safe timeout (H3, H4, H5)
 
 - **Why:** Approvals must be grantable two ways, and silence must never authorize.
-- **Files:** new [lib/commands/approve.sh](lib/commands/approve.sh) + [lib/commands/deny.sh](lib/commands/deny.sh) (wire into router/bin/help), [lib/commands/serve.sh](lib/commands/serve.sh) (timeout watcher).
+- **Files:** new `lib/commands/approve.sh` + `lib/commands/deny.sh` (wire into router/bin/help), `lib/commands/serve.sh` (timeout watcher). (pre-migration Bash; now `src/docket/cli/_approve.py`/`_deny.py` + `src/docket/serve.py`)
 - **Requirements:** CLI (authoritative): `docket approve <token>` / `docket deny <token>` → validate, transition state, emit `approval_granted` / `approval_denied` (H4), write resume/abort marker. Telegram reply `approve <token>`/`deny <token>` is **DAEMON**-routed — until the daemon routes replies to docket, document Telegram as notify-only and CLI as the grant path. Fail-safe: the `docket serve` watcher expires any `pending` approval older than `APPROVAL_TIMEOUT` → state `expired`, treated as **denied** (emit `approval_denied`) (H5; G5 — reuse serve loop).
 - **Acceptance:** granted resumes; denied aborts; a pending approval past timeout becomes denied.
 - **Test:** Integration — granted / denied / timeout-defaults-to-denied (**T3**).
@@ -806,7 +806,7 @@ address exactly those.
 #### ✅ OBS-11 — Baseline tracker, drift alert & cooldown (D1–D3)
 
 - **Why:** Role degradation must self-surface, computed from traces with no extra store (NG2).
-- **Files:** new [lib/helpers/drift.sh](lib/helpers/drift.sh); hooked from wherever `session_end` is written (OBS-2 + serve sweep); surfaced in [lib/commands/metrics.sh](lib/commands/metrics.sh) and `serve` `/status.json`.
+- **Files:** new `lib/helpers/drift.sh`; hooked from wherever `session_end` is written (OBS-2 + serve sweep); surfaced in `lib/commands/metrics.sh` and `serve` `/status.json`. (pre-migration Bash; now `src/docket/core/` + `src/docket/cli/_metrics.py` + `src/docket/serve.py`)
 - **Requirements:** Per `agent_role`, baseline success rate over the trailing `BASELINE_WINDOW=100` terminal sessions (D1). After each `session_end`, compare the current rolling window (O8) to baseline; if current < baseline − `DRIFT_THRESHOLD` (15 pp), emit `drift_alert` (naming the role + before/after rates) and `tg_send` a notification (D2). Rate-limit to ≤1 alert per role per `DRIFT_COOLDOWN=24h` (D3; persist last-alert ts per role). Aborted sessions **count** against success rate (D-6).
 - **Acceptance:** synthetic traces crossing the threshold emit exactly one alert; a second within cooldown is suppressed.
 - **Test:** Integration — threshold crossing → one alert + cooldown suppression (**T5**).
@@ -814,7 +814,7 @@ address exactly those.
 #### ✅ OBS-12 — Spec, CI suite & docs (T6, G5 truth pass)
 
 - **Why:** The repo gates on spec coverage + metrics counts + ShellCheck; the work isn't done until CI proves it.
-- **Files:** new `specs/functional/observability-guardrails.spec.md`, [tests/run-all-tests.sh](tests/run-all-tests.sh), [.github/workflows/ci.yml](.github/workflows/ci.yml), `scripts/metrics.sh`, README + `docs/` + [lib/commands/help.sh](lib/commands/help.sh) + [CLAUDE.md](CLAUDE.md).
+- **Files:** new `specs/functional/observability-guardrails.spec.md`, [tests/run-all-tests.sh](tests/run-all-tests.sh), [.github/workflows/ci.yml](.github/workflows/ci.yml), `scripts/metrics.sh`, README + `docs/` + `lib/commands/help.sh` (now `src/docket/cli/_help.py`) + [CLAUDE.md](CLAUDE.md).
 - **Requirements:** Commit the spec (hard gate — `scripts/validate-specs.sh` blocks on missing coverage), Status flipped per sub-phase. Add the guardrail + observability suites to `run-all-tests.sh`; CI runs them on every push/PR (**T6**); keep `-S warning` ShellCheck clean. Update `scripts/metrics.sh` expected counts + README for the new commands (`trace`, `metrics`, `policies`, `approve`, `deny`). Document the new commands honestly, including the daemon-dependency caveat for inline pre_tool_call/pre_output and Telegram reply-routing.
 - **Acceptance:** CI green with the new suites; `validate-specs.sh` + `metrics.sh --check` pass; docs name what is enforced natively vs pending daemon support.
 - **Test:** the CI run itself (**T6**); `grep` audit that docs don't overclaim inline enforcement.
@@ -847,11 +847,11 @@ address exactly those.
 >
 > | # | Finding | Evidence |
 > | - | ------- | -------- |
-> | F1 | **`--json` wrapper the spec promises is emitted by zero commands.** The spec defines a `{success, data, error, timestamp, version}` envelope; no `cmd_*` ever produces it — each hand-assembles its own ad-hoc shape inline in a python heredoc. | promised: [specs/api/cli-interface.spec.md:340-350](specs/api/cli-interface.spec.md#L340); `grep -rn '"success"' lib/commands/` → **0 hits** |
-> | F2 | **Drift detection covers one field.** `docket doctor` compares only `model` (meta vs openclaw). `budgetUsd`, `paused`, `pausedReason`, `modelSource`, `name`, `stack` can diverge silently. | [doctor.sh:187-197](lib/commands/doctor.sh#L187) (json path), [doctor.sh:515-526](lib/commands/doctor.sh#L515) (human path) |
-> | F3 | **No schema; no validation on write.** `_meta_set` writes `data[field]=value` with zero type/enum checks — `meta_set <id> budgetUsd "not-a-number"` succeeds and is later swallowed by a `try/float()` with no error. The field list lives only in prose. | [lib/helpers/json.sh](lib/helpers/json.sh) `_meta_set`; schema prose only in [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md) |
+> | F1 | **`--json` wrapper the spec promises is emitted by zero commands.** The spec defines a `{success, data, error, timestamp, version}` envelope; no `cmd_*` ever produces it — each hand-assembles its own ad-hoc shape inline in a python heredoc. | promised: [specs/api/cli-interface.spec.md:340-350](specs/api/cli-interface.spec.md#L340); `grep -rn '"success"' lib/commands/` → **0 hits** (pre-migration Bash; commands now `src/docket/cli/`) |
+> | F2 | **Drift detection covers one field.** `docket doctor` compares only `model` (meta vs openclaw). `budgetUsd`, `paused`, `pausedReason`, `modelSource`, `name`, `stack` can diverge silently. | `doctor.sh:187-197` (json path), `doctor.sh:515-526` (human path) (pre-migration Bash; now `src/docket/cli/_doctor.py`) |
+> | F3 | **No schema; no validation on write.** `_meta_set` writes `data[field]=value` with zero type/enum checks — `meta_set <id> budgetUsd "not-a-number"` succeeds and is later swallowed by a `try/float()` with no error. The field list lives only in prose. | `lib/helpers/json.sh` `_meta_set` (now `src/docket/edges/store.py` + `src/docket/core/models.py`); schema prose only in [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md) |
 > | F4 | **Coverage % is cosmetic.** `spec-coverage.sh` scores a command "covered" if a markdown heading mentions it or a same-named file exists — it never checks args/flags/return codes against the code. | [scripts/spec-coverage.sh:19-45](scripts/spec-coverage.sh#L19) |
-> | F5 | **Spec registry is stale & incomplete.** `gates`, `audit`, `eval`, `models`, `completions` are routed but absent from the spec's command registry; `input-validation.spec.md` still lists removed `reset`/`repair` as live; `profile` spec documents `economy/standard/premium` as args though tiers are deprecated. Nothing cross-checks `router.sh` against the spec. | router arms in [lib/core/router.sh](lib/core/router.sh) vs [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md); [specs/validation/input-validation.spec.md:19](specs/validation/input-validation.spec.md#L19) |
+> | F5 | **Spec registry is stale & incomplete.** `gates`, `audit`, `eval`, `models`, `completions` are routed but absent from the spec's command registry; `input-validation.spec.md` still lists removed `reset`/`repair` as live; `profile` spec documents `economy/standard/premium` as args though tiers are deprecated. Nothing cross-checks `router.sh` against the spec. | router arms in `lib/core/router.sh` (now the command map in `src/docket/__main__.py`) vs [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md); [specs/validation/input-validation.spec.md:19](specs/validation/input-validation.spec.md#L19) |
 >
 > **Principle for this phase:** every fix either makes a contract *mechanically enforced* (CI fails
 > on divergence, or the runtime refuses bad data) or *deletes the ceremony* (fix the spec to match
@@ -860,7 +860,7 @@ address exactly those.
 #### ✅ CDD-1 — Single source of truth for the agent schema (kills the hand-duplication)
 
 - **Why:** F2/F3 — the `.docket-meta.json` field set is redefined implicitly in every command that touches it; nothing declares it once.
-- **Files:** new [lib/core/schema.sh](lib/core/schema.sh) (or a `declare -A AGENT_FIELDS` block in [lib/core/config.sh](lib/core/config.sh)); consumed by [lib/helpers/json.sh](lib/helpers/json.sh), [lib/commands/doctor.sh](lib/commands/doctor.sh); cross-checked against [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md).
+- **Files:** new `lib/core/schema.sh` (or a `declare -A AGENT_FIELDS` block in `lib/core/config.sh`); consumed by `lib/helpers/json.sh`, `lib/commands/doctor.sh`; cross-checked against [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md). (pre-migration Bash; the schema now lives in `src/docket/core/models.py`, consumed by `src/docket/edges/store.py` + `src/docket/cli/_doctor.py`)
 - **Requirements:** Declare each field once with: name, type (`string|number|enum|bool`), enum values (e.g. `modelSource ∈ {policy,pinned}`, `kind ∈ {project,specialist}`), and a **sync class** — `synced` (mirrored to `openclaw.json`) vs `local` (docket-only). This table is the authority `validate_model`/`meta_set`/`doctor` all read. A CI test asserts the table and the `## Schema` section of `docket-meta.spec.md` list the same fields (spec can't drift from the table).
 - **Acceptance:** adding a field to the spec but not the table (or vice-versa) fails a unit test; `doctor` and `meta_set` enumerate fields from the table, not from inline literals.
 - **Test:** Unit: table↔spec field-set equality; type/enum/sync-class present for every field.
@@ -868,7 +868,7 @@ address exactly those.
 #### ✅ CDD-2 — Validated `meta_set` (reject bad writes at the boundary)
 
 - **Why:** F3 — silent acceptance of malformed values is the kind of "looks fine until it isn't" bug specs are supposed to prevent.
-- **Files:** [lib/helpers/json.sh](lib/helpers/json.sh) (`_meta_set`).
+- **Files:** `lib/helpers/json.sh` (`_meta_set`). (pre-migration Bash; now `src/docket/edges/store.py` + `src/docket/core/models.py` validation)
 - **Requirements:** Before writing, look the field up in the CDD-1 table: unknown field → `error` (typo guard); type mismatch (`budgetUsd` non-numeric or negative, `paused` non-bool, `modelSource` outside its enum) → `error` naming the field and the rule. Keep `DOCKET_NO_*` escape hatches consistent with existing helpers. Do **not** loosen the atomic-write/lock path.
 - **Acceptance:** `meta_set x budgetUsd not-a-number` and `meta_set x bugdetUsd 5` (typo) both fail loudly; valid writes unchanged.
 - **Test:** Unit: each invalid type/enum/unknown-field rejected; valid round-trips.
@@ -876,7 +876,7 @@ address exactly those.
 #### ✅ CDD-3 — Sync completeness + full-field drift in `doctor`
 
 - **Why:** F2 — drift detection that checks 1 of ~12 fields gives false confidence; the spec implies more is synced than is.
-- **Files:** [lib/commands/doctor.sh](lib/commands/doctor.sh), [lib/helpers/session.sh](lib/helpers/session.sh)/[lib/helpers/json.sh](lib/helpers/json.sh) (sync writers), [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md).
+- **Files:** `lib/commands/doctor.sh`, `lib/helpers/session.sh`/`lib/helpers/json.sh` (sync writers), [specs/data/docket-meta.spec.md](specs/data/docket-meta.spec.md). (pre-migration Bash; now `src/docket/cli/_doctor.py` + `src/docket/core/sync.py` + `src/docket/edges/store.py`)
 - **Requirements:** Using CDD-1's sync class: `doctor` compares **every `synced` field** (meta ↔ openclaw), not just `model`, and reports each divergence; `local` fields are explicitly documented as docket-only in the spec (so no one expects them in `openclaw.json`). Decide and record per field whether it should be `synced` or `local` (D-9). `--fix` re-syncs from the documented source of truth.
 - **Acceptance:** mutating any `synced` field in one source surfaces in `docket doctor`; `local` fields are labeled and not flagged.
 - **Test:** Integration: extend the existing drift test (P0-2 pattern) to a non-`model` synced field.
@@ -884,7 +884,7 @@ address exactly those.
 #### ✅ CDD-4 — Resolve the `--json` output contract (F1)
 
 - **Why:** A documented envelope that nothing emits is a lie in the API spec; consumers parse undocumented ad-hoc shapes.
-- **Files:** [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md), the `--json` emitters ([list.sh](lib/commands/list.sh), [cost.sh](lib/commands/cost.sh), [info.sh](lib/commands/info.sh), [doctor.sh](lib/commands/doctor.sh), [snapshot.sh](lib/commands/snapshot.sh)), [lib/commands/serve.sh](lib/commands/serve.sh) (`/status.json`, `/metrics`, `/health`).
+- **Files:** [specs/api/cli-interface.spec.md](specs/api/cli-interface.spec.md), the `--json` emitters (`list.sh`, `cost.sh`, `info.sh`, `doctor.sh`, `snapshot.sh` — pre-migration Bash; now `src/docket/cli/`), `lib/commands/serve.sh` (`/status.json`, `/metrics`, `/health`; now `src/docket/serve.py`).
 - **Requirements:** Pick one (D-10): **(A)** adopt the `{data, …}` envelope across all read commands, or **(B)** delete the unused envelope from the spec and instead document each command's *actual* shape in `specs/data/`. Either way: pin every output shape in a spec, enforce key-name consistency (`costUsd`/`budgetUsd` camelCase everywhere — no `cost_usd` in JSON), and add a test that each `--json` command's keys match its documented shape.
 - **Acceptance:** spec and emitted JSON agree for every read command; a renamed field breaks a test.
 - **Test:** Unit/integration: `<cmd> --json | jq` keys equal the documented set; naming-consistency assertion across commands.
@@ -1091,6 +1091,12 @@ blocks you, record it (§6 pattern) and apply the documented default.
 
 ### Changelog
 
+- **2026-06-24** — **Repointed stale `lib/` references to the Python layout.** Converted the
+  now-dead clickable `lib/commands/*.sh`, `lib/helpers/*.sh`, `lib/core/*.sh`, and
+  `tests/test-lifecycle.sh` markdown links (deleted in the M6 Bash→Python cutover) to plain text
+  and annotated each with its current `src/docket/` location (`cli/` Typer commands, `core/`
+  domain, `edges/` I/O incl. the ACL + `store.py`; tests now pytest under `tests/python/` + the
+  golden suite). Historical phase content and plan meaning unchanged — only file pointers corrected.
 - **2026-06-23** — **Consolidation + PHASE 10 added.** Folded the three standalone planning docs into
   this roadmap and removed them: `ARCHITECTURE-AUDIT.md` (language verdict — *migrate to Python* —
   executed by M6; build-vs-wrap + the language reasoning survive in §4.5/§0), `MIGRATION-PLAN-PYTHON.md`
@@ -1105,7 +1111,7 @@ blocks you, record it (§6 pattern) and apply the documented default.
   optional org Portfolio Manager), provision each project as an isolated **pod** sharing one session key, and
   gate runtime dispatch behind a daemon-capability spike (AA-0). Executable cards in
   [TODO.md](TODO.md); rationale in `internal-docs/agent-structure-analysis.md`.
-- **2026-06-22** — **PHASE 9 complete** (CDD-1 … CDD-6): `lib/core/schema.sh` declares the full
+- **2026-06-22** — **PHASE 9 complete** (CDD-1 … CDD-6) *(pre-migration Bash paths below; the schema/validation/doctor logic now lives in `src/docket/core/` + `src/docket/cli/`)*: `lib/core/schema.sh` declares the full
   `.docket-meta.json` field set once (name/type/enum/sync-class); `meta_set` validates every write
   against it (unknown field → error, type mismatch → error, enum violation → error); `docket doctor`
   now diffs all `synced` fields (model + sessionKey) not just model, and `--fix` re-syncs from
