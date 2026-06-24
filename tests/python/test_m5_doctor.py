@@ -55,8 +55,13 @@ _OC_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture(autouse=True)
-def _no_restart(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Never touch systemctl during doctor tests."""
+def _no_restart(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
+    """Never touch systemctl during doctor tests.
+
+    ``fake_openclaw`` puts a real `openclaw` shim on PATH so the binary health
+    check runs its real ``shutil.which`` probe (CI has no daemon) — the health
+    result then reflects config state, not what's on the runner's PATH.
+    """
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
 
 
