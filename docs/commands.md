@@ -17,34 +17,48 @@ Complete reference for all docket commands with detailed examples and options.
 
 ### install
 
-Bootstrap a complete OpenClaw setup from scratch.
+Bootstrap a complete OpenClaw setup from scratch, including the shared **org specialists**.
 
 **Syntax:**
 ```bash
-docket install
+docket install                  # manager, knowledge, security
+docket install --portfolio      # + the optional org Portfolio Manager
+docket install --gates          # enable enforced tool-approval gates at install time
 ```
 
 **What it does:**
 1. Checks for required dependencies (python3 3.11+, openclaw, systemctl; bash for the launcher)
 2. Initializes OpenClaw configuration at `~/.openclaw/openclaw.json`
-3. Creates specialist agents (programmer, reviewer, tester, knowledge, security)
-4. Sets up specialist agents and best-practice defaults (enforced security gates are planned — see specs/functional/security-gates.spec.md)
+3. Creates the org specialists (`scope: org`): **manager**, **knowledge**, **security**
+4. Sets up specialist agents and best-practice defaults
 5. Sets up workspace directories with proper permissions (700)
 6. Starts the openclaw-gateway.service systemd unit
+
+**Flags:**
+- **`--portfolio`**: also provision the optional org **Portfolio Manager** — one
+  `portfolio-manager` agent (`scope: org`) that is an advisory cross-pod planner over fleet
+  *metadata* (which pods exist, their queues, budgets, health). It never edits code, never
+  dispatches into a pod, and is never a pod member. Opt-in.
+- **`--gates`**: turn on the enforced tool-approval gates for dangerous operations (gates are
+  otherwise opt-in via `docket gates enable`) — see `specs/functional/security-gates.spec.md`.
 
 **Example:**
 ```bash
 # First-time setup
 docket install
 
+# With the org Portfolio Manager and enforced gates
+docket install --portfolio --gates
+
 # Output:
 # → Checking dependencies...
 # ✓ python3 3.11+ found
 # ✓ openclaw 0.4.2 found
 # → Creating OpenClaw config...
-# → Creating specialist agents...
-# ✓ programmer agent created
-# ✓ reviewer agent created
+# → Creating org specialists...
+# ✓ manager agent created
+# ✓ knowledge agent created
+# ✓ security agent created
 # ...
 # ✓ Installation complete!
 ```
@@ -55,6 +69,8 @@ docket install
 - Safe to run multiple times (idempotent)
 - Preserves existing agents
 - Recommended on clean systems
+- Project pods are created separately with [`docket add`](#add); see
+  [Agent Teams (Pods)](AGENT-TEAMS.md)
 
 ---
 
@@ -98,12 +114,25 @@ DEBUG=1 docket list
 
 ### add
 
-Interactively create a new project agent.
+Create a new project **pod** — an isolated team of project-scoped agents that owns one codebase.
+The default pod is **lean: a Lead + an Implementer**. See [Agent Teams (Pods)](AGENT-TEAMS.md).
 
 **Syntax:**
 ```bash
-docket add
+docket add                               # interactive
+docket add <project> [path]              # lean pod: <project>-lead + <project>-implementer
+docket add <project> [path] --pod full   # full pod: + reviewer + tester
+docket add <project> [path] --with reviewer,tester   # lean pod + named roles
 ```
+
+**Flags:**
+- **`--pod full`**: provision the full pod — Lead, Implementer, Reviewer, and Tester.
+- **`--with <roles>`**: start from the lean pod and add the named roles (comma-separated:
+  `reviewer`, `tester`, `implementer`). E.g. `--with reviewer` adds a review gate only.
+
+Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-reviewer`, `myapp-tester`
+(duplicated roles get `-2`, `-3` suffixes). A pod has **exactly one Lead**. Resize the pod later
+with [`docket pod`](#pod), and tear the whole pod down with [`docket delete`](#delete).
 
 **Interactive prompts:**
 1. **Agent type:** `repo` (codebase-based) or `task` (general work)
@@ -116,7 +145,14 @@ docket add
 
 **Example:**
 ```bash
-docket add
+# Lean pod (Lead + Implementer) for a codebase
+docket add myapp ~/code/myapp
+
+# Full pod with a review + test gate
+docket add myapp ~/code/myapp --pod full
+
+# Lean pod plus a reviewer
+docket add myapp ~/code/myapp --with reviewer
 
 # Interactive session:
 # → Select agent type:
@@ -125,23 +161,23 @@ docket add
 # Choice: 1
 #
 # → Enter project name: My Awesome Project
-# → Enter codebase path: /home/user/Sites/myproject
 # → Detecting stack...
 # ✓ Detected: Node.js, React, TypeScript
 # → Model [policy: anthropic/claude-sonnet-4-6]:
 #   (Enter = follow the role policy; type a provider/model ID to pin)
 #
-# ✓ Agent 'myawesomeproject' created
+# ✓ Pod 'myapp' created (myapp-lead, myapp-implementer)
 ```
 
 **Aliases:** `create`, `new`
 
 **Notes:**
-- Agent ID auto-generated via slugification
-- Creates workspace at `~/.openclaw/workspaces/projects/<id>/`
-- Generates SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md
+- Member ids auto-generated via slugification (`<project>-<role>[-N]`)
+- Each member gets its own workspace at `~/.openclaw/workspaces/projects/<member-id>/`
+- Generates SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md per member
 - Sets permissions to 700 (dirs) and 600 (files)
 - Restarts gateway after creation
+- Pod members are ordinary registered agents, so `docket list`/`info`/`cost`/`doctor` see them
 
 ---
 
@@ -159,7 +195,7 @@ docket info             # Interactive picker if ID omitted
 
 **Output:**
 ```
-Agent: myproject
+Agent: myproject-implementer
 ─────────────────────────────────────────────────
 Type:              repo
 Name:              My Awesome Project
@@ -170,7 +206,7 @@ Description:       My project description
 Session Key:       agent:myproject:default
 Project Key:       default
 Created:           2026-02-25T10:00:00Z
-Workspace:         ~/.openclaw/workspaces/projects/myproject/
+Workspace:         ~/.openclaw/workspaces/projects/myproject-implementer/
 Telegram:          ✓ Wired to group -1001234567890
 ```
 
@@ -329,10 +365,134 @@ docket scope myproject reset
 
 ## Team Coordination
 
+> docket has **two** queues, and they are not the same thing:
+>
+> - [`docket pod <project> delegate`/`dispatch`](#pod) — the **per-project pipeline**. Queues
+>   and runs work for one project's pod (Lead → Implementer → Reviewer → Tester), pod-local and
+>   budget-gated.
+> - [`docket team`](#team) — the **org manager queue**. Cross-cutting coordination work for the
+>   shared org Manager specialist (delegate / queue / start / done / cancel). It is a task
+>   tracker, not a pipeline runner.
+>
+> See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full team model.
+
+### pod
+
+Manage a project's **pod** (its members) and run its **dispatch pipeline**. A pod is the isolated
+team of project-scoped agents created by [`docket add`](#add); every member has its own
+permission-locked workspace, so no role is ever shared between projects.
+See [Agent Teams (Pods)](AGENT-TEAMS.md).
+
+**Syntax:**
+```bash
+docket pod <project>                                   # list the pod's members (default)
+docket pod <project> list                              # same as above
+docket pod <project> add <role> [--count N]            # add member(s): implementer|reviewer|tester
+docket pod <project> remove <member-id>                # remove one member
+docket pod <project> delegate [--priority high|normal|low] "<task>"   # queue a task
+docket pod <project> queue                             # show the pod's task queue
+docket pod <project> dispatch                          # run the pending tasks through the pipeline
+```
+
+**Subcommands:**
+
+#### list (default)
+Show the pod's members and their roles. Runs when no subcommand is given.
+
+```bash
+docket pod myapp
+
+# Output:
+# Pod: myapp
+# ────────────────────────────────────────
+# myapp-lead          lead          (orchestrator)
+# myapp-implementer   implementer
+# myapp-reviewer      reviewer
+```
+
+#### add
+Add a member to the pod. Role is one of `implementer`, `reviewer`, `tester` (the Lead is unique —
+a pod always has exactly one). Duplicated roles get `-2`, `-3` ids. `--count N` adds several at
+once.
+
+```bash
+docket pod myapp add implementer          # adds myapp-implementer-2
+docket pod myapp add reviewer             # add a review gate later
+docket pod myapp add implementer --count 2 # two more parallel implementers
+```
+
+#### remove
+Remove one member by id.
+
+```bash
+docket pod myapp remove myapp-tester
+# ✓ Removed myapp-tester from pod 'myapp'
+```
+
+#### delegate
+Queue a task on the **pod's** task queue (which lives in the Lead's workspace). Optional
+`--priority high|normal|low` (default `normal`). This queues only; run it with `dispatch`.
+
+```bash
+docket pod myapp delegate "Fix the null-token login crash"
+docket pod myapp delegate --priority high "Patch the auth bypass"
+# ✓ Queued task for pod 'myapp' (priority: high)
+```
+
+#### queue
+Show the pod's task queue with per-task status and recorded cost.
+
+```bash
+docket pod myapp queue
+
+# Output:
+# Queue: myapp
+# ────────────────────────────────────────
+# t-002  pending   high    Patch the auth bypass            $0.00
+# t-001  done      normal  Fix the null-token login crash   $0.42
+```
+
+#### dispatch
+Run the pod's **pending** tasks through its pipeline — **one real agent turn per hop**:
+`Lead → Implementer → Reviewer (if present) → Tester (if present)`. Only the roles the pod
+actually has take part (a lean pod runs two hops). docket invokes each hop via the OpenClaw
+daemon, captures the result, and threads it to the next role.
+
+```bash
+docket pod myapp dispatch
+# → Dispatching pod 'myapp' (1 pending task)...
+#   Lead → Implementer → Reviewer
+# ✓ t-002 complete
+```
+
+Three guarantees hold on every dispatch:
+
+- **Budget-gated.** Before *each* hop, docket checks the pod's recorded spend against the Lead's
+  budget cap (`docket profile <project>-lead --budget N`). Over budget → the task is left
+  **pending**, not run.
+- **Traced.** Every hop emits a trace event (`docket trace`) on a per-task session
+  `agent:<project>:<task_id>`, so a run is fully auditable.
+- **Pod-local.** Dispatch only ever targets the project's own pod members. There is **no cross-pod
+  dispatch path** — one pod can never run another pod's agents.
+
+> Each hop is a real, costed LLM turn, so dispatch is explicit (`docket pod … dispatch`) or
+> opt-in (`docket serve --dispatch`) — never silent. Plain `docket serve` does not dispatch.
+
+**Aliases:** None
+
+**Notes:**
+- The pod's queue lives in the Lead's workspace; org-level work uses [`docket team`](#team) instead
+- Resize a pod with `add`/`remove`; provision one with [`docket add`](#add); tear it down with
+  [`docket delete`](#delete)
+- Run every pod's queue continuously in the background with [`docket serve --dispatch`](#serve)
+
+---
+
 ### team
 
-The org manager's shared task queue. `docket team` delegates work to the Manager
-agent and tracks it through to completion.
+The **org** manager's shared task queue. `docket team` delegates cross-cutting work to the shared
+Manager specialist and tracks it through to completion. This is the **org** queue — for a single
+project's pipeline use [`docket pod <project>`](#pod) instead.
 
 > To see specialist + pod health, use `docket list` (shows org specialists and pods
 > with scope) and `docket doctor` (health check). To inspect a project's pod and its
@@ -812,6 +972,44 @@ docket doctor
 - Provides fix commands for issues
 - Non-destructive (read-only checks)
 - Useful for troubleshooting
+
+---
+
+### serve
+
+Run docket's background loop, refreshing fleet status, metrics, and health on an interval.
+By default it is **read-only**: it observes and reports, it does not run any agents.
+
+**Syntax:**
+```bash
+docket serve                # read-only monitor (status / metrics / health only)
+docket serve --dispatch     # also drive every pod's queue through its pipeline each refresh
+```
+
+**Flags:**
+- **`--dispatch`**: on each refresh, also run every pod's **pending** tasks through its pipeline
+  (the same `Lead → Implementer → Reviewer → Tester` hops as [`docket pod <project> dispatch`](#pod)).
+  These are **real, costed LLM turns** and are **budget-gated** per hop (against each pod's Lead
+  budget cap) and traced. Each pod's dispatch is **pod-local** — there is no cross-pod path.
+
+Plain `docket serve` never dispatches; driving agents is opt-in via `--dispatch`. See
+[Agent Teams (Pods)](AGENT-TEAMS.md) for the dispatch model.
+
+**Example:**
+```bash
+# Just watch the fleet (no agent turns)
+docket serve
+
+# Autonomous operation: drive every pod's queue continuously
+docket serve --dispatch
+```
+
+**Aliases:** None
+
+**Notes:**
+- Read-only by default — safe to leave running for monitoring
+- `--dispatch` spends real budget; over-budget tasks are left pending (not run)
+- Per-task dispatch is traced (`docket trace`) for auditability
 
 ---
 
