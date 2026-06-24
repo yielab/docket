@@ -21,7 +21,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire telegram scope profile keys team workflow logs edit cost doctor gates audit eval snapshot serve models trace metrics policies approve deny completions help version"
+  local commands="install list add info delete maintain context wire unwire telegram scope profile keys pod team workflow logs edit cost doctor gates audit eval snapshot serve models trace metrics policies approve deny completions help version"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
@@ -50,7 +50,8 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show search snapshot index compress" ;;
     workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show delete" ;;
-    team)            words="status delegate queue done" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove" ;;
+    team)            words="delegate queue start done cancel" ;;
     gates|security)  words="status enable disable isolate" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="set preset reset" ;;
@@ -86,7 +87,8 @@ _docket() {
     'scope:Manage session scope keys'
     'profile:Pin/unpin an agent model'
     'keys:Manage API keys'
-    'team:Coordinate specialist agents'
+    'pod:Inspect/manage a project pod'
+    'team:Org manager task queue'
     'workflow:Lobster pipelines'
     'logs:View memory + gateway logs'
     'edit:Open workspace files in $EDITOR'
@@ -125,7 +127,8 @@ _docket() {
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
-    team)            compadd status delegate queue done ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove ;;
+    team)            compadd delegate queue start done cancel ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd set preset reset ;;

@@ -28,8 +28,10 @@ from docket.edges.adapters import openclaw as oc
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
 
-# Specialist roles, in the same order cmd_snapshot iterates them.
-_SPECIALISTS = ("manager", "programmer", "reviewer", "tester", "knowledge", "security")
+# Org specialists, in the same order cmd_snapshot iterates them. Project workers
+# (implementer/reviewer/tester) are pod members under projects/ — picked up by
+# utils.project_ids(), not here.
+_SPECIALISTS = tuple(cfg.ORG_SPECIALIST_ORDER)
 
 
 # ── data builders (pure, socket-free, unit-testable) ──────────────────────────

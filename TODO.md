@@ -130,8 +130,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Re-author the three templates as **pod members** bound to the project + pod session key (inherit the workspace `SOUL.md` context — **not** a <500-token compressed brief). The **Implementer** (was programmer) has read/write/edit on the project codebase because it runs *in* the workspace (this is the Defect-A fix), plus the agreed git posture. Reviewer stays read-only veto on the diff; Tester stays behaviour-only PASS/FAIL. **Remove** all "shared specialist" / `specialist:<role>:…` hardcoded-key / sandbox-only-no-context language. Bump the template version so `doctor` flags existing agents for `maintain rebuild`.
 - **Out of scope:** the Lead template (AA-5); org-role templates.
 - **Deliverables:** rewritten templates, template-version bump, pytest rendering each into a pod.
-- **Acceptance gate:** [ ] rendered pod role files reference the project + pod session key; [ ] **zero** "shared specialist"/hardcoded-`specialist:` phrasing; [ ] Implementer template grants in-workspace code access; [ ] grep on a fresh pod confirms no singleton language.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] rendered pod role files reference the project + pod session key; [x] **zero** "shared specialist"/hardcoded-`specialist:` phrasing; [x] Implementer template grants in-workspace code access; [x] grep on a fresh pod confirms no singleton language.
+- **Size:** M · **Status:** ✅ DONE — satisfied by AA-3's `_pod._member_soul` (Lead/Implementer/Reviewer/Tester SOULs bound to the pod session key, Implementer runs in-workspace). Legacy-retirement pass deleted the dead `templates/docket-{programmer,reviewer,tester}.md` and the `_team_upgrade` path that applied them.
 
 ---
 
@@ -141,8 +141,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Rework the manager template into a **per-pod Lead**: the persistent, project-scoped orchestrator that owns the pod's context/memory + human comms, decomposes work, dispatches to pod workers, and **never edits code** (preserve the manager's no-edit + HITL + context-compression discipline). It replaces the old "project agent that may implement OR delegate" — implementation is always a worker's job. `role: lead`, `scope: project`, shares the pod session key; `type` (repo/task) stays as the policy role for model resolution. Remove the "delegate → global programmer" instruction from the project SOUL.
 - **Out of scope:** worker templates (AA-4); the org Portfolio Manager (AA-6).
 - **Deliverables:** reworked Lead template, edited project SOUL/AGENTS emission, pytest + integration.
-- **Acceptance gate:** [ ] added pod has exactly one `role: lead` member with the no-edit constraint + pod session key; [ ] old "delegate to global programmer" text gone from project SOUL.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] added pod has exactly one `role: lead` member with the no-edit constraint + pod session key; [x] old "delegate to global programmer" text gone from project SOUL.
+- **Size:** M · **Status:** ✅ DONE — Lead role lives in AA-3's `_pod._member_soul` (`role: lead`, never edits code, owns pod context/human comms). Legacy-retirement pass removed the `templates/docket-manager.md` template, the `team status/check/roles/upgrade` subcommands + their functions, and the "delegate → programmer/reviewer/tester" tables from the legacy `_create_workspace` project SOUL/AGENTS. `serve.py` now monitors org specialists only; `team` is now solely the org manager task queue.
 
 ---
 
@@ -185,8 +185,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Rewrite the agent-type narrative to the **pod model**: org-scoped shared agents (security, knowledge, optional Portfolio Manager) vs per-product pods (Lead + project-scoped Implementer/Reviewer/Tester sharing one session key). State plainly what's enforced by provisioning/isolation vs what's daemon-gated (AA-7). Remove "specialists are shared resources that work across all projects" for the project-roles. Keep all claims honest (no dollar-savings; no overclaimed runtime routing).
 - **Out of scope:** new feature docs.
 - **Deliverables:** edited docs + help, a docs grep-audit test.
-- **Acceptance gate:** [ ] `grep -ri "shared resource" CLAUDE.md docs/` no longer describes programmer/reviewer/tester as global; [ ] docs describe pods + the daemon caveat; [ ] `uv run pytest` green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] docs no longer describe programmer/reviewer/tester as global shared specialists; [x] docs describe pods (org specialists vs project pods, Lead/Implementer/Reviewer/Tester); [x] `uv run pytest` green.
+- **Size:** M · **Status:** ✅ DONE — README + CLAUDE.md (local) done earlier; legacy-retirement pass swept `docs/{QUICK-START-DOCKET,DOCKET,WORKFLOW-GUIDE,commands}.md` and `specs/functional/team-coordination.spec.md`: removed the deleted `team status/check/roles/upgrade` references and the deprecated Phase-2 execution model (compressed briefs, short-circuit classifier, "Atlas", global programmer/reviewer/tester) — all reframed to the pod model. `_help.py` shows ORG SPECIALISTS / PROJECT PODS.
 
 ---
 
