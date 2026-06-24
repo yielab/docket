@@ -31,7 +31,7 @@ DEFAULT_INTERVAL = 30
 # Org specialists, in the same order cmd_snapshot iterates them. Project workers
 # (implementer/reviewer/tester) are pod members under projects/ — picked up by
 # utils.project_ids(), not here.
-_SPECIALISTS = tuple(cfg.ORG_SPECIALIST_ORDER)
+_SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
 
 
 # ── data builders (pure, socket-free, unit-testable) ──────────────────────────
