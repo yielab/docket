@@ -152,8 +152,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Optionally provision **one** `scope: org`, `role: portfolio-manager` agent that sees fleet metadata/queue/budgets (not project code) — the cross-pod planning/visibility surface, distinct from per-pod Leads. It does **not** dispatch into pods at runtime in v1 (that's AA-7). Gate behind an install flag (opt-in). Never appears as a pod member.
 - **Out of scope:** runtime dispatch (AA-7); per-pod Leads (AA-5).
 - **Deliverables:** edited `_install.py`/`config.py`, integration test.
-- **Acceptance gate:** [ ] flag on → one `portfolio-manager` (`scope: org`) in `docket list --all`; [ ] flag off → none, pods still function; [ ] never listed as a pod member.
-- **Size:** S–M · **Status:** TODO
+- **Acceptance gate:** [x] flag on → one `portfolio-manager` (`scope: org`) in `docket list`; [x] flag off → none, pods still function; [x] never listed as a pod member.
+- **Size:** S–M · **Status:** ✅ DONE — `docket install --portfolio` provisions one `portfolio-manager` org specialist (own SOUL: read-only cross-pod planning over fleet metadata, never edits code, advisory in v1 — no runtime dispatch). Config: added to `SPECIALIST_ROLES`/`ORG_ROLES` (→ `is_specialist`/`role_scope`=org) + `ROLE_CLASS` (cheap) + new `ORG_DISPLAY_ORDER` (list/serve show it only when its workspace exists; deliberately NOT in `ORG_SPECIALIST_ORDER`, so never auto-installed or flagged missing). Never a pod member (`pod_of` → None). 7 tests in `test_portfolio_manager.py`.
 
 ---
 
@@ -195,12 +195,12 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - [x] `scope` is a validated first-class axis on every agent (AA-1).
 - [x] Clean install creates only org-scoped shared agents; no global programmer/reviewer/tester singleton (AA-2).
 - [x] `docket add` provisions an isolated pod sharing one session key; the Implementer runs in the workspace (AA-3, AA-4).
-- [x] The single global Atlas manager is replaced by per-pod Leads (AA-5). *Optional org Portfolio Manager (AA-6) not built.*
+- [x] The single global Atlas manager is replaced by per-pod Leads (AA-5) + the opt-in org Portfolio Manager (AA-6, `docket install --portfolio`).
 - [x] Runtime dispatch is real-via-daemon — the `serve --dispatch` loop / `docket pod <p> dispatch` drives the pipeline through `openclaw agent` per hop, budget-gated, within a pod only (AA-7).
 - [x] `docket list`/`doctor` show and migrate the org/pod taxonomy (AA-8).
 - [x] Docs teach the pod model honestly (AA-9).
 - [x] Full suite green: ruff + mypy + pytest + goldens.
 
-**Phase 10 is functionally complete.** Only AA-6 (optional org Portfolio Manager) remains, plus
-the non-blocking AA-0 follow-up: confirm the live `openclaw agent --json` result schema (esp. the
-cost field) against a real daemon and tighten `agent_run`'s parsing if needed.
+**Phase 10 is COMPLETE — every card (AA-0…AA-9) is done.** The only remaining item is the
+non-blocking AA-0 follow-up: confirm the live `openclaw agent --json` result schema (esp. the cost
+field) against a real daemon and tighten `agent_run`'s parsing if needed.

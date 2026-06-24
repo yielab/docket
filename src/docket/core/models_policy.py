@@ -46,6 +46,8 @@ ROLE_CLASS: dict[str, str] = {
     "programmer": "strong",
     "security": "strong",
     "repo": "strong",
+    # Org Portfolio Manager (AA-6): a coordinator over fleet metadata, not code.
+    "portfolio-manager": "cheap",
 }
 
 # Short-name aliases (mirrors MODEL_ALIASES in models.sh).
