@@ -33,6 +33,18 @@ class TestMemberId:
         assert pod.parse_member_id("shop", "shop") is None
 
 
+class TestPodOf:
+    def test_resolves_member_to_project(self) -> None:
+        assert pod.pod_of("demo-lead") == "demo"
+        assert pod.pod_of("demo-implementer-2") == "demo"
+        assert pod.pod_of("my-shop-reviewer") == "my-shop"
+
+    def test_non_pod_ids_return_none(self) -> None:
+        assert pod.pod_of("myshop") is None  # legacy single agent, no dash
+        assert pod.pod_of("my-api") is None  # 'api' is not a pod role
+        assert pod.pod_of("manager") is None  # org specialist
+
+
 class TestNormalizeRole:
     def test_programmer_aliases_to_implementer(self) -> None:
         assert pod.normalize_role("programmer") == "implementer"
