@@ -77,8 +77,9 @@ pydantic-settings, and filelock.
 ## 60-second tour
 
 ```bash
-docket add myproject ~/code/myproject   # provision an isolated project agent (stack auto-detected)
-docket list                             # see every agent and its scope at a glance
+docket add myproject ~/code/myproject   # provision an isolated project pod (Lead + Implementer)
+docket pod myproject add reviewer       # grow the pod when you want review/tests
+docket list                             # see every agent, its scope, and its pod at a glance
 docket info myproject                   # workspace, codebase, session key, model
 docket doctor                           # fleet health: drift, runaway, stale sessions
 docket profile myproject --budget 5     # optional guardrail: cap spend; auto-pauses on breach
@@ -165,7 +166,7 @@ comparisons as directional.
 |---------|--------|-------|
 | Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
-| Specialist agents team | ✅ Working | 6 pre-configured roles |
+| Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
 | Lobster workflow integration | ✅ Working | YAML pipeline support |
 | Cost tracking & budget caps | ✅ Working | Role→model policy, per-agent budget, runaway detection |
 | API key management | ✅ Working | Centralized key distribution |
@@ -177,11 +178,13 @@ comparisons as directional.
 
 ## Concepts
 
-- **Project agent** — one agent bound to one codebase/project, with a permission-locked
-  workspace (`700`/`600`) holding `SOUL.md` (identity + session key), `AGENTS.md`,
-  `TOOLS.md`, `HEARTBEAT.md`, `.docket-meta.json`, and a `memory/` log.
-- **Specialist team** — shared programmer, reviewer, tester, knowledge, security, and manager
-  agents, created once by `docket install` and used across all projects.
+- **Project pod** — each project is an isolated pod of project-scoped agents (`docket add`
+  provisions a lean **Lead + Implementer** by default; add Reviewer/Tester/extra Implementers
+  with `docket pod <project> add <role>`). Every member has its own permission-locked workspace
+  (`700`/`600`) with `SOUL.md` (identity + session key), `AGENTS.md`, `HEARTBEAT.md`,
+  `.docket-meta.json`, and a `memory/` log — so no role is shared across projects.
+- **Org specialists** — `security`, `knowledge`, and `manager`, created once by `docket install`
+  and shared across the fleet (genuinely cross-cutting; `scope: org`).
 - **Session key** (`agent:<id>:<project>`) — the isolation primitive; prevents cross-project
   contamination and enables parallel work. Change with `docket scope <id> set <key>`.
 - **Role→model policy** — each role maps to the cheapest adequate model; change a role once and
@@ -197,12 +200,13 @@ view) and `~/.openclaw/openclaw.json` (the OpenClaw daemon's view).
 <summary><strong>Core lifecycle</strong></summary>
 
 ```bash
-docket install              # Bootstrap OpenClaw and the specialist team
-docket add [id] [path]      # Create project agent (interactive)
+docket install              # Bootstrap OpenClaw + org specialists (security, knowledge, manager)
+docket add [id] [path]      # Create a project pod (Lead + Implementer; --pod full / --with for more)
 docket add --from spec.yaml # Provision a fleet from a YAML/JSON spec (declarative)
-docket list                 # Show all agents
+docket pod <id>             # Inspect a pod; `pod <id> add <role>` / `remove <member>` to resize
+docket list                 # Show all agents (scope + pod)
 docket info <id>            # Display agent details
-docket delete <id>          # Remove agent
+docket delete <id>          # Remove an agent or a whole pod
 ```
 </details>
 
