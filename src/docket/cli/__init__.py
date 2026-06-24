@@ -2870,6 +2870,22 @@ def _cmd_models_reset() -> None:
     _do_restart_gateway()
 
 
+# ── pod ────────────────────────────────────────────────────────────────────────
+@app.command(
+    "pod",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_pod(
+    ctx: typer.Context,
+    project: str = typer.Argument(..., help="Project (pod) id"),
+    sub: str | None = typer.Argument(None, help="list | add <role> | remove <member-id>"),
+) -> None:
+    """Manage a project's pod: list members, add a role (implementer/reviewer/tester), or remove one."""
+    from docket.cli import _pod
+
+    _pod.dispatch(project, sub, list(ctx.args))
+
+
 # ── team ───────────────────────────────────────────────────────────────────────
 @app.command(
     "team",

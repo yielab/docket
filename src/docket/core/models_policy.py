@@ -197,14 +197,22 @@ def is_role(role: str) -> bool:
 
 
 def agent_role(agent_id: str) -> str:
-    """Policy role for an agent: specialist id, or project type (repo|task).
+    """Policy role for an agent: specialist id, pod-member role, or project type.
 
+    For pod members (Phase 10) the meta carries a pod ``role`` (lead/implementer/
+    …) which maps to a role→model policy key, so model re-resolution targets the
+    right policy. Otherwise: specialist id, or project ``type`` (repo|task).
     Mirrors agent_role() in models.sh.
     """
     from docket.edges.adapters import openclaw as _oc
 
     if cfg.is_specialist(agent_id):
         return agent_id
+    pod_role = _oc.meta_get(agent_id, "role", "")
+    if pod_role:
+        from docket.core import pod
+
+        return pod.POD_ROLE_POLICY.get(pod_role, pod_role)
     return _oc.meta_get(agent_id, "type", "repo")
 
 
