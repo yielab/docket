@@ -4,10 +4,11 @@
 > guardrails, health checks — exists to keep *teams of agents* running reliably across many
 > projects. If you read one guide, read this one.
 
-A single autonomous agent is easy. Building **enterprise-grade software** with agents is not: it
-needs the same separation of duties a human team has — someone who plans and talks to people,
-someone who writes the code, someone who reviews it, someone who tests it — with hard boundaries
-so one project's work never contaminates another's. docket makes that structure first-class.
+A single autonomous agent is easy. Getting several agents to ship real software together is
+harder: it needs the same separation of duties a human team has — someone who plans and talks to
+people, someone who writes the code, someone who reviews it, someone who tests it — with hard
+boundaries so one project's work never contaminates another's. docket makes that structure
+first-class.
 
 ---
 
@@ -144,12 +145,12 @@ Start lean and grow only when the work earns it:
 | Prototyping, low-risk changes, solo project | **lean** (Lead + Implementer) — the default |
 | Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
 | Behaviour you want validated independently of the diff | add a **Tester** (`--with tester`) |
-| Production-grade, regulated, or high-blast-radius work | **full** pod (`--pod full`) |
+| High-stakes or high-blast-radius work | **full** pod (`--pod full`) |
 | One Implementer is the bottleneck | `docket pod <p> add implementer` (parallel doers) |
 
 The Reviewer and Tester are the difference between "an agent changed the code" and "a change was
-reviewed and validated before it landed" — which is exactly the line between a toy and
-**enterprise-grade** delivery.
+reviewed and validated before it landed" — the line between a prototype and a change you can let
+into a real codebase.
 
 ---
 
