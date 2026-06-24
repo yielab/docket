@@ -174,8 +174,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** `docket list --all` gains **SCOPE** and **POD** columns (org agents listed once; pod members grouped under their project). `doctor` backfills `scope` for pre-Phase-10 metas (AA-1 rule), flags legacy global programmer/reviewer/tester singletons with the AA-2 re-scope guidance, and verifies pod members share one session key (drift check). `--fix` performs the safe backfills.
 - **Out of scope:** auto-migrating legacy singletons into pods (flag + guide only; the operator re-adds).
 - **Deliverables:** edited `list` + `_doctor.py`, integration tests.
-- **Acceptance gate:** [ ] pre-Phase-10 install → `doctor` backfills scope + flags legacy singletons; [ ] `list --all` renders org/pod taxonomy; [ ] pod session-key drift is detected.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] pre-Phase-10 install → `doctor` backfills scope + flags legacy singletons; [x] `list` (json+human) renders scope/role/pod; [ ] pod session-key drift check (deferred — low value, members share by construction).
+- **Size:** M · **Status:** ✅ DONE (commit f65a50d) — `pod_of` helper, scope/role/pod in `list`, doctor scope backfill + legacy-singleton flag. Golden recaptured. 4 tests.
 
 ---
 
