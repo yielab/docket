@@ -56,7 +56,7 @@ _docket() {
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove delegate queue dispatch ;;
     team)            compadd delegate queue start done cancel ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;

@@ -167,7 +167,7 @@ class TestServeSweeps:
         import docket.serve as serve
 
         ran: list[str] = []
-        monkeypatch.setattr(serve, "_run_sweeps", lambda: ran.append("startup"))
+        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: ran.append("startup"))
 
         class _FakeServer:
             def __init__(self, *_a: object, **_k: object) -> None:

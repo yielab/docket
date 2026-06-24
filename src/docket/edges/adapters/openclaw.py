@@ -870,6 +870,117 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
     return (True, "")
 
 
+@dataclass
+class AgentRunResult:
+    """Outcome of one `openclaw agent` turn (AA-7 dispatch primitive)."""
+
+    ok: bool
+    output: str  # the agent's text reply (best-effort extracted from the JSON)
+    cost_usd: float  # cost of this turn, 0.0 when the daemon doesn't report one
+    raw: dict[str, Any]  # the full parsed JSON (empty when unparseable)
+    error: str = ""  # reason when ok is False
+
+
+# JSON keys the daemon may use for the reply text / per-turn cost. The
+# `openclaw agent --json` schema is not pinned across versions (AA-0 left this as
+# a follow-up), so we probe a small set of plausible field names and keep `raw`
+# for anything bespoke. First non-empty match wins.
+_RUN_OUTPUT_KEYS = ("output", "text", "response", "message", "reply", "content", "result")
+_RUN_COST_KEYS = ("costUsd", "cost_usd", "cost", "totalCostUsd")
+
+
+def _extract_run_output(data: dict[str, Any]) -> str:
+    for key in _RUN_OUTPUT_KEYS:
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+        # Some shapes nest the text under {message:{content:"..."}}.
+        if isinstance(val, dict):
+            for sub in ("text", "content", "output"):
+                inner = val.get(sub)
+                if isinstance(inner, str) and inner.strip():
+                    return inner
+    return ""
+
+
+def _extract_run_cost(data: dict[str, Any]) -> float:
+    for key in _RUN_COST_KEYS:
+        val = data.get(key)
+        if isinstance(val, (int, float)):
+            return float(val)
+        if isinstance(val, str):
+            with contextlib.suppress(ValueError):
+                return float(val)
+    return 0.0
+
+
+def agent_run(
+    agent_id: str,
+    session_key: str,
+    message: str,
+    timeout: int = 300,
+) -> AgentRunResult:
+    """Run one agent turn and return its JSON result (AA-7 real-dispatch hook).
+
+    Wraps ``openclaw agent --agent <id> --session-id <key> -m <text> --json
+    --timeout N`` — the daemon owns agent execution, so this is the ONLY place
+    docket invokes a real agent turn. Each call is a real, costed LLM turn; the
+    caller (core.dispatch) is responsible for budget gating before invoking.
+
+    Returns AgentRunResult(ok=False, ...) with a reason when the CLI is missing,
+    times out, exits non-zero, or emits unparseable output — never raises for the
+    ordinary failure modes, so the pipeline driver can record and stop cleanly.
+    """
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _sp
+
+    if not _shutil.which("openclaw"):
+        return AgentRunResult(False, "", 0.0, {}, "openclaw CLI not found")
+    cmd = [
+        "openclaw",
+        "agent",
+        "--agent",
+        agent_id,
+        "--session-id",
+        session_key,
+        "-m",
+        message,
+        "--json",
+        "--timeout",
+        str(int(timeout)),
+    ]
+    try:
+        res = _sp.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout + 15,
+        )
+    except _sp.TimeoutExpired:
+        return AgentRunResult(False, "", 0.0, {}, f"timed out after {timeout}s")
+    except OSError as ex:
+        return AgentRunResult(False, "", 0.0, {}, str(ex))
+
+    out = (res.stdout or "").strip()
+    if res.returncode != 0:
+        reason = (res.stderr or out or f"exit {res.returncode}").strip()
+        return AgentRunResult(False, "", 0.0, {}, reason)
+    try:
+        data: dict[str, Any] = _json.loads(out) if out else {}
+    except _json.JSONDecodeError:
+        # Non-JSON stdout still carries the reply text — surface it rather than fail.
+        return AgentRunResult(True, out, 0.0, {}, "")
+    if not isinstance(data, dict):
+        return AgentRunResult(True, str(data), 0.0, {}, "")
+    return AgentRunResult(
+        ok=True,
+        output=_extract_run_output(data),
+        cost_usd=_extract_run_cost(data),
+        raw=data,
+    )
+
+
 def harden_config_perms() -> list[str]:
     """chmod 600 openclaw.json / secrets.json if group/other-accessible (G2).
 
