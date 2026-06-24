@@ -175,3 +175,41 @@ class TestPodCommand:
         _seed(tmp_path, monkeypatch)
         _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
         assert _pod.pod_member_ids("demo")[0] == "demo-lead"
+
+
+class TestParsePodRoles:
+    def test_default_is_lean(self) -> None:
+        assert _pod.parse_pod_roles([]) == ("lead", "implementer")
+
+    def test_pod_full(self) -> None:
+        assert _pod.parse_pod_roles(["--pod", "full"]) == _pod.pod.FULL_POD_ROLES
+
+    def test_with_adds_roles(self) -> None:
+        assert _pod.parse_pod_roles(["--with", "reviewer,tester"]) == (
+            "lead",
+            "implementer",
+            "reviewer",
+            "tester",
+        )
+
+    def test_with_equals_form_and_unknown_ignored(self) -> None:
+        assert _pod.parse_pod_roles(["--with=reviewer,wizard"]) == (
+            "lead",
+            "implementer",
+            "reviewer",
+        )
+
+
+class TestDeletePod:
+    def test_delete_pod_removes_all_members(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket import cli
+
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+        # Non-TTY → _delete_pod skips the interactive confirm.
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        cli._delete_pod("demo", _pod.pod_member_ids("demo"))
+        assert _ids(oc_dir) == []
+        assert not (oc_dir / "workspaces" / "projects" / "demo-lead").exists()
