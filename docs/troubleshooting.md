@@ -241,6 +241,43 @@ docket scope <agent-id> set my-project-name
 docket scope <agent-id> reset
 ```
 
+## Pods & Dispatch
+
+### `docket pod <p> dispatch` does nothing / "No pending tasks"
+There's nothing queued for the pod to run.
+```bash
+docket pod <p> delegate "<task>"   # queue a task first
+docket pod <p> queue               # check what's pending
+```
+
+### A dispatched task stays "pending" (blocked)
+The pod is over its budget cap — dispatch is budget-gated before each hop, so an over-budget pod
+leaves the task pending instead of running it. Check or raise the Lead's cap:
+```bash
+docket cost <p>-lead               # see recorded spend
+docket profile <p>-lead --budget <N>   # raise the cap (USD)
+```
+
+### "pod has no lead — cannot dispatch"
+The pod is missing its Lead. A pod must have exactly one Lead, which orchestrates dispatch.
+Recreate the pod:
+```bash
+docket add <p>
+```
+
+### The Portfolio Manager didn't appear
+The org Portfolio Manager is opt-in — it isn't created by a plain `docket install`.
+```bash
+docket install --portfolio
+```
+
+### A pod member wasn't created
+Inspect the pod and run diagnostics to find and fix the gap:
+```bash
+docket pod <p>     # list the pod's members
+docket doctor      # system-wide diagnostics + auto-fix
+```
+
 ## Getting Help
 
 1. **Run diagnostics:**

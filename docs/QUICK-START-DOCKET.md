@@ -21,33 +21,82 @@ DOCKET is an architecture for autonomous agent teams that:
 
 ### Create the Org Specialists
 ```bash
-cd ~/Sites/docket-cli
-./bin/docket install
+docket install
 ```
 
 This creates 3 shared org specialists: **manager**, **knowledge**, **security**.
 
-### Add a Project Pod
+Optionally add the cross-pod **Portfolio Manager** — an advisory, opt-in org agent
+that sees fleet metadata (queues, budgets, health) but never code and never dispatches:
 ```bash
-cd ~/Sites/docket-cli
-./bin/docket add mywebsite
+docket install --portfolio
 ```
 
-Each project is an isolated **pod**: a **lead** + **implementer** by default
-(add `--pod full` or `--with reviewer,tester` for more). Templates are generated
-per-pod at `add` time — there is no separate upgrade step.
+### Add a Project Pod
+```bash
+docket add myapp ~/code/myapp
+```
+
+Each project is an isolated **pod**: a **lead** + **implementer** by default. Grow it
+when the work earns it:
+```bash
+docket add myapp --pod full           # + reviewer + tester
+docket add myapp --with reviewer      # lean pod + a reviewer
+docket pod myapp add reviewer         # add a role later
+```
+
+Templates are generated per-pod at `add` time — there is no separate upgrade step.
 
 ---
 
 ## Verify Installation
 
 ```bash
-./bin/docket list      # org specialists + pods, with scope
-./bin/docket doctor    # health check + auto-fix
+docket list                 # org specialists + pods, with scope and pod
+docket pod myapp            # just this project's pod members
+docket doctor              # health check + auto-fix
 ```
 
 **Expected:** `docket list` shows the org specialists (manager, knowledge, security)
-and each project's pod members; `docket doctor` reports them healthy.
+and each project's pod members; `docket pod myapp` shows the pod's lead + implementer;
+`docket doctor` reports them healthy.
+
+---
+
+## Assign and Run Work — the payoff
+
+A pod isn't just a list of agents — docket can **actually run** its pipeline,
+**one real agent turn per hop**:
+
+```
+Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
+```
+
+Queue a task, see the queue, then dispatch it:
+
+```bash
+docket pod myapp delegate "Fix the null-token login crash"   # queue a task
+docket pod myapp queue                                        # see it (+ per-task status/cost)
+docket pod myapp dispatch                                     # run the pipeline once, now
+```
+
+Or let docket drive every pod's queue in the background:
+
+```bash
+docket serve --dispatch                                       # autonomous: drain queues each refresh
+```
+
+Each hop is a **real, costed LLM turn**, so dispatch is always explicit (`dispatch`)
+or opt-in (`serve --dispatch`) — never silent. Before each hop docket checks the pod's
+recorded spend against the Lead's budget cap (`docket profile myapp-lead --budget N`);
+over budget, the task stays **pending** instead of running. Every hop is traced
+(`docket trace`) for a fully auditable run.
+
+> The read-only `docket serve` monitor does **not** dispatch — only `--dispatch` does.
+
+### Next: understand the team model
+This is just the entry point. For the full scope/role model, how big a pod should be,
+and how isolation works, read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket.
 
 ---
 
@@ -110,6 +159,14 @@ docket pod <project>      # Inspect a project's pod and its roles
 docket team queue         # The org manager's pending task queue
 ```
 
+### Run a Pod's Work
+```bash
+docket pod <project> delegate "<task>"   # Queue a task for the pod
+docket pod <project> queue               # See the pod's queue + per-task status/cost
+docket pod <project> dispatch            # Run the pipeline once (Lead→Implementer→…)
+docket serve --dispatch                  # Background: drive every pod's queue
+```
+
 ### Memory Management
 ```bash
 docket memory snapshot <project-id>   # Create fast-access context
@@ -137,92 +194,36 @@ cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
 - Recent activity (last 7 days)
 - Architectural decisions (from MEMORY.md)
 
-### Test 2: Lead Response (Telegram)
-Send this message to your project pod's **Lead** in Telegram:
+### Test 2: Run a Task Through the Pod
+Queue a task and dispatch it — this exercises the real pipeline end to end:
 
-```
-What's the current status of <project>?
-```
-
-**Expected behavior:**
-1. **Instant acknowledgment** (<3 seconds):
-   ```
-   ✓ Got it - checking project status
-   → Reading SNAPSHOT.md...
-   ⏱ ETA: instant
-   ```
-
-2. **Immediate response** (no dispatch needed):
-   ```
-   Status: <project>
-   • Last activity: 2 hours ago
-   • Active tasks: [list from HEARTBEAT.md]
-   • Recent changes: [summary from memory]
-   ```
-
-**Why it's fast:** the Lead reads this pod's SNAPSHOT.md (~2K tokens) instead of full conversation history (~100K tokens).
-
-### Test 3: Bug Fix Workflow (Telegram)
-Send this message to the pod's **Lead**:
-
-```
-Fix bug: Login crashes when token is null
+```bash
+docket pod myapp delegate "Fix bug: login crashes when token is null"
+docket pod myapp queue          # confirm the task is queued
+docket pod myapp dispatch       # run Lead → Implementer → (Reviewer) → (Tester)
 ```
 
-**Expected workflow (all within one isolated pod):**
-1. **Lead** (3s):
-   ```
-   ✓ Got it - authentication bug
-   → Decomposing the task...
-   👥 Will involve: implementer, reviewer, tester
-   ⏱ ETA: ~8 minutes
-   ```
+**Expected workflow (all within one isolated pod, one real agent turn per hop):**
+1. **Lead** decomposes the task and hands off (the Lead never edits code).
+2. **Implementer** runs *inside* the project workspace, writes the change, signals DONE.
+3. **Reviewer** *(if the pod has one)* read-only veto on the diff.
+4. **Tester** *(if the pod has one)* behaviour-only PASS / FAIL.
+5. **Lead** reports the result; the queue shows per-task status and recorded cost.
 
-2. **Lead dispatches** to the Implementer (the Lead never edits code):
-   ```
-   TASK: Add null check to login handler
-   FILE: src/auth/login.js
-   ACCEPTANCE:
-     • Login succeeds with valid token
-     • Returns 401 for null token
-   ```
+Each hop is budget-gated against the Lead's cap and traced (`docket trace`), so a run
+is fully auditable. Re-check the queue afterward:
 
-3. **Implementer** (30s acknowledgment):
-   ```
-   ✓ Got it - implementing null check
-   → Opening login.js in the project workspace...
-   ⏱ ETA: ~3 minutes
-   ```
+```bash
+docket pod myapp queue          # status flips to done (or pending if over budget)
+```
 
-4. **Implementer completes** (3 min):
-   ```
-   ✓ Done - login.js null check implemented
-   → memory/tasks/T001/DONE.md
-   → Ready for reviewer
-   ```
+> **Alternative — Telegram:** you can also message the pod's **Lead** directly in
+> Telegram (`What's the status of myapp?` or `Fix bug: login crashes when token is null`)
+> for mobile-first, conversational dispatch. The `delegate`/`dispatch` loop above is the
+> scriptable, traced path; Telegram is the same pipeline driven from your phone.
 
-5. **Reviewer** (3 min):
-   ```
-   ✓ Review complete - APPROVED
-   → Security: OK (no vulnerabilities)
-   → Root cause: Addressed
-   → Ready for tester
-   ```
-
-6. **Tester** (2 min):
-   ```
-   ✓ Validation complete - PASS
-   → Bug no longer reproducible
-   → All tests pass (15/15)
-   → Ready for engineer review & commit
-   ```
-
-7. **Lead reports** (instant):
-   ```
-   ✅ Bug fix complete!
-   Files changed: src/auth/login.js
-   Next step: Review and commit
-   ```
+**Why the Lead is fast:** it reads this pod's SNAPSHOT.md (~2K tokens) instead of full
+cross-project conversation history.
 
 ---
 
@@ -326,11 +327,15 @@ inside the pod. Read your actual numbers with `docket cost`.
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
 - Another project's setup never touches your project agents
 
-### Q: Do I need to change how I message agents?
-**A:** No. Message the same way — talk to the pod's Lead. The agents now:
-- Respond faster (each pod processes only its own context)
-- Use fewer tokens (context isolated per project)
-- Provide clearer status updates
+### Q: How do I assign work to a pod?
+**A:** Two ways, same pipeline:
+- **CLI (scriptable, traced):** `docket pod <project> delegate "<task>"` then
+  `docket pod <project> dispatch` (or `docket serve --dispatch` to run queues in the background).
+- **Telegram (mobile-first):** message the pod's Lead directly — conversational dispatch of
+  the same Lead → Implementer → (Reviewer) → (Tester) pipeline.
+
+Either way the agents respond faster (each pod processes only its own context) and use fewer
+tokens (context isolated per project).
 
 ### Q: What if I want the old behavior back?
 **A:** Restore from backups:
@@ -409,16 +414,17 @@ systemctl --user restart openclaw-gateway.service
 
 ## Next Steps
 
-1. **Test with real project:** Send a bug report to a pod's Lead
-2. **Monitor token usage:** Check whether token usage dropped with `docket cost`
-3. **Create snapshots:** Run `docket memory snapshot` for all projects
-4. **Index memory:** Run `docket memory index` for fast search
-5. **Read full docs:** See [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
+1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
+2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
+3. **Monitor cost:** Check recorded spend with `docket cost`
+4. **Create snapshots & index memory:** `docket memory snapshot` / `docket memory index` per project
+5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 
 ---
 
 ## Resources
 
+- **Agent Teams (Pods):** [AGENT-TEAMS.md](AGENT-TEAMS.md) — the canonical team-model reference
 - **Full Implementation Guide:** [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
 - **Architecture Analysis:** [DOCKET-ANALYSIS.md](DOCKET-ANALYSIS.md)
 - **Original Proposal:** [DOCKET.md](../DOCKET.md) (in manager's workspace)

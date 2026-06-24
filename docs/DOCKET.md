@@ -98,13 +98,13 @@ Custom (--with ...) Lead + Implementer + any   pick the gates you want
 
 **Result:** each project runs the smallest pod that does the job
 
-### 3. Linear Pipeline
+### 3. Linear Pipeline (and it really runs)
 
 **Each role has ONE job. No overlapping work.**
 
 ```
-Implementer → Reviewer → Tester
-(implement)   (veto)     (validate)
+Lead → Implementer → Reviewer → Tester
+       (implement)   (veto)     (validate)
 ```
 
 NOT:
@@ -114,7 +114,32 @@ Reviewer   ───┼→ All work in parallel
 Tester     ───┘   (wasteful, redundant)
 ```
 
-**Result:** No wasted parallel work
+This pipeline is no longer just a convention in the templates — docket **actually executes it**,
+one real agent turn per hop. Only the roles a pod has take part (a lean pod runs two hops:
+Lead → Implementer):
+
+```bash
+docket pod <project> delegate "Fix the null-token login crash"  # queue a task
+docket pod <project> queue                                      # see the queue + per-task status/cost
+docket pod <project> dispatch                                   # run the pipeline once, now
+docket serve --dispatch                                         # background: drive every pod's queue
+```
+
+Three guarantees hold on every hop:
+
+- **Budget-gated.** Before each hop docket checks the pod's recorded spend against the Lead's
+  budget cap (`docket profile <project>-lead --budget N`). Over budget → the task is left
+  **pending**, not run.
+- **Traced.** Each hop emits a Phase-8 trace event (`docket trace`) on a per-task session
+  `agent:<project>:<task_id>` — every run is auditable, no manual Telegram relay.
+- **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
+  cross-pod dispatch path** — one pod can never run another pod's agents.
+
+Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`docket pod …
+dispatch`) or **opt-in** (`docket serve --dispatch`) — never silent. Plain `docket serve` is a
+read-only monitor and does not dispatch.
+
+**Result:** No wasted parallel work — and the hand-off between roles actually executes.
 
 ### 4. Behavior-Only Validation
 
@@ -168,6 +193,10 @@ workload rather than relying on fixed figures.
 
 ## Agent Roles
 
+> **Concepts live in [Agent Teams (Pods)](AGENT-TEAMS.md)** — the canonical reference for the
+> pod model (scope vs role, why pods exist, how to compose one). This document is the *technical*
+> deep-dive: routing, context isolation, dispatch internals, and per-role wiring.
+
 There are two kinds of agent. **Pod roles** are project-scoped and created per project by
 `docket add <project>` (managed with `docket pod <project>`). **Org specialists** are shared
 across the whole fleet and created once by `docket install`.
@@ -185,7 +214,10 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 **Capabilities:**
 - Owns this pod's context, memory, and human (Telegram) comms
 - Reads this pod's SNAPSHOT.md, not a full cross-project history
-- Decomposes work and dispatches to the pod's workers
+- Decomposes work and dispatches to the pod's workers — `docket pod <project> dispatch`
+  (or `docket serve --dispatch`) really runs the next hop, one costed agent turn at a time
+- Holds the per-pod budget cap that gates every dispatch hop
+  (`docket profile <project>-lead --budget N`)
 
 **Tools:**
 - `read` (memory files only)
@@ -344,6 +376,29 @@ prompts into briefs.
 **Model:** strong class (role policy) (security reasoning required)
 
 **Cost Target:** <10K tokens/audit
+
+### Portfolio Manager (optional)
+
+**Role:** Cross-pod planning and visibility surface (opt-in)
+
+Provisioned only by `docket install --portfolio`, which adds **one** `portfolio-manager`
+(`scope: org`). It is a fleet-wide advisory layer, never a pod member.
+
+**Capabilities:**
+- Sees fleet **metadata** — which pods exist, their queues, budgets, and health
+- Recommends where to focus, rebalance, or pause, in words for a human
+
+**Tools:**
+- `read` (fleet metadata — `docket list`/`pod`/`cost`/`doctor` surface)
+- `openclaw message send` (advisory reports to the human)
+
+**Cannot:**
+- Read or edit **project code** (it sees metadata, not source)
+- **Dispatch into pods** (each pod's own Lead owns execution)
+- Be a pod member, or run another pod's agents
+- Commit
+
+**Model:** cheap class (role policy) (planning/visibility, not reasoning-dense)
 
 ---
 
