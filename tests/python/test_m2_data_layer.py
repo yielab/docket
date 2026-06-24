@@ -123,9 +123,7 @@ class TestAgentMeta:
     def test_scope_round_trips_when_explicit(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
 
-        meta = AgentMeta.model_validate(
-            {"kind": "project", "type": "repo", "scope": "project"}
-        )
+        meta = AgentMeta.model_validate({"kind": "project", "type": "repo", "scope": "project"})
         assert meta.scope == AgentScope.project
         assert meta.model_dump(by_alias=True)["scope"] == "project"
 
