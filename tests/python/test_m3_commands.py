@@ -150,7 +150,7 @@ class TestCmdList:
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run(["list"], oc_dir)
         assert rc == 0
-        assert "SPECIALIST AGENTS" in out
+        assert "ORG SPECIALISTS" in out
 
     def test_list_empty_no_agents(self, tmp_path: Path) -> None:
         oc_dir = tmp_path / ".openclaw"

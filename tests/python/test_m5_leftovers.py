@@ -216,7 +216,7 @@ class TestHelp:
             "CONTEXT & MEMORY",
             "MONITORING",
             "OBSERVABILITY",
-            "TEAM & WORKFLOWS",
+            "PODS, QUEUE & WORKFLOWS",
             "UTILITIES",
             "MODEL POLICY",
             "FLAGS",

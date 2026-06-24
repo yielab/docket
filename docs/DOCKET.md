@@ -1,6 +1,6 @@
 # DOCKET Architecture
 
-**DOCKET = Routing, Autonomy, Context Compression, Knowledge**
+**DOCKET = Roles, Autonomy, Context isolation, Knowledge**
 
 Complete technical guide to docket's DOCKET architecture implementation.
 
@@ -23,9 +23,9 @@ Complete technical guide to docket's DOCKET architecture implementation.
 ## Overview
 
 DOCKET is an architectural pattern for autonomous agent teams that achieves:
-- **50-98% token reduction** through context compression
-- **6-20x faster** responses through short-circuit resolution
-- **Layered, convention-based security** through mandatory checklists
+- **Lower token usage** through per-pod context isolation
+- **Clean role separation** — Lead orchestrates, Implementer codes, Reviewer/Tester gate
+- **Layered, convention-based security** through a read-only reviewer veto + checklist
 - **Objective validation** through behavior-only testing
 
 ### The Problem (Before DOCKET)
@@ -33,90 +33,85 @@ DOCKET is an architectural pattern for autonomous agent teams that achieves:
 ```
 Engineer: "Fix the login bug"
          ↓
-Manager: Reads 100K tokens of history
-       → Creates 20K token brief
+One shared context (or a shared agent pool) carries every
+project's history at once:
+       → Reads 100K+ tokens of mixed-project history
+       → Implements fix, reviews its own work
          ↓
-Programmer: Reads 100K tokens AGAIN + 20K brief
-           → Implements fix
-           ↓
-No security review → straight to engineer
-Total: ~220K tokens
-Time: ~4 minutes
+No isolation → projects contaminate each other's context
+Total: ~220K tokens in one bloated window
 ```
 
 ### The Solution (After DOCKET)
 
 ```
-Engineer: "Fix the login bug"
+Engineer: "Fix the login bug"   (to the <project> pod's Lead)
          ↓
-Manager: Reads SNAPSHOT.md (2K tokens)
-       → Creates compressed brief (500 tokens)
+Lead: Owns this pod's context/memory + human comms
+    → Reads this project's SNAPSHOT.md (2K tokens)
+    → Decomposes the work, dispatches to the Implementer
+    → NEVER edits code
          ↓
-Programmer: Reads brief ONLY (500 tokens)
-           → Reads target file (1K tokens)
+Implementer: Runs INSIDE the project workspace
+           → Reads the project files it needs (full read/write)
            → Implements fix
            ↓
-Reviewer: Reads diff + brief (2K tokens)
+Reviewer (optional): Read-only veto on the diff
         → Runs 6-point security checklist
         → Approves
         ↓
-Tester: Reads reproduction steps (500 tokens)
-       → Validates behavior
+Tester (optional): Runs reproduction steps (behaviour only)
        → PASS
        ↓
-Total: ~6.5K tokens
-Time: ~2 minutes
-Savings: ~97% fewer tokens, ~50% time
+Each project's work stays inside its own pod + workspace, so
+one project's context never bleeds into another's.
 ```
 
 ---
 
 ## Core Principles
 
-### 1. Context Compression
+### 1. Per-Pod Context Isolation
 
-**Never pass more context than needed.**
+**Each project's context stays inside its own pod.**
 
-- Manager reads SNAPSHOT.md (2K), not full history (100K)
-- Manager compresses to <500 tokens before delegating
-- Programmer reads brief only, not investigation
-- Reviewer reads diff only, not entire file
-- Tester reads reproduction steps only, not code
+- Every pod has its own workspace and per-pod session key
+- The Lead reads this pod's SNAPSHOT.md (2K), not a shared cross-project history (100K)
+- The Implementer runs inside the project workspace, reading only the files it touches
+- The Reviewer reads the diff only, not the entire file
+- The Tester reads reproduction steps only, not code
 
-**Result:** 50-98% token reduction
+**Result:** no project's context bleeds into another's, so per-agent token counts stay scoped to one project
 
-### 2. Short-Circuit Resolution
+### 2. Lean Pods by Default
 
-**Don't spawn agents when you can answer directly.**
+**Don't add workers you don't need.**
 
-Manager decision tree:
+`docket add <project>` provisions a lean **Lead + Implementer** pod:
 ```
-Query type          Action              Token cost
+Pod size            Members                    When
 ─────────────────────────────────────────────────────
-Memory/status       Self-resolve        ~2K (98% saved)
-Simple change       programmer only     ~5K (90% saved)
-Bug (known cause)   programmer          ~20K (80% saved)
-                    → reviewer → tester
-Bug (unknown)       Full pipeline       ~210K (21% saved)
-                    (all specialists)
+Lean (default)      Lead + Implementer         most projects
+Full (--pod full)   + Reviewer + Tester        higher-stakes code
+Custom (--with ...) Lead + Implementer + any   pick the gates you want
 ```
 
-**Result:** 50% of queries answered instantly
+**Result:** each project runs the smallest pod that does the job
 
 ### 3. Linear Pipeline
 
-**Each agent has ONE job. No overlapping work.**
+**Each role has ONE job. No overlapping work.**
 
 ```
-Programmer → Reviewer → Tester
-(implement)  (security) (validate)
+Implementer → Reviewer → Tester
+(implement)   (veto)     (validate)
 ```
 
 NOT:
 ```
-Programmer ──┐
-Reviewer  ───┼→ All work in parallel
-Tester    ───┘   (wasteful, redundant)
+Implementer ──┐
+Reviewer   ───┼→ All work in parallel
+Tester     ───┘   (wasteful, redundant)
 ```
 
 **Result:** No wasted parallel work
@@ -126,8 +121,8 @@ Tester    ───┘   (wasteful, redundant)
 **Tester validates behavior, not code.**
 
 Tester does NOT read:
-- Programmer's implementation
-- Reviewer's analysis
+- The Implementer's implementation
+- The Reviewer's analysis
 - How the fix was done
 
 Tester ONLY reads:
@@ -143,115 +138,96 @@ Tester ONLY reads:
 
 ### Token Usage (Before vs After)
 
-| Scenario | Before DOCKET | After DOCKET | Savings |
-|----------|------------|------------|---------|
-| Memory query | ~100K tokens | ~2K tokens | **98%** |
-| Status check | ~50K tokens | ~2K tokens | **96%** |
-| Simple CSS change | ~200K tokens | ~5K tokens | **97%** |
-| Bug fix (known cause) | ~500K tokens | ~50K tokens | **90%** |
-| Bug fix (full pipeline) | ~1M tokens | ~210K tokens | **79%** |
-| Feature (multi-file) | ~800K tokens | ~180K tokens | **77%** |
+The lever DOCKET actually controls is **per-pod context isolation**. When every project
+lives in its own pod + workspace with its own session key, each agent only ever reads
+*its* project's context instead of one shared, ever-growing cross-project history.
 
-### Token Usage (Monthly)
-
-Token reduction is what compression controls and what you can measure. For dollars, read your
-**recorded** spend with `docket cost` — it depends on your models and current pricing, so we
-don't project it here.
-
-**Assumptions:**
-- 50 queries/month (status, memory)
-- 20 simple changes/month
-- 10 bug fixes/month
-
-**Before DOCKET:**
 ```
-Queries:  50 × 100K =  5.0M tokens
-Changes:  20 × 200K =  4.0M tokens
-Bugs:     10 × 1M   = 10.0M tokens
-────────────────────────────────────────
-Total:               19.0M tokens/month
+Before: every project shares one context window
+        → agents read mixed-project history (100K+ tokens) on every turn
+
+After:  each project is an isolated pod
+        → the Lead reads this pod's SNAPSHOT.md (~2K tokens)
+        → the Implementer reads only the workspace files it touches
+        → context never accumulates across projects
 ```
 
-**After DOCKET:**
-```
-Queries:  50 × 2K   =  0.1M tokens
-Changes:  20 × 5K   =  0.1M tokens
-Bugs:     10 × 210K =  2.1M tokens
-────────────────────────────────────────
-Total:                2.3M tokens/month
-```
-
-**~88% fewer tokens** — plus routine work runs on the cheap model class, so the dollar
-reduction is larger still. Check the real number with `docket cost`.
+Token reduction is what isolation controls and what you can measure. We don't quote a fixed
+percentage — the real number depends on your projects and usage. Read your **recorded** spend
+with `docket cost`; it also depends on your models and current pricing, so we don't project
+dollars here.
 
 ### Response Time
 
-| Task | Before | After | Improvement |
-|------|--------|-------|-------------|
-| Memory query | ~60s | ~3s | **20x faster** |
-| Simple change | ~3min | ~30s | **6x faster** |
-| Bug fix | ~10min | ~8min | **20% faster** |
+Isolated pods process less context per turn, so the Lead can answer status/memory queries
+quickly (it reads SNAPSHOT.md rather than a full cross-project history), while code changes
+still take as long as the Implementer needs to do the work. Measure actuals for your own
+workload rather than relying on fixed figures.
 
 ---
 
 ## Agent Roles
 
-### Manager (Atlas)
+There are two kinds of agent. **Pod roles** are project-scoped and created per project by
+`docket add <project>` (managed with `docket pod <project>`). **Org specialists** are shared
+across the whole fleet and created once by `docket install`.
 
-**Role:** Orchestrator, router, context compressor
+## Pod Roles
+
+Each project is an **isolated pod** with its own workspace and per-pod session key. A pod is a
+lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod full` or
+`--with reviewer,tester`.
+
+### Lead
+
+**Role:** Per-pod orchestrator and human interface
 
 **Capabilities:**
-- Embedded classifier logic (routes tasks)
-- Short-circuit resolution (50% of queries)
-- Context compression (<500 tokens/brief)
-- Reads SNAPSHOT.md, not full history
+- Owns this pod's context, memory, and human (Telegram) comms
+- Reads this pod's SNAPSHOT.md, not a full cross-project history
+- Decomposes work and dispatches to the pod's workers
 
 **Tools:**
 - `read` (memory files only)
-- `openclaw message send` (delegation)
+- `openclaw message send` (dispatch to pod workers)
 
 **Cannot:**
-- Edit code
+- **Edit code** (ever)
 - Run commands
 - Commit
 - Make architecture decisions alone
 
-**Model:** strong class (role policy) (needs reasoning for routing)
+**Model:** strong class (role policy) (needs reasoning for orchestration)
 
-**Cost Target:** <5K tokens/task
+### Implementer
 
-### Programmer
-
-**Role:** Code implementation specialist
+**Role:** Code implementation specialist (replaces the old global "programmer")
 
 **Capabilities:**
-- Reads compressed brief ONLY (<500 tokens)
-- Implements exact change requested
+- Runs **inside the project workspace**, with full read/write on the project
+- Reads the project files it needs directly (it is in the workspace, not handed a tiny brief)
+- Implements the requested change
 - Signals completion via DONE.md
-- Uses cheap-model agents for simple tasks
 
 **Tools:**
 - `read`, `write`, `edit`
 - `exec` (sandbox only)
 
 **Cannot:**
-- Investigate root causes (done in brief)
 - Review security (reviewer's job)
 - Run validation tests (tester's job)
 - Commit or push
 
-**Model:** Economy (simple) / Standard (complex)
+**Model:** cheap class (simple) / strong class (complex), per role policy
 
-**Cost Target:** <5K tokens (simple), <20K (complex)
-
-### Reviewer (Auditor)
+### Reviewer (optional)
 
 **Role:** Security and quality gatekeeper
 
 **Capabilities:**
+- Read-only veto on the diff (bad code doesn't proceed)
 - 6-point mandatory security checklist
-- Veto power (bad code doesn't proceed)
-- Reads diff only, not entire file
+- Reads the diff only, not the entire file
 - Verifies root cause addressed
 
 **Checklist:**
@@ -263,7 +239,7 @@ reduction is larger still. Check the real number with `docket cost`.
 6. ✓ Test coverage
 
 **Tools:**
-- `read` (diff + brief)
+- `read` (the diff)
 
 **Cannot:**
 - Fix code (only reviews)
@@ -272,9 +248,7 @@ reduction is larger still. Check the real number with `docket cost`.
 
 **Model:** strong class (role policy) (security reasoning required)
 
-**Cost Target:** <5K tokens/review
-
-### Tester (Validator)
+### Tester (optional)
 
 **Role:** Behavior-only validation specialist
 
@@ -296,7 +270,31 @@ reduction is larger still. Check the real number with `docket cost`.
 
 **Model:** cheap class (role policy) (validation is mechanical)
 
-**Cost Target:** <3K tokens/validation
+## Org Specialists
+
+Shared across all projects, created once by `docket install`. The `manager` is a cross-cutting
+coordinator and task queue — **not** a router with a classifier, and it does not compress
+prompts into briefs.
+
+### Manager
+
+**Role:** Cross-cutting coordination and the shared task queue
+
+**Capabilities:**
+- Holds the org-wide task queue (`docket team queue` / `docket team delegate`)
+- Coordinates work that spans more than one pod
+- Reads memory/snapshots, not full history
+
+**Tools:**
+- `read` (memory files only)
+- `openclaw message send`
+
+**Cannot:**
+- Edit code
+- Run commands
+- Commit
+
+**Model:** strong class (role policy)
 
 ### Knowledge
 
@@ -351,28 +349,27 @@ reduction is larger still. Check the real number with `docket cost`.
 
 ## Memory Management
 
-### Problem: Large Context Passing
+### Problem: Large Shared Context
 
 **Before DOCKET:**
 ```
-Agent reads:
-- Full conversation history: 100K tokens
+A shared agent reads:
+- Full cross-project conversation history: 100K tokens
 - All memory logs: 50K tokens
-- Investigation notes: 20K tokens
 ────────────────────────────────────
-Total: 170K tokens per task
+Total: 150K+ tokens per turn, growing across projects
 ```
 
-### Solution: SNAPSHOT.md
+### Solution: Isolated pods + SNAPSHOT.md
 
 **After DOCKET:**
 ```
-Agent reads:
-- SNAPSHOT.md: 2K tokens
-- Specific task brief: 500 tokens
-- Target file: 1K tokens
+The pod's Lead reads:
+- this project's SNAPSHOT.md: ~2K tokens
+The Implementer reads:
+- only the workspace files it touches
 ────────────────────────────────────
-Total: 3.5K tokens per task (~98% fewer tokens)
+Context stays scoped to one project's pod
 ```
 
 ### SNAPSHOT.md Contents
@@ -520,38 +517,31 @@ Standard: moderate   - Complex reasoning
 Premium:  high cost  - Exceptionally complex (rarely used)
 ```
 
-**DOCKET routes work to cheap models aggressively:**
-- Programmer (simple changes)
+**The role→model policy routes high-volume roles to the cheap model class:**
+- Implementer (simple changes)
 - Tester (validation)
 - Knowledge (pattern extraction)
 
-**Result:** routine work runs on the cheap model class with compressed context — far fewer
-tokens at a lower per-token price. (Exact dollar savings depend on your models and pricing.)
+**Result:** routine work runs on the cheap model class with isolated, project-scoped context —
+fewer tokens at a lower per-token price. (Exact dollar savings depend on your models and
+pricing — read `docket cost`.)
 
-### Context Compression Rules
+### Context Isolation Rules
 
 ```
-Manager → Programmer:
-❌ Don't send: Full history (100K), investigation (20K), brief (2K)
-✅ Do send: Brief only (500 tokens)
+Each pod is sealed:
+❌ No agent reads another project's history or memory
+✅ The Lead reads this pod's SNAPSHOT.md; the Implementer reads its own workspace
 
-Savings: 122K → 0.5K = 99.6% reduction
+Per-pod session keys keep context from accumulating across projects.
 ```
 
-### Short-Circuit Examples
+### Why a status query stays cheap
 
-**Memory Query:**
 ```
-Before: Manager → spawns programmer → 50K tokens
-After: Manager reads SNAPSHOT.md → 2K tokens
-Savings: 96%
-```
-
-**Status Check:**
-```
-Before: Manager → spawns all specialists → 100K tokens
-After: Manager reads HEARTBEAT.md → 1K tokens
-Savings: 99%
+Status / memory query:
+The Lead reads this pod's SNAPSHOT.md / HEARTBEAT.md (~1-2K tokens)
+instead of a full cross-project history — no worker is spawned.
 ```
 
 ---
@@ -561,12 +551,13 @@ Savings: 99%
 ### Validated Components ✅
 
 ```
-Manager:     ✓ DOCKET-optimized (context compression, routing)
-Programmer:  ✓ DOCKET-optimized (brief-only reading)
-Reviewer:    ✓ DOCKET-optimized (6-point checklist)
-Tester:      ✓ DOCKET-optimized (behavior-only validation)
-Knowledge:   ✓ Completed (tools + memory management)
-Security:    ✓ Completed (HITL gates + threat modeling)
+Lead:        ✓ Per-pod orchestrator (owns context/memory, never edits code)
+Implementer: ✓ Runs in the project workspace (full read/write)
+Reviewer:    ✓ Read-only veto (6-point checklist)
+Tester:      ✓ Behavior-only validation
+Knowledge:   ✓ Org specialist (tools + memory management)
+Security:    ✓ Org specialist (HITL gates + threat modeling)
+Manager:     ✓ Org specialist (cross-cutting coordination + task queue)
 ```
 
 ### Features Implemented ✅
@@ -575,7 +566,7 @@ Security:    ✓ Completed (HITL gates + threat modeling)
 - [x] Team management (`docket team`)
 - [x] SNAPSHOT.md generation
 - [x] Memory indexing & search
-- [x] Context compression protocols
+- [x] Per-pod context isolation (workspace + session key)
 - [x] Security checklist (6 points)
 - [x] Behavior-only validation
 - [x] Bug-fix pipeline template (Lobster)
@@ -597,65 +588,64 @@ Security:    ✓ Completed (HITL gates + threat modeling)
 
 ### Agent Communication
 
-**Before DOCKET (wasteful):**
+**Before DOCKET (one shared context):**
 ```
-Manager → Programmer:
+A single agent (or shared pool) drags every project's history
+into one window on every turn:
 {
-  "conversation_history": [...100K tokens...],
-  "investigation": [...20K tokens...],
-  "brief": {...2K tokens...}
+  "conversation_history": [...100K tokens, mixed projects...],
+  ...
 }
 ```
 
-**After DOCKET (efficient):**
+**After DOCKET (isolated pod):**
 ```
-Manager writes: memory/tasks/T001/BRIEF.md
+Lead writes: memory/tasks/T001/TASK.md
 ─────────────────────────────────────────────
-TASK: Fix null pointer exception
+TASK: Fix null pointer exception in the login handler
 FILE: src/auth/login.js
-LINE: 42
-CHANGE: Add null check before token.verify()
 ACCEPTANCE:
   • Login succeeds with valid token
   • Returns 401 for null token
 ─────────────────────────────────────────────
 
-Manager → Programmer (Telegram):
-"Read brief: memory/tasks/T001/BRIEF.md"
+Lead → Implementer (Telegram): "Pick up memory/tasks/T001/TASK.md"
 
-Programmer reads: 500 tokens
+The Implementer is already in the project workspace, so it opens
+login.js and whatever else it needs directly — it is NOT limited
+to a tiny brief.
 ```
 
 ### Completion Signals
 
-All agents signal completion via memory files:
+All pod roles signal completion via memory files:
 
 ```
 memory/tasks/T001/
-├── BRIEF.md          # Manager creates
-├── DONE.md           # Programmer signals
+├── TASK.md           # Lead creates
+├── DONE.md           # Implementer signals
 ├── APPROVED.md       # Reviewer signals (or REJECTED.md)
 └── VALIDATED.md      # Tester signals (or FAILED.md)
 ```
 
-**Polling:** Manager checks every 30-60s for completion files
+**Polling:** the Lead checks every 30-60s for completion files
 
 ### Retry Logic
 
 ```
-Programmer → DONE.md
+Implementer → DONE.md
            ↓
 Reviewer → APPROVED? ──Yes──→ Tester
          ↓
         No → REJECTED.md
            ↓
-Programmer (retry 1/3)
+Implementer (retry 1/3)
            ↓
 Reviewer → APPROVED? ──Yes──→ Tester
          ↓
         No → REJECTED.md
            ↓
-Programmer (retry 2/3)
+Implementer (retry 2/3)
            ↓
 Reviewer → APPROVED? ──Yes──→ Tester
          ↓
@@ -671,26 +661,26 @@ Reviewer → APPROVED? ──Yes──→ Tester
 ### Before DOCKET
 
 **Problems:**
-- ❌ Agents read 100K+ tokens of history
-- ❌ Context passed redundantly between agents
+- ❌ Agents read 100K+ tokens of mixed-project history
+- ❌ One shared context — projects contaminate each other
 - ❌ No security gate
 - ❌ Tester read code (biased validation)
-- ❌ Manager spawned agents for trivial queries
-- ❌ Overlapping work between specialists
+- ❌ No clean split between orchestration and code-writing
+- ❌ Overlapping work between roles
 
-**Token usage:** ~19M tokens/month for active project (see breakdown above)
+**Token usage:** context grows without bound across projects
 
 ### After DOCKET
 
 **Solutions:**
-- ✅ Agents read SNAPSHOT.md (2K tokens)
-- ✅ Context compressed to <500 tokens
-- ✅ Mandatory 6-point security checklist
+- ✅ Each project is an isolated pod (own workspace + session key)
+- ✅ The Lead reads this pod's SNAPSHOT.md (~2K tokens); the Implementer reads its own workspace
+- ✅ Mandatory 6-point security checklist (read-only reviewer veto)
 - ✅ Behavior-only validation (objective)
-- ✅ Short-circuit 50% of queries
+- ✅ Lead orchestrates, Implementer codes — never the same agent
 - ✅ Linear pipeline (no overlap)
 
-**Token usage:** ~2.3M tokens/month for active project (~88% fewer)
+**Token usage:** scoped per pod — measure it with `docket cost`
 
 ---
 
@@ -698,41 +688,41 @@ Reviewer → APPROVED? ──Yes──→ Tester
 
 ### Q: What does DOCKET stand for?
 
-**A:** Routing, Autonomy, Context Compression, Knowledge
-- **R**outing: Classifier logic routes tasks efficiently
-- **A**utonomy: Agents work independently with clear roles
-- **C**ontext: Compression reduces token usage by 50-98%
+**A:** Roles, Autonomy, Context isolation, Knowledge
+- **R**oles: Clean split — Lead orchestrates, Implementer codes, Reviewer/Tester gate
+- **A**utonomy: Agents work independently with clear responsibilities
+- **C**ontext: Per-pod isolation keeps each project's context scoped to its own pod
 - **K**nowledge: Memory management enables fast access
 
 ### Q: Is this the same as the original DOCKET.md proposal?
 
 **A:** Similar spirit, adapted for OpenClaw's capabilities:
-- ✅ Kept: Agent roles, context compression, security focus
+- ✅ Kept: Distinct agent roles, context discipline, security focus
 - ✅ Changed: Communication (Telegram + memory files, not RPC)
-- ✅ Changed: Classifier (embedded in Manager, not separate agent)
+- ✅ Changed: Orchestration is a per-pod Lead, not a global router with a classifier
 - ✅ Changed: Security (separate specialist, not merged into Reviewer)
 
 See [Comparison Table](DOCKET-ANALYSIS.md#comparison-docketmd-vs-current-implementation) for details.
 
 ### Q: Do I need to change how I use docket?
 
-**A:** No. Just run `docket team upgrade` once. Everything else works the same.
+**A:** No. `docket install` creates the org specialists and `docket add <project>`
+provisions each project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
-**A:** No. The upgrade:
-- Backs up existing SOUL.md files
-- Only modifies specialist agents (not project agents)
-- Can be reverted by restoring backups
+**A:** No. Templates are generated per-pod by `docket add` and refreshed by
+`docket maintain <id> rebuild`:
+- Org specialists (manager, knowledge, security) are created once by `docket install`
+- Each project pod (lead + implementer, optionally reviewer/tester) is isolated
+- Project agents are never touched by another project's setup
 
 ### Q: How much will I save?
 
-**A:** The reliable lever is **token reduction**, which depends on usage (figures from our
-examples):
-- Status queries: ~98% fewer tokens
-- Simple changes: ~97% fewer tokens
-- Bug fixes: ~79% fewer tokens
-- Overall: ~80-90% fewer tokens typical
+**A:** The reliable lever is **token reduction from per-pod context isolation** — each agent
+reads only its own project's context instead of one shared, ever-growing cross-project history.
+How much that saves depends entirely on your projects and usage, so we don't quote a fixed
+percentage.
 
 Dollar savings track tokens *and* which models you run, so they vary with current pricing.
 docket reports your **recorded** spend (`docket cost`) rather than promising a percentage —
@@ -742,11 +732,11 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ## Next Steps
 
-1. **If not installed:** `docket install` (creates specialists)
-2. **Upgrade to DOCKET:** `docket team upgrade` (applies templates)
+1. **If not installed:** `docket install` (creates org specialists)
+2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
 3. **Create snapshots:** `docket memory snapshot <project>` (for all projects)
 4. **Test workflow:** Assign bug fix, observe token usage
-5. **Monitor savings:** `docket cost` (check reduction)
+5. **Monitor spend:** `docket cost` (recorded spend)
 
 ---
 

@@ -578,8 +578,9 @@ Total: 500 tokens
 # Check all projects
 docket list
 
-# Check for stalled tasks
-docket team status
+# Check specialists + pods and their health
+docket list
+docket doctor
 
 # Create snapshots (if not recent)
 for project in mywebsite mobile-app; do
@@ -825,14 +826,15 @@ actual spend with `docket cost`.
 
 ### Specialists Not Receiving Tasks?
 
-1. **Check if specialists exist:**
+1. **Check that specialists and pods exist and are healthy:**
    ```bash
-   docket team check
+   docket list
+   docket doctor
    ```
 
-2. **Verify DOCKET optimization:**
+2. **Inspect a project's pod:**
    ```bash
-   docket team status
+   docket pod mywebsite
    ```
 
 3. **Check delegation logic in Project Agent:**

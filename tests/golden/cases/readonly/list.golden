@@ -22,14 +22,11 @@ PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
 
   Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) docket wire <id>
 
-SPECIALIST AGENTS (the team - shared across all projects)
+ORG SPECIALISTS (shared across all projects)
 
   These work across ALL your projects. Don't wire them to individual groups.
 
   ✓ manager      claude-haiku-4-5             (policy) — high-volume coordination, shallow reasoning
-  ✓ programmer   claude-sonnet-4-6            (policy) — code generation
-  ✓ reviewer     claude-haiku-4-5             (policy) — triage and review, low reasoning density
-  ✓ tester       claude-haiku-4-5             (policy) — run tests and report
   ✓ knowledge    claude-haiku-4-5             (policy) — retrieval and summarization
   ✓ security     claude-sonnet-4-6            (policy) — audit depth
 
