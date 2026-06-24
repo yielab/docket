@@ -24,10 +24,25 @@ This specification covers:
 It does NOT cover the OpenClaw daemon's own configuration schema (`openclaw.json`), which is
 owned by the daemon; docket mirrors only `synced` fields into it.
 
+## Structure
+
+`.docket-meta.json` is a single **flat JSON object** stored at the root of each agent's workspace:
+
+- Project / pod agents: `~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json`
+  (pod members use the compound id `<project>-<role>`, e.g. `myapp-implementer`).
+- Org specialists: `~/.openclaw/workspaces/<role>/.docket-meta.json`.
+
+Every value is a JSON scalar (string, number, or boolean) — there are no nested objects or
+arrays. The field set is **closed**: it is the `AgentMeta` Pydantic model in
+`src/docket/core/models.py`, which validates the whole record on every write through
+`edges/store.py`. The file is docket's source of truth for an agent; the daemon's `openclaw.json`
+mirrors only the `synced` fields (see Sync contract).
+
 ## Schema
 
-The field table below is the authoritative source. The same set is declared in
-`lib/core/schema.sh` (`AGENT_SCHEMA`); a unit test asserts that both lists are identical.
+The field table below is the authoritative source. The same set is declared as the `AgentMeta`
+model in `src/docket/core/models.py`; the model validates every write, so a field that drifts from
+this table fails type-checking or the test suite.
 
 **Sync classes:**
 

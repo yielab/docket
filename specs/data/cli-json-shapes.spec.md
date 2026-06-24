@@ -1,22 +1,36 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Complete
-**Last Updated**: 2026-06-22
+**Last Updated**: 2026-06-24
 
-## Overview
+## Purpose
 
-Commands that support `--json` emit bare JSON objects or arrays — **no envelope wrapper**.
-There is no `{success, data, error, version}` outer object; consumers parse the returned
-object directly. Key names use camelCase throughout.
+Define the exact JSON shapes docket emits when a read command is run with `--json`, so that
+scripts and dashboards can consume docket output as a stable contract. The shapes are produced by
+the CLI layer (`src/docket/cli/`) and the serve loop (`src/docket/serve.py`) and are verified
+against that code.
 
-All shapes in this document are verified against the code (see `lib/commands/`).
+## Scope
 
----
+Covers every command that supports `--json` output: `list`, `info`, `cost` (and
+`cost --history`), `doctor`, `snapshot`, and the `serve` HTTP endpoints. It does **not** cover
+human-readable (Rich) output, nor the OpenClaw daemon's own `openclaw.json` format (owned by the
+daemon; see the Anti-Corruption Layer).
 
-## `docket list --json`
+## Structure
 
-File: `lib/commands/list.sh`
+All `--json` output is a **bare JSON object or array — there is no envelope wrapper.** There is no
+`{success, data, error, version}` outer object; consumers parse the returned object directly. Two
+structural rules hold everywhere:
+
+- **Bare values.** A command returns its object/array directly (e.g. `{"agents": [...]}`), never
+  wrapped in a status envelope.
+- **camelCase keys.** Every key is camelCase (`costUsd`, not `cost_usd`) — see Validation.
+
+## Schema
+
+### `docket list --json`
 
 ```json
 {
@@ -24,12 +38,16 @@ File: `lib/commands/list.sh`
     {
       "id":          "string",
       "kind":        "project | specialist",
+      "scope":       "org | project",
+      "role":        "string (pod role / specialist role; may be empty)",
+      "pod":         "string (project this member belongs to; empty for non-pod agents)",
       "name":        "string",
       "type":        "repo | task",
       "model":       "string (provider/model-id)",
       "modelSource": "policy | pinned",
-      "codebase":    "string (absolute path, may be empty)",
       "stack":       "string (comma-separated, may be empty)",
+      "codebase":    "string (absolute path, may be empty)",
+      "budgetUsd":   "number | \"\"",
       "telegram":    "string (peer id) | null",
       "registered":  true
     }
@@ -37,11 +55,7 @@ File: `lib/commands/list.sh`
 }
 ```
 
----
-
-## `docket info <id> --json`
-
-File: `lib/commands/info.sh`
+### `docket info <id> --json`
 
 ```json
 {
@@ -61,11 +75,7 @@ File: `lib/commands/info.sh`
 }
 ```
 
----
-
-## `docket cost --json`
-
-File: `lib/commands/cost.sh`
+### `docket cost --json`
 
 ```json
 {
@@ -101,11 +111,7 @@ File: `lib/commands/cost.sh`
 }
 ```
 
----
-
-## `docket doctor --json`
-
-File: `lib/commands/doctor.sh`
+### `docket doctor --json`
 
 ```json
 {
@@ -130,11 +136,7 @@ File: `lib/commands/doctor.sh`
 }
 ```
 
----
-
-## `docket snapshot` (full output)
-
-File: `lib/commands/snapshot.sh`
+### `docket snapshot` (full output)
 
 The snapshot command writes to a file (or stdout). The outer shape:
 
@@ -165,11 +167,7 @@ Each agent object in the snapshot:
 }
 ```
 
----
-
-## `docket serve` HTTP endpoints
-
-File: `lib/commands/serve.sh`
+### `docket serve` HTTP endpoints
 
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
@@ -186,9 +184,7 @@ docket_cost_usd_total <F>
 docket_agent_cost_usd{id="<id>"} <F>
 ```
 
----
-
-## Key naming rules
+## Validation
 
 All JSON output from docket uses **camelCase**:
 
@@ -199,16 +195,48 @@ All JSON output from docket uses **camelCase**:
 - `modelSource` (not `model_source`)
 - `lastActive` (not `last_active`)
 
-A test in `tests/unit/test-helpers.sh` asserts that no `--json` output contains snake_case
-keys (underscore-separated) in its top-level or agent-level fields.
+The Python suite (`tests/python/`, e.g. `test_m3_commands.py`, `test_m5_serve.py`) asserts each
+shape field-by-field, so a shape change here that isn't reflected in code fails CI.
 
----
+## Examples
+
+`docket list --json` for a project pod (lean Lead + Implementer):
+
+```json
+{
+  "agents": [
+    {
+      "id": "myapp-lead", "kind": "project", "scope": "project", "role": "lead",
+      "pod": "myapp", "name": "myapp-lead", "type": "repo",
+      "model": "anthropic/claude-haiku-4-5", "modelSource": "policy",
+      "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
+      "telegram": null, "registered": true
+    },
+    {
+      "id": "myapp-implementer", "kind": "project", "scope": "project", "role": "implementer",
+      "pod": "myapp", "name": "myapp-implementer", "type": "repo",
+      "model": "anthropic/claude-sonnet-4-6", "modelSource": "policy",
+      "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
+      "telegram": null, "registered": true
+    }
+  ]
+}
+```
 
 ## Changelog
 
+### Version 1.1.0 (2026-06-24)
+
+- Restructured to the canonical data-spec sections (Purpose, Scope, Structure, Schema, Validation,
+  Examples, Changelog) so it validates under `scripts/validate-specs.sh`.
+- Updated `list --json` to the current shape: added `scope`, `role`, `pod` (Phase 10 pods) and
+  `budgetUsd`.
+- Re-pointed source references from the retired Bash `lib/commands/` to the Python
+  `src/docket/cli/` + `src/docket/serve.py`, and the contract test from the old shell helper to the
+  pytest suite.
+
 ### Version 1.0.0 (2026-06-22)
 
-- CDD-4: First specification of actual `--json` output shapes across all read commands
+- CDD-4: First specification of actual `--json` output shapes across all read commands.
 - Replaces the phantom `{success, data, error, version}` envelope that was documented in
-  `cli-interface.spec.md` but never emitted by any command (D-10: document reality)
-- Verified against `lib/commands/` source
+  `cli-interface.spec.md` but never emitted by any command (D-10: document reality).
