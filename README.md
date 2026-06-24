@@ -24,13 +24,13 @@
 Running one OpenClaw agent is easy. Running a fleet across several projects surfaces three
 problems OpenClaw doesn't solve for you:
 
-- **A lone agent isn't a team.** Building *enterprise-grade* software with agents needs the same
-  separation of duties a human team has — someone who plans and talks to people, someone who
+- **A lone agent isn't a team.** Shipping non-trivial software with agents benefits from the
+  same separation of duties a human team has — someone who plans and talks to people, someone who
   writes the code, someone who reviews it, someone who tests it. docket makes that structure
   first-class: each project is an isolated **pod** (Lead plans, Implementer writes,
   Reviewer/Tester gate) and a few **org specialists** are shared across the fleet. That
-  separation of duties is what makes agent work enterprise-grade — see
-  **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
+  separation of duties is what turns "an agent changed the code" into "a change was reviewed
+  before it landed" — see **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
 - **Per-project provisioning is manual and repetitive.** Each project needs its own agent with
   the right workspace, stack detection, memory, and scope. docket bootstraps a properly
   configured project pod in one command (`docket add`, or `docket add --from agents.yaml` for
@@ -190,9 +190,8 @@ comparisons as directional.
 **Agent teams are the heart of docket** — everything else (isolation, cost guardrails, health
 checks) exists to keep *teams of agents* running reliably across many projects. The separation of
 duties — **Lead plans, Implementer writes, Reviewer/Tester gate** — is what turns "an agent
-changed the code" into "a change was reviewed and validated before it landed," and that line is
-exactly what makes agent work enterprise-grade. The full model is in
-**[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
+changed the code" into "a change was reviewed and validated before it landed." The full model is
+in **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
 
 - **Project pod** — each project is an isolated pod of project-scoped agents (`docket add`
   provisions a lean **Lead + Implementer** by default; add Reviewer/Tester/extra Implementers

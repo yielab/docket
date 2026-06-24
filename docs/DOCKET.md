@@ -806,4 +806,4 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 ---
 
 **Date:** 2026-03-06
-**Status:** ✅ Complete & Production-Ready
+**Status:** Implemented; in active use
