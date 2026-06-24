@@ -844,6 +844,32 @@ def register_agent_cli(agent_id: str, workspace: str, model: str) -> tuple[bool,
     return (True, "")
 
 
+def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
+    """Delete an agent via `openclaw agents delete <id> --force` (pod teardown, AA-3).
+
+    The daemon owns agent lifecycle (registration + workspace/state pruning), so
+    this lives behind the ACL. Returns (ok, message): ok is False with a reason
+    when the CLI is missing or the command fails.
+    """
+    import shutil as _shutil
+    import subprocess as _sp
+
+    if not _shutil.which("openclaw"):
+        return (False, "openclaw CLI not found")
+    try:
+        res = _sp.run(
+            ["openclaw", "agents", "delete", agent_id, "--force"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, _sp.TimeoutExpired) as ex:
+        return (False, str(ex))
+    if res.returncode != 0:
+        return (False, (res.stderr or res.stdout or f"exit {res.returncode}").strip())
+    return (True, "")
+
+
 def harden_config_perms() -> list[str]:
     """chmod 600 openclaw.json / secrets.json if group/other-accessible (G2).
 

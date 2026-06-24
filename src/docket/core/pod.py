@@ -81,6 +81,22 @@ def session_key(project: str, project_key: str = "default") -> str:
     return f"agent:{project}:{project_key}"
 
 
+def members_of(all_agent_ids: list[str], project: str) -> list[tuple[str, str, int]]:
+    """Pod members among ``all_agent_ids``, as ``(member_id, role, index)``.
+
+    Sorted by role order (lead first) then index, so a pod always lists its Lead
+    before its workers. Ids that don't belong to the pod are ignored.
+    """
+    found: list[tuple[str, str, int]] = []
+    for mid in all_agent_ids:
+        parsed = parse_member_id(mid, project)
+        if parsed is not None:
+            found.append((mid, parsed[0], parsed[1]))
+    role_rank = {role: i for i, role in enumerate(POD_ROLES)}
+    found.sort(key=lambda t: (role_rank.get(t[1], len(POD_ROLES)), t[2]))
+    return found
+
+
 def next_index(existing_member_ids: list[str], project: str, role: str) -> int:
     """Lowest free 1-based index for a new member of ``role`` in the pod."""
     taken = {
