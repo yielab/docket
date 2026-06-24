@@ -331,72 +331,60 @@ docket scope myproject reset
 
 ### team
 
-Manage the Manager agent and specialist team.
+The org manager's shared task queue. `docket team` delegates work to the Manager
+agent and tracks it through to completion.
+
+> To see specialist + pod health, use `docket list` (shows org specialists and pods
+> with scope) and `docket doctor` (health check). To inspect a project's pod and its
+> roles, use `docket pod <project>`.
 
 **Syntax:**
 ```bash
-docket team status      # View team state and health
-docket team init        # Create Manager agent
-docket team check       # Health check for specialists
+docket team delegate "<task>" [--priority high]   # Queue a task for the manager
+docket team queue [--all]                          # List pending (or all) tasks
+docket team start <task-id>                         # Mark a task in progress
+docket team done <task-id>                           # Mark a task complete
+docket team cancel <task-id>                         # Cancel a task
 ```
 
 **Subcommands:**
 
-#### status
-Display team coordination state.
+#### delegate
+Queue a task for the Manager agent.
 
 ```bash
-docket team status
+docket team delegate "Fix the login bug" --priority high
 
 # Output:
-# Team Coordination Status
-# ────────────────────────────────────────
-# Manager:         ✓ Running (agent:manager:orchestrator)
-# Specialists:
-#   programmer     ✓ Active
-#   reviewer       ✓ Active
-#   tester         ✓ Active
-#   knowledge      ✓ Active
-#   security       ✓ Active
-# Task List:       3 pending, 2 in progress, 5 completed
+# ✓ Queued task T-014 (priority: high)
 ```
 
-#### init
-Create the Manager agent.
+#### queue
+List outstanding tasks (add `--all` to include completed/cancelled).
 
 ```bash
-docket team init
+docket team queue
 
 # Output:
-# → Creating Manager agent...
-# ✓ Manager workspace created
-# ✓ Delegation rules configured
-# ✓ TASK_LIST.json initialized
-# ✓ Manager agent ready
+# T-014  high    Fix the login bug
+# T-013  normal  Update API docs
 ```
 
-#### check
-Verify specialist agents exist and are healthy.
+#### start / done / cancel
+Transition a queued task.
 
 ```bash
-docket team check
-
-# Output:
-# → Checking specialist agents...
-# ✓ programmer - OK
-# ✓ reviewer - OK
-# ⚠ tester - Missing HEARTBEAT.md
-# ✓ knowledge - OK
-# ✓ security - OK
+docket team start T-014    # → in progress
+docket team done T-014     # → complete
+docket team cancel T-013   # → cancelled
 ```
 
 **Aliases:** None
 
 **Notes:**
-- Manager lives at `~/.openclaw/workspaces/manager/`
-- Uses TASK_LIST.json for coordination
+- Manager lives at `~/.openclaw/workspaces/manager/` and owns `TASK_LIST.json`
 - Manager cannot edit code (delegation mode only)
-- Specialists run on the role→model policy (cheap class for manager/reviewer/tester/knowledge, strong class for programmer/security)
+- The manager runs on the role→model policy (cheap class)
 
 ---
 

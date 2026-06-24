@@ -16,7 +16,8 @@ _docket() {
     'scope:Manage session scope keys'
     'profile:Pin/unpin an agent model'
     'keys:Manage API keys'
-    'team:Coordinate specialist agents'
+    'pod:Inspect/manage a project pod'
+    'team:Org manager task queue'
     'workflow:Lobster pipelines'
     'logs:View memory + gateway logs'
     'edit:Open workspace files in $EDITOR'
@@ -55,7 +56,8 @@ _docket() {
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
-    team)            compadd status delegate queue done ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove ;;
+    team)            compadd delegate queue start done cancel ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd set preset reset ;;

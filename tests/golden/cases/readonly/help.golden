@@ -3,9 +3,12 @@ EXIT:0
 docket — OpenClaw project manager
 
 AGENT TYPES
-  Specialist Agents   Created by 'docket install' — shared team members
-                        → programmer, reviewer, tester, knowledge, security, manager
+  Org Specialists     Created by 'docket install' — shared across all projects
+                        → manager, knowledge, security
                         → Work across ALL projects (don't create/delete manually)
+  Project Pods        Created by 'docket add' — one isolated pod per project
+                        → lead + implementer (+ optional reviewer, tester)
+                        → Manage with 'docket pod <project>'
 
   Project Agents      Created by 'docket add' — one per project/codebase
                         → Each has its own workspace, memory, and Telegram group
@@ -71,12 +74,9 @@ OBSERVABILITY (Phase 8)
   approve  <token>   Grant a pending HITL approval
   deny     <token>   Deny a pending HITL approval
 
-TEAM & WORKFLOWS
-  team status        Specialist agent health and DOCKET status
-  team upgrade       Upgrade specialists to current templates
-  team roles         Show agent roles
-  team check         Verify all specialists exist
-  team delegate      Queue a task for the manager agent
+PODS, QUEUE & WORKFLOWS
+  pod <project>      Inspect/manage a project pod (add/remove members)
+  team delegate      Queue a task for the org manager agent
   team queue         Show pending manager tasks
   team done          Mark a task as complete
   workflow [id]      Manage Lobster YAML pipelines

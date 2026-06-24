@@ -39,9 +39,12 @@ def run_help() -> int:
 {B}docket — OpenClaw project manager{R}
 
 {B}AGENT TYPES{R}
-  {C}Specialist Agents{R}   Created by 'docket install' — shared team members
-                        → programmer, reviewer, tester, knowledge, security, manager
+  {C}Org Specialists{R}     Created by 'docket install' — shared across all projects
+                        → manager, knowledge, security
                         → Work across ALL projects (don't create/delete manually)
+  {C}Project Pods{R}        Created by 'docket add' — one isolated pod per project
+                        → lead + implementer (+ optional reviewer, tester)
+                        → Manage with 'docket pod <project>'
 
   {C}Project Agents{R}      Created by 'docket add' — one per project/codebase
                         → Each has its own workspace, memory, and Telegram group
@@ -107,12 +110,9 @@ def run_help() -> int:
   {G}approve{R}  <token>   Grant a pending HITL approval
   {G}deny{R}     <token>   Deny a pending HITL approval
 
-{B}TEAM & WORKFLOWS{R}
-  {G}team status{R}        Specialist agent health and DOCKET status
-  {G}team upgrade{R}       Upgrade specialists to current templates
-  {G}team roles{R}         Show agent roles
-  {G}team check{R}         Verify all specialists exist
-  {G}team delegate{R}      Queue a task for the manager agent
+{B}PODS, QUEUE & WORKFLOWS{R}
+  {G}pod{R} <project>      Inspect/manage a project pod (add/remove members)
+  {G}team delegate{R}      Queue a task for the org manager agent
   {G}team queue{R}         Show pending manager tasks
   {G}team done{R}          Mark a task as complete
   {G}workflow{R} [id]      Manage Lobster YAML pipelines

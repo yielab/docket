@@ -56,43 +56,6 @@ def _setup_bare(tmp_path: Path) -> Path:
     return oc_dir
 
 
-def _setup_specialists(
-    tmp_path: Path,
-    roles: list[str] | None = None,
-    *,
-    with_soul: bool = True,
-    docket_optimized: bool = False,
-) -> Path:
-    """
-    Create specialist workspaces under ~/.openclaw/workspaces/<role>/.
-    If `docket_optimized`, the SOUL.md contains a DOCKET keyword.
-    """
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir(exist_ok=True)
-    all_roles = roles or ["manager", "programmer", "reviewer", "tester", "knowledge", "security"]
-    oc_config: dict[str, Any] = {
-        "agents": {
-            "defaults": {"model": ""},
-            "list": [{"id": r, "model": "", "metadata": {}} for r in all_roles],
-        },
-        "bindings": [],
-        "channels": {},
-        "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-    }
-    (oc_dir / "openclaw.json").write_text(json.dumps(oc_config))
-    ws_root = oc_dir / "workspaces"
-    for role in all_roles:
-        ws = ws_root / role
-        ws.mkdir(parents=True, exist_ok=True)
-        (ws / ".docket-meta.json").write_text(json.dumps({"kind": "specialist", "name": role}))
-        if with_soul:
-            soul_text = (
-                "# DOCKET Architecture\n# role soul\n" if docket_optimized else "# role soul\n"
-            )
-            (ws / "SOUL.md").write_text(soul_text)
-    return oc_dir
-
-
 def _setup_manager_with_tasks(
     tmp_path: Path,
     tasks: list[dict[str, Any]] | None = None,
@@ -104,74 +67,6 @@ def _setup_manager_with_tasks(
     task_data: dict[str, Any] = {"tasks": tasks or []}
     (mgr_ws / "TASK_LIST.json").write_text(json.dumps(task_data, indent=2))
     return oc_dir
-
-
-# ---------------------------------------------------------------------------
-# docket team status
-# ---------------------------------------------------------------------------
-
-
-class TestCmdTeamStatus:
-    def test_shows_specialist_grid(self, tmp_path: Path) -> None:
-        oc_dir = _setup_specialists(tmp_path, docket_optimized=True)
-        rc, out, _ = _run(["team", "status"], _make_env(oc_dir))
-        assert rc == 0
-        assert "Specialist Team Status" in out
-        assert "manager" in out
-        assert "programmer" in out
-
-    def test_marks_not_installed_when_no_workspace(self, tmp_path: Path) -> None:
-        oc_dir = _setup_bare(tmp_path)
-        rc, out, _ = _run(["team", "status"], _make_env(oc_dir))
-        assert rc == 0
-        assert "Not installed" in out
-
-    def test_marks_missing_soul_md(self, tmp_path: Path) -> None:
-        oc_dir = _setup_specialists(tmp_path, with_soul=False)
-        rc, out, _ = _run(["team", "status"], _make_env(oc_dir))
-        assert rc == 0
-        assert "Missing SOUL.md" in out
-
-    def test_standard_upgrade_hint(self, tmp_path: Path) -> None:
-        oc_dir = _setup_specialists(tmp_path, docket_optimized=False)
-        rc, out, _ = _run(["team", "status"], _make_env(oc_dir))
-        assert rc == 0
-        assert "upgrade" in out.lower()
-
-
-# ---------------------------------------------------------------------------
-# docket team check
-# ---------------------------------------------------------------------------
-
-
-class TestCmdTeamCheck:
-    def test_all_healthy(self, tmp_path: Path) -> None:
-        oc_dir = _setup_specialists(tmp_path)
-        rc, out, _ = _run(["team", "check"], _make_env(oc_dir))
-        assert rc == 0
-        assert "healthy" in out.lower() or "registered" in out.lower()
-
-    def test_exits_1_when_missing(self, tmp_path: Path) -> None:
-        oc_dir = _setup_bare(tmp_path)
-        rc, out, err = _run(["team", "check"], _make_env(oc_dir))
-        assert rc == 1
-        combined = out + err
-        assert "missing" in combined.lower() or "NOT registered" in combined
-
-
-# ---------------------------------------------------------------------------
-# docket team roles
-# ---------------------------------------------------------------------------
-
-
-class TestCmdTeamRoles:
-    def test_shows_role_info(self, tmp_path: Path) -> None:
-        oc_dir = _setup_bare(tmp_path)
-        rc, out, _ = _run(["team", "roles"], _make_env(oc_dir))
-        assert rc == 0
-        assert "Programmer" in out
-        assert "Reviewer" in out
-        assert "Manager" in out
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +256,6 @@ class TestCmdTeamTransitions:
 
 def test_wave3c_not_exit_127(tmp_path: Path) -> None:
     """team must NOT fall through to Bash (exit 127)."""
-    oc_dir = _setup_bare(tmp_path)
-    rc, _, _ = _run(["team", "status"], _make_env(oc_dir))
+    oc_dir = _setup_manager_with_tasks(tmp_path, [])
+    rc, _, _ = _run(["team", "queue"], _make_env(oc_dir))
     assert rc != 127

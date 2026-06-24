@@ -281,8 +281,7 @@ def _cmd_list_human() -> None:
     # Specialist agents section
     ui.console.print()
     ui.console.print(
-        "[bold green]SPECIALIST AGENTS[/bold green] "
-        "[dim](the team - shared across all projects)[/dim]"
+        "[bold green]ORG SPECIALISTS[/bold green] [dim](shared across all projects)[/dim]"
     )
     ui.console.print()
     ui.console.print(
@@ -290,7 +289,7 @@ def _cmd_list_human() -> None:
     )
     ui.console.print()
 
-    for spec in _cfg.SPECIALIST_ORDER:
+    for spec in _cfg.ORG_SPECIALIST_ORDER:
         spec_ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
         if not spec_ws.is_dir():
             continue
@@ -560,7 +559,6 @@ def _create_workspace(
             f"`{test_cmd}`\n\n"
             "## Traits\n"
             "- Read files before making any changes. Never assume structure.\n"
-            "- Delegate: implementation → programmer, review → reviewer, tests → tester.\n"
             "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
             "- Proactive: check HEARTBEAT.md every session.\n"
             f"- Scope: never act outside {codebase}.\n"
@@ -578,12 +576,10 @@ def _create_workspace(
             "4. Read MEMORY.md if it exists\n\n"
             "## Project Path\n"
             f"{codebase}\n\n"
-            "## Delegation\n"
-            "| Task              | Delegate to  |\n"
+            "## Org Specialists\n"
+            "Escalate cross-cutting work to the shared org specialists:\n"
+            "| Concern           | Specialist   |\n"
             "|-------------------|--------------|\n"
-            "| Code              | programmer   |\n"
-            "| Review            | reviewer     |\n"
-            "| Tests             | tester       |\n"
             "| Memory/patterns   | knowledge    |\n"
             "| Risky actions     | security     |\n\n"
             "## Scope Rule\n"
@@ -2943,41 +2939,26 @@ def cmd_team(
     ctx: typer.Context,
     sub: str | None = typer.Argument(None),
 ) -> None:
-    """Specialist team coordination (status/check/roles/upgrade/delegate/queue/start/done/cancel)."""
-    action = sub or "status"
+    """Manager task queue (delegate/queue/start/done/cancel)."""
+    action = sub or "queue"
     extra: list[str] = list(ctx.args)
 
-    if action == "status":
-        _team_status()
-    elif action == "check":
-        _team_check()
-    elif action == "roles":
-        _team_roles()
-    elif action == "upgrade":
-        _team_upgrade()
-    elif action == "delegate":
+    if action == "delegate":
         _team_delegate(extra)
     elif action == "queue":
         _team_queue(extra)
     elif action in ("start", "done", "cancel"):
         state_map = {"start": "in_progress", "done": "done", "cancel": "cancelled"}
         _team_transition(state_map[action], extra)
-    elif action == "init":
-        ui.warn("'team init' is deprecated. Use 'docket install' instead.")
     else:
         _team_help_text()
 
 
 def _team_help_text() -> None:
-    ui.header("Team Management")
+    ui.header("Manager Task Queue")
     ui.console.print()
-    ui.console.print("Manage specialist agents with DOCKET architecture")
-    ui.console.print()
-    ui.console.print("[bold]Usage:[/bold]")
-    ui.console.print("  docket team status              Show specialist agent health")
-    ui.console.print("  docket team upgrade             Upgrade specialists to DOCKET templates")
-    ui.console.print("  docket team check               Verify all specialists exist")
-    ui.console.print("  docket team roles               Show agent roles and responsibilities")
+    ui.console.print("Queue work for the org manager specialist.")
+    ui.console.print("[dim]Per-project work belongs to a pod — see 'docket pod <project>'.[/dim]")
     ui.console.print()
     ui.console.print("[bold]Task Delegation:[/bold]")
     ui.console.print('  docket team delegate "<task>"                 Add task (status: pending)')
@@ -2989,222 +2970,6 @@ def _team_help_text() -> None:
     ui.console.print(
         "  docket team cancel <task-id>                  pending/in_progress → cancelled"
     )
-    ui.console.print()
-
-
-_DOCKET_SOUL_RE = None
-
-
-def _docket_soul_pattern() -> Any:
-    import re as _re
-
-    global _DOCKET_SOUL_RE
-    if _DOCKET_SOUL_RE is None:
-        _DOCKET_SOUL_RE = _re.compile(
-            r"DOCKET Architecture|Context Compression|Short-Circuit|veto power"
-            r"|Mandatory.*checklist|validation specialist|compressed brief|observe behavior",
-            _re.IGNORECASE,
-        )
-    return _DOCKET_SOUL_RE
-
-
-def _team_status() -> None:
-    specialists = list(_cfg.SPECIALIST_ORDER)
-    ui.header("Specialist Team Status")
-    ui.console.print()
-    upgraded = 0
-    for spec in specialists:
-        ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
-        if not ws.is_dir():
-            ui.console.print(f"  [red]✗[/red] {spec:<12} Not installed")
-            continue
-        soul = ws / "SOUL.md"
-        if not soul.is_file():
-            ui.console.print(f"  [yellow]⚠[/yellow] {spec:<12} Missing SOUL.md")
-            continue
-        try:
-            content = soul.read_text(encoding="utf-8")
-        except OSError:
-            content = ""
-        if _docket_soul_pattern().search(content):
-            ui.console.print(f"  [green]✓[/green] {spec:<12} DOCKET-optimized")
-            upgraded += 1
-        else:
-            ui.console.print(f"  [cyan]○[/cyan] {spec:<12} Standard (upgrade available)")
-    ui.console.print()
-    if upgraded >= 4:
-        ui.dim(
-            "All core specialists DOCKET-optimized (knowledge & security use standard templates)"
-        )
-    else:
-        ui.dim("Run 'docket team upgrade' to apply DOCKET templates")
-    ui.console.print()
-
-
-def _team_check() -> None:
-    specialists = ["programmer", "reviewer", "tester", "knowledge", "security", "manager"]
-    ui.header("Specialist Agent Health Check")
-    ui.console.print()
-    missing: list[str] = []
-    healthy = 0
-    for spec in specialists:
-        if _oc.agent_registered(spec):
-            ui.success(f"{spec}: registered")
-            healthy += 1
-        else:
-            ui.warn(f"{spec}: NOT registered")
-            missing.append(spec)
-    ui.console.print()
-    if not missing:
-        ui.success(f"All specialists healthy ({healthy}/6)")
-    else:
-        ui.error(f"Missing specialists: {' '.join(missing)}")
-        ui.console.print()
-        ui.console.print("Run: docket install")
-        raise typer.Exit(1)
-
-
-def _team_roles() -> None:
-    ui.header("Specialist Agent Roles (DOCKET Architecture)")
-    ui.console.print()
-
-    def _model(role: str) -> str:
-        try:
-            return _mp.resolve_role_model(role)
-        except Exception:
-            return "?"
-
-    ui.console.print("[bold green]Manager (Atlas)[/bold green]")
-    ui.console.print("  • Orchestrates tasks and delegates to specialists")
-    ui.console.print("  • Embedded classifier logic (routes tasks efficiently)")
-    ui.console.print("  • Context compression before delegation")
-    ui.console.print("  • Short-circuit resolution for simple queries")
-    ui.console.print(
-        f"  • Model: {_model('manager')} (role policy) | Tools: read (memory), message"
-    )
-    ui.console.print()
-
-    ui.console.print("[bold green]Programmer[/bold green]")
-    ui.console.print("  • Implements code changes from compressed briefs")
-    ui.console.print("  • Reads <5K tokens per task (file + brief only)")
-    ui.console.print("  • Signals completion via memory files")
-    ui.console.print(f"  • Model: {_model('programmer')} (role policy)")
-    ui.console.print("  • Tools: read, write, edit, exec (sandbox)")
-    ui.console.print()
-
-    ui.console.print("[bold green]Reviewer (Auditor)[/bold green]")
-    ui.console.print("  • Security + correctness gatekeeper")
-    ui.console.print("  • 6-point mandatory checklist")
-    ui.console.print("  • Veto power (bad code doesn't proceed)")
-    ui.console.print(f"  • Model: {_model('reviewer')} (role policy) | Tools: read (diff only)")
-    ui.console.print()
-
-    ui.console.print("[bold green]Tester (Validator)[/bold green]")
-    ui.console.print("  • Behavior-only validation (doesn't read code!)")
-    ui.console.print("  • Executes reproduction steps")
-    ui.console.print("  • Binary verdict: PASS or FAIL")
-    ui.console.print(
-        f"  • Model: {_model('tester')} (role policy) | Tools: exec, browser (read-only)"
-    )
-    ui.console.print()
-
-    ui.console.print("[bold green]Knowledge[/bold green]")
-    ui.console.print("  • Memory distillation and indexing")
-    ui.console.print("  • Pattern extraction from logs")
-    ui.console.print("  • Architectural decision tracking")
-    ui.console.print(f"  • Model: {_model('knowledge')} (role policy) | Tools: read, memory search")
-    ui.console.print()
-
-    ui.console.print("[bold green]Security[/bold green]")
-    ui.console.print("  • Deep threat modeling (beyond code review)")
-    ui.console.print("  • Penetration testing coordination")
-    ui.console.print("  • Compliance audits (GDPR, HIPAA)")
-    ui.console.print(f"  • Model: {_model('security')} (role policy) | Tools: read, browser")
-    ui.console.print()
-
-    ui.console.print(
-        "[dim]Note: Reviewer handles routine security checks. Security specialist\n"
-        "      handles deep audits, compliance, and threat modeling.[/dim]"
-    )
-    ui.console.print()
-
-
-def _team_upgrade() -> None:
-    import datetime as _dt
-    import shutil as _shutil
-
-    tmpl_dir = _cfg.templates_dir()
-
-    ui.header("Upgrading Specialists to DOCKET Architecture")
-    ui.console.print()
-    ui.warn("This will replace SOUL.md files with DOCKET-optimized templates")
-    ui.console.print()
-    ui.console.print("Changes:")
-    ui.console.print("  • Manager: Add classifier logic + context compression rules")
-    ui.console.print("  • Programmer: Add brief-only reading + <5K token targets")
-    ui.console.print("  • Reviewer: Add 6-point security checklist + veto power")
-    ui.console.print("  • Tester: Add behavior-only validation (no code reading)")
-    ui.console.print("  • Knowledge: No changes (already efficient)")
-    ui.console.print("  • Security: No changes (focused on deep audits)")
-    ui.console.print()
-
-    if sys.stdin.isatty():
-        answer = input("Proceed with upgrade? [y/N]: ").strip().lower()
-        if answer != "y":
-            ui.warn("Aborted.")
-            return
-    else:
-        ui.warn("Non-interactive mode — aborting upgrade (requires TTY confirmation).")
-        return
-
-    ui.console.print()
-
-    upgrades = [
-        ("manager", "docket-manager.md"),
-        ("programmer", "docket-programmer.md"),
-        ("reviewer", "docket-reviewer.md"),
-        ("tester", "docket-tester.md"),
-    ]
-    upgraded = 0
-    failed = 0
-
-    for role, tmpl_name in upgrades:
-        ui.info(f"Upgrading {role}...")
-        ws = _cfg.OPENCLAW_DIR / "workspaces" / role
-        if not ws.is_dir():
-            ui.warn(f"{role}: workspace not found")
-            failed += 1
-            continue
-        tmpl = tmpl_dir / tmpl_name
-        if not tmpl.is_file():
-            ui.warn(f"{role}: template not found ({tmpl})")
-            failed += 1
-            continue
-        soul = ws / "SOUL.md"
-        if soul.is_file():
-            stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-            _shutil.copy2(soul, soul.with_name(f"SOUL.md.backup-{stamp}"))
-        _shutil.copy2(tmpl, soul)
-        soul.chmod(0o600)
-        ui.success(f"{role}: upgraded (backup saved)")
-        upgraded += 1
-
-    ui.info("knowledge: no upgrade needed (already optimized)")
-    ui.info("security: no upgrade needed (already optimized)")
-    ui.console.print()
-
-    if failed:
-        ui.warn(f"Upgraded: {upgraded}, Failed: {failed}")
-        ui.console.print()
-        ui.console.print("Missing agents? Run: docket install")
-    else:
-        ui.success(f"All specialists upgraded! ({upgraded} agents)")
-
-    ui.console.print()
-    ui.info("Restarting gateway to apply changes...")
-    _do_restart_gateway()
-    ui.console.print()
-    ui.success("DOCKET upgrade complete!")
     ui.console.print()
 
 

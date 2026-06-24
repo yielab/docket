@@ -1,27 +1,28 @@
 # Team Coordination Specification
 
-**Version**: 1.0.0
-**Status**: Partial
-**Last Updated**: 2026-06-09
+**Version**: 2.0.0
+**Status**: Implemented
+**Last Updated**: 2026-06-24
 
 ## Purpose
 
-This specification defines docket's team-coordination surface: a manager agent and a shared
-task queue that let work be delegated to specialist agents. The current implementation is a
-task queue; richer routing is tracked as future work.
+This specification defines docket's `team` surface: the **org manager's shared task queue**.
+`docket team` delegates work to the Manager agent and tracks each task through its lifecycle.
+Specialist/pod health and rosters are out of scope here — those are covered by `docket list`,
+`docket doctor`, and `docket pod <project>`.
 
 ## Scope
 
 This specification covers:
 
-- Showing team status (`docket team status`)
 - Queuing a task for the manager (`docket team delegate`)
-- Listing pending tasks (`docket team queue`)
-- Marking a task complete (`docket team done`)
+- Listing pending tasks (`docket team queue`, `--all`)
+- Transitioning a task (`docket team start` / `done` / `cancel`)
 - The shared task store (`TASK_LIST.json`)
 
 This specification does NOT cover:
 
+- Specialist/pod rosters or health (see `docket list`, `docket doctor`, `docket pod`)
 - Autonomous task execution by specialists (out of scope for the queue)
 - Workflow pipelines (see workflow-integration.spec.md)
 
@@ -44,25 +45,25 @@ This specification does NOT cover:
 ### Queue (docket team queue)
 
 1. **MUST** list tasks that are not yet complete, showing id, priority, and description.
+2. **SHOULD** accept `--all` to include completed and cancelled tasks.
 
-### Done (docket team done)
+### Transition (docket team start / done / cancel)
 
-1. **MUST** transition the referenced task to state `complete`.
-2. **MUST** return "not found" if the task id does not exist.
-
-### Status (docket team status)
-
-1. **MUST** show the specialist roster and a summary of outstanding tasks.
+1. `start` **MUST** transition the referenced task to state `in_progress`.
+2. `done` **MUST** transition the referenced task to state `complete`.
+3. `cancel` **MUST** transition the referenced task to state `cancelled`.
+4. Each **MUST** return "not found" if the task id does not exist.
 
 ## Interface Contracts
 
 ### CLI Command Signatures
 
 ```bash
-docket team status                                  # Specialist health + task summary
 docket team delegate "<task>" [--priority high]     # Queue a task for the manager
-docket team queue                                   # Show pending tasks
+docket team queue [--all]                            # Show pending (or all) tasks
+docket team start <task-id>                          # Mark a task in progress
 docket team done <task-id>                           # Mark a task complete
+docket team cancel <task-id>                         # Cancel a task
 ```
 
 ### Return Codes
@@ -105,6 +106,15 @@ $ docket team done T-014
 - The manager agent **MUST** remain delegation-only and never gain code-edit tools.
 
 ## Changelog
+
+### Version 2.0.0 (2026-06-24)
+
+- Reframed `team` as the org manager's task queue only (pod model retired the legacy
+  specialist-coordination surface)
+- Removed `docket team status`; specialist/pod health now lives in `docket list`,
+  `docket doctor`, and `docket pod <project>`
+- Documented `--all`, `start`, and `cancel` task transitions
+- Status: Implemented
 
 ### Version 1.0.0 (2026-06-09)
 
