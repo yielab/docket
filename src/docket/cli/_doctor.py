@@ -551,12 +551,26 @@ def _check_metadata_backfill(ids: list[str]) -> int:
         if not _oc.meta_get(aid, "modelSource", ""):
             _oc.meta_set(aid, "modelSource", _mp.agent_model_source(aid))
             fixed.append("modelSource")
+        # Phase 10 (AA-8): backfill scope on legacy project metas.
+        if not _oc.meta_get(aid, "scope", ""):
+            _oc.meta_set(aid, "scope", "project")
+            fixed.append("scope")
         if fixed:
             ui.success(f"  {aid}: backfilled {' '.join(fixed)}")
             backfilled += 1
 
+    # Phase 10 (AA-8): flag legacy global project-role singletons. Post-cutover
+    # these belong inside pods (docket add), not as shared workspaces.
+    for role in sorted(_cfg.PROJECT_ROLES):
+        if (_cfg.OPENCLAW_DIR / "workspaces" / role).is_dir():
+            ui.warn(
+                f"  {role}: legacy shared specialist — project roles now live in "
+                f"pods. Recreate via a pod (docket pod <project> add {role}) and "
+                f"remove the global '{role}' workspace."
+            )
+
     if backfilled == 0:
-        ui.success("  All agents have kind/role/modelSource metadata")
+        ui.success("  All agents have kind/role/scope/modelSource metadata")
     return 0
 
 

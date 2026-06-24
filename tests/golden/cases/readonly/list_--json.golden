@@ -4,6 +4,9 @@ EXIT:0
     {
       "id": "content",
       "kind": "project",
+      "scope": "project",
+      "role": "",
+      "pod": "",
       "name": "Content Blog",
       "type": "task",
       "model": "anthropic/claude-haiku-4-5",
@@ -17,6 +20,9 @@ EXIT:0
     {
       "id": "myshop",
       "kind": "project",
+      "scope": "project",
+      "role": "",
+      "pod": "",
       "name": "My Shop",
       "type": "repo",
       "model": "anthropic/claude-sonnet-4-6",

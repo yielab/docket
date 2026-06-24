@@ -380,6 +380,28 @@ class TestChecks:
         assert _doctor._check_metadata_backfill(["myshop"]) == 0
         assert "metadata" in capsys.readouterr().out.lower()
 
+    def test_scope_backfilled_for_legacy_meta(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # AA-8: a meta written before `scope` existed gets it backfilled.
+        oc_dir = _seed(tmp_path, monkeypatch)
+        meta_p = oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json"
+        data = json.loads(meta_p.read_text())
+        data.pop("scope", None)
+        meta_p.write_text(json.dumps(data))
+        _doctor._check_metadata_backfill(["myshop"])
+        assert json.loads(meta_p.read_text())["scope"] == "project"
+
+    def test_legacy_project_role_singleton_flagged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # AA-8: a leftover global programmer/reviewer/tester workspace is flagged.
+        oc_dir = _seed(tmp_path, monkeypatch)
+        (oc_dir / "workspaces" / "programmer").mkdir(parents=True)
+        _doctor._check_metadata_backfill(["myshop"])
+        out = capsys.readouterr().out
+        assert "programmer" in out and "legacy shared specialist" in out
+
 
 # ── full human run ─────────────────────────────────────────────────────────────
 

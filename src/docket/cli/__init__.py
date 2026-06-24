@@ -138,6 +138,8 @@ def _cmd_list_json() -> None:
         if b.match.channel == "telegram":
             tg_bindings[b.agent_id] = b.match.peer.id or None
 
+    from docket.core import pod as _pod_mod
+
     agents_out = []
     for aid in project_ids():
         raw = store.read_json(_cfg.meta_path(aid))
@@ -145,6 +147,9 @@ def _cmd_list_json() -> None:
             {
                 "id": aid,
                 "kind": raw.get("kind", "project"),
+                "scope": raw.get("scope", "project"),
+                "role": raw.get("role", ""),
+                "pod": raw.get("pod", "") or (_pod_mod.pod_of(aid) or ""),
                 "name": raw.get("name", aid),
                 "type": raw.get("type", "repo"),
                 "model": raw.get("model", _cfg.DEFAULT_MODEL),
@@ -197,10 +202,16 @@ def _cmd_list_human() -> None:
 
     home = str(Path.home())
 
+    from docket.core import pod as _pod_mod
+
     for aid in ids:
         raw = store.read_json(_cfg.meta_path(aid))
         name = str(raw.get("name", aid))
         atype = str(raw.get("type", "repo"))
+        # Phase 10: pod members show role + pod instead of repo/task type.
+        role = str(raw.get("role", ""))
+        pod_name = str(raw.get("pod", "")) or (_pod_mod.pod_of(aid) or "")
+        descriptor = f"{role} · pod:{pod_name}" if role and pod_name else atype
         model = str(raw.get("model", _cfg.DEFAULT_MODEL))
         stack = str(raw.get("stack", ""))
         codebase = str(raw.get("codebase", ""))
@@ -230,7 +241,7 @@ def _cmd_list_human() -> None:
         ui.console.print()
         ui.console.print(f"  [bold cyan]{aid}[/bold cyan]  [dim]({name})[/dim]")
         ui.console.print(
-            f"  {atype}  │  {model_short} ({src})  │"
+            f"  {descriptor}  │  {model_short} ({src})  │"
             f"  stack: {stack or '[dim]—[/dim]'}  │  {mem_days} day-log(s)"
         )
         ui.console.print(f"  path: {path_short}  │  active: {activity}")

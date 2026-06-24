@@ -81,6 +81,24 @@ def session_key(project: str, project_key: str = "default") -> str:
     return f"agent:{project}:{project_key}"
 
 
+def pod_of(member_id: str) -> str | None:
+    """Project a member id belongs to, or ``None`` if it isn't a pod member.
+
+    Reverses ``member_id``: ``demo-lead`` → ``demo``; ``demo-implementer-2`` →
+    ``demo``; ``my-shop-reviewer`` → ``my-shop``. A plain id with no pod-role
+    suffix (e.g. a legacy single agent ``myshop`` or ``my-api``) → ``None``.
+    """
+    head, sep, tail = member_id.rpartition("-")
+    if sep and tail.isdigit():  # …-<role>-<index>
+        proj, sep2, role = head.rpartition("-")
+        if sep2 and role in POD_ROLES:
+            return proj
+        return None
+    if sep and tail in POD_ROLES:  # …-<role>
+        return head
+    return None
+
+
 def members_of(all_agent_ids: list[str], project: str) -> list[tuple[str, str, int]]:
     """Pod members among ``all_agent_ids``, as ``(member_id, role, index)``.
 
