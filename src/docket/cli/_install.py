@@ -331,14 +331,83 @@ def _provision_specialists() -> None:
             )
 
 
+_PORTFOLIO_SOUL = """# SOUL — Portfolio Manager
+
+**Scope:** org (cross-pod). **Role:** portfolio-manager. **Edits code:** never.
+
+You are the org-level Portfolio Manager: a single planning/visibility surface
+across every project pod. You see fleet **metadata** — agents, queues, budgets,
+health — not project source code, and you are distinct from each pod's Lead.
+
+## You do
+- Survey the fleet: which pods exist, their members, recent activity, spend.
+- Spot cross-cutting risk (budget pressure, stalled pods, drift) and surface it
+  to the human operator.
+- Recommend where to focus, rebalance, or pause — in words, for a human to act on.
+
+## You do NOT
+- Edit code or enter any project workspace.
+- Dispatch work into pods at runtime (a pod's own Lead + `docket pod <p> dispatch`
+  own execution). You are advisory in v1.
+- Replace per-pod Leads — each pod still owns its own context and humans comms.
+"""
+
+
+def _provision_portfolio_manager() -> None:
+    """AA-6 — provision the single opt-in org Portfolio Manager.
+
+    A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
+    over fleet metadata (not project code). Opt-in (`docket install --portfolio`),
+    never auto-installed, never a pod member. Idempotent.
+    """
+    role = _cfg.PORTFOLIO_MANAGER_ROLE
+    model = _mp.resolve_role_model(role)
+    ws = _cfg.OPENCLAW_DIR / "workspaces" / role
+
+    if _oc.agent_registered(role):
+        ui.success(f"{role}: already registered")
+    else:
+        ui.info(f"Creating {role} agent...")
+        ws.mkdir(parents=True, exist_ok=True)
+        ok, message = _oc.register_agent_cli(role, str(ws), model)
+        if ok:
+            ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
+        else:
+            ui.warn(f"{role}: registration failed — {message}")
+
+    if ws.is_dir():
+        soul = ws / "SOUL.md"
+        if not soul.is_file():
+            soul.write_text(_PORTFOLIO_SOUL, encoding="utf-8")
+            with contextlib.suppress(OSError):
+                os.chmod(soul, 0o600)
+        meta_file = ws / _cfg.META_FILE
+        if not meta_file.is_file():
+            store.write_json(
+                meta_file,
+                {
+                    "kind": "specialist",
+                    "scope": _cfg.role_scope(role),  # → "org"
+                    "role": role,
+                    "name": role,
+                    "model": model,
+                    "modelSource": "policy",
+                    "created": datetime.now(UTC).isoformat(),
+                },
+            )
+
+
 # ── public entry point ─────────────────────────────────────────────────────────
 
 
-def run_install(want_gates: bool = False, assume_yes: bool = False) -> int:
+def run_install(
+    want_gates: bool = False, assume_yes: bool = False, want_portfolio: bool = False
+) -> int:
     """Bootstrap OpenClaw + specialist agents. Returns the process exit code.
 
-    want_gates:  apply opt-in exec-approval enforcement (mirrors --gates).
-    assume_yes:  skip the reconfigure/update confirmation prompt (non-interactive).
+    want_gates:      apply opt-in exec-approval enforcement (mirrors --gates).
+    assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
+    want_portfolio:  also provision the opt-in org Portfolio Manager (AA-6).
     """
     ui.header("Docket Installation — OpenClaw Setup")
     ui.console.print()
@@ -421,6 +490,10 @@ def run_install(want_gates: bool = False, assume_yes: bool = False) -> int:
     # ── Step 5: specialist agents ──────────────────────────────────────────────
     ui.header("Step 5: Setting up specialist agents")
     _provision_specialists()
+    if want_portfolio:
+        ui.console.print()
+        ui.info("Provisioning the org Portfolio Manager (--portfolio)...")
+        _provision_portfolio_manager()
     ui.console.print()
 
     # ── Step 6: model authentication ───────────────────────────────────────────

@@ -42,8 +42,13 @@ DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "15"))
 # DRIFT_COOLDOWN: seconds between drift alerts for the same role (86400 = 24 h).
 DRIFT_COOLDOWN = int(os.environ.get("DRIFT_COOLDOWN", "86400"))
 
+# The optional org Portfolio Manager (AA-6): a single cross-pod planning agent,
+# opt-in via `docket install --portfolio`. Not a default specialist and never a
+# pod member; see ORG_DISPLAY_ORDER.
+PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
+
 SPECIALIST_ROLES: frozenset[str] = frozenset(
-    ["manager", "programmer", "reviewer", "tester", "knowledge", "security"]
+    ["manager", "programmer", "reviewer", "tester", "knowledge", "security", PORTFOLIO_MANAGER_ROLE]
 )
 
 META_FILE = ".docket-meta.json"
@@ -68,11 +73,18 @@ SPECIALIST_ORDER: tuple[str, ...] = (
 #                   NOT installed as global workspaces.
 # `manager` stays in ORG_ROLES transitionally; AA-5 converts it to per-pod Leads
 # and AA-6 adds an optional org Portfolio Manager.
-ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager"])
+ORG_ROLES: frozenset[str] = frozenset(["security", "knowledge", "manager", PORTFOLIO_MANAGER_ROLE])
 PROJECT_ROLES: frozenset[str] = frozenset(["programmer", "reviewer", "tester"])
 
-# Install order for the shared org agents (a subset of SPECIALIST_ORDER).
+# Install order for the shared org agents (a subset of SPECIALIST_ORDER). The
+# Portfolio Manager is deliberately NOT here — it is opt-in, so it must not be
+# auto-provisioned or flagged "missing" on a default install.
 ORG_SPECIALIST_ORDER: tuple[str, ...] = tuple(r for r in SPECIALIST_ORDER if r in ORG_ROLES)
+
+# Display/monitor order for org agents = the default-installed specialists plus
+# the opt-in Portfolio Manager. Consumers (list, serve) skip any whose workspace
+# doesn't exist, so the Portfolio Manager appears only once it's been installed.
+ORG_DISPLAY_ORDER: tuple[str, ...] = (*ORG_SPECIALIST_ORDER, PORTFOLIO_MANAGER_ROLE)
 
 
 def role_scope(role: str) -> str:
@@ -91,6 +103,7 @@ ROLE_WHY: dict[str, str] = {
     "programmer": "code generation",
     "security": "audit depth",
     "repo": "project default for repo agents",
+    "portfolio-manager": "cross-pod planning over fleet metadata, shallow reasoning",
 }
 
 # Expected Telegram group names for agents that should be wired (mirrors

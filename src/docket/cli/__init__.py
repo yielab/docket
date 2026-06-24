@@ -114,11 +114,14 @@ def _default(
 def cmd_install(
     gates: bool = typer.Option(False, "--gates/--no-gates", help="Enable exec-approval gates"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+    portfolio: bool = typer.Option(
+        False, "--portfolio", help="Also provision the optional org Portfolio Manager"
+    ),
 ) -> None:
     """Bootstrap OpenClaw + specialist agents."""
     from docket.cli._install import run_install
 
-    raise typer.Exit(run_install(want_gates=gates, assume_yes=yes))
+    raise typer.Exit(run_install(want_gates=gates, assume_yes=yes, want_portfolio=portfolio))
 
 
 @app.command("list")
@@ -289,7 +292,7 @@ def _cmd_list_human() -> None:
     )
     ui.console.print()
 
-    for spec in _cfg.ORG_SPECIALIST_ORDER:
+    for spec in _cfg.ORG_DISPLAY_ORDER:
         spec_ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
         if not spec_ws.is_dir():
             continue
