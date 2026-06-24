@@ -499,8 +499,15 @@ def _check_template_version(ids: list[str]) -> int:
         return 0
     ui.console.print()
     ui.console.print(f"[bold]Template version (current: v{TEMPLATE_VERSION}):[/bold]")
+    from docket.core import pod as _pod
+
     drift = 0
     for aid in ids:
+        # Pod members use their own template scheme (POD_TEMPLATE_VERSION) and are
+        # NOT rebuilt via `maintain rebuild` (that regenerates single-agent
+        # templates and would clobber the pod-role SOULs). Skip them here.
+        if _pod.pod_of(aid) is not None:
+            continue
         tv = _oc.meta_get(aid, "templateVersion", "")
         if not tv:
             ui.warn(f"  {aid}: unstamped (pre-versioning) — docket maintain {aid} rebuild")
@@ -854,8 +861,13 @@ def _doctor_json() -> dict[str, Any]:
         "isolation": _oc.get_isolation_mode(),
     }
 
+    from docket.core import pod as _pod_mod
+
     tmpl_results: list[dict[str, Any]] = []
     for aid in ids:
+        # Pod members use their own template scheme — exclude from single-agent drift.
+        if _pod_mod.pod_of(aid) is not None:
+            continue
         tv_raw = store.read_json(_cfg.meta_path(aid)).get("templateVersion")
         tv_i = int(tv_raw) if tv_raw is not None else None
         tmpl_results.append(

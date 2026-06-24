@@ -62,8 +62,15 @@ def test_set_model_does_not_inject_metadata_or_security(
     assert next(a for a in agents if a["id"] == "main")["model"] == "anthropic/claude-sonnet-4-6"
 
 
-def test_real_session_key_still_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A non-empty sessionKey is non-default, so it is still persisted."""
+def test_session_key_never_written_to_openclaw_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sessionKey is NEVER persisted into openclaw.json — the daemon rejects a
+    `metadata` key on an agent entry (``agents.list.N: Unrecognized key:
+    "metadata"`` on 2026.2.23). docket's source of truth for sessionKey is
+    `.docket-meta.json`; the openclaw.json `metadata` block is always stripped,
+    even for a real sessionKey. Regression for the pod-provisioning failure where
+    a real sessionKey crash-looped the gateway."""
     oc_dir = tmp_path / ".openclaw"
     oc_dir.mkdir()
     (oc_dir / "openclaw.json").write_text(
@@ -74,4 +81,4 @@ def test_real_session_key_still_written(tmp_path: Path, monkeypatch: pytest.Monk
 
     out = json.loads((oc_dir / "openclaw.json").read_text())
     agent = out["agents"]["list"][0]
-    assert agent.get("metadata", {}).get("sessionKey") == "agent:shop:proj"
+    assert "metadata" not in agent, "metadata must never reach openclaw.json (daemon rejects it)"

@@ -224,13 +224,15 @@ class TestCmdScope:
         assert meta["projectKey"] == "billing"
         assert meta["sessionKey"] == "agent:myshop:billing"
 
-    def test_scope_set_syncs_openclaw(self, tmp_path: Path) -> None:
+    def test_scope_set_does_not_write_metadata_to_openclaw(self, tmp_path: Path) -> None:
+        # sessionKey lives in .docket-meta.json (asserted above); it is NEVER
+        # written into openclaw.json — the daemon rejects a `metadata` key on an
+        # agent entry, so the ACL strips it (any seed metadata is dropped too).
         oc_dir = _setup_agent(tmp_path)
         _run(["scope", "myshop", "set", "billing"], oc_dir)
         oc = json.loads((oc_dir / "openclaw.json").read_text())
         agent = next(a for a in oc["agents"]["list"] if a["id"] == "myshop")
-        assert agent["metadata"]["sessionKey"] == "agent:myshop:billing"
-        assert agent["metadata"]["projectKey"] == "billing"
+        assert "metadata" not in agent
 
     def test_scope_set_without_key_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
