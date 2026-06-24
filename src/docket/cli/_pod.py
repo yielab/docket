@@ -22,6 +22,7 @@ from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import dispatch as _dispatch
 from docket.core import models_policy as _mp
 from docket.core import pod
 from docket.edges.adapters import openclaw as _oc
@@ -279,8 +280,16 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_add(project, extra)
     elif action == "remove":
         _pod_remove(project, extra)
+    elif action == "delegate":
+        _pod_delegate(project, extra)
+    elif action == "queue":
+        _pod_queue(project)
+    elif action == "dispatch":
+        _pod_dispatch(project)
     else:
-        ui.error(f"Unknown pod action {action!r}. Use: list | add | remove.")
+        ui.error(
+            f"Unknown pod action {action!r}. Use: list | add | remove | delegate | queue | dispatch."
+        )
         raise typer.Exit(1)
 
 
@@ -362,6 +371,90 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     else:
         ui.warn(f"{member_id}: daemon delete reported: {msg} (workspace cleaned)")
     _sys.restart_gateway()
+
+
+# ── dispatch queue (AA-7): delegate / queue / dispatch ───────────────────────────
+
+
+def _pod_delegate(project: str, extra: list[str]) -> None:
+    """Queue a task for the pod: ``docket pod <project> delegate [--priority P] "<task>"``."""
+    priority = "normal"
+    rest: list[str] = []
+    i = 0
+    while i < len(extra):
+        if extra[i] in ("--priority", "-p") and i + 1 < len(extra):
+            priority = extra[i + 1]
+            i += 2
+        else:
+            rest.append(extra[i])
+            i += 1
+    description = rest[0] if rest else ""
+    if not description:
+        ui.error('Usage: docket pod <project> delegate [--priority high|normal|low] "<task>"')
+        raise typer.Exit(1)
+    if priority not in ("high", "normal", "low"):
+        ui.error(f"Invalid priority '{priority}'. Use: high | normal | low")
+        raise typer.Exit(1)
+    if len(description) > 500:
+        ui.error(f"Description too long ({len(description)} chars). Limit: 500.")
+        raise typer.Exit(1)
+    try:
+        task = _dispatch.enqueue_task(project, description, priority)
+    except _dispatch.DispatchError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    ui.success(f"Queued for pod '{project}': [{task['id']}] {description}")
+    ui.info(f"Run the pipeline: docket pod {project} dispatch")
+
+
+def _pod_queue(project: str) -> None:
+    """Show the pod's task queue."""
+    tasks = _dispatch.read_tasks(project)
+    if not tasks:
+        ui.warn(f"No tasks queued for pod '{project}'.")
+        return
+    table = Table(title=f"Pod queue — {project}")
+    table.add_column("ID", style="bold")
+    table.add_column("PRI")
+    table.add_column("STATUS")
+    table.add_column("COST", justify="right")
+    table.add_column("DESCRIPTION", style="dim")
+    for t in tasks:
+        cost = t.get("costUsd")
+        table.add_row(
+            str(t.get("id", "?"))[:18],
+            str(t.get("priority", "normal")),
+            str(t.get("status", "?")),
+            f"${float(cost):.4f}" if cost else "—",
+            str(t.get("description", "")),
+        )
+    ui.console.print(table)
+
+
+def _pod_dispatch(project: str) -> None:
+    """Drive the pod's pending tasks through the pipeline (one real turn per hop)."""
+    try:
+        pipeline = _dispatch.pod_pipeline(project)
+    except _dispatch.DispatchError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    pending = [t for t in _dispatch.read_tasks(project) if t.get("status") == "pending"]
+    if not pending:
+        ui.warn(f"No pending tasks for pod '{project}'. Queue one: docket pod {project} delegate")
+        return
+    roles = " → ".join(role for role, _mid in pipeline)
+    ui.info(f"Dispatching {len(pending)} task(s) through: {roles}")
+    cap = _dispatch.pod_budget(project)
+    if cap:
+        ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
+    results = _dispatch.dispatch_pod(project)
+    for res in results:
+        if res.status == "done":
+            ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
+        elif res.status == "blocked":
+            ui.warn(f"  [{res.task_id}] blocked — {res.reason} (left pending)")
+        else:
+            ui.error(f"  [{res.task_id}] {res.status} — {res.reason}")
 
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int]:

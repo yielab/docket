@@ -204,13 +204,17 @@ def render_status() -> str:
 # ── periodic sweeps (mirror _serve_refresh) ───────────────────────────────────
 
 
-def _run_sweeps() -> None:
-    """Run the three _serve_refresh sweeps once, each best-effort.
+def _run_sweeps(dispatch: bool = False) -> None:
+    """Run the periodic _serve_refresh sweeps once, each best-effort.
 
     Mirrors _serve_refresh's tail: coerce stale open traces to aborted (OBS-3),
     expire pending approvals past APPROVAL_TIMEOUT (H5), and check role drift
     (OBS-11). Every sweep is guarded so one failure never aborts the others or
     the server (matching the Bash ``2>/dev/null || true`` guards).
+
+    When *dispatch* is set, also drive every pod's queued tasks through its
+    pipeline (AA-7). This runs real, budget-gated agent turns, so it is opt-in
+    (`docket serve --dispatch`) and never part of the read-only monitor.
     """
     from docket.core import approval, drift, trace
 
@@ -220,12 +224,17 @@ def _run_sweeps() -> None:
         approval.approval_sweep_expired()
     with contextlib.suppress(Exception):
         drift.drift_check_all()
+    if dispatch:
+        from docket.core import dispatch as _dispatch
+
+        with contextlib.suppress(Exception):
+            _dispatch.dispatch_all_pods()
 
 
-def _sweep_loop(interval: int, stop: threading.Event) -> None:
+def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
     """Run _run_sweeps every *interval* seconds until *stop* is set."""
     while not stop.wait(interval):
-        _run_sweeps()
+        _run_sweeps(dispatch)
 
 
 # ── HTTP server ───────────────────────────────────────────────────────────────
@@ -262,7 +271,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
 
 def run_serve(
-    port: int | None = None, *, bind: str = "127.0.0.1", interval: int = DEFAULT_INTERVAL
+    port: int | None = None,
+    *,
+    bind: str = "127.0.0.1",
+    interval: int = DEFAULT_INTERVAL,
+    dispatch: bool = False,
 ) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
 
@@ -275,13 +288,14 @@ def run_serve(
     actual_port = DEFAULT_PORT if port is None else port
 
     # Run the sweeps once at startup, then on each interval (mirrors cmd_serve).
-    _run_sweeps()
+    _run_sweeps(dispatch)
     stop = threading.Event()
-    sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop), daemon=True)
+    sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop, dispatch), daemon=True)
     sweeper.start()
 
     server = ThreadingHTTPServer((bind, actual_port), _DocketHandler)
-    print(f"docket serve  port={actual_port}  refresh={interval}s  (Ctrl-C to stop)")
+    disp = "  dispatch=on" if dispatch else ""
+    print(f"docket serve  port={actual_port}  refresh={interval}s{disp}  (Ctrl-C to stop)")
     print(f"Endpoints: /status.json  /metrics  /health  ->  http://localhost:{actual_port}/")
     print("")
     try:

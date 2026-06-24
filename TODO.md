@@ -163,8 +163,8 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 - **Do:** Add `agent_run(agent_id, session_key, message, timeout) -> json` to the ACL wrapping `openclaw agent --agent <id> --session-id <key> -m <text> --json --timeout N`. The `docket serve` loop reads a pod's `TASK_LIST.json` and drives the pipeline Lead → Implementer → Reviewer → Tester by calling `agent_run` **per hop**, capturing each JSON result, emitting a Phase-8 trace event per hop. **Respect per-pod budget** before each hop (each hop is a real, costed agent turn). Dispatch happens **within a pod** only, never across pods.
 - **Out of scope:** cross-pod dispatch; reintroducing prompt-level SMART-ROUTING (cut in Phase 2). First confirm the `openclaw agent --json` result schema by capturing one real run in a throwaway agent (AA-0 follow-up) before wiring.
 - **Deliverables:** `agent_run` in the ACL; serve-loop dispatch driver; per-hop trace wiring; integration test with a faked `openclaw agent` returning canned JSON.
-- **Acceptance gate:** [ ] a queued pod task dispatches through the pipeline + traces end-to-end without manual Telegram relay; [ ] budget checked before each hop; [ ] no cross-pod dispatch path exists; [ ] only the ACL invokes `openclaw agent`.
-- **Size:** L · **Status:** TODO (unblocked by AA-0)
+- **Acceptance gate:** [x] a queued pod task dispatches through the pipeline + traces end-to-end without manual Telegram relay; [x] budget checked before each hop; [x] no cross-pod dispatch path exists; [x] only the ACL invokes `openclaw agent`.
+- **Size:** L · **Status:** ✅ DONE — `agent_run` (+ `AgentRunResult`, tolerant JSON parse) in the ACL; `core/dispatch.py` drives the pod pipeline (Lead→Implementer→Reviewer→Tester, present roles only), one trace event per hop (session_start/tool_call/tool_result|error/cost_charged/session_end), per-pod budget gate before every hop (blocked → task left pending), per-task session `agent:<project>:<task_id>`, no-cross-pod guard. Surfaced as `docket pod <p> delegate|queue|dispatch` and the opt-in `docket serve --dispatch`. 12 tests in `test_dispatch.py` (fake-binary agent_run + injected-runner pipeline + end-to-end). **Note:** the per-hop *message* prompts are v1 placeholders; the `--json` result schema is parsed defensively (AA-0's confirm-the-schema follow-up is still worth doing against a real daemon before relying on cost fields).
 
 ---
 
@@ -191,12 +191,16 @@ Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5
 ---
 
 ## Roll-up checklist (Phase 10 definition of done)
-- [ ] AA-0 spike landed; AA-7 path decided and recorded.
-- [ ] `scope` is a validated first-class axis on every agent (AA-1).
-- [ ] Clean install creates only org-scoped shared agents; no global programmer/reviewer/tester singleton (AA-2).
-- [ ] `docket add` provisions an isolated pod sharing one session key; the Implementer runs in the workspace (AA-3, AA-4).
-- [ ] The single global Atlas manager is replaced by per-pod Leads (+ optional org Portfolio Manager) (AA-5, AA-6).
-- [ ] Runtime dispatch is real-via-daemon **or** documented as operator-driven — never overclaimed (AA-7).
-- [ ] `docket list`/`doctor` show and migrate the org/pod taxonomy (AA-8).
-- [ ] Docs teach the pod model honestly (AA-9).
-- [ ] Full suite green: ruff + mypy + pytest + goldens.
+- [x] AA-0 spike landed; AA-7 path decided and recorded.
+- [x] `scope` is a validated first-class axis on every agent (AA-1).
+- [x] Clean install creates only org-scoped shared agents; no global programmer/reviewer/tester singleton (AA-2).
+- [x] `docket add` provisions an isolated pod sharing one session key; the Implementer runs in the workspace (AA-3, AA-4).
+- [x] The single global Atlas manager is replaced by per-pod Leads (AA-5). *Optional org Portfolio Manager (AA-6) not built.*
+- [x] Runtime dispatch is real-via-daemon — the `serve --dispatch` loop / `docket pod <p> dispatch` drives the pipeline through `openclaw agent` per hop, budget-gated, within a pod only (AA-7).
+- [x] `docket list`/`doctor` show and migrate the org/pod taxonomy (AA-8).
+- [x] Docs teach the pod model honestly (AA-9).
+- [x] Full suite green: ruff + mypy + pytest + goldens.
+
+**Phase 10 is functionally complete.** Only AA-6 (optional org Portfolio Manager) remains, plus
+the non-blocking AA-0 follow-up: confirm the live `openclaw agent --json` result schema (esp. the
+cost field) against a real daemon and tighten `agent_run`'s parsing if needed.
