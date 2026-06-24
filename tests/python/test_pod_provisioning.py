@@ -94,6 +94,12 @@ class TestBuildPod:
             assert m["sessionKey"] == "agent:demo:default"
             assert m["modelSource"] == "policy"
             assert (oc_dir / "workspaces" / "projects" / mid / "SOUL.md").is_file()
+            # Pod-member meta must round-trip through the AgentMeta model — a
+            # regression for templateVersion being written as an int (which made
+            # the first metadata write after provisioning raise ValidationError).
+            from docket.core.models import AgentMeta
+
+            assert AgentMeta.model_validate(m).template_version == str(_pod.POD_TEMPLATE_VERSION)
 
     def test_lead_soul_forbids_editing_implementer_has_codebase(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

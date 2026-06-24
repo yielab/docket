@@ -144,7 +144,7 @@ def _write_member_workspace(
         "created": datetime.now(UTC).isoformat(),
         "sessionKey": member.session_key,
         "projectKey": project_key,
-        "templateVersion": POD_TEMPLATE_VERSION,
+        "templateVersion": str(POD_TEMPLATE_VERSION),
     }
     meta_file = ws / _cfg.META_FILE
     meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
