@@ -29,6 +29,8 @@ AUDIT_LOG = OPENCLAW_DIR / "audit.log"
 POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
 # Durable pending-approval store: $APPROVALS_DIR/<token>.json (config.sh).
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
+# Scheduled dispatch spec file: {project: spec} JSON (CD-6).
+SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
 # Seconds before an open trace is coerced to "aborted" by the sweep.
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 # Seconds before a pending approval becomes expired (denied — fail-closed).
