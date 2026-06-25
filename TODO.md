@@ -4,203 +4,213 @@
 > currently active in [ROADMAP.md](ROADMAP.md). Do **not** create per-phase task files — when a phase
 > finishes, clear its cards (the phase record stays in ROADMAP) and append the next phase's cards here.
 >
+> *Phase 10 (Agent architecture / pods, AA-0…AA-9) is **COMPLETE** — its record lives in ROADMAP §5
+> (Phase 10) and the Changelog. Its board was cleared per the convention above. The one non-blocking
+> follow-up it left (confirm the live `openclaw agent --json` cost schema) is carried forward here as
+> **CD-0**.*
+>
 > ---
 >
-> ## Active: PHASE 10 — Agent architecture (project pods)
+> ## Active: PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)
 >
-> Executable board for **PHASE 10** in [ROADMAP.md](ROADMAP.md) (read that section first — it has the
-> problem statement, the pod model, and the exit criteria). Each task here is **self-contained** so a
-> separate agent can claim and complete it independently. Rationale long-form:
-> `internal-docs/agent-structure-analysis.md`.
+> Executable board for **PHASE 11** in [ROADMAP.md](ROADMAP.md) (read that section first — market
+> context + exit criteria). Full competitor map, **GitHub-verified** star counts, and the per-axis
+> gap analysis: `internal-docs/competitive-analysis.md` (**read it before claiming a card**). Each
+> task here is **self-contained** so a separate agent can claim and complete it independently.
 >
-> **What we're fixing (one paragraph):** docket's agent model flattens three independent dimensions —
-> **role** (what it does), **scope** (whose data it sees), **lifecycle** (persistent vs per-task) — into
-> one flat "agent type". That produces three defects: (A) the project agent and the shared `programmer`
-> specialist are *both* doers, neither complete; (B) shared specialist **singletons** break the
-> session-key isolation guarantee (one programmer serves every project in the same session); (C)
-> "delegation" is markdown only — no runtime routing. The fix: make **scope** first-class, turn
-> programmer/reviewer/tester into **project-scoped pod roles**, keep only genuinely cross-cutting roles
-> (security, knowledge, optional Portfolio Manager) shared, and provision each project as an isolated
-> **pod** sharing one session key.
+> **What we're doing (one paragraph):** a verified sweep shows the OpenClaw-native space is
+> **bifurcated** — monitoring *dashboards* (read side; `builderz-labs/mission-control` ~5.4k★,
+> `abhi1693/openclaw-mission-control` ~4.1k★, several `openclaw-dashboard`s) and one-shot *setup
+> scripts* (`shenhao-stu/openclaw-agents` ~445★). The only true CLI lifecycle+governance peer is
+> `oguzhnatly/fleet` (~13★, Bash, no pods/cost-policy/isolation). The broader field treats three
+> things as **unsolved**: runtime-resource isolation between parallel agents, anti-fragile *shared*
+> context, and a real HITL/audit spine. docket already owns the second (Lead-owned context + session
+> scoping). Phase 11 doubles down on the trio no competitor integrates and closes the two visible
+> gaps: **no dashboard-feed API** and **gates are opt-in / Telegram-only**.
 
 ## How to use this board (read before claiming a task)
 
 1. **Claim:** set Status → `IN-PROGRESS (@you)`. One agent per task.
-2. **Read first (always):** ROADMAP.md §2 (Python ground truth), §4.5 (architectural principles —
-   esp. *docket is not in the execution path*), the Phase 10 section, [CLAUDE.md](CLAUDE.md), and the
-   task's own "Read" list.
+2. **Read first (always):** `internal-docs/competitive-analysis.md`, ROADMAP.md §2 (Python ground
+   truth), §4.5 (architectural principles — esp. *docket is not in the agent execution path*), the
+   Phase 11 section, [CLAUDE.md](CLAUDE.md), and the task's own "Read" list.
 3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. OpenClaw formats live **only**
    in `edges/adapters/openclaw.py` (the ACL). docket-owned JSON goes **only** through `edges/store.py`.
-4. **Honesty rule:** docket does not execute agents. Anything with a runtime aspect is *daemon-gated* —
-   spike it (AA-0), isolate it (AA-7), and never overclaim runtime behaviour in docs.
-5. **Definition of done (per task):** acceptance criteria pass · a pytest covers it (add a golden case if
-   output changes) · `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run
-   pytest` green · `bash tests/golden/run.sh verify-all` green · committed `Type: description` (no
+   Every shell-out (`git`/`docker`/test runners) goes through `edges/adapters/system.py`.
+4. **Honesty rule:** docket does not execute agents — the daemon does. docket *is* in the path for
+   **dispatch** (`serve --dispatch` / `pod dispatch`) and for **its own mechanical work** (allocating
+   resources, running a local lint/test gate). Never claim docket runs the agent's tool calls or
+   executes Lobster workflows; the daemon owns those. Anything daemon-gated is spiked + isolated.
+5. **Definition of done (per task):** acceptance criteria pass · a pytest covers it (add a golden case
+   if output changes) · `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv
+   run pytest` green · `bash tests/golden/run.sh verify-all` green · committed `Type: description` (no
    Claude/Co-Authored-By trailer) · public-repo privacy scrubbed.
 
-**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs AA-x)` · `DONE`
+**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs CD-x)` · `DONE`
 **Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model:** one short-lived `pc/aa-<id>` branch per task → PR into the working branch (`python-core`).
+**Branch model:** one short-lived `pc/cd-<id>` branch per task → PR into the working branch (`develop`).
 
 ---
 
 ## Dependency map (what unblocks what)
 
 ```text
-AA-0  (spike: daemon capabilities)         ← BLOCKING, do first; decides AA-7 path
+CD-0  (confirm openclaw agent --json cost schema)   ← cheap; do first; makes CD-1/CD-2 cost-honest
   │
-AA-1  (scope axis on AgentMeta)            ← the root fix; unblocks everything below
+CD-1  (pod runtime-resource isolation)  ── FLAGSHIP ── parallel-safe with CD-0
+  │     └─ CD-5 (git-worktree Implementer isolation — composes with CD-1)
+CD-2  (deterministic pre-merge verification gate)   ← needs CD-0; composes with dispatch
   │
-  ├─ AA-2 (reclassify specialists: org vs project-role)
-  │     │
-  │     ├─ AA-3 (pod provisioning in `docket add`)  ──┐
-  │     │     └─ AA-4 (project-scoped role templates) │  AA-4 needs AA-3's pod shape
-  │     │     └─ AA-5 (Lead role = manager+project)   │
-  │     └─ AA-6 (org Portfolio Manager, optional)     │
-  │                                                    │
-AA-7 (real dispatch — DAEMON-gated, needs AA-0 + AA-3/4/5) 
-AA-8 (list/doctor taxonomy + migration — needs AA-1, AA-2)
-AA-9 (docs truth pass — last; needs AA-1..AA-6 landed)
+CD-3  (high-risk action classes)  ─┐
+CD-4  (headless approval channel) ─┘  parallel; together they unblock the deferred gates-default-on
+  │
+CD-6  (scheduled & webhook dispatch)   ┐
+CD-7  (Lobster validate + dry-run)     │  independent (serve / workflow surfaces)
+CD-8  (stable read API + status surface)┘
+  │
+CD-9  (positioning / docs truth pass)               ← LAST; needs CD-1..CD-8 landed
 ```
 
-Order to ship value fastest: **AA-0 → AA-1 → AA-2 → AA-3 → AA-4 → AA-5** lands the isolation fix
-(Defects A+B). AA-6 is optional. AA-7 closes Defect C if the daemon allows. AA-8/AA-9 finish.
+Order to ship value fastest: **CD-0 → CD-1 → CD-2 → CD-3/CD-4 → CD-6/CD-8 → CD-5/CD-7 → CD-9.**
+CD-1 (resource isolation), CD-2 (verify gate), and CD-3+CD-4 (on-by-default governance) are the three
+the analysis flags as the highest-leverage, no-competitor-integrates differentiators.
 
 ---
 
-### AA-0 — Spike: daemon capabilities for pods & ephemeral workers
-- **Depends on:** — · **Parallel-safe with:** AA-1 (AA-1 doesn't need the spike result)
-- **Read:** `openclaw --help`, live `~/.openclaw/openclaw.json`, <https://docs.openclaw.ai/>, `edges/adapters/openclaw.py` (what docket can already drive), ROADMAP §4.5 (execution-path constraint).
-- **Do:** Answer with evidence, recording each as supported / not-supported / unknown + the exact config/CLI:
-  1. Can the daemon **spawn a sub-agent / ephemeral agent** on demand, or are all agents statically registered?
-  2. Can one agent **dispatch work / send a message** to another *through the daemon* (not just Telegram), programmable from docket?
-  3. Can **one registered role run multiple concurrent isolated sessions** keyed by different session keys (the "shared programmer serves N projects safely" question), or is session state per-agent-singleton?
-  4. How is a **per-task session** created and torn down?
-  Then make the call for AA-7: **real daemon dispatch** vs **operator-driven queue**. Prove ≥1 claim against the live daemon (e.g. a second session key accepted on one role, or shown impossible).
-- **Out of scope:** any code change to docket; building dispatch (that's AA-7).
-- **Deliverables:** `internal-docs/POD-DAEMON-NOTES.md` (capability table + AA-7 verdict). Not shipped in the wheel.
-- **Acceptance gate:** [x] capability table with evidence; [x] explicit AA-7 verdict line; [x] ≥1 claim proven against the live daemon.
-- **Size:** M · **Status:** ✅ DONE (2026-06-23) → `internal-docs/POD-DAEMON-NOTES.md`
-- **Result:** Real dispatch is **feasible** (docket-orchestrated via `openclaw agent --agent <w> --session-id <key> -m … --json`). `openclaw agents add --workspace/--model/--non-interactive/--json` [proven] provisions per-pod worker agents; `agents list --json` [proven] shows **workspace is per-agent** (the shared `programmer` has one workspace for all projects — Defect B confirmed). **→ AA-7 = build the yes-path; AA-3 = provision distinct per-pod worker *agents*, not one agent with N sessions.**
+### CD-0 — Confirm the live `openclaw agent --json` result schema (carried-forward AA-0 follow-up)
+- **Depends on:** — *(do first; cheap)* · **Parallel-safe with:** CD-1
+- **Read:** `internal-docs/POD-DAEMON-NOTES.md`, `src/docket/edges/adapters/openclaw.py` (`agent_run`, `AgentRunResult`, the tolerant JSON parse), `src/docket/core/dispatch.py` (`cost_charged` per hop), the AA-7 "Note" in the Phase 10 record.
+- **Do:** Capture ≥1 **real** `openclaw agent --agent <id> --session-id <key> -m <text> --json` run against the live daemon in a throwaway agent. Record the actual JSON shape — especially the **cost/usage** field name(s) and units. Tighten `AgentRunResult` + the cost extraction to the real schema while keeping the tolerant fallback for older/newer daemons. Update `POD-DAEMON-NOTES.md` with the captured (redacted) sample + the field mapping.
+- **Out of scope:** any new feature; CD-1+ behaviour.
+- **Deliverables:** redacted real sample + field-map in `POD-DAEMON-NOTES.md`; edited `agent_run`/`AgentRunResult`; a pytest using the real-shaped canned JSON.
+- **Acceptance gate:** [ ] a real run captured against the live daemon; [ ] `AgentRunResult` maps the real cost field (not a guess); [ ] tolerant fallback retained + tested; [ ] suite green.
+- **Size:** S · **Status:** DONE
 
 ---
 
-### AA-1 — Add the `scope` axis to the taxonomy (root fix)
-- **Depends on:** — · **Parallel-safe with:** AA-0
-- **Read:** `src/docket/core/models.py` (`AgentKind`@14, `ModelSource`@24, `AgentMeta`@29 — the precedent for an enum + aliased field), `specs/data/docket-meta.spec.md`, ROADMAP Phase 9 (CDD-1 spec↔model sync rule).
-- **Do:** Add `AgentScope` StrEnum (`org`, `project`) and a `scope: AgentScope` field on `AgentMeta` (default `project`, alias-preserving like `modelSource`/`sessionKey`). Validation rejects unknown values. Add a backfill rule used on read + by `doctor` (AA-8): `kind==specialist` → look up the role in AA-2's org/project split (`security`/`knowledge` → `org`, `programmer`/`reviewer`/`tester` → `project`, `manager` → `org` for now); `kind==project` → `project`. Document `scope` as `local` sync-class in `docket-meta.spec.md`. **Do not** remove or repurpose `kind`/`role` — scope is orthogonal.
-- **Out of scope:** changing install/add behaviour (AA-2/AA-3); migrating existing workspaces.
-- **Deliverables:** edited `core/models.py`, updated `specs/data/docket-meta.spec.md`, pytest.
-- **Acceptance gate:** [x] new meta carries a valid `scope`; [x] bad `scope` rejected at the model boundary; [x] meta without `scope` resolves correctly on read; [x] spec updated (no automated CDD-1 parity test exists in the Python port — manual sync).
-- **Size:** S–M · **Status:** ✅ DONE (commit b84565c) — `AgentScope` enum + `scope` field + backfill validator; spec row added; 6 tests.
+### CD-1 — Pod-level runtime-resource isolation (FLAGSHIP differentiator)
+- **Depends on:** — · **Parallel-safe with:** CD-0
+- **Read:** `src/docket/core/pod.py`, `src/docket/cli/_pod.py` (`_member_soul`/workspace + TOOLS emission), `src/docket/cli/__init__.py` (`cmd_add`, `cmd_pod`, `cmd_delete`), `src/docket/core/models.py` (`AgentMeta` — add local-sync fields), `specs/data/docket-meta.spec.md`, `src/docket/edges/store.py`, `src/docket/edges/adapters/system.py`.
+- **Why:** the field's *acknowledged unsolved* problem — worktrees/workspaces isolate **files** but not **runtime** (ports collide; a shared local DB gets corrupted by concurrent migrations; caches/test-state bleed). No inner- or outer-ring competitor integrates this. Pure provisioning, no daemon change.
+- **Do:** At pod provisioning, allocate per-pod runtime resources and inject them into the **Implementer**'s workspace:
+  1. A **non-overlapping port range** (deterministic from a tracked allocation table, reclaimed on teardown — never collide across live pods).
+  2. A **scratch data dir** `~/.openclaw/workspaces/pods/<project>/.scratch/` (0700).
+  3. (Document, even if thin) a per-pod **scratch DB/cache namespace** convention (e.g. a `DOCKET_DB_NAMESPACE` suffix).
+  Record on pod metadata (new `local` sync-class fields, e.g. `portRangeStart`/`portRangeCount`/`scratchDir`) and surface them to the agent via the Implementer's `TOOLS.md` + env (`DOCKET_PORT_BASE`, `DOCKET_SCRATCH_DIR`, …). `docket pod <project>` shows the allocated resources; `docket delete`/`pod remove` **reclaim** the range + scratch dir.
+- **Out of scope:** enforcing that the agent actually binds to its range (we allocate + inject + document); kernel/network-namespace isolation (CD-5 / the microVM backlog item).
+- **Deliverables:** meta fields + `docket-meta.spec.md` row; a pure allocator in `core/` (unit-tested for non-overlap + reclaim); TOOLS.md/env injection in `_pod.py`; `pod` listing shows resources; reclaim wired into delete/remove; integration test.
+- **Acceptance gate:** [ ] two pods get **disjoint** port ranges + distinct scratch dirs; [ ] the Implementer's TOOLS.md/env exposes them; [ ] `docket pod <p>` shows them; [ ] `docket delete <p>` frees them (re-add reuses the freed range); [ ] suite + golden green.
+- **Size:** L · **Status:** DONE
 
 ---
 
-### AA-2 — Reclassify the six specialists: org vs project-role
-- **Depends on:** AA-1 · **Parallel-safe with:** AA-6
-- **Read:** `src/docket/config.py` (`SPECIALIST_ROLES`@45, `SPECIALIST_ORDER`@54, WHY/display tables @65-77), `src/docket/cli/_install.py` (`_provision_specialists`@288, writes `kind: specialist`@317).
-- **Do:** Split the role taxonomy in `config.py`: `ORG_ROLES = {security, knowledge}` (+ Portfolio Manager via AA-6) and `PROJECT_ROLES = {programmer, reviewer, tester}`; `manager` is handled by AA-5 (per-pod Lead). `docket install` provisions **only** org-scoped agents as shared singleton workspaces (`scope: org`). programmer/reviewer/tester are **no longer installed as global workspaces**. **Migration safety:** an existing install with the old global specialists must keep working — do not delete live workspaces; instead `doctor` (AA-8) flags the legacy project-role singletons with re-scope guidance. Keep the role→model policy mapping intact for every role regardless of scope.
-- **Out of scope:** pod creation (AA-3); template rewrites (AA-4).
-- **Deliverables:** edited `config.py` + `_install.py`, pytest + an integration test for clean-install vs existing-install.
-- **Acceptance gate:** [x] clean `docket install` registers org roles only (`scope: org`); [x] no global programmer/reviewer/tester singleton on a clean install; [ ] `docket list --all` shows org roles with scope (→ AA-8 adds the SCOPE column); [x] existing-install migration doesn't delete workspaces (install only adds; legacy workspaces untouched — doctor flagging is AA-8).
-- **Size:** M · **Status:** ✅ DONE (commit 733c609) — `ORG_ROLES`/`PROJECT_ROLES`/`ORG_SPECIALIST_ORDER` + `role_scope()`; install provisions org roles only and stamps `scope`; install tests updated.
+### CD-2 — Deterministic pre-merge verification gate (mechanical, not agent-judgment)
+- **Depends on:** CD-0 · **Parallel-safe with:** CD-1
+- **Read:** `src/docket/core/dispatch.py` (pipeline hops + where a task is marked done), `src/docket/edges/adapters/system.py` (shell-out wrappers), `src/docket/cli/_pod.py` + the project `TOOLS.md` (where a test/lint command lives), `src/docket/core/trace.py` (event types — add a verification event).
+- **Why:** Bernstein's "Janitor" gates a merge on lint/type/test; docket's Reviewer/Tester are agent *judgment*. A hard mechanical gate turns "Tester says ok" into "tests actually passed." docket runs locally, so running the gate is legitimate docket-side work (not agent execution).
+- **Do:** Add an **opt-in per-pod `verifyCmd`** (meta field, or sourced from the project's `TOOLS.md`). In the dispatch pipeline, **before a task is marked done** (after the Implementer hop), run `verifyCmd` via the system adapter **in the Implementer's workspace**. Non-zero exit ⇒ leave the task `pending`/`failed`, emit a `verification_failed` trace event with **redacted** captured output, and do **not** mark done. `verifyCmd` unset ⇒ skip, but **log that verification was skipped** (no silent pass — honesty rule / "no silent caps").
+- **Out of scope:** auto-fixing failures; inferring the command heuristically beyond `TOOLS.md`/the meta field.
+- **Deliverables:** `verifyCmd` meta field + spec row; the gate in `dispatch.py`; the new trace event (+ redaction); a system-adapter call; tests for pass→done, fail→pending+trace, unset→skip+log.
+- **Acceptance gate:** [ ] a failing `verifyCmd` blocks done and traces it; [ ] a passing one allows done; [ ] unset ⇒ skipped **with a visible log line**; [ ] output is redacted in the trace; [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-3 — Pod provisioning in `docket add` + configurable pod (lean default, decided 2026-06-23)
-- **Depends on:** AA-1, AA-2 (read AA-0's verdict for the registration shape) · **Parallel-safe with:** AA-6
-- **Read:** `src/docket/cli/__init__.py` (`cmd_add`/`_create_workspace` ~516-770; session key `agent:{id}:{project}`@702; meta write incl. `sessionKey`@716; `_oc.add_agent`/`sync_session_key`@760-763), `src/docket/core/sync.py`, `edges/adapters/openclaw.py`.
-- **Pod composition (configurable — the options, explicit):**
-  - **Default `docket add <project>` → 2-agent lean pod: Lead + Implementer.** Lead orchestrates; Implementer runs *in* the project workspace and writes code. Useful and cheap.
-  - **`docket pod <project> add <role> [--count N]`** → add **reviewer**, **tester**, or **another implementer** later. Roles may be **duplicated** (e.g. 2 implementers) → indexed ids `<project>-implementer`, `<project>-implementer-2`.
-  - **`docket pod <project>`** → list members (id, role, model, scope).
-  - **`docket pod <project> remove <member-id>`** → remove one member.
-  - **`docket add <project> --pod full`** (or `--with reviewer,tester`) → provision the 4-role pod up front.
-- **Do:** Provision each pod member as a **distinct registered agent** (AA-0: workspace, not session key, is the real isolation primitive) via the ACL wrapping `openclaw agents add <project>-<role>[-N] --workspace ~/.openclaw/workspaces/pods/<project>/<role>[-N] --model <role-policy> --non-interactive --json`. Each: own workspace (Defect-B fix), `kind: project`, `scope: project`, `role: <lead|implementer|reviewer|tester>`, `agent:<project>:…`-namespaced session key. Guarantee: **no worker agent serves two projects.** One `system.restart_gateway()` per command. `docket delete <project>` tears down **every** member via `openclaw agents delete`; `pod remove` removes one. Adding a role whose template (AA-4/AA-5) is missing → refuse with a clear message.
-- **Out of scope:** template *content* (AA-4 Implementer/Reviewer/Tester; AA-5 Lead) beyond the minimal Lead+Implementer needed for the default pod to render.
-- **Deliverables:** ACL `provision_pod_agent`/`teardown_pod_agent`; edited `cmd_add`; new `pod` command group (`add`/`remove`/list); edited `cmd_delete`; integration tests.
-- **Acceptance gate:** [x] `docket add demo` → 2 members (`demo-lead`, `demo-implementer`), each `scope: project` + distinct workspace; [x] `docket pod demo add implementer` → `demo-implementer-2`; [x] `docket pod demo add reviewer` works; [x] `docket pod demo` lists members; [x] one gateway restart per command; [x] `docket delete demo` removes all members + bindings.
-- **Size:** L · **Status:** ✅ DONE (commits 5769bdf core model, 93660ab pod command+provisioning+templates, 01ad6b9 add/delete wiring). 44 pod tests. **Note:** the Lead/Implementer/Reviewer/Tester SOUL templates authored in `cli/_pod.py` also satisfy the essence of AA-4 (worker templates) and AA-5 (Lead role). Residual for AA-4/AA-5: retire the now-dead `templates/docket-{programmer,reviewer,tester,manager}.md` files + add a doctor template-version flag.
+### CD-3 — High-risk action classes (always-approve, regardless of allowlist)
+- **Depends on:** — · **Parallel-safe with:** CD-4
+- **Read:** `src/docket/core/policy.py` (policy schema + most-restrictive-wins evaluator, OBS-5/6), `src/docket/cli/_policies.py` (`policies list/show/test`), `src/docket/core/security.py` (exec allowlist), the policy specs.
+- **Why:** Galileo's governance guidance is explicit — *dual/human approval for actions touching money, medical/sensitive data, or production code*. docket's approval is currently uniform; there's no "this class always needs a human" concept.
+- **Do:** Add a **`high-risk` policy class** matching configurable categories — money/payment, production-deploy, secret/credential access — that **always routes to approval even if the command's bin is on the exec allowlist** (most-restrictive-wins already supports this). Ship sensible baseline patterns; `docket policies show` surfaces them; `docket policies test <hook> <role> "<text>"` demonstrates them.
+- **Out of scope:** the approval *channel* (CD-4); ML/semantic classification (regex/category match in v1).
+- **Deliverables:** baseline `high-risk` policy + any schema support; `docket policies` surfacing; tests — incl. an **allowlisted** bin that still gets gated when it matches a high-risk pattern.
+- **Acceptance gate:** [ ] a high-risk-matching action requires approval even though its bin is allowlisted; [ ] `docket policies test` shows the gate firing; [ ] baseline patterns documented; [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-4 — Project-scoped role templates (Implementer knows the code)
-- **Depends on:** AA-3 · **Parallel-safe with:** AA-5
-- **Read:** `src/docket/templates/docket-programmer.md`, `docket-reviewer.md`, `docket-tester.md`; the workspace-emission path in `_create_workspace`; current session-key substitution.
-- **Do:** Re-author the three templates as **pod members** bound to the project + pod session key (inherit the workspace `SOUL.md` context — **not** a <500-token compressed brief). The **Implementer** (was programmer) has read/write/edit on the project codebase because it runs *in* the workspace (this is the Defect-A fix), plus the agreed git posture. Reviewer stays read-only veto on the diff; Tester stays behaviour-only PASS/FAIL. **Remove** all "shared specialist" / `specialist:<role>:…` hardcoded-key / sandbox-only-no-context language. Bump the template version so `doctor` flags existing agents for `maintain rebuild`.
-- **Out of scope:** the Lead template (AA-5); org-role templates.
-- **Deliverables:** rewritten templates, template-version bump, pytest rendering each into a pod.
-- **Acceptance gate:** [x] rendered pod role files reference the project + pod session key; [x] **zero** "shared specialist"/hardcoded-`specialist:` phrasing; [x] Implementer template grants in-workspace code access; [x] grep on a fresh pod confirms no singleton language.
-- **Size:** M · **Status:** ✅ DONE — satisfied by AA-3's `_pod._member_soul` (Lead/Implementer/Reviewer/Tester SOULs bound to the pod session key, Implementer runs in-workspace). Legacy-retirement pass deleted the dead `templates/docket-{programmer,reviewer,tester}.md` and the `_team_upgrade` path that applied them.
+### CD-4 — Headless approval channel (unblock gates-on-by-default)
+- **Depends on:** — *(composes with CD-3)* · **Parallel-safe with:** CD-3
+- **Read:** `src/docket/core/approval.py` (durable store, grant/deny, fail-closed sweep — OBS-9/10), `src/docket/cli/_approve.py` + `_deny.py`, `src/docket/serve.py` (HTTP endpoints), `src/docket/core/trace.py` (approval events).
+- **Why:** gates can't be recommended **on-by-default** while **Telegram is the only production approval channel** (memory: this is the long-deferred "Phase 0 gates default-on" blocker). Give operators a headless path.
+- **Do:** Add a **headless approval channel** beyond Telegram via `serve`: `GET /approvals` (list pending, redacted) and `POST /approvals/<token>` (grant/deny), **token-guarded** and local-bind by default; keep `docket approve/deny <token>` as the CLI channel and document it as the headless default. Preserve **fail-closed** semantics (the expiry sweep still runs). Document the security model (local bind + token; never expose unauthenticated).
+- **Out of scope:** a full web UI (CD-8 / backlog); auth beyond a local token; **flipping the gates default** (this card only *removes the blocker* — the default-on flip is a separate, later decision).
+- **Deliverables:** `serve` approval endpoints (read + act) + token guard; docs of the security model; tests for grant/deny via the endpoint, unauthorized rejection, and expiry-still-fires.
+- **Acceptance gate:** [ ] a pending approval can be listed + granted/denied **without Telegram**; [ ] an unauthorized request is rejected; [ ] expiry still fail-closes; [ ] suite green. *(Note in the PR: this satisfies the prerequisite for the deferred gates-default-on flip; do not flip it here.)*
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-5 — The Lead role (merge project-agent + manager)
-- **Depends on:** AA-3 · **Parallel-safe with:** AA-4
-- **Read:** `src/docket/templates/docket-manager.md` (no-edit/HITL constraints — keep them); project repo/task SOUL/AGENTS emission at `cli/__init__.py:533-643`.
-- **Do:** Rework the manager template into a **per-pod Lead**: the persistent, project-scoped orchestrator that owns the pod's context/memory + human comms, decomposes work, dispatches to pod workers, and **never edits code** (preserve the manager's no-edit + HITL + context-compression discipline). It replaces the old "project agent that may implement OR delegate" — implementation is always a worker's job. `role: lead`, `scope: project`, shares the pod session key; `type` (repo/task) stays as the policy role for model resolution. Remove the "delegate → global programmer" instruction from the project SOUL.
-- **Out of scope:** worker templates (AA-4); the org Portfolio Manager (AA-6).
-- **Deliverables:** reworked Lead template, edited project SOUL/AGENTS emission, pytest + integration.
-- **Acceptance gate:** [x] added pod has exactly one `role: lead` member with the no-edit constraint + pod session key; [x] old "delegate to global programmer" text gone from project SOUL.
-- **Size:** M · **Status:** ✅ DONE — Lead role lives in AA-3's `_pod._member_soul` (`role: lead`, never edits code, owns pod context/human comms). Legacy-retirement pass removed the `templates/docket-manager.md` template, the `team status/check/roles/upgrade` subcommands + their functions, and the "delegate → programmer/reviewer/tester" tables from the legacy `_create_workspace` project SOUL/AGENTS. `serve.py` now monitors org specialists only; `team` is now solely the org manager task queue.
+### CD-5 — Git-worktree-native Implementer isolation (the convergent industry pattern)
+- **Depends on:** CD-1 (composes), CD-0 · **Parallel-safe with:** CD-6/CD-7
+- **Read:** `src/docket/cli/__init__.py` (`cmd_add`/`_create_workspace` — codebase path), `src/docket/cli/_pod.py` (Implementer workspace), `src/docket/edges/adapters/system.py` (git wrappers), `src/docket/core/pod.py`, AA-0's `internal-docs/POD-DAEMON-NOTES.md` (workspace is per-agent).
+- **Why:** the verified field convergence — *"every tool here converges on git worktrees"* (Cursor, Codex, Terra). docket uses flat workspace dirs; for **repo** pods this is off the dominant code-isolation pattern. Composes with CD-1's runtime-resource isolation.
+- **Do:** For **repo** pods (codebase present), provision the Implementer's working tree as a `git worktree add` off the project repo (a branch per pod/task) instead of a flat dir, via the system adapter. Wire teardown (`git worktree remove`) into `pod remove`/`delete`. **Validate** that the daemon runs the agent against the worktree path (workspace is already per-agent per AA-0); if it can't target a worktree cleanly, **record the limitation and fall back** to the current workspace dir (honesty rule). Record the worktree path on pod meta.
+- **Out of scope:** task pods (no codebase); merge/PR automation; multi-worktree-per-pod.
+- **Deliverables:** worktree provisioning/teardown via the system adapter; a meta field for the worktree path; tests against a temp git repo; a **documented + tested fallback** if the daemon can't target the worktree.
+- **Acceptance gate:** [ ] a repo pod's Implementer works in a dedicated worktree/branch; [ ] teardown removes it; [ ] non-repo (task) pods are unaffected; [ ] the daemon-incompatible fallback is documented + tested; [ ] suite green.
+- **Size:** L · **Status:** TODO
 
 ---
 
-### AA-6 — Org Portfolio Manager (optional, single)
-- **Depends on:** AA-1, AA-2 · **Parallel-safe with:** AA-3/AA-4/AA-5
-- **Read:** `src/docket/cli/_install.py`, `src/docket/config.py`.
-- **Do:** Optionally provision **one** `scope: org`, `role: portfolio-manager` agent that sees fleet metadata/queue/budgets (not project code) — the cross-pod planning/visibility surface, distinct from per-pod Leads. It does **not** dispatch into pods at runtime in v1 (that's AA-7). Gate behind an install flag (opt-in). Never appears as a pod member.
-- **Out of scope:** runtime dispatch (AA-7); per-pod Leads (AA-5).
-- **Deliverables:** edited `_install.py`/`config.py`, integration test.
-- **Acceptance gate:** [x] flag on → one `portfolio-manager` (`scope: org`) in `docket list`; [x] flag off → none, pods still function; [x] never listed as a pod member.
-- **Size:** S–M · **Status:** ✅ DONE — `docket install --portfolio` provisions one `portfolio-manager` org specialist (own SOUL: read-only cross-pod planning over fleet metadata, never edits code, advisory in v1 — no runtime dispatch). Config: added to `SPECIALIST_ROLES`/`ORG_ROLES` (→ `is_specialist`/`role_scope`=org) + `ROLE_CLASS` (cheap) + new `ORG_DISPLAY_ORDER` (list/serve show it only when its workspace exists; deliberately NOT in `ORG_SPECIALIST_ORDER`, so never auto-installed or flagged missing). Never a pod member (`pod_of` → None). 7 tests in `test_portfolio_manager.py`.
+### CD-6 — Scheduled & webhook-triggered dispatch (event-driven control plane)
+- **Depends on:** CD-0 *(dispatch already exists — AA-7)* · **Parallel-safe with:** CD-7/CD-8
+- **Read:** `src/docket/serve.py` (HTTP loop, `--dispatch`, interval), `src/docket/core/dispatch.py`, `src/docket/cli/__init__.py` (serve wiring), `src/docket/core/trace.py`.
+- **Why:** OpenHands' Automation Server runs agents **on a schedule or in response to webhook events**; docket's `serve --dispatch` is interval-polling only. This turns the poller into an event-driven control plane.
+- **Do:** Extend `serve` with (a) **schedule**: cron-like spec(s) (global or per-pod) that trigger a pod's dispatch at given times, not just on the poll interval; (b) **webhook**: a token-guarded `POST /dispatch/<project>` that triggers a pod's dispatch on an external event. Stay on stdlib `http.server`. Trace each triggered run (reuse Phase-8 events).
+- **Out of scope:** *outbound* integrations (Slack/GitHub/Linear apps — backlog); distributed/clustered scheduling.
+- **Deliverables:** schedule parsing + a tick in the serve loop; the webhook endpoint + token guard; tests — a scheduled time fires a dispatch; a webhook POST triggers one; unauthorized rejected.
+- **Acceptance gate:** [ ] a scheduled time triggers a pod dispatch; [ ] a webhook POST triggers it; [ ] unauthorized rejected; [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-7 — Real dispatch (DAEMON-gated; **AA-0 verdict = YES, build the yes-path**)
-- **Depends on:** AA-0 ✅ (feasible), AA-3, AA-4, AA-5
-- **Read:** AA-0's `internal-docs/POD-DAEMON-NOTES.md`, `src/docket/serve.py` (background loop), `src/docket/cli/__init__.py` (`team`/`TASK_LIST.json`), `src/docket/core/trace.py` (Phase 8 trace events — reuse), `src/docket/edges/adapters/openclaw.py` (add `agent_run`).
-- **Do:** Add `agent_run(agent_id, session_key, message, timeout) -> json` to the ACL wrapping `openclaw agent --agent <id> --session-id <key> -m <text> --json --timeout N`. The `docket serve` loop reads a pod's `TASK_LIST.json` and drives the pipeline Lead → Implementer → Reviewer → Tester by calling `agent_run` **per hop**, capturing each JSON result, emitting a Phase-8 trace event per hop. **Respect per-pod budget** before each hop (each hop is a real, costed agent turn). Dispatch happens **within a pod** only, never across pods.
-- **Out of scope:** cross-pod dispatch; reintroducing prompt-level SMART-ROUTING (cut in Phase 2). First confirm the `openclaw agent --json` result schema by capturing one real run in a throwaway agent (AA-0 follow-up) before wiring.
-- **Deliverables:** `agent_run` in the ACL; serve-loop dispatch driver; per-hop trace wiring; integration test with a faked `openclaw agent` returning canned JSON.
-- **Acceptance gate:** [x] a queued pod task dispatches through the pipeline + traces end-to-end without manual Telegram relay; [x] budget checked before each hop; [x] no cross-pod dispatch path exists; [x] only the ACL invokes `openclaw agent`.
-- **Size:** L · **Status:** ✅ DONE — `agent_run` (+ `AgentRunResult`, tolerant JSON parse) in the ACL; `core/dispatch.py` drives the pod pipeline (Lead→Implementer→Reviewer→Tester, present roles only), one trace event per hop (session_start/tool_call/tool_result|error/cost_charged/session_end), per-pod budget gate before every hop (blocked → task left pending), per-task session `agent:<project>:<task_id>`, no-cross-pod guard. Surfaced as `docket pod <p> delegate|queue|dispatch` and the opt-in `docket serve --dispatch`. 12 tests in `test_dispatch.py` (fake-binary agent_run + injected-runner pipeline + end-to-end). **Note:** the per-hop *message* prompts are v1 placeholders; the `--json` result schema is parsed defensively (AA-0's confirm-the-schema follow-up is still worth doing against a real daemon before relying on cost fields).
+### CD-7 — Lobster workflow `validate` + `dry-run`/`plan`
+- **Depends on:** — · **Parallel-safe with:** CD-6/CD-8
+- **Read:** `src/docket/cli/__init__.py` (`cmd_workflow` — list/create/show/delete), the Lobster YAML in `src/docket/templates/`, `src/docket/core/` (add a validator).
+- **Why:** docket's Lobster workflows are **read-only** to docket (the daemon executes them); Conductor *authors + validates* YAML pipelines. A validate + dry-run narrows the UX gap without overclaiming execution.
+- **Do:** Add `docket workflow <id> validate <name>` (schema/lint the Lobster YAML — structural + referenced-role/step checks) and `docket workflow <id> plan <name>` (render the **resolved** pipeline docket *would* hand the daemon, **without executing**). Output must **state explicitly** that docket does not execute the workflow — the daemon does (honesty rule).
+- **Out of scope:** executing/running workflows (daemon owns it); editing them beyond create.
+- **Deliverables:** a pure Lobster-YAML validator in `core/` (unit-tested, valid + invalid); the `validate`/`plan` subcommands; a golden for `plan` output; tests.
+- **Acceptance gate:** [ ] invalid Lobster YAML is rejected with a clear, located error; [ ] `plan` prints the resolved steps **and** states docket doesn't run them; [ ] suite + golden green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-8 — `docket list` / `doctor` taxonomy view + migration
-- **Depends on:** AA-1, AA-2 · **Parallel-safe with:** AA-5/AA-6
-- **Read:** `src/docket/cli/__init__.py` (`list`), `src/docket/cli/_doctor.py`, ROADMAP Phase 9 drift-check pattern.
-- **Do:** `docket list --all` gains **SCOPE** and **POD** columns (org agents listed once; pod members grouped under their project). `doctor` backfills `scope` for pre-Phase-10 metas (AA-1 rule), flags legacy global programmer/reviewer/tester singletons with the AA-2 re-scope guidance, and verifies pod members share one session key (drift check). `--fix` performs the safe backfills.
-- **Out of scope:** auto-migrating legacy singletons into pods (flag + guide only; the operator re-adds).
-- **Deliverables:** edited `list` + `_doctor.py`, integration tests.
-- **Acceptance gate:** [x] pre-Phase-10 install → `doctor` backfills scope + flags legacy singletons; [x] `list` (json+human) renders scope/role/pod; [ ] pod session-key drift check (deferred — low value, members share by construction).
-- **Size:** M · **Status:** ✅ DONE (commit f65a50d) — `pod_of` helper, scope/role/pod in `list`, doctor scope backfill + legacy-singleton flag. Golden recaptured. 4 tests.
+### CD-8 — Stable read API + minimal status surface (feed the dashboards, don't out-UI them)
+- **Depends on:** — · **Parallel-safe with:** CD-6/CD-7
+- **Read:** `src/docket/serve.py` (`/status.json`, `/metrics`, `/health`), `src/docket/core/trace.py` + `src/docket/cli/_metrics.py` (metrics), `src/docket/cli/__init__.py` (`snapshot`), `specs/data/`.
+- **Why:** the market visibly wants **visibility** (two 4–5k★ mission-control UIs + several dashboards). docket has no dashboard. The strategic call (see analysis): **don't build a worse dashboard — expose a stable read API a dashboard can consume**, positioning docket as the governed control plane *behind* the UI.
+- **Do:** Harden `serve` into a **documented, versioned, read-only API**: solidify `/status.json` (pods, members, scope, model, budget, health), `/metrics` (success rate, latency, cost, guardrail trips), `/health`; version the contract and pin it in a new `specs/data/serve-read-api.spec.md`. **Optionally** ship a **single static HTML** page (no build step, à la `anis-marrouchi/openclaw-dashboard`) that renders the read API — explicitly framed as "feeds dashboards", not "is a dashboard". Strictly read-only (mutation stays in the CLI / CD-4).
+- **Out of scope:** a full SPA; write endpoints; auth beyond local bind (the read API is local-bind by default).
+- **Deliverables:** stabilized + versioned endpoints; `specs/data/serve-read-api.spec.md`; optional single-file HTML; tests pinning the JSON contract shape.
+- **Acceptance gate:** [ ] `/status.json` + `/metrics` emit a **documented, versioned** shape; [ ] the contract spec exists and a test pins it; [ ] (optional) the static page renders from the API; [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### AA-9 — Docs / help / CLAUDE.md truth pass
-- **Depends on:** AA-1..AA-6 landed · **Do last**
-- **Read:** `CLAUDE.md` (Agent Types + architecture), `README.md`, `docs/WORKFLOW-GUIDE.md`, `docs/DOCKET.md`, `src/docket/cli/_help.py`.
-- **Do:** Rewrite the agent-type narrative to the **pod model**: org-scoped shared agents (security, knowledge, optional Portfolio Manager) vs per-product pods (Lead + project-scoped Implementer/Reviewer/Tester sharing one session key). State plainly what's enforced by provisioning/isolation vs what's daemon-gated (AA-7). Remove "specialists are shared resources that work across all projects" for the project-roles. Keep all claims honest (no dollar-savings; no overclaimed runtime routing).
-- **Out of scope:** new feature docs.
-- **Deliverables:** edited docs + help, a docs grep-audit test.
-- **Acceptance gate:** [x] docs no longer describe programmer/reviewer/tester as global shared specialists; [x] docs describe pods (org specialists vs project pods, Lead/Implementer/Reviewer/Tester); [x] `uv run pytest` green.
-- **Size:** M · **Status:** ✅ DONE — README + CLAUDE.md (local) done earlier; legacy-retirement pass swept `docs/{QUICK-START-DOCKET,DOCKET,WORKFLOW-GUIDE,commands}.md` and `specs/functional/team-coordination.spec.md`: removed the deleted `team status/check/roles/upgrade` references and the deprecated Phase-2 execution model (compressed briefs, short-circuit classifier, "Atlas", global programmer/reviewer/tester) — all reframed to the pod model. `_help.py` shows ORG SPECIALISTS / PROJECT PODS.
+### CD-9 — Positioning / docs truth pass (lead with the verified differentiators)
+- **Depends on:** CD-1..CD-8 landed · **Do last**
+- **Read:** `README.md`, `CLAUDE.md`, `docs/*`, `internal-docs/competitive-analysis.md`, the `product-positioning` memory.
+- **Why:** the analysis says docket should **stop competing on cost** and lead with the trio the field treats as unsolved. The docs must reflect what shipped in CD-1..CD-8 and the honest contrast vs the competitor rings.
+- **Do:** Rewrite the positioning to lead with: **coordinated Lead-owned context** (anti-fragility vs Cognition's "Don't Build Multi-Agents"), **project + runtime-resource isolation** (CD-1/CD-5), and the **governance/HITL/audit spine** (CD-2/CD-3/CD-4). Add explicit contrast lines: *"an ops/control plane, not an agent framework (vs CrewAI/LangGraph/AutoGen)"* and *"a governed multi-project fleet, not a solo personal assistant (vs raw openclaw)"*. Frame docket as the **write-side control plane that feeds dashboards** (CD-8), not a dashboard. Keep the **no-dollar-savings** discipline and name it as a **trust** stance vs marketing-grade rivals. No unfalsifiable claims.
+- **Out of scope:** new feature docs beyond what CD-1..CD-8 shipped.
+- **Deliverables:** edited `README`/`CLAUDE.md`/`docs/*`; a docs grep-audit test (no "savings"/dollar claims; the differentiator + contrast lines present).
+- **Acceptance gate:** [ ] docs lead with coordinated-context + isolation + governance; [ ] the framework-vs and solo-assistant-vs contrast lines are present; [ ] no dollar-savings claims (grep test); [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-## Roll-up checklist (Phase 10 definition of done)
-- [x] AA-0 spike landed; AA-7 path decided and recorded.
-- [x] `scope` is a validated first-class axis on every agent (AA-1).
-- [x] Clean install creates only org-scoped shared agents; no global programmer/reviewer/tester singleton (AA-2).
-- [x] `docket add` provisions an isolated pod sharing one session key; the Implementer runs in the workspace (AA-3, AA-4).
-- [x] The single global Atlas manager is replaced by per-pod Leads (AA-5) + the opt-in org Portfolio Manager (AA-6, `docket install --portfolio`).
-- [x] Runtime dispatch is real-via-daemon — the `serve --dispatch` loop / `docket pod <p> dispatch` drives the pipeline through `openclaw agent` per hop, budget-gated, within a pod only (AA-7).
-- [x] `docket list`/`doctor` show and migrate the org/pod taxonomy (AA-8).
-- [x] Docs teach the pod model honestly (AA-9).
-- [x] Full suite green: ruff + mypy + pytest + goldens.
+## Roll-up checklist (Phase 11 definition of done)
+- [ ] CD-0 — live `openclaw agent --json` cost schema confirmed; `agent_run` parsing tightened.
+- [ ] CD-1 — a pod gets isolated runtime resources (disjoint port range + scratch dir), reclaimed on delete.
+- [ ] CD-2 — a pod task cannot be marked done unless a mechanical verification gate passes (or is explicitly, visibly skipped).
+- [ ] CD-3 + CD-4 — high-risk actions always require approval, and there is ≥1 **headless** approval channel (gates-default-on is unblocked).
+- [ ] CD-5 — repo pods isolate the Implementer in a git worktree (or a documented fallback).
+- [ ] CD-6 — `serve` can be triggered on a schedule and via webhook.
+- [ ] CD-7 — Lobster workflows can be validated + dry-run/planned (without overclaiming execution).
+- [ ] CD-8 — `serve` exposes a documented, versioned read API a dashboard can consume.
+- [ ] CD-9 — public docs lead with the verified differentiators and make no unfalsifiable claims.
+- [ ] Full suite green: ruff + mypy + pytest + goldens.
 
-**Phase 10 is COMPLETE — every card (AA-0…AA-9) is done.** The only remaining item is the
-non-blocking AA-0 follow-up: confirm the live `openclaw agent --json` result schema (esp. the cost
-field) against a real daemon and tighten `agent_run`'s parsing if needed.
+**Deferred to §7 Backlog (explicitly out of Phase 11):** docket's own full web UI; microVM/gVisor
+isolation; multi-host/remote provisioning; cross-runtime (non-OpenClaw) adapters.

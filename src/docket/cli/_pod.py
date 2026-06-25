@@ -25,11 +25,13 @@ from docket import ui
 from docket.core import dispatch as _dispatch
 from docket.core import models_policy as _mp
 from docket.core import pod
+from docket.core import resources as _res
+from docket.edges import store as _store
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 # Bump when the pod-member templates change (doctor flags older members).
-POD_TEMPLATE_VERSION = 1
+POD_TEMPLATE_VERSION = 2
 
 # One-line purpose per pod role (shown in `docket pod <project>`).
 _ROLE_PURPOSE: dict[str, str] = {
@@ -95,13 +97,47 @@ def _member_soul(
     return head + body
 
 
+def _member_tools(
+    member: pod.PodMember,
+    codebase: str,
+    port_range_start: int,
+    port_range_count: int,
+    scratch_dir: str,
+) -> str:
+    """TOOLS.md for an Implementer — includes allocated runtime resources."""
+    port_end = port_range_start + port_range_count - 1
+    lines = [
+        f"# TOOLS.md — {member.project} · {member.role}",
+        "",
+        "## Runtime Resources (pod-isolated — allocated by docket)",
+        "",
+        "Your pod has a reserved, non-overlapping port range.  "
+        "**Never use ports outside it** — other pods may have adjacent ranges.",
+        f"- `DOCKET_PORT_BASE={port_range_start}` — bind services to {port_range_start}-{port_end}",
+        f"- `DOCKET_PORT_COUNT={port_range_count}`",
+        "",
+        "Isolated scratch data directory (yours alone — safe for test DBs, caches, temp state):",
+        f"- `DOCKET_SCRATCH_DIR={scratch_dir}`",
+        f"- DB namespace prefix: `{member.project}_`  "
+        f"(e.g. `{member.project}_test`, `{member.project}_cache`)",
+    ]
+    if codebase:
+        lines += [
+            "",
+            "## Codebase",
+            f"Project root: `{codebase}`",
+        ]
+    return "\n".join(lines) + "\n"
+
+
 def _member_agents(member: pod.PodMember, project: str) -> str:
     return (
         f"# AGENTS.md — {project} · {member.role}\n\n"
-        "## Every Session\n"
-        "1. Read SOUL.md\n"
-        "2. Read HEARTBEAT.md — any pending tasks?\n"
-        "3. Read memory/YYYY-MM-DD.md (today + yesterday)\n\n"
+        "## Every Session (keep this lean — it is re-sent every turn)\n"
+        "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+        "2. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
+        "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
+        "   later turn.\n\n"
         "## Pod\n"
         f"You are part of the `{project}` pod. Coordinate only within this pod; "
         "the Lead routes work between members.\n"
@@ -115,6 +151,10 @@ def _write_member_workspace(
     description: str,
     project: str,
     project_key: str,
+    *,
+    port_range_start: int = 0,
+    port_range_count: int = 0,
+    scratch_dir: str = "",
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
@@ -126,10 +166,16 @@ def _write_member_workspace(
     (ws / "HEARTBEAT.md").write_text(
         f"# HEARTBEAT — {member.member_id}\n\n_No active tasks._\n", encoding="utf-8"
     )
+    # Implementers get a TOOLS.md showing their allocated runtime resources.
+    if member.role == "implementer" and port_range_start and scratch_dir:
+        (ws / "TOOLS.md").write_text(
+            _member_tools(member, codebase, port_range_start, port_range_count, scratch_dir),
+            encoding="utf-8",
+        )
     with contextlib.suppress(OSError):
         ws.chmod(0o700)
 
-    meta = {
+    meta: dict[str, object] = {
         "schemaVersion": 1,
         "kind": "project",
         "scope": "project",
@@ -146,6 +192,11 @@ def _write_member_workspace(
         "projectKey": project_key,
         "templateVersion": str(POD_TEMPLATE_VERSION),
     }
+    # Store allocated resources on the Implementer's meta (local-only fields).
+    if member.role == "implementer" and port_range_start:
+        meta["portRangeStart"] = port_range_start
+        meta["portRangeCount"] = port_range_count
+        meta["scratchDir"] = scratch_dir
     meta_file = ws / _cfg.META_FILE
     meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     with contextlib.suppress(OSError):
@@ -163,12 +214,25 @@ def provision_member(
     description: str,
     project: str,
     project_key: str,
+    port_range_start: int = 0,
+    port_range_count: int = 0,
+    scratch_dir: str = "",
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it with the daemon.
 
     Does NOT restart the gateway — the caller batches one restart per command.
     """
-    _write_member_workspace(member, codebase, stack, description, project, project_key)
+    _write_member_workspace(
+        member,
+        codebase,
+        stack,
+        description,
+        project,
+        project_key,
+        port_range_start=port_range_start,
+        port_range_count=port_range_count,
+        scratch_dir=scratch_dir,
+    )
     ws_path = str(_cfg.PROJECTS_DIR / member.member_id)
 
     if shutil.which("openclaw"):
@@ -182,10 +246,47 @@ def provision_member(
     return (True, "")
 
 
+def _allocate_pod_resources(project: str) -> tuple[int, int, str]:
+    """Allocate (or return existing) port range + scratch dir for *project*.
+
+    Returns ``(portRangeStart, portRangeCount, scratchDirPath)``.
+    Writes the updated port-allocation table atomically via store.py.
+    Creates the scratch dir (0700) if it does not exist.
+
+    Idempotent: re-calling for the same project returns the same values.
+    """
+    table = _store.read_json(_cfg.PORT_ALLOC_FILE)
+    start, count, updated = _res.allocate_pod_ports(project, table)
+    if updated is not table:
+        _store.write_json(_cfg.PORT_ALLOC_FILE, updated)
+    scratch = _cfg.pod_scratch_dir(project)
+    scratch.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        scratch.chmod(0o700)
+    return start, count, str(scratch)
+
+
+def free_pod_resources(project: str) -> None:
+    """Release the port range and remove the scratch dir for *project*.
+
+    Called by pod teardown paths (docket delete / docket pod remove last-implementer).
+    Idempotent: safe to call even if no resources were allocated.
+    """
+    table = _store.read_json(_cfg.PORT_ALLOC_FILE)
+    if table:
+        updated = _res.free_pod_ports(project, table)
+        _store.write_json(_cfg.PORT_ALLOC_FILE, updated)
+    scratch = _cfg.pod_scratch_dir(project)
+    if scratch.is_dir():
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def teardown_member(member_id: str) -> tuple[bool, str]:
     """Remove one pod member: daemon registration + workspace + agents.list entry.
 
     Does NOT restart the gateway — the caller batches one restart per command.
+    Does NOT free pod resources — the caller is responsible for that when it
+    knows the full pod is being torn down or the last implementer is leaving.
     """
     ok, msg = (True, "")
     if shutil.which("openclaw"):
@@ -246,9 +347,15 @@ def build_pod(
     """Provision a fresh pod's members. Returns the created member ids.
 
     One gateway restart at the end. Used by `docket add` and `docket pod add full`.
+    Allocates pod-level runtime resources (port range + scratch dir) once for the
+    whole pod and injects them into each Implementer's workspace.
     """
     role_models, _, _ = _mp.load_registry()
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
+
+    # Allocate runtime resources once for the whole pod (idempotent).
+    port_start, port_count, scratch = _allocate_pod_resources(project)
+
     created: list[str] = []
     for m in members:
         ok, msg = provision_member(
@@ -258,6 +365,9 @@ def build_pod(
             description=description,
             project=project,
             project_key=project_key,
+            port_range_start=port_start if m.role == "implementer" else 0,
+            port_range_count=port_count if m.role == "implementer" else 0,
+            scratch_dir=scratch if m.role == "implementer" else "",
         )
         if ok:
             ui.success(f"  {m.member_id}  [{m.role}]  {m.model}")
@@ -299,14 +409,33 @@ def _pod_list(project: str) -> None:
     if not members:
         ui.warn(f"No pod found for '{project}'. Create one with: docket add {project}")
         return
+    # Check if any member has runtime resources allocated (CD-1).
+    has_resources = any(bool(_oc.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
     table = Table(title=f"Pod — {project}")
     table.add_column("MEMBER", style="bold")
     table.add_column("ROLE")
     table.add_column("MODEL")
     table.add_column("PURPOSE", style="dim")
+    if has_resources:
+        table.add_column("PORTS")
+        table.add_column("SCRATCH")
     for mid, role, _idx in members:
         model = _oc.meta_get(mid, "model", "?")
-        table.add_row(mid, role, model, _ROLE_PURPOSE.get(role, ""))
+        if has_resources:
+            port_start_s = _oc.meta_get(mid, "portRangeStart", "")
+            port_count_s = _oc.meta_get(mid, "portRangeCount", "")
+            scratch = _oc.meta_get(mid, "scratchDir", "")
+            if port_start_s and port_count_s:
+                try:
+                    port_end = int(port_start_s) + int(port_count_s) - 1
+                    ports_str = f"{port_start_s}-{port_end}"
+                except ValueError:
+                    ports_str = port_start_s
+            else:
+                ports_str = "—"
+            table.add_row(mid, role, model, _ROLE_PURPOSE.get(role, ""), ports_str, scratch or "—")
+        else:
+            table.add_row(mid, role, model, _ROLE_PURPOSE.get(role, ""))
     ui.console.print(table)
 
 
@@ -326,6 +455,13 @@ def _pod_add(project: str, extra: list[str]) -> None:
     description = _oc.meta_get(base_id, "description", "")
     project_key = _oc.meta_get(base_id, "projectKey", "default") or "default"
     role_models, _, _ = _mp.load_registry()
+
+    # Implementers get the pod's runtime resources (idempotent allocation).
+    canon_role = pod.normalize_role(role)
+    if canon_role == "implementer":
+        port_start, port_count, scratch = _allocate_pod_resources(project)
+    else:
+        port_start, port_count, scratch = 0, 0, ""
 
     created: list[str] = []
     for _ in range(max(1, count)):
@@ -347,6 +483,9 @@ def _pod_add(project: str, extra: list[str]) -> None:
             description=description,
             project=project,
             project_key=project_key,
+            port_range_start=port_start,
+            port_range_count=port_count,
+            scratch_dir=scratch,
         )
         if ok:
             ui.success(f"Added {member.member_id} [{member.role}] {member.model}")
@@ -365,11 +504,19 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     if pod.parse_member_id(member_id, project) is None:
         ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
         raise typer.Exit(1)
+    # Read role before teardown removes the workspace.
+    role = _oc.meta_get(member_id, "role", "")
     ok, msg = teardown_member(member_id)
     if ok:
         ui.success(f"Removed {member_id}")
     else:
         ui.warn(f"{member_id}: daemon delete reported: {msg} (workspace cleaned)")
+    # Free runtime resources if this was the last implementer in the pod.
+    if role == "implementer":
+        remaining = pod_member_ids(project)
+        remaining_roles = {_oc.meta_get(mid, "role", "") for mid in remaining}
+        if "implementer" not in remaining_roles:
+            free_pod_resources(project)
     _sys.restart_gateway()
 
 

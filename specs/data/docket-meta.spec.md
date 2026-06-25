@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Complete
-**Last Updated**: 2026-06-22
+**Last Updated**: 2026-06-25
 
 ## Purpose
 
@@ -68,6 +68,9 @@ this table fails type-checking or the test suite.
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
 | `paused` | bool | — | local | No | `doctor`, `profile` | Whether the agent is paused (e.g. budget exceeded) |
 | `pausedReason` | string | — | local | No | `doctor`, `profile` | Human-readable pause reason |
+| `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers |
+| `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1) |
+| `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 
 ## Sync contract
@@ -152,6 +155,12 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```
 
 ## Changelog
+
+### Version 2.1.0 (2026-06-25)
+
+- CD-1: Added `portRangeStart`, `portRangeCount`, `scratchDir` fields (Implementer only; local)
+- These are pod-level runtime-resource fields allocated at provisioning and freed on teardown.
+  They are never synced to `openclaw.json`.
 
 ### Version 2.0.0 (2026-06-22)
 
