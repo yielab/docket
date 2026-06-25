@@ -136,7 +136,7 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Out of scope:** a full web UI (CD-8 / backlog); auth beyond a local token; **flipping the gates default** (this card only *removes the blocker* — the default-on flip is a separate, later decision).
 - **Deliverables:** `serve` approval endpoints (read + act) + token guard; docs of the security model; tests for grant/deny via the endpoint, unauthorized rejection, and expiry-still-fires.
 - **Acceptance gate:** [ ] a pending approval can be listed + granted/denied **without Telegram**; [ ] an unauthorized request is rejected; [ ] expiry still fail-closes; [ ] suite green. *(Note in the PR: this satisfies the prerequisite for the deferred gates-default-on flip; do not flip it here.)*
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE
 
 ---
 
