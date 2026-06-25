@@ -41,6 +41,10 @@ from docket.edges.adapters import openclaw as oc
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
 
+# Bumped on any breaking change to /status.json or /metrics contract.
+# Pinned by tests/python/test_cd8_read_api.py (TestApiContract).
+SERVE_API_VERSION = "1"
+
 # Org specialists, in the same order cmd_snapshot iterates them. Project workers
 # (implementer/reviewer/tester) are pod members under projects/ — picked up by
 # utils.project_ids(), not here.
@@ -71,28 +75,37 @@ def _agent_record(
     meta_path = cfg.meta_path(agent_id)
     meta: dict[str, Any] = store.read_json(meta_path) if meta_path.exists() else {}
     cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)
+    default_scope = "project" if kind == "project" else "org"
+    budget_raw = meta.get("budgetUsd")
+    budget: float | None = (
+        float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
+    )
     return {
         "id": agent_id,
         "name": str(meta.get("name", agent_id)),
         "type": str(meta.get("type", default_type)) if kind == "project" else "specialist",
         "kind": kind,
+        "scope": str(meta.get("scope", default_scope)),
         "model": str(meta.get("model", "")),
         "registered": agent_id in registered,
         "bindings": oc.agent_bindings(agent_id),
         "lastActivity": _last_activity_or_never(agent_id),
         "costUsd": cost,
+        "budgetUsd": budget,
     }
 
 
 def build_status() -> dict[str, Any]:
-    """Build the /status.json payload (mirrors cmd_snapshot).
+    """Build the /status.json payload.
 
-    Shape::
+    Shape (v1)::
 
-        {timestamp, gateway, channels, agents:[...], totalCostUsd}
+        {apiVersion, timestamp, gateway, channels, agents:[...], totalCostUsd}
 
-    ``gateway`` is the systemd is-active string ("active"/"inactive"); each
-    agent carries {id,name,type,kind,model,registered,bindings,lastActivity,costUsd}.
+    ``gateway`` is ``"active"`` or ``"inactive"``; each agent carries
+    {id,name,type,kind,scope,model,registered,bindings,lastActivity,costUsd,budgetUsd}.
+    Contract is versioned by ``SERVE_API_VERSION`` and pinned in
+    ``specs/data/serve-read-api.spec.md``.
     """
     gateway = "active" if utils.gateway_active() else "inactive"
     channels = oc.channel_names()
@@ -117,6 +130,7 @@ def build_status() -> dict[str, Any]:
         agents.append(rec)
 
     return {
+        "apiVersion": SERVE_API_VERSION,
         "timestamp": _utc_timestamp(),
         "gateway": gateway,
         "channels": channels,
@@ -189,6 +203,9 @@ def render_metrics() -> str:
             + '"} '
             + str(a.get("turns", 0))
         )
+    from docket.core import approval as _approval
+
+    pending = len(_approval.list_pending())
     lines += [
         "# HELP docket_cost_usd_total Total cost across all agents (USD)",
         "# TYPE docket_cost_usd_total gauge",
@@ -196,6 +213,9 @@ def render_metrics() -> str:
         "# HELP docket_gateway_up Gateway service active (1) or not (0)",
         "# TYPE docket_gateway_up gauge",
         "docket_gateway_up " + gw,
+        "# HELP docket_approvals_pending_total Pending approvals awaiting a human decision",
+        "# TYPE docket_approvals_pending_total gauge",
+        "docket_approvals_pending_total " + str(pending),
     ]
     return "\n".join(lines)
 
