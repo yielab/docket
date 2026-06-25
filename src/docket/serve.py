@@ -216,6 +216,35 @@ def render_status() -> str:
 
 # ── periodic sweeps (mirror _serve_refresh) ───────────────────────────────────
 
+# Last-dispatch timestamp per project for the schedule checker.
+# Initialised to 0.0 so every spec fires on the first sweep after serve starts.
+_schedule_state: dict[str, float] = {}
+
+
+def _check_schedules(now_ts: float) -> None:
+    """Trigger dispatch for pods whose schedule spec is due.
+
+    Reads the schedule config from ``cfg.SCHEDULE_FILE``. Each due project is
+    dispatched in a daemon thread so the sweep loop is never blocked by an agent
+    run. Failures are swallowed per-project (best-effort).
+    """
+    from docket.core import dispatch as _dispatch
+    from docket.core import schedule as _sched
+
+    schedules = _sched.load_schedules(cfg.SCHEDULE_FILE)
+    for project, spec in schedules.items():
+        last_run = _schedule_state.get(project, 0.0)
+        if not _sched.is_schedule_due(spec, last_run, now_ts):
+            continue
+        _schedule_state[project] = now_ts
+
+        def _run(proj: str = project) -> None:
+            with contextlib.suppress(Exception):
+                _dispatch.dispatch_pod(proj)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
 
 def _run_sweeps(dispatch: bool = False) -> None:
     """Run the periodic _serve_refresh sweeps once, each best-effort.
@@ -226,9 +255,12 @@ def _run_sweeps(dispatch: bool = False) -> None:
     the server (matching the Bash ``2>/dev/null || true`` guards).
 
     When *dispatch* is set, also drive every pod's queued tasks through its
-    pipeline (AA-7). This runs real, budget-gated agent turns, so it is opt-in
-    (`docket serve --dispatch`) and never part of the read-only monitor.
+    pipeline (AA-7) and check the schedule file for due projects (CD-6). These
+    run real, budget-gated agent turns so they are opt-in (`docket serve
+    --dispatch`) and never part of the read-only monitor.
     """
+    import time
+
     from docket.core import approval, drift, trace
 
     with contextlib.suppress(Exception):
@@ -242,6 +274,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
 
         with contextlib.suppress(Exception):
             _dispatch.dispatch_all_pods()
+        with contextlib.suppress(Exception):
+            _check_schedules(time.time())
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
@@ -341,6 +375,26 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error(exc.message, 409)
             except approval.ApprovalError as exc:
                 self._send_json_error(str(exc), 404)
+        elif path.startswith("/dispatch/"):
+            # CD-6: webhook dispatch — POST /dispatch/<project>
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project = path[len("/dispatch/") :]
+            if not project:
+                self._send_json_error("Missing project", 400)
+                return
+            from docket.core import dispatch as _dispatch
+
+            def _run(proj: str = project) -> None:
+                with contextlib.suppress(Exception):
+                    _dispatch.dispatch_pod(proj)
+
+            threading.Thread(target=_run, daemon=True).start()
+            resp_body = json.dumps(
+                {"ok": True, "project": project, "status": "dispatched"}
+            ).encode()
+            self._send(resp_body, "application/json")
         else:
             self._send_json_error("not found", 404)
 

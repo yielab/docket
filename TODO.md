@@ -160,7 +160,7 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Out of scope:** *outbound* integrations (Slack/GitHub/Linear apps — backlog); distributed/clustered scheduling.
 - **Deliverables:** schedule parsing + a tick in the serve loop; the webhook endpoint + token guard; tests — a scheduled time fires a dispatch; a webhook POST triggers one; unauthorized rejected.
 - **Acceptance gate:** [ ] a scheduled time triggers a pod dispatch; [ ] a webhook POST triggers it; [ ] unauthorized rejected; [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE
 
 ---
 
