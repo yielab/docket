@@ -184,7 +184,7 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Out of scope:** a full SPA; write endpoints; auth beyond local bind (the read API is local-bind by default).
 - **Deliverables:** stabilized + versioned endpoints; `specs/data/serve-read-api.spec.md`; optional single-file HTML; tests pinning the JSON contract shape.
 - **Acceptance gate:** [ ] `/status.json` + `/metrics` emit a **documented, versioned** shape; [ ] the contract spec exists and a test pins it; [ ] (optional) the static page renders from the API; [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE
 
 ---
 

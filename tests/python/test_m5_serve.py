@@ -82,12 +82,16 @@ class TestBuildStatus:
     def test_top_level_keys(self, fake_home: Path) -> None:
         st = serve.build_status()
         assert set(st.keys()) == {
+            "apiVersion",
             "timestamp",
             "gateway",
             "channels",
             "agents",
             "totalCostUsd",
         }
+
+    def test_api_version_field(self, fake_home: Path) -> None:
+        assert serve.build_status()["apiVersion"] == serve.SERVE_API_VERSION
 
     def test_gateway_inactive_string(self, fake_home: Path) -> None:
         assert serve.build_status()["gateway"] == "inactive"
@@ -104,11 +108,13 @@ class TestBuildStatus:
             "name",
             "type",
             "kind",
+            "scope",
             "model",
             "registered",
             "bindings",
             "lastActivity",
             "costUsd",
+            "budgetUsd",
         }
         assert a["id"] == "myshop"
         assert a["name"] == "My Shop"
@@ -142,6 +148,7 @@ class TestRenderMetrics:
             "docket_agent_turns_total",
             "docket_cost_usd_total",
             "docket_gateway_up",
+            "docket_approvals_pending_total",
         ):
             assert name in text
 
