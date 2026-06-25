@@ -27,7 +27,7 @@ from docket.edges.adapters import openclaw as _oc
 
 # ── constants (mirror lib/core/config.sh) ─────────────────────────────────────
 
-TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "3"))
+TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
 RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
 KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))

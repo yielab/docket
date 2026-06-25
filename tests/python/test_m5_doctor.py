@@ -31,7 +31,7 @@ _FULL_META: dict[str, Any] = {
     "codebase": "/tmp/myshop",
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
-    "templateVersion": "3",
+    "templateVersion": str(_doctor.TEMPLATE_VERSION),
 }
 
 _OC_CONFIG: dict[str, Any] = {
@@ -376,7 +376,7 @@ class TestChecks:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         assert _doctor._check_template_version(["myshop"]) == 0
-        assert "v3 (current)" in capsys.readouterr().out
+        assert f"v{_doctor.TEMPLATE_VERSION} (current)" in capsys.readouterr().out
 
     def test_metadata_backfill_idempotent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
