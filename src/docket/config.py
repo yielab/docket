@@ -42,6 +42,26 @@ DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "15"))
 # DRIFT_COOLDOWN: seconds between drift alerts for the same role (86400 = 24 h).
 DRIFT_COOLDOWN = int(os.environ.get("DRIFT_COOLDOWN", "86400"))
 
+# ── token-efficiency guards ───────────────────────────────────────────────────
+# docket cannot trim a live prompt (OpenClaw owns inference), but it CAN keep the
+# artifacts OpenClaw re-feeds every turn small. These power the token guards in
+# `maintain check` / `maintain sessions`. Token counts are a rough bytes/divisor
+# estimate — good enough to catch runaway context, not a billing figure.
+# CONTEXT_BYTES_PER_TOKEN: divisor for the byte→token estimate (~4 for English+md).
+CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "4")))
+# CONTEXT_TOKEN_BUDGET: soft cap on the static context re-sent every turn
+# (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md). `maintain check` warns past this.
+CONTEXT_TOKEN_BUDGET = int(os.environ.get("CONTEXT_TOKEN_BUDGET", "6000"))
+# SESSION_WARN_BYTES: a transcript past this is re-read in full on every resume —
+# flag it for trim/archive. 256 KB ≈ 64k tokens.
+SESSION_WARN_BYTES = int(os.environ.get("SESSION_WARN_BYTES", str(256 * 1024)))
+# SESSION_TRIM_KEEP_TURNS: recent message lines kept when trimming a transcript.
+SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "40")))
+
+# TEMPLATE_VERSION: workspace-prompt schema version. Bump when the generated
+# SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
+TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
+
 # The optional org Portfolio Manager (AA-6): a single cross-pod planning agent,
 # opt-in via `docket install --portfolio`. Not a default specialist and never a
 # pod member; see ORG_DISPLAY_ORDER.
@@ -154,3 +174,19 @@ def templates_dir() -> Path:
 def policy_templates_dir() -> Path:
     """Baseline policy templates shipped with docket."""
     return templates_dir() / "policies"
+
+
+# ── CD-1: pod runtime-resource paths ─────────────────────────────────────────
+
+# Flat JSON allocation table tracking project → portRangeStart.
+# One entry per live pod; removed on pod teardown.
+PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
+
+
+def pod_scratch_dir(project: str) -> Path:
+    """Isolated scratch data directory for a pod's runtime state.
+
+    Created by docket at pod provisioning (0700); removed on pod teardown.
+    Injected into the Implementer's TOOLS.md as $DOCKET_SCRATCH_DIR.
+    """
+    return OPENCLAW_DIR / "workspaces" / "pods" / project / ".scratch"

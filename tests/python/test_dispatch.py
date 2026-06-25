@@ -6,6 +6,9 @@ Two layers are exercised:
   * ``core.dispatch`` with an injected runner (fast, deterministic) for the
     pipeline semantics: hop order, budget gating, failure-stops, no-cross-pod.
 A final end-to-end test wires the driver through the REAL agent_run + fake binary.
+
+CD-0 adds ``TestAgentRunRealShape`` — canned real daemon JSON confirming the
+confirmed schema (result.payloads[0].text, no USD cost field).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -247,6 +251,73 @@ class TestPipeline:
         _cfg.CONFIG_FILE.write_text(json.dumps(raw))
         with pytest.raises(_dispatch.DispatchError):
             _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+
+
+# ── CD-0: canned real daemon JSON shape ──────────────────────────────────────────
+
+# Captured 2026-06-25 from daemon v2026.2.23 using agent `knowledge`
+# (opencode-go/glm-5.2). sessionId and runId are redacted. systemPromptReport
+# omitted — irrelevant to parsing. See internal-docs/POD-DAEMON-NOTES.md §CD-0.
+_REAL_DAEMON_RESPONSE: dict[str, Any] = {
+    "runId": "<redacted-uuid>",
+    "status": "ok",
+    "summary": "completed",
+    "result": {
+        "payloads": [{"text": "OK", "mediaUrl": None}],
+        "meta": {
+            "durationMs": 21258,
+            "agentMeta": {
+                "sessionId": "<redacted-uuid>",
+                "provider": "opencode-go",
+                "model": "glm-5.2",
+                "usage": {
+                    "input": 14010,
+                    "output": 3,
+                    "cacheRead": 128,
+                    "total": 14141,
+                },
+                "promptTokens": 14138,
+            },
+            "aborted": False,
+        },
+    },
+}
+
+
+class TestAgentRunRealShape:
+    """Verify parsing against the confirmed real daemon JSON schema (CD-0)."""
+
+    def test_real_shape_extracts_text_from_payloads(self) -> None:
+        output = _oc._extract_run_output(_REAL_DAEMON_RESPONSE)
+        assert output == "OK"
+
+    def test_real_shape_cost_is_zero(self) -> None:
+        # Daemon v2026.2.23 returns token counts only — no USD cost field.
+        cost = _oc._extract_run_cost(_REAL_DAEMON_RESPONSE)
+        assert cost == 0.0
+
+    def test_full_agent_run_with_real_shape(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fake binary emitting the real daemon shape yields the correct result."""
+        bindir = tmp_path / "bin"
+        bindir.mkdir(parents=True, exist_ok=True)
+        script = bindir / "openclaw"
+        script.write_text(
+            f"#!/usr/bin/env python3\nimport json\nprint(json.dumps({_REAL_DAEMON_RESPONSE!r}))\n"
+        )
+        script.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+        res = _oc.agent_run("knowledge", "docket-schema-probe", "OK", 30)
+        assert res.ok
+        assert res.output == "OK"
+        assert res.cost_usd == 0.0
+
+    def test_flat_fallback_still_works(self) -> None:
+        """Old flat shape (used in test shims) still parses via the fallback."""
+        flat: dict[str, Any] = {"output": "flat reply", "cost": 0.02}
+        assert _oc._extract_run_output(flat) == "flat reply"
+        assert _oc._extract_run_cost(flat) == pytest.approx(0.02)
 
 
 # ── end-to-end: driver → real agent_run → fake binary ────────────────────────────

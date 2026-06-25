@@ -874,7 +874,12 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
 
 @dataclass
 class AgentRunResult:
-    """Outcome of one `openclaw agent` turn (AA-7 dispatch primitive)."""
+    """Outcome of one `openclaw agent` turn (AA-7 dispatch primitive).
+
+    cost_usd is always 0.0 against daemon v2026.2.23 — that version returns only
+    token counts (usage.input/output), not a USD cost field. See POD-DAEMON-NOTES
+    §CD-0 for the confirmed schema.
+    """
 
     ok: bool
     output: str  # the agent's text reply (best-effort extracted from the JSON)
@@ -883,15 +888,26 @@ class AgentRunResult:
     error: str = ""  # reason when ok is False
 
 
-# JSON keys the daemon may use for the reply text / per-turn cost. The
-# `openclaw agent --json` schema is not pinned across versions (AA-0 left this as
-# a follow-up), so we probe a small set of plausible field names and keep `raw`
-# for anything bespoke. First non-empty match wins.
-_RUN_OUTPUT_KEYS = ("output", "text", "response", "message", "reply", "content", "result")
+# Confirmed real daemon shape (v2026.2.23, CD-0): text at result.payloads[0].text.
+# No USD cost field — only token counts under result.meta.agentMeta.usage.
+# _RUN_OUTPUT_KEYS / _RUN_COST_KEYS serve as a tolerant fallback for test shims
+# and possible future schema changes. First non-empty match wins.
+_RUN_OUTPUT_KEYS = ("output", "text", "response", "message", "reply", "content")
 _RUN_COST_KEYS = ("costUsd", "cost_usd", "cost", "totalCostUsd")
 
 
 def _extract_run_output(data: dict[str, Any]) -> str:
+    # Primary shape confirmed against daemon v2026.2.23: result.payloads[0].text
+    result = data.get("result")
+    if isinstance(result, dict):
+        payloads = result.get("payloads")
+        if isinstance(payloads, list) and payloads:
+            first = payloads[0]
+            if isinstance(first, dict):
+                text = first.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text
+    # Tolerant fallback — covers test shims and possible future schema changes.
     for key in _RUN_OUTPUT_KEYS:
         val = data.get(key)
         if isinstance(val, str) and val.strip():
