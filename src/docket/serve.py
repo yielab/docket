@@ -1,15 +1,26 @@
 """Command: serve — local HTTP endpoints for dashboards / monitoring.
 
-Stdlib-only (``http.server``) port of ``lib/commands/serve.sh``. Exposes three
+Stdlib-only (``http.server``) port of ``lib/commands/serve.sh``. Exposes
 endpoints with a byte-compatible output contract:
 
-  /status.json  full snapshot (agents, bindings, costs)  — mirrors cmd_snapshot
-  /metrics      Prometheus-format metrics                 — mirrors _serve_metrics
-  /health       liveness JSON                             — mirrors _serve_refresh
+  /status.json         full snapshot (agents, bindings, costs)
+  /metrics             Prometheus-format metrics
+  /health              liveness JSON
+  /approvals           list pending approvals (auth required)
+  /approvals/<token>   grant or deny a pending approval (auth required)
 
 The Bash hand-formats the Prometheus text, so we do too (no prometheus_client
 dependency). All agent/cost data is read via ``core.utils`` and the OpenClaw
 ACL — this module never parses ``openclaw.json`` directly.
+
+Security model for the approval endpoints
+-----------------------------------------
+The server binds to 127.0.0.1 by default (local-only). A randomly-generated
+Bearer token is printed to stdout at startup and must be passed as
+``Authorization: Bearer <token>`` on every /approvals request. Set
+DOCKET_SERVE_TOKEN in the environment to pin a fixed token instead. The approval
+endpoints are never exposed without a valid token — the server rejects all
+requests with a 401 before touching approval state.
 """
 
 from __future__ import annotations
@@ -17,6 +28,8 @@ from __future__ import annotations
 import contextlib
 import datetime as _dt
 import json
+import os
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -241,7 +254,14 @@ def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) ->
 
 
 class _DocketHandler(BaseHTTPRequestHandler):
-    """Serves the three docket endpoints; builds responses on demand."""
+    """Serves the docket endpoints; builds responses on demand.
+
+    ``serve_token`` is set per-server via a subclass created in ``run_serve``.
+    An empty token disallows all auth so the base class can never accidentally
+    pass an unauthenticated request through.
+    """
+
+    serve_token: str = ""
 
     # Silence the default per-request stderr logging (Bash uses 2>/dev/null).
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -255,6 +275,16 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _check_auth(self) -> bool:
+        if not self.serve_token:
+            return False
+        auth = self.headers.get("Authorization", "")
+        return auth == f"Bearer {self.serve_token}"
+
+    def _send_json_error(self, msg: str, status: int = 400) -> None:
+        body = json.dumps({"ok": False, "error": msg}).encode()
+        self._send(body, "application/json", status)
+
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0].rstrip("/")
         if path in ("/status.json", "/status"):
@@ -263,8 +293,56 @@ class _DocketHandler(BaseHTTPRequestHandler):
             self._send((render_metrics() + "\n").encode("utf-8"), "text/plain; version=0.0.4")
         elif path == "/health":
             self._send(render_health().encode("utf-8"), "application/json")
+        elif path == "/approvals":
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            from docket.core import approval
+
+            body = json.dumps({"pending": approval.list_pending()}).encode("utf-8")
+            self._send(body, "application/json")
         else:
             self._send(b"not found\n", "text/plain", status=404)
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0].rstrip("/")
+        if path.startswith("/approvals/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            approval_token = path[len("/approvals/") :]
+            if not approval_token:
+                self._send_json_error("Missing approval token", 400)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b"{}"
+                req_body: dict[str, object] = json.loads(raw)
+            except (ValueError, json.JSONDecodeError):
+                self._send_json_error("Invalid JSON body", 400)
+                return
+            action = str(req_body.get("action", ""))
+            if action not in ("grant", "deny"):
+                self._send_json_error('action must be "grant" or "deny"', 400)
+                return
+            from docket.core import approval
+
+            try:
+                if action == "grant":
+                    approval.approval_grant(approval_token)
+                else:
+                    approval.approval_deny(approval_token)
+                rec = approval.approval_get(approval_token)
+                resp_body = json.dumps(
+                    {"ok": True, "token": approval_token, "state": rec["state"]}
+                ).encode()
+                self._send(resp_body, "application/json")
+            except approval.ApprovalNoop as exc:
+                self._send_json_error(exc.message, 409)
+            except approval.ApprovalError as exc:
+                self._send_json_error(str(exc), 404)
+        else:
+            self._send_json_error("not found", 404)
 
     def do_HEAD(self) -> None:
         self.do_GET()
@@ -287,16 +365,25 @@ def run_serve(
     """
     actual_port = DEFAULT_PORT if port is None else port
 
+    _token = os.environ.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
+
+    class _BoundHandler(_DocketHandler):
+        serve_token = _token
+
     # Run the sweeps once at startup, then on each interval (mirrors cmd_serve).
     _run_sweeps(dispatch)
     stop = threading.Event()
     sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop, dispatch), daemon=True)
     sweeper.start()
 
-    server = ThreadingHTTPServer((bind, actual_port), _DocketHandler)
+    server = ThreadingHTTPServer((bind, actual_port), _BoundHandler)
     disp = "  dispatch=on" if dispatch else ""
     print(f"docket serve  port={actual_port}  refresh={interval}s{disp}  (Ctrl-C to stop)")
-    print(f"Endpoints: /status.json  /metrics  /health  ->  http://localhost:{actual_port}/")
+    print(
+        f"Endpoints: /status.json  /metrics  /health  /approvals"
+        f"  ->  http://localhost:{actual_port}/"
+    )
+    print(f"Approval API token: {_token}  (override: DOCKET_SERVE_TOKEN)")
     print("")
     try:
         server.serve_forever()
