@@ -572,11 +572,13 @@ def _create_workspace(
         )
         agents = (
             f"# AGENTS.md — {name}\n\n"
-            "## Every Session\n"
-            "1. Read SOUL.md\n"
-            "2. Read HEARTBEAT.md — any pending tasks?\n"
-            "3. Read memory/YYYY-MM-DD.md (today + yesterday)\n"
-            "4. Read MEMORY.md if it exists\n\n"
+            "## Every Session (keep this lean — it is re-sent every turn)\n"
+            "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+            "2. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
+            "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
+            "   memory/ dir or re-read MEMORY.md when the task doesn't need it —\n"
+            "   every byte you read is re-sent on every later turn.\n"
+            "3. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
             "## Project Path\n"
             f"{codebase}\n\n"
             "## Org Specialists\n"
@@ -634,10 +636,11 @@ def _create_workspace(
         )
         agents = (
             f"# AGENTS.md — {name}\n\n"
-            "## Every Session\n"
-            "1. Read SOUL.md\n"
-            "2. Read HEARTBEAT.md\n"
-            "3. Read memory/YYYY-MM-DD.md (today + yesterday)\n\n"
+            "## Every Session (keep this lean — it is re-sent every turn)\n"
+            "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+            "2. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
+            "   don't slurp the whole memory/ dir — what you read is re-sent on\n"
+            "   every later turn.\n\n"
             "## Work Directory\n"
             f"~/Sites/{agent_id}/\n\n"
             "## Task Protocol\n"
@@ -722,7 +725,7 @@ def _provision_agent(
         "description": description,
         "sessionKey": session_key,
         "projectKey": project_key,
-        "templateVersion": 1,
+        "templateVersion": str(_cfg.TEMPLATE_VERSION),
     }
     if budget and budget not in ("", "0"):
         meta_data["budgetUsd"] = budget
@@ -949,6 +952,9 @@ def _delete_pod(project: str, members: list[str]) -> None:
         else:
             ui.warn(f"{mid}: daemon delete reported: {msg} (workspace cleaned)")
 
+    # Free pod runtime resources (port range + scratch dir) after all members gone.
+    _pod.free_pod_resources(project)
+
     _do_restart_gateway()
     ui.success(f"Pod '{project}' deleted.")
 
@@ -1153,6 +1159,29 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
         mem_dir.chmod(0o700)
         ui.console.print("       → created memory/")
 
+    # Per-turn context footprint: the artifacts OpenClaw re-feeds every turn.
+    # docket can't trim the live prompt, but oversized SOUL/AGENTS/MEMORY here
+    # means every turn pays for it — flag it so the user can prune/rebuild.
+    per_turn_files = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"]
+    ctx_bytes = 0
+    for fname in per_turn_files:
+        fp = ws / fname
+        if fp.is_file():
+            with contextlib.suppress(OSError):
+                ctx_bytes += fp.stat().st_size
+    est_tokens = ctx_bytes // _cfg.CONTEXT_BYTES_PER_TOKEN
+    if est_tokens > _cfg.CONTEXT_TOKEN_BUDGET:
+        ui.console.print(
+            f"  [yellow]⚠[/yellow] Context footprint: ~{est_tokens:,} tok re-sent each turn"
+            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,}) — trim MEMORY.md/HEARTBEAT.md"
+        )
+        issues.append("oversized per-turn context")
+    else:
+        ui.console.print(
+            f"  [green]✓[/green] Context footprint: ~{est_tokens:,} tok/turn"
+            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,})"
+        )
+
     ui.console.print()
     if not issues:
         ui.success(f"HEALTHY — {agent_id} workspace looks good")
@@ -1280,8 +1309,40 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
     ui.success(f"Workspace rebuilt for '{agent_id}'.")
 
 
+def _trim_session_file(path: Path, keep_lines: int) -> tuple[int, int]:
+    """Keep the last ``keep_lines`` records of a JSONL transcript, back up the rest.
+
+    Each line is an independent usage record, so a tail window is a safe rolling
+    context: it drops the oldest turns (the bulk re-sent on every resume) while
+    preserving recent conversation. Writes a one-shot ``.bak`` first.
+
+    Returns ``(lines_before, lines_after)``; a no-op returns equal counts.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return (0, 0)
+    before = len(lines)
+    if before <= keep_lines:
+        return (before, before)
+    bak = path.with_suffix(path.suffix + ".bak")
+    bak.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with contextlib.suppress(OSError):
+        bak.chmod(0o600)
+    kept = lines[-keep_lines:]
+    path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+    return (before, len(kept))
+
+
 def _maintain_sessions(agent_id: str) -> None:
-    """sessions: find large/old session JSONL files and optionally archive them."""
+    """sessions: trim oversized transcripts and archive old ones (token hygiene).
+
+    A transcript is re-read in full on every resume, so an oversized file is paid
+    for on every turn. Large+recent files are *trimmed* to a recent-tail window
+    (keeps the conversation, drops the costly old middle); old files are archived.
+    """
     import datetime as _dt
     import gzip as _gzip
     import shutil as _shutil
@@ -1293,55 +1354,86 @@ def _maintain_sessions(agent_id: str) -> None:
 
     now = _dt.datetime.now()
     cutoff_days = 30
-    size_threshold = 5 * 1024 * 1024  # 5 MB
+    size_threshold = _cfg.SESSION_WARN_BYTES
 
-    candidates: list[Path] = []
-    for f in sessions_dir.glob("*.jsonl"):
+    files = sorted(
+        sessions_dir.glob("*.jsonl"),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0.0,
+    )
+    # The newest file is likely the live session — never rewrite it in place.
+    active = files[-1] if files else None
+
+    old: list[Path] = []
+    large: list[Path] = []
+    for f in files:
         try:
             size = f.stat().st_size
-            mtime = _dt.datetime.fromtimestamp(f.stat().st_mtime)
-            age_days = (now - mtime).days
-            if size > size_threshold or age_days > cutoff_days:
-                candidates.append(f)
+            age_days = (now - _dt.datetime.fromtimestamp(f.stat().st_mtime)).days
         except OSError:
-            pass
+            continue
+        if age_days > cutoff_days:
+            old.append(f)
+        elif size > size_threshold and f is not active:
+            large.append(f)
 
     ui.header(f"Sessions: {agent_id}")
     ui.console.print()
 
-    if not candidates:
-        ui.info("No large or old session files found.")
+    if not old and not large:
+        if active is not None and active.stat().st_size > size_threshold:
+            kb = active.stat().st_size // 1024
+            est = active.stat().st_size // _cfg.CONTEXT_BYTES_PER_TOKEN
+            ui.warn(
+                f"  Active session {active.name} is large ({kb}KB, ~{est:,} tok re-read"
+                " per resume) but is the live session — left untouched."
+            )
+            ui.console.print()
+        ui.info("No trimmable or archivable session files found.")
         return
 
-    for f in candidates:
+    for f in large:
+        size = f.stat().st_size
+        est = size // _cfg.CONTEXT_BYTES_PER_TOKEN
+        ui.console.print(f"  [trim]    {f.name}  ({size // 1024}KB, ~{est:,} tok)")
+    for f in old:
         size = f.stat().st_size
         age = (now - _dt.datetime.fromtimestamp(f.stat().st_mtime)).days
-        ui.console.print(f"  {f.name}  ({size // 1024}KB, {age}d old)")
+        ui.console.print(f"  [archive] {f.name}  ({size // 1024}KB, {age}d old)")
 
     ui.console.print()
-    ui.console.print(f"  {len(candidates)} file(s) to archive")
+    ui.console.print(
+        f"  {len(large)} to trim (keep last {_cfg.SESSION_TRIM_KEEP_TURNS} turns),"
+        f" {len(old)} to archive"
+    )
 
     if not sys.stdin.isatty():
-        ui.info("Non-interactive mode — reported only (no archiving).")
+        ui.info("Non-interactive mode — reported only (no changes).")
         return
 
-    ans = input("Archive these sessions? [y/N]: ").strip().lower()
+    ans = input("Apply (trim large + archive old)? [y/N]: ").strip().lower()
     if ans != "y":
         ui.warn("Cancelled.")
         return
 
-    archive_dir = sessions_dir / "archive"
-    archive_dir.mkdir(exist_ok=True)
+    trimmed = 0
+    for f in large:
+        before, after = _trim_session_file(f, _cfg.SESSION_TRIM_KEEP_TURNS)
+        if after < before:
+            trimmed += 1
+            ui.console.print(f"  trimmed {f.name}: {before} → {after} records (.bak kept)")
 
     archived = 0
-    for f in candidates:
-        dest = archive_dir / (f.name + ".gz")
-        with f.open("rb") as f_in, _gzip.open(dest, "wb") as f_out:
-            _shutil.copyfileobj(f_in, f_out)
-        f.unlink()
-        archived += 1
+    if old:
+        archive_dir = sessions_dir / "archive"
+        archive_dir.mkdir(exist_ok=True)
+        for f in old:
+            dest = archive_dir / (f.name + ".gz")
+            with f.open("rb") as f_in, _gzip.open(dest, "wb") as f_out:
+                _shutil.copyfileobj(f_in, f_out)
+            f.unlink()
+            archived += 1
 
-    ui.success(f"Archived {archived} session file(s) to {archive_dir}")
+    ui.success(f"Trimmed {trimmed} session(s); archived {archived} to sessions/archive/")
 
 
 # ── context / memory ──────────────────────────────────────────────────────────

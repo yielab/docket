@@ -10,8 +10,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–9 complete ☑ (including the **Bash→Python core migration**, M0–M6, now cut over — see §0). **Phase 10 — Agent architecture (pods) is the active next phase** 🟡; its executable task board is [TODO.md](TODO.md). Other remaining: Phase 0 gates default-on flip (deferred), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
-**Last Updated:** 2026-06-23
+**Status:** Phases 0–10 complete ☑ (including the **Bash→Python core migration**, M0–M6, and the **agent-pod architecture**, AA-0…AA-9 — see §0 and the Phase 10 record). **Phase 11 — Competitive differentiation is the active phase** 🟡; its executable task board is [TODO.md](TODO.md), grounded in `internal-docs/competitive-analysis.md`. Other remaining: Phase 0 gates default-on flip (now sequenced under Phase 11 CD-4), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Last Updated:** 2026-06-25
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -1060,37 +1060,121 @@ address exactly those.
 
 ---
 
+### PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(🟡 active — work top to bottom)*
+
+> Source of record: `internal-docs/competitive-analysis.md` (deep-research pass + a
+> GitHub-verified competitor sweep, 2026-06-25). Read it before claiming a CD-task — it has the
+> full competitor map, the verified star counts, and the per-axis gap analysis. Executable board:
+> [TODO.md](TODO.md).
+
+**Why this phase.** A verified sweep of the OpenClaw-native ecosystem shows it is **crowded but
+bifurcated**: monitoring *dashboards* (read side — `builderz-labs/mission-control` ~5.4k★,
+`abhi1693/openclaw-mission-control` ~4.1k★, plus several `openclaw-dashboard`s) and one-shot *setup
+scripts* (`shenhao-stu/openclaw-agents` ~445★). The **only** true CLI lifecycle+governance peer is
+`oguzhnatly/fleet` — and it's ~13★, written in Bash, with no pods / role→model cost policy /
+workspace isolation. The broader category (OpenHands, Cursor, Codex, E2B/Modal, Conductor, Bernstein)
+confirms three things the field treats as **unsolved**: (1) runtime-resource isolation between
+parallel agents (ports, scratch DBs, caches), (2) anti-fragile *shared* context for multi-agent work
+(Cognition's "Don't Build Multi-Agents"), (3) a real HITL/audit/approval spine. docket already owns
+(2) via Lead-owned context + session scoping, and has the bones of (3). This phase doubles down on
+the trio no inner- or outer-ring competitor integrates, and closes the two most visible gaps
+(no dashboard-feed API; gates are opt-in / Telegram-only).
+
+**The bet (one line):** docket is the *governed, coordinated, isolated* control plane on the **write
+side** — it should **feed** the dashboards, not try to out-UI them, and lead on **pod-level resource
+isolation (CD-1), a real verification gate (CD-2), and on-by-default governance (CD-3/CD-4)**.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):**
+- **CD-0** — Confirm the live `openclaw agent --json` result schema (esp. cost) and tighten
+  `agent_run` parsing. *(carried-forward AA-0 follow-up; unblocks honest cost in CD-1/CD-2.)*
+- **CD-1** — **Pod-level runtime-resource isolation** (allocated port range + scratch data dir per
+  pod, injected into the Implementer's env). *Flagship — attacks the field's acknowledged unsolved
+  problem; pure provisioning, no daemon change.*
+- **CD-2** — **Deterministic pre-merge verification gate** (run the project's lint/type/test command
+  via the system adapter; hard-fail the hop on non-zero). Turns "Tester agent says ok" into "tests
+  passed." Matches Bernstein's Janitor bar.
+- **CD-3** — **High-risk action classes** in the policy engine (money / prod-deploy / secret-access
+  → *always* route to approval, regardless of allowlist).
+- **CD-4** — **Headless approval channel** (web/CLI/webhook) so gates can finally be recommended
+  on-by-default for non-Telegram operators (unblocks the long-deferred "Phase 0 gates default-on").
+- **CD-5** — **Git-worktree-native Implementer isolation** for repo pods (the convergent industry
+  pattern; composes with CD-1). *Daemon-path sensitive — validate first.*
+- **CD-6** — **Scheduled & webhook-triggered dispatch** in `serve` (cron + inbound webhook →
+  OpenHands Automation-Server parity; turns the poller into an event-driven control plane).
+- **CD-7** — **Lobster workflow validate + dry-run/plan** (narrow the gap to Conductor without
+  claiming docket executes the workflow).
+- **CD-8** — **Stable read API + minimal status surface** so docket *feeds* the dashboard cluster
+  rather than competing on UI (harden `serve`'s `/status.json`/`/metrics`, document the contract,
+  optional single-file HTML).
+- **CD-9** — **Positioning/docs truth pass**: lead with coordinated-context + isolation; add
+  "ops layer, not a framework" (vs CrewAI/LangGraph) and "governed fleet, not a solo assistant"
+  (vs raw openclaw) lines; keep the no-dollar-savings discipline as a *trust* differentiator.
+
+**Phase 11 exit criteria:** a pod gets isolated runtime resources (CD-1); a pod task cannot be marked
+done unless a mechanical verification gate passes (CD-2); high-risk actions always require approval
+and there is at least one headless approval channel so gates can ship on-by-default (CD-3/CD-4);
+`serve` can be triggered on a schedule/webhook and exposes a documented read API a dashboard can
+consume (CD-6/CD-8); public docs lead with the verified differentiators and make no unfalsifiable
+claims (CD-9). Out of scope (→ §7 Backlog): a full web UI of our own, microVM/gVisor isolation,
+multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
+
+---
+
 ## 7. Backlog (deferred indefinitely)
 
 - New channel auth flows (Discord OAuth, Slack app install) — OpenClaw owns this entirely; docket just writes bindings.
 - Rewrite in Go/TS — no benefit until docket reaches complexity that Bash can't handle.
 - Multi-tenant agent sharing — requires identity layer not present in OpenClaw today.
+- **A full web UI / dashboard of our own** (deferred from Phase 11) — the OpenClaw space already has
+  4–5k★ mission-control UIs; docket competes on the *write/governance* side and **feeds** them via a
+  read API (Phase 11 CD-8) rather than building a worse dashboard.
+- **microVM / gVisor workspace isolation** (deferred from Phase 11) — competitors running *untrusted*
+  code use Firecracker (E2B/Vercel) or gVisor (Modal); docket's optional Docker shares the host
+  kernel. Revisit only if docket targets untrusted-code execution; large lift.
+- **Multi-host / remote provisioning** (deferred from Phase 11) — manage agents across more than one
+  daemon/host (OpenHands-style). The ceiling on the "fleet" claim; defer until single-host value is
+  saturated.
+- **Cross-runtime (non-OpenClaw) adapters** (deferred from Phase 11) — Fleet/builderz-labs span
+  Claude Code/Codex/CrewAI/etc. A trend to watch, not a near-term bet; docket stays OpenClaw-anchored.
 
 ---
 
-## 8. How to start (current — Phase 10)
+## 8. How to start (current — Phase 11)
 
-Phases 0–9 are complete (§5 is the record). The active work is **Phase 10 — Agent architecture
-(pods)**; claim tasks from [TODO.md](TODO.md).
+Phases 0–10 are complete (§5 + the Phase 10 record). The active work is **Phase 11 — Competitive
+differentiation**; read `internal-docs/competitive-analysis.md` first, then claim tasks from
+[TODO.md](TODO.md).
 
 ```bash
-git checkout -b pc/aa-0-daemon-spike        # one branch per AA-task
-# AA-0 first — it gates the dispatch design (do NOT assume daemon capabilities).
+git checkout -b pc/cd-0-agent-json-schema    # one branch per CD-task
+# CD-0 first — it confirms the openclaw agent --json cost schema CD-1/CD-2 rely on.
 uv run pytest                                # baseline green before you start
 # ...do the task, add tests, then:
 uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
 bash tests/golden/run.sh verify-all          # byte-parity net
-git commit -m "Feat: AA-0 — spike daemon pod/dispatch capabilities"
+git commit -m "Feat: CD-0 — confirm openclaw agent --json schema; tighten agent_run"
 ```
 
-Work AA-tasks **in dependency order** (AA-0 spike → AA-1 taxonomy → AA-2/3/4 provisioning →
-AA-5/6 roles → AA-7 dispatch → AA-8/9). Tick boxes in the task board as you go. When a decision
-blocks you, record it (§6 pattern) and apply the documented default.
+Work CD-tasks **in dependency order** (CD-0 schema → CD-1 resource isolation → CD-2 verify gate →
+CD-3/CD-4 governance → CD-5/6/7 orchestration → CD-8 read API → CD-9 docs). Tick boxes in the task
+board as you go. When a decision blocks you, record it (§6 pattern) and apply the documented default.
 
 ---
 
 ### Changelog
 
+- **2026-06-25** — **Added PHASE 11 — Competitive differentiation**, and marked Phase 10 complete in
+  the status header. Driven by `internal-docs/competitive-analysis.md`: a deep-research pass (12
+  sources, load-bearing claims re-fetched and confirmed verbatim) + a **GitHub-verified** sweep of the
+  OpenClaw-native ecosystem. Findings: the space is bifurcated into monitoring dashboards
+  (`builderz-labs/mission-control` ~5.4k★, `abhi1693/openclaw-mission-control` ~4.1k★, several
+  `openclaw-dashboard`s) and setup scripts (`shenhao-stu/openclaw-agents` ~445★); the only true CLI
+  lifecycle+governance peer is `oguzhnatly/fleet` (~13★, Bash, no pods/cost-policy/isolation). The
+  broader field treats three things as unsolved — runtime-resource isolation, anti-fragile shared
+  context, and a real HITL/audit spine — and docket already owns the second. Phase 11 cards CD-0…CD-9
+  double down on the trio and close the two visible gaps (no dashboard-feed API; gates opt-in /
+  Telegram-only). Backlog gained explicit deferrals: own web UI, microVM/gVisor isolation, multi-host,
+  cross-runtime adapters. The deferred "Phase 0 gates default-on flip" is now sequenced under CD-4.
 - **2026-06-24** — **Repointed stale `lib/` references to the Python layout.** Converted the
   now-dead clickable `lib/commands/*.sh`, `lib/helpers/*.sh`, `lib/core/*.sh`, and
   `tests/test-lifecycle.sh` markdown links (deleted in the M6 Bash→Python cutover) to plain text

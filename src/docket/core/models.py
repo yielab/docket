@@ -84,6 +84,12 @@ class AgentMeta(BaseModel):
     paused: bool = False
     paused_reason: str = Field("", alias="pausedReason")
 
+    # --- runtime resources (CD-1, implementer only, local) ---
+    # Allocated at pod provisioning; never synced to openclaw.json.
+    port_range_start: int | None = Field(None, alias="portRangeStart")
+    port_range_count: int | None = Field(None, alias="portRangeCount")
+    scratch_dir: str | None = Field(None, alias="scratchDir")
+
     # --- internal ---
     template_version: str = Field("", alias="templateVersion")
 
