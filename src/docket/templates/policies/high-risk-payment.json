@@ -1,0 +1,13 @@
+{
+  "id": "high-risk-payment",
+  "class": "high-risk",
+  "description": "Payment/financial operations always require approval (high-risk class — overrides allowlist)",
+  "applies_to": ["*"],
+  "hook": "pre_tool_call",
+  "match": {
+    "type": "regex",
+    "pattern": "\\bstripe\\b|\\bpaypal\\b|\\bbraintree\\b|charge\\s+customer|payment.*charge|refund.*amount|wire\\s+transfer|bank\\s+transfer|\\bpayout\\b|crypto.*send|\\bbtc\\b.*send|\\beth\\b.*send"
+  },
+  "action": "require_approval",
+  "message": "Payment/financial operation always requires approval, regardless of exec allowlist."
+}
