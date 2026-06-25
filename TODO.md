@@ -124,7 +124,7 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Out of scope:** the approval *channel* (CD-4); ML/semantic classification (regex/category match in v1).
 - **Deliverables:** baseline `high-risk` policy + any schema support; `docket policies` surfacing; tests — incl. an **allowlisted** bin that still gets gated when it matches a high-risk pattern.
 - **Acceptance gate:** [ ] a high-risk-matching action requires approval even though its bin is allowlisted; [ ] `docket policies test` shows the gate firing; [ ] baseline patterns documented; [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE
 
 ---
 
