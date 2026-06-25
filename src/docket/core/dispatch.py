@@ -34,6 +34,7 @@ from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
 from docket.edges.adapters import openclaw as _oc
+from docket.edges.adapters import system as _sys
 
 # The order roles run in. Only the roles a pod actually has take part — a lean
 # pod (lead + implementer) runs two hops; a full pod runs four.
@@ -289,6 +290,38 @@ def dispatch_task(
             result.status = "failed"
             result.reason = f"{role} hop failed: {run_res.error or 'no result'}"
             break
+
+        # CD-2: mechanical verification gate, run immediately after a successful
+        # Implementer hop and BEFORE proceeding to reviewer/tester.
+        if role == "implementer":
+            verify_cmd = str(_oc.meta_get(member_id, "verifyCmd", "") or "")
+            if verify_cmd:
+                impl_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
+                cwd = impl_codebase or str(_cfg.PROJECTS_DIR / member_id)
+                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, timeout)
+                redacted = _trace.redact(raw_output)
+                if not passed:
+                    _trace.trace_event(
+                        project,
+                        session_id,
+                        role,
+                        "verification_failed",
+                        _json.dumps({"cmd": verify_cmd, "output": redacted}),
+                    )
+                    result.status = "failed"
+                    result.reason = f"verifyCmd failed: {verify_cmd!r}"
+                    break
+                # Passed — record it and continue to reviewer/tester.
+                _trace.trace_event(
+                    project,
+                    session_id,
+                    role,
+                    "tool_result",
+                    _json.dumps({"verification": "passed", "cmd": verify_cmd}),
+                )
+            else:
+                # Honesty rule: never silently skip — a missing verifyCmd is visible.
+                print(f"[dispatch] verification skipped — verifyCmd not set for {member_id}")
 
     _trace.trace_event(
         project,

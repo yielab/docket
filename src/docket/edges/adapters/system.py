@@ -220,6 +220,38 @@ def docker_ps() -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+# ── verification gate ─────────────────────────────────────────────────────────
+
+_VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces
+
+
+def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
+    """Run a user-supplied verification command in *cwd*.
+
+    Returns ``(passed, combined_output)``.  Non-zero exit → False.  A timeout,
+    missing binary, or OS error also returns False with a short error description
+    instead of raising.  Output is capped at _VERIFY_MAX_OUTPUT characters; the
+    caller is responsible for redacting secrets before writing the output to a
+    trace. The command is run with ``shell=True`` so pipelines and shell builtins
+    work (e.g. ``uv run pytest && uv run ruff check .``).
+    """
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            cwd=cwd or None,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        combined = (result.stdout + result.stderr).strip()
+        return result.returncode == 0, combined[:_VERIFY_MAX_OUTPUT]
+    except subprocess.TimeoutExpired:
+        return False, f"[verify timed out after {timeout}s]"
+    except (FileNotFoundError, OSError) as exc:
+        return False, f"[verify error: {exc}]"
+
+
 # ── git wrappers ───────────────────────────────────────────────────────────────
 
 

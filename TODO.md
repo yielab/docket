@@ -112,7 +112,7 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Out of scope:** auto-fixing failures; inferring the command heuristically beyond `TOOLS.md`/the meta field.
 - **Deliverables:** `verifyCmd` meta field + spec row; the gate in `dispatch.py`; the new trace event (+ redaction); a system-adapter call; tests for pass→done, fail→pending+trace, unset→skip+log.
 - **Acceptance gate:** [ ] a failing `verifyCmd` blocks done and traces it; [ ] a passing one allows done; [ ] unset ⇒ skipped **with a visible log line**; [ ] output is redacted in the trace; [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE
 
 ---
 

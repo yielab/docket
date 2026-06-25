@@ -90,6 +90,10 @@ class AgentMeta(BaseModel):
     port_range_count: int | None = Field(None, alias="portRangeCount")
     scratch_dir: str | None = Field(None, alias="scratchDir")
 
+    # --- verification gate (CD-2, implementer only, local) ---
+    # Shell command run after each Implementer hop. Non-zero exit blocks done.
+    verify_cmd: str = Field("", alias="verifyCmd")
+
     # --- internal ---
     template_version: str = Field("", alias="templateVersion")
 

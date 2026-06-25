@@ -71,6 +71,7 @@ this table fails type-checking or the test suite.
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers |
+| `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged) |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 
 ## Sync contract
