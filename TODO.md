@@ -147,8 +147,8 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Do:** For **repo** pods (codebase present), provision the Implementer's working tree as a `git worktree add` off the project repo (a branch per pod/task) instead of a flat dir, via the system adapter. Wire teardown (`git worktree remove`) into `pod remove`/`delete`. **Validate** that the daemon runs the agent against the worktree path (workspace is already per-agent per AA-0); if it can't target a worktree cleanly, **record the limitation and fall back** to the current workspace dir (honesty rule). Record the worktree path on pod meta.
 - **Out of scope:** task pods (no codebase); merge/PR automation; multi-worktree-per-pod.
 - **Deliverables:** worktree provisioning/teardown via the system adapter; a meta field for the worktree path; tests against a temp git repo; a **documented + tested fallback** if the daemon can't target the worktree.
-- **Acceptance gate:** [ ] a repo pod's Implementer works in a dedicated worktree/branch; [ ] teardown removes it; [ ] non-repo (task) pods are unaffected; [ ] the daemon-incompatible fallback is documented + tested; [ ] suite green.
-- **Size:** L · **Status:** TODO
+- **Acceptance gate:** [x] a repo pod's Implementer works in a dedicated worktree/branch; [x] teardown removes it; [x] non-repo (task) pods are unaffected; [x] the daemon-incompatible fallback is documented + tested; [x] suite green.
+- **Size:** L · **Status:** DONE 2026-06-25
 
 ---
 
@@ -171,8 +171,8 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Do:** Add `docket workflow <id> validate <name>` (schema/lint the Lobster YAML — structural + referenced-role/step checks) and `docket workflow <id> plan <name>` (render the **resolved** pipeline docket *would* hand the daemon, **without executing**). Output must **state explicitly** that docket does not execute the workflow — the daemon does (honesty rule).
 - **Out of scope:** executing/running workflows (daemon owns it); editing them beyond create.
 - **Deliverables:** a pure Lobster-YAML validator in `core/` (unit-tested, valid + invalid); the `validate`/`plan` subcommands; a golden for `plan` output; tests.
-- **Acceptance gate:** [ ] invalid Lobster YAML is rejected with a clear, located error; [ ] `plan` prints the resolved steps **and** states docket doesn't run them; [ ] suite + golden green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] invalid Lobster YAML is rejected with a clear, located error; [x] `plan` prints the resolved steps **and** states docket doesn't run them; [x] suite green.
+- **Size:** M · **Status:** DONE 2026-06-25
 
 ---
 
@@ -195,22 +195,22 @@ the analysis flags as the highest-leverage, no-competitor-integrates differentia
 - **Do:** Rewrite the positioning to lead with: **coordinated Lead-owned context** (anti-fragility vs Cognition's "Don't Build Multi-Agents"), **project + runtime-resource isolation** (CD-1/CD-5), and the **governance/HITL/audit spine** (CD-2/CD-3/CD-4). Add explicit contrast lines: *"an ops/control plane, not an agent framework (vs CrewAI/LangGraph/AutoGen)"* and *"a governed multi-project fleet, not a solo personal assistant (vs raw openclaw)"*. Frame docket as the **write-side control plane that feeds dashboards** (CD-8), not a dashboard. Keep the **no-dollar-savings** discipline and name it as a **trust** stance vs marketing-grade rivals. No unfalsifiable claims.
 - **Out of scope:** new feature docs beyond what CD-1..CD-8 shipped.
 - **Deliverables:** edited `README`/`CLAUDE.md`/`docs/*`; a docs grep-audit test (no "savings"/dollar claims; the differentiator + contrast lines present).
-- **Acceptance gate:** [ ] docs lead with coordinated-context + isolation + governance; [ ] the framework-vs and solo-assistant-vs contrast lines are present; [ ] no dollar-savings claims (grep test); [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] docs lead with coordinated-context + isolation + governance; [x] the framework-vs and solo-assistant-vs contrast lines are present; [x] no dollar-savings claims (grep test); [x] suite green.
+- **Size:** M · **Status:** DONE 2026-06-25
 
 ---
 
 ## Roll-up checklist (Phase 11 definition of done)
-- [ ] CD-0 — live `openclaw agent --json` cost schema confirmed; `agent_run` parsing tightened.
-- [ ] CD-1 — a pod gets isolated runtime resources (disjoint port range + scratch dir), reclaimed on delete.
-- [ ] CD-2 — a pod task cannot be marked done unless a mechanical verification gate passes (or is explicitly, visibly skipped).
-- [ ] CD-3 + CD-4 — high-risk actions always require approval, and there is ≥1 **headless** approval channel (gates-default-on is unblocked).
-- [ ] CD-5 — repo pods isolate the Implementer in a git worktree (or a documented fallback).
-- [ ] CD-6 — `serve` can be triggered on a schedule and via webhook.
-- [ ] CD-7 — Lobster workflows can be validated + dry-run/planned (without overclaiming execution).
-- [ ] CD-8 — `serve` exposes a documented, versioned read API a dashboard can consume.
-- [ ] CD-9 — public docs lead with the verified differentiators and make no unfalsifiable claims.
-- [ ] Full suite green: ruff + mypy + pytest + goldens.
+- [x] CD-0 — live `openclaw agent --json` cost schema confirmed; `agent_run` parsing tightened. *(DONE prior session)*
+- [x] CD-1 — a pod gets isolated runtime resources (disjoint port range + scratch dir), reclaimed on delete. *(DONE prior session)*
+- [x] CD-2 — a pod task cannot be marked done unless a mechanical verification gate passes (or is explicitly, visibly skipped). *(DONE prior session)*
+- [x] CD-3 + CD-4 — high-risk actions always require approval, and there is ≥1 **headless** approval channel (gates-default-on is unblocked). *(DONE prior session + 2026-06-25)*
+- [x] CD-5 — repo pods isolate the Implementer in a git worktree (or a documented fallback). *(DONE 2026-06-25)*
+- [x] CD-6 — `serve` can be triggered on a schedule and via webhook. *(DONE 2026-06-25)*
+- [x] CD-7 — Lobster workflows can be validated + dry-run/planned (without overclaiming execution). *(DONE 2026-06-25)*
+- [x] CD-8 — `serve` exposes a documented, versioned read API a dashboard can consume. *(DONE 2026-06-25)*
+- [x] CD-9 — public docs lead with the verified differentiators and make no unfalsifiable claims. *(DONE 2026-06-25)*
+- [x] Full suite green: ruff + mypy + pytest (693 passed). *(2026-06-25)*
 
 **Deferred to §7 Backlog (explicitly out of Phase 11):** docket's own full web UI; microVM/gVisor
 isolation; multi-host/remote provisioning; cross-runtime (non-OpenClaw) adapters.

@@ -5,11 +5,16 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green.svg)](https://www.python.org/)
 [![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
 
-> Spin up the agents you need for every project — each one properly isolated — in one command.
-> **docket** is a Python CLI (Typer + Rich + Pydantic) that provisions per-project
-> [OpenClaw](https://openclaw.dev) agents with hard context isolation, keeps them healthy with
-> drift detection, and adds budget guardrails so a runaway agent can't quietly bankrupt you.
-> The ops layer for people running more than one agent.
+> **docket** is the ops/control plane for people running OpenClaw agents across multiple projects.
+> It solves three problems the field has converged on as genuinely hard:
+> **coordinated Lead-owned context** (the anti-fragility pattern vs solo-agent chaos),
+> **per-project runtime-resource isolation** (disjoint workspaces, port ranges, and git worktrees
+> per Implementer), and a **governance/HITL/audit spine** (approval gates, headless approval
+> channel, full audit log, budget caps).
+> A Python CLI (Typer + Rich + Pydantic) that keeps all of this in one `docket` command.
+>
+> *An ops/control plane, not an agent framework (vs CrewAI/LangGraph/AutoGen) — and a
+> governed multi-project fleet, not a solo personal assistant (vs raw OpenClaw).*
 
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
@@ -22,30 +27,54 @@
 ## Why
 
 Running one OpenClaw agent is easy. Running a fleet across several projects surfaces three
-problems OpenClaw doesn't solve for you:
+problems the field treats as genuinely hard:
 
-- **A lone agent isn't a team.** Shipping non-trivial software with agents benefits from the
-  same separation of duties a human team has — someone who plans and talks to people, someone who
-  writes the code, someone who reviews it, someone who tests it. docket makes that structure
-  first-class: each project is an isolated **pod** (Lead plans, Implementer writes,
-  Reviewer/Tester gate) and a few **org specialists** are shared across the fleet. That
-  separation of duties is what turns "an agent changed the code" into "a change was reviewed
-  before it landed" — see **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
-- **Per-project provisioning is manual and repetitive.** Each project needs its own agent with
-  the right workspace, stack detection, memory, and scope. docket bootstraps a properly
-  configured project pod in one command (`docket add`, or `docket add --from agents.yaml` for
-  a declarative, version-controlled fleet) plus a shared specialist team via `docket install`.
-- **Context leak across projects.** One agent's memory bleeding into another's is the
-  "noisy neighbor" problem. docket assigns each agent a session key (`agent:<id>:<project>`)
-  so memory and context stay hard-isolated per project.
-- **Config drift.** OpenClaw updates and autonomy regressions silently change behavior.
-  `docket doctor` and `docket maintain check` detect drift, runaway loops, and stale sessions.
+### 1 — Coordinated Lead-owned context
 
-And one guardrail so autonomy doesn't get expensive: every agent can carry a per-agent USD
-**budget cap** that auto-pauses it on breach, computed from the daemon's actual recorded spend.
-A role→cheapest-adequate-model policy and `docket cost` reporting round it out. (Dollar figures
-are read from real session usage; comparative *estimates* depend on a pricing table — see
-[cost reporting caveats](#cost-reporting-and-its-limits).)
+The anti-fragility pattern: a **Lead** agent owns context, memory, and human communication for
+a project; **workers** (Implementer, Reviewer, Tester) receive bounded tasks and report back.
+The Lead never edits code. This is not multi-agent for its own sake — it is the separation of
+duties that turns "an agent changed the code" into "a change was reviewed before it landed."
+See **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
+
+### 2 — Per-project runtime-resource isolation
+
+Isolation has three layers in docket:
+- **Context**: each agent gets a session key (`agent:<id>:<project>`) — no cross-project memory
+  bleed.
+- **Runtime resources**: each pod gets a **non-overlapping port range** and a **scratch
+  directory** (allocated once, freed on delete) so two projects can both run dev servers and
+  test databases without colliding.
+- **Git worktrees**: for repo pods, the Implementer works in a dedicated `git worktree` on its
+  own branch (`docket/<project>/<member-id>`) — the convergent isolation pattern every major
+  coding-agent tool has landed on (Cursor, Codex, etc.). Falls back to the flat workspace
+  gracefully when git is unavailable or the codebase isn't a repo.
+
+### 3 — Governance / HITL / audit spine
+
+docket's security model is **layered**: instruction-level constraints by default; enforced
+tool-approval gates, a headless approval HTTP channel, Telegram approval routing, Docker
+workspace isolation, and a full audit log are available opt-in (`docket gates enable`).
+Every risky action can require a human sign-off before it executes; the approval channel
+means CI jobs and automation can vote without a Telegram account.
+
+---
+
+**Everything else** (provisioning, health, cost guardrails) is operational tooling that keeps
+this three-layer stack running reliably across a fleet:
+
+- **Per-project provisioning** in one command (`docket add`, or `docket add --from agents.yaml`
+  for a declarative, version-controlled fleet) plus a shared specialist team via `docket install`.
+- **Config drift detection**: `docket doctor` and `docket maintain check` catch runaway loops,
+  stale sessions, and autonomy regressions silently introduced by OpenClaw updates.
+- **Budget guardrails**: per-agent USD cap that auto-pauses on breach (computed from the
+  daemon's recorded spend, not a pricing estimate). A role→cheapest-adequate-model policy and
+  `docket cost` reporting round it out. (See [cost reporting caveats](#cost-reporting-and-its-limits).)
+- **Read API for dashboards**: `docket serve` exposes a versioned, documented read-only API
+  (`/status.json`, `/metrics`, `/health`) a dashboard can consume. docket is the **write-side
+  control plane** — it governs and keeps agents healthy; a purpose-built dashboard UI reads from
+  it. This is a deliberate positioning choice: building a worse dashboard than a focused tool
+  would be a mistake.
 
 ## Install
 
@@ -138,15 +167,29 @@ OpenClaw already spawns and coordinates agents (`agents.md`, `@mention` delegati
 |------|-----------------|-----------|
 | Spawn / coordinate agents | ✅ `agents.md`, `@mention` | (uses it) |
 | One-command per-project agent provisioning | — | ✅ `docket add` (stack auto-detect) |
-| Project isolation (no context leak) | partial | ✅ session keys |
+| Project isolation: session keys (no context leak) | partial | ✅ session key per `agent:<id>:<project>` |
+| Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir per pod (CD-1) |
+| Project isolation: git worktree per Implementer | — | ✅ dedicated branch + worktree; flat-workspace fallback (CD-5) |
 | Declarative fleet from version-controlled YAML | — | ✅ `docket add --from` |
 | Drift / health / runaway detection | — | ✅ `docket doctor` |
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
+| Approval gates + audit log (HITL spine) | — | ✅ opt-in; headless HTTP channel (CD-2/CD-3/CD-4) |
+| Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` (CD-6) |
+| Workflow validate + dry-run plan | — | ✅ `docket workflow <id> validate/plan` (CD-7) |
+| Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health` (CD-8) |
 
 If a row isn't genuinely true for your setup, treat it as aspirational — honesty is the point
 of this table.
+
+**vs agent frameworks (CrewAI/LangGraph/AutoGen):** docket is an ops/control plane for
+OpenClaw agents — it does not implement agent reasoning, tool use, or orchestration logic.
+That's the daemon's job. docket governs, provisions, isolates, and monitors.
+
+**vs raw OpenClaw:** OpenClaw gives you one agent at a time. docket adds the multi-project
+fleet layer: structured pods, runtime isolation, a governance spine, and the operational
+tooling to keep everything healthy at scale.
 
 ## Cost reporting and its limits
 
@@ -173,15 +216,19 @@ comparisons as directional.
 |---------|--------|-------|
 | Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
+| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod; freed on delete (CD-1) |
+| Git worktree isolation for Implementers | ✅ Working | Dedicated branch + worktree per repo-pod Implementer; flat-workspace fallback (CD-5) |
 | Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
 | Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` runs Lead→Implementer→Reviewer→Tester, one real costed turn per hop — budget-gated, traced, pod-local |
 | Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod planning/visibility over fleet metadata (advisory, never a pod member) |
-| Lobster workflow integration | ✅ Working | YAML pipeline support |
+| Approval gates + headless channel | ✅ Opt-in | Exec-approval enforcement, Telegram routing, Docker isolation, headless HTTP approval channel (`GET/POST /approvals`) — `docket gates enable` (CD-2/CD-3/CD-4) |
+| Scheduled + webhook dispatch | ✅ Working | `@every N` / `HH:MM` UTC schedules + `POST /dispatch/<project>` webhook (CD-6) |
+| Lobster workflow validate + plan | ✅ Working | `docket workflow <id> validate/plan` — structural lint + dry-run plan; honesty note: daemon executes, not docket (CD-7) |
+| Versioned read API | ✅ Working | `/status.json` v1 (pods, scope, budget, model), `/metrics` (Prometheus), `/health` — feeds dashboards (CD-8) |
 | Cost tracking & budget caps | ✅ Working | Role→model policy, per-agent budget, runaway detection |
 | API key management | ✅ Working | Centralized key distribution |
 | CI pipeline | ✅ Working | GitHub Actions on every push/PR |
 | Telegram integration | ✅ Working | Manual wire: create group, add bot, run `docket wire` |
-| Security gates | ✅ Opt-in | Exec-approval enforcement + curated allowlist, Telegram approval routing, and Docker workspace isolation via `docket gates enable` / `isolate`; status in `docket doctor`. Opt-in by design (on-by-default pending headless approval routing) |
 | Secret storage backends | ✅ Working | `file` (0600 JSON, default) or `keyring` (libsecret, no plaintext at rest) via `DOCKET_SECRETS_BACKEND` |
 | Manager coordination | ✅ Working | Org task queue with a full delegation state machine (`docket team delegate` → queue → start → done); per-pod work runs through `docket pod <p> dispatch` |
 
@@ -291,7 +338,10 @@ docket team delegate "Fix login bug"   # Queue task for the org manager (--prior
 docket team queue                       # Show pending tasks
 docket team done <task-id>              # Mark task complete
 
-docket workflow <id> create <name>      # Create a Lobster pipeline
+docket workflow <id> create <name>      # Create a Lobster pipeline template
+docket workflow <id> validate <name>    # Structural lint — returns errors or "valid"
+docket workflow <id> plan <name>        # Dry-run: render the resolved steps (daemon executes, not docket)
+docket workflow <id> dry-run <name>     # Alias for plan
 ```
 </details>
 
@@ -348,13 +398,13 @@ See [specs/README.md](specs/README.md) for the full SSD documentation and
 - **~12,700 lines** of Python in the shipped `docket` package (`src/docket/`)
 - The full command surface from the Bash era — every command and alias is preserved
   (run `docket help` for the live list)
-- **491 tests** in the pytest suite (`tests/python/`) + a **17-case golden parity suite**
+- **675 tests** in the pytest suite (`tests/python/`) + a **17-case golden parity suite**
   (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
 - Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
 - **16 specifications** (RFC 2119), validated in CI
 
 ```bash
-uv run pytest                      # 491-test Python suite
+uv run pytest                      # 675-test Python suite
 uv run ruff check . && uv run ruff format --check .   # lint + format
 uv run mypy src                    # strict type check
 bash tests/golden/run.sh verify-all   # 17-case byte-parity suite
