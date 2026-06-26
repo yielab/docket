@@ -144,6 +144,11 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
     )
 
 
+def _worktree_branch(project: str, member_id: str) -> str:
+    """Branch name for an Implementer's git worktree: ``docket/<project>/<member-id>``."""
+    return f"docket/{project}/{member_id}"
+
+
 def _write_member_workspace(
     member: pod.PodMember,
     codebase: str,
@@ -155,6 +160,7 @@ def _write_member_workspace(
     port_range_start: int = 0,
     port_range_count: int = 0,
     scratch_dir: str = "",
+    worktree_dir: str = "",
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
@@ -169,7 +175,13 @@ def _write_member_workspace(
     # Implementers get a TOOLS.md showing their allocated runtime resources.
     if member.role == "implementer" and port_range_start and scratch_dir:
         (ws / "TOOLS.md").write_text(
-            _member_tools(member, codebase, port_range_start, port_range_count, scratch_dir),
+            _member_tools(
+                member,
+                worktree_dir or codebase,
+                port_range_start,
+                port_range_count,
+                scratch_dir,
+            ),
             encoding="utf-8",
         )
     with contextlib.suppress(OSError):
@@ -197,6 +209,10 @@ def _write_member_workspace(
         meta["portRangeStart"] = port_range_start
         meta["portRangeCount"] = port_range_count
         meta["scratchDir"] = scratch_dir
+    # Record worktree dir when a git worktree was provisioned.
+    if worktree_dir:
+        meta["worktreeDir"] = worktree_dir
+        meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
     meta_file = ws / _cfg.META_FILE
     meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     with contextlib.suppress(OSError):
@@ -204,6 +220,29 @@ def _write_member_workspace(
 
 
 # ── provisioning / teardown (no restart — caller batches) ────────────────────────
+
+
+def _provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:
+    """Try to provision a git worktree for a repo Implementer.
+
+    Returns ``(worktree_dir, fallback_reason)``.  On success ``worktree_dir``
+    is set and ``fallback_reason`` is ''.  On failure ``worktree_dir`` is ''
+    and ``fallback_reason`` explains why the flat-dir fallback was used.
+    """
+    if not codebase:
+        return "", ""  # task pod — no codebase, worktrees do not apply
+    if member.role != "implementer":
+        return "", ""
+    if not _sys.git_is_repo(codebase):
+        return "", f"codebase '{codebase}' is not a git repo — using flat workspace"
+    branch = _worktree_branch(project, member.member_id)
+    # Place the worktree inside the docket workspace for this member so it is
+    # cleaned up with the workspace dir on teardown.
+    wt_path = str(_cfg.PROJECTS_DIR / member.member_id / "worktree")
+    ok, err = _sys.git_worktree_add(codebase, wt_path, branch)
+    if not ok:
+        return "", f"git worktree add failed ({err}) — using flat workspace"
+    return wt_path, ""
 
 
 def provision_member(
@@ -221,7 +260,13 @@ def provision_member(
     """Create one pod member's workspace + meta and register it with the daemon.
 
     Does NOT restart the gateway — the caller batches one restart per command.
+    For repo pods, Implementers get a git worktree on a dedicated branch.
+    Falls back to the flat docket workspace if git is unavailable or the
+    codebase is not a git repo.
     """
+    worktree_dir, fallback_reason = _provision_worktree(member, project, codebase)
+    if fallback_reason:
+        ui.dim(f"  [{member.member_id}] worktree fallback: {fallback_reason}")
     _write_member_workspace(
         member,
         codebase,
@@ -232,6 +277,7 @@ def provision_member(
         port_range_start=port_range_start,
         port_range_count=port_range_count,
         scratch_dir=scratch_dir,
+        worktree_dir=worktree_dir,
     )
     ws_path = str(_cfg.PROJECTS_DIR / member.member_id)
 
@@ -287,14 +333,26 @@ def teardown_member(member_id: str) -> tuple[bool, str]:
     Does NOT restart the gateway — the caller batches one restart per command.
     Does NOT free pod resources — the caller is responsible for that when it
     knows the full pod is being torn down or the last implementer is leaving.
+    If the member has a git worktree, it is removed before the workspace dir.
     """
+    # Remove the git worktree first (before the workspace dir disappears).
+    ws = _cfg.PROJECTS_DIR / member_id
+    try:
+        raw = _store.read_json(ws / _cfg.META_FILE)
+        worktree_dir = str(raw.get("worktreeDir", ""))
+        codebase = str(raw.get("codebase", ""))
+    except Exception:
+        worktree_dir = ""
+        codebase = ""
+    if worktree_dir and codebase:
+        _ok, _err = _sys.git_worktree_remove(codebase, worktree_dir)
+
     ok, msg = (True, "")
     if shutil.which("openclaw"):
         ok, msg = _oc.unregister_agent_cli(member_id)
     # Belt-and-braces: ensure it's gone from agents.list and the docket workspace.
     with contextlib.suppress(Exception):
         _oc.remove_agent(member_id)
-    ws = _cfg.PROJECTS_DIR / member_id
     if ws.is_dir():
         shutil.rmtree(ws, ignore_errors=True)
     return (ok, msg)
