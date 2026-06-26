@@ -62,7 +62,7 @@ MONITORING
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
   eval               Specialist-role evals: structural checks + live golden tasks
 
-OBSERVABILITY (Phase 8)
+OBSERVABILITY
   trace    <session>  Render one agent-action trace human-readable
   trace tail <proj>   Follow the most-recent session live
   trace export <proj> Export raw JSONL (--since YYYY-MM-DD)
