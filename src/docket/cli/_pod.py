@@ -1,10 +1,9 @@
-"""docket pod — provision and manage project pods (Phase 10 / AA-3).
+"""docket pod — provision and manage project pods.
 
 A *pod* is the set of project-scoped agents for one project: a Lead plus one or
-more workers (Implementer, Reviewer, Tester), each a distinct registered agent
-with its **own** workspace (the isolation guarantee — no worker serves two
-projects). Pod members are ordinary project agents whose id is ``<project>-<role>``
-(``-N`` for duplicates), so `list`/`info`/`cost`/`doctor` see them for free.
+more workers (Implementer, Reviewer, Tester), each with its own workspace
+(no worker serves two projects). Pod members are ordinary project agents with
+id ``<project>-<role>`` (``-N`` for duplicates).
 
 Composition logic lives in `core/pod.py`; this module does the I/O: workspace +
 templates + meta + daemon registration via the ACL.
@@ -40,9 +39,6 @@ _ROLE_PURPOSE: dict[str, str] = {
     "reviewer": "read-only veto on diffs",
     "tester": "behaviour-only PASS/FAIL",
 }
-
-
-# ── templates (folds AA-4 worker + AA-5 lead essentials) ─────────────────────────
 
 
 def _member_soul(
@@ -172,7 +168,6 @@ def _write_member_workspace(
     (ws / "HEARTBEAT.md").write_text(
         f"# HEARTBEAT — {member.member_id}\n\n_No active tasks._\n", encoding="utf-8"
     )
-    # Implementers get a TOOLS.md showing their allocated runtime resources.
     if member.role == "implementer" and port_range_start and scratch_dir:
         (ws / "TOOLS.md").write_text(
             _member_tools(
@@ -204,12 +199,10 @@ def _write_member_workspace(
         "projectKey": project_key,
         "templateVersion": str(POD_TEMPLATE_VERSION),
     }
-    # Store allocated resources on the Implementer's meta (local-only fields).
     if member.role == "implementer" and port_range_start:
         meta["portRangeStart"] = port_range_start
         meta["portRangeCount"] = port_range_count
         meta["scratchDir"] = scratch_dir
-    # Record worktree dir when a git worktree was provisioned.
     if worktree_dir:
         meta["worktreeDir"] = worktree_dir
         meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
@@ -217,9 +210,6 @@ def _write_member_workspace(
     meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     with contextlib.suppress(OSError):
         meta_file.chmod(0o600)
-
-
-# ── provisioning / teardown (no restart — caller batches) ────────────────────────
 
 
 def _provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:
@@ -411,7 +401,6 @@ def build_pod(
     role_models, _, _ = _mp.load_registry()
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
 
-    # Allocate runtime resources once for the whole pod (idempotent).
     port_start, port_count, scratch = _allocate_pod_resources(project)
 
     created: list[str] = []
@@ -434,9 +423,6 @@ def build_pod(
             ui.warn(f"  {m.member_id}: registration failed — {msg}")
     _sys.restart_gateway()
     return created
-
-
-# ── command dispatch (docket pod <project> [add|remove] …) ───────────────────────
 
 
 def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
@@ -467,7 +453,6 @@ def _pod_list(project: str) -> None:
     if not members:
         ui.warn(f"No pod found for '{project}'. Create one with: docket add {project}")
         return
-    # Check if any member has runtime resources allocated (CD-1).
     has_resources = any(bool(_oc.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
     table = Table(title=f"Pod — {project}")
     table.add_column("MEMBER", style="bold")
@@ -514,7 +499,6 @@ def _pod_add(project: str, extra: list[str]) -> None:
     project_key = _oc.meta_get(base_id, "projectKey", "default") or "default"
     role_models, _, _ = _mp.load_registry()
 
-    # Implementers get the pod's runtime resources (idempotent allocation).
     canon_role = pod.normalize_role(role)
     if canon_role == "implementer":
         port_start, port_count, scratch = _allocate_pod_resources(project)
@@ -576,9 +560,6 @@ def _pod_remove(project: str, extra: list[str]) -> None:
         if "implementer" not in remaining_roles:
             free_pod_resources(project)
     _sys.restart_gateway()
-
-
-# ── dispatch queue (AA-7): delegate / queue / dispatch ───────────────────────────
 
 
 def _pod_delegate(project: str, extra: list[str]) -> None:

@@ -1,8 +1,4 @@
-"""Shared utility functions for read-only command implementations.
-
-Mirrors lib/helpers/utils.sh, lib/helpers/workspace.sh (_aggregate_cost,
-_cost_history), and lib/helpers/picker.sh (project_ids).
-"""
+"""Shared utility functions for read-only command implementations."""
 
 from __future__ import annotations
 
@@ -16,14 +12,9 @@ from typing import Any
 import docket.config as cfg
 from docket.edges import store
 
-# ── project discovery ─────────────────────────────────────────────────────────
-
 
 def project_ids() -> list[str]:
-    """Sorted list of project agent IDs (dirs containing .docket-meta.json).
-
-    Mirrors lib/helpers/picker.sh project_ids().
-    """
+    """Sorted list of project agent IDs (dirs containing .docket-meta.json)."""
     if not cfg.PROJECTS_DIR.is_dir():
         return []
     return sorted(
@@ -31,15 +22,8 @@ def project_ids() -> list[str]:
     )
 
 
-# ── last-activity helper ──────────────────────────────────────────────────────
-
-
 def last_activity(agent_id: str) -> str:
-    """Return the most recent memory-log date (YYYY-MM-DD) or '—'.
-
-    Mirrors lib/helpers/utils.sh last_activity().
-    Works for both project agents and specialists via workspace_dir().
-    """
+    """Return the most recent memory-log date (YYYY-MM-DD) or '—'."""
     mem_dir = cfg.workspace_dir(agent_id) / "memory"
     if not mem_dir.is_dir():
         return "—"
@@ -47,33 +31,18 @@ def last_activity(agent_id: str) -> str:
     return files[-1].stem if files else "—"
 
 
-# ── gateway status ────────────────────────────────────────────────────────────
-#
-# The canonical implementations now live in docket.edges.adapters.system; these
-# thin re-exports preserve the historical `from docket.core.utils import
-# gateway_active, restart_gateway` import surface.
-
-
 _GATEWAY_UNIT = "openclaw-gateway.service"
 
 
 def gateway_active() -> bool:
-    """Return True if openclaw-gateway.service is active (systemctl --user).
-
-    Delegates to the system adapter (the canonical home).
-    """
+    """Return True if openclaw-gateway.service is active."""
     from docket.edges.adapters import system as _system
 
     return _system.gateway_active()
 
 
 def openclaw_version() -> str:
-    """Return `openclaw --version` output, or '?' if unavailable.
-
-    Mirrors the Bash `openclaw --version 2>/dev/null || echo '?'`. The caller
-    prepends a 'v', so the fake's `openclaw 0.0.0-fake` renders as
-    `vopenclaw 0.0.0-fake` exactly as in the Bash header.
-    """
+    """Return `openclaw --version` output, or '?' if unavailable."""
     try:
         result = subprocess.run(
             ["openclaw", "--version"],
@@ -92,31 +61,20 @@ def restart_gateway() -> bool:
 
     Honors DOCKET_NO_RESTART=1 for test hermeticity (prints a dry-run notice).
     Returns True on success or when the service is already down.
-    Delegates to the system adapter (the canonical home); mirrors
-    restart_gateway() in service.sh.
     """
     from docket.edges.adapters import system as _system
 
     return _system.restart_gateway()
 
 
-# ── SI number formatting ──────────────────────────────────────────────────────
-
-
 def si_format(n: int) -> str:
-    """Format a token count with SI suffix (e.g. 1_234_567 → '1.2M').
-
-    Mirrors the `numfmt --to=si` calls in cmd_cost.
-    """
+    """Format a token count with SI suffix (e.g. 1_234_567 → '1.2M')."""
     f = float(n)
     for unit in ("", "K", "M", "G", "T"):
         if abs(f) < 1000.0:
             return str(int(f)) if unit == "" else f"{f:.1f}{unit}"
         f /= 1000.0
     return f"{f:.1f}P"
-
-
-# ── cost aggregation ──────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -137,8 +95,6 @@ def aggregate_cost(agent_id: str) -> CostTotals:
     Uses an incremental index (.cost-index.json) keyed by (mtime, size) so
     unchanged files are served from cache; only new/changed files are parsed.
     Set DOCKET_NO_COST_INDEX=1 to force a full recompute.
-
-    Mirrors lib/helpers/workspace.sh _aggregate_cost().
     """
     sessions_dir = cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     index_path = cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-index.json"
@@ -234,9 +190,6 @@ def _write_cost_index(index_path: Path, index: dict[str, Any]) -> None:
         tmp.unlink(missing_ok=True)
 
 
-# ── per-day cost history ──────────────────────────────────────────────────────
-
-
 @dataclass
 class DayRecord:
     """Cost/token totals for a single calendar day."""
@@ -252,7 +205,6 @@ def cost_history(agent_id: str) -> list[DayRecord]:
     """Parse session JSONL files and return per-day records for one agent.
 
     Uses .cost-history.json keyed by the set of file (mtime, size) signatures.
-    Mirrors lib/helpers/workspace.sh _cost_history().
     """
     sessions_dir = cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     hist_path = cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-history.json"
@@ -335,9 +287,6 @@ def _write_hist_index(
         tmp.unlink(missing_ok=True)
 
 
-# ── model source lookup ───────────────────────────────────────────────────────
-
-
 def model_source(agent_id: str) -> str:
     """Return 'policy' or 'pinned' for an agent's model source.
 
@@ -347,15 +296,11 @@ def model_source(agent_id: str) -> str:
     return str(raw.get("modelSource", "policy")) or "policy"
 
 
-# ── Telegram group discovery ──────────────────────────────────────────────────
-
-
 def scan_telegram_groups() -> list[tuple[str, str, str]]:
     """Scan OpenClaw log files for Telegram group IDs.
 
     Returns a list of (chat_id, title, bound_agent_id) tuples.
     bound_agent_id is '' if the group has no docket binding.
-    Mirrors _get_all_groups() in workspace.sh.
     """
     import re as _re
 

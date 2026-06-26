@@ -1,7 +1,6 @@
-"""docket trace — view, follow, and export agent action traces (T5.4a port).
+"""docket trace — view, follow, and export agent action traces.
 
-Ports lib/commands/trace.sh. ``run_trace`` returns the process exit code; the
-coordinator wraps it in a Typer command.
+``run_trace`` returns the process exit code; the coordinator wraps it in a Typer command.
 
   docket trace <session_id>            render one trace human-readable
   docket trace tail <project>          follow the most-recent session
@@ -20,7 +19,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import trace as _trace
 
-# event_type → Rich colour (mirrors the COLOR map of _trace_show).
+# event_type → Rich colour.
 _EVENT_COLOR: dict[str, str] = {
     "session_start": "green",
     "session_end": "green",

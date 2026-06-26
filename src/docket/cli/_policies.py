@@ -1,4 +1,4 @@
-"""docket policies — manage and test guardrail policies (T5.3 port of policies.sh).
+"""docket policies — manage and test guardrail policies.
 
   docket policies list               List installed policies
   docket policies show <id>          Show one policy
@@ -88,8 +88,7 @@ def _show(args: list[str]) -> int:
         ui.fail(f"Policy not found: {target}")
         return 1
 
-    # python3 -m json.tool: re-serialise the parsed JSON, indented. Use plain
-    # print() so bracketed regex patterns aren't parsed as Rich markup.
+    # Use plain print() so bracketed regex patterns aren't parsed as Rich markup.
     parsed = json.loads(found.read_text(encoding="utf-8"))
     print(json.dumps(parsed, indent=4))
     return 0

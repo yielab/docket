@@ -1,26 +1,16 @@
 """Command: serve — local HTTP endpoints for dashboards / monitoring.
 
-Stdlib-only (``http.server``) port of ``lib/commands/serve.sh``. Exposes
-endpoints with a byte-compatible output contract:
-
+Exposes:
   /status.json         full snapshot (agents, bindings, costs)
-  /metrics             Prometheus-format metrics
+  /metrics             Prometheus-format metrics (no external dependency)
   /health              liveness JSON
   /approvals           list pending approvals (auth required)
   /approvals/<token>   grant or deny a pending approval (auth required)
 
-The Bash hand-formats the Prometheus text, so we do too (no prometheus_client
-dependency). All agent/cost data is read via ``core.utils`` and the OpenClaw
-ACL — this module never parses ``openclaw.json`` directly.
-
-Security model for the approval endpoints
------------------------------------------
-The server binds to 127.0.0.1 by default (local-only). A randomly-generated
-Bearer token is printed to stdout at startup and must be passed as
-``Authorization: Bearer <token>`` on every /approvals request. Set
-DOCKET_SERVE_TOKEN in the environment to pin a fixed token instead. The approval
-endpoints are never exposed without a valid token — the server rejects all
-requests with a 401 before touching approval state.
+Security model: the server binds to 127.0.0.1 by default. A randomly-generated
+Bearer token is printed at startup and required on every /approvals request
+(DOCKET_SERVE_TOKEN env var pins a fixed token). The approval endpoints reject
+all requests without a valid token before touching approval state.
 """
 
 from __future__ import annotations
@@ -45,13 +35,7 @@ DEFAULT_INTERVAL = 30
 # Pinned by tests/python/test_cd8_read_api.py (TestApiContract).
 SERVE_API_VERSION = "1"
 
-# Org specialists, in the same order cmd_snapshot iterates them. Project workers
-# (implementer/reviewer/tester) are pod members under projects/ — picked up by
-# utils.project_ids(), not here.
 _SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
-
-
-# ── data builders (pure, socket-free, unit-testable) ──────────────────────────
 
 
 def _utc_timestamp() -> str:
@@ -68,8 +52,6 @@ def _last_activity_or_never(agent_id: str) -> str:
 def _agent_record(
     agent_id: str, *, kind: str, default_type: str, registered: set[str]
 ) -> dict[str, Any]:
-    # Read meta tolerantly via the raw store to mirror cmd_snapshot's read_meta
-    # (a missing/invalid file yields {} rather than raising).
     from docket.edges import store
 
     meta_path = cfg.meta_path(agent_id)
@@ -140,10 +122,10 @@ def build_status() -> dict[str, Any]:
 
 
 def _cost_json() -> dict[str, Any]:
-    """Per-project cost payload mirroring _cost_json in cost.sh.
+    """Per-project cost payload.
 
     Returns {agents:[{id,model,costUsd,turns,...}], totalUsd}. Metrics only
-    cover project agents (specialists are excluded), matching the Bash.
+    cover project agents (specialists are excluded).
     """
     from docket.edges import store
 
@@ -173,16 +155,14 @@ def _cost_json() -> dict[str, Any]:
 
 
 def _esc(s: Any) -> str:
-    """Strip backslashes and double-quotes from a label value (matches Bash esc)."""
+    """Strip backslashes and double-quotes from a label value."""
     return str(s).replace("\\", "").replace('"', "")
 
 
 def render_metrics() -> str:
-    """Render Prometheus-format metrics (mirrors _serve_metrics).
+    """Render Prometheus-format metrics.
 
-    Hand-formatted to match the Bash metric names, labels, and ordering exactly.
-    No trailing newline (the Bash `print("\\n".join(lines))` adds one when
-    served; callers append it).
+    No trailing newline; callers append it.
     """
     d = _cost_json()
     gw = "1" if utils.gateway_active() else "0"
@@ -221,7 +201,7 @@ def render_metrics() -> str:
 
 
 def render_health() -> str:
-    """Render the /health body (mirrors _serve_refresh's health write).
+    """Render the /health body.
 
     Format: ``{"status":"ok","gateway":N}\\n`` where N is 1 or 0.
     """
@@ -233,8 +213,6 @@ def render_status() -> str:
     """Render the /status.json body (indent=2, matching cmd_snapshot)."""
     return json.dumps(build_status(), indent=2)
 
-
-# ── periodic sweeps (mirror _serve_refresh) ───────────────────────────────────
 
 # Last-dispatch timestamp per project for the schedule checker.
 # Initialised to 0.0 so every spec fires on the first sweep after serve starts.
@@ -267,17 +245,16 @@ def _check_schedules(now_ts: float) -> None:
 
 
 def _run_sweeps(dispatch: bool = False) -> None:
-    """Run the periodic _serve_refresh sweeps once, each best-effort.
+    """Run the periodic sweeps once, each best-effort.
 
-    Mirrors _serve_refresh's tail: coerce stale open traces to aborted (OBS-3),
-    expire pending approvals past APPROVAL_TIMEOUT (H5), and check role drift
-    (OBS-11). Every sweep is guarded so one failure never aborts the others or
-    the server (matching the Bash ``2>/dev/null || true`` guards).
+    Coerces stale open traces to aborted, expires pending approvals past
+    APPROVAL_TIMEOUT, and checks role drift. Every sweep is guarded so one
+    failure never aborts the others or the server.
 
-    When *dispatch* is set, also drive every pod's queued tasks through its
-    pipeline (AA-7) and check the schedule file for due projects (CD-6). These
-    run real, budget-gated agent turns so they are opt-in (`docket serve
-    --dispatch`) and never part of the read-only monitor.
+    When *dispatch* is set, also drives every pod's queued tasks through its
+    pipeline and checks the schedule file for due projects. These run real,
+    budget-gated agent turns so they are opt-in (`docket serve --dispatch`)
+    and never part of the read-only monitor.
     """
     import time
 
@@ -304,9 +281,6 @@ def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) ->
         _run_sweeps(dispatch)
 
 
-# ── HTTP server ───────────────────────────────────────────────────────────────
-
-
 class _DocketHandler(BaseHTTPRequestHandler):
     """Serves the docket endpoints; builds responses on demand.
 
@@ -317,7 +291,6 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
     serve_token: str = ""
 
-    # Silence the default per-request stderr logging (Bash uses 2>/dev/null).
     def log_message(self, fmt: str, *args: Any) -> None:
         return
 
@@ -396,7 +369,6 @@ class _DocketHandler(BaseHTTPRequestHandler):
             except approval.ApprovalError as exc:
                 self._send_json_error(str(exc), 404)
         elif path.startswith("/dispatch/"):
-            # CD-6: webhook dispatch — POST /dispatch/<project>
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)
                 return
@@ -431,11 +403,10 @@ def run_serve(
 ) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
 
-    Mirrors cmd_serve: binds to 127.0.0.1 on the given port (default 7331) and
-    serves /status.json, /metrics, /health. Responses are built on each request
-    (cheap, index-backed). The Bash also ran _serve_refresh once at startup and
-    then every *interval* seconds (default 30); we mirror those periodic sweeps
-    (trace/approval/drift) with a daemon thread. Runs until interrupted.
+    Binds to 127.0.0.1 on the given port (default 7331) and serves
+    /status.json, /metrics, /health. Responses are built on each request
+    (cheap, index-backed). Runs sweeps once at startup and then every
+    *interval* seconds in a daemon thread. Runs until interrupted.
     """
     actual_port = DEFAULT_PORT if port is None else port
 
@@ -444,7 +415,6 @@ def run_serve(
     class _BoundHandler(_DocketHandler):
         serve_token = _token
 
-    # Run the sweeps once at startup, then on each interval (mirrors cmd_serve).
     _run_sweeps(dispatch)
     stop = threading.Event()
     sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop, dispatch), daemon=True)

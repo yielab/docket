@@ -1,4 +1,4 @@
-"""Durable per-session JSONL trace store (T5.4a port of lib/helpers/trace.sh).
+"""Durable per-session JSONL trace store.
 
 All agent actions docket can observe are appended to::
 
@@ -10,7 +10,7 @@ with ``DOCKET_NO_TRACE=1``.
 Store-backed: the trace store is a docket-owned artefact under DOCKET_HOME, so it
 is read/written directly. The ingestion bridge reads daemon session JSONL under
 ``$OPENCLAW_DIR/agents/<project>/sessions`` — opaque turn-data, not an openclaw
-config file — the same direct-read precedent established by core.utils.aggregate_cost.
+config file.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 
 import docket.config as _cfg
 
-# Closed set of valid event types (mirrors _TRACE_EVENT_TYPES in trace.sh).
+# Closed set of valid event types.
 EVENT_TYPES: frozenset[str] = frozenset(
     [
         "session_start",
@@ -46,10 +46,8 @@ EVENT_TYPES: frozenset[str] = frozenset(
     ]
 )
 
-# Secret-shape patterns stripped from payloads before writing (redact.sh, always-on
-# portion). The Bash also redacts the exact VALUES of stored secrets (the
-# ``_docket_stored_key_values`` hook), which redact() now applies after the regex
-# pass via the OpenClaw ACL — see _stored_secret_values.
+# Secret-shape patterns stripped from payloads before writing.
+# Stored secret values are also redacted after the regex pass (see _stored_secret_values).
 _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)\s*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
@@ -85,9 +83,8 @@ def _stored_secret_values() -> list[str]:
 def redact(text: str) -> str:
     """Strip secret-shaped substrings from *text*.
 
-    Applies redact.sh's always-on regex patterns, then redacts the exact VALUES
-    of any stored secrets (replaced after the regex pass, matching the Bash
-    ordering note).
+    Applies the always-on regex patterns, then redacts the exact VALUES
+    of any stored secrets (replaced after the regex pass).
     """
     if not text:
         return text
@@ -120,9 +117,6 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
         os.chmod(tracefile, 0o600)
 
 
-# ── writer ──────────────────────────────────────────────────────────────────────
-
-
 def trace_event(
     project: str,
     session_id: str,
@@ -135,7 +129,7 @@ def trace_event(
     """Validate, redact and append one trace event. Returns False when rejected.
 
     No-ops (returns True) when DOCKET_NO_TRACE=1. payload is parsed as JSON when
-    possible, else wrapped as ``{"text": payload}`` — mirroring trace_event().
+    possible, else wrapped as ``{"text": payload}``.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return True
@@ -165,9 +159,6 @@ def trace_event(
 
     _append(_cfg.TRACES_DIR / project / f"{session_id}.jsonl", [record])
     return True
-
-
-# ── ingestion bridge ─────────────────────────────────────────────────────────────
 
 
 def trace_ingest(project: str) -> None:
@@ -320,14 +311,11 @@ def _write_index(index_file: Path, index: dict[str, int]) -> None:
     os.replace(tmp, index_file)
 
 
-# ── sweep ────────────────────────────────────────────────────────────────────────
-
-
 def sweep_all() -> None:
     """Coerce stale open traces to 'aborted' (called by docket serve).
 
     Appends a synthetic session_end to any trace whose last event is older than
-    SESSION_TIMEOUT and has no session_end yet. Mirrors _trace_sweep_all().
+    SESSION_TIMEOUT and has no session_end yet.
     """
     traces_root = _cfg.TRACES_DIR
     if not traces_root.is_dir():
@@ -364,9 +352,6 @@ def sweep_all() -> None:
             project = "unknown"
         session_id = tf.name[: -len(".jsonl")]
         _append(tf, [_end_record(project, session_id)])
-
-
-# ── readers ──────────────────────────────────────────────────────────────────────
 
 
 def find_trace(session_id: str) -> Path | None:
@@ -410,8 +395,8 @@ def latest_trace_file(project: str) -> Path | None:
 def export_lines(project: str, since: str = "") -> list[str]:
     """Return raw JSONL lines for *project*, optionally filtered to ts >= *since*.
 
-    Lines are concatenated across session files in sorted filename order, matching
-    _trace_export(): a line with an unparseable ts is kept when a since filter is set.
+    Lines are concatenated across session files in sorted filename order;
+    a line with an unparseable ts is kept when a since filter is set.
     """
     pdir = _cfg.TRACES_DIR / project
     out: list[str] = []

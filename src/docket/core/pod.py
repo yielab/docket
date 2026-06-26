@@ -1,15 +1,14 @@
-"""Pod composition model (Phase 10 / AA-3).
+"""Pod composition model.
 
 A *pod* is the set of project-scoped agents that make up one project. Pure logic
 only — no I/O. The CLI (`docket add` / `docket pod`) and the ACL turn a `PodPlan`
 into registered agents; this module just decides *what* a pod contains and how
 its members are named.
 
-Design (decided with the user, 2026-06-23):
-  * Default pod is **lean**: a Lead + an Implementer (2 agents).
-  * Reviewer, Tester, or **additional Implementers** are added later.
-  * A role may be **duplicated** (e.g. two Implementers); duplicates get an
-    indexed member id (``<project>-implementer``, ``<project>-implementer-2``).
+Default pod is **lean**: a Lead + an Implementer (2 agents).
+Reviewer, Tester, or **additional Implementers** are added later.
+A role may be **duplicated** (e.g. two Implementers); duplicates get an
+indexed member id (``<project>-implementer``, ``<project>-implementer-2``).
 """
 
 from __future__ import annotations

@@ -1,9 +1,4 @@
-"""Entry point for `python -m docket` (the thin bin/docket launcher execs this).
-
-Mirrors the command aliasing and removed-command guidance that used to live in
-lib/core/router.sh, so the Bash→Python cutover preserves every invocation users
-already type.
-"""
+"""Entry point for `python -m docket` (the thin bin/docket launcher execs this)."""
 
 from __future__ import annotations
 
@@ -11,7 +6,6 @@ import sys
 
 from docket.cli import app
 
-# Alias → canonical command name (mirrors router.sh's case fall-throughs).
 _ALIASES = {
     "setup": "install",
     "create": "add",
@@ -34,7 +28,6 @@ _ALIASES = {
     "policy": "policies",
 }
 
-# Removed / renamed commands → one-or-more guidance lines, then exit 1.
 _REMOVED: dict[str, tuple[str, ...]] = {
     "reset": ("docket reset was renamed → use: docket maintain [id] <clean|reset|rebuild>",),
     "repair": ("docket repair was renamed → use: docket maintain [id] check",),
@@ -87,8 +80,7 @@ _REMOVED: dict[str, tuple[str, ...]] = {
 
 def main() -> None:
     argv = sys.argv[1:]
-    # Skip a leading global flag (e.g. --debug) when locating the command token.
-    idx = 0
+    idx = 0  # skip leading global flags (e.g. --debug) before the command token
     while idx < len(argv) and argv[idx] in ("--debug",):
         idx += 1
     if idx < len(argv):

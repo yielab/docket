@@ -1,4 +1,4 @@
-"""Local provider registration — port of scripts/wire-local-provider.sh.
+"""Local provider registration.
 
 Registers a local OpenAI-compatible model endpoint (llama.cpp / LM Studio /
 vLLM) with the OpenClaw daemon so docket can route agent roles to it, e.g.
@@ -19,8 +19,7 @@ import urllib.request
 from docket import ui
 from docket.edges.adapters import openclaw as _oc
 
-# Defaults match the Qwen3-30B-A3B llama.cpp setup (server on :8080, -c 16384),
-# mirroring the script's top-of-file defaults.
+# Defaults match the Qwen3-30B-A3B llama.cpp setup (server on :8080, -c 16384).
 DEFAULT_PROVIDER = "local"
 DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
 DEFAULT_MODEL_ID = "qwen3-30b-a3b"
@@ -32,8 +31,7 @@ DEFAULT_MAX_TOKENS = 8192
 def ping_endpoint(base_url: str, timeout: float = 5.0) -> bool:
     """Return True if GET <base_url>/models responds (any 2xx/whatever, no error).
 
-    Mirrors `curl -fsS --max-time 5 "$BASE_URL/models"` in the script. Kept as a
-    standalone function so tests can monkeypatch it (no real network in tests).
+    Kept as a standalone function so tests can monkeypatch it (no real network in tests).
     """
     url = f"{base_url}/models"
     try:
@@ -56,7 +54,6 @@ def register_local_provider(
     Idempotent: re-running with the same arguments writes nothing. Returns a
     process exit code (0 on success).
     """
-    # 1. Liveness probe (non-fatal — the script writes config anyway).
     ui.info(f"Checking the endpoint is alive: {base_url}/models")
     if not ping_endpoint(base_url):
         ui.warn(
@@ -64,7 +61,6 @@ def register_local_provider(
             "server is running first. Continuing to write config anyway."
         )
 
-    # 2. Register (idempotent via the ACL).
     ui.info(f"Registering provider '{name}' with OpenClaw")
     changed = _oc.add_local_provider(name, base_url, model_id, model_name, ctx, max_tokens)
     if changed:
@@ -72,13 +68,12 @@ def register_local_provider(
     else:
         ui.success(f"Local provider already wired: {name}/{model_id}  →  {base_url} (no change)")
 
-    # 3. Print the smart-planner / local-executor role-split commands.
     _print_role_split(name, model_id)
     return 0
 
 
 def _print_role_split(name: str, model_id: str) -> None:
-    """Print the role-split + smoke-test guidance (mirrors the script's heredoc)."""
+    """Print the role-split + smoke-test guidance."""
     ui.console.print()
     ui.console.print("Next — apply the smart-planner / local-executor role split:")
     ui.console.print()

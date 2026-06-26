@@ -1,4 +1,4 @@
-"""Pod runtime-resource allocation (CD-1).
+"""Pod runtime-resource allocation.
 
 Pure logic — no I/O. The CLI layer (cli/_pod.py) calls these helpers and
 writes the allocation table via edges/store.py.

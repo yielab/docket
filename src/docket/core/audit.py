@@ -1,4 +1,4 @@
-"""Audit log for mutating operations (T5.4a port of lib/helpers/audit.sh).
+"""Audit log for mutating operations.
 
 Appends one JSON line per change to ``$OPENCLAW_DIR/audit.log`` (0600) recording
 who/when/what — table stakes for "what changed this agent/binding/key, and when".
@@ -22,12 +22,12 @@ import docket.config as _cfg
 
 
 def _utc_now() -> str:
-    """Match Bash: date -u +%Y-%m-%dT%H:%M:%SZ."""
+    """Return current UTC time as YYYY-MM-DDTHH:MM:SSZ."""
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _username() -> str:
-    """Mirror `id -un`, falling back to '?' the way the Bash did."""
+    """Return the current username, falling back to '?'."""
     try:
         return getpass.getuser()
     except Exception:
@@ -40,7 +40,7 @@ def audit_log(action: str, detail: str = "") -> None:
     action: dotted verb, e.g. ``keys.add``, ``gates.enable``, ``agent.delete``.
     detail: human-readable target (an id, key name, tier — never a secret value).
 
-    Best-effort and never raises: mirrors the Bash ``|| true`` guard. No-ops when
+    Best-effort and never raises. No-ops when
     DOCKET_NO_AUDIT=1 or the OPENCLAW_DIR does not exist yet.
     """
     if os.environ.get("DOCKET_NO_AUDIT", "0") == "1":
@@ -69,7 +69,7 @@ def audit_log(action: str, detail: str = "") -> None:
 def read_audit() -> list[dict[str, Any]]:
     """Return every parseable audit entry in file order (oldest first).
 
-    Malformed lines are skipped, matching the readers in audit.sh.
+    Malformed lines are skipped.
     """
     logf = _cfg.AUDIT_LOG
     if not logf.is_file():

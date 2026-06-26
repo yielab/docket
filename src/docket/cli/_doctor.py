@@ -1,6 +1,6 @@
-"""docket doctor — system-wide health checks + auto-fixes (T3.4 port).
+"""docket doctor — system-wide health checks + auto-fixes.
 
-Ports lib/commands/doctor.sh. `run_doctor(json_out)` returns the process exit
+`run_doctor(json_out)` returns the process exit
 code: 0 when healthy, 1 when the report flags issues. The coordinator wraps
 this in a Typer command and raises typer.Exit(code).
 
@@ -25,21 +25,19 @@ from docket.core.utils import aggregate_cost, gateway_active, project_ids, resta
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
 
-# ── constants (mirror lib/core/config.sh) ─────────────────────────────────────
-
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
 RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
 KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
 
-# Stale model aliases flagged by the model-config check (doctor.sh STALE map).
+# Stale model aliases flagged by the model-config check.
 _STALE_MODELS: dict[str, str] = {
     "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
     "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
     "anthropic/claude-sonnet-3-5": "anthropic/claude-sonnet-4-6",
 }
 
-# provider → expected secrets.json key name (doctor.sh PKEY map).
+# provider → expected secrets.json key name.
 _PROVIDER_KEY: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
@@ -54,14 +52,10 @@ _PROVIDER_KEY: dict[str, str] = {
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md")
 
 
-# ── batched cost data (one pass over all agents) ──────────────────────────────
-
-
 def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
     """Return {agent_id: (budgetUsd_str, cost_float, turns_int)} for all agents.
 
-    Mirrors _doctor_batch_cost(): budget comes from .docket-meta.json, cost+turns
-    from the aggregated session index.
+    Budget comes from .docket-meta.json, cost+turns from the aggregated session index.
     """
     out: dict[str, tuple[str, float, int]] = {}
     for aid in agent_ids:
@@ -70,9 +64,6 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
         totals = aggregate_cost(aid)
         out[aid] = (budget, totals.cost_usd, totals.turns)
     return out
-
-
-# ── individual checks (human path) ─────────────────────────────────────────────
 
 
 def _check_binaries() -> int:
@@ -179,10 +170,10 @@ def _check_project_agents(ids: list[str]) -> int:
 
 
 def _check_brave_browser() -> int:
-    """Brave-browser process scan for the OpenClaw web UI (section 8, advisory).
+    """Brave-browser process scan for the OpenClaw web UI (advisory).
 
-    Ports doctor.sh section 8: counts `openclaw/browser` processes via ps, warns
-    when the oldest is stale (>2 days). Never bumps the issue count (returns 0).
+    Counts `openclaw/browser` processes via ps, warns when the oldest is stale
+    (>2 days). Never bumps the issue count (returns 0).
     """
     import subprocess as _sp
 
@@ -200,7 +191,6 @@ def _check_brave_browser() -> int:
         ui.dim("  Brave browser: not running (OpenClaw will auto-start when needed)")
         return 0
 
-    # Oldest process age in days via `ps -eo pid,etimes,cmd`.
     oldest_etimes = 0
     try:
         out = _sp.run(
@@ -428,7 +418,6 @@ def _check_security_gates() -> int:
 
     audit = _oc.security_audit_report()
 
-    # G2 — config-file hardening.
     cfg_mode = _oc.get_config_perms()
     if cfg_mode and cfg_mode[-2:] != "00":
         ui.console.print(
@@ -442,7 +431,6 @@ def _check_security_gates() -> int:
     elif cfg_mode:
         ui.success(f"  Config perms: {cfg_mode} (owner-only)")
 
-    # G1 — exec-approval policy (advisory).
     gs_state, gs_policy, gs_counts = _oc.security_gate_report()
     if gs_state == "OK":
         ui.success(f"  Exec approvals: {gs_policy} ({gs_counts})")
@@ -454,7 +442,6 @@ def _check_security_gates() -> int:
     else:
         ui.dim(f"  Exec approvals: {gs_policy or 'status unavailable'}")
 
-    # G4 — approval routing.
     r_state, r_mode = _oc.get_approval_routing()
     if r_state == "on":
         ui.success(f"  Approval routing: on (mode={r_mode or '?'})")
@@ -465,14 +452,12 @@ def _check_security_gates() -> int:
         if gs_state == "OK":
             ui.dim("  Approval routing: not configured — docket gates enable")
 
-    # G5 — workspace isolation.
     iso = _oc.get_isolation_mode()
     if iso in ("non-main", "all"):
         ui.success(f"  Workspace isolation: {iso} (Docker sandbox)")
     else:
         ui.dim("  Workspace isolation: off — docket gates isolate on (needs Docker)")
 
-    # G1 — daemon audit summary (config-perms finding excluded upstream).
     if audit.available:
         if audit.critical > 0:
             ui.console.print(
@@ -558,7 +543,6 @@ def _check_metadata_backfill(ids: list[str]) -> int:
         if not _oc.meta_get(aid, "modelSource", ""):
             _oc.meta_set(aid, "modelSource", _mp.agent_model_source(aid))
             fixed.append("modelSource")
-        # Phase 10 (AA-8): backfill scope on legacy project metas.
         if not _oc.meta_get(aid, "scope", ""):
             _oc.meta_set(aid, "scope", "project")
             fixed.append("scope")
@@ -566,8 +550,6 @@ def _check_metadata_backfill(ids: list[str]) -> int:
             ui.success(f"  {aid}: backfilled {' '.join(fixed)}")
             backfilled += 1
 
-    # Phase 10 (AA-8): flag legacy global project-role singletons. Post-cutover
-    # these belong inside pods (docket add), not as shared workspaces.
     for role in sorted(_cfg.PROJECT_ROLES):
         if (_cfg.OPENCLAW_DIR / "workspaces" / role).is_dir():
             ui.warn(
@@ -582,11 +564,11 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
 
 def _check_eval_results() -> int:
-    """Eval-results model-tier recommendations (section 16, advisory).
+    """Eval-results model-tier recommendations (advisory).
 
-    Ports doctor.sh section 16: when tests/evals/results/*.jsonl exist, prints
-    per-role minimum passing tier from the latest results file. Purely advisory
-    (returns 0 — never affects the issue count).
+    When tests/evals/results/*.jsonl exist, prints per-role minimum passing tier
+    from the latest results file. Purely advisory (returns 0 — never affects the
+    issue count).
     """
     import collections
 
@@ -648,14 +630,8 @@ def _check_eval_results() -> int:
     return 0
 
 
-# ── helpers ────────────────────────────────────────────────────────────────────
-
-
 def _eval_results_dir() -> Path | None:
-    """Locate tests/evals/results/ — repo root via DOCKET_CLI_ROOT or package layout.
-
-    Mirrors doctor.sh's `cd "$(dirname …)/../../tests/evals/results"` resolution.
-    """
+    """Locate tests/evals/results/ — repo root via DOCKET_CLI_ROOT or package layout."""
     root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
     if not root.is_dir():
         # src/docket/cli/_doctor.py → parents[3] == repo root.
@@ -674,10 +650,7 @@ def _fmt_num(s: str) -> str:
 
 
 def _secrets_backend() -> str:
-    """Resolve the secrets backend (keyring if requested + available, else file).
-
-    Mirrors secrets_backend() in secrets.sh.
-    """
+    """Resolve the secrets backend (keyring if requested + available, else file)."""
     if os.environ.get("DOCKET_SECRETS_BACKEND") == "keyring" and shutil.which("secret-tool"):
         return "keyring"
     return "file"
@@ -686,7 +659,7 @@ def _secrets_backend() -> str:
 def _keys_age_report() -> list[tuple[str, str, str]]:
     """Return [(state, name, detail)] for each stored secret key.
 
-    state: OK | STALE | UNKNOWN. Mirrors _keys_age_report() in keys.sh.
+    state: OK | STALE | UNKNOWN.
     """
     import datetime as _dt
 
@@ -718,11 +691,8 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     return out
 
 
-# ── JSON (machine probe) path ──────────────────────────────────────────────────
-
-
 def _doctor_json() -> dict[str, Any]:
-    """Assemble the machine-readable health report (mirrors _doctor_json)."""
+    """Assemble the machine-readable health report."""
     issues = 0
     ids = project_ids()
 
@@ -899,9 +869,6 @@ def _doctor_json() -> dict[str, Any]:
             "templateDrift": tmpl_results,
         },
     }
-
-
-# ── public entry point ──────────────────────────────────────────────────────────
 
 
 def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:

@@ -1,6 +1,6 @@
-"""docket install — bootstrap OpenClaw + specialist agents (M6 port).
+"""docket install — bootstrap OpenClaw + specialist agents.
 
-Faithful port of lib/commands/install.sh. `run_install(want_gates, assume_yes)`
+`run_install(want_gates, assume_yes)`
 returns the process exit code (0 on success, 1 when a hard preflight fails); the
 coordinator wraps it in a Typer command and raises typer.Exit(code).
 
@@ -35,14 +35,11 @@ from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
-# ── preflight (Step 1) ─────────────────────────────────────────────────────────
-
 
 def _check_dependencies() -> list[str]:
     """Report required (openclaw/python3/git) + optional (fzf) tools.
 
     Returns the list of MISSING required dependencies (empty when all present).
-    Mirrors Step 1 of install.sh.
     """
     missing: list[str] = []
 
@@ -88,9 +85,6 @@ def _openclaw_version() -> str:
     return out or "found"
 
 
-# ── OpenClaw init (Step 2) ─────────────────────────────────────────────────────
-
-
 def _run_onboard() -> None:
     """Run `openclaw onboard` (only when openclaw.json is absent).
 
@@ -100,11 +94,8 @@ def _run_onboard() -> None:
         subprocess.run(["openclaw", "onboard"], timeout=600)
 
 
-# ── model authentication (Step 6) ──────────────────────────────────────────────
-
-
 def _auth_print_profiles() -> None:
-    """Pretty-print the auth-profile summary (mirrors auth_print_profiles)."""
+    """Pretty-print the auth-profile summary."""
     for p in _oc.auth_profiles_summary():
         if p.disabled:
             reason = p.disabled_reason or "?"
@@ -117,7 +108,7 @@ def _auth_print_profiles() -> None:
 
 
 def _auth_setup_interactive() -> bool:
-    """Interactive Claude-auth chooser (mirrors auth_setup_interactive in auth.sh).
+    """Interactive Claude-auth chooser.
 
     Returns True if a usable profile was configured. Shells out to
     `openclaw models auth` so OpenClaw owns the credential format. Live path —
@@ -190,7 +181,7 @@ def _step_auth() -> int:
     """Step 6 — model authentication. Returns 0 if auth is usable, else 1.
 
     Detect existing profiles, warn when all are disabled, and run the interactive
-    chooser when none exist. Mirrors Step 6 of install.sh.
+    chooser when none exist.
     """
     profiles = _oc.auth_profiles_summary()
     has_usable = any(not p.disabled for p in profiles)
@@ -218,11 +209,8 @@ def _step_auth() -> int:
     return 0 if any(not p.disabled for p in _oc.auth_profiles_summary()) else 1
 
 
-# ── security best practices (Step 7) ───────────────────────────────────────────
-
-
 def _step_security(want_gates: bool) -> None:
-    """Step 7 — harden config perms (G2) and optionally apply exec gates (G3)."""
+    """Step 7 — harden config perms and optionally apply exec gates."""
     hardened = _oc.harden_config_perms()
     if hardened:
         for path in hardened:
@@ -257,9 +245,6 @@ def _step_security(want_gates: bool) -> None:
     )
 
 
-# ── gateway service (Step 8) ───────────────────────────────────────────────────
-
-
 def _step_gateway() -> None:
     """Step 8 — start/restart the gateway service (best-effort)."""
     if _sys.service_manager() == "none":
@@ -282,17 +267,13 @@ def _step_gateway() -> None:
         ui.console.print(f"  Start manually: {_sys.service_hint('start')}")
 
 
-# ── specialist provisioning (Step 5) ───────────────────────────────────────────
-
-
 def _provision_specialists() -> None:
     """Step 5 — register the shared **org** specialist agents + backfill their meta.
 
-    Phase 10 (AA-2): install provisions only the cross-cutting org roles
-    (security, knowledge, manager) as shared singletons. The project roles
-    (programmer, reviewer, tester) are NO LONGER installed globally — they become
-    per-pod workers provisioned by `docket add` (AA-3), so one programmer never
-    serves two projects.
+    Install provisions only the cross-cutting org roles (security, knowledge,
+    manager) as shared singletons. The project roles (programmer, reviewer, tester)
+    are NOT installed globally — they become per-pod workers provisioned by
+    `docket add`, so one programmer never serves two projects.
 
     Models come from the role→model policy so a provider preset switched before
     install provisions specialists on that provider.
@@ -354,7 +335,7 @@ health — not project source code, and you are distinct from each pod's Lead.
 
 
 def _provision_portfolio_manager() -> None:
-    """AA-6 — provision the single opt-in org Portfolio Manager.
+    """Provision the single opt-in org Portfolio Manager.
 
     A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
     over fleet metadata (not project code). Opt-in (`docket install --portfolio`),
@@ -397,22 +378,18 @@ def _provision_portfolio_manager() -> None:
             )
 
 
-# ── public entry point ─────────────────────────────────────────────────────────
-
-
 def run_install(
     want_gates: bool = False, assume_yes: bool = False, want_portfolio: bool = False
 ) -> int:
     """Bootstrap OpenClaw + specialist agents. Returns the process exit code.
 
-    want_gates:      apply opt-in exec-approval enforcement (mirrors --gates).
+    want_gates:      apply opt-in exec-approval enforcement.
     assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
-    want_portfolio:  also provision the opt-in org Portfolio Manager (AA-6).
+    want_portfolio:  also provision the opt-in org Portfolio Manager.
     """
     ui.header("Docket Installation — OpenClaw Setup")
     ui.console.print()
 
-    # ── detect existing setup ──────────────────────────────────────────────────
     if _oc.config_exists():
         ui.info("Existing OpenClaw installation detected")
         ui.console.print()
@@ -444,7 +421,6 @@ def run_install(
                 ui.warn("Aborted.")
                 return 0
 
-    # ── Step 1: dependencies ───────────────────────────────────────────────────
     ui.header("Step 1: Checking dependencies")
     missing = _check_dependencies()
     if missing:
@@ -454,7 +430,6 @@ def run_install(
         return 1
     ui.console.print()
 
-    # ── Step 2: OpenClaw init ──────────────────────────────────────────────────
     ui.header("Step 2: OpenClaw initialization")
     if not _oc.config_exists():
         ui.info("Running openclaw onboard...")
@@ -465,7 +440,6 @@ def run_install(
     else:
         ui.success("OpenClaw already initialized")
 
-    # ── Step 3: directory structure ────────────────────────────────────────────
     ui.header("Step 3: Creating directory structure")
     _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
     _cfg.SITES_DIR.mkdir(parents=True, exist_ok=True)
@@ -478,7 +452,6 @@ def run_install(
     ui.console.print(f"  {_cfg.SITES_DIR}")
     ui.console.print()
 
-    # ── Step 4: agent defaults ─────────────────────────────────────────────────
     ui.header("Step 4: Configuring agent defaults")
     _oc.configure_agent_defaults(_cfg.DEFAULT_MODEL)
     ui.success("Agent defaults configured")
@@ -487,7 +460,6 @@ def run_install(
     ui.console.print("  Max concurrent: 4 agents")
     ui.console.print()
 
-    # ── Step 5: specialist agents ──────────────────────────────────────────────
     ui.header("Step 5: Setting up specialist agents")
     _provision_specialists()
     if want_portfolio:
@@ -496,28 +468,24 @@ def run_install(
         _provision_portfolio_manager()
     ui.console.print()
 
-    # ── Step 6: model authentication ───────────────────────────────────────────
     ui.header("Step 6: Model authentication")
     auth_missing = _step_auth() != 0
     ui.console.print()
 
-    # ── Step 7: security best practices ────────────────────────────────────────
     ui.header("Step 7: Configuring security best practices")
     _step_security(want_gates)
     ui.console.print()
 
-    # ── Step 8: gateway service ────────────────────────────────────────────────
     ui.header("Step 8: Gateway service")
     _step_gateway()
     ui.console.print()
 
-    # ── Step 9: summary ────────────────────────────────────────────────────────
     _print_summary(auth_missing)
     return 0
 
 
 def _print_summary(auth_missing: bool) -> None:
-    """Step 9 — closing summary + next steps (mirrors install.sh Step 9)."""
+    """Step 9 — closing summary + next steps."""
     ui.header("Installation Complete!")
     ui.console.print()
     ui.console.print("[bold]Next Steps:[/bold]")

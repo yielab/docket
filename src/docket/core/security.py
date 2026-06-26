@@ -1,7 +1,7 @@
-"""Security-gate logic (T5.4b port of the non-ACL half of lib/helpers/security.sh).
+"""Security-gate logic — pure assembly of exec-approval config.
 
 docket configures; the OpenClaw daemon enforces. These helpers build the
-exec-approval config (G3) and decide what to seed, returning structured results
+exec-approval config and decide what to seed, returning structured results
 the CLI renders. All openclaw-owned reads/writes — exec-approvals.json, the
 daemon ``openclaw approvals set`` apply, approvals.exec routing, and the
 sandbox-isolation config — go through the ACL (``edges/adapters/openclaw.py``).
@@ -24,7 +24,6 @@ from docket.edges.adapters import openclaw as _oc
 # Curated set of common, lower-risk binaries that skip the approval prompt.
 # Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and shell
 # interpreters are deliberately OMITTED so they fall through the allowlist gate.
-# Mirrors _GATES_SAFE_BINS in security.sh (order preserved).
 SAFE_BINS: tuple[str, ...] = (
     "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "nl",
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
@@ -39,7 +38,7 @@ SAFE_BINS: tuple[str, ...] = (
 
 @dataclass
 class GateResult:
-    """Outcome of applying exec-approval gates (G3)."""
+    """Outcome of applying exec-approval gates."""
 
     mode: str  # "applied-via-daemon" | "applied-direct"
     defaults_changed: bool
@@ -76,7 +75,7 @@ def build_exec_approvals(
 
     Returns (merged_doc, defaults_changed, seeded_ids). Existing config
     (version / socket / agents) is preserved; defaults are only overwritten when
-    empty unless *force*. Mirrors the _builder block in apply_exec_approval_gates().
+    empty unless *force*.
     """
     data: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
     data.setdefault("version", 1)  # socket (if present) preserved untouched
@@ -116,12 +115,11 @@ def build_exec_approvals(
 
 
 def apply_exec_approval_gates(force: bool = False) -> GateResult:
-    """Apply conservative exec-approval enforcement (G3, opt-in).
+    """Apply conservative exec-approval enforcement (opt-in).
 
     Writes defaults {security: allowlist, ask: on-miss, askFallback: deny} and
     seeds each agent the curated safe-bin allowlist. The merged file is applied
-    via the daemon when reachable, else written directly. Mirrors
-    apply_exec_approval_gates().
+    via the daemon when reachable, else written directly.
     """
     paths = resolve_safe_bin_paths()
     existing = _oc.read_exec_approvals()
@@ -141,7 +139,7 @@ def disable_exec_approval_gates() -> bool:
     """Reset exec-approval defaults to empty so the daemon falls back to tools.exec.
 
     Returns False when there is nothing to disable (no exec-approvals file).
-    Seeded allowlists are left in place. Mirrors disable_exec_approval_gates().
+    Seeded allowlists are left in place.
     """
     if not _oc.exec_approvals_path().exists():
         return False
@@ -152,10 +150,10 @@ def disable_exec_approval_gates() -> bool:
 
 
 def apply_approval_routing() -> int:
-    """Route exec-approval prompts to each agent's session channel (G4).
+    """Route exec-approval prompts to each agent's session channel.
 
     Writes approvals.exec = {enabled, mode:session}. Returns the count of
-    Telegram-bound agents (informational). Mirrors apply_approval_routing().
+    Telegram-bound agents (informational).
     """
     _oc.set_approval_routing(enabled=True, mode="session")
     count = 0
@@ -166,19 +164,18 @@ def apply_approval_routing() -> int:
 
 
 def disable_approval_routing() -> None:
-    """Turn approval forwarding off (approvals.exec.enabled=false). Mirrors Bash."""
+    """Turn approval forwarding off (approvals.exec.enabled=false)."""
     _oc.disable_approval_routing()
 
 
 def apply_workspace_isolation() -> None:
-    """Enable per-agent Docker sandbox for non-main sessions (G5).
+    """Enable per-agent Docker sandbox for non-main sessions.
 
-    Mirrors apply_workspace_isolation(). The Docker capability check and gateway
-    restart are the caller's responsibility.
+    The Docker capability check and gateway restart are the caller's responsibility.
     """
     _oc.set_sandbox_isolation(mode="non-main", scope="agent", workspace_access="rw")
 
 
 def disable_workspace_isolation() -> None:
-    """Turn sandbox isolation off (mode: off). Mirrors disable_workspace_isolation()."""
+    """Turn sandbox isolation off (mode: off)."""
     _oc.disable_sandbox_isolation()
