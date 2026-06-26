@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-README = Path("README.md")
-CLAUDE_MD = Path("CLAUDE.md")
+_REPO = Path(__file__).parent.parent.parent
+README = _REPO / "README.md"
+CLAUDE_MD = _REPO / "CLAUDE.md"
 
 
 def _readme() -> str:

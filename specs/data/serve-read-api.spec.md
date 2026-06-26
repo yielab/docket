@@ -1,17 +1,48 @@
-# serve read API — contract spec (v1)
+# serve read API — contract spec
 
-**API version:** `1`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)  
-**Status:** Stable — breaking changes bump `SERVE_API_VERSION` and update this document.  
-**Scope:** Read-only. All mutation stays in the CLI (`docket approve/deny`, etc.) or the
-token-guarded write endpoints (`POST /approvals/<token>`, `POST /dispatch/<project>`).
+**Version**: 1.0.0
+**Status**: Stable
+**Last Updated**: 2026-06-26
 
-The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`,
-`/metrics`, `/health`) require no auth. Write endpoints require `Authorization: Bearer
-<token>` (see `serve.py` security-model note for token sourcing).
+## Purpose
 
----
+This specification defines the read API exposed by `docket serve` — a lightweight HTTP server
+that gives dashboards, CI pipelines, and external tools a stable, versioned window into fleet
+state. The API is intentionally read-only at the unauthenticated layer; all mutation flows
+through the CLI (`docket approve/deny`, etc.) or token-guarded write endpoints.
 
-## Endpoints
+## Scope
+
+This specification covers:
+
+- The three stable read endpoints (`/status.json`, `/metrics`, `/health`)
+- The JSON schema for each response
+- The Prometheus metric names and semantics
+- The versioning policy (what constitutes a breaking change)
+- The security model (auth requirements per endpoint)
+
+It does NOT cover write endpoints (`POST /approvals/<token>`, `POST /dispatch/<project>`), which
+are implementation details gated by `Authorization: Bearer <token>` and documented in
+`src/docket/serve.py`.
+
+**API version:** `1`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
+The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
+`/health`) require no auth.
+
+## Structure
+
+The server exposes three stable read endpoints:
+
+| Endpoint | Content-Type | Auth required |
+|---|---|---|
+| `GET /status.json` | `application/json` | No |
+| `GET /metrics` | `text/plain; version=0.0.4` | No |
+| `GET /health` | `application/json` | No |
+
+All responses are served from `127.0.0.1` (localhost only). Responses include
+`Cache-Control: no-store` — consumers must not cache.
+
+## Schema
 
 ### GET /status.json
 
@@ -54,8 +85,6 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
 | `agents[*].lastActivity` | date string \| `"never"` | Date of the newest memory log file, or `"never"`. |
 | `totalCostUsd` | float | Sum of all agent `costUsd` values (daemon-recorded). |
 
----
-
 ### GET /metrics
 
 Prometheus text format (content-type `text/plain; version=0.0.4`).
@@ -73,8 +102,6 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 
 Additional metrics may be added in minor versions.
 
----
-
 ### GET /health
 
 Liveness check. Always returns HTTP 200 while the process is alive.
@@ -85,13 +112,44 @@ Liveness check. Always returns HTTP 200 while the process is alive.
 
 `gateway` is `1` (active) or `0` (inactive).
 
----
+## Validation
 
-## Versioning policy
-
-- **Minor additions** (new top-level or agent fields, new metric names) do not bump
-  `apiVersion`. Dashboard consumers should ignore unknown keys.
-- **Breaking changes** (removed/renamed fields, changed semantics) bump `apiVersion`
-  and are documented here.
+- `apiVersion` MUST be a string matching `SERVE_API_VERSION` in `src/docket/serve.py`.
+- `gateway` MUST be exactly `"active"` or `"inactive"`.
+- `agents[*].scope` MUST be `"project"` or `"org"`.
+- `agents[*].budgetUsd` MUST be a float or `null`.
+- `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
+- `/metrics` MUST conform to Prometheus text format 0.0.4.
 - The contract is pinned by `tests/python/test_cd8_read_api.py` (class `TestApiContract`).
-  Any change that breaks that test is a breaking API change and must bump `apiVersion`.
+  Any change that breaks that test is a breaking API change and MUST bump `apiVersion`.
+
+## Examples
+
+### Status endpoint (curl)
+
+```bash
+curl -s http://127.0.0.1:7474/status.json | jq .
+```
+
+### Metrics endpoint (curl)
+
+```bash
+curl -s http://127.0.0.1:7474/metrics
+# docket_agents_total 3.0
+# docket_gateway_up 1.0
+```
+
+### Health check
+
+```bash
+curl -s http://127.0.0.1:7474/health
+# {"status": "ok", "gateway": 1}
+```
+
+## Changelog
+
+### 1.0.0 — 2026-06-26
+
+- Initial stable specification extracted from implementation docs.
+- Documents `/status.json`, `/metrics`, `/health` endpoints with field-level notes.
+- Defines versioning policy: minor additions do not bump `apiVersion`; breaking changes do.
