@@ -2,7 +2,7 @@
 
 **Version**: 1.0.0
 **Status**: Complete
-**Last Updated**: 2024-01-20
+**Last Updated**: 2026-06-26
 
 ## Purpose
 
@@ -43,7 +43,7 @@ Positional arguments are command-specific; the following conventions apply acros
 |----------|------------|-------|
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
 | `codebase-path` | `add` | MUST be absolute or tilde-expanded; MUST exist and be readable |
-| `tier` | `profile` | MUST be one of `economy`, `standard`, `premium` |
+| `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
 | `action` | `scope`, `keys`, `team`, `workflow` | MUST be a verb from that command's documented action set |
 
 Unrecognized or excess positional arguments MUST produce return code 4 (invalid arguments).
@@ -84,28 +84,28 @@ docket [global-options] <command> [command-options] [arguments]
 
 #### docket install
 **Purpose**: Bootstrap OpenClaw and specialist agents
-**Syntax**: `docket install [--clean] [--skip-agents] [--profile <tier>]`
+**Syntax**: `docket install [--portfolio] [--gates]`
 **Arguments**: None
 **Options**:
-- `--clean`: Remove existing configuration
-- `--skip-agents`: Don't create specialist agents
-- `--profile <tier>`: Default model profile (economy/standard/premium)
+- `--portfolio`: Also provision the optional org Portfolio Manager (one `portfolio-manager` agent, `scope: org`)
+- `--gates`: Enable enforced exec-approval gates at install time (otherwise opt-in via `docket gates enable`)
 **Output**: Progress messages and success confirmation
 **Return**: 0 on success, 1-5 on various failures
 
 #### docket add
-**Purpose**: Create new project agent
-**Syntax**: `docket add <agent-id> [codebase-path] [options]`
+**Purpose**: Provision a project pod (Lead + Implementer by default)
+**Syntax**: `docket add <project> [codebase-path] [options]`
 **Arguments**:
-- `agent-id` (required): Unique identifier (alphanumeric + dash)
+- `project` (required): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
 - `codebase-path` (optional): Path to project directory
 **Options**:
 - `--type <repo|task>`: Agent type (auto-detected if not specified)
-- `--model <tier>`: Initial model profile
+- `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester
+- `--with <roles>`: Start from lean pod and add named roles (comma-separated: `reviewer`, `tester`, `implementer`)
+- `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent)
 - `--description <text>`: Agent description
-- `--no-autodetect`: Skip stack detection
-**Output**: Creation progress and confirmation
-**Return**: 0 on success, 3 if exists, 4 on invalid args
+**Output**: Creation progress and confirmation with member IDs
+**Return**: 0 on success, 3 if pod already exists, 4 on invalid args
 
 #### docket list
 **Purpose**: Display all agents
@@ -175,7 +175,7 @@ docket [global-options] <command> [command-options] [arguments]
 **Actions**:
 - (no args): Show the current role→model table (role, model, price, source, why)
 - `set <role> <provider/model>`: Override the model for a specific role
-- `preset <name>`: Switch all roles to a preset (e.g. `openai`, `anthropic`, `economy`)
+- `preset <name>`: Switch all roles to a provider preset (`anthropic`, `openai`, `google`, `openrouter`, `openrouter-free`)
 - `reset`: Restore built-in defaults
 **Output**: Role→model table or update confirmation
 **Return**: 0 on success, 4 on invalid role or preset
@@ -235,10 +235,11 @@ docket [global-options] <command> [command-options] [arguments]
 **Purpose**: Manage team coordination features
 **Syntax**: `docket team <action> [args]`
 **Actions**:
-- `status`: Show specialist health and task summary
-- `delegate "<task>" [--priority high]`: Queue a task for the manager
-- `queue`: List pending tasks
+- `delegate "<task>" [--priority high]`: Queue a task for the Manager agent
+- `queue [--all]`: List pending (or all) tasks
+- `start <task-id>`: Mark a task in progress
 - `done <task-id>`: Mark a task complete
+- `cancel <task-id>`: Cancel a task
 **Output**: Team status or action confirmation
 **Return**: 0 on success, various errors
 
@@ -312,12 +313,13 @@ docket [global-options] <command> [command-options] [arguments]
 **Return**: 0 on success
 
 #### docket serve
-**Purpose**: Serve the live snapshot JSON over HTTP for team dashboards
-**Syntax**: `docket serve [--port <n>] [--interval <s>]`
+**Purpose**: Background loop — refresh fleet status and optionally drive pod dispatch pipelines
+**Syntax**: `docket serve [--port <n>] [--interval <s>] [--dispatch]`
 **Options**:
-- `--port <n>`: Listen port (default: 7331)
+- `--port <n>`: Listen port for the read-only HTTP API (default: 7331)
 - `--interval <s>`: Snapshot refresh interval in seconds (default: 30)
-**Output**: Serves `http://localhost:<port>/status.json`, refreshed on the interval
+- `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket serve` is read-only.
+**Output**: Serves `http://localhost:<port>/status.json`, refreshed on the interval; with `--dispatch`, also logs each dispatch hop
 **Return**: 0 on clean shutdown (Ctrl-C)
 
 ### Security and Gates
@@ -349,7 +351,7 @@ docket [global-options] <command> [command-options] [arguments]
 **Output**: Pass/fail per specialist role; model optimization hints
 **Return**: 0 if all pass, 1 if any fail
 
-### Observability (Phase 8)
+### Observability
 
 #### docket trace
 **Purpose**: View, tail, export, or ingest agent-action JSONL traces
@@ -480,7 +482,7 @@ Default table uses column alignment:
 | `DOCKET_HOME` | Base directory | `~/.openclaw` |
 | `DOCKET_DEBUG` | Enable debug (0/1) | 0 |
 | `DOCKET_NO_COLOR` | Disable colors (0/1) | 0 |
-| `DOCKET_MODEL_DEFAULT` | Default model tier | standard |
+| `DOCKET_MODEL_DEFAULT` | Override the fallback default model (`provider/model`) | (role policy) |
 | `DOCKET_EDITOR` | Preferred editor | $EDITOR or nano |
 | `OPENCLAW_API` | API endpoint | http://localhost:8000 |
 
@@ -517,8 +519,9 @@ the contract-level summary follows.
 - Must be readable
 
 ### Model Validation
-- Must exist in MODEL_PROFILES
-- Case-insensitive matching
+- Must be well-formed `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
+- The daemon validates the actual model; docket accepts any well-formed string and warns if pricing is unknown
+- Deprecated tier names (`economy`, `standard`, `premium`) are accepted with a warning and resolve to internal rank anchors
 
 ### Numeric Validation
 - Reset level: 1-3
@@ -587,6 +590,17 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.2.0 (2026-06-26)
+- Replaced tier argument (`economy|standard|premium`) with `provider/model` — tier names are now deprecated aliases only
+- Updated `docket install` flags: removed removed `--clean`/`--skip-agents`/`--profile`; added `--portfolio` and `--gates`
+- Updated `docket add`: replaced `--model <tier>` with `--pod full`, `--with <roles>`, and `--from <file>`
+- Added `--dispatch` to `docket serve`
+- Fixed `docket team` action set: removed `status`, added `start` and `cancel`
+- Fixed `docket models preset` list: removed deprecated `economy` alias
+- Corrected `DOCKET_MODEL_DEFAULT` description: value is a `provider/model` string, not a tier name
+- Removed "Phase 8" label from Observability section heading
+- Updated model validation rules to describe `provider/model` format and tier deprecation
 
 ### Version 1.1.0 (2026-06-09)
 - Synced the command registry with the shipped CLI

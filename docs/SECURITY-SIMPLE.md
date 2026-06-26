@@ -91,16 +91,16 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 
 ### Test 1: Can Agent Commit?
 ```bash
-# Check agent constraints
-grep "NEVER commit" ~/.openclaw/workspaces/programmer/SOUL.md
+# Check the implementer's constraints (replace "myapp" with your project name)
+grep "NEVER commit" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
 
 # Should find: "NEVER commit to git"
 ```
 
 ### Test 2: Does Reviewer Check Security?
 ```bash
-# Check reviewer checklist
-grep "prompt injection\|hardcoded secret" ~/.openclaw/workspaces/reviewer/SOUL.md
+# Check the reviewer's checklist (replace "myapp" with your project name)
+grep "prompt injection\|hardcoded secret" ~/.openclaw/workspaces/projects/myapp-reviewer/SOUL.md
 
 # Should find: 6-point checklist
 ```

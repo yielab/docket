@@ -71,21 +71,23 @@ See the [Command Reference](commands.md) for the full set.
 ~/.openclaw/
 ├── openclaw.json                  # OpenClaw daemon config
 └── workspaces/
-    ├── manager/                   # Specialist: orchestrator (delegation only)
-    ├── programmer/                # Specialist: implementation
-    ├── reviewer/                  # Specialist: review
-    ├── tester/                    # Specialist: validation
-    ├── knowledge/                 # Specialist: docs / research
-    ├── security/                  # Specialist: security audits
+    ├── manager/                   # Org specialist: orchestrator (delegation only)
+    ├── knowledge/                 # Org specialist: docs / research
+    ├── security/                  # Org specialist: security audits
     └── projects/
-        └── <agent-id>/            # Project agent workspace
+        └── <project>-<role>/      # Pod member workspace (e.g. myapp-lead, myapp-implementer)
             ├── SOUL.md            # Identity + session key
             ├── AGENTS.md          # Session protocol
             ├── TOOLS.md           # Project commands
             ├── HEARTBEAT.md       # Active tasks
-            ├── .docket-meta.json    # docket metadata
+            ├── .docket-meta.json  # docket metadata
             └── memory/            # Daily logs
 ```
+
+> Org specialists (`manager`, `knowledge`, `security`) have one shared workspace at
+> `~/.openclaw/workspaces/<role>/`. Project pod members (`<project>-lead`, `<project>-implementer`,
+> etc.) each get an **isolated** workspace under `projects/` — no role is ever shared between
+> projects.
 
 ---
 

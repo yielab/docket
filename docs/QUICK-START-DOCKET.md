@@ -169,10 +169,10 @@ docket serve --dispatch                  # Background: drive every pod's queue
 
 ### Memory Management
 ```bash
-docket memory snapshot <project-id>   # Create fast-access context
-docket memory index <project-id>      # Index memory for search
-docket memory search <project-id> <q> # Search indexed memory
-docket memory compress <project-id>   # Archive old logs
+docket context snapshot <project-id>   # Create fast-access context
+docket context index <project-id>      # Index memory for search
+docket context search <project-id> <q> # Search indexed memory
+docket context compress <project-id>   # Archive old logs (>30 days)
 ```
 
 ---
@@ -182,7 +182,7 @@ docket memory compress <project-id>   # Archive old logs
 ### Test 1: Memory Snapshot
 ```bash
 # Create snapshot for a project
-docket memory snapshot <project-name>
+docket context snapshot <project-name>
 
 # Verify it exists
 cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
@@ -380,7 +380,7 @@ systemctl --user restart openclaw-gateway.service
 
 3. **Create snapshot if missing:**
    ```bash
-   docket memory snapshot <project-id>
+   docket context snapshot <project-id>
    ```
 
 4. **Restart gateway:**
@@ -402,7 +402,7 @@ systemctl --user restart openclaw-gateway.service
 ### Memory Index Not Working?
 1. Create index first:
    ```bash
-   docket memory index <project-id>
+   docket context index <project-id>
    ```
 
 2. Verify index file:
@@ -417,7 +417,7 @@ systemctl --user restart openclaw-gateway.service
 1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
 2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
 3. **Monitor cost:** Check recorded spend with `docket cost`
-4. **Create snapshots & index memory:** `docket memory snapshot` / `docket memory index` per project
+4. **Create snapshots & index memory:** `docket context snapshot <project>` / `docket context index <project>` per project
 5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 
 ---
@@ -425,17 +425,17 @@ systemctl --user restart openclaw-gateway.service
 ## Resources
 
 - **Agent Teams (Pods):** [AGENT-TEAMS.md](AGENT-TEAMS.md) — the canonical team-model reference
-- **Full Implementation Guide:** [DOCKET-IMPLEMENTATION-COMPLETE.md](DOCKET-IMPLEMENTATION-COMPLETE.md)
-- **Architecture Analysis:** [DOCKET-ANALYSIS.md](DOCKET-ANALYSIS.md)
-- **Original Proposal:** [DOCKET.md](../DOCKET.md) (in manager's workspace)
-- **docket-cli Documentation:** [README.md](../README.md)
+- **Architecture Deep Dive:** [DOCKET.md](DOCKET.md) — routing, context isolation, dispatch internals
+- **Workflow Guide:** [WORKFLOW-GUIDE.md](WORKFLOW-GUIDE.md) — end-to-end examples
+- **Command Reference:** [commands.md](commands.md) — every command with syntax and options
+- **docket README:** [README.md](../README.md)
 - **Help Command:** `docket help`
 
 ---
 
 **Questions?** Check the docs or run `docket help`
 
-**Issues?** File at https://github.com/yielab/docket/issues (adjust URL)
+**Issues?** File at https://github.com/yielab/docket/issues
 
 ---
 

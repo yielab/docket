@@ -17,6 +17,8 @@ This specification covers:
 - Listing an agent's workflows (`docket workflow <id> list`)
 - Displaying a workflow (`docket workflow <id> show <name>`)
 - Deleting a workflow (`docket workflow <id> delete <name>`)
+- Validating a workflow's YAML structure (`docket workflow <id> validate <name>`)
+- Planning a workflow run without executing it (`docket workflow <id> plan <name>`)
 - The on-disk location and structure of workflow files
 
 This specification does NOT cover:
@@ -47,6 +49,19 @@ This specification does NOT cover:
 3. `delete` **MUST** remove the named workflow file and confirm removal.
 4. `show` and `delete` **MUST** return "not found" when the named workflow does not exist.
 
+### Validate (docket workflow validate)
+
+1. `validate` **MUST** parse the workflow YAML and report any structural errors.
+2. **MUST** check that required Lobster fields (`name`, `steps`) are present.
+3. **MUST NOT** execute any workflow steps.
+4. **SHOULD** report a clean "OK" on a valid workflow.
+
+### Plan (docket workflow plan)
+
+1. `plan` **MUST** display the workflow steps in execution order without running them.
+2. **SHOULD** annotate each step with its type (shell, LLM, etc.) and estimated token cost.
+3. **MUST NOT** invoke the daemon or consume tokens.
+
 ### Naming
 
 1. Workflow names **MUST** be slugified to a filesystem-safe form.
@@ -57,10 +72,12 @@ This specification does NOT cover:
 ### CLI Command Signatures
 
 ```bash
-docket workflow <agent-id> create <name>   # Generate a new Lobster template
-docket workflow <agent-id> list            # List the agent's workflows
-docket workflow <agent-id> show <name>     # Print a workflow's YAML
-docket workflow <agent-id> delete <name>   # Remove a workflow
+docket workflow <agent-id> create <name>    # Generate a new Lobster template
+docket workflow <agent-id> list             # List the agent's workflows
+docket workflow <agent-id> show <name>      # Print a workflow's YAML
+docket workflow <agent-id> delete <name>    # Remove a workflow
+docket workflow <agent-id> validate <name>  # Check YAML structure; exit 0 if valid
+docket workflow <agent-id> plan <name>      # Show step plan without executing
 ```
 
 ### Return Codes
