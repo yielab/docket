@@ -38,7 +38,6 @@ def check_agent(agent_id: str) -> list[Drift]:
         # registration error; callers (doctor) handle it separately.
         return drifts
 
-    # model
     if meta.model != oc_agent.model:
         drifts.append(
             Drift(
@@ -49,7 +48,6 @@ def check_agent(agent_id: str) -> list[Drift]:
             )
         )
 
-    # sessionKey
     meta_sk = meta.session_key
     oc_sk = oc_agent.metadata.session_key
     if meta_sk != oc_sk:

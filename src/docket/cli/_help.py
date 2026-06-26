@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from docket.core import models_policy as _mp
 
-# Raw ANSI escapes.
 _BOLD = "\033[1m"
 _GREEN = "\033[0;32m"
 _CYAN = "\033[0;36m"

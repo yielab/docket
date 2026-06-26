@@ -25,7 +25,6 @@ from typing import Any
 
 import docket.config as _cfg
 
-# Hooks / actions accepted by the engine.
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
 VALID_ACTIONS: frozenset[str] = frozenset({"allow", "warn", "redact", "require_approval", "block"})
 

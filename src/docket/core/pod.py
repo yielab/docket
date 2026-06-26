@@ -20,7 +20,6 @@ from docket.core import models_policy as _mp
 # The roles a pod member can take. Distinct from the org specialist roles.
 POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
-# Default lean pod and the opt-in full pod.
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 

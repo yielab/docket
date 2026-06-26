@@ -19,7 +19,6 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import trace as _trace
 
-# event_type → Rich colour.
 _EVENT_COLOR: dict[str, str] = {
     "session_start": "green",
     "session_end": "green",

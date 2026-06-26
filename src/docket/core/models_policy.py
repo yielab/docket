@@ -36,11 +36,10 @@ ROLE_CLASS: dict[str, str] = {
     "programmer": "strong",
     "security": "strong",
     "repo": "strong",
-    # Org Portfolio Manager (AA-6): a coordinator over fleet metadata, not code.
+    # portfolio-manager coordinates fleet metadata across pods, not code — cheap class.
     "portfolio-manager": "cheap",
 }
 
-# Short-name aliases.
 MODEL_ALIASES: dict[str, str] = {
     "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
     "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
@@ -74,7 +73,6 @@ MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
 }
 
-# Provider presets.
 KNOWN_PRESETS: tuple[str, ...] = (
     "anthropic",
     "openai",
@@ -213,9 +211,6 @@ def agent_model_source(agent_id: str) -> str:
     if not model or model == resolve_role_model(role):
         return "policy"
     return "pinned"
-
-
-# ── model validation ───────────────────────────────────────────────────────────
 
 
 def validate_model(model: str) -> tuple[str, list[str]]:
