@@ -1,6 +1,6 @@
-"""docket eval — specialist-role eval harness runner (M5 leftovers port).
+"""docket eval — specialist-role eval harness runner.
 
-Ports lib/commands/eval.sh. The evals themselves are Bash scripts under
+The evals themselves are Bash scripts under
 tests/evals/; this module locates that directory, sets the same environment
 variables the Bash command exported (DOCKET_EVAL_LIVE / DOCKET_EVAL_TIER), and
 shells out to the harness. `run_eval(...)` returns the process exit code:
@@ -21,10 +21,7 @@ from docket import ui
 
 
 def _evals_dir() -> Path | None:
-    """Locate tests/evals/ — repo root via DOCKET_CLI_ROOT or package layout.
-
-    Mirrors the `cd "$(dirname …)/../../tests/evals"` resolution in eval.sh.
-    """
+    """Locate tests/evals/ — repo root via DOCKET_CLI_ROOT or package layout."""
     root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
     if not root.is_dir():
         # src/docket/cli/_eval.py → parents[3] == repo root.
@@ -54,7 +51,7 @@ def run_eval(
     """
     evals = _evals_dir()
     if evals is None:
-        ui.error("Cannot locate tests/evals/ relative to lib/commands/eval.sh")
+        ui.error("Cannot locate tests/evals/ directory")
         return 1
 
     live_val = "1" if live else "0"
@@ -82,7 +79,6 @@ def run_eval(
         elif rc == 2:
             ui.warn(f"SKIP — {role} (agent not installed or live mode off)")
         else:
-            # fail(): print without exiting (mirrors output.sh fail()).
             ui.console.print(f"[red]✗[/red] FAIL — {role}")
         return rc
 

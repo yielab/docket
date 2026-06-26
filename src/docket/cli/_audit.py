@@ -1,7 +1,7 @@
-"""docket audit — view the mutating-operations audit log (T5.4a port).
+"""docket audit — view the mutating-operations audit log.
 
-Ports lib/commands/audit.sh. ``run_audit`` returns the process exit code (always
-0); the coordinator wraps it in a Typer command.
+``run_audit`` returns the process exit code (always 0);
+the coordinator wraps it in a Typer command.
 """
 
 from __future__ import annotations
@@ -14,10 +14,7 @@ from docket.core import audit as _audit
 
 
 def run_audit(limit: int | None = None, json_out: bool = False) -> int:
-    """Show the last *limit* audit entries (default 20), or raw JSONL with json_out.
-
-    Mirrors cmd_audit: ``docket audit [N|--json]``.
-    """
+    """Show the last *limit* audit entries (default 20), or raw JSONL with json_out."""
     logf = _cfg.AUDIT_LOG
 
     if not logf.is_file():

@@ -1,8 +1,8 @@
 """Dual-source consistency checker: .docket-meta.json ↔ openclaw.json.
 
-Fields declared `synced` in lib/core/schema.sh (currently: model, sessionKey)
-must agree in both stores. This module detects discrepancies so `docket doctor`
-and `docket maintain check` can surface and optionally fix them.
+The model and sessionKey fields must agree in both stores. This module detects
+discrepancies so `docket doctor` and `docket maintain check` can surface and
+optionally fix them.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from docket.edges.adapters import openclaw as oc
 
-# Fields that must agree in both stores.  Mirrors schema.sh `sync_class=synced`.
+# Fields that must agree in both stores.
 SYNCED_FIELDS = ("model", "sessionKey")
 
 

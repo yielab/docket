@@ -1,4 +1,4 @@
-"""docket gates — manage exec-approval enforcement (T5.4b port of gates.sh).
+"""docket gates — manage exec-approval enforcement.
 
 Opt-in, re-runnable front door for the daemon's exec-approval gates. docket
 configures; the OpenClaw daemon enforces. ``run_gates(sub, *, want, force)``
@@ -138,7 +138,6 @@ def _enable(force: bool) -> int:
     elif result.mode == "applied-direct":
         ui.info("Wrote ~/.openclaw/exec-approvals.json directly (gateway not reached)")
 
-    # G4 — wire the answer channel so fail-closed prompts are reachable.
     tg_count = _sec.apply_approval_routing()
     ui.success("Approval routing on (mode=session) — prompts go to each agent's channel")
     if tg_count > 0:

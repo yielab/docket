@@ -1,24 +1,17 @@
-"""docket help — full help text (M5 leftovers port).
+"""docket help — full help text.
 
-Ports lib/commands/help.sh. The Typer `@app.callback` renders an auto-generated
-help summary; this module reproduces the explicit `docket help` subcommand so its
-output matches the Bash command line-for-line.
+Uses raw ANSI escapes via plain print() rather than Rich markup to preserve
+literal square-bracketed tokens (`[id]`, `[N]`, `[--debug]`, `[agent-id]`)
+that Rich's markup parser would otherwise swallow.
 
-The Bash heredoc emitted raw ${BOLD}/${GREEN}/${CYAN}/${DIM}/${RESET} colour
-escapes unconditionally (they are literal ANSI in config.sh), so we do the same
-here via plain print() rather than Rich markup. This keeps byte parity and —
-crucially — preserves the many literal square-bracketed tokens (`[id]`, `[N]`,
-`[--debug]`, `[agent-id]`) that Rich's markup parser would otherwise swallow.
-
-The two MODEL POLICY model names are resolved live from the role→model registry,
-exactly as the Bash `${ROLE_MODELS[...]}` expansions did.
+The MODEL POLICY model names are resolved live from the role→model registry.
 """
 
 from __future__ import annotations
 
 from docket.core import models_policy as _mp
 
-# Raw ANSI escapes — verbatim from lib/core/config.sh.
+# Raw ANSI escapes.
 _BOLD = "\033[1m"
 _GREEN = "\033[0;32m"
 _CYAN = "\033[0;36m"
@@ -30,8 +23,6 @@ def run_help() -> int:
     """Print the full docket help text. Always returns 0."""
     B, G, C, D, R = _BOLD, _GREEN, _CYAN, _DIM, _RESET
 
-    # ${ROLE_MODELS[tester]:-${MODEL_PROFILES[economy]}} (cheap class) and
-    # ${ROLE_MODELS[programmer]:-${MODEL_PROFILES[standard]}} (strong class).
     cheap = _mp.resolve_role_model("tester")
     strong = _mp.resolve_role_model("programmer")
 
@@ -98,7 +89,7 @@ def run_help() -> int:
   {G}audit{R}    [N]       Recent mutating operations (keys, gates, profile, agents)
   {G}eval{R}               Specialist-role evals: structural checks + live golden tasks
 
-{B}OBSERVABILITY (Phase 8){R}
+{B}OBSERVABILITY{R}
   {G}trace{R}    <session>  Render one agent-action trace human-readable
   {G}trace tail{R} <proj>   Follow the most-recent session live
   {G}trace export{R} <proj> Export raw JSONL (--since YYYY-MM-DD)
@@ -155,7 +146,5 @@ def run_help() -> int:
   Config:      ~/.openclaw/openclaw.json
   Logs:        /tmp/openclaw/openclaw-YYYY-MM-DD.log
 """
-    # The Bash heredoc opens and closes with a blank line; the triple-quoted
-    # string supplies the leading newline and print() the trailing one.
     print(text)
     return 0

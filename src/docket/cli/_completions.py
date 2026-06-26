@@ -1,19 +1,14 @@
-"""docket completions — emit a shell completion script (M5 leftovers port).
+"""docket completions — emit a shell completion script.
 
-Ports lib/commands/completions.sh. `run_completions(shell)` prints the bash or
-zsh completion script to stdout and returns the process exit code. The scripts
-are reproduced byte-for-byte from the Bash heredocs so `eval "$(docket
-completions bash)"` behaves identically on either CLI path.
-
-Only bash and zsh are supported (matching the Bash contract); any other value
-is an error.
+`run_completions(shell)` prints the bash or zsh completion script to stdout
+and returns the process exit code. Only bash and zsh are supported.
 """
 
 from __future__ import annotations
 
 from docket import ui
 
-# ── bash completion script (verbatim from completions.sh BASH_EOF heredoc) ─────
+# bash completion script
 _BASH = """\
 # docket(1) bash completion — eval "$(docket completions bash)"
 _docket_complete() {
@@ -68,7 +63,7 @@ _docket_complete() {
 complete -F _docket_complete docket
 """
 
-# ── zsh completion script (verbatim from completions.sh ZSH_EOF heredoc) ───────
+# zsh completion script
 _ZSH = """\
 #compdef docket
 # docket(1) zsh completion — eval "$(docket completions zsh)"

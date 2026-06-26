@@ -1,16 +1,14 @@
 """docket metrics — role/project success-rate, latency, cost, guardrail stats.
 
-Ports lib/commands/metrics.sh. The Bash command shelled out to an embedded
-python3 heredoc that computed metrics from JSONL traces; that logic is reproduced
-here directly. `run_metrics(...)` returns the process exit code:
+`run_metrics(...)` returns the process exit code:
 
-  0  metrics printed (or no sessions / no traces-dir handled per Bash)
+  0  metrics printed
   1  traces directory missing
 
 The coordinator wraps the return value in typer.Exit(code).
 
-Output uses raw ANSI escape codes via plain print() — exactly as the Bash
-heredoc did — to preserve byte parity rather than routing through the Rich UI.
+Output uses raw ANSI escape codes via plain print() rather than routing
+through the Rich UI (to keep square-bracketed labels literal).
 """
 
 from __future__ import annotations
@@ -29,7 +27,7 @@ METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
 
 def _metrics_help() -> None:
-    """Mirror _metrics_help() in metrics.sh."""
+    """Print usage help."""
     ui.header("docket metrics")
     ui.console.print()
     ui.console.print("  docket metrics                    All agents, default window")
@@ -43,8 +41,7 @@ def _metrics_help() -> None:
 
 
 def _compute_and_print(traces_dir: str, role_filter: str, project_filter: str, window: int) -> None:
-    """Port of the embedded python3 heredoc in metrics.sh (verbatim logic)."""
-    # Collect all session_end records (terminal sessions), keyed by (project, session_id).
+    """Compute and print metrics from trace JSONL files."""
     terminal_sessions: list[dict[str, Any]] = []
     guardrail_trips: dict[str, int] = {}  # action -> count
 
@@ -101,7 +98,6 @@ def _compute_and_print(traces_dir: str, role_filter: str, project_filter: str, w
         if not has_end:
             continue  # skip open sessions
 
-        # Compute duration
         if session_data["start_ts"] and session_data["end_ts"]:
             try:
                 s = datetime.datetime.strptime(session_data["start_ts"][:19], "%Y-%m-%dT%H:%M:%S")
@@ -112,18 +108,15 @@ def _compute_and_print(traces_dir: str, role_filter: str, project_filter: str, w
 
         terminal_sessions.append(session_data)
 
-    # Filter by role
     if role_filter:
         terminal_sessions = [s for s in terminal_sessions if (s["role"] or "") == role_filter]
 
-    # Rolling window (most recent N)
     terminal_sessions = terminal_sessions[-window:]
 
     if not terminal_sessions:
         print("No terminal sessions found (run: docket trace ingest <project>)")
         return
 
-    # Compute metrics
     total = len(terminal_sessions)
     success = sum(1 for s in terminal_sessions if s["status"] == "success")
     failure = sum(1 for s in terminal_sessions if s["status"] == "failure")

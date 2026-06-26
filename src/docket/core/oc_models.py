@@ -15,9 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
 
 
-# ── openclaw.json ──────────────────────────────────────────────────────────────
-
-
 class OcPeer(BaseModel):
     model_config = _LENIENT
 
@@ -93,9 +90,6 @@ class OpenClawConfig(BaseModel):
     agents: OcAgents = Field(default_factory=lambda: OcAgents())
     bindings: list[OcBinding] = Field(default_factory=list)
     security: OcSecurity = Field(default_factory=lambda: OcSecurity())
-
-
-# ── auth-profiles.json ─────────────────────────────────────────────────────────
 
 
 class AuthProfileUsage(BaseModel):

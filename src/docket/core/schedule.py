@@ -1,4 +1,4 @@
-"""Scheduled dispatch (CD-6) — cron-like spec parsing for serve.
+"""Scheduled dispatch — cron-like spec parsing for serve.
 
 Schedules are read from ``SCHEDULE_FILE`` (default
 ``~/.openclaw/docket-schedules.json``):

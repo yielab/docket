@@ -1,22 +1,8 @@
-"""Pod pipeline dispatch (Phase 10 / AA-7) — closes Defect C.
+"""Pod pipeline dispatch — drives queued tasks through the lead → implementer → reviewer → tester pipeline.
 
-Defect C was "delegation is markdown-only": a Lead's SOUL *said* to hand work to
-the Implementer, but nothing actually ran the next agent. This module makes the
-hand-off real. It drives a pod's queued tasks through the pipeline
-
-    lead → implementer → reviewer → tester
-
-by invoking ONE real agent turn per present role (via the ACL's ``agent_run``),
-emitting a Phase-8 trace event per hop, and checking the pod's recorded budget
-before every hop. Dispatch is always WITHIN a single pod — there is no code path
-that sends one pod's work to another pod's agents (the no-cross-pod guarantee).
-
-Layering: this is core orchestration. It calls ``edges`` (the ACL ``agent_run``
-and the JSON store) and ``core`` (pod model, trace, cost) but never the CLI, and
-it never touches openclaw config except through the ACL. Each hop is a real,
-costed LLM turn, so the driver is *only* invoked from an explicit trigger
-(`docket pod <p> dispatch`) or the opt-in `docket serve --dispatch` loop — never
-silently.
+One real agent turn per present role (via the ACL's ``agent_run``), with a trace event and budget
+check per hop. Dispatch is always within a single pod — no code path sends one pod's work to
+another pod's agents. Invoked only from an explicit trigger or the opt-in ``serve --dispatch`` loop.
 """
 
 from __future__ import annotations
@@ -36,12 +22,10 @@ from docket.edges import store as _store
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
-# The order roles run in. Only the roles a pod actually has take part — a lean
-# pod (lead + implementer) runs two hops; a full pod runs four.
+# Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
-# Injectable runner so the driver is testable without a real daemon. Matches the
-# ACL ``agent_run`` signature.
+# Injectable runner for tests (matches the ACL ``agent_run`` signature).
 Runner = Callable[[str, str, str, int], _oc.AgentRunResult]
 
 DEFAULT_TIMEOUT = 300
@@ -79,9 +63,6 @@ class TaskResult:
 
 def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
-
-
-# ── pod task queue (docket-owned JSON in the Lead's workspace) ─────────────────
 
 
 def pod_task_list_path(project: str) -> Path:
@@ -129,9 +110,6 @@ def enqueue_task(project: str, description: str, priority: str = "normal") -> di
     tasks.append(task)
     write_tasks(project, tasks)
     return task
-
-
-# ── pipeline ──────────────────────────────────────────────────────────────────
 
 
 def pod_pipeline(project: str) -> list[tuple[str, str]]:
@@ -291,8 +269,7 @@ def dispatch_task(
             result.reason = f"{role} hop failed: {run_res.error or 'no result'}"
             break
 
-        # CD-2: mechanical verification gate, run immediately after a successful
-        # Implementer hop and BEFORE proceeding to reviewer/tester.
+        # Verification gate: run after a successful Implementer hop, before reviewer/tester.
         if role == "implementer":
             verify_cmd = str(_oc.meta_get(member_id, "verifyCmd", "") or "")
             if verify_cmd:
@@ -311,7 +288,6 @@ def dispatch_task(
                     result.status = "failed"
                     result.reason = f"verifyCmd failed: {verify_cmd!r}"
                     break
-                # Passed — record it and continue to reviewer/tester.
                 _trace.trace_event(
                     project,
                     session_id,
@@ -349,7 +325,7 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     ]
     task["costUsd"] = res.cost_usd
     if res.status == "blocked":
-        task["status"] = "pending"  # stays queued; retried when budget allows
+        task["status"] = "pending"  # left queued; retried when budget allows
         task["blockedReason"] = res.reason
     else:
         task["completedAt"] = _now()

@@ -1,13 +1,11 @@
-"""Role success-rate drift detection (port of lib/helpers/drift.sh, D1-D3).
+"""Role success-rate drift detection.
 
 Compares each agent role's rolling METRICS_WINDOW success rate against the
 trailing BASELINE_WINDOW baseline. When current < baseline - DRIFT_THRESHOLD a
 drift_alert trace event is emitted (rate-limited to one alert per role per
-DRIFT_COOLDOWN seconds). Aborted sessions count as failures (D-6).
+DRIFT_COOLDOWN seconds). Aborted sessions count as failures.
 
-Only the ``drift_check_all`` entry point that ``docket serve`` calls is ported
-here; the Bash also notified via Telegram, which has no Python equivalent yet —
-that side-effect was best-effort (``|| true``) and is omitted.
+Telegram notification on drift is not yet implemented.
 """
 
 from __future__ import annotations
@@ -26,9 +24,9 @@ _DRIFT_STATE_FILE: Path = _cfg.DOCKET_HOME / "drift-state.json"
 def _terminal_statuses(role: str, project_filter: str, max_n: int) -> list[str]:
     """Collect up to *max_n* terminal-session statuses for *role*.
 
-    Mirrors collect_terminal_sessions(): walks trace files in sorted order, and
-    for each file records the status of the first session_end seen while *role*
-    is the active agent_role (status defaults to "success" when absent).
+    Walks trace files in sorted order, and for each file records the status of
+    the first session_end seen while *role* is the active agent_role (status
+    defaults to "success" when absent).
     """
     traces_dir = _cfg.TRACES_DIR
     if not traces_dir.is_dir():
@@ -157,12 +155,11 @@ def _roles_in_traces() -> list[str]:
 
 
 def drift_check_all() -> None:
-    """Check every role represented in the trace store (port of drift_check_all).
+    """Check every role represented in the trace store.
 
     For each drifted role, emits a drift_alert trace event. Best-effort: any
     failure (including the trace write) is swallowed so the serve loop never
-    crashes. The Bash also logged a warning and notified Telegram; the warning
-    has no stdout home in the serve loop and Telegram has no Python port yet.
+    crashes.
     """
     for role in _roles_in_traces():
         try:

@@ -94,7 +94,6 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit(0)
 
 
-# ── default (no subcommand) → list ────────────────────────────────────────────
 @app.callback(invoke_without_command=True)
 def _default(
     ctx: typer.Context,
@@ -109,7 +108,6 @@ def _default(
         cmd_list(json_out=False)
 
 
-# ── lifecycle ──────────────────────────────────────────────────────────────────
 @app.command("install")
 def cmd_install(
     gates: bool = typer.Option(False, "--gates/--no-gates", help="Enable exec-approval gates"),
@@ -211,7 +209,6 @@ def _cmd_list_human() -> None:
         raw = store.read_json(_cfg.meta_path(aid))
         name = str(raw.get("name", aid))
         atype = str(raw.get("type", "repo"))
-        # Phase 10: pod members show role + pod instead of repo/task type.
         role = str(raw.get("role", ""))
         pod_name = str(raw.get("pod", "")) or (_pod_mod.pod_of(aid) or "")
         descriptor = f"{role} · pod:{pod_name}" if role and pod_name else atype
@@ -325,10 +322,8 @@ def cmd_add(ctx: typer.Context) -> None:
     """Add a new project agent (interactive or --from <spec-file>)."""
     import re as _re
 
-    # All args come through ctx.args when using ignore_unknown_options
     all_args: list[str] = list(ctx.args)
 
-    # ── parse --from <file> ────────────────────────────────────────────────────
     from_file: str | None = None
     i = 0
     while i < len(all_args):
@@ -346,7 +341,6 @@ def cmd_add(ctx: typer.Context) -> None:
         _cmd_add_declarative(from_file)
         return
 
-    # ── interactive path ───────────────────────────────────────────────────────
     if not sys.stdin.isatty():
         ui.error("interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.")
         raise typer.Exit(1)
@@ -399,9 +393,6 @@ def cmd_add(ctx: typer.Context) -> None:
     description = input("Description (one line): ").strip()
     tg_group = input("Telegram group ID (Enter to skip): ").strip()
 
-    # Phase 10: `docket add` provisions a pod, not a lone agent. Pod members
-    # follow the role→model policy (Lead = coordination model, Implementer =
-    # codegen model), so there is no single-model prompt.
     from docket.cli import _pod
 
     roles = _pod.parse_pod_roles(all_args)
@@ -532,10 +523,7 @@ def _create_workspace(
     description: str,
     model: str,
 ) -> None:
-    """Create workspace directory and template files.
-
-    Mirrors _create_workspace() in lib/helpers/workspace.sh.
-    """
+    """Create workspace directory and template files."""
     ws = _cfg.PROJECTS_DIR / agent_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
@@ -734,11 +722,9 @@ def _provision_agent(
     meta_file.write_text(_json.dumps(meta_data, indent=2), encoding="utf-8")
     meta_file.chmod(0o600)
 
-    # Create sessions dir
     sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
-    # Register with openclaw daemon (best-effort)
     if shutil.which("openclaw"):
         ws_path = str(_cfg.PROJECTS_DIR / agent_id)
         try:
@@ -925,7 +911,7 @@ def _cmd_info_human(agent_id: str) -> None:
 
 
 def _delete_pod(project: str, members: list[str]) -> None:
-    """Tear down every member of a pod (Phase 10). One gateway restart at the end."""
+    """Tear down every member of a pod. One gateway restart at the end."""
     from docket.cli import _pod
 
     ui.header(f"Delete pod: {project}  ({len(members)} members)")
@@ -977,7 +963,6 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
         )
         raise typer.Exit(1)
 
-    # Phase 10: if `aid` names a pod, tear down every member.
     from docket.cli import _pod
 
     members = _pod.pod_member_ids(aid)
@@ -1030,7 +1015,6 @@ def cmd_delete(agent_id: str | None = typer.Argument(None)) -> None:
     ui.success(f"Done. Project '{aid}' deleted.")
 
 
-# ── maintenance ────────────────────────────────────────────────────────────────
 @app.command(
     "maintain",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -1081,7 +1065,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
 
     issues: list[str] = []
 
-    # Check permissions
     perm_ok = True
     for dirpath in ws.rglob("*"):
         try:
@@ -1098,7 +1081,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     else:
         ui.console.print("  [yellow]⚠[/yellow] Permissions: some could not be set")
 
-    # Check required files
     required = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", ".docket-meta.json"]
     missing_files = [f for f in required if not (ws / f).is_file()]
     if missing_files:
@@ -1123,7 +1105,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     else:
         ui.console.print("  [green]✓[/green] Required files: all present")
 
-    # Check session key sync
     meta_session = _oc.meta_get(agent_id, "sessionKey", "")
     soul_path = ws / "SOUL.md"
     soul_session = ""
@@ -1148,7 +1129,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     else:
         ui.console.print("  [green]✓[/green] Session key: in sync")
 
-    # Check memory directory
     mem_dir = ws / "memory"
     if mem_dir.is_dir():
         mem_count = sum(1 for _ in mem_dir.glob("*.md"))
@@ -1301,7 +1281,6 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
         str(raw.get("model", _cfg.DEFAULT_MODEL)),
     )
 
-    # Clear memory logs
     mem_dir = ws / "memory"
     for f in mem_dir.glob("*.md"):
         f.unlink()
@@ -1436,7 +1415,6 @@ def _maintain_sessions(agent_id: str) -> None:
     ui.success(f"Trimmed {trimmed} session(s); archived {archived} to sessions/archive/")
 
 
-# ── context / memory ──────────────────────────────────────────────────────────
 @app.command(
     "context",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -1497,7 +1475,6 @@ def _context_show(agent_id: str, ws: Path) -> None:
     ui.header(f"Context: {name}")
     ui.console.print()
 
-    # Recent Activity
     ui.console.print("[bold]Recent Activity[/bold]")
     mem_dir = ws / "memory"
     if mem_dir.is_dir():
@@ -1518,7 +1495,6 @@ def _context_show(agent_id: str, ws: Path) -> None:
 
     ui.console.print()
 
-    # Active Tasks
     ui.console.print("[bold]Active Tasks[/bold]")
     hb = ws / "HEARTBEAT.md"
     if hb.is_file():
@@ -1535,7 +1511,6 @@ def _context_show(agent_id: str, ws: Path) -> None:
 
     ui.console.print()
 
-    # Gateway Activity
     ui.console.print("[bold]Gateway Activity[/bold]")
     today = _dt.date.today().strftime("%Y-%m-%d")
     log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
@@ -1555,12 +1530,10 @@ def _context_show(agent_id: str, ws: Path) -> None:
 
     ui.console.print()
 
-    # Context Statistics
     ui.console.print("[bold]Context Statistics[/bold]")
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     activity = last_activity(agent_id)
 
-    # Session size (latest session file)
     sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     session_size = "n/a"
     if sessions_dir.is_dir():
@@ -1653,7 +1626,6 @@ def _context_index(agent_id: str, ws: Path) -> None:
                 content = mf.read_text(encoding="utf-8")
             except OSError:
                 continue
-            # Keywords: bold or backtick words
             for word in _re.findall(r"\*\*([^*]+)\*\*|`([^`]+)`", content):
                 kw = (word[0] or word[1]).strip()
                 if kw:
@@ -1662,7 +1634,6 @@ def _context_index(agent_id: str, ws: Path) -> None:
                     if mf.name not in keywords[kw_lower]:
                         keywords[kw_lower].append(mf.name)
 
-    # Decisions from MEMORY.md
     memory_md = ws / "MEMORY.md"
     if memory_md.is_file():
         try:
@@ -1709,7 +1680,6 @@ def _context_snapshot(agent_id: str, ws: Path) -> None:
         "",
     ]
 
-    # Recent Activity
     lines.append("## Recent Activity")
     mem_dir = ws / "memory"
     if mem_dir.is_dir():
@@ -1723,7 +1693,6 @@ def _context_snapshot(agent_id: str, ws: Path) -> None:
                 pass
     lines.append("")
 
-    # HEARTBEAT content
     hb = ws / "HEARTBEAT.md"
     if hb.is_file():
         lines.append("## HEARTBEAT")
@@ -1731,7 +1700,6 @@ def _context_snapshot(agent_id: str, ws: Path) -> None:
             lines.extend(hb.read_text(encoding="utf-8").splitlines())
         lines.append("")
 
-    # MEMORY.md content
     mem_md = ws / "MEMORY.md"
     if mem_md.is_file():
         lines.append("## MEMORY")
@@ -1739,7 +1707,6 @@ def _context_snapshot(agent_id: str, ws: Path) -> None:
             lines.extend(mem_md.read_text(encoding="utf-8").splitlines())
         lines.append("")
 
-    # Stats
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     lines.append("## Stats")
     lines.append(f"- Memory log files: {mem_count}")
@@ -1800,7 +1767,6 @@ def _context_project(agent_id: str, ws: Path) -> None:
     ui.console.print(f"  [bold]{'Session Key:':<16}[/bold] {raw.get('sessionKey', '—')}")
     ui.console.print()
 
-    # Active tasks from HEARTBEAT
     hb = ws / "HEARTBEAT.md"
     if hb.is_file():
         task_lines = [
@@ -1814,7 +1780,6 @@ def _context_project(agent_id: str, ws: Path) -> None:
             ui.console.print("  [dim]No active tasks.[/dim]")
         ui.console.print()
 
-    # Decision headers from MEMORY.md
     mem_md = ws / "MEMORY.md"
     if mem_md.is_file():
         headers = [
@@ -1827,7 +1792,6 @@ def _context_project(agent_id: str, ws: Path) -> None:
             ui.console.print(f"  ## {h}")
         ui.console.print()
 
-    # Activity stats
     mem_dir = ws / "memory"
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     ui.console.print(f"  Memory logs: {mem_count}")
@@ -1835,7 +1799,6 @@ def _context_project(agent_id: str, ws: Path) -> None:
     ui.console.print()
 
 
-# ── telegram ───────────────────────────────────────────────────────────────────
 @app.command("wire")
 def cmd_wire(
     agent_id: str | None = typer.Argument(None),
@@ -2028,7 +1991,6 @@ def cmd_unwire(
     _do_restart_gateway()
 
 
-# ── configuration ──────────────────────────────────────────────────────────────
 @app.command("scope")
 def cmd_scope(
     agent_id: str | None = typer.Argument(None),
@@ -2117,7 +2079,6 @@ def cmd_profile(
         ui.error(f"Agent '{aid}' not found.")
         raise typer.Exit(1)
 
-    # ── --budget ──────────────────────────────────────────────────────────────
     if budget is not None:
         try:
             bval = float(budget)
@@ -2136,14 +2097,12 @@ def cmd_profile(
         if model is None:
             return  # budget-only change, nothing more to do
 
-    # ── read current state ─────────────────────────────────────────────────────
     name = _oc.meta_get(aid, "name", aid)
     current = _oc.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
     role = _mp.agent_role(aid)
     src = _mp.agent_model_source(aid)
     bud = _oc.meta_get(aid, "budgetUsd", "")
 
-    # ── no model given → show status ──────────────────────────────────────────
     if model is None:
         role_models, _, _ = _mp.load_registry()
         policy_model = _mp.resolve_role_model(role, role_models)
@@ -2175,7 +2134,6 @@ def cmd_profile(
         ui.console.print()
         return
 
-    # ── resolve the requested model ───────────────────────────────────────────
     if model in ("default", "policy"):
         role_models, _, _ = _mp.load_registry()
         new_model = _mp.resolve_role_model(role, role_models)
@@ -2190,12 +2148,10 @@ def cmd_profile(
             ui.warn(w)
         new_src = "pinned"
 
-    # ── no-op guard ───────────────────────────────────────────────────────────
     if new_model == current and new_src == src:
         ui.warn(f"Already using {new_model} ({new_src}). No change.")
         return
 
-    # ── write to both stores ──────────────────────────────────────────────────
     _oc.set_model_both(aid, new_model)
     _oc.meta_set(aid, "modelSource", new_src)
 
@@ -2699,7 +2655,6 @@ def cmd_auth(
         raise typer.Exit(1)
 
 
-# ── models / policy ────────────────────────────────────────────────────────────
 @app.command(
     "models",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -3009,7 +2964,6 @@ def _cmd_models_reset() -> None:
     _do_restart_gateway()
 
 
-# ── pod ────────────────────────────────────────────────────────────────────────
 @app.command(
     "pod",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -3025,7 +2979,6 @@ def cmd_pod(
     _pod.dispatch(project, sub, list(ctx.args))
 
 
-# ── team ───────────────────────────────────────────────────────────────────────
 @app.command(
     "team",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -3500,7 +3453,6 @@ notifications:
 """
 
 
-# ── utilities ──────────────────────────────────────────────────────────────────
 @app.command("logs")
 def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     """View memory logs and gateway entries."""
@@ -3526,7 +3478,6 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
 
     ui.header(f"Logs: {name} ({aid})")
 
-    # ── memory logs ──────────────────────────────────────────────────────────
     mem_dir = ws / "memory"
     mem_files = sorted(mem_dir.glob("*.md")) if mem_dir.is_dir() else []
     ui.console.print()
@@ -3544,7 +3495,6 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     else:
         ui.console.print("  [dim]No memory logs yet.[/dim]")
 
-    # ── gateway log (today's) ─────────────────────────────────────────────────
     tg_peer = _oc.get_binding(aid)
     if tg_peer:
         today = _dt.date.today().strftime("%Y-%m-%d")
@@ -3734,7 +3684,6 @@ def _cmd_cost_all() -> None:
             runaway.append(f"{pid} ({totals.turns} turns, ${totals.cost_usd:.4f})")
 
     ui.console.print()
-    # Mirrors Bash `printf "%69s %12s" "Total:" "$<total>"`.
     total_amount = f"${total_cost:.4f}"
     ui.console.print(f"[bold]{'Total:':>69} {total_amount:>12}[/bold]")
 
@@ -4039,7 +3988,7 @@ def cmd_serve(
     """Local HTTP endpoints: /status.json /metrics /health.
 
     With --dispatch, each refresh also runs every pod's queue through the
-    Lead→Implementer→Reviewer→Tester pipeline (AA-7). Each hop is a real agent
+    Lead→Implementer→Reviewer→Tester pipeline. Each hop is a real agent
     turn and is budget-gated; leave it off for a read-only monitor.
     """
     from docket.serve import run_serve
@@ -4055,7 +4004,6 @@ def cmd_completions(shell: str | None = typer.Argument(None)) -> None:
     raise typer.Exit(run_completions(shell))
 
 
-# ── observability ──────────────────────────────────────────────────────────────
 @app.command(
     "trace",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
@@ -4121,7 +4069,6 @@ def cmd_deny(approval_id: str | None = typer.Argument(None)) -> None:
     raise typer.Exit(run_deny(approval_id))
 
 
-# ── help ───────────────────────────────────────────────────────────────────────
 @app.command("help")
 def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     """Show help."""
@@ -4130,11 +4077,6 @@ def cmd_help(topic: str | None = typer.Argument(None)) -> None:
     raise typer.Exit(run_help())
 
 
-# ── hidden: data-layer bridge (M2/T2.6) ───────────────────────────────────────
-# Used by bin/docket (and eventually lib/helpers/json.sh) to replace the 136
-# inline python3 heredocs.  All openclaw.json / .docket-meta.json knowledge
-# lives in edges/adapters/openclaw.py; this command is just the CLI surface.
-#
 # Invocation: python -m docket _json <verb> [arg ...]
 # Exit codes: 0 = success, 1 = error, 2 = unknown verb.
 @app.command(
@@ -4157,7 +4099,6 @@ def cmd_json(ctx: typer.Context) -> None:
         raise typer.Exit(1)
 
     try:
-        # ── .docket-meta.json ──────────────────────────────────────────────────
         if verb == "meta-get":
             if len(a) < 2:
                 _die("usage: meta-get <id> <field> [default]")
@@ -4168,7 +4109,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: meta-set <id> <field> <value>")
             _oc.meta_set(a[0], a[1], a[2])
 
-        # ── openclaw.json — dotted-path (Bash compat escape hatch) ────────────
         elif verb == "oc-get":
             if not a:
                 _die("usage: oc-get <dotpath> [default]")
@@ -4179,7 +4119,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: oc-set <dotpath> <json-value>")
             _oc.oc_set_path(a[0], a[1])
 
-        # ── agents.list ───────────────────────────────────────────────────────
         elif verb == "agent-registered":
             if not a:
                 _die("usage: agent-registered <id>")
@@ -4204,7 +4143,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: model-set-both <id> <model>")
             _oc.set_model_both(a[0], a[1])
 
-        # ── bindings ──────────────────────────────────────────────────────────
         elif verb == "binding-get":
             if not a:
                 _die("usage: binding-get <id> [channel]")
@@ -4225,7 +4163,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: binding-remove <id> [channel]")
             _oc.remove_binding(a[0], a[1] if len(a) > 1 else None)
 
-        # ── security ──────────────────────────────────────────────────────────
         elif verb == "gates-get":
             print(_json.dumps(_oc.get_gates_enabled()))
 
@@ -4242,7 +4179,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: isolation-set <true|false>")
             _oc.set_isolation_enabled(a[0].lower() in ("1", "true", "yes"))
 
-        # ── defaults ──────────────────────────────────────────────────────────
         elif verb == "default-model-get":
             print(_oc.get_default_model())
 
@@ -4251,7 +4187,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: default-model-set <model>")
             _oc.set_default_model(a[0])
 
-        # ── auth-profiles.json ────────────────────────────────────────────────
         elif verb == "auth-summary":
             agent = a[0] if a else "main"
             for p in _oc.auth_profiles_summary(agent):

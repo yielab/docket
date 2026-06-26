@@ -1,12 +1,4 @@
-"""Model policy: registry loading, role→model resolution, validation, re-apply.
-
-Mirrors:
-  lib/core/config.sh     — TIER_ANCHORS, ROLE_CLASS, MODEL_PRICING,
-                           load_model_registry, _init_role_models, resolve_role_model
-  lib/helpers/models.sh  — validate_model, agent_role, agent_model_source,
-                           reapply_role_policy
-  lib/commands/models.sh — PRESET_TABLE, KNOWN_PRESETS, _write_registry
-"""
+"""Model policy: registry loading, role→model resolution, validation, re-apply."""
 
 from __future__ import annotations
 
@@ -16,8 +8,6 @@ import re
 from typing import Any
 
 import docket.config as cfg
-
-# ── built-in constants ─────────────────────────────────────────────────────────
 
 TIER_ANCHORS: dict[str, str] = {
     "economy": "anthropic/claude-haiku-4-5",
@@ -50,7 +40,7 @@ ROLE_CLASS: dict[str, str] = {
     "portfolio-manager": "cheap",
 }
 
-# Short-name aliases (mirrors MODEL_ALIASES in models.sh).
+# Short-name aliases.
 MODEL_ALIASES: dict[str, str] = {
     "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
     "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
@@ -84,7 +74,7 @@ MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
 }
 
-# Provider presets (mirrors _MODEL_PRESET_TABLE / _KNOWN_PRESETS in models.sh).
+# Provider presets.
 KNOWN_PRESETS: tuple[str, ...] = (
     "anthropic",
     "openai",
@@ -136,8 +126,6 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
     },
 }
 
-# ── registry loading ───────────────────────────────────────────────────────────
-
 
 def _init_role_models(tiers: dict[str, str]) -> dict[str, str]:
     result: dict[str, str] = {}
@@ -151,7 +139,6 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     """Return (role_models, tiers, default_model) from docket-models.json.
 
     Falls back to built-in defaults on any read/parse error.
-    Mirrors load_model_registry() in config.sh.
     """
     tiers = dict(TIER_ANCHORS)
     default_model = cfg.DEFAULT_MODEL
@@ -195,16 +182,12 @@ def is_role(role: str) -> bool:
     return role in ROLE_CLASS
 
 
-# ── agent helpers ──────────────────────────────────────────────────────────────
-
-
 def agent_role(agent_id: str) -> str:
     """Policy role for an agent: specialist id, pod-member role, or project type.
 
-    For pod members (Phase 10) the meta carries a pod ``role`` (lead/implementer/
-    …) which maps to a role→model policy key, so model re-resolution targets the
+    For pod members the meta carries a pod ``role`` (lead/implementer/…)
+    which maps to a role→model policy key, so model re-resolution targets the
     right policy. Otherwise: specialist id, or project ``type`` (repo|task).
-    Mirrors agent_role() in models.sh.
     """
     from docket.edges.adapters import openclaw as _oc
 
@@ -219,10 +202,7 @@ def agent_role(agent_id: str) -> str:
 
 
 def agent_model_source(agent_id: str) -> str:
-    """Return 'policy' or 'pinned' for this agent.
-
-    Mirrors agent_model_source() in models.sh.
-    """
+    """Return 'policy' or 'pinned' for this agent."""
     from docket.edges.adapters import openclaw as _oc
 
     src = _oc.meta_get(agent_id, "modelSource", "")
@@ -242,7 +222,6 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     """Validate and canonicalise a model name.
 
     Returns (canonical_model, warnings). Raises ValueError on hard failure.
-    Mirrors validate_model() in models.sh.
     """
     warnings: list[str] = []
 
@@ -282,18 +261,12 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     )
 
 
-# ── pricing label ──────────────────────────────────────────────────────────────
-
-
 def pricing_label(model: str) -> str:
     """Return '$inp/$out' (per-M-token) or 'n/a' for a model."""
     p = MODEL_PRICING.get(model)
     if p is None:
         return "n/a"
     return f"${p[0]:.2f}/${p[1]:.2f}"
-
-
-# ── policy re-apply ────────────────────────────────────────────────────────────
 
 
 def policy_agent_ids() -> list[str]:
@@ -311,7 +284,6 @@ def reapply_role_policy() -> int:
     """Re-resolve every policy-following agent against the live role policy.
 
     Pinned agents are never touched. Returns count of agents updated.
-    Mirrors reapply_role_policy() in models.sh.
     """
     from docket.edges.adapters import openclaw as _oc
 
@@ -335,15 +307,11 @@ def reapply_role_policy() -> int:
     return changed
 
 
-# ── registry write ─────────────────────────────────────────────────────────────
-
-
 def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     """Atomically update docket-models.json.
 
     Key format: 'default', 'role.<name>', 'tier.<name>'.
     reset=True clears all user overrides (deletes the file if empty).
-    Mirrors _write_registry() in models.sh.
     """
     path = cfg.MODEL_REGISTRY_FILE
     try:

@@ -1,18 +1,14 @@
-"""Lobster YAML workflow validator and planner (CD-7).
+"""Lobster YAML workflow validator and planner.
 
 docket does not execute Lobster workflows — the Lobster daemon does.
-This module provides:
   - ``validate_lobster(text)`` — structural schema check; returns [] on success.
-  - ``plan_lobster(text, name)`` — render a human-readable plan the daemon would
-    execute, **without running anything**. Honesty rule: the output explicitly
-    states that the daemon runs the workflow, not docket.
+  - ``plan_lobster(text, name)`` — render a human-readable plan without running anything.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# Known step types and the fields each requires.
 _KNOWN_TYPES: frozenset[str] = frozenset({"shell", "llm", "message", "poll", "conditional", "goto"})
 _REQUIRED_BY_TYPE: dict[str, list[str]] = {
     "shell": ["command"],
@@ -108,9 +104,7 @@ def plan_lobster(text: str, workflow_name: str = "") -> tuple[str, list[str]]:
     """Render a human-readable plan of the resolved pipeline, without executing it.
 
     Returns (plan_text, []) on success, or ("", [errors]) if validation fails.
-
-    The output **explicitly states** that docket does not execute the workflow
-    (honesty rule — the Lobster daemon runs it, not docket).
+    The output states explicitly that the Lobster daemon runs the workflow, not docket.
     """
     errors = validate_lobster(text)
     if errors:

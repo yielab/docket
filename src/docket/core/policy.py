@@ -1,4 +1,4 @@
-"""Declarative guardrail policy engine (T5.3 port of lib/helpers/policy.sh).
+"""Declarative guardrail policy engine.
 
 Policies live at ``$POLICIES_DIR/*.json``. Each policy is::
 
@@ -25,11 +25,11 @@ from typing import Any
 
 import docket.config as _cfg
 
-# Hooks / actions accepted by the engine (mirror policy.sh).
+# Hooks / actions accepted by the engine.
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
 VALID_ACTIONS: frozenset[str] = frozenset({"allow", "warn", "redact", "require_approval", "block"})
 
-# Most-restrictive-wins ranking (RANK in the Bash evaluator).
+# Most-restrictive-wins ranking.
 _RANK: dict[str, int] = {
     "block": 4,
     "require_approval": 3,
@@ -43,10 +43,7 @@ _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 
 
 def validate_policy(path: Path) -> str:
-    """Validate one policy file. Return '' if valid, else an error message.
-
-    Mirrors the _POLICY_VALIDATE_SCRIPT in policy.sh.
-    """
+    """Validate one policy file. Return '' if valid, else an error message."""
     try:
         with path.open(encoding="utf-8") as f:
             p: dict[str, Any] = json.load(f)
@@ -81,9 +78,8 @@ def policy_files() -> list[Path]:
 def policy_eval(role: str, hook: str, text: str, *, trusted: bool = False) -> str:
     """Return the winning action for (role, hook, text); most restrictive wins.
 
-    trusted: skip injection/untrusted-input policies (source=operator). This is
-    the pure evaluation half of policy_eval() in policy.sh — trace side-effects
-    are intentionally omitted (the CLI only ever runs the dry-run path).
+    trusted: skip injection/untrusted-input policies (source=operator).
+    Trace side-effects are intentionally omitted; the CLI only ever runs the dry-run path.
     """
     if not _cfg.POLICIES_DIR.is_dir():
         return "allow"
@@ -121,5 +117,5 @@ def policy_eval(role: str, hook: str, text: str, *, trusted: bool = False) -> st
 
 
 def policy_test(hook: str, role: str, text: str) -> str:
-    """Dry-run the evaluator (no trace emission). Mirrors policy_test()."""
+    """Dry-run the evaluator (no trace emission)."""
     return policy_eval(role, hook, text)

@@ -1,11 +1,11 @@
-"""Durable pending-approval store for HITL gating (T5.3 port of approval.sh).
+"""Durable pending-approval store for HITL gating.
 
 Records persist to ``$APPROVALS_DIR/<token>.json`` (atomic, 0600) with the
 shape ``{token, project, role, action, state, created}``. The CLI ``approve`` /
 ``deny`` commands transition pending → granted / denied.
 
 Approval records are docket-owned artefacts (not openclaw config), so this
-module writes them directly with the same atomic/0600 discipline the Bash used.
+module writes them directly with atomic/0600 discipline.
 Trace emission and secret redaction are best-effort and isolated behind the thin
 ``_emit_trace`` / ``_redact`` hooks so tests can stub them.
 """
@@ -34,14 +34,10 @@ class ApprovalNoop(Exception):
         self.message = message
 
 
-# ── thin, mockable side-effects ───────────────────────────────────────────────
-
-
 def _redact(text: str) -> str:
     """Best-effort secret redaction via the trace/redact port.
 
-    Mirrors the Bash ``redact "$action" 2>/dev/null || echo "$action"`` guard:
-    a redaction failure must never break approval, so on any error the original
+    A redaction failure must never break approval, so on any error the original
     text is returned unchanged. Local import avoids an import cycle with trace.
     """
     try:
@@ -61,10 +57,8 @@ def _emit_trace(
 ) -> None:
     """Best-effort trace hook → docket.core.trace.trace_event.
 
-    The Bash emitted approval_requested / approval_granted / approval_denied as
-    a side-effect, always guarded with ``|| true``. The payload dict is JSON
-    encoded (the Bash passed a literal JSON string). Any failure is swallowed so
-    a trace problem never breaks the approval. Local import avoids a cycle.
+    Any failure is swallowed so a trace problem never breaks the approval.
+    Local import avoids a cycle.
     """
     try:
         from docket.core import trace as _trace
@@ -74,15 +68,12 @@ def _emit_trace(
         return None
 
 
-# ── persistence ───────────────────────────────────────────────────────────────
-
-
 def _approval_path(token: str) -> Path:
     return _cfg.APPROVALS_DIR / f"{token}.json"
 
 
 def _utc_now() -> str:
-    """Match Bash: date -u +%Y-%m-%dT%H:%M:%SZ."""
+    """Return current UTC time as YYYY-MM-DDTHH:MM:SSZ."""
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -108,11 +99,8 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
     return data
 
 
-# ── public API ────────────────────────────────────────────────────────────────
-
-
 def approval_create(project: str, role: str, action: str) -> str:
-    """Persist a pending approval and return its token. Mirrors approval_create()."""
+    """Persist a pending approval and return its token."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -151,7 +139,7 @@ def approval_get(token: str) -> dict[str, Any]:
 
 
 def approval_grant(token: str) -> None:
-    """Transition pending → granted. Mirrors approval_grant().
+    """Transition pending → granted.
 
     Raises ApprovalNoop if already granted, ApprovalError on any other state.
     """
@@ -169,7 +157,7 @@ def approval_grant(token: str) -> None:
 
 
 def approval_deny(token: str) -> None:
-    """Transition pending → denied. Mirrors approval_deny().
+    """Transition pending → denied.
 
     Raises ApprovalNoop if already denied/expired, ApprovalError on any other state.
     """
@@ -189,7 +177,7 @@ def approval_deny(token: str) -> None:
 def list_pending() -> list[dict[str, Any]]:
     """Return every pending approval record in filename order.
 
-    Records that fail to parse are skipped (mirrors the Bash try/except).
+    Records that fail to parse are skipped.
     """
     if not _cfg.APPROVALS_DIR.is_dir():
         return []
@@ -208,8 +196,7 @@ def list_pending() -> list[dict[str, Any]]:
 def approval_sweep_expired() -> int:
     """Expire pending approvals older than APPROVAL_TIMEOUT (treated as denied).
 
-    Returns the number of records flipped to "expired". Mirrors
-    approval_sweep_expired() (H5) — fail-closed sweep called by the serve loop.
+    Returns the number of records flipped to "expired". Called by the serve loop.
     """
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
