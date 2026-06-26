@@ -3359,6 +3359,44 @@ def cmd_workflow(
         ui.console.print(wf_file.read_text(encoding="utf-8"))
         ui.console.print()
 
+    elif action == "validate":
+        if not workflow_name:
+            ui.error(f"Workflow name required.  Usage: docket workflow {aid} validate <name>")
+            raise typer.Exit(1)
+        wf_path = _resolve_workflow_file(wf_dir, workflow_name)
+        if wf_path is None:
+            ui.error(f"Workflow '{workflow_name}' not found")
+            raise typer.Exit(1)
+        from docket.core.lobster import validate_lobster
+
+        text = wf_path.read_text(encoding="utf-8")
+        errors = validate_lobster(text)
+        if errors:
+            ui.error(f"Workflow '{workflow_name}' is invalid:")
+            for e in errors:
+                ui.console.print(f"  [red]✗[/red] {e}")
+            raise typer.Exit(1)
+        ui.success(f"Workflow '{workflow_name}' is valid")
+
+    elif action in ("plan", "dry-run"):
+        if not workflow_name:
+            ui.error(f"Workflow name required.  Usage: docket workflow {aid} plan <name>")
+            raise typer.Exit(1)
+        wf_path = _resolve_workflow_file(wf_dir, workflow_name)
+        if wf_path is None:
+            ui.error(f"Workflow '{workflow_name}' not found")
+            raise typer.Exit(1)
+        from docket.core.lobster import plan_lobster
+
+        text = wf_path.read_text(encoding="utf-8")
+        plan, errors = plan_lobster(text, workflow_name)
+        if errors:
+            ui.error(f"Workflow '{workflow_name}' is invalid:")
+            for e in errors:
+                ui.console.print(f"  [red]✗[/red] {e}")
+            raise typer.Exit(1)
+        ui.console.print(plan)
+
     elif action == "delete":
         if not workflow_name:
             ui.error(f"Workflow name required.  Usage: docket workflow {aid} delete <name>")
@@ -3376,8 +3414,17 @@ def cmd_workflow(
         ui.success(f"Workflow '{workflow_name}' deleted")
 
     else:
-        ui.error(f"Unknown action '{action}'.  Use: list, create, show, or delete")
+        ui.error(f"Unknown action '{action}'.  Use: list, create, show, validate, plan, or delete")
         raise typer.Exit(1)
+
+
+def _resolve_workflow_file(wf_dir: Path, name: str) -> Path | None:
+    """Return the workflow file for ``name``, trying both .yml and .yaml extensions."""
+    for ext in (".lobster.yml", ".lobster.yaml"):
+        p = wf_dir / f"{name}{ext}"
+        if p.is_file():
+            return p
+    return None
 
 
 def _test_cmd_for_stack(stack: str) -> str:
