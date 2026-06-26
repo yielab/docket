@@ -279,3 +279,64 @@ def git_current_branch(cwd: str) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def git_is_repo(cwd: str) -> bool:
+    """Return True if ``cwd`` is inside a git repository."""
+    if not git_available():
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
+def git_worktree_add(repo_dir: str, worktree_path: str, branch: str) -> tuple[bool, str]:
+    """Create a git worktree at ``worktree_path`` on a new branch ``branch``.
+
+    Returns ``(success, error_message)``.  On success the worktree directory
+    exists and the branch is checked out there.  Degrades gracefully: returns
+    ``(False, reason)`` on any error rather than raising.
+    """
+    if not git_available():
+        return False, "git not found on PATH"
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "worktree", "add", "-b", branch, worktree_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        return False, str(exc)
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout).strip()
+    return True, ""
+
+
+def git_worktree_remove(repo_dir: str, worktree_path: str) -> tuple[bool, str]:
+    """Remove the git worktree at ``worktree_path``.
+
+    Uses ``--force`` to handle unclean worktrees.  Returns ``(success, message)``.
+    Degrades gracefully on errors.
+    """
+    if not git_available():
+        return False, "git not found on PATH"
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "worktree", "remove", "--force", worktree_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        return False, str(exc)
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout).strip()
+    return True, ""
