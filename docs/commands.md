@@ -106,7 +106,7 @@ DEBUG=1 docket list
 **Aliases:** None
 
 **Notes:**
-- Shows project agents only (excludes specialists and manager)
+- Shows all registered agents: org specialists (manager, knowledge, security) and all pod members
 - Telegram status checks openclaw.json bindings
 - Session shows current project key
 
@@ -903,10 +903,10 @@ docket cost
 **Aliases:** `usage`
 
 **Notes:**
-- Reads from OpenClaw usage logs
-- Pricing from global MODEL_PRICING config
-- Shows profile savings estimates
-- Useful for budget management
+- Dollar total is the **recorded** spend reported by the OpenClaw daemon — not an estimate
+- Pricing from the bundled MODEL_PRICING snapshot (manual; not a live feed)
+- docket does not print projected savings — exact spend depends on your models and pricing
+- Useful for budget management and detecting runaway sessions
 
 ---
 
@@ -947,9 +947,6 @@ docket doctor
 # ✓ Gateway service running
 #
 # Specialists
-# ✓ programmer OK
-# ✓ reviewer OK
-# ✓ tester OK
 # ✓ knowledge OK
 # ⚠ security - Missing HEARTBEAT.md (run: docket maintain security check)
 #
@@ -1060,12 +1057,12 @@ docket help
 | add | create, new |
 | info | show |
 | delete | remove, rm |
-| repair | fix |
 | profile | tier (deprecated) |
 | workflow | wf |
 | logs | log |
 | cost | usage |
 | doctor | check |
+| context | memory (deprecated, shows redirect) |
 
 ---
 
@@ -1142,9 +1139,84 @@ tar -czf ~/backups/openclaw-$(date +%s).tar.gz \
 
 ---
 
+## Observability Commands
+
+### trace
+
+View, follow, and export agent action traces. Every dispatch hop emits a JSONL trace event; use `trace` to inspect them.
+
+**Syntax:**
+```bash
+docket trace <session-id>                     # Render one session human-readable
+docket trace tail <project>                   # Follow the latest open session live
+docket trace export <project> [--since DATE]  # Raw JSONL passthrough
+docket trace ingest <project>                 # Pull daemon logs into trace store
+```
+
+**Example:**
+```bash
+# See the most recent dispatch run for "myapp"
+docket trace tail myapp
+
+# Export all traces since a date
+docket trace export myapp --since 2026-06-01
+```
+
+**Notes:**
+- Traces stored at `~/.openclaw/traces/<project>/<session-id>.jsonl`
+- Each dispatch hop writes events: `tool_call`, `cost_charged`, `approval_requested`, etc.
+
+---
+
+### metrics
+
+Compute success rate, latency, cost, and guardrail trip counts from trace data.
+
+**Syntax:**
+```bash
+docket metrics [--role <role>] [--project <project>] [--window <N>]
+```
+
+**Options:**
+- **`--role`**: Filter to a specific agent role
+- **`--project`**: Filter to a specific project
+- **`--window N`**: Rolling window size in sessions (default from config)
+
+---
+
+### policies
+
+Manage declarative guardrail policies evaluated on each agent turn.
+
+**Syntax:**
+```bash
+docket policies list                     # List installed policies
+docket policies show <name>              # Print one policy's JSON
+docket policies init                     # Copy baseline policies (block-destructive, prompt-injection, secret-pii-redact)
+docket policies test <hook> <role> <text> # Dry-run the evaluator (no traces emitted)
+```
+
+---
+
+### approve / deny
+
+Grant or deny a pending HITL approval token (from `approval_create` or a Telegram notification).
+
+**Syntax:**
+```bash
+docket approve <token>   # Grant the pending approval
+docket deny <token>      # Deny the pending approval
+```
+
+**Notes:**
+- Token format: `apr-*`
+- Returns exit 2 if the token is not found or already resolved
+- Telegram approval buttons call these automatically; use CLI when Telegram is unavailable
+
+---
+
 ## Next Steps
 
-- [Architecture Documentation](architecture.md)
-- [Development Guide](development.md)
-- [Installation Guide](installation.md)
+- [Agent Teams (Pods)](AGENT-TEAMS.md)
+- [Workflow Guide](WORKFLOW-GUIDE.md)
 - [Main README](../README.md)

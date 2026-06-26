@@ -2,7 +2,7 @@
 
 **Version**: 1.0.0
 **Status**: Active
-**Last Updated**: 2024-01-20
+**Last Updated**: 2026-06-26
 
 ## Overview
 
@@ -25,7 +25,10 @@ acceptance criteria and tests.
 | AGT-001 | Create Project Agent | Agent Management |
 | AGT-002 | Reset Agent Memory | Agent Management |
 | AGT-003 | Monitor Agent Costs | Agent Management |
-| TEAM-001 | Initialize Team Manager | Team Coordination |
+| POD-001 | Provision a Project Pod | Pod Lifecycle |
+| POD-002 | Run the Pod Dispatch Pipeline | Pod Lifecycle |
+| POD-003 | Grow and Shrink a Pod | Pod Lifecycle |
+| TEAM-001 | Initialize Org Manager | Team Coordination |
 | TEAM-002 | Delegate Tasks | Team Coordination |
 | WF-001 | Create Lobster Pipeline | Workflow Automation |
 | WF-002 | Execute Workflow | Workflow Automation |
@@ -119,27 +122,27 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 
 ## Epic: Team Coordination
 
-### Story: TEAM-001 - Initialize Team Manager
+### Story: TEAM-001 - Initialize Org Manager
 
 **As a** team lead
-**I want** to create a manager agent that coordinates team tasks
-**So that** work is distributed efficiently across specialist agents
+**I want** to run `docket install` to create the shared org Manager specialist
+**So that** cross-cutting coordination tasks have a dedicated, shared agent
 
 **Acceptance Criteria:**
-- [ ] Manager agent created with special template
-- [ ] Task queue (TASK_LIST.json) initialized
-- [ ] Manager cannot directly edit code files
-- [ ] Can delegate to programmer, reviewer, tester agents
-- [ ] Status command shows current task assignments
-- [ ] Tasks have states: pending, assigned, in-progress, complete
-- [ ] Manager has overview of all project agents
-- [ ] Delegation rules are configurable
+- [ ] Manager agent created at `~/.openclaw/workspaces/manager/` with org-specialist template
+- [ ] Task queue (TASK_LIST.json) initialized in the manager's workspace
+- [ ] Manager cannot directly edit code files (delegation mode only)
+- [ ] `docket team delegate "<task>"` queues work on the Manager's queue
+- [ ] `docket team queue` shows pending tasks with state and priority
+- [ ] Tasks have states: pending, in-progress, complete, cancelled
+- [ ] Manager is distinct from per-pod Leads — it handles cross-pod coordination only
+- [ ] Manager runs on the cheap model class (role policy: `manager`)
 
 **Definition of Done:**
-- Manager agent fully functional
-- Task state machine implemented
-- Integration with specialist agents tested
-- Team workflow documented
+- Manager agent created and registered by `docket install`
+- Task state machine implemented via `docket team` subcommands
+- Pod Leads confirmed as the per-project orchestrators (not the Manager)
+- Team workflow documented in AGENT-TEAMS.md
 
 ### Story: TEAM-002 - Delegate Tasks
 
@@ -331,41 +334,101 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 
 ```gherkin
 Given a clean docket installation
-When I create an agent named "testapp" for "~/projects/app"
-Then the agent should be created successfully
-And workspace should exist at ~/.openclaw/workspaces/projects/testapp
+When I run "docket add testapp ~/projects/app"
+Then the pod should be created successfully with members testapp-lead and testapp-implementer
+And workspaces should exist at ~/.openclaw/workspaces/projects/testapp-lead/ and testapp-implementer/
 
-When I run "docket info testapp"
+When I run "docket info testapp-lead"
 Then I should see the agent details
 And the session key should be "agent:testapp:default"
 
-When I run "docket reset testapp 1"
+When I run "docket maintain testapp-lead clean"
 Then memory logs should be cleared
 But SOUL.md should remain unchanged
 
 When I run "docket delete testapp"
 And I confirm the deletion
-Then the workspace should be removed
-And the agent should not appear in "docket list"
+Then the workspaces for all pod members should be removed
+And no testapp-* agents should appear in "docket list"
 ```
 
 ### Scenario: Cost Tracking
 
 ```gherkin
-Given an agent "webapp" exists
+Given an agent "webapp-implementer" exists
 And the agent has processed 50000 input tokens
 And the agent has generated 25000 output tokens
-And the agent uses "standard" profile (sonnet-4-6)
+And the agent runs on anthropic/claude-sonnet-4-6 (role policy: programmer → strong class)
 
-When I run "docket cost webapp"
+When I run "docket cost webapp-implementer"
 Then I should see:
-  | Metric | Value |
-  | Input Tokens | 50,000 |
-  | Output Tokens | 25,000 |
-  | Input Cost | $0.15 |
-  | Output Cost | $0.38 |
-  | Total Cost | $0.53 |
+  | Metric        | Value          |
+  | Input Tokens  | 50,000         |
+  | Output Tokens | 25,000         |
+  | Total cost    | $X.XX (recorded from daemon) |
+
+And the total should reflect the daemon's recorded spend, not an estimate
 ```
+
+## Epic: Pod Lifecycle (Phase 10)
+
+### Story: POD-001 - Provision a Project Pod
+
+**As a** developer
+**I want** to create an isolated pod for my project with `docket add <project>`
+**So that** each project gets its own Lead + Implementer with no shared state
+
+**Acceptance Criteria:**
+- [ ] `docket add myapp ~/code/myapp` creates `myapp-lead` and `myapp-implementer`
+- [ ] Each member gets an isolated workspace at `~/.openclaw/workspaces/projects/<member-id>/`
+- [ ] All members share the pod's session key `agent:myapp:default`
+- [ ] `docket pod myapp` lists the pod members with their roles
+- [ ] `docket add myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
+- [ ] A second `docket add myapp` is idempotent — does not recreate existing members
+- [ ] `docket delete myapp` removes all pod members and their workspaces
+
+**Definition of Done:**
+- Pod provisioning covered by pytest and golden-parity tests
+- `docket pod <project>` correctly lists all members after creation
+- Deletion tears down all members atomically
+
+### Story: POD-002 - Run the Pod Dispatch Pipeline
+
+**As a** developer
+**I want** to queue a task and dispatch it through the pod pipeline
+**So that** the Lead, Implementer, and optional Reviewer/Tester execute in sequence
+
+**Acceptance Criteria:**
+- [ ] `docket pod myapp delegate "<task>"` queues a task on the Lead's TASK_LIST.json
+- [ ] `docket pod myapp queue` shows the task with status `pending` and recorded cost `$0.00`
+- [ ] `docket pod myapp dispatch` runs Lead → Implementer → (Reviewer) → (Tester), one real LLM turn per hop
+- [ ] Each hop is budget-gated: if Lead's spend cap is exceeded, task stays `pending`
+- [ ] Each hop emits a trace event visible in `docket trace tail myapp`
+- [ ] After completion, `docket pod myapp queue` shows the task as `done` with recorded cost
+
+**Definition of Done:**
+- Dispatch pipeline covered by integration tests with a real openclaw shim
+- Budget-gating tested (over-budget task stays pending)
+- Trace events verified per-hop
+
+### Story: POD-003 - Grow and Shrink a Pod
+
+**As a** developer
+**I want** to add or remove roles from an existing pod
+**So that** I can add a review gate when work becomes higher-stakes without reprovisioning
+
+**Acceptance Criteria:**
+- [ ] `docket pod myapp add reviewer` adds `myapp-reviewer` to an existing pod
+- [ ] `docket pod myapp add implementer --count 2` adds `myapp-implementer-2` and `myapp-implementer-3`
+- [ ] `docket pod myapp remove myapp-reviewer` removes that member and its workspace
+- [ ] A second `docket pod myapp add reviewer` rejects adding a duplicate when one already exists
+- [ ] `docket pod myapp add lead` is rejected — a pod may have only one Lead
+- [ ] `docket pod myapp` always reflects the current state after add/remove
+
+**Definition of Done:**
+- Add/remove covered by pytest suite
+- Singleton-Lead constraint tested
+- `docket pod` output verified after each operation
 
 ## Metrics
 
@@ -384,6 +447,13 @@ Then I should see:
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.1.0 (2026-06-26)
+- Updated TEAM-001 to reflect pod model: Manager is an org specialist, not a router to programmer/reviewer/tester
+- Fixed Gherkin lifecycle scenario: `docket reset testapp 1` → `docket maintain testapp-lead clean`; creation now shows pod members
+- Fixed cost scenario: removed "standard profile" tier language; cost output is daemon-recorded spend, not an estimate
+- Added POD-001 (provision pod), POD-002 (dispatch pipeline), POD-003 (grow/shrink pod) for Phase 10 coverage
+- Updated story index table and "Last Updated" date
 
 ### Version 1.0.0 (2024-01-20)
 - Initial user stories defined

@@ -75,16 +75,16 @@ Output **MUST** include:
 - Agent ID (slugified, unique)
 - Agent type (repo/task/specialist)
 - Codebase path (if applicable)
-- Model profile (economy/standard/premium)
-- Status indicator (active/stopped/error)
-- Last activity timestamp
+- Current model and source (policy or pinned)
+- Telegram binding status
+- Session key / project scope
 
 Format:
 ```
-ID            Type        Codebase                   Model      Status    Last Active
-myproject     repo        ~/code/myproject           standard   active    2 hours ago
-blog-writer   task        ~/.openclaw/.../blog       economy    active    3 days ago
-programmer    specialist  -                          premium    active    1 hour ago
+ID                   Type   Model                        Telegram      Session
+myproject-lead       repo   claude-sonnet-4-6 (policy)  ✓ Wired       default
+myproject-impl       repo   claude-sonnet-4-6 (policy)  ✓ Wired       default
+manager              spec   claude-haiku-4-5 (policy)   ✓ Wired       -
 ```
 
 ### Agent Information (docket info)
@@ -157,8 +157,8 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 ### CLI Command Signatures
 
 ```bash
-# Create agent (interactive)
-docket add <agent-id> [codebase-path] [--type repo|task] [--model economy|standard|premium] [--description "text"]
+# Create agent (interactive or with args)
+docket add <project> [codebase-path] [--type repo|task] [--pod full | --with reviewer,tester] [--description "text"]
 
 # Create one or more agents declaratively from a spec file (JSON, or YAML when PyYAML is present)
 docket add --from <agents.yaml|agents.json>
@@ -218,7 +218,7 @@ Continue? (y/N): y
 ### Pre-conditions
 - OpenClaw daemon **MUST** be running
 - User **MUST** have write permissions to ~/.openclaw
-- Python 3.7+ **MUST** be available for JSON operations
+- Python 3.11+ **MUST** be available (docket's runtime requirement)
 
 ### Post-conditions
 After successful creation:

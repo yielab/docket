@@ -130,7 +130,7 @@ Three guarantees hold on every hop:
 - **Budget-gated.** Before each hop docket checks the pod's recorded spend against the Lead's
   budget cap (`docket profile <project>-lead --budget N`). Over budget → the task is left
   **pending**, not run.
-- **Traced.** Each hop emits a Phase-8 trace event (`docket trace`) on a per-task session
+- **Traced.** Each hop emits a trace event (`docket trace`) on a per-task session
   `agent:<project>:<task_id>` — every run is auditable, no manual Telegram relay.
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
   cross-pod dispatch path** — one pod can never run another pod's agents.
@@ -229,7 +229,7 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Commit
 - Make architecture decisions alone
 
-**Model:** strong class (role policy) (needs reasoning for orchestration)
+**Model:** cheap class (role policy) (coordination and dispatch, not reasoning-dense code work)
 
 ### Implementer
 
@@ -250,7 +250,7 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Run validation tests (tester's job)
 - Commit or push
 
-**Model:** cheap class (simple) / strong class (complex), per role policy
+**Model:** strong class (role policy) (code writing is reasoning-dense)
 
 ### Reviewer (optional)
 
@@ -278,7 +278,7 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Execute tests
 - Commit
 
-**Model:** strong class (role policy) (security reasoning required)
+**Model:** cheap class (role policy) (structural review, not reasoning-dense)
 
 ### Tester (optional)
 
@@ -326,7 +326,7 @@ prompts into briefs.
 - Run commands
 - Commit
 
-**Model:** strong class (role policy)
+**Model:** cheap class (role policy) (cross-cutting coordination, not code reasoning)
 
 ### Knowledge
 
@@ -429,7 +429,7 @@ Context stays scoped to one project's pod
 
 ### SNAPSHOT.md Contents
 
-Created by `docket memory snapshot <project>`:
+Created by `docket context snapshot <project>`:
 
 ```markdown
 # Project Snapshot — 2026-03-06
@@ -471,7 +471,7 @@ Created by `docket memory snapshot <project>`:
 
 ### Memory Index
 
-Created by `docket memory index <project>`:
+Created by `docket context index <project>`:
 
 ```json
 {
@@ -498,19 +498,19 @@ Created by `docket memory index <project>`:
 
 ```bash
 # Create fast-access snapshot
-docket memory snapshot <project>
+docket context snapshot <project>
 
 # Index for search
-docket memory index <project>
+docket context index <project>
 
 # Search indexed memory
-docket memory search <project> "authentication bug"
+docket context search <project> "authentication bug"
 
 # Archive old logs (>30 days)
-docket memory compress <project>
+docket context compress <project>
 
 # Show quick reference
-docket memory project <project>
+docket context project <project>
 ```
 
 ---
@@ -566,20 +566,21 @@ you are now|act as|system:|assistant:
 
 ### Model Selection
 
-```
-Economy:  low cost   - Simple tasks
-Standard: moderate   - Complex reasoning
-Premium:  high cost  - Exceptionally complex (rarely used)
-```
+The role→model policy assigns each role to either the **cheap class** (high-volume / low
+reasoning-density) or the **strong class** (reasoning-dense):
 
-**The role→model policy routes high-volume roles to the cheap model class:**
-- Implementer (simple changes)
-- Tester (validation)
-- Knowledge (pattern extraction)
+| Class  | Roles                                                    | Why                              |
+|--------|----------------------------------------------------------|----------------------------------|
+| Cheap  | Lead, Manager, Reviewer, Tester, Knowledge, task agents  | High-volume or mechanical work   |
+| Strong | Implementer, Security, repo agents                       | Code writing / security reasoning|
 
-**Result:** routine work runs on the cheap model class with isolated, project-scoped context —
-fewer tokens at a lower per-token price. (Exact dollar savings depend on your models and
-pricing — read `docket cost`.)
+Change the policy for a role with `docket models set <role> <provider/model>`, or switch all
+roles at once with a provider preset (`docket models preset openai`). Pins set via
+`docket profile <id> <model>` are never touched by policy changes.
+
+**Result:** routine orchestration and review runs on the cheap model class with
+project-scoped context — fewer tokens at a lower per-token price. (Exact dollar spend depends
+on your models and current pricing — read it with `docket cost`.)
 
 ### Context Isolation Rules
 
@@ -617,7 +618,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination + task queue)
 
 ### Features Implemented ✅
 
-- [x] Memory management system (`docket memory`)
+- [x] Memory management system (`docket context`)
 - [x] Team management (`docket team`)
 - [x] SNAPSHOT.md generation
 - [x] Memory indexing & search
@@ -757,7 +758,7 @@ Reviewer → APPROVED? ──Yes──→ Tester
 - ✅ Changed: Orchestration is a per-pod Lead, not a global router with a classifier
 - ✅ Changed: Security (separate specialist, not merged into Reviewer)
 
-See [Comparison Table](DOCKET-ANALYSIS.md#comparison-docketmd-vs-current-implementation) for details.
+See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full role model details.
 
 ### Q: Do I need to change how I use docket?
 
@@ -789,7 +790,7 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 1. **If not installed:** `docket install` (creates org specialists)
 2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
-3. **Create snapshots:** `docket memory snapshot <project>` (for all projects)
+3. **Create snapshots:** `docket context snapshot <project>` (for all projects)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (recorded spend)
 
@@ -801,7 +802,7 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 - [Workflow Guide](WORKFLOW-GUIDE.md) - Complete examples
 - [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands
-- [Implementation Report](AGENT-VALIDATION-COMPLETE.md) - Technical validation
+- [Agent Teams (Pods)](AGENT-TEAMS.md) - The canonical team model reference
 
 ---
 

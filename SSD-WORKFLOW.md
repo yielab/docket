@@ -15,7 +15,7 @@ This project strictly follows SSD (Spec-Driven Development) practices to ensure 
 ## Project Structure for SSD
 
 ```
-docket-cli/
+rack-cli/
 ├── specs/                          # All specifications
 │   ├── README.md                  # Spec overview and index
 │   ├── functional/                # Feature specifications
@@ -189,7 +189,7 @@ Update user-facing documentation:
 # Commit with spec reference
 
 git add .
-git commit -m "feat: implement new-feature per specs/functional/new-feature.spec.md
+git commit -m "Add: new-feature per specs/functional/new-feature.spec.md
 
 - Implements requirements from spec v1.0.0
 - All acceptance criteria met
@@ -342,7 +342,7 @@ jobs:
   validate-specs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Validate Specifications
         run: ./scripts/validate-specs.sh
@@ -356,7 +356,7 @@ jobs:
         run: ./tests/run-all-tests.sh
 
       - name: Upload Coverage Report
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: spec-coverage
           path: specs/coverage-report.md

@@ -23,7 +23,7 @@ Please include:
 
 - A description of the issue and its impact
 - Steps to reproduce (a minimal command sequence is ideal)
-- The docket commit/version and your OS / Bash version
+- The docket commit/version, your OS, and your Python version (`python3 --version`)
 
 **Disclosure timeline.** You can expect an initial acknowledgement within a few days. I aim to
 ship a fix or a documented mitigation within **90 days** of a valid report; the advisory is then

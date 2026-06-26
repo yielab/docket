@@ -20,29 +20,22 @@ docket doctor
 
 **How to fix:**
 ```bash
-# Check for invalid models
-grep -i "haiku-3-5\|haiku-3\|sonnet-3-5" ~/.openclaw/openclaw.json
+# Auto-fix with docket (updates openclaw.json through the proper interface)
+docket doctor
 
-# Auto-fix with docket
-docket doctor --fix
+# Or update each agent's model individually
+docket profile <agent-id> anthropic/claude-haiku-4-5
 
-# Manual fix
-python3 << 'EOF'
-import json, os
-config_path = os.path.expanduser('~/.openclaw/openclaw.json')
-with open(config_path, 'r') as f:
-    config = json.load(f)
-config_str = json.dumps(config, indent=2)
-fixed = config_str.replace('haiku-3-5', 'haiku-4-5')
-fixed = fixed.replace('haiku-3', 'haiku-4-5')
-fixed = fixed.replace('sonnet-3-5', 'sonnet-4-6')
-with open(config_path, 'w') as f:
-    f.write(fixed)
-EOF
+# Re-resolve all policy-following agents at once
+docket models preset anthropic
 
-# Restart gateway
+# Restart gateway after changes
 systemctl --user restart openclaw-gateway
 ```
+
+> **Never edit `~/.openclaw/openclaw.json` directly.** All writes to that file must go through
+> docket commands — direct edits bypass the Anti-Corruption Layer and can leave config in an
+> inconsistent state that `docket doctor` will flag as an error.
 
 **Valid model names (Anthropic defaults):**
 - `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge, task)
@@ -68,20 +61,15 @@ docket wire <agent-id>
 
 **How to diagnose:**
 ```bash
-python3 << 'EOF'
-import json, os
-config = json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))
-groups = config.get('channels', {}).get('telegram', {}).get('groups', {})
-print("Allowed groups:")
-for gid, settings in groups.items():
-    print(f"  {gid}: {settings}")
-EOF
+# Check which groups are wired to agents
+docket list
+# Look for agents with "✓ Wired" and matching group IDs
 ```
 
 **How to fix:**
 ```bash
 docket wire <agent-id>
-# This automatically adds group to allowlist
+# This automatically adds the group to the allowlist via the proper config interface
 ```
 
 #### 4. **Gateway Not Running**
@@ -117,15 +105,19 @@ docket maintain <agent-id> reset
 docket maintain <agent-id> rebuild
 ```
 
-#### 2. **Enable Smart Routing** (Auto model selection)
+#### 2. **Switch to a cheaper model policy**
+
+Set the whole fleet to a lower-cost provider preset, or pin a specific agent:
+
 ```bash
-docket smart enable <agent-id>
+# Switch the role policy for all agents at once (pins are untouched)
+docket models preset openrouter-free
+
+# Or pin just one agent to a cheaper model
+docket profile <agent-id> anthropic/claude-haiku-4-5
 ```
 
-This adds automatic model selection to SOUL.md:
-- 90% of tasks use haiku-4-5 ($0.80/$4/MTok)
-- 9% use sonnet-4-6 ($3/$15/MTok)
-- 1% use opus-4-6 ($15/$75/MTok)
+See `docket models` for the current role→model table and all available presets.
 
 #### 3. **Monitor Costs**
 ```bash

@@ -151,20 +151,24 @@ command:
 
 ## Commit Messages
 
-Follow conventional commit format:
+Use a type-colon prefix followed by a short description, then an optional body with context:
 
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `refactor:` Code refactoring
-- `test:` Test updates
-- `chore:` Maintenance tasks
+- `Add:` New feature or file
+- `Fix:` Bug fix
+- `Docs:` Documentation changes
+- `Refactor:` Code refactoring without behaviour change
+- `Test:` Test updates
+- `Chore:` Maintenance, dependency bumps, tooling
 
 Examples:
 ```
-feat: add smart routing configuration
-fix: resolve session key parsing issue
-docs: update installation instructions
+Fix: resolve session key parsing for project names with dashes
+
+docket scope set <id> now correctly slugifies names that contain
+uppercase letters or underscores before building the session key.
+
+Add: workflow validate subcommand
+Docs: update command reference with trace and metrics entries
 ```
 
 ## Questions?

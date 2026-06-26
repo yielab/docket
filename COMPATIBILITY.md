@@ -15,13 +15,13 @@ atomic write, so forward-compatible fields survive a round-trip).
 
 ## Platform
 
-- **Bash 4.0+** — required (associative arrays, `${var,,}`). macOS ships Bash 3.2; install a
-  newer Bash via Homebrew. docket's launcher resolves symlinks and refuses to run on Bash 3.
+- **Python 3.11+** — required; the primary runtime for all docket logic.
 - **Linux** — primary, CI-gated.
 - **macOS** — supported on a best-effort basis; the macOS CI job is currently informational
-  (`continue-on-error`) and slated to become a required gate. BSD vs GNU `sed`/`date`
-  differences are handled in the helpers.
-- **Python 3.7+** — required for all JSON manipulation.
+  (`continue-on-error`) and slated to become a required gate.
+- **Bash 4.0+** — required only for the `bin/docket` launcher shim (three lines that locate
+  a Python interpreter and exec `python -m docket "$@"`). Not required if you invoke
+  `python -m docket` directly. macOS ships Bash 3.2; install via Homebrew if you use the shim.
 - **systemd** — used for gateway service management on Linux; non-systemd hosts degrade
   gracefully (restart steps are skipped with a warning).
 
