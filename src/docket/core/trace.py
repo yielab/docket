@@ -25,7 +25,6 @@ from typing import Any
 
 import docket.config as _cfg
 
-# Closed set of valid event types.
 EVENT_TYPES: frozenset[str] = frozenset(
     [
         "session_start",

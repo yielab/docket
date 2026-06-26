@@ -944,9 +944,6 @@ def set_model_both(agent_id: str, model: str) -> None:
     meta_set(agent_id, "model", model)
 
 
-# ── exec-approval gates (G3) — exec-approvals.json + daemon apply ──────────────
-
-
 def exec_approvals_path() -> Path:
     """Path to the daemon's exec-approvals.json (OpenClaw-owned)."""
     return CONFIG_FILE.parent / "exec-approvals.json"
@@ -994,7 +991,6 @@ def write_exec_approvals(data: dict[str, Any]) -> bool:
             with contextlib.suppress(OSError):
                 _os.unlink(tmp_name)
 
-    # Direct write (gateway not reached).
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(serialised, encoding="utf-8")
     _os.chmod(tmp, 0o600)

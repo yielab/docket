@@ -247,7 +247,6 @@ def _cmd_list_human() -> None:
         ui.console.print(f"  path: {path_short}  │  active: {activity}")
         ui.console.print(f"  {reg_badge}  {tg_b}  {mem_b}  {req_b}")
 
-    # ── Telegram setup summary ── agents with an expected group but no binding
     unwired: list[tuple[str, str]] = []
     for aid in ids:
         if tg_bindings.get(aid):
@@ -278,7 +277,6 @@ def _cmd_list_human() -> None:
             "  3) Get group ID from logs  4) docket wire <id>"
         )
 
-    # Specialist agents section
     ui.console.print()
     ui.console.print(
         "[bold green]ORG SPECIALISTS[/bold green] [dim](shared across all projects)[/dim]"
@@ -775,7 +773,6 @@ def cmd_info(
         if not sys.stdin.isatty():
             ui.error("An agent id is required (e.g. docket info <id>).")
             raise typer.Exit(1)
-        # Interactive numbered fallback
         ids = project_ids()
         if not ids:
             ui.warn("No project agents found.")
@@ -1111,7 +1108,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     if soul_path.is_file():
         for ln in soul_path.read_text(encoding="utf-8").splitlines():
             if "Session Key:" in ln or "session_key" in ln.lower():
-                # Grab the backtick-wrapped value
                 import re as _re
 
                 m = _re.search(r"`([^`]+)`", ln)
@@ -1443,7 +1439,6 @@ def cmd_context(
     _CONTEXT_SUBS = {"show", "search", "index", "snapshot", "compress", "project"}
     action = sub or "show"
 
-    # If sub is not a known subcommand keyword → treat as search query
     if action not in _CONTEXT_SUBS:
         query_parts = [action, *extra]
         _context_search(aid, ws, query_parts)
@@ -1582,18 +1577,15 @@ def _context_search(agent_id: str, ws: Path, query_parts: list[str]) -> None:
     query_lower = query.lower()
     matches: list[str] = []
 
-    # Search keywords
     for kw, occurrences in keywords.items():
         if query_lower in kw.lower():
             for occ in occurrences:
                 matches.append(f"[keyword] {kw} in {occ}")
 
-    # Search decisions
     for dec in decisions:
         if query_lower in dec.lower():
             matches.append(f"[decision] {dec}")
 
-    # Search file names
     for fname in files:
         if query_lower in fname.lower():
             matches.append(f"[file] {fname}")
@@ -1929,7 +1921,6 @@ def cmd_wire(
                     ui.warn(f"Invalid choice. Please enter 1-{len(unbound)} or 0.")
 
     else:
-        # Non-Telegram: manual peer ID entry.
         ui.dim(
             f"No log-based discovery for {channel}."
             f" Enter the peer/group ID from your {channel} setup."
@@ -2267,7 +2258,6 @@ def _touch_secrets_meta(name: str, event: str) -> None:
     tmp.replace(path)
 
 
-# Known provider → key name mapping
 _PROVIDER_KEYS: dict[str, str] = {
     "ANTHROPIC_API_KEY": "anthropic",
     "OPENAI_API_KEY": "openai",
@@ -2280,7 +2270,6 @@ _PROVIDER_KEYS: dict[str, str] = {
     "HUGGINGFACE_TOKEN": "huggingface",
 }
 
-# Expected key prefix validation rules
 _KEY_PREFIXES: dict[str, tuple[str, int]] = {
     "ANTHROPIC_API_KEY": ("sk-ant-", 40),
     "OPENAI_API_KEY": ("sk-", 40),
@@ -2324,11 +2313,9 @@ def _sync_keys_to_agents() -> None:
         for key_name, key_provider in _PROVIDER_KEYS.items():
             if key_name not in secrets:
                 continue
-            # Include if this is the agent's provider OR it's a non-provider key
             if key_provider == agent_provider or key_provider not in _PROVIDER_KEYS.values():
                 env_lines.append(f'{key_name}="{secrets[key_name]}"')
 
-        # Also include any custom keys not in the provider map
         for key_name, value in secrets.items():
             if key_name not in _PROVIDER_KEYS:
                 env_lines.append(f'{key_name}="{value}"')
@@ -2910,7 +2897,6 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.console.print(f"  {n} agent(s) updated.")
     _do_restart_gateway()
 
-    # Key check — warn if the required API key isn't stored.
     key_name = t.get("key", "")
     if key_name:
         secrets_path = _cfg.OPENCLAW_DIR / "secrets.json"
@@ -3767,7 +3753,6 @@ def _cmd_cost_history(
     else:
         agent_list = project_ids()
 
-    # Aggregate all agents per day
     agg: dict[str, DayRecord] = {}
     for aid in agent_list:
         for rec in cost_history(aid):
