@@ -481,13 +481,6 @@ OpenClaw file formats. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup (`uv
 SSD/spec-first flow, code style (`ruff` + `mypy --strict`), and how to add a command. PRs
 welcome for OpenClaw integrations, command implementations, test coverage, and docs.
 
----
-
-*Built and run by Santiago Yie — an 18-year-old backend engineer — to manage his own OpenClaw
-fleets, and as a deliberate exploration of spec-driven development, a clean-architecture Python
-CLI (Typer + Pydantic, with an Anti-Corruption Layer at the I/O boundary), and cost-aware
-multi-agent operations.*
-
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
