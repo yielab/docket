@@ -4,6 +4,12 @@
 
 Get started with DOCKET-optimized agents in under 5 minutes.
 
+> [!WARNING]
+> **Beta / early-stage software.** docket is under active development and not yet at a stable
+> release. The steps below work and are test-backed, but expect rough edges, breaking changes
+> between versions, and the occasional gap between docs and behavior. Verify results against your
+> own OpenClaw install, and treat all cost figures as estimates, not provider bills.
+
 ---
 
 ## What is DOCKET?

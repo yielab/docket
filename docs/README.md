@@ -14,6 +14,14 @@ guardrails.
 
 ---
 
+> [!WARNING]
+> **docket is early-stage / beta software.** Features described in these guides are implemented
+> and automated-test-backed, but have not been QA-hardened in production — automated tests catch
+> regressions, they don't replace hands-on verification. Expect rough edges and breaking changes
+> between versions, and **verify anything important against your own OpenClaw install**. All cost
+> and dollar figures are accounting estimates, not your provider's bill — see
+> [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
+
 ## Guides
 
 | Doc | What it covers |
