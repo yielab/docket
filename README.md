@@ -17,6 +17,16 @@
 
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
+> [!WARNING]
+> **Early-stage / beta software — use with care.** docket is under active development and has
+> **not** reached a stable release. Every feature marked **✅ Working** below is implemented and
+> covered by the automated suite (pytest + golden parity + `ruff`/`mypy --strict`), but
+> **passing automated tests is not the same as being production-ready.** Most features have not
+> yet had hands-on QA against real fleets, varied OpenClaw versions, or messy real-world edge
+> cases. Expect rough edges, breaking changes between versions, and occasional gaps between the
+> docs and actual behavior. **Verify anything important yourself before relying on it**, and treat
+> every dollar figure as an estimate, not a bill (see [Cost reporting and its limits](#cost-reporting-and-its-limits)).
+
 <p align="center">
   <img src="docs/assets/hero.gif" alt="docket in action: provision an isolated project pod, delegate a task, check the governance posture, and run a fleet health check" width="760">
 </p>
@@ -209,9 +219,26 @@ docket's cost numbers come in two flavors:
   `n/a` for the estimate (recorded spend is still tracked). `docket cost` and `docket models` print
   the snapshot date so you can judge staleness. Override or extend in `~/.openclaw/docket-models.json`.
 
-Trust the recorded-spend and budget-cap numbers; treat model-to-model savings comparisons as directional.
+> [!IMPORTANT]
+> **No figure docket prints is your provider's invoice.** Even "recorded spend" is an
+> *accounting calculation* — it is what OpenClaw's usage logs report, derived from token counts
+> and per-model rates. It will **not** match your provider's final bill exactly: prompt caching,
+> minimum charges, rounding, taxes, free-tier credits, and provider-side pricing changes all
+> drift the real number. Use docket's cost figures for **relative** decisions (which agent is
+> expensive, when a run spikes, whether to auto-pause) — and always **reconcile against your
+> provider's own billing dashboard** before treating any number as money owed.
+
+Within those limits: the recorded-spend and budget-cap numbers track real usage and are what the
+auto-pause fires on; treat model-to-model savings comparisons as directional only.
 
 ## Project Status
+
+> **What the badges mean.** This is **beta** software. **✅ Working** means a feature is
+> implemented and exercised by the automated test suite — *not* that it has been QA-hardened in
+> production. Automated coverage catches regressions; it does not replace manual verification
+> against your own OpenClaw install. **✅ Opt-in** means the same, for a feature that is off by
+> default and must be turned on explicitly. Until a tagged stable release, assume each row still
+> needs hands-on validation in your environment.
 
 | Feature | Status | Notes |
 |---------|--------|-------|

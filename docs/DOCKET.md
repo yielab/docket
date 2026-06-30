@@ -4,6 +4,13 @@
 
 Complete technical guide to docket's DOCKET architecture implementation.
 
+> [!WARNING]
+> **Beta / early-stage software.** The architecture below is implemented and automated-test-backed,
+> but has not been QA-hardened in production. "Validated" in the Implementation Status section
+> means *covered by the automated suite*, not field-proven — verify behavior against your own
+> OpenClaw install. All cost figures are accounting estimates, not provider bills (see the
+> [README's cost limits](../README.md#cost-reporting-and-its-limits)).
+
 ---
 
 ## Table of Contents
@@ -604,7 +611,7 @@ instead of a full cross-project history — no worker is spawned.
 
 ## Implementation Status
 
-### Validated Components ✅
+### Implemented Components ✅ *(automated-test-backed, not yet field-hardened)*
 
 ```
 Lead:        ✓ Per-pod orchestrator (owns context/memory, never edits code)

@@ -15,7 +15,7 @@ This project strictly follows SSD (Spec-Driven Development) practices to ensure 
 ## Project Structure for SSD
 
 ```
-rack-cli/
+docket/
 ├── specs/                          # All specifications
 │   ├── README.md                  # Spec overview and index
 │   ├── functional/                # Feature specifications
