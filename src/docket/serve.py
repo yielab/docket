@@ -247,9 +247,9 @@ def _check_schedules(now_ts: float) -> None:
 def _run_sweeps(dispatch: bool = False) -> None:
     """Run the periodic sweeps once, each best-effort.
 
-    Coerces stale open traces to aborted, expires pending approvals past
-    APPROVAL_TIMEOUT, and checks role drift. Every sweep is guarded so one
-    failure never aborts the others or the server.
+    Coerces stale open traces to aborted and expires pending approvals past
+    APPROVAL_TIMEOUT. Every sweep is guarded so one failure never aborts the
+    others or the server.
 
     When *dispatch* is set, also drives every pod's queued tasks through its
     pipeline and checks the schedule file for due projects. These run real,
@@ -258,14 +258,12 @@ def _run_sweeps(dispatch: bool = False) -> None:
     """
     import time
 
-    from docket.core import approval, drift, trace
+    from docket.core import approval, trace
 
     with contextlib.suppress(Exception):
         trace.sweep_all()
     with contextlib.suppress(Exception):
         approval.approval_sweep_expired()
-    with contextlib.suppress(Exception):
-        drift.drift_check_all()
     if dispatch:
         from docket.core import dispatch as _dispatch
 

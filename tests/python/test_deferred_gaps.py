@@ -2,7 +2,7 @@
 
 GAP 1  approval emits the right trace events (approval_requested / _granted /
        _denied) with the Bash payload keys, and redacts the action.
-GAP 2  docket serve runs the trace/approval/drift sweeps at startup.
+GAP 2  docket serve runs the trace/approval sweeps at startup.
 GAP 3  trace.redact strips the VALUE of a stored secret (not just secret-shapes).
 GAP 4  doctor prints the Brave + Eval-results advisory sections without moving
        the issue count / exit code.
@@ -21,7 +21,6 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import approval as _ap
-from docket.core import drift as _drift
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 
@@ -42,7 +41,6 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
     monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
-    monkeypatch.setattr(_drift, "_DRIFT_STATE_FILE", d / "drift-state.json", raising=True)
     return d
 
 
@@ -139,15 +137,14 @@ class TestStoredSecretRedaction:
 
 
 class TestServeSweeps:
-    def test_run_sweeps_invokes_all_three(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_run_sweeps_invokes_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import docket.serve as serve
 
         called: list[str] = []
         monkeypatch.setattr(_trace, "sweep_all", lambda: called.append("trace"))
         monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: called.append("appr") or 0)
-        monkeypatch.setattr(_drift, "drift_check_all", lambda: called.append("drift"))
         serve._run_sweeps()
-        assert called == ["trace", "appr", "drift"]
+        assert called == ["trace", "appr"]
 
     def test_run_sweeps_best_effort(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import docket.serve as serve
@@ -158,10 +155,9 @@ class TestServeSweeps:
         ok: list[str] = []
         monkeypatch.setattr(_trace, "sweep_all", _boom)
         monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: ok.append("appr") or 0)
-        monkeypatch.setattr(_drift, "drift_check_all", lambda: ok.append("drift"))
         # Must not raise despite the first sweep blowing up.
         serve._run_sweeps()
-        assert ok == ["appr", "drift"]
+        assert ok == ["appr"]
 
     def test_run_serve_runs_sweeps_at_startup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import docket.serve as serve
@@ -182,67 +178,6 @@ class TestServeSweeps:
         monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
         serve.run_serve(port=0, interval=30)
         assert ran == ["startup"]
-
-
-# ── GAP 2b: drift_check_all ───────────────────────────────────────────────────
-
-
-class TestDriftCheckAll:
-    def _seed_sessions(self, oc_dir: Path, role: str, statuses: list[str]) -> None:
-        pdir = oc_dir / "traces" / "proj"
-        pdir.mkdir(parents=True, exist_ok=True)
-        for i, status in enumerate(statuses):
-            lines = [
-                {"ts": "2026-01-01T00:00:00Z", "agent_role": role, "event_type": "session_start"},
-                {
-                    "ts": "2026-01-01T00:00:01Z",
-                    "agent_role": role,
-                    "event_type": "session_end",
-                    "payload": {"status": status},
-                },
-            ]
-            (pdir / f"s{i:04d}.jsonl").write_text(
-                "\n".join(json.dumps(rec) for rec in lines) + "\n"
-            )
-
-    def test_drift_emits_alert(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "METRICS_WINDOW", 5, raising=True)
-        monkeypatch.setattr(_cfg, "BASELINE_WINDOW", 5, raising=True)
-        monkeypatch.setattr(_cfg, "DRIFT_THRESHOLD", 15.0, raising=True)
-        # 5 baseline (all success) then 5 current (all failure) → big drop.
-        self._seed_sessions(oc_dir, "programmer", ["success"] * 5 + ["failure"] * 5)
-        _drift.drift_check_all()
-        events: list[dict[str, object]] = []
-        for tf in (oc_dir / "traces" / "programmer").glob("*.jsonl"):
-            events.extend(_trace.read_trace(tf))
-        alerts = [e for e in events if e["event_type"] == "drift_alert"]
-        assert len(alerts) == 1
-        payload = alerts[0]["payload"]
-        assert isinstance(payload, dict)
-        assert payload["role"] == "programmer"
-        assert payload["baseline_rate"] == 100.0
-        assert payload["current_rate"] == 0.0
-
-    def test_no_drift_when_stable(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "METRICS_WINDOW", 5, raising=True)
-        monkeypatch.setattr(_cfg, "BASELINE_WINDOW", 5, raising=True)
-        self._seed_sessions(oc_dir, "programmer", ["success"] * 10)
-        _drift.drift_check_all()
-        events: list[dict[str, object]] = []
-        for tf in (oc_dir / "traces" / "programmer").glob("*.jsonl"):
-            events.extend(_trace.read_trace(tf))
-        assert not [e for e in events if e["event_type"] == "drift_alert"]
-
-    def test_cooldown_suppresses_second_alert(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "METRICS_WINDOW", 5, raising=True)
-        monkeypatch.setattr(_cfg, "BASELINE_WINDOW", 5, raising=True)
-        self._seed_sessions(oc_dir, "programmer", ["success"] * 5 + ["failure"] * 5)
-        first = _drift.drift_check_role("programmer")
-        assert first is not None
-        second = _drift.drift_check_role("programmer")
-        assert second is None  # cooldown active
 
 
 # ── GAP 4: doctor advisory sections ───────────────────────────────────────────
