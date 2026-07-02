@@ -55,28 +55,18 @@
 ## Dependency map (what unblocks what)
 
 ```text
-Independent — claim any time, in parallel:
-  CH-0  (quick truth & dead-file sweep)
-  CH-5  (delete core/drift.py)
-  CH-9  (Bash-era scripts + re-arm CI drift guard)
-  CH-13 (local test-harness hygiene — local-only, no PR)
+DONE 2026-07-02 (merged into develop): CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-9, CH-13.
 
-Invariant repairs — parallel with each other (disjoint files, except noted):
-  CH-1  (store.py single-writer rule, D-12)     ← touches cli/__init__.py: coordinate with CH-4/CH-7
-  CH-2  (openclaw shell-outs behind the ACL)
-  CH-3  (UI printing out of core/edges)
-
-Surface changes — land BEFORE the split and the doc/spec passes:
-  CH-4  (retire `team`, D-11)      ─┐
-  CH-6  (remove tier/profiles shims, D-2 exit) ─┤→ CH-7 (split cli/__init__.py)
-                                                ├→ CH-8 (drift-proof completions)
-                                                ├→ CH-10 (spec/SDD truth pass)
-                                                └→ CH-11 (docs completeness pass)
-CH-12 (changelog verify + cut 0.2.0)            ← LAST; needs CH-4/5/6 landed
+Remaining — all unblocked except where noted:
+  CH-7  (split cli/__init__.py)              ← unblocked (needed CH-1, CH-4, CH-6 — all merged)
+  CH-8  (drift-proof completions)            ← unblocked (needed CH-4, CH-6 — both merged)
+  CH-10 (spec/SDD truth pass)                ← unblocked (needed CH-4, CH-5, CH-6 — all merged)
+  CH-11 (docs completeness pass)             ← BLOCKED (needs CH-8; CLAUDE.md portion already done)
+  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, but do last (wants CH-7/8/10/11 landed too)
 ```
 
-Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/CH-2/CH-3 + CH-4/CH-6
-(parallel) → CH-7 → CH-8/CH-10/CH-11 (parallel) → CH-12.** CH-13 whenever, locally.
+Suggested remaining order: **CH-7 (unblocks nothing further but is the highest-conflict-risk file,
+do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with CH-8) → CH-11 → CH-12.**
 
 ---
 
@@ -95,7 +85,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** any code behavior change; the full docs pass (CH-11); the spec contract fixes (CH-10).
 - **Deliverables:** edited CLAUDE.md/README/spec date/py-docstring; 3 files deleted; a pytest asserting the deleted templates are not referenced anywhere under `src/` (guards against re-orphaning).
 - **Acceptance gate:** [ ] no grep hit for `team status` in CLAUDE.md; [ ] all four test-count mentions equal the real count; [ ] the 3 template files are gone and the wheel builds (`uv build` or the packaging test passes); [ ] no dangling `COST-FEATURE-AUDIT` reference; [ ] suite + goldens green (byte-identical — nothing here touches output).
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02.
 
 ---
 
@@ -124,7 +114,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** changing any file format or path; touching `openclaw.json` writes (ACL-owned, already correct); performance work.
 - **Deliverables:** all listed sites on `store.write_json`; deleted local atomic-write helpers; docstring + CLAUDE.md rule text; the guard pytest.
 - **Acceptance gate:** [x] guard test passes (zero offenders) and is in the suite; [x] every migrated file keeps 0600 perms (existing perms tests still green); [x] no behavior change (goldens byte-identical); [x] `uv run pytest` + mypy + ruff green.
-- **Size:** M · **Status:** DONE — `core/drift.py:125` left unmigrated (temp guard-test exclusion; CH-5 deletes the module) and `cli/__init__.py:3021,3027` (manager task list) migrated (CH-4 had not landed yet in this branch).
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02. `core/drift.py` was subsequently deleted whole by CH-5 (its guard-test exclusion is now moot); `cli/__init__.py`'s manager-task-list write site was subsequently deleted whole by CH-4 (the migration became moot when the code was removed — resolved at merge time).
 
 ---
 
@@ -149,7 +139,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** changing what the shell-outs do; retrying/error-handling redesign; new openclaw features.
 - **Deliverables:** ACL wrappers + re-pointed callers; the scoping decision recorded; guard pytest; unit tests for each wrapper (mock the subprocess like existing ACL tests).
 - **Acceptance gate:** [ ] zero `openclaw` subprocess calls outside `edges/` (guard test green); [ ] `core/` has zero `subprocess` imports; [ ] behavior unchanged (goldens byte-identical); [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02. Scoping decision: the shell-out invariant is scoped to `openclaw|git|docker|systemctl` (recorded as ROADMAP D-13); the other flagged one-offs (`_eval.py`, `_trace.py`, `$EDITOR`, `_install.py` python-version check) were left as-is — CLI-only, no OpenClaw/daemon coupling to remove.
 
 ---
 
@@ -173,7 +163,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** changing any message text (frozen by goldens); redesigning the provider feature.
 - **Deliverables:** split provider modules; typed restart result + rendered call sites; guard pytest.
 - **Acceptance gate:** [ ] guard test green (zero ui imports in core/edges); [ ] goldens byte-identical; [ ] mypy strict green (the new result type is typed, not `Any`); [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02. `core/provider.py` split into a pure `ProviderRegistration`-returning function + new `cli/_provider.py` for the interactive/printing flow; `system.restart_gateway()` returns a typed `RestartResult`, rendered by callers.
 
 ---
 
@@ -202,7 +192,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** touching `core/dispatch.py` / pod delegation; deleting the org manager *agent* (it stays, transitional per CLAUDE.md); the Portfolio Manager.
 - **Deliverables:** command removed + `_REMOVED` notice; purged references; spec marked Retired; tests + regenerated goldens; ~231 LOC net deletion.
 - **Acceptance gate:** [ ] `docket team delegate "x"` exits 1 with the pod mapping in the message; [ ] zero live `team` references in completions/help/provider output; [ ] pod delegate/queue/dispatch untouched (their tests green); [ ] suite + regenerated goldens green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (16-case golden suite, `team_queue.golden` removed).
 
 ---
 
@@ -215,7 +205,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** `doctor`'s config-drift check; `sync.py`; `_metrics.py`; trace ingestion.
 - **Deliverables:** module + knobs + wiring + tests deleted; ~190 LOC + 4 config lines gone; a note in the PR pointing at the audit finding.
 - **Acceptance gate:** [ ] no `core.drift` import anywhere; [ ] `serve --dispatch` sweep still runs (its other duties intact, tests green); [ ] historical traces with `drift_alert` events still render in `trace` output; [ ] suite green.
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02.
 
 ---
 
@@ -239,13 +229,13 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** the role→model policy itself (`roles:`, presets, pins — all stay); `MODEL_PRICING` (kept per audit; only the tier vocabulary goes).
 - **Deliverables:** shims removed; one-shot `profiles:`→`roles:` migration + doctor check + tests (registry with legacy key migrates once, idempotent re-run, unknown keys untouched); regenerated goldens where output changes.
 - **Acceptance gate:** [ ] `docket profile <id> premium` (a tier name) fails with a helpful model-id message; [ ] a legacy `profiles:` registry migrates once and works; [ ] fallback chain still resolves (its tests green); [ ] suite + goldens green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02. Internal rank anchors preserved privately as `_RANK_ANCHORS` (still back the model fallback chain); tier names now hard-error instead of resolving; `profiles:` migrates once to `roles:` with a `docket doctor` check for residual keys.
 
 ---
 
 ### CH-7 — Split the `cli/__init__.py` god-module
 
-- **Depends on:** **CH-1, CH-4, CH-6 landed** *(they delete/rewrite chunks of this file — splitting first would force triple rebases)* · **Parallel-safe with:** CH-9/CH-13
+- **Depends on:** **CH-1, CH-4, CH-6 landed** *(they delete/rewrite chunks of this file — splitting first would force triple rebases)* · **Parallel-safe with:** CH-9/CH-13 · **UNBLOCKED 2026-07-02 — CH-1, CH-4, CH-6 all merged.**
 - **Read:** audit §1 ("Structural smells"); `cli/__init__.py` (4,194 lines, 32% of the codebase); the existing split-out pattern (`cli/_pod.py`, `_gates.py`, `_install.py`, `_doctor.py` … — registration stays in `__init__.py`, implementation lives in `_<group>.py`).
 - **Why:** the file mixes agent CRUD, keys/secrets, context/memory, workflows, cost, and gateway registration; dozens of mid-function deferred imports exist only because the module is too big to import cleanly. Every future card pays a merge-conflict tax on this file until it's split.
 - **Do:** mechanical extraction, **zero behavior change**, in reviewable stages (one commit per module):
@@ -260,13 +250,13 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** any logic change; renaming commands; touching `core/`.
 - **Deliverables:** 4–5 new `_*.py` modules; `cli/__init__.py` ≤ ~1,500 lines; one commit per extraction; imports normalized.
 - **Acceptance gate:** [ ] goldens **byte-identical** (this is the whole point of doing it after the surface changes); [ ] `cli/__init__.py` ≤ ~1,500 lines; [ ] no deferred imports left that exist purely for load-order reasons (document any that must stay); [ ] mypy strict + suite green.
-- **Size:** L *(split by stage — each extraction is independently landable)* · **Status:** BLOCKED (needs CH-1, CH-4, CH-6)
+- **Size:** L *(split by stage — each extraction is independently landable)* · **Status:** TODO
 
 ---
 
 ### CH-8 — Drift-proof shell completions
 
-- **Depends on:** CH-4 + CH-6 *(they change the command surface — do this after so it's done once)* · **Parallel-safe with:** CH-10/CH-11
+- **Depends on:** CH-4 + CH-6 *(they change the command surface — do this after so it's done once)* · **Parallel-safe with:** CH-10/CH-11 · **UNBLOCKED 2026-07-02 — CH-4, CH-6 merged.**
 - **Read:** audit §3 item 7; `cli/_completions.py` (171 LOC of hand-maintained bash/zsh string literals — already advertising `team`, `tier`, legacy `profile` semantics); the Typer docs on shell completion; `tests/golden/` (completions goldens exist); the 0.1.0-era changelog claim that completions were "drift-guarded" (the guard died with the Bash tree).
 - **Why:** hand-written completions have already drifted — they advertise commands this phase removes. A completion script that lies is worse than none.
 - **Do:** pick ONE (record the choice in the PR):
@@ -282,7 +272,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** fish/powershell support; changing the `completions` command interface.
 - **Deliverables:** generated-or-guarded completions; stale entries gone; regenerated goldens; the drift-guard test in the suite.
 - **Acceptance gate:** [ ] completions advertise exactly the live command set (test-enforced); [ ] `eval "$(docket completions bash)"` works in a smoke check; [ ] suite + goldens green.
-- **Size:** M · **Status:** BLOCKED (needs CH-4, CH-6)
+- **Size:** M · **Status:** TODO
 
 ---
 
@@ -308,13 +298,13 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** the README numbers themselves (CH-0 fixes them; your `--check` then enforces); golden/eval harnesses (they work).
 - **Deliverables:** working metrics script + failing CI gate; spec-coverage rewritten-or-deleted; ci.yml + PR template updated; a test or CI run proving the gate actually fails on a planted drift.
 - **Acceptance gate:** [ ] `scripts/metrics.sh --check` (or successor) exits 0 on the true tree and 1 when a README number is perturbed; [ ] no CI step references `lib/`; [ ] no `|| true` on guard steps; [ ] CI green on the PR itself.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02. `scripts/metrics.sh` replaced by `scripts/metrics.py` (counts LOC/tests/commands/specs from the live Python tree + Typer registry, `--check` fails CI on drift); `spec-coverage.sh` deleted outright rather than rewritten (a rewrite would immediately red-flag CH-11's not-yet-done docs.md gaps — filed as a CH-11 follow-up instead of landing a day-one-red gate); `ci.yml`'s `|| true` removed.
 
 ---
 
 ### CH-10 — Spec (SDD) truth pass — specs become current-state contracts
 
-- **Depends on:** CH-4 + CH-6 landed (surface final); CH-5 for observability references · **Parallel-safe with:** CH-8/CH-11
+- **Depends on:** CH-4 + CH-6 landed (surface final); CH-5 for observability references · **Parallel-safe with:** CH-8/CH-11 · **UNBLOCKED 2026-07-02 — CH-4, CH-5, CH-6 all merged.**
 - **Read:** audit §2; every file under `specs/functional/` and `specs/data/`; the convention the specs already half-follow (Status line, Last-Updated, requirements, return codes).
 - **Why:** a spec that documents a filename that doesn't exist (`deploy.yaml` vs `.lobster.yml`), exit codes no command returns, and state strings no file contains is worse than no spec — an agent implementing against it produces wrong code with full confidence. The user directive for this phase: specs must be **solid current-state contracts, not historical patches**.
 - **Do:**
@@ -344,7 +334,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** writing specs for features that never had one (only fix what exists — a new-spec backlog item goes to §7 if you find a gap worth naming); docs/ (CH-11).
 - **Deliverables:** corrected spec set; one consistent retired-spec convention; a PR table listing every spec → what changed (accuracy audit trail).
 - **Acceptance gate:** [ ] zero spec claims contradicted by code for: file paths/extensions, exit codes, state strings, command surfaces (grep-verified per spec in the PR table); [ ] every Status/Last-Updated line current; [ ] no requirement body narrates history; [ ] suite green (specs aren't executable, but `validate-specs.sh`/CH-9's guard must pass if present).
-- **Size:** M · **Status:** BLOCKED (needs CH-4, CH-5, CH-6)
+- **Size:** M · **Status:** TODO
 
 ---
 
@@ -363,27 +353,29 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
      (add `telegram→wire`, `key/secret→keys`, `security→gates`, `evals→eval`, `export→snapshot`,
      `completion→completions`, `policy→policies`; fix the wrong `memory→context` row — `memory` is
      a removed-command notice, list it under a "Removed commands" note instead).
-  2. **`CLAUDE.md`:** update the Key Conventions bullets to post-Phase-12 reality — the D-12 store
-     rule sentence, the ACL now owning `openclaw` shell-outs (CH-2), delegation described in pod
-     terms (team gone), the cli module list including CH-7's new files, correct test-command block
-     counts (or reference `scripts/metrics.sh` instead of hardcoding numbers, now that CH-9
-     re-armed it).
+  2. **`CLAUDE.md`:** *(NOTE 2026-07-02 — already done directly against the local file after the
+     CH-0..CH-6 merge, since `CLAUDE.md` is gitignored and no CH-branch's edit to it could survive
+     a merge: the team bullet, test/LOC/spec counts, the D-12/D-13/no-UI-in-core conventions, the
+     `_pod.py`/`_provider.py` module list, and the Manager/pod TASK_LIST section are all current.
+     Skip re-doing these; spot-check instead.)*
   3. **Cross-file sweep:** `docs/README.md` index rows for anything added; grep all of `docs/` for
      `docket team`, tier names, and `profiles:` and update survivors; `docs/troubleshooting.md` +
      `QUICK-START` + `WORKFLOW-GUIDE` + `AGENT-TEAMS` spot-checked against the final surface
      (the audit found them broadly consistent — this is a verify, not a rewrite).
-  4. If CH-9 shipped the registry-vs-docs coverage guard, run it and drive it to zero gaps; if not,
-     state the residual gaps explicitly in the PR.
+  4. CH-9 deleted `spec-coverage.sh` rather than rewriting it as a coverage guard (see CH-9's note)
+     specifically because it would have immediately red-flagged the gaps this card exists to close
+     — so there is no automated guard to run yet. Consider authoring one as part of this card's
+     acceptance once the gaps below are closed, so it stays closed.
 - **Out of scope:** README positioning (done in CD-9; don't churn it); specs (CH-10); new tutorials.
-- **Deliverables:** complete commands.md; updated CLAUDE.md; swept docs/; coverage-guard green or gap list.
+- **Deliverables:** complete commands.md; swept docs/; optionally a coverage guard (see item 4).
 - **Acceptance gate:** [ ] every live top-level command has a commands.md section; [ ] every alias in `__main__.py` is in the table and nothing else is; [ ] zero `docket team`/tier references outside historical ROADMAP/CHANGELOG sections; [ ] doctor no longer described as read-only; [ ] suite green.
-- **Size:** L *(mostly writing; split by file if two agents want it)* · **Status:** BLOCKED (needs CH-4, CH-6, CH-8)
+- **Size:** L *(mostly writing; split by file if two agents want it)* · **Status:** BLOCKED (needs CH-8)
 
 ---
 
 ### CH-12 — Changelog verification + cut 0.2.0
 
-- **Depends on:** CH-4, CH-5, CH-6 landed (the removals must be real before they're released) · **Do last**
+- **Depends on:** CH-4, CH-5, CH-6 landed (the removals must be real before they're released) · **Do last** · **UNBLOCKED 2026-07-02 — CH-4, CH-5, CH-6 all merged** (still reasonable to do last, after CH-7/8/10/11 so the changelog reflects the full phase).
 - **Read:** `CHANGELOG.md` (the Unreleased section was restructured + backfilled with Phases 10–11 on 2026-07-02 — verify it against what actually landed, don't re-do it); `VERSION`, `pyproject.toml:7`; the Keep-a-Changelog format the file declares.
 - **Why:** a versioned package whose changelog told the truth up to 0.1.0 and then went silent through its two biggest feature waves (pods, Phase 11) reads as abandoned. 0.2.0 is the natural release to carry both the features and this phase's removals.
 - **Do:**
@@ -416,27 +408,35 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 - **Out of scope:** committing anything from smoke-test/ (it stays gitignored); changing what the smoke test covers.
 - **Deliverables:** portable run.sh; externalized map; a line in the operator's private notes (not the repo) recording the new map location.
 - **Acceptance gate:** [ ] no absolute home path or real project name in any file under smoke-test/ (the .example contains placeholders only); [ ] the harness runs green; [ ] `git status` clean, nothing new tracked.
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — 2026-07-02. Real map moved to `~/.config/docket-dev/anonymize.sed` (chmod 600); `run.sh` derives `ROOT` from its own location and reads `DOCKET_SMOKE_POD`/`DOCKET_SMOKE_ANONYMIZE_SED`; `smoke-test/anonymize.sed.example` added with placeholder-only patterns.
 
 ---
 
 ## Roll-up checklist (Phase 12 definition of done — mirrors ROADMAP exit criteria)
 
-- [ ] CH-0 — stale claims fixed, dead templates gone, dangling pointers removed.
-- [x] CH-1 — zero docket-owned JSON writes outside store.py (JSONL logs exempt per D-12; `core/drift.py` temporarily exempt pending CH-5's deletion); guard test in suite.
-- [ ] CH-2 — zero `openclaw` shell-outs outside the ACL; `core/` has no subprocess; guard test in suite.
-- [ ] CH-3 — zero `ui` imports in `core/`/`edges/`; guard test in suite.
-- [ ] CH-4 — `team` retired with a removed-command notice mapping to pods; one delegation system.
-- [ ] CH-5 — `core/drift.py` + its config knobs deleted; serve sweep intact.
-- [ ] CH-6 — tier/`profiles:` shims removed; one-shot registry migration ships.
-- [ ] CH-7 — `cli/__init__.py` ≤ ~1,500 lines; goldens byte-identical through the split.
-- [ ] CH-8 — completions generated from (or test-locked to) the Typer registry.
-- [ ] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`).
-- [ ] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true).
-- [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree.
-- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped.
-- [ ] CH-13 — local harness portable; no real values on disk inside the repo dir.
-- [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens.
+- [x] CH-0 — stale claims fixed, dead templates gone, dangling pointers removed. *(DONE 2026-07-02)*
+- [x] CH-1 — zero docket-owned JSON writes outside store.py (JSONL logs exempt per D-12); guard test in suite. *(DONE 2026-07-02 — the `core/drift.py` and manager-task-list exemptions both resolved by CH-5/CH-4's subsequent deletions)*
+- [x] CH-2 — zero `openclaw` shell-outs outside the ACL; `core/` has no subprocess; guard test in suite. *(DONE 2026-07-02)*
+- [x] CH-3 — zero `ui` imports in `core/`/`edges/`; guard test in suite. *(DONE 2026-07-02)*
+- [x] CH-4 — `team` retired with a removed-command notice mapping to pods; one delegation system. *(DONE 2026-07-02)*
+- [x] CH-5 — `core/drift.py` + its config knobs deleted; serve sweep intact. *(DONE 2026-07-02)*
+- [x] CH-6 — tier/`profiles:` shims removed; one-shot registry migration ships. *(DONE 2026-07-02)*
+- [ ] CH-7 — `cli/__init__.py` ≤ ~1,500 lines; goldens byte-identical through the split. *(unblocked, not started)*
+- [ ] CH-8 — completions generated from (or test-locked to) the Typer registry. *(unblocked, not started)*
+- [x] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`). *(DONE 2026-07-02 — `spec-coverage.sh` deleted, not rewritten; see CH-11 follow-up)*
+- [ ] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(unblocked, not started)*
+- [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md gaps still open — BLOCKED on CH-8)*
+- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started)*
+- [x] CH-13 — local harness portable; no real values on disk inside the repo dir. *(DONE 2026-07-02)*
+- [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. the re-armed `scripts/metrics.py --check` drift guard)*
+
+**Progress note (2026-07-02):** 8 of 14 cards landed via parallel worktree-isolated agents (CH-0,
+CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-9), merged into `develop` one at a time with the full gate
+re-run after each merge. Two real merge conflicts occurred (`cli/__init__.py` and
+`core/provider.py` on CH-4; `core/models_policy.py`'s store-import alias on CH-6) and were resolved
+by hand — see commits `4ac3f7c` and `d9d8f57`. `CLAUDE.md` is gitignored and untracked, so it was
+synced directly on the local checkout after all merges rather than through any branch. Remaining:
+CH-7, CH-8, CH-10, CH-11, CH-12 — all now unblocked except CH-11 (needs CH-8).
 
 **Explicitly NOT in this phase (audited keeps — see ROADMAP Phase 12):** the serve read API +
 `/metrics` + scheduled/webhook dispatch (CD-6/8), Lobster validate/plan (CD-7), audit log, approval
