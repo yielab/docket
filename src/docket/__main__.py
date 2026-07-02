@@ -75,6 +75,16 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "Use: docket models (role policy) or docket profile [id] <provider/model> to "
         "choose models.",
     ),
+    "team": (
+        "docket team was retired — pods own delegation now, with real execution "
+        "(the old manager queue was never dispatched).",
+        'Use: docket pod <project> delegate "<task>"  (was: team delegate "<task>")',
+        "Use: docket pod <project> queue                (was: team queue)",
+        "Use: docket pod <project> dispatch              to actually run queued tasks",
+        "Org-wide view: docket install --portfolio       (Portfolio Manager)",
+        "Any old queue file at ~/.openclaw/workspaces/manager/TASK_LIST.json is preserved, "
+        "untouched, but no longer read by docket.",
+    ),
 }
 
 

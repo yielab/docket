@@ -103,11 +103,12 @@ def _print_role_split(name: str, model_id: str) -> None:
     ui.console.print()
     ui.console.print("Then smoke-test the split:")
     ui.console.print()
-    ui.console.print("  docket team status")
-    ui.console.print('  docket team delegate "Write hello.py with a pytest test, then run it"')
     ui.console.print(
-        "  docket team queue                                           "
-        "# manager(Claude) plan → programmer(local)"
+        '  docket pod <project> delegate "Write hello.py with a pytest test, then run it"'
+    )
+    ui.console.print(
+        "  docket pod <project> dispatch                               "
+        "# lead(Claude) plan → implementer(local)"
     )
     ui.console.print(
         f"  openclaw models status --agent programmer                  "

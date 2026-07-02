@@ -101,11 +101,11 @@ def run_help() -> int:
   {G}deny{R}     <token>   Deny a pending HITL approval
 
 {B}PODS, QUEUE & WORKFLOWS{R}
-  {G}pod{R} <project>      Inspect/manage a project pod (add/remove members)
-  {G}team delegate{R}      Queue a task for the org manager agent
-  {G}team queue{R}         Show pending manager tasks
-  {G}team done{R}          Mark a task as complete
-  {G}workflow{R} [id]      Manage Lobster YAML pipelines
+  {G}pod{R} <project>          Inspect/manage a project pod (add/remove members)
+  {G}pod{R} <project> delegate Queue a task for the pod
+  {G}pod{R} <project> queue    Show the pod's task queue
+  {G}pod{R} <project> dispatch Run queued tasks through the pod pipeline
+  {G}workflow{R} [id]          Manage Lobster YAML pipelines
 
 {B}UTILITIES{R}
   {G}logs{R}      [id]     View memory logs and gateway entries
@@ -137,8 +137,8 @@ def run_help() -> int:
   docket profile myproject --budget 5  # set $5 spending cap
   docket context myproject search "auth bug"  # search memory
   docket cost                       # cost breakdown for all agents
-  docket team delegate "Fix login bug"  # queue task for manager
-  docket team queue                 # show pending tasks
+  docket pod myproject delegate "Fix login bug"  # queue task for the pod
+  docket pod myproject dispatch     # run queued tasks
 
 {B}PATHS{R}
   Workspaces:  ~/.openclaw/workspaces/projects/
