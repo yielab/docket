@@ -26,14 +26,8 @@ SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-sched
 # Expired approvals are denied (fail-closed).
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
-# METRICS_WINDOW: rolling terminal-session count for drift's "current" rate.
+# METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
-# BASELINE_WINDOW: terminal sessions establishing the success-rate baseline.
-BASELINE_WINDOW = int(os.environ.get("BASELINE_WINDOW", "100"))
-# DRIFT_THRESHOLD: percentage-point drop from baseline that triggers an alert.
-DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "15"))
-# DRIFT_COOLDOWN: seconds between drift alerts for the same role (86400 = 24 h).
-DRIFT_COOLDOWN = int(os.environ.get("DRIFT_COOLDOWN", "86400"))
 
 # docket cannot trim a live prompt (OpenClaw owns inference), but it CAN keep the
 # artifacts OpenClaw re-feeds every turn small. These power the token guards in
