@@ -18,7 +18,7 @@ _docket() {
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
     'auth:Claude model authentication (status/login/key/setup)'
     'models:View and edit the role→model policy'
-    'pod:Manage a project'\''s pod: list members, add a role (implementer/reviewer/tester), or remove one'
+    'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
     'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'
     'logs:View memory logs and gateway entries'
     'edit:Open workspace files in $EDITOR'

@@ -219,3 +219,129 @@ class TestDeletePod:
         cli._delete_pod("demo", _pod.pod_member_ids("demo"))
         assert _ids(oc_dir) == []
         assert not (oc_dir / "workspaces" / "projects" / "demo-lead").exists()
+
+
+class TestParseAddArgs:
+    """FD-1: `--verify` parsing in `_parse_add_args`."""
+
+    def test_role_only(self) -> None:
+        assert _pod._parse_add_args(["implementer"]) == ("implementer", 1, "")
+
+    def test_count_only(self) -> None:
+        assert _pod._parse_add_args(["implementer", "--count", "2"]) == ("implementer", 2, "")
+
+    def test_verify_space_form(self) -> None:
+        assert _pod._parse_add_args(["implementer", "--verify", "npm test"]) == (
+            "implementer",
+            1,
+            "npm test",
+        )
+
+    def test_verify_equals_form(self) -> None:
+        assert _pod._parse_add_args(["implementer", "--verify=npm test"]) == (
+            "implementer",
+            1,
+            "npm test",
+        )
+
+    def test_verify_and_count_combined(self) -> None:
+        assert _pod._parse_add_args(["implementer", "--count", "2", "--verify", "make check"]) == (
+            "implementer",
+            2,
+            "make check",
+        )
+
+    def test_no_verify_defaults_empty(self) -> None:
+        assert _pod._parse_add_args(["reviewer"]) == ("reviewer", 1, "")
+
+
+class TestPodAddVerify:
+    """FD-1: `docket pod <project> add --verify` sets `verifyCmd` + TOOLS.md."""
+
+    def test_add_implementer_with_verify_sets_meta(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["implementer", "--verify", "npm test"])
+        m = _meta(oc_dir, "demo-implementer-2")
+        assert m["verifyCmd"] == "npm test"
+
+    def test_add_implementer_with_verify_writes_tools_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["implementer", "--verify", "npm test"])
+        tools = (oc_dir / "workspaces" / "projects" / "demo-implementer-2" / "TOOLS.md").read_text()
+        assert "Verification Gate" in tools
+        assert "npm test" in tools
+
+    def test_add_without_verify_omits_tools_md_section(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        tools = (oc_dir / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
+        assert "Verification Gate" not in tools
+
+    def test_verify_ignored_for_non_implementer_role(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["reviewer", "--verify", "npm test"])
+        m = _meta(oc_dir, "demo-reviewer")
+        assert "verifyCmd" not in m
+
+
+class TestPodSetVerify:
+    """FD-1: `docket pod <project> set-verify <member-id> "<cmd>"`."""
+
+    def test_set_verify_updates_meta(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "set-verify", ["demo-implementer", "npm", "test"])
+        m = _meta(oc_dir, "demo-implementer")
+        assert m["verifyCmd"] == "npm test"
+
+    def test_set_verify_updates_tools_md(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "set-verify", ["demo-implementer", "make", "check"])
+        tools = (oc_dir / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md").read_text()
+        assert "make check" in tools
+
+    def test_set_verify_rejects_non_implementer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+        with pytest.raises(typer.Exit):
+            _pod.dispatch("demo", "set-verify", ["demo-reviewer", "npm", "test"])
+
+    def test_set_verify_rejects_foreign_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        with pytest.raises(typer.Exit):
+            _pod.dispatch("demo", "set-verify", ["other-implementer", "npm", "test"])
+
+    def test_set_verify_missing_cmd_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        with pytest.raises(typer.Exit):
+            _pod.dispatch("demo", "set-verify", ["demo-implementer"])
+
+    def test_set_verify_missing_member_id_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        with pytest.raises(typer.Exit):
+            _pod.dispatch("demo", "set-verify", [])

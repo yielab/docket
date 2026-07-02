@@ -488,8 +488,9 @@ See [Agent Teams (Pods)](AGENT-TEAMS.md).
 ```bash
 docket pod <project>                                   # list the pod's members (default)
 docket pod <project> list                              # same as above
-docket pod <project> add <role> [--count N]            # add member(s): implementer|reviewer|tester
+docket pod <project> add <role> [--count N] [--verify "<cmd>"]  # add member(s): implementer|reviewer|tester
 docket pod <project> remove <member-id>                # remove one member
+docket pod <project> set-verify <member-id> "<cmd>"    # set an implementer's verify command
 docket pod <project> delegate [--priority high|normal|low] "<task>"   # queue a task
 docket pod <project> queue                             # show the pod's task queue
 docket pod <project> dispatch                          # run the pending tasks through the pipeline
@@ -514,12 +515,15 @@ docket pod myapp
 #### add
 Add a member to the pod. Role is one of `implementer`, `reviewer`, `tester` (the Lead is unique —
 a pod always has exactly one). Duplicated roles get `-2`, `-3` ids. `--count N` adds several at
-once.
+once. `--verify "<cmd>"` (Implementer only) sets the mechanical verification gate `docket pod
+… dispatch` runs after that member's hop (CD-2) — it's written into the new member's
+`.docket-meta.json` (`verifyCmd`) and documented in its `TOOLS.md`.
 
 ```bash
 docket pod myapp add implementer          # adds myapp-implementer-2
 docket pod myapp add reviewer             # add a review gate later
 docket pod myapp add implementer --count 2 # two more parallel implementers
+docket pod myapp add implementer --verify "npm test"  # gate this implementer's hops on `npm test`
 ```
 
 #### remove
@@ -528,6 +532,16 @@ Remove one member by id.
 ```bash
 docket pod myapp remove myapp-tester
 # ✓ Removed myapp-tester from pod 'myapp'
+```
+
+#### set-verify
+Set (or change) the verify command on an **existing** Implementer — the only public way to do
+this short of the internal `meta-set` debug command. Rewrites the member's `TOOLS.md` so the
+Implementer sees the updated gate.
+
+```bash
+docket pod myapp set-verify myapp-implementer "npm test"
+# ✓ Set verify command for myapp-implementer: 'npm test'
 ```
 
 #### delegate
