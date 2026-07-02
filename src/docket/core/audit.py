@@ -5,9 +5,11 @@ who/when/what — table stakes for "what changed this agent/binding/key, and whe
 Secret VALUES are never logged: callers pass only the key name / action target.
 Disable all writes with ``DOCKET_NO_AUDIT=1``.
 
-This is the canonical audit writer. It is store-backed (the log lives under
-OPENCLAW_DIR but is a docket-owned artefact, not an openclaw config file), so it
-does not go through the ACL.
+Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
+line-independent, not a read-modify-write of a whole document, so this module
+writes JSONL directly rather than through ``edges/store.py``. The log lives
+under OPENCLAW_DIR but is a docket-owned artefact, not an openclaw config
+file, so it does not go through the ACL either.
 """
 
 from __future__ import annotations

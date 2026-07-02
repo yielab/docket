@@ -12,7 +12,6 @@ templates + meta + daemon registration via the ACL.
 from __future__ import annotations
 
 import contextlib
-import json
 import shutil
 from datetime import UTC, datetime
 
@@ -207,9 +206,7 @@ def _write_member_workspace(
         meta["worktreeDir"] = worktree_dir
         meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
     meta_file = ws / _cfg.META_FILE
-    meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        meta_file.chmod(0o600)
+    _store.write_json(meta_file, meta)
 
 
 def _provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:

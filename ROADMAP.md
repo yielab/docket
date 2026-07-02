@@ -107,7 +107,7 @@ language, replacing OpenClaw, adding features not listed here. If tempted, stop 
 > historical phases; do not apply them to new Python work.
 
 - **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
-- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600). `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
+- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600), except append-only JSONL logs (`core/trace.py`, `core/audit.py`), which write directly (D-12); `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
 - **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no file-format knowledge.
 - After any change to `openclaw.json`, restart the gateway **once** via `system.restart_gateway()` ([edges/adapters/system.py](src/docket/edges/adapters/system.py)); it degrades gracefully on non-systemd hosts.
 - User-facing status goes through the Rich helpers in [ui.py](src/docket/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.

@@ -123,8 +123,8 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
      the offenders. This is what keeps the rule true after the phase.
 - **Out of scope:** changing any file format or path; touching `openclaw.json` writes (ACL-owned, already correct); performance work.
 - **Deliverables:** all listed sites on `store.write_json`; deleted local atomic-write helpers; docstring + CLAUDE.md rule text; the guard pytest.
-- **Acceptance gate:** [ ] guard test passes (zero offenders) and is in the suite; [ ] every migrated file keeps 0600 perms (existing perms tests still green); [ ] no behavior change (goldens byte-identical); [ ] `uv run pytest` + mypy + ruff green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] guard test passes (zero offenders) and is in the suite; [x] every migrated file keeps 0600 perms (existing perms tests still green); [x] no behavior change (goldens byte-identical); [x] `uv run pytest` + mypy + ruff green.
+- **Size:** M · **Status:** DONE — `core/drift.py:125` left unmigrated (temp guard-test exclusion; CH-5 deletes the module) and `cli/__init__.py:3021,3027` (manager task list) migrated (CH-4 had not landed yet in this branch).
 
 ---
 
@@ -423,7 +423,7 @@ Suggested order to ship value fastest: **CH-0 + CH-5 + CH-9 (day one) → CH-1/C
 ## Roll-up checklist (Phase 12 definition of done — mirrors ROADMAP exit criteria)
 
 - [ ] CH-0 — stale claims fixed, dead templates gone, dangling pointers removed.
-- [ ] CH-1 — zero docket-owned JSON writes outside store.py (JSONL logs exempt per D-12); guard test in suite.
+- [x] CH-1 — zero docket-owned JSON writes outside store.py (JSONL logs exempt per D-12; `core/drift.py` temporarily exempt pending CH-5's deletion); guard test in suite.
 - [ ] CH-2 — zero `openclaw` shell-outs outside the ACL; `core/` has no subprocess; guard test in suite.
 - [ ] CH-3 — zero `ui` imports in `core/`/`edges/`; guard test in suite.
 - [ ] CH-4 — `team` retired with a removed-command notice mapping to pods; one delegation system.

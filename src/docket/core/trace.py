@@ -7,8 +7,10 @@ All agent actions docket can observe are appended to::
 One file per session → atomic vs concurrent sessions. Disable all trace writes
 with ``DOCKET_NO_TRACE=1``.
 
-Store-backed: the trace store is a docket-owned artefact under DOCKET_HOME, so it
-is read/written directly. The ingestion bridge reads daemon session JSONL under
+Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
+line-independent, not a read-modify-write of a whole document, so this module
+writes JSONL directly rather than through ``edges/store.py``. The ingestion
+bridge reads daemon session JSONL under
 ``$OPENCLAW_DIR/agents/<project>/sessions`` — opaque turn-data, not an openclaw
 config file.
 """

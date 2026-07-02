@@ -23,7 +23,8 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import approval as _approval
-from docket.core.approval import _approval_path, _atomic_write
+from docket.core.approval import _approval_path
+from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
 _TEST_TOKEN = "test-serve-token-cd4-abc123"
@@ -221,7 +222,7 @@ class TestExpiryStillFailCloses:
         apr_token = _approval.approval_create("projE", "implementer", "x")
         rec = _approval.approval_get(apr_token)
         rec["state"] = "expired"
-        _atomic_write(_approval_path(apr_token), rec)
+        _store.write_json(_approval_path(apr_token), rec)
 
         status, body = _get(f"{url}/approvals", token)
         assert status == 200
@@ -232,7 +233,7 @@ class TestExpiryStillFailCloses:
         rec = _approval.approval_get(apr_token)
         old = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=_cfg.APPROVAL_TIMEOUT + 1)
         rec["created"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
-        _atomic_write(_approval_path(apr_token), rec)
+        _store.write_json(_approval_path(apr_token), rec)
 
         swept = _approval.approval_sweep_expired()
         assert swept == 1
