@@ -55,16 +55,9 @@
 ## Dependency map (what unblocks what)
 
 ```text
-DONE 2026-07-02 (merged into develop): CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-7, CH-8,
-CH-9, CH-10, CH-13.
-
-Remaining:
-  CH-11 (docs completeness pass)             ← DONE on branch `pc/ch-11-docs-completeness`,
-                                                2026-07-02; not yet merged into develop
-  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, do last (wants CH-11 merged first)
+Phase 12 COMPLETE 2026-07-02 — all 14 cards (CH-0..CH-13) merged into develop.
+0.2.0 cut (CH-12); not yet tagged — see CH-12's tag checklist.
 ```
-
-Suggested remaining order: **merge CH-11 → CH-12 (last — 13 of 14 cards done; CH-12 closes the phase).**
 
 ---
 
@@ -403,8 +396,15 @@ Suggested remaining order: **merge CH-11 → CH-12 (last — 13 of 14 cards done
      before pushing the tag**; memory says pending GitHub release steps exist).
 - **Out of scope:** publishing/announcing; the pending GitHub hygiene steps (secret scanning, branch protection — operator-owned).
 - **Deliverables:** verified + completed changelog; 0.2.0 cut; version bumped; tag checklist.
-- **Acceptance gate:** [ ] every 0.2.0 bullet corresponds to landed code (spot-check evidence in PR); [ ] removals are under Removed with migration notes; [ ] `docket --version` reports 0.2.0; [ ] suite green.
-- **Size:** S · **Status:** BLOCKED (needs CH-4, CH-5, CH-6)
+- **Acceptance gate:** [x] every 0.2.0 bullet corresponds to landed code; [x] removals are under Removed with migration notes; [x] `docket --version` reports 0.2.0; [x] suite green.
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (commit `c723b17`). Fixed the structural bug of adding a `[0.2.0]` heading mid-`[Unreleased]`-content on the first pass — corrected to rename the `[Unreleased]` heading itself and add a fresh empty one above. Also bumped `src/docket/__init__.py`'s `__version__` (unused by `docket --version`, which reads `importlib.metadata`/`VERSION`, but a real stale importable attribute) and regenerated `uv.lock`. **Not tagged** — `git tag v0.2.0` is a separate, operator-approved step (see the tag checklist below).
+
+**Tag checklist (operator step, not done here):**
+```bash
+git tag -a v0.2.0 -m "docket 0.2.0 — agent pods, competitive differentiation, consolidation & hardening"
+git push origin develop         # after merging develop into main per your usual flow
+git push origin v0.2.0          # ask before running — pushes a public tag
+```
 
 ---
 
@@ -437,20 +437,31 @@ Suggested remaining order: **merge CH-11 → CH-12 (last — 13 of 14 cards done
 - [x] CH-8 — completions generated from (or test-locked to) the Typer registry. *(DONE 2026-07-02 — found and fixed real drift beyond the card's scope: a missing `auth` subcommand table and a wrong agent-id completion offered for `snapshot`/`audit`)*
 - [x] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`). *(DONE 2026-07-02 — `spec-coverage.sh` deleted, not rewritten; see CH-11 follow-up)*
 - [x] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(DONE 2026-07-02)*
-- [x] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md portion DONE 2026-07-02 on branch `pc/ch-11-docs-completeness`, not yet merged)*
-- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started; wants CH-11 merged first)*
+- [x] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(DONE 2026-07-02 — CLAUDE.md portion done directly since it's gitignored/untracked; docs/commands.md portion merged via `pc/ch-11-docs-completeness`; also found and fixed real drift beyond scope — `docket team` still documented as live in 4 docs, backwards `docket context` argument order in 2 docs, one leaked username scrubbed)*
+- [x] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(DONE 2026-07-02 — commit `c723b17`; not tagged, see CH-12's tag checklist)*
 - [x] CH-13 — local harness portable; no real values on disk inside the repo dir. *(DONE 2026-07-02)*
 - [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. the re-armed `scripts/metrics.py --check` drift guard)*
 
-**Progress note (2026-07-02):** 8 of 14 cards landed via parallel worktree-isolated agents (CH-0,
-CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-9), merged into `develop` one at a time with the full gate
-re-run after each merge. Two real merge conflicts occurred (`cli/__init__.py` and
-`core/provider.py` on CH-4; `core/models_policy.py`'s store-import alias on CH-6) and were resolved
-by hand — see commits `4ac3f7c` and `d9d8f57`. `CLAUDE.md` is gitignored and untracked, so it was
-synced directly on the local checkout after all merges rather than through any branch. Remaining:
-CH-7, CH-8, CH-10, CH-11, CH-12 — all now unblocked except CH-11 (needs CH-8).
+## Phase 12 — COMPLETE (2026-07-02)
+
+All 14 cards landed and merged into `develop`. 9 ran via parallel worktree-isolated agents on
+the first pass (CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-9, CH-13); CH-10 was done directly
+after an infrastructure session-limit interrupted the first CH-7/CH-8/CH-10 wave before any
+commits landed (cleanly recovered — nothing was lost); CH-7 and CH-8 landed on a second parallel
+wave once the limit reset; CH-11 landed solo; CH-12 (this changelog + version cut) was done
+directly. Three real merge conflicts occurred and were resolved by hand: `cli/__init__.py` +
+`core/provider.py` on CH-4 (commit `4ac3f7c`), `core/models_policy.py`'s store-import alias on
+CH-6 (commit `d9d8f57`), and none on CH-7/CH-8/CH-11 (clean auto-merges throughout). `CLAUDE.md`
+is gitignored and untracked, so its sync was done directly on the local checkout rather than
+through any branch. The README-numbers drift guard (`scripts/metrics.py --check`, re-armed by
+CH-9) caught real drift three separate times as later cards added tests/files — exactly the
+job it exists to do.
 
 **Explicitly NOT in this phase (audited keeps — see ROADMAP Phase 12):** the serve read API +
 `/metrics` + scheduled/webhook dispatch (CD-6/8), Lobster validate/plan (CD-7), audit log, approval
 store, opt-in gates, `resources.py`, dual-source sync, the ACL, and the policy/models_policy/provider
 trio. The gates default-on flip stays a separate post-phase decision.
+
+**Next:** this board is now spent. Per the standing convention (top of this file), a future
+session should clear these cards (the phase record stays in ROADMAP.md's Phase 12 section) and
+append whatever phase comes next.

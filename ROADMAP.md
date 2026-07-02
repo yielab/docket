@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–11 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, and **competitive differentiation**, CD-0…CD-9 — see §0 and the Phase 10/11 records). **Phase 12 — Consolidation & hardening is the active phase** 🟠 (audit-driven; source of record `internal-docs/architecture-audit.md`); its executable task board is [TODO.md](TODO.md). Other remaining: the gates default-on flip (unblocked by CD-4, decide after Phase 12), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Status:** Phases 0–12 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, and **consolidation & hardening**, CH-0…CH-13 — see §0 and the Phase 10/11/12 records). **docket 0.2.0 is cut** (not yet tagged). No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: the gates default-on flip (unblocked by CD-4), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
 **Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1133,7 +1133,7 @@ multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
 
 ---
 
-### PHASE 12 — Consolidation & hardening  *(🟠 active — audit-driven; work the board in TODO.md)*
+### PHASE 12 — Consolidation & hardening  *(☑ COMPLETE 2026-07-02)*
 
 > **Source of record:** `internal-docs/architecture-audit.md` (2026-07-02 full-repo audit — four
 > parallel passes over architecture invariants, docs↔code sync, feature value, and dead
@@ -1182,6 +1182,17 @@ matches code (extension, exit codes, state strings); CHANGELOG documents Phases 
 0.2.0; the README-numbers drift guard runs green in CI against the Python tree; full suite +
 goldens green throughout.
 
+> **☑ Phase 12 shipped 2026-07-02 — all 14 cards CH-0…CH-13 DONE, full suite green.** Every
+> exit criterion above was met, with one negotiated deviation: `cli/__init__.py` landed at
+> **1,702 lines**, not ≤1,500 — the CH-7 card's own Do-list named 5 extraction targets
+> (`_keys.py`, `_context.py`, `_workflow.py`, `_cost.py`, `_agents.py`) and none of the
+> remaining commands, so no 6th stage was invented purely to force the number under the target.
+> `docket` **0.2.0** was cut (CHANGELOG + `VERSION` + `pyproject.toml` + `uv.lock` +
+> `__version__`) but **not tagged** — `git tag v0.2.0` is an operator-approved step, checklist
+> in TODO.md's CH-12 card. The TODO board was cleared per convention; this note is the durable
+> record. Full findings: `internal-docs/architecture-audit.md`; execution trail: TODO.md's
+> CH-0…CH-13 cards (kept, per this phase's own convention, until the next phase overwrites them).
+
 ---
 
 ## 7. Backlog (deferred indefinitely)
@@ -1203,27 +1214,15 @@ goldens green throughout.
 
 ---
 
-## 8. How to start (current — Phase 12)
+## 8. How to start (current — no active phase)
 
-Phases 0–11 are complete (§5 + the Phase 10/11 records). The active work is **Phase 12 —
-Consolidation & hardening**; read `internal-docs/architecture-audit.md` first (the audit every
-CH-card traces back to), then claim tasks from [TODO.md](TODO.md).
-
-```bash
-git checkout -b pc/ch-0-truth-sweep          # one branch per CH-task
-# CH-0 first — cheap, zero-risk truth fixes; independent of everything else.
-uv run pytest                                # baseline green before you start
-# ...do the task, add tests, then:
-uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
-bash tests/golden/run.sh verify-all          # byte-parity net
-git commit -m "Fix: CH-0 — truth sweep (stale claims, dead templates, dangling pointers)"
-```
-
-Work CH-tasks **in dependency order** (the map is at the top of TODO.md): the independent cards
-(CH-0, CH-5, CH-9, CH-13) any time; the invariant repairs (CH-1/CH-2/CH-3) in parallel; the
-surface changes (CH-4 team, CH-6 shims) **before** the module split (CH-7) and before the
-completions/spec/docs cards (CH-8/CH-10/CH-11); CH-12 (changelog + 0.2.0) last. When a decision
-blocks you, record it (§6 pattern) and apply the documented default.
+Phases 0–12 are complete (§5 + the Phase 10/11/12 records). `docket` 0.2.0 is cut (not yet
+tagged — see TODO.md's CH-12 tag checklist). **No phase is currently active.** TODO.md's board
+is spent and awaiting the next phase per the standing convention (clear the old cards, keep the
+phase record here, append the new board). Before starting new work: decide what Phase 13 is
+(a fresh audit? a product-plan-driven feature phase? the deferred gates-default-on flip now
+that CD-3/CD-4 and Phase 12's invariant work are both done?) and write its ROADMAP section +
+TODO.md board following the pattern established by Phases 10/11/12.
 
 ---
 
@@ -1245,6 +1244,22 @@ blocks you, record it (§6 pattern) and apply the documented default.
   JSONL logs exempt) added. Explicit keeps recorded so the phase doesn't over-cut: the CD-6/7/8
   differentiators, ACL/store/sync, audit+approval, `resources.py`, and the policy/models_policy/
   provider trio (naming collision, not duplication).
+- **2026-07-02 (later same day)** — **PHASE 12 COMPLETE.** All 14 CH-cards landed and merged
+  into `develop`; `docket` 0.2.0 cut (CHANGELOG + VERSION + pyproject.toml + uv.lock +
+  `__version__`; not tagged — operator step). Execution notes: 9 cards ran via parallel
+  worktree-isolated agents on the first pass; a second wave (CH-7/CH-8/CH-10) was interrupted
+  by an infrastructure session-limit error before any commits landed (cleanly recovered — CH-10
+  was then done directly, CH-7/CH-8 re-ran successfully once the limit reset); CH-11 landed
+  solo; CH-12 was done directly. Three real merge conflicts resolved by hand (`cli/__init__.py`
+  together with `core/provider.py` on CH-4; a store-import alias in `core/models_policy.py` on
+  CH-6). The
+  README-numbers drift guard (re-armed by CH-9) caught real drift three times as later cards
+  added tests/files — confirming it works. One negotiated deviation from the original exit
+  criteria: `cli/__init__.py` landed at 1,702 lines (target ≤1,500) — CH-7's Do-list named 5
+  extraction targets and no more; no 6th stage was invented to force the number down further.
+  `CLAUDE.md` (gitignored/untracked) was synced directly on the local checkout throughout,
+  since no git branch could carry an edit to it. TODO.md's board is now spent and awaiting the
+  next phase.
 - **2026-06-25** — **Added PHASE 11 — Competitive differentiation**, and marked Phase 10 complete in
   the status header. Driven by `internal-docs/competitive-analysis.md`: a deep-research pass (12
   sources, load-bearing claims re-fetched and confirmed verbatim) + a **GitHub-verified** sweep of the
