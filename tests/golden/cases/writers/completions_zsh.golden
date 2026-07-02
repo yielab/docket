@@ -65,7 +65,7 @@ _docket() {
     policies|policy) compadd list show init test ;;
     completions)     compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
+    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }

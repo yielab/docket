@@ -14,7 +14,6 @@ _ALIASES = {
     "remove": "delete",
     "rm": "delete",
     "telegram": "wire",
-    "tier": "profile",
     "key": "keys",
     "secret": "keys",
     "wf": "workflow",
@@ -37,6 +36,12 @@ _REMOVED: dict[str, tuple[str, ...]] = {
     "model": (
         "docket model was renamed → use: docket profile [id] <provider/model|default>, "
         "or docket models for the role policy",
+    ),
+    "tier": (
+        "docket tier was removed — tier names (economy/standard/premium) are no longer "
+        "accepted anywhere (D-2 exit, 0.2.0).",
+        "Use: docket profile [id] <provider/model|default> to pin/unpin one agent, or "
+        "docket models for the role policy",
     ),
     "billing": ("docket billing was renamed → use: docket cost [id]",),
     "credits": ("docket billing was renamed → use: docket cost [id]",),

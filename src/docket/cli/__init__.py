@@ -2652,6 +2652,10 @@ def cmd_models(ctx: typer.Context) -> None:
     sub = args[0] if args else "list"
     rest = args[1:]
 
+    migration_note = _mp.migrate_legacy_profiles()
+    if migration_note:
+        ui.warn(migration_note)
+
     if sub in ("list", "ls", ""):
         _cmd_models_list()
     elif sub == "set":
@@ -2794,21 +2798,6 @@ def _cmd_models_set(key: str, model: str) -> None:
     elif _mp.is_role(key):
         updates[f"role.{key}"] = validated
         touched_roles.append(key)
-    elif key in ("economy", "standard", "premium"):
-        ui.warn("Tier names are deprecated — the role policy is the source of truth.")
-        for role in _mp.ALL_ROLES:
-            cls = _mp.ROLE_CLASS.get(role, "strong")
-            if (key == "economy" and cls == "cheap") or (key == "standard" and cls == "strong"):
-                updates[f"role.{role}"] = validated
-                touched_roles.append(role)
-        if key == "premium":
-            ui.info(
-                "premium is a fallback anchor only — no role uses it by default."
-                " Pin an agent instead: docket profile <id> <provider/model>"
-            )
-        updates[f"tier.{key}"] = validated
-        if touched_roles:
-            ui.info(f"Mapped to role(s): {' '.join(touched_roles)}")
     else:
         all_r = " ".join(_mp.ALL_ROLES)
         ui.error(f"Unknown key '{key}'. Use a role ({all_r}) or 'default'.")
@@ -2862,9 +2851,6 @@ def _cmd_models_preset(preset: str | None) -> None:
     strong_roles = [r for r in _mp.ALL_ROLES if _mp.ROLE_CLASS.get(r) == "strong"]
 
     updates: dict[str, str] = {
-        "tier.economy": econ,
-        "tier.standard": std,
-        "tier.premium": prem,
         "default": std,
     }
     for r in cheap_roles:
