@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–12 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, and **consolidation & hardening**, CH-0…CH-13 — see §0 and the Phase 10/11/12 records). **docket 0.2.0 is cut** (not yet tagged). No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: the gates default-on flip (unblocked by CD-4), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Status:** Phases 0–12 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, and **consolidation & hardening**, CH-0…CH-13 — see §0 and the Phase 10/11/12 records). **docket 0.2.0 is cut** (not yet tagged). **PHASE 13 — Close the differentiation gaps (FD-0…FD-7) is active** — see the Phase 13 section below and [TODO.md](TODO.md). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
 **Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1195,6 +1195,69 @@ goldens green throughout.
 
 ---
 
+### PHASE 13 — Close the differentiation gaps  *(🚧 active 2026-07-02)*
+
+> **Source of record:** `internal-docs/competitive-analysis.md` (2026-06-25 research pass) named
+> three "Tier 1 — Now" bets as docket's highest-leverage, no-daemon-change differentiators: **P1**
+> pod-level runtime-resource isolation, **O2** a deterministic pre-merge verification gate, **S1**
+> high-risk action classes + a headless approval channel. A 2026-07-02 grounding pass (three
+> parallel code investigations, file:line-cited) found the framing had gone stale: **Phase 11's
+> own CD-1/CD-2/CD-3/CD-4 cards already built most of this** the same week the analysis was
+> written. Executable board: [TODO.md](TODO.md).
+
+**Why this phase.** Re-checking the three bets against the current tree:
+
+- **P1** — `AgentMeta` already has `port_range_start/count`, `scratch_dir` (`core/models.py:75-77`);
+  `core/resources.py` allocates ports/scratch dirs per pod; `_pod.py` documents them into TOOLS.md.
+  What's missing: none of it reaches the implementer's actual **process environment** —
+  `edges/adapters/openclaw.py`'s `agent_run` (~L971-976) shells out with no `env=` override, so an
+  implementer can only *read about* its port range/scratch dir as prose in TOOLS.md, never rely on
+  it being set. The disposable DB/cache "namespace" is a naming convention only (`_pod.py:116-117`),
+  no real provisioning — that stays out of scope (no DB engine assumption; see keeps below).
+- **O2** — this *is* CD-2, already shipped 2026-06-25: `dispatch.py` runs `verifyCmd` via
+  `edges/adapters/system.py`'s `run_verify_cmd` after the implementer hop and hard-fails on
+  non-zero. Two real gaps remain: (a) there is no way to **set** `verifyCmd` short of the internal
+  `meta-set` debug command — no TOOLS.md field, no public `docket pod add --verify` flag, despite
+  `specs/data/docket-meta.spec.md:74` already (incorrectly) documenting one; (b) the Tester hop's
+  PASS/FAIL is prose the pipeline never parses — only adapter-level `run_res.ok` gates it, so a
+  Tester agent that writes "FAIL" in its response can still advance the pipeline.
+- **S1** — `docket approve`/`docket deny` (CLI channel) and `serve.py`'s `POST /approvals/<token>`
+  (HTTP channel) both already work end-to-end (`cli/_approve.py`, `serve.py` ~L321-368). The
+  headless approval routing that `specs/functional/security-gates.spec.md` says gates-default-on
+  is blocked on already exists in code — the spec just hasn't caught up. Two real gaps remain:
+  (a) no "high-risk action class" concept exists anywhere — `core/security.py` is a flat binary
+  allowlist, no always-route category for money/prod-deploy/secret-access actions; (b) approval
+  grants/denials only emit trace events, never `audit_log()` — so an approval channel other than
+  Telegram leaves no audit trail.
+
+**The bet (one line):** don't build three features from scratch — close the five specific,
+file:line-identified gaps that stand between "the substrate exists" and "the differentiation claim
+is true," then flip gates-default-on now that its own spec's blocking condition is actually met.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):** FD-0 inject pod resources into the
+implementer's process env (completes P1) · FD-1 TOOLS.md verify-command field + public
+`--verify` flag (completes O2a) · FD-2 structural Tester PASS/FAIL gate in dispatch (completes O2b)
+· FD-3 high-risk action-class always-approve policy (completes S1a) · FD-4 audit-log parity for
+approval grant/deny across all channels (completes S1b) · FD-5 security-gates.spec.md truth pass +
+flip gates-default-on · FD-6 spec/data truth pass for the fields touched above · FD-7
+docs/positioning pass — claim the closed gaps, correct the stale competitive-analysis framing.
+
+**Explicit keeps (do NOT build in this phase):** a real disposable DB/cache namespace (stays a
+naming convention — no docket-owned DB engine to provision against); microVM/gVisor isolation,
+multi-host provisioning, cross-runtime adapters (all still §7 Backlog, deferred); the existing
+CLI/HTTP approval channels themselves (already correct — this phase documents and hardens them,
+does not rebuild them).
+
+**Phase 13 exit criteria:** an implementer subprocess's real environment contains its allocated
+port range + scratch dir (test-verified, not just TOOLS.md prose); `verifyCmd` is settable via a
+public CLI flag and documented in TOOLS.md; a Tester hop reporting FAIL (or an unparseable result)
+blocks pipeline advancement; a defined high-risk action-class list always routes to approval
+regardless of the allowlist; every approval grant/deny (any channel) writes an audit-log entry;
+`security-gates.spec.md` reflects the real channel set and states the on-by-default condition is
+met; `docket install`'s gates default flips; full suite + goldens green throughout.
+
+---
+
 ## 7. Backlog (deferred indefinitely)
 
 - New channel auth flows (Discord OAuth, Slack app install) — OpenClaw owns this entirely; docket just writes bindings.
@@ -1214,20 +1277,28 @@ goldens green throughout.
 
 ---
 
-## 8. How to start (current — no active phase)
+## 8. How to start (current — Phase 13 active)
 
 Phases 0–12 are complete (§5 + the Phase 10/11/12 records). `docket` 0.2.0 is cut (not yet
-tagged — see TODO.md's CH-12 tag checklist). **No phase is currently active.** TODO.md's board
-is spent and awaiting the next phase per the standing convention (clear the old cards, keep the
-phase record here, append the new board). Before starting new work: decide what Phase 13 is
-(a fresh audit? a product-plan-driven feature phase? the deferred gates-default-on flip now
-that CD-3/CD-4 and Phase 12's invariant work are both done?) and write its ROADMAP section +
-TODO.md board following the pattern established by Phases 10/11/12.
+tagged — see TODO.md's CH-12 tag checklist). **PHASE 13 — Close the differentiation gaps** is
+active (see the Phase 13 section above); its executable board (FD-0…FD-7) is in TODO.md. Work
+top to bottom per the dependency map there; FD-5 (the gates-default-on flip) depends on FD-3 and
+FD-4 landing first, since it closes the exact gap the flip is conditioned on.
 
 ---
 
 ### Changelog
 
+- **2026-07-02 (later same day)** — **Added PHASE 13 — Close the differentiation gaps** (FD-0…FD-7),
+  scoped after the operator chose "Tier-1 competitive bets" from `internal-docs/competitive-analysis.md`.
+  A grounding pass (three parallel code investigations) found the analysis's framing had gone stale:
+  Phase 11's own CD-1 (port/scratch allocation), CD-2 (verify-cmd gate), and CD-3/CD-4 (approval
+  store + CLI/HTTP channels) already built most of what P1/O2/S1 asked for, the same week the
+  analysis was written. Rescoped to the five real residual gaps instead of rebuilding: env-injection
+  for pod resources (FD-0), a public way to set `verifyCmd` (FD-1), a structural Tester PASS/FAIL
+  gate (FD-2), a high-risk action-class always-approve policy (FD-3), audit-log parity for approval
+  channels (FD-4), plus the spec truth pass and gates-default-on flip those unblock (FD-5) and a
+  docs/positioning pass (FD-7). Board in TODO.md.
 - **2026-07-02** — **Marked PHASE 11 complete** (CD-0…CD-9 all DONE 2026-06-25, suite green at 693;
   durable record added to the Phase 11 section, TODO board cleared per convention) and **added
   PHASE 12 — Consolidation & hardening** (CH-0…CH-13), driven by `internal-docs/architecture-audit.md`
