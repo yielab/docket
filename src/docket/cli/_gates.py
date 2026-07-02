@@ -43,6 +43,10 @@ def _usage() -> None:
         "  [green]isolate[/green] [on|off]  "
         "Confine tool execution to a per-agent Docker sandbox (needs Docker)"
     )
+    ui.console.print(
+        "  [green]classes[/green]           "
+        "List the high-risk action classes that always require approval"
+    )
     ui.console.print()
     ui.console.print("[bold]What 'enable' does:[/bold]")
     ui.console.print(
@@ -88,6 +92,24 @@ def _status() -> int:
         ui.dim("Workspace isolation: off")
     else:
         ui.dim("Workspace isolation: not configured — docket gates isolate on")
+    return 0
+
+
+def _classes() -> int:
+    ui.header("High-risk action classes")
+    ui.console.print()
+    ui.console.print(
+        "  Commands matching one of these always route to approval (ask), "
+        "regardless of allowlist status."
+    )
+    ui.console.print()
+    for cls in _sec.HIGH_RISK_PATTERNS:
+        ui.console.print(f"[bold]{cls.name}[/bold] — {cls.description}")
+        ui.dim(f"  pattern: {cls.pattern}")
+        if cls.bins:
+            ui.dim(f"  excluded from the curated allowlist (SAFE_BINS): {', '.join(cls.bins)}")
+        ui.console.print()
+    ui.dim("  This seed list is intentionally small and built-in (not yet user-configurable).")
     return 0
 
 
@@ -176,7 +198,7 @@ def _disable() -> int:
 def run_gates(sub: str | None = None, *, want: str = "on", force: bool = False) -> int:
     """Dispatch the gates subcommand. Returns the process exit code.
 
-    sub:   status (default) | enable | disable | isolate | <anything else → usage>
+    sub:   status (default) | enable | disable | isolate | classes | <anything else → usage>
     want:  on (default) | off — argument to 'isolate'.
     force: --force flag for 'enable'.
     """
@@ -189,5 +211,7 @@ def run_gates(sub: str | None = None, *, want: str = "on", force: bool = False) 
         return _disable()
     if subcmd == "isolate":
         return _isolate(want)
+    if subcmd == "classes":
+        return _classes()
     _usage()
     return 0

@@ -14,8 +14,10 @@ preserving existing config.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +26,9 @@ from docket.edges.adapters import openclaw as _oc
 # Curated set of common, lower-risk binaries that skip the approval prompt.
 # Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and shell
 # interpreters are deliberately OMITTED so they fall through the allowlist gate.
+# NOTE: a bin listed here can still be excluded from the *seeded* allowlist at
+# runtime if it also appears in a HIGH_RISK_PATTERNS class's `bins` — see
+# `high_risk_bins()` / `resolve_safe_bin_paths()` below.
 SAFE_BINS: tuple[str, ...] = (
     "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "nl",
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
@@ -34,6 +39,113 @@ SAFE_BINS: tuple[str, ...] = (
     "date", "env", "printf", "which", "xargs", "tee", "less",
     "mkdir", "touch", "cp", "mv", "ln",
 )  # fmt: skip
+
+
+@dataclass(frozen=True)
+class HighRiskClass:
+    """A named, documented high-risk action class.
+
+    ``pattern`` is a case-insensitive regex matched against a full command
+    string (e.g. ``"git push origin production"``), not just a binary name —
+    the daemon's exec-allowlist can only gate by binary path (confirmed via
+    ``openclaw approvals allowlist --help``: entries are bare glob paths like
+    ``/usr/bin/uptime``, with no argument-aware matching and no denylist
+    concept). Because of that, the only way to *honestly* guarantee a
+    high-risk invocation of an otherwise-curated binary always asks is to
+    never admit that binary into the seeded allowlist at all — ``bins`` names
+    exactly the SAFE_BINS members this class can be performed through, and
+    `high_risk_bins()` / `resolve_safe_bin_paths()` exclude them wholesale.
+    ``pattern`` remains useful on its own via `match_high_risk`/`is_high_risk`
+    for any caller that has an actual command string to classify.
+    """
+
+    name: str
+    description: str
+    pattern: str
+    bins: tuple[str, ...] = ()
+
+
+# Seed list of high-risk action classes: money-movement, prod-deploy, and
+# secret-access. Intentionally small and named — a policy foundation, not
+# exhaustive coverage. Not user-configurable yet (see FD-3 "out of scope");
+# a config-file override is a natural follow-up.
+HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
+    HighRiskClass(
+        name="money-movement",
+        description="Payment/financial operations: charges, refunds, payouts, transfers",
+        pattern=(
+            r"\bstripe\b|\bpaypal\b|\bbraintree\b|charge\s+customer|refund.*amount"
+            r"|wire\s+transfer|bank\s+transfer|\bpayout\b"
+        ),
+    ),
+    HighRiskClass(
+        name="prod-deploy",
+        description="Production deploys and release pushes",
+        pattern=(
+            r"git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish"
+            r"|docker\s+(push|stop)\b|terraform\s+apply|kubectl\s+(apply|delete|rollout)"
+            r"|helm\s+upgrade"
+        ),
+        bins=("git", "npm"),
+    ),
+    HighRiskClass(
+        name="secret-access",
+        description="Secret/credential writes and key generation",
+        pattern=(
+            r"vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa"
+            r"|kubectl\s+(create|apply).*secret|aws.*secretsmanager.*put-secret"
+        ),
+    ),
+)
+
+
+def high_risk_bins() -> frozenset[str]:
+    """SAFE_BINS members capable of performing a high-risk action class.
+
+    These are excluded from the seeded exec allowlist regardless of their
+    SAFE_BINS membership (see `resolve_safe_bin_paths`) — allowlist status
+    must never bypass a high-risk match.
+    """
+    out: set[str] = set()
+    for cls in HIGH_RISK_PATTERNS:
+        out.update(cls.bins)
+    return frozenset(out)
+
+
+def match_high_risk(command: str) -> HighRiskClass | None:
+    """Return the first HIGH_RISK_PATTERNS class matching *command*, else None."""
+    for cls in HIGH_RISK_PATTERNS:
+        if re.search(cls.pattern, command, re.IGNORECASE):
+            return cls
+    return None
+
+
+def is_high_risk(command: str) -> bool:
+    """True if *command* matches any HIGH_RISK_PATTERNS class."""
+    return match_high_risk(command) is not None
+
+
+def resolve_command_action(command: str, allowlist_paths: Sequence[str] = ()) -> str:
+    """Decide "ask" vs "allow" for one command string.
+
+    A high-risk pattern match ALWAYS forces "ask", regardless of whether the
+    invoked binary's resolved path appears in *allowlist_paths* — allowlist
+    status must never bypass a high-risk match. In practice
+    `resolve_safe_bin_paths` never admits a high-risk-capable bin into
+    *allowlist_paths* to begin with, so this mirrors the same invariant at
+    the single-command granularity, for any caller (tests, future dispatch-
+    time checks) that has a live command string to classify.
+    """
+    if is_high_risk(command):
+        return "ask"
+    command = command.strip()
+    if not command:
+        return "ask"
+    invoked = command.split()[0]
+    for path in allowlist_paths:
+        if path == invoked or os.path.basename(path) == os.path.basename(invoked):
+            return "allow"
+    return "ask"
 
 
 @dataclass
@@ -50,9 +162,16 @@ def resolve_safe_bin_paths() -> list[str]:
     """Resolve the curated safe bins to absolute, symlink-resolved paths.
 
     Bins that are not on PATH are skipped (Bash ``command -v ... || continue``).
+    Bins in `high_risk_bins()` (e.g. ``git``, ``npm``) are skipped even though
+    they're SAFE_BINS members — the daemon's allowlist gates by binary path,
+    not argument text, so a high-risk-capable binary can never be blanket-
+    admitted without silently letting its high-risk invocations skip approval.
     """
+    excluded = high_risk_bins()
     paths: list[str] = []
     for name in SAFE_BINS:
+        if name in excluded:
+            continue
         resolved = shutil.which(name)
         if not resolved:
             continue

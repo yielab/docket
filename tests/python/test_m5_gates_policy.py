@@ -86,6 +86,82 @@ def _seed_policies(oc_dir: Path) -> None:
         shutil.copy(f, oc_dir / "policies" / f.name)
 
 
+# ── FD-3: high-risk action classes ─────────────────────────────────────────────
+
+
+class TestHighRiskPatterns:
+    def test_prod_deploy_matches_git_push_production(self) -> None:
+        cls = _sec.match_high_risk("git push origin production")
+        assert cls is not None
+        assert cls.name == "prod-deploy"
+
+    def test_prod_deploy_matches_npm_publish(self) -> None:
+        assert _sec.is_high_risk("npm publish --access public") is True
+
+    def test_money_movement_matches_stripe(self) -> None:
+        assert _sec.is_high_risk("stripe charge customer") is True
+
+    def test_secret_access_matches_ssh_keygen(self) -> None:
+        assert _sec.is_high_risk("ssh-keygen -t ed25519") is True
+
+    def test_non_matching_command_is_not_high_risk(self) -> None:
+        assert _sec.is_high_risk("ls -la") is False
+        assert _sec.is_high_risk("git status") is False
+
+    def test_high_risk_bins_includes_git_and_npm(self) -> None:
+        bins = _sec.high_risk_bins()
+        assert "git" in bins
+        assert "npm" in bins
+        assert "ls" not in bins
+
+
+class TestResolveCommandAction:
+    def test_high_risk_forces_ask_even_when_binary_allowlisted(self) -> None:
+        # 'git' the binary is on the allowlist, but a high-risk invocation of
+        # it must still force 'ask' -- allowlist status must never bypass a
+        # high-risk match.
+        allowlist = ["/usr/bin/git"]
+        action = _sec.resolve_command_action("git push origin production", allowlist)
+        assert action == "ask"
+
+    def test_non_matching_allowlisted_command_is_allowed(self) -> None:
+        allowlist = ["/usr/bin/git"]
+        action = _sec.resolve_command_action("git status", allowlist)
+        assert action == "allow"
+
+    def test_non_matching_non_allowlisted_command_asks(self) -> None:
+        action = _sec.resolve_command_action("rm -rf /tmp/foo", ["/usr/bin/git"])
+        assert action == "ask"
+
+
+class TestResolveSafeBinPaths:
+    def test_high_risk_bins_excluded_from_seeded_allowlist(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # git/npm resolve on this machine's real PATH (oc_dir only stubs
+        # openclaw/docker off) but must never appear in the seeded allowlist.
+        paths = _sec.resolve_safe_bin_paths()
+        for p in paths:
+            base = p.rsplit("/", 1)[-1]
+            assert base not in _sec.high_risk_bins()
+
+    def test_non_high_risk_bin_still_resolved(self, oc_dir: Path) -> None:
+        paths = _sec.resolve_safe_bin_paths()
+        bases = {p.rsplit("/", 1)[-1] for p in paths}
+        assert "ls" in bases
+
+
+class TestBuildExecApprovalsHighRisk:
+    def test_seeded_allowlist_never_contains_high_risk_bins(self, oc_dir: Path) -> None:
+        paths = _sec.resolve_safe_bin_paths()
+        merged, _, _ = _sec.build_exec_approvals({}, paths, ["myshop"], force=False)
+        for agent in merged["agents"].values():
+            patterns = [e["pattern"] for e in agent["allowlist"]]
+            for pattern in patterns:
+                base = pattern.rsplit("/", 1)[-1]
+                assert base not in _sec.high_risk_bins()
+
+
 # ── gates ─────────────────────────────────────────────────────────────────────
 
 
@@ -173,6 +249,28 @@ class TestGatesEnableDisable:
         cfg = json.loads((oc_dir / "openclaw.json").read_text())
         assert cfg["approvals"]["exec"]["enabled"] is False
         assert "falls back to tools.exec" in out
+
+
+class TestGatesClasses:
+    def test_classes_lists_all_patterns(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = _gates.run_gates("classes")
+        out = capsys.readouterr().out
+        assert rc == 0
+        for cls in _sec.HIGH_RISK_PATTERNS:
+            assert cls.name in out
+            assert cls.description in out
+        assert "not yet user-configurable" in out
+
+    def test_classes_shows_excluded_bins(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = _gates.run_gates("classes")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "git" in out
+        assert "npm" in out
 
 
 class TestGatesIsolate:

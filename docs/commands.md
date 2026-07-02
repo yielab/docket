@@ -1294,7 +1294,7 @@ echo 'eval "$(docket completions zsh)"'  >> ~/.zshrc
 - Only `bash` and `zsh` are supported (no fish) — an unknown shell name errors with exit 1
 - The top-level command-name list is generated live from the real Typer command registry, so it
   can never drift from `docket --help`
-- Second-level subcommand words (e.g. `gates status enable disable isolate`) are hand-maintained
+- Second-level subcommand words (e.g. `gates status enable disable isolate classes`) are hand-maintained
   in the completion templates, since those subcommands are parsed manually rather than being
   Click subgroups; a regression test guards them against drift
 
@@ -1361,6 +1361,7 @@ docket gates enable [--force]      # turn on conservative exec-approval defaults
 docket gates disable               # turn exec-approval gates back off
 docket gates isolate on            # turn on Docker workspace isolation (default if no on/off given)
 docket gates isolate off           # turn Docker workspace isolation back off
+docket gates classes               # list the high-risk action classes that always require approval
 ```
 
 **Subcommands:**
@@ -1404,6 +1405,18 @@ Turns Docker-based workspace isolation on or off (`on` is the default target if 
 ```bash
 docket gates isolate on
 docket gates isolate off
+```
+
+#### classes
+Lists the built-in high-risk action classes (`HIGH_RISK_PATTERNS` in `core/security.py`) —
+money-movement, prod-deploy, and secret-access. Commands matching one of these always route to
+approval regardless of allowlist status; SAFE_BINS members capable of a high-risk action
+(currently `git`, `npm`) are excluded from the curated allowlist entirely, since the daemon's
+allowlist gates by binary path, not argument text. Read-only; the pattern list is not yet
+user-configurable.
+
+```bash
+docket gates classes
 ```
 
 **Aliases:** `security`
