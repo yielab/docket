@@ -107,6 +107,10 @@ def _member_tools(
         "",
         "## Runtime Resources (pod-isolated — allocated by docket)",
         "",
+        "These are real **environment variables** docket sets on your process at "
+        "dispatch time — not just documentation here, so read them at runtime "
+        "instead of hardcoding values.",
+        "",
         "Your pod has a reserved, non-overlapping port range.  "
         "**Never use ports outside it** — other pods may have adjacent ranges.",
         f"- `DOCKET_PORT_BASE={port_range_start}` — bind services to {port_range_start}-{port_end}",

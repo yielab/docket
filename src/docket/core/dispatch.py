@@ -26,7 +26,7 @@ from docket.edges.adapters import system as _sys
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
 # Injectable runner for tests (matches the ACL ``agent_run`` signature).
-Runner = Callable[[str, str, str, int], _oc.AgentRunResult]
+Runner = Callable[[str, str, str, int, dict[str, str] | None], _oc.AgentRunResult]
 
 DEFAULT_TIMEOUT = 300
 
@@ -173,6 +173,29 @@ def _hop_message(task: dict[str, Any], role: str, prior: list[HopResult]) -> str
     return "\n".join(lines)
 
 
+def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
+    """Build the subprocess env override for a hop, if any (FD-0).
+
+    Only an **implementer** hop that has an allocated pod port range gets an
+    override — the pod's port range + scratch dir become real env vars in that
+    subprocess, not just prose in TOOLS.md. Every other hop (lead/reviewer/tester,
+    or an implementer with no allocation) returns ``None`` — no override, today's
+    inherit-the-parent-env behaviour.
+    """
+    if role != "implementer":
+        return None
+    port_start = _oc.meta_get(member_id, "portRangeStart", "")
+    if not port_start:
+        return None
+    port_count = _oc.meta_get(member_id, "portRangeCount", "")
+    scratch_dir = _oc.meta_get(member_id, "scratchDir", "")
+    return {
+        "DOCKET_PORT_BASE": port_start,
+        "DOCKET_PORT_COUNT": port_count,
+        "DOCKET_SCRATCH_DIR": scratch_dir,
+    }
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -234,7 +257,8 @@ def dispatch_task(
             "tool_call",
             _json.dumps({"hop": role, "agent": member_id}),
         )
-        run_res = run(member_id, session_id, message, timeout)
+        env = _hop_env(member_id, role)
+        run_res = run(member_id, session_id, message, timeout, env)
         hop = HopResult(
             role=role,
             member_id=member_id,

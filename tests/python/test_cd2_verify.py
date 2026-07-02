@@ -125,7 +125,13 @@ class TestDispatchVerifyGate:
     """Hermetic dispatch tests using a fake runner instead of the real daemon."""
 
     def _fake_runner(self, output: str = "ok", ok: bool = True) -> _dispatch.Runner:
-        def _run(member_id: str, session_id: str, message: str, timeout: int) -> _oc.AgentRunResult:
+        def _run(
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _oc.AgentRunResult:
             return _oc.AgentRunResult(ok=ok, output=output, cost_usd=0.0, raw={})
 
         return _run
@@ -221,7 +227,11 @@ class TestDispatchVerifyGate:
         ran: list[str] = []
 
         def _runner(
-            member_id: str, session_id: str, message: str, timeout: int
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
         ) -> _oc.AgentRunResult:
             ran.append(_oc.meta_get(member_id, "role", "") or member_id)
             return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
@@ -243,7 +253,11 @@ class TestDispatchVerifyGate:
         ran: list[str] = []
 
         def _runner(
-            member_id: str, session_id: str, message: str, timeout: int
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
         ) -> _oc.AgentRunResult:
             ran.append(_oc.meta_get(member_id, "role", "") or member_id)
             return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
