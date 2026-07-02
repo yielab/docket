@@ -55,18 +55,15 @@
 ## Dependency map (what unblocks what)
 
 ```text
-DONE 2026-07-02 (merged into develop): CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-9, CH-13.
+DONE 2026-07-02 (merged into develop): CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6, CH-7, CH-8,
+CH-9, CH-10, CH-13.
 
-Remaining — all unblocked except where noted:
-  CH-7  (split cli/__init__.py)              ← unblocked (needed CH-1, CH-4, CH-6 — all merged)
-  CH-8  (drift-proof completions)            ← unblocked (needed CH-4, CH-6 — both merged)
-  CH-10 (spec/SDD truth pass)                ← unblocked (needed CH-4, CH-5, CH-6 — all merged)
-  CH-11 (docs completeness pass)             ← BLOCKED (needs CH-8; CLAUDE.md portion already done)
-  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, but do last (wants CH-7/8/10/11 landed too)
+Remaining:
+  CH-11 (docs completeness pass)             ← unblocked (needed CH-4, CH-6, CH-8 — all merged)
+  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, do last (wants CH-11 landed too)
 ```
 
-Suggested remaining order: **CH-7 (unblocks nothing further but is the highest-conflict-risk file,
-do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with CH-8) → CH-11 → CH-12.**
+Suggested remaining order: **CH-11 → CH-12 (last — 12 of 14 cards are done; these two close the phase).**
 
 ---
 
@@ -249,8 +246,8 @@ do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with
   tests import.
 - **Out of scope:** any logic change; renaming commands; touching `core/`.
 - **Deliverables:** 4–5 new `_*.py` modules; `cli/__init__.py` ≤ ~1,500 lines; one commit per extraction; imports normalized.
-- **Acceptance gate:** [ ] goldens **byte-identical** (this is the whole point of doing it after the surface changes); [ ] `cli/__init__.py` ≤ ~1,500 lines; [ ] no deferred imports left that exist purely for load-order reasons (document any that must stay); [ ] mypy strict + suite green.
-- **Size:** L *(split by stage — each extraction is independently landable)* · **Status:** TODO
+- **Acceptance gate:** [x] goldens **byte-identical** (this is the whole point of doing it after the surface changes); [~] `cli/__init__.py` ≤ ~1,500 lines — landed at **1,702** (~200 over; the remaining commands weren't named in this card's Do-list, so no 6th stage was invented to force the number down further); [x] no deferred imports left that exist purely for load-order reasons — the remaining deferred imports reach back into `docket.cli` for shared helpers (`_do_restart_gateway`, `_pick_agent`, `_pod`, `_test_cmd_for_stack`, `_delete_pod`), matching the pre-existing convention already used by `_pod.py`/`_gates.py`/`_doctor.py`/`_install.py`; [x] mypy strict + suite green.
+- **Size:** L *(split by stage — each extraction is independently landable)* · **Status:** DONE — merged into develop 2026-07-02 (commit `7bdc79f`). 5 staged commits: `cli/_keys.py` (511 LOC, keys+auth), `cli/_context.py` (379), `cli/_workflow.py` (235), `cli/_cost.py` (281), `cli/_agents.py` (1,061, add/info/delete/maintain). Goldens and full gate verified green after every individual stage, not just at the end.
 
 ---
 
@@ -340,7 +337,7 @@ do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with
 
 ### CH-11 — Documentation completeness pass (`docs/commands.md` first)
 
-- **Depends on:** CH-4 + CH-6 + CH-8 landed (surface + completions final) · **Parallel-safe with:** CH-10
+- **Depends on:** CH-4 + CH-6 + CH-8 landed (surface + completions final) · **Parallel-safe with:** CH-10 · **UNBLOCKED 2026-07-02 — CH-4, CH-6, CH-8 all merged.** Note: CH-7 also landed since this card was written — `cli/__init__.py` is now split into `_keys.py`/`_context.py`/`_workflow.py`/`_cost.py`/`_agents.py`; if you need to cite an implementation line number for a command, check the right module first.
 - **Read:** audit §2 ("Missing from docs"); `docs/commands.md` (bills itself the complete reference); `src/docket/__main__.py` (`_ALIASES`/`_REMOVED` — the true alias table); `uv run python -m docket --help` + each group's `--help` (the ground truth to document); `CLAUDE.md`; `docs/README.md` (index).
 - **Why:** 8 real commands have no section in the self-described complete reference; `keys` alone has 7 subcommands and `context` 6. Users (and agents — see CLAUDE.md's own stale team line) navigate by these docs.
 - **Do:**
@@ -421,12 +418,12 @@ do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with
 - [x] CH-4 — `team` retired with a removed-command notice mapping to pods; one delegation system. *(DONE 2026-07-02)*
 - [x] CH-5 — `core/drift.py` + its config knobs deleted; serve sweep intact. *(DONE 2026-07-02)*
 - [x] CH-6 — tier/`profiles:` shims removed; one-shot registry migration ships. *(DONE 2026-07-02)*
-- [ ] CH-7 — `cli/__init__.py` ≤ ~1,500 lines; goldens byte-identical through the split. *(unblocked, not started)*
-- [ ] CH-8 — completions generated from (or test-locked to) the Typer registry. *(unblocked, not started)*
+- [~] CH-7 — `cli/__init__.py` ≤ ~1,500 lines; goldens byte-identical through the split. *(DONE 2026-07-02 — landed at 1,702 lines, ~200 over target; goldens byte-identical through all 5 stages)*
+- [x] CH-8 — completions generated from (or test-locked to) the Typer registry. *(DONE 2026-07-02 — found and fixed real drift beyond the card's scope: a missing `auth` subcommand table and a wrong agent-id completion offered for `snapshot`/`audit`)*
 - [x] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`). *(DONE 2026-07-02 — `spec-coverage.sh` deleted, not rewritten; see CH-11 follow-up)*
 - [x] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(DONE 2026-07-02)*
-- [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md gaps still open — BLOCKED on CH-8)*
-- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started)*
+- [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md gaps still open — UNBLOCKED 2026-07-02, CH-8 merged)*
+- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started; wants CH-11 landed too)*
 - [x] CH-13 — local harness portable; no real values on disk inside the repo dir. *(DONE 2026-07-02)*
 - [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. the re-armed `scripts/metrics.py --check` drift guard)*
 
