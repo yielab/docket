@@ -334,7 +334,7 @@ do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with
 - **Out of scope:** writing specs for features that never had one (only fix what exists — a new-spec backlog item goes to §7 if you find a gap worth naming); docs/ (CH-11).
 - **Deliverables:** corrected spec set; one consistent retired-spec convention; a PR table listing every spec → what changed (accuracy audit trail).
 - **Acceptance gate:** [ ] zero spec claims contradicted by code for: file paths/extensions, exit codes, state strings, command surfaces (grep-verified per spec in the PR table); [ ] every Status/Last-Updated line current; [ ] no requirement body narrates history; [ ] suite green (specs aren't executable, but `validate-specs.sh`/CH-9's guard must pass if present).
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (commit `fb9016d`). Fixed workflow-integration.spec.md (extension, return codes, validate/plan detail, token-cost claim), model-profiles.spec.md (tier rejection, rank-anchor privacy, migration contract), input-validation.spec.md (same tier correction), cli-interface.spec.md (stale version header, `docket team`→`docket pod` section swap, workflow actions/codes), user-stories.md (retired the Team Coordination epic, pointed at the already-accurate Pod Lifecycle epic). No role-drift promises found anywhere in specs/ — already clean. `scripts/validate-specs.sh`: 18/18 valid.
 
 ---
 
@@ -424,7 +424,7 @@ do it before more hands touch cli/__init__.py) → CH-8 → CH-10 (parallel with
 - [ ] CH-7 — `cli/__init__.py` ≤ ~1,500 lines; goldens byte-identical through the split. *(unblocked, not started)*
 - [ ] CH-8 — completions generated from (or test-locked to) the Typer registry. *(unblocked, not started)*
 - [x] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`). *(DONE 2026-07-02 — `spec-coverage.sh` deleted, not rewritten; see CH-11 follow-up)*
-- [ ] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(unblocked, not started)*
+- [x] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(DONE 2026-07-02)*
 - [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md gaps still open — BLOCKED on CH-8)*
 - [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started)*
 - [x] CH-13 — local harness portable; no real values on disk inside the repo dir. *(DONE 2026-07-02)*
