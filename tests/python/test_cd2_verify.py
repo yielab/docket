@@ -295,7 +295,13 @@ class TestDispatchTesterGate:
     """
 
     def _runner_with_tester_output(self, tester_output: str) -> _dispatch.Runner:
-        def _run(member_id: str, session_id: str, message: str, timeout: int) -> _oc.AgentRunResult:
+        def _run(
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _oc.AgentRunResult:
             role = _oc.meta_get(member_id, "role", "") or member_id
             output = tester_output if role == "tester" else "ok"
             return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
@@ -303,7 +309,13 @@ class TestDispatchTesterGate:
         return _run
 
     def _fake_runner(self, output: str = "ok", ok: bool = True) -> _dispatch.Runner:
-        def _run(member_id: str, session_id: str, message: str, timeout: int) -> _oc.AgentRunResult:
+        def _run(
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _oc.AgentRunResult:
             return _oc.AgentRunResult(ok=ok, output=output, cost_usd=0.0, raw={})
 
         return _run
