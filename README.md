@@ -415,12 +415,8 @@ measure real coverage. Specs cover the core lifecycle and expand outward.
 
 ```bash
 ./scripts/validate-specs.sh    # Validate spec structure/completeness (blocking in CI)
-./scripts/spec-coverage.sh     # Report command/feature/test coverage (informational)
+./scripts/metrics.py --check   # Verify README's quoted numbers match the tree (blocking in CI)
 ```
-
-`spec-coverage.sh` reports **100% command coverage (25/25), 100% feature coverage (10/10),
-100% of tracked specs test-backed**. "Covered" means a feature has a structured, validated
-spec — not that every feature is fully built. The tooling reports honestly.
 
 See [specs/README.md](specs/README.md) for the SSD documentation and
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to add a command.
