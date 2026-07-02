@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-02
+
+**Three feature waves land together in this release, none of which had been cut before now:**
+Phase 10 (agent pods — provisioning, real dispatch, the opt-in Portfolio Manager), Phase 11
+(competitive differentiation, CD-1…CD-8 — runtime-resource isolation, a mechanical verify
+gate, governance/HITL, the scheduled/webhook control plane, the versioned read API), and
+**Phase 12 (Consolidation & hardening)** — the audit-driven pass that closed gaps the other two
+left behind: a single enforced JSON-writer chokepoint, ACL-only OpenClaw shell-outs, no UI
+printing from `core`/`edges`, retirement of the never-dispatched `docket team` command, a hard
+exit on the deprecated tier-name vocabulary, deletion of an unused role-drift engine, a
+4,194→1,702-line split of the CLI's largest module, a re-armed CI drift guard, and a spec/docs
+truth pass. Full detail: `ROADMAP.md` (Phase 10/11/12 sections),
+`internal-docs/architecture-audit.md`, and TODO.md's CH-0…CH-13 cards.
+
 > *Section consolidated 2026-07-02: duplicate `Added`/`Changed` headings merged, and the
 > Phase 10 (agent pods) + Phase 11 (competitive differentiation, CD-1…CD-8) feature waves —
 > previously missing entirely — backfilled. Two stale Bash-era claims corrected in place
@@ -68,15 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whole fleet from a spec file; idempotent, so a fleet file can be re-applied and kept in git.
   Example specs in `examples/configs/`.
 - **`docket completions <bash|zsh>`** — emits a shell completion script (`eval "$(docket
-  completions bash)"`) completing commands, subcommands, and live agent ids. *(Correction
-  2026-07-02: the original entry claimed the command table was drift-guarded by the unit
-  suite; that guard belonged to the Bash router and was lost in the Python port — restoring a
-  registry-backed guard is tracked as Phase 12 CH-8.)*
-- **`scripts/metrics.sh`** — LOC / command / test / spec counters with `--json` and `--check`
-  (a CI step fails the build when the README's quoted numbers drift from the tree). *(Correction
-  2026-07-02: the script still counts the Bash `lib/` tree deleted at the M6 cutover, so the
-  drift guard has been blind since then — the Python-tree rewrite and CI re-arm are tracked as
-  Phase 12 CH-9.)*
+  completions bash)"`) completing commands, subcommands, and live agent ids. Generated at
+  runtime from the live Typer command registry (Phase 12 CH-8), so it cannot silently desync
+  from the router the way the original hand-maintained literals did.
+- **`scripts/metrics.py`** — LOC / command / test / spec counters with `--json` and `--check`
+  (a CI step fails the build when the README's quoted numbers drift from the tree). Replaces
+  the original `scripts/metrics.sh`, which counted the Bash `lib/` tree deleted at the M6
+  cutover and had been silently blind ever since (Phase 12 CH-9).
 - **`NOTICE`** — trademark/affiliation statement ("Independent project. Not affiliated with or
   endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
 - **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
@@ -94,11 +106,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   know the `openclaw.json` / auth-profiles / provider-config formats. Templates moved from
   `lib/templates/` to `src/docket/templates/` and ship in the wheel. Command aliases and
   removed-command notices live in `src/docket/__main__.py`.
-  - **User-facing behavior is unchanged.** A 17-case golden suite (`tests/golden/run.sh
-    verify-all`) diffs CLI output byte-for-byte against frozen pre-cutover goldens, and every
-    prior command and alias still works exactly as before.
+  - **User-facing behavior is unchanged.** A golden suite (`tests/golden/run.sh verify-all`,
+    17 cases at the M6 cutover, 16 as of this release — Phase 12 CH-4 retired one command)
+    diffs CLI output byte-for-byte against frozen goldens, and every surviving command and
+    alias still works exactly as before.
   - **Testing/tooling:** the Bash unit/lifecycle tests are replaced by a `pytest`
-    suite (`tests/python/` — 416 tests at cutover, 688 as of 2026-07-02), the golden parity
+    suite (`tests/python/` — 416 tests at cutover, 739 as of this release), the golden parity
     suite, and the eval harness. New quality gates
     `ruff check` + `ruff format --check` + `mypy --strict` run in CI. CI jobs are now
     `python`, `golden`, `shell`, and `macos`.
@@ -122,6 +135,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docket doctor --json` is now a usable health probe** — exits non-zero when the report is
   unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
   (`healthy`/`issues` were already present).
+- **docket-owned JSON now has a single writer** (Phase 12 CH-1) — every write goes through
+  `edges/store.py`'s atomic + filelocked + 0600 chokepoint (append-only JSONL logs in
+  `core/trace.py`/`core/audit.py` are the sole, documented exemption). Closes 8+ places that
+  had hand-rolled their own atomic-write logic, several without the filelock or `.bak`
+  rotation the chokepoint provides.
+- **`openclaw` binary shell-outs now go through the Anti-Corruption Layer** (Phase 12 CH-2) —
+  `edges/adapters/openclaw.py` gained typed wrappers (`openclaw_version`, `agents_add`,
+  `auth_setup_token`, `auth_paste_token`, `onboard`); `core/utils.py` no longer imports
+  `subprocess` at all.
+- **`core/` and `edges/` no longer print** (Phase 12 CH-3) — `core/provider.py` and
+  `system.restart_gateway()` return typed results (`ProviderRegistration`, `RestartResult`);
+  the `cli/` layer renders them. A new `cli/_provider.py` hosts the interactive provider flow
+  that used to live in `core/`.
+- **`cli/__init__.py` split from 4,194 to 1,702 lines** (Phase 12 CH-7) — `keys`/`auth` moved
+  to `cli/_keys.py`, `context` to `cli/_context.py`, `workflow` to `cli/_workflow.py`, `cost`
+  to `cli/_cost.py`, and agent add/info/delete/maintain to `cli/_agents.py`. No behavior
+  change; goldens stayed byte-identical through every extraction stage.
+
+### Removed
+
+- **`docket team`** (Phase 12 CH-4, D-11) — the org-wide manual task queue never had a
+  dispatcher; nothing ever executed a queued task. Running any `docket team <subcommand>` now
+  prints a removed-command notice mapping to the real, executing replacement: `docket pod
+  <project> delegate/queue/dispatch`. Any pre-existing
+  `~/.openclaw/workspaces/manager/TASK_LIST.json` is left on disk, untouched but no longer
+  read. The opt-in Portfolio Manager (`docket install --portfolio`) covers the cross-pod view
+  `team` used to gesture at.
+- **Tier names as model input** (Phase 12 CH-6, D-2 exit) — `economy`/`standard`/`premium` are
+  no longer accepted anywhere a model or role value is expected; `docket profile <id> premium`
+  and `docket models set premium <model>` now fail with an error naming a full
+  `provider/model` id. A legacy `profiles:` key in `~/.openclaw/docket-models.json`
+  auto-migrates to `roles:` once on load (`docket doctor` flags a residual `profiles:` key if
+  `roles:` was already present and the migration left it alone).
+- **`core/drift.py`** (Phase 12 CH-5) — the role-success-rate drift engine had exactly one
+  caller (the opt-in `serve --dispatch` sweep) and fed a Telegram notification that was never
+  implemented. Deleted along with its 3 dedicated config knobs. Unrelated to, and does not
+  affect, `docket doctor`'s config-drift check (meta ↔ `openclaw.json`) or template-version
+  staleness detection, both of which are unchanged.
 
 ### Security docs
 
@@ -144,6 +195,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is honored to mirror the installer.
 - **`docket team upgrade` in installed layout** — read templates from `$DOCKET_CLI_ROOT/lib/templates`,
   which doesn't exist once installed; now uses `$LIB_DIR/templates`.
+- **README-numbers CI drift guard re-armed** (Phase 12 CH-9) — `scripts/spec-coverage.sh` and
+  the original `scripts/metrics.sh` both counted the deleted Bash `lib/` tree and had been
+  silently broken since the M6 cutover, masked by a `|| true` on the CI step. The new
+  `scripts/metrics.py --check` counts the real Python tree and Typer registry and now actually
+  fails CI on drift; `spec-coverage.sh` was deleted outright rather than rewritten, since a
+  faithful rewrite would immediately red-flag documentation gaps that a later fix (CH-11)
+  closed separately.
+- **Documentation and specification drift** (Phase 12 CH-0, CH-10, CH-11) — a full-repo audit
+  found and fixed a batch of stale claims accumulated across Phases 10–11: `docs/commands.md`
+  was missing sections for 8 real commands (`keys`, `auth`, `gates`, `audit`, `eval`,
+  `snapshot`, `completions`, `context`); its alias table had drifted from `__main__.py`'s real
+  `_ALIASES`/`_REMOVED` dicts; `docket doctor` was described as read-only despite having
+  `--fix`; `specs/functional/workflow-integration.spec.md` documented a `.yaml` extension that
+  was never real (the actual extension is `.lobster.yml`) and invented return codes the
+  command never used; several docs (`AGENT-TEAMS.md`, `WORKFLOW-GUIDE.md`, `DOCKET.md`) still
+  described the retired `docket team` as live; `QUICK-START-DOCKET.md` and `DOCKET.md` had the
+  `docket context` argument order backwards. All corrected; see `internal-docs/architecture-audit.md`
+  for the full findings this phase worked from.
 
 ## [0.1.0] - 2026-06-10
 
@@ -195,5 +264,6 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/yielab/docket/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yielab/docket/releases/tag/v0.1.0
