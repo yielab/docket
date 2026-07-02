@@ -8,7 +8,10 @@ Approval records are docket-owned artefacts (not openclaw config), so writes
 go through the ``edges/store.py`` single-writer chokepoint (D-12) rather than
 the ACL.
 Trace emission and secret redaction are best-effort and isolated behind the thin
-``_emit_trace`` / ``_redact`` hooks so tests can stub them.
+``_emit_trace`` / ``_redact`` hooks so tests can stub them. Grant/deny also write
+an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``) tagged
+with the calling channel (``cli``, ``http``, ``telegram``, ...) so ``docket
+audit`` has a record of who approved what and through which surface.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.core.audit import audit_log
 from docket.edges import store as _store
 
 
@@ -133,8 +137,12 @@ def approval_get(token: str) -> dict[str, Any]:
     return _read(token)
 
 
-def approval_grant(token: str) -> None:
+def approval_grant(token: str, channel: str = "unknown") -> None:
     """Transition pending → granted.
+
+    ``channel`` identifies the surface the grant came through (``"cli"``,
+    ``"http"``, ``"telegram"``, ...) and is recorded in the audit log alongside
+    the existing trace event.
 
     Raises ApprovalNoop if already granted, ApprovalError on any other state.
     """
@@ -149,10 +157,15 @@ def approval_grant(token: str) -> None:
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_granted", {"token": token})
+    audit_log("approval.grant", f"token={token} project={project} channel={channel}")
 
 
-def approval_deny(token: str) -> None:
+def approval_deny(token: str, channel: str = "unknown") -> None:
     """Transition pending → denied.
+
+    ``channel`` identifies the surface the denial came through (``"cli"``,
+    ``"http"``, ``"telegram"``, ...) and is recorded in the audit log alongside
+    the existing trace event.
 
     Raises ApprovalNoop if already denied/expired, ApprovalError on any other state.
     """
@@ -167,6 +180,7 @@ def approval_deny(token: str) -> None:
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
+    audit_log("approval.deny", f"token={token} project={project} channel={channel}")
 
 
 def list_pending() -> list[dict[str, Any]]:

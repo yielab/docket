@@ -60,7 +60,7 @@ def run_approve(token: str | None = None) -> int:
         return _help()
 
     try:
-        _ap.approval_grant(token)
+        _ap.approval_grant(token, channel="cli")
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
         return 0

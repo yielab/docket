@@ -354,9 +354,9 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
             try:
                 if action == "grant":
-                    approval.approval_grant(approval_token)
+                    approval.approval_grant(approval_token, channel="http")
                 else:
-                    approval.approval_deny(approval_token)
+                    approval.approval_deny(approval_token, channel="http")
                 rec = approval.approval_get(approval_token)
                 resp_body = json.dumps(
                     {"ok": True, "token": approval_token, "state": rec["state"]}
