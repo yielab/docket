@@ -88,6 +88,10 @@ def _member_soul(
             "- You run the test suite and reproduction steps and report a binary "
             "**PASS/FAIL** with evidence.\n"
             "- Observe behaviour only — do not read or critique the implementation.\n"
+            "- **Marker convention:** the first non-blank line of your reply must be "
+            "exactly `PASS` or `FAIL` (case-insensitive) — dispatch parses this line "
+            "to gate the pipeline. Evidence goes on the lines after it. Anything else "
+            "on that first line blocks the pipeline the same as a FAIL.\n"
         )
     return head + body
 
