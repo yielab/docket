@@ -9,7 +9,13 @@ from typing import Any
 import docket.config as cfg
 from docket.edges import store as _store
 
-TIER_ANCHORS: dict[str, str] = {
+# Internal rank anchors: per-class defaults (used to seed each role's default
+# model) and the fallback ceiling shown by `docket models`. NOT a user-facing
+# vocabulary — "economy"/"standard"/"premium" are no longer accepted as model
+# arguments or registry keys (user-facing tier names removed in 0.2.0, D-2
+# exit; see ROADMAP.md D-2). This table is the sole surviving piece of the old
+# tier system, kept private because the fallback chain still reads it.
+_RANK_ANCHORS: dict[str, str] = {
     "economy": "anthropic/claude-haiku-4-5",
     "standard": "anthropic/claude-sonnet-4-6",
     "premium": "anthropic/claude-opus-4-6",
@@ -40,6 +46,8 @@ ROLE_CLASS: dict[str, str] = {
     "portfolio-manager": "cheap",
 }
 
+# Old/short model-id → current canonical model-id. Unrelated to the retired
+# tier vocabulary (no entry here resolves through a tier name any more).
 MODEL_ALIASES: dict[str, str] = {
     "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
     "anthropic/claude-haiku-3": "anthropic/claude-haiku-4-5",
@@ -47,9 +55,6 @@ MODEL_ALIASES: dict[str, str] = {
     "anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4-6",
     "anthropic/claude-opus-3": "anthropic/claude-opus-4-6",
     "anthropic/claude-opus-4": "anthropic/claude-opus-4-6",
-    "haiku": "economy",
-    "sonnet": "standard",
-    "opus": "premium",
 }
 
 _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
@@ -133,12 +138,80 @@ def _init_role_models(tiers: dict[str, str]) -> dict[str, str]:
     return result
 
 
+def _init_role_overrides_from_tiers(profiles: dict[str, Any]) -> dict[str, str]:
+    """Derive per-role overrides from legacy tier-anchor values (migration helper)."""
+    tiers = dict(_RANK_ANCHORS)
+    for tier in ("economy", "standard", "premium"):
+        m = profiles.get(tier)
+        if isinstance(m, str) and _MODEL_ID_RE.match(m):
+            tiers[tier] = m
+    return _init_role_models(tiers)
+
+
+def migrate_legacy_profiles() -> str | None:
+    """One-shot migration: legacy ``profiles:`` tier-anchor overrides → ``roles:``.
+
+    Runs at most once per registry: if ``docket-models.json`` has a ``profiles:``
+    key but no ``roles:`` key yet, derive equivalent per-role overrides from the
+    tier-anchor values (mirroring the class-based defaults ``_init_role_models``
+    would have produced) and write them under ``roles:``, then drop ``profiles:``.
+    Idempotent — a no-op once ``profiles:`` is gone or ``roles:`` already exists
+    (in which case ``profiles:`` is left alone as a residual key for
+    ``docket doctor`` to flag; see ``has_residual_profiles_key``).
+
+    Returns a human-readable summary for the caller to print via ``ui.warn``
+    (this module never prints — CLI layer decides), or ``None`` if nothing
+    changed.
+    """
+    path = cfg.MODEL_REGISTRY_FILE
+    if not path.exists():
+        return None
+    try:
+        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    profiles = reg.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        return None
+    if reg.get("roles"):
+        return None  # roles: already present — leave profiles: for doctor to flag
+
+    reg["roles"] = _init_role_overrides_from_tiers(profiles)
+    del reg["profiles"]
+    _store.write_json(path, reg)
+    return (
+        "Migrated legacy 'profiles:' tier overrides in docket-models.json to "
+        "'roles:' (one-time). The 'profiles:' key is no longer read."
+    )
+
+
+def has_residual_profiles_key() -> bool:
+    """True if docket-models.json still has a (post-migration residual) ``profiles:`` key.
+
+    Used by ``docket doctor``. Residual means the one-shot migration in
+    ``migrate_legacy_profiles`` found ``roles:`` already present and left
+    ``profiles:`` untouched, or the write-back has not happened yet.
+    """
+    path = cfg.MODEL_REGISTRY_FILE
+    if not path.exists():
+        return False
+    try:
+        reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return bool(reg.get("profiles"))
+
+
 def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     """Return (role_models, tiers, default_model) from docket-models.json.
 
-    Falls back to built-in defaults on any read/parse error.
+    Falls back to built-in defaults on any read/parse error. Self-migrates a
+    legacy ``profiles:`` key (see ``migrate_legacy_profiles``) before reading.
     """
-    tiers = dict(TIER_ANCHORS)
+    migrate_legacy_profiles()  # silent, idempotent — see the CLI layer for the warning
+
+    tiers = dict(_RANK_ANCHORS)
     default_model = cfg.DEFAULT_MODEL
 
     path = cfg.MODEL_REGISTRY_FILE
@@ -150,18 +223,12 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     except Exception:
         return _init_role_models(tiers), tiers, default_model
 
-    # Pass 1: default model and rank anchors.
     if isinstance(reg.get("default"), str) and _MODEL_ID_RE.match(reg["default"]):
         default_model = reg["default"]
-    for tier in ("economy", "standard", "premium"):
-        m = reg.get("profiles", {}).get(tier)
-        if isinstance(m, str) and _MODEL_ID_RE.match(m):
-            tiers[tier] = m
 
-    # Re-derive role defaults from the (possibly overridden) anchors.
     role_models = _init_role_models(tiers)
 
-    # Pass 2: explicit per-role overrides win.
+    # Explicit per-role overrides win.
     for role, m in reg.get("roles", {}).items():
         if role in ROLE_CLASS and isinstance(m, str) and _MODEL_ID_RE.match(m):
             role_models[role] = m
@@ -220,24 +287,13 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     """
     warnings: list[str] = []
 
-    # 1. Deprecated tier name.
-    if model in TIER_ANCHORS:
-        canonical = TIER_ANCHORS[model]
-        warnings.append(
-            f"Tier names are deprecated. '{model}' → {canonical}. "
-            "Use the role policy (docket models) or a provider/model ID."
-        )
-        return canonical, warnings
-
-    # 2. Alias (may resolve to a tier).
+    # 1. Known alias (old/short model id → current canonical id).
     if model in MODEL_ALIASES:
         resolved = MODEL_ALIASES[model]
-        if resolved in TIER_ANCHORS:
-            resolved = TIER_ANCHORS[resolved]
         warnings.append(f"Model alias '{model}' → '{resolved}'.")
         return resolved, warnings
 
-    # 3. Well-formed provider/model — accepted; warn if unpriced.
+    # 2. Well-formed provider/model — accepted; warn if unpriced.
     if _MODEL_ID_RE.match(model):
         if model not in MODEL_PRICING:
             warnings.append(
@@ -245,7 +301,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
             )
         return model, warnings
 
-    # 4. Malformed.
+    # 3. Malformed (includes the retired tier names economy/standard/premium).
     role_models, _, _ = load_registry()
     lines = "\n".join(f"  {r:<12} {role_models.get(r, cfg.DEFAULT_MODEL)}" for r in ALL_ROLES)
     raise ValueError(
@@ -305,7 +361,7 @@ def reapply_role_policy() -> int:
 def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     """Update docket-models.json via the store.py single-writer chokepoint (D-12).
 
-    Key format: 'default', 'role.<name>', 'tier.<name>'.
+    Key format: 'default', 'role.<name>'.
     reset=True clears all user overrides (deletes the file if empty).
     """
     path = cfg.MODEL_REGISTRY_FILE
@@ -324,10 +380,6 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                 role = k[5:]
                 if role in ROLE_CLASS:
                     reg.setdefault("roles", {})[role] = v
-            elif k.startswith("tier."):
-                tier = k[5:]
-                if tier in ("economy", "standard", "premium"):
-                    reg.setdefault("profiles", {})[tier] = v
 
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(path, reg)
