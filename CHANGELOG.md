@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> *Section consolidated 2026-07-02: duplicate `Added`/`Changed` headings merged, and the
+> Phase 10 (agent pods) + Phase 11 (competitive differentiation, CD-1…CD-8) feature waves —
+> previously missing entirely — backfilled. Two stale Bash-era claims corrected in place
+> (noted inline).*
+
+### Added
+
+- **Agent pods (Phase 10).** `docket add <project>` now provisions an **isolated pod** of
+  project-scoped agents — Lead + Implementer by default; `--pod full` or `--with
+  reviewer,tester` for the rest — each member with its own workspace and `.docket-meta.json`.
+  `docket pod <project>` manages members (`add <role> [--count N]` / `remove <member-id>` /
+  listing). **programmer/reviewer/tester are no longer global shared specialists** — they are
+  per-pod roles; `scope` (org vs project) is a first-class metadata axis, and `docket doctor`
+  flags leftover pre-pod global role workspaces and backfills `scope` on legacy metadata.
+- **Real pod dispatch.** `docket pod <project> delegate "<task>"` / `queue` / `dispatch` run a
+  per-pod task queue (one queue per Lead — never shared across pods) through a hop pipeline
+  (Implementer, then optional Reviewer/Tester) with per-hop cost recorded; `docket serve
+  --dispatch` runs it as a background loop.
+- **Org Portfolio Manager (opt-in).** `docket install --portfolio` provisions a single
+  `scope: org` planning/visibility agent over fleet metadata (never project code).
+- **Pod runtime-resource isolation** (CD-1) — each pod gets a **disjoint port range** and a
+  private scratch dir, injected into the Implementer's `TOOLS.md`/env
+  (`DOCKET_PORT_BASE`, `DOCKET_SCRATCH_DIR`, …), shown by `docket pod <p>`, and reclaimed on
+  `docket delete`/`pod remove`.
+- **Git-worktree Implementer isolation** for repo pods (CD-5) — the Implementer works in a
+  dedicated `git worktree`/branch, torn down with the pod; documented fallback when the daemon
+  can't target a worktree.
+- **Deterministic pre-merge verification gate** (CD-2) — an opt-in per-pod `verifyCmd` runs in
+  the Implementer's workspace before a dispatched task can be marked done; non-zero exit blocks
+  completion and emits a redacted `verification_failed` trace event; unset ⇒ visibly logged skip.
+- **High-risk action classes** (CD-3) — a `high-risk` policy class (money/payment,
+  production-deploy, secret access) that **always** routes to approval even for allowlisted
+  binaries; surfaced and testable via `docket policies show` / `policies test`.
+- **Headless approval channel** (CD-4) — token-guarded `GET /approvals` + `POST
+  /approvals/<token>` on `docket serve` (local-bind by default) alongside `docket approve/deny`;
+  fail-closed expiry preserved. Unblocks a future gates-on-by-default decision.
+- **Scheduled & webhook-triggered dispatch** (CD-6) — cron-like schedules and a token-guarded
+  `POST /dispatch/<project>` endpoint turn the `serve --dispatch` poller into an event-driven
+  control plane.
+- **Versioned read-only API** (CD-8) — `/status.json`, `/metrics` (Prometheus text format),
+  `/health` documented and contract-pinned in `specs/data/serve-read-api.spec.md`, so external
+  dashboards can consume docket state; mutation stays in the CLI.
+- **Lobster workflow `validate` + `plan`** (CD-7) — schema/lint a workflow and render the
+  resolved pipeline docket would hand the daemon, explicitly without executing it.
+- **`docket eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
+  eval harness. Each of the six roles has a structural mode (fast SOUL.md contract check) and a
+  live mode (`DOCKET_EVAL_LIVE=1`) that sends a golden task via `openclaw agent --local --json`
+  and checks the response against acceptance criteria. Results are stored in
+  `tests/evals/results/YYYY-MM-DD.jsonl`; `docket eval --recommend` and `docket doctor`
+  surface per-role suggestions. Infrastructure failures (quota, auth, timeout) are SKIP —
+  evals stay non-blocking in CI.
+- **`docket cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
+  series bucketed by session timestamp, cached in `.cost-history.json`, with a regression flag
+  for any day costing more than 2× its trailing 3-day average.
+- **Template/prompt versioning** — `_create_workspace` stamps `TEMPLATE_VERSION` into each
+  agent's `.docket-meta.json`; `docket doctor` flags agents on stale templates and points at
+  `docket maintain <id> rebuild`.
+- **Declarative provisioning** — `docket add --from <agents.yaml|agents.json>` provisions a
+  whole fleet from a spec file; idempotent, so a fleet file can be re-applied and kept in git.
+  Example specs in `examples/configs/`.
+- **`docket completions <bash|zsh>`** — emits a shell completion script (`eval "$(docket
+  completions bash)"`) completing commands, subcommands, and live agent ids. *(Correction
+  2026-07-02: the original entry claimed the command table was drift-guarded by the unit
+  suite; that guard belonged to the Bash router and was lost in the Python port — restoring a
+  registry-backed guard is tracked as Phase 12 CH-8.)*
+- **`scripts/metrics.sh`** — LOC / command / test / spec counters with `--json` and `--check`
+  (a CI step fails the build when the README's quoted numbers drift from the tree). *(Correction
+  2026-07-02: the script still counts the Bash `lib/` tree deleted at the M6 cutover, so the
+  drift guard has been blind since then — the Python-tree rewrite and CI re-arm are tracked as
+  Phase 12 CH-9.)*
+- **`NOTICE`** — trademark/affiliation statement ("Independent project. Not affiliated with or
+  endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
+- **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
+  break-reporting policy; linked from the README's Compatibility section.
+
 ### Changed
 
 - **Bash → Python rewrite (M6 cutover).** docket is now a Python package (`src/docket/`)
@@ -22,8 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **User-facing behavior is unchanged.** A 17-case golden suite (`tests/golden/run.sh
     verify-all`) diffs CLI output byte-for-byte against frozen pre-cutover goldens, and every
     prior command and alias still works exactly as before.
-  - **Testing/tooling:** the Bash unit/lifecycle tests are replaced by a 416-test `pytest`
-    suite (`tests/python/`), the golden parity suite, and the eval harness. New quality gates
+  - **Testing/tooling:** the Bash unit/lifecycle tests are replaced by a `pytest`
+    suite (`tests/python/` — 416 tests at cutover, 688 as of 2026-07-02), the golden parity
+    suite, and the eval harness. New quality gates
     `ruff check` + `ruff format --check` + `mypy --strict` run in CI. CI jobs are now
     `python`, `golden`, `shell`, and `macos`.
   - The remaining shell surface is just the launcher, `install.sh`/`uninstall.sh`,
@@ -35,20 +111,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   below the fold. Replaces the prior feature-firehose ordering. The "actively used in real
   environments" line is replaced with an honest authorship note.
 
-### Added
-
-- **`scripts/metrics.sh`** — single source of truth for LOC / command / helper / unit-test /
-  spec counts (`--json`, `--check`). A new CI step (`metrics --check`) fails the build if the
-  README's quoted numbers drift from the tree. Reconciles prior contradictions (README claimed
-  241 tests / ~7,200 LOC / 21 commands; actual: 247 / ~8,700 / 25).
-- **`NOTICE`** — trademark/affiliation statement ("Independent project. Not affiliated with or
-  endorsed by OpenClaw or the OpenClaw Foundation"), mirrored at the top of the README.
-- **`COMPATIBILITY.md`** — OpenClaw version / schema support matrix, platform requirements, and
-  break-reporting policy; linked from the README's new Compatibility section.
-- **`docket completions <bash|zsh>`** — emits a shell completion script
-  (`eval "$(docket completions bash)"`). Completes commands, subcommands, and live agent ids
-  read from the workspace tree. The command/subcommand table is drift-guarded by the unit
-  suite so it can't silently desync from the router.
+- `sync_session_key` now warns and skips (instead of aborting) when `openclaw.json` is absent,
+  so one missing config can't halt a multi-agent provision.
+- **CI lint gate raised** from `-S error` to `-S warning` (with curated excludes for
+  cross-file shared vars and dynamic `source`), and the `SC2155`/`SC2188`/`SC2164`/`SC2076`/
+  `SC2010`/`SC2011`/`SC2046`/`SC2115`/`SC2050` warning backlog cleared so the gate stays green.
+- **Test harness hardened** — counter increments use `n=$((n + 1))` instead of `((n++))`
+  (which returns non-zero at 0 and would abort a `set -e` harness); direct unit tests added
+  for the `load_model_registry` overlay. *(Bash-era entry; the harness is now pytest.)*
+- **`docket doctor --json` is now a usable health probe** — exits non-zero when the report is
+  unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
+  (`healthy`/`issues` were already present).
 
 ### Security docs
 
@@ -71,45 +144,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is honored to mirror the installer.
 - **`docket team upgrade` in installed layout** — read templates from `$DOCKET_CLI_ROOT/lib/templates`,
   which doesn't exist once installed; now uses `$LIB_DIR/templates`.
-
-### Added
-
-- **`docket eval [--live] [--tier <t>] [--role <r>] [--recommend]`** — real specialist-role
-  eval harness. Each of the six roles (programmer, reviewer, tester, knowledge, security,
-  manager) has a structural mode (fast SOUL.md contract check) and a live mode
-  (`DOCKET_EVAL_LIVE=1`) that sends a golden task via `openclaw agent --local --json` and
-  checks the response against acceptance criteria. Results (pass/fail, cost, tokens) are
-  stored in `tests/evals/results/YYYY-MM-DD.jsonl`; `docket eval --recommend` and
-  `docket doctor` (section 16) surface per-role tier suggestions from stored results.
-  Infrastructure failures (quota, auth, timeout) are SKIP — evals stay non-blocking in CI.
-- **`docket cost --history [id] [--days N] [--json]`** — daily per-agent cost/turn/token
-  series bucketed by session timestamp, cached in `.cost-history.json` by the same
-  (mtime, size) signatures as the cost index, with a regression flag for any day costing
-  more than 2× its trailing 3-day average.
-- **Template/prompt versioning** — `_create_workspace` stamps the current `TEMPLATE_VERSION`
-  into each agent's `.docket-meta.json` (on `docket add` and `docket maintain rebuild`); `docket doctor`
-  flags agents whose stamp is older than (or absent versus) the current template and points at
-  `docket maintain <id> rebuild`.
-- **Declarative provisioning** — `docket add --from <agents.yaml|agents.json>` provisions a whole
-  fleet from a spec file (JSON always; YAML when PyYAML is installed). Supports a single agent
-  mapping, a list, or `{agents: [...]}`; only `name` is required. Idempotent (existing agents
-  skipped) so a fleet file can be re-applied and kept in git. Example specs in `examples/configs/`.
-
-### Changed
-
-- `sync_session_key` now warns and skips (instead of aborting) when `openclaw.json` is absent,
-  so one missing config can't halt a multi-agent provision.
-- **CI lint gate raised** from `-S error` to `-S warning` (with curated excludes for
-  cross-file shared vars and dynamic `source`), and the `SC2155`/`SC2188`/`SC2164`/`SC2076`/
-  `SC2010`/`SC2011`/`SC2046`/`SC2115`/`SC2050` warning backlog cleared so the gate stays green.
-- **Test harness hardened** — counter increments use `n=$((n + 1))` instead of `((n++))`
-  (which returns non-zero at 0 and would abort a `set -e` harness). Added 6 direct unit
-  tests of the `load_model_registry` overlay (corrupt-file fallback, role/default/anchor
-  overrides, unknown-role rejection), plus drift-guard tests for shell completions; unit
-  suite is now 276 assertions.
-- **`docket doctor --json` is now a usable health probe** — exits non-zero when the report is
-  unhealthy (previously always exited 0), so it can gate monitoring/CI. JSON payload unchanged
-  (`healthy`/`issues` were already present).
 
 ## [0.1.0] - 2026-06-10
 

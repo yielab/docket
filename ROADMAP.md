@@ -10,8 +10,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–10 complete ☑ (including the **Bash→Python core migration**, M0–M6, and the **agent-pod architecture**, AA-0…AA-9 — see §0 and the Phase 10 record). **Phase 11 — Competitive differentiation is the active phase** 🟡; its executable task board is [TODO.md](TODO.md), grounded in `internal-docs/competitive-analysis.md`. Other remaining: Phase 0 gates default-on flip (now sequenced under Phase 11 CD-4), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
-**Last Updated:** 2026-06-25
+**Status:** Phases 0–11 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, and **competitive differentiation**, CD-0…CD-9 — see §0 and the Phase 10/11 records). **Phase 12 — Consolidation & hardening is the active phase** 🟠 (audit-driven; source of record `internal-docs/architecture-audit.md`); its executable task board is [TODO.md](TODO.md). Other remaining: the gates default-on flip (unblocked by CD-4, decide after Phase 12), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -365,6 +365,8 @@ address exactly those.
 | D-8 | Does the manager-coordination layer get its own metrics role? (spec Q3) | OBS-4 | **No (v1)** — observe it through the agents it dispatches; manager emits session_start/end for its own planning runs, dispatched work is attributed to the executing agent. Add a `manager` rollup only if delegation overhead becomes a question. |
 | D-9 | Per agent field: `synced` to openclaw.json or `local`-only? | CDD-1/CDD-3 | Record per field in the schema table. Proposed: `model`/`sessionKey`/`projectKey` = synced (daemon needs them); `budgetUsd`/`paused`/`pausedReason`/`modelSource`/`templateVersion` = local (docket-only policy/state) — but document them as local so no one expects sync. Revisit if the daemon ever reads a budget/pause. |
 | D-10 | `--json` envelope: adopt the spec's `{data,…}` wrapper (A) or delete it and document actual shapes (B)? | CDD-4 | **B (delete + document reality)** — no command emits the wrapper today and external scripts already parse the bare shapes; retrofitting a wrapper is a breaking change for zero benefit. Pin the real shapes in `specs/data/` instead. |
+| D-11 | `docket team` (legacy manager queue): retire into pods, or give it real dispatch? | CH-4 | **Retire** — it is a second, manual task queue (`workspaces/manager/TASK_LIST.json`) with **no dispatcher**; pods own delegation (`docket pod <p> delegate/queue/dispatch`, real execution via `core/dispatch.py`) and the opt-in Portfolio Manager owns the cross-pod view. Replace with a removed-command notice mapping each subcommand to its pod equivalent. |
+| D-12 | Docket-owned JSON writes: single `store.py` chokepoint, or per-module writers? | CH-1 | **Single chokepoint** — every docket-owned JSON write goes through `edges/store.py` (append-only JSONL logs in `trace.py`/`audit.py` are the one documented exemption, named in the store.py docstring). Removes 8+ hand-rolled atomic-write copies with inconsistent locking. |
 
 ---
 
@@ -1060,7 +1062,7 @@ address exactly those.
 
 ---
 
-### PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(🟡 active — work top to bottom)*
+### PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(☑ COMPLETE 2026-06-25)*
 
 > Source of record: `internal-docs/competitive-analysis.md` (deep-research pass + a
 > GitHub-verified competitor sweep, 2026-06-25). Read it before claiming a CD-task — it has the
@@ -1118,6 +1120,66 @@ consume (CD-6/CD-8); public docs lead with the verified differentiators and make
 claims (CD-9). Out of scope (→ §7 Backlog): a full web UI of our own, microVM/gVisor isolation,
 multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
 
+> **☑ Phase 11 shipped 2026-06-25 — all cards CD-0…CD-9 DONE, full suite green (693 passed).**
+> Every exit criterion above was met: disjoint per-pod runtime resources with reclaim (CD-1),
+> git-worktree Implementer isolation with documented fallback (CD-5), the `verifyCmd` mechanical
+> gate blocking task-done on failure (CD-2), always-approve high-risk policy classes (CD-3), the
+> headless `serve` approval channel unblocking gates-default-on (CD-4), scheduled + webhook
+> dispatch (CD-6), Lobster `validate`/`plan` without execution overclaim (CD-7), the versioned
+> read API pinned by `specs/data/serve-read-api.spec.md` (CD-8), and the positioning truth pass
+> (CD-9). The TODO board was cleared per convention; this note is the durable record.
+
+---
+
+### PHASE 12 — Consolidation & hardening  *(🟠 active — audit-driven; work the board in TODO.md)*
+
+> **Source of record:** `internal-docs/architecture-audit.md` (2026-07-02 full-repo audit — four
+> parallel passes over architecture invariants, docs↔code sync, feature value, and dead
+> code/hardcoded data; every finding carries file:line evidence). Read it before claiming a
+> CH-card. Executable board: [TODO.md](TODO.md).
+
+**Why this phase.** Eleven phases of feature work landed with the architecture *mostly* honest:
+the audit confirmed the cli→core→edges direction holds (nothing in core/edges imports cli) and
+the ACL really is the only OpenClaw-format parser. But it also found (a) **invariant breaches** —
+`.docket-meta.json`/registry writes bypassing `store.py` with the atomic-write dance hand-copied
+8+ times, raw `openclaw` shell-outs outside the ACL, `core/provider.py` printing Rich UI from the
+domain layer; (b) **a 4,194-line `cli/__init__.py`** (32% of the codebase); (c) **carried features
+that no longer earn their keep** — `core/drift.py` (one caller, feeds an unimplemented
+notification), the legacy `team` manual queue (no dispatcher; pods own delegation), hand-written
+completions already drifted, overdue tier/`profiles:` deprecation shims, three dead template
+files; (d) **docs/specs drifted from the CLI** — 8 commands missing from the command reference,
+wrong extensions/exit codes/state names in specs, contradictory test counts, a changelog missing
+Phases 10–11; and (e) **broken Bash-era scripts still wired into CI** (`spec-coverage.sh`,
+`metrics.sh` count the deleted `lib/` tree — which is why the README drift-guard went blind).
+
+**The bet (one line):** before any new capability, make the codebase *match its own documentation
+and principles* — one JSON chokepoint, one OpenClaw boundary, one delegation system, specs that
+are current-state contracts rather than historical patches, and a re-armed drift guard so it
+stays that way.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):** CH-0 quick truth/dead-file sweep · CH-1
+store.py single-writer rule (D-12) · CH-2 `openclaw` shell-outs behind the ACL · CH-3 core/edges
+UI-printing violations · CH-4 retire `team` (D-11) · CH-5 delete `core/drift.py` · CH-6 remove
+tier/`profiles:` shims (D-2 exit) · CH-7 split `cli/__init__.py` · CH-8 drift-proof completions ·
+CH-9 fix/retire Bash-era scripts + re-arm the CI drift guard · CH-10 spec (SDD) truth pass ·
+CH-11 docs completeness pass · CH-12 changelog backfill + 0.2.0 prep · CH-13 local test-harness
+hygiene.
+
+**Explicit keeps (audited, do NOT cut):** the ACL + `store.py` + dual-source `sync.py` (documented
+architecture); the audit log, approval store, and opt-in gates (substrate of CD-3/CD-4); the
+`serve` read API incl. `/metrics` and scheduled/webhook dispatch (CD-6/CD-8 differentiators,
+spec-pinned); Lobster `validate`/`plan` (CD-7); `resources.py` (small, CD-1 substrate); the
+`policy.py`/`models_policy.py`/`provider.py` trio (distinct concerns — naming, not duplication).
+
+**Phase 12 exit criteria:** zero docket-owned JSON writes outside `store.py` (except the named
+JSONL exemption, D-12); zero `openclaw` shell-outs outside the ACL; zero `ui` imports in
+`core/`/`edges/`; no module over ~1,500 lines in `cli/`; `team`, `drift.py`, tier/`profiles:`
+shims and the three dead templates gone (with removed-command notices where user-facing);
+`docs/commands.md` covers every live command and flag; every spec's Status line and contract
+matches code (extension, exit codes, state strings); CHANGELOG documents Phases 10–11 and cuts
+0.2.0; the README-numbers drift guard runs green in CI against the Python tree; full suite +
+goldens green throughout.
+
 ---
 
 ## 7. Backlog (deferred indefinitely)
@@ -1139,30 +1201,48 @@ multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
 
 ---
 
-## 8. How to start (current — Phase 11)
+## 8. How to start (current — Phase 12)
 
-Phases 0–10 are complete (§5 + the Phase 10 record). The active work is **Phase 11 — Competitive
-differentiation**; read `internal-docs/competitive-analysis.md` first, then claim tasks from
-[TODO.md](TODO.md).
+Phases 0–11 are complete (§5 + the Phase 10/11 records). The active work is **Phase 12 —
+Consolidation & hardening**; read `internal-docs/architecture-audit.md` first (the audit every
+CH-card traces back to), then claim tasks from [TODO.md](TODO.md).
 
 ```bash
-git checkout -b pc/cd-0-agent-json-schema    # one branch per CD-task
-# CD-0 first — it confirms the openclaw agent --json cost schema CD-1/CD-2 rely on.
+git checkout -b pc/ch-0-truth-sweep          # one branch per CH-task
+# CH-0 first — cheap, zero-risk truth fixes; independent of everything else.
 uv run pytest                                # baseline green before you start
 # ...do the task, add tests, then:
 uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
 bash tests/golden/run.sh verify-all          # byte-parity net
-git commit -m "Feat: CD-0 — confirm openclaw agent --json schema; tighten agent_run"
+git commit -m "Fix: CH-0 — truth sweep (stale claims, dead templates, dangling pointers)"
 ```
 
-Work CD-tasks **in dependency order** (CD-0 schema → CD-1 resource isolation → CD-2 verify gate →
-CD-3/CD-4 governance → CD-5/6/7 orchestration → CD-8 read API → CD-9 docs). Tick boxes in the task
-board as you go. When a decision blocks you, record it (§6 pattern) and apply the documented default.
+Work CH-tasks **in dependency order** (the map is at the top of TODO.md): the independent cards
+(CH-0, CH-5, CH-9, CH-13) any time; the invariant repairs (CH-1/CH-2/CH-3) in parallel; the
+surface changes (CH-4 team, CH-6 shims) **before** the module split (CH-7) and before the
+completions/spec/docs cards (CH-8/CH-10/CH-11); CH-12 (changelog + 0.2.0) last. When a decision
+blocks you, record it (§6 pattern) and apply the documented default.
 
 ---
 
 ### Changelog
 
+- **2026-07-02** — **Marked PHASE 11 complete** (CD-0…CD-9 all DONE 2026-06-25, suite green at 693;
+  durable record added to the Phase 11 section, TODO board cleared per convention) and **added
+  PHASE 12 — Consolidation & hardening** (CH-0…CH-13), driven by `internal-docs/architecture-audit.md`
+  (2026-07-02: four parallel audit passes — architecture invariants, docs↔code sync, feature value,
+  dead code/hardcoded data). Verified findings baked into the plan: store.py bypassed by
+  `.docket-meta.json`/registry writes (atomic-write logic hand-copied 8+×), raw `openclaw` shell-outs
+  outside the ACL, `core/provider.py` printing UI from the domain layer, `cli/__init__.py` at 4,194
+  lines, `core/drift.py` with one caller feeding an unimplemented notification, the legacy `team`
+  queue duplicating pod dispatch with no dispatcher, drifted hand-written completions, overdue D-2
+  deprecation shims, 3 dead templates, 8 commands missing from docs/commands.md, spec/code mismatches
+  (workflow extension + exit codes, team done-state), contradictory test counts (416/694 vs actual
+  688), and the Bash-era `scripts/spec-coverage.sh`/`metrics.sh` still in CI while counting the
+  deleted `lib/` tree. Decisions D-11 (retire `team` → pods) and D-12 (store.py single-writer rule,
+  JSONL logs exempt) added. Explicit keeps recorded so the phase doesn't over-cut: the CD-6/7/8
+  differentiators, ACL/store/sync, audit+approval, `resources.py`, and the policy/models_policy/
+  provider trio (naming collision, not duplication).
 - **2026-06-25** — **Added PHASE 11 — Competitive differentiation**, and marked Phase 10 complete in
   the status header. Driven by `internal-docs/competitive-analysis.md`: a deep-research pass (12
   sources, load-bearing claims re-fetched and confirmed verbatim) + a **GitHub-verified** sweep of the
