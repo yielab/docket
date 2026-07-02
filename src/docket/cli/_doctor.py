@@ -306,7 +306,9 @@ def _check_drift(ids: list[str], do_fix: bool) -> int:
                         _oc.set_agent_session_key(aid, fix_sk)
                 ui.success(f"  {aid}: re-synced")
             with contextlib.suppress(Exception):
-                restart_gateway()
+                from docket.cli import _render_restart_result
+
+                _render_restart_result(restart_gateway())
             issues -= len(drift_agents)
         else:
             ui.console.print("  Fix with: docket doctor --fix")

@@ -8,15 +8,17 @@ Run once, after the local inference server is up and answering on its /v1
 endpoint. Idempotent — safe to re-run to update the model / context.
 
 All openclaw.json knowledge lives in the ACL (edges/adapters/openclaw.py); this
-module only orchestrates the ping → register → print-next-steps flow.
+module only orchestrates the ping → register step. It has no knowledge of
+terminals (ROADMAP §2) — it returns a typed result; `cli/_provider.py` renders
+it and prints the next-steps guidance.
 """
 
 from __future__ import annotations
 
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
-from docket import ui
 from docket.edges.adapters import openclaw as _oc
 
 # Defaults match the Qwen3-30B-A3B llama.cpp setup (server on :8080, -c 16384).
@@ -41,6 +43,20 @@ def ping_endpoint(base_url: str, timeout: float = 5.0) -> bool:
         return False
 
 
+@dataclass(frozen=True)
+class ProviderRegistration:
+    """Outcome of register_local_provider(). Rendered by cli/_provider.py."""
+
+    name: str
+    base_url: str
+    model_id: str
+    model_name: str
+    ctx: int
+    max_tokens: int
+    reachable: bool
+    changed: bool
+
+
 def register_local_provider(
     name: str = DEFAULT_PROVIDER,
     base_url: str = DEFAULT_BASE_URL,
@@ -48,68 +64,21 @@ def register_local_provider(
     model_name: str = DEFAULT_MODEL_NAME,
     ctx: int = DEFAULT_CTX,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-) -> int:
-    """Ping the endpoint, register the provider in openclaw.json, print next steps.
+) -> ProviderRegistration:
+    """Ping the endpoint and register the provider in openclaw.json.
 
-    Idempotent: re-running with the same arguments writes nothing. Returns a
-    process exit code (0 on success).
+    Pure orchestration — no output. Idempotent: re-running with the same
+    arguments writes nothing (``changed`` comes back False).
     """
-    ui.info(f"Checking the endpoint is alive: {base_url}/models")
-    if not ping_endpoint(base_url):
-        ui.warn(
-            f"Could not reach {base_url}/models — make sure your llama.cpp/LM Studio "
-            "server is running first. Continuing to write config anyway."
-        )
-
-    ui.info(f"Registering provider '{name}' with OpenClaw")
+    reachable = ping_endpoint(base_url)
     changed = _oc.add_local_provider(name, base_url, model_id, model_name, ctx, max_tokens)
-    if changed:
-        ui.success(f"Local provider wired: {name}/{model_id}  →  {base_url}")
-    else:
-        ui.success(f"Local provider already wired: {name}/{model_id}  →  {base_url} (no change)")
-
-    _print_role_split(name, model_id)
-    return 0
-
-
-def _print_role_split(name: str, model_id: str) -> None:
-    """Print the role-split + smoke-test guidance."""
-    ui.console.print()
-    ui.console.print("Next — apply the smart-planner / local-executor role split:")
-    ui.console.print()
-    ui.console.print(
-        "  docket models set manager    anthropic/claude-sonnet-4-6"
-        "   # architecture & delegation (smart)"
-    )
-    ui.console.print(
-        "  docket models set reviewer   anthropic/claude-sonnet-4-6"
-        "   # catches local mistakes (recommended)"
-    )
-    ui.console.print(
-        f"  docket models set programmer {name}/{model_id}"
-        "            # implementation (local, free)"
-    )
-    ui.console.print(f"  docket models set tester     {name}/{model_id}")
-    ui.console.print(f"  docket models set knowledge  {name}/{model_id}")
-    ui.console.print(
-        f"  docket models set repo       {name}/{model_id}"
-        "            # project agents execute locally"
-    )
-    ui.console.print(f"  docket models set task       {name}/{model_id}")
-    ui.console.print(
-        "  docket models                                               "
-        "# confirm the role→model table"
-    )
-    ui.console.print()
-    ui.console.print("Then smoke-test the split:")
-    ui.console.print()
-    ui.console.print("  docket team status")
-    ui.console.print('  docket team delegate "Write hello.py with a pytest test, then run it"')
-    ui.console.print(
-        "  docket team queue                                           "
-        "# manager(Claude) plan → programmer(local)"
-    )
-    ui.console.print(
-        f"  openclaw models status --agent programmer                  "
-        f"# confirm it resolves to {name}/{model_id}"
+    return ProviderRegistration(
+        name=name,
+        base_url=base_url,
+        model_id=model_id,
+        model_name=model_name,
+        ctx=ctx,
+        max_tokens=max_tokens,
+        reachable=reachable,
+        changed=changed,
     )

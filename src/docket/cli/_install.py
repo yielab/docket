@@ -158,7 +158,9 @@ def _auth_setup_interactive() -> bool:
         ui.dim("  Skipped — configure later with: docket auth (or openclaw models auth).")
         return False
 
-    _sys.restart_gateway()
+    from docket.cli import _render_restart_result
+
+    _render_restart_result(_sys.restart_gateway())
     return True
 
 

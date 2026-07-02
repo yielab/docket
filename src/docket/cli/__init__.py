@@ -37,6 +37,7 @@ from docket.core.utils import (
 )
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
+from docket.edges.adapters import system as _sys
 
 app = typer.Typer(
     name="docket",
@@ -47,8 +48,31 @@ app = typer.Typer(
 )
 
 
+def _render_restart_result(result: _sys.RestartResult) -> None:
+    """Render a RestartResult exactly as system.restart_gateway() used to print it.
+
+    edges/ no longer prints (it has no knowledge of terminals); this is the
+    single place that reproduces the old wording so every call site stays
+    byte-identical. Shared by the other cli/ modules that trigger a restart.
+    """
+    if result.status == "dry_run":
+        print("[dry-run] restart_gateway called")
+    elif result.status == "not_running":
+        ui.warn("Gateway not running. Start it with:")
+        print(f"  {result.hint}")
+    elif result.status == "restarted":
+        ui.info("Restarting gateway...")
+        ui.success("Gateway restarted")
+    elif result.status == "failed":
+        ui.info("Restarting gateway...")
+        ui.warn("Gateway restart failed.")
+        print(f"  Check: {result.hint}")
+
+
 def _do_restart_gateway() -> None:
-    if not restart_gateway():
+    result = restart_gateway()
+    _render_restart_result(result)
+    if not result.ok:
         ui.warn("Gateway restart failed or gateway not running.")
 
 
@@ -2657,6 +2681,7 @@ def cmd_models(ctx: typer.Context) -> None:
 
 def _cmd_models_provider(rest: list[str]) -> None:
     """Wire `docket models provider add <name> <base-url> [--opts]` (T5.6)."""
+    from docket.cli import _provider
     from docket.core import provider as _prov
 
     if len(rest) < 1 or rest[0] != "add":
@@ -2686,7 +2711,7 @@ def _cmd_models_provider(rest: list[str]) -> None:
     name = pos[0] if len(pos) > 0 else _prov.DEFAULT_PROVIDER
     base_url = pos[1] if len(pos) > 1 else _prov.DEFAULT_BASE_URL
     raise typer.Exit(
-        _prov.register_local_provider(
+        _provider.run_provider_add(
             name=name,
             base_url=base_url,
             model_id=opts.get("model", _prov.DEFAULT_MODEL_ID),

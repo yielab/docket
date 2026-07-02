@@ -20,7 +20,9 @@ from docket.edges.adapters import openclaw as _oc
 
 
 def _restart() -> None:
-    restart_gateway()
+    from docket.cli import _render_restart_result
+
+    _render_restart_result(restart_gateway())
 
 
 def _usage() -> None:
