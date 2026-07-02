@@ -5,35 +5,36 @@ _docket() {
   local -a commands
   commands=(
     'install:Bootstrap OpenClaw + specialist agents'
-    'list:List project agents'
-    'add:Add a new project agent'
-    'info:Detailed status of one project'
-    'delete:Remove an agent (and optionally its workspace)'
-    'maintain:Health/clean/reset/rebuild/sessions'
-    'context:Show/search/snapshot/index/compress memory'
-    'wire:Wire a Telegram group binding'
-    'unwire:Remove a Telegram binding'
-    'scope:Manage session scope keys'
-    'profile:Pin/unpin an agent model'
-    'keys:Manage API keys'
-    'pod:Inspect/manage a project pod'
-    'workflow:Lobster pipelines'
-    'logs:View memory + gateway logs'
+    'list:List all project agents'
+    'add:Add a new project agent (interactive or --from <spec-file>)'
+    'info:Detailed status of one agent'
+    'delete:Remove a project agent or a whole pod, and optionally its workspace'
+    'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions)'
+    'context:Agent context and memory management (show/search/index/snapshot/compress/project)'
+    'wire:Wire or update a channel group binding'
+    'unwire:Remove a channel binding'
+    'scope:Manage session scope / project isolation key'
+    'profile:Pin or unpin an agent'\''s model; set a budget cap'
+    'keys:API key management (add/list/remove/rotate/validate/export/setup)'
+    'auth:Claude model authentication (status/login/key/setup)'
+    'models:View and edit the role→model policy'
+    'pod:Manage a project'\''s pod: list members, add a role (implementer/reviewer/tester), or remove one'
+    'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'
+    'logs:View memory logs and gateway entries'
     'edit:Open workspace files in $EDITOR'
-    'cost:Token usage and cost'
-    'doctor:System health check'
-    'gates:Security exec-approval gates'
-    'audit:Audit log'
-    'eval:Specialist-role evals'
-    'snapshot:Export a workspace snapshot'
-    'serve:Local HTTP view'
-    'models:Role→model policy'
-    'trace:View/tail/export agent-action traces'
-    'metrics:Success rate, latency, cost, guardrail stats'
-    'policies:Manage guardrail policies'
-    'approve:Grant a pending HITL approval'
-    'deny:Deny a pending HITL approval'
-    'completions:Emit a shell completion script'
+    'cost:Token usage and cost breakdown'
+    'doctor:System-wide health check with auto-fix'
+    'gates:Manage tool-approval security gates'
+    'audit:Show audit log'
+    'eval:Run non-blocking specialist-role evals'
+    'snapshot:Export system state snapshot as JSON'
+    'serve:Local HTTP endpoints: /status.json /metrics /health'
+    'completions:Shell completion helpers'
+    'trace:View agent execution traces'
+    'metrics:Show session success-rate and drift metrics'
+    'policies:Manage tool-approval policies'
+    'approve:Approve a pending tool-action'
+    'deny:Deny a pending tool-action'
     'help:Show help'
   )
 
@@ -53,17 +54,18 @@ _docket() {
   case "${words[2]}" in
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
-    context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress ;;
-    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show delete ;;
-    pod)             (( CURRENT == 3 )) && _docket_ids || compadd add remove delegate queue dispatch ;;
+    context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress project ;;
+    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
+    pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
     gates|security)  compadd status enable disable isolate ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
-    models)          compadd set preset reset ;;
+    models)          compadd list set preset reset provider ;;
+    auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest ;;
     policies|policy) compadd list show init test ;;
-    completions)     compadd bash zsh ;;
+    completions|completion) compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
-    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
+    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
                      (( CURRENT == 3 )) && _docket_ids ;;
   esac
 }
