@@ -5,7 +5,7 @@ This is the reproducible source for the hero GIF. It needs no live OpenClaw
 install: the terminal output is canned demo data using anonymized agent names
 (webapp / api / blog — never real client names).
 
-Positioning rule (see internal-docs/COST-FEATURE-AUDIT.md): the GIF MUST lead
+Positioning rule (see internal-docs/competitive-analysis.md): the GIF MUST lead
 with provisioning + isolation and treat the budget as a guardrail tail. The
 centerpiece screen is `docket info` (session-key isolation), NOT a cost table.
 
