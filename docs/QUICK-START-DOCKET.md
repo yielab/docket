@@ -162,7 +162,7 @@ context (and token count) scoped to a single project.
 docket list               # Org specialists + pods (with scope)
 docket doctor             # Health check + auto-fix
 docket pod <project>      # Inspect a project's pod and its roles
-docket team queue         # The org manager's pending task queue
+docket pod <project> queue # That pod's pending task queue
 ```
 
 ### Run a Pod's Work
@@ -175,10 +175,10 @@ docket serve --dispatch                  # Background: drive every pod's queue
 
 ### Memory Management
 ```bash
-docket context snapshot <project-id>   # Create fast-access context
-docket context index <project-id>      # Index memory for search
-docket context search <project-id> <q> # Search indexed memory
-docket context compress <project-id>   # Archive old logs (>30 days)
+docket context <project-id> snapshot   # Create fast-access context
+docket context <project-id> index      # Index memory for search
+docket context <project-id> search <q> # Search indexed memory
+docket context <project-id> compress   # Archive old logs (>30 days)
 ```
 
 ---
@@ -188,7 +188,7 @@ docket context compress <project-id>   # Archive old logs (>30 days)
 ### Test 1: Memory Snapshot
 ```bash
 # Create snapshot for a project
-docket context snapshot <project-name>
+docket context <project-name> snapshot
 
 # Verify it exists
 cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
@@ -386,7 +386,7 @@ systemctl --user restart openclaw-gateway.service
 
 3. **Create snapshot if missing:**
    ```bash
-   docket context snapshot <project-id>
+   docket context <project-id> snapshot
    ```
 
 4. **Restart gateway:**
@@ -408,7 +408,7 @@ systemctl --user restart openclaw-gateway.service
 ### Memory Index Not Working?
 1. Create index first:
    ```bash
-   docket context index <project-id>
+   docket context <project-id> index
    ```
 
 2. Verify index file:
@@ -423,7 +423,7 @@ systemctl --user restart openclaw-gateway.service
 1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
 2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
 3. **Monitor cost:** Check recorded spend with `docket cost`
-4. **Create snapshots & index memory:** `docket context snapshot <project>` / `docket context index <project>` per project
+4. **Create snapshots & index memory:** `docket context <project> snapshot` / `docket context <project> index` per project
 5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 
 ---

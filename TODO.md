@@ -59,11 +59,12 @@ DONE 2026-07-02 (merged into develop): CH-0, CH-1, CH-2, CH-3, CH-4, CH-5, CH-6,
 CH-9, CH-10, CH-13.
 
 Remaining:
-  CH-11 (docs completeness pass)             ← unblocked (needed CH-4, CH-6, CH-8 — all merged)
-  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, do last (wants CH-11 landed too)
+  CH-11 (docs completeness pass)             ← DONE on branch `pc/ch-11-docs-completeness`,
+                                                2026-07-02; not yet merged into develop
+  CH-12 (changelog verify + cut 0.2.0)       ← unblocked, do last (wants CH-11 merged first)
 ```
 
-Suggested remaining order: **CH-11 → CH-12 (last — 12 of 14 cards are done; these two close the phase).**
+Suggested remaining order: **merge CH-11 → CH-12 (last — 13 of 14 cards done; CH-12 closes the phase).**
 
 ---
 
@@ -366,7 +367,21 @@ Suggested remaining order: **CH-11 → CH-12 (last — 12 of 14 cards are done; 
 - **Out of scope:** README positioning (done in CD-9; don't churn it); specs (CH-10); new tutorials.
 - **Deliverables:** complete commands.md; swept docs/; optionally a coverage guard (see item 4).
 - **Acceptance gate:** [ ] every live top-level command has a commands.md section; [ ] every alias in `__main__.py` is in the table and nothing else is; [ ] zero `docket team`/tier references outside historical ROADMAP/CHANGELOG sections; [ ] doctor no longer described as read-only; [ ] suite green.
-- **Size:** L *(mostly writing; split by file if two agents want it)* · **Status:** BLOCKED (needs CH-8)
+- **Size:** L *(mostly writing; split by file if two agents want it)* · **Status:** DONE — 2026-07-02
+  (branch `pc/ch-11-docs-completeness`). `docs/commands.md` gained full sections for `keys`,
+  `auth`, `gates`, `audit`, `eval`, `snapshot`, `completions`, `context`, plus `workflow
+  validate`/`plan` and the missing flags (`cost --json/--history/--days`, `doctor --json/--fix`,
+  `install --yes`, `wire --channel`, `snapshot -o`); doctor's "non-destructive (read-only)" claim
+  fixed to call out `--fix` mutating state; alias table rebuilt from `__main__.py`'s `_ALIASES`
+  (18 real aliases, nothing stale) with a new Removed Commands table from `_REMOVED` (`memory`
+  moved there, no longer a fake `context` alias). Cross-file sweep found and fixed real drift the
+  audit's "broadly consistent" call missed: `docket team` was still documented as live in
+  AGENT-TEAMS.md, WORKFLOW-GUIDE.md (a whole "org queue vs. per-pod dispatch" section), DOCKET.md,
+  and README.md (team retired in CH-4); QUICK-START-DOCKET.md and DOCKET.md had `docket context
+  <sub> <id>` backwards everywhere (real syntax: `docket context <id> <sub>`). CLAUDE.md
+  untouched per the note above. Item 4's coverage-guard script not authored (left for a future
+  card — not part of this card's acceptance gate). `ruff`/`mypy`/`pytest`/goldens/
+  `validate-specs.sh` all green, no-op as expected for a docs-only change.
 
 ---
 
@@ -422,8 +437,8 @@ Suggested remaining order: **CH-11 → CH-12 (last — 12 of 14 cards are done; 
 - [x] CH-8 — completions generated from (or test-locked to) the Typer registry. *(DONE 2026-07-02 — found and fixed real drift beyond the card's scope: a missing `auth` subcommand table and a wrong agent-id completion offered for `snapshot`/`audit`)*
 - [x] CH-9 — metrics/spec-coverage scripts fixed or retired; CI drift guard fails on real drift (no `|| true`). *(DONE 2026-07-02 — `spec-coverage.sh` deleted, not rewritten; see CH-11 follow-up)*
 - [x] CH-10 — every spec is a current-state contract (paths, exit codes, states, Status lines all code-true). *(DONE 2026-07-02)*
-- [ ] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md gaps still open — UNBLOCKED 2026-07-02, CH-8 merged)*
-- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started; wants CH-11 landed too)*
+- [x] CH-11 — docs/commands.md covers every live command, flag, and alias; CLAUDE.md matches the tree. *(CLAUDE.md portion DONE 2026-07-02 directly, gitignored so no CH-branch could carry it; docs/commands.md portion DONE 2026-07-02 on branch `pc/ch-11-docs-completeness`, not yet merged)*
+- [ ] CH-12 — changelog verified through Phases 10–12; **0.2.0 cut** and version bumped. *(unblocked, not started; wants CH-11 merged first)*
 - [x] CH-13 — local harness portable; no real values on disk inside the repo dir. *(DONE 2026-07-02)*
 - [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. the re-armed `scripts/metrics.py --check` drift guard)*
 
