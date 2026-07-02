@@ -7,10 +7,13 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import docket.config as cfg
 from docket.edges import store
+
+if TYPE_CHECKING:
+    from docket.edges.adapters.system import RestartResult
 
 
 def project_ids() -> list[str]:
@@ -56,11 +59,12 @@ def openclaw_version() -> str:
         return "?"
 
 
-def restart_gateway() -> bool:
+def restart_gateway() -> RestartResult:
     """Restart openclaw-gateway.service if it is running.
 
-    Honors DOCKET_NO_RESTART=1 for test hermeticity (prints a dry-run notice).
-    Returns True on success or when the service is already down.
+    Honors DOCKET_NO_RESTART=1 for test hermeticity. Thin pass-through to the
+    edges adapter; returns a typed result (never prints — cli/ renders it via
+    ui.*, since core has no knowledge of terminals).
     """
     from docket.edges.adapters import system as _system
 

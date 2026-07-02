@@ -17,6 +17,7 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _doctor
 from docket.edges.adapters import openclaw as _oc
+from docket.edges.adapters import system as _sys
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -287,7 +288,9 @@ class TestChecks:
             meta_model="anthropic/claude-sonnet-4-6",
             oc_model="anthropic/claude-haiku-4-5",
         )
-        monkeypatch.setattr(_doctor, "restart_gateway", lambda: True)
+        monkeypatch.setattr(
+            _doctor, "restart_gateway", lambda: _sys.RestartResult(status="restarted", ok=True)
+        )
         issues = _doctor._check_drift(["myshop"], do_fix=True)
         assert issues == 0
         # openclaw.json model now matches meta.

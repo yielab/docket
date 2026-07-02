@@ -94,7 +94,9 @@ def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects)
     monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
-    monkeypatch.setattr(_sys, "restart_gateway", lambda: None)
+    monkeypatch.setattr(
+        _sys, "restart_gateway", lambda: _sys.RestartResult(status="dry_run", ok=True)
+    )
     return oc_dir
 
 
