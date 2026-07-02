@@ -1140,9 +1140,12 @@ def _cmd_models_reset() -> None:
 def cmd_pod(
     ctx: typer.Context,
     project: str = typer.Argument(..., help="Project (pod) id"),
-    sub: str | None = typer.Argument(None, help="list | add <role> | remove <member-id>"),
+    sub: str | None = typer.Argument(
+        None,
+        help="list | add <role> [--verify CMD] | remove <member-id> | set-verify <member-id> CMD",
+    ),
 ) -> None:
-    """Manage a project's pod: list members, add a role (implementer/reviewer/tester), or remove one."""
+    """Manage a project's pod: list members, add/remove a role, or set an implementer's verify command."""
     from docket.cli import _pod
 
     _pod.dispatch(project, sub, list(ctx.args))
