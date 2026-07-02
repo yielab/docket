@@ -941,14 +941,21 @@ def agent_run(
     session_key: str,
     message: str,
     timeout: int = 300,
+    env: dict[str, str] | None = None,
 ) -> AgentRunResult:
     """Run one real agent turn via the openclaw CLI (the ONLY place docket does this).
 
     Each call is a real, costed LLM turn; the caller is responsible for budget gating.
     Returns AgentRunResult(ok=False, ...) on CLI missing, timeout, non-zero exit, or
     unparseable output — never raises for ordinary failure modes.
+
+    ``env``, when given, is layered on top of the current process environment for
+    this subprocess only (e.g. a pod's allocated port range / scratch dir) — the
+    parent docket process's own environment is never mutated. ``None``/empty
+    preserves today's behaviour of inheriting the parent env unchanged.
     """
     import json as _json
+    import os as _os
     import shutil as _shutil
     import subprocess as _sp
 
@@ -967,12 +974,14 @@ def agent_run(
         "--timeout",
         str(int(timeout)),
     ]
+    run_env = {**_os.environ, **env} if env else None
     try:
         res = _sp.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout + 15,
+            env=run_env,
         )
     except _sp.TimeoutExpired:
         return AgentRunResult(False, "", 0.0, {}, f"timed out after {timeout}s")
