@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,18 +41,15 @@ def gateway_active() -> bool:
 
 
 def openclaw_version() -> str:
-    """Return `openclaw --version` output, or '?' if unavailable."""
-    try:
-        result = subprocess.run(
-            ["openclaw", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        out = result.stdout.strip()
-        return out if (result.returncode == 0 and out) else "?"
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return "?"
+    """Return `openclaw --version` output, or '?' if unavailable.
+
+    The subprocess call lives behind the ACL (core has no subprocess of its
+    own — ROADMAP §3); this just applies the display fallback.
+    """
+    from docket.edges.adapters import openclaw as _oc
+
+    probe = _oc.openclaw_version()
+    return probe.output if (probe.available and probe.returncode == 0 and probe.output) else "?"
 
 
 def restart_gateway() -> bool:

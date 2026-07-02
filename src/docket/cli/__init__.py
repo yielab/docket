@@ -683,8 +683,6 @@ def _provision_agent(
     source: str,
 ) -> None:
     """Create workspace, write metadata, register with openclaw."""
-    import subprocess as _sub
-
     role = "repo" if agent_type == "repo" else "task"
     if not model:
         model = _mp.resolve_role_model(role)
@@ -723,32 +721,17 @@ def _provision_agent(
     sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
-    if shutil.which("openclaw"):
-        ws_path = str(_cfg.PROJECTS_DIR / agent_id)
-        try:
-            result = _sub.run(
-                [
-                    "openclaw",
-                    "agents",
-                    "add",
-                    agent_id,
-                    "--workspace",
-                    ws_path,
-                    "--model",
-                    model,
-                    "--non-interactive",
-                ],
-                capture_output=True,
-                timeout=15,
-            )
-            if result.returncode == 0:
-                ui.success(f"Registered '{agent_id}' with openclaw")
-            else:
-                ui.warn(
-                    f"openclaw agent add exited {result.returncode} — register manually if needed"
-                )
-        except (OSError, _sub.TimeoutExpired):
+    ws_path = str(_cfg.PROJECTS_DIR / agent_id)
+    add_result = _oc.agents_add(agent_id, ws_path, model)
+    if add_result.found:
+        if add_result.ok:
+            ui.success(f"Registered '{agent_id}' with openclaw")
+        elif add_result.timed_out:
             ui.warn("openclaw agent add timed out — register manually if needed")
+        else:
+            ui.warn(
+                f"openclaw agent add exited {add_result.returncode} — register manually if needed"
+            )
     else:
         with contextlib.suppress(Exception):
             _oc.add_agent(agent_id, model, session_key, project_key)
@@ -2544,8 +2527,6 @@ def cmd_auth(
     sub: str | None = typer.Argument(None),
 ) -> None:
     """Claude model authentication (status/login/key/setup)."""
-    import subprocess as _sub
-
     extra: list[str] = list(ctx.args)
     action = sub or "status"
 
@@ -2579,9 +2560,7 @@ def cmd_auth(
             ui.error("'openclaw' not found in PATH. Is it installed?")
             raise typer.Exit(1)
         ui.info("Authenticating with Anthropic (setup-token)...")
-        result = _sub.run(
-            ["openclaw", "models", "auth", "setup-token", "--provider", "anthropic", *extra]
-        )
+        result = _oc.auth_setup_token(extra)
         if result.returncode == 0:
             ui.success("Authentication successful.")
             _do_restart_gateway()
@@ -2594,9 +2573,7 @@ def cmd_auth(
             ui.error("'openclaw' not found in PATH. Is it installed?")
             raise typer.Exit(1)
         ui.info("Authenticating with Anthropic (paste-token)...")
-        result = _sub.run(
-            ["openclaw", "models", "auth", "paste-token", "--provider", "anthropic", *extra]
-        )
+        result = _oc.auth_paste_token(extra)
         if result.returncode == 0:
             ui.success("Key stored successfully.")
             _do_restart_gateway()
@@ -2622,7 +2599,7 @@ def cmd_auth(
             ui.warn("Cancelled.")
             return
         method = "paste-token" if choice == "2" else "setup-token"
-        result = _sub.run(["openclaw", "models", "auth", method, "--provider", "anthropic"])
+        result = _oc.auth_paste_token() if method == "paste-token" else _oc.auth_setup_token()
         if result.returncode == 0:
             ui.success("Authentication configured.")
             _do_restart_gateway()

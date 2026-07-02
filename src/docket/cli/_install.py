@@ -77,12 +77,8 @@ def _check_dependencies() -> list[str]:
 
 
 def _openclaw_version() -> str:
-    try:
-        res = subprocess.run(["openclaw", "--version"], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return "found"
-    out = (res.stdout or "").strip()
-    return out or "found"
+    probe = _oc.openclaw_version()
+    return probe.output or "found"
 
 
 def _run_onboard() -> None:
@@ -90,8 +86,7 @@ def _run_onboard() -> None:
 
     Live-daemon path; isolated so the orchestration around it stays testable.
     """
-    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-        subprocess.run(["openclaw", "onboard"], timeout=600)
+    _oc.onboard()
 
 
 def _auth_print_profiles() -> None:
@@ -169,8 +164,10 @@ def _auth_setup_interactive() -> bool:
 
 def _run_openclaw_auth(method: str) -> bool:
     try:
-        res = subprocess.run(
-            ["openclaw", "models", "auth", method, "--provider", "anthropic"], timeout=600
+        res = (
+            _oc.auth_paste_token(timeout=600)
+            if method == "paste-token"
+            else _oc.auth_setup_token(timeout=600)
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
