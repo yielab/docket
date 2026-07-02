@@ -1,8 +1,8 @@
 # Input Validation Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Complete
-**Last Updated**: 2026-06-24
+**Last Updated**: 2026-07-02
 
 ## Purpose
 
@@ -148,23 +148,27 @@ def validate_path(raw: str, *, must_exist: bool = True, kind: str = "dir") -> Pa
 
 **Rules**:
 - **MUST** be a well-formed provider/model id matching `^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$`
-  (e.g. `anthropic/claude-sonnet-4-6`), OR a known alias
+  (e.g. `anthropic/claude-sonnet-4-6`), OR a known model-id alias (e.g. `claude-sonnet-4` →
+  `claude-sonnet-4-6`)
 - An unknown-but-well-formed id is **accepted** with a warning that it is absent from
   docket's pricing table (cost will render as `n/a`)
-- A malformed id **MUST** be rejected with a hard error listing the current role policy
-- Tier names (economy/standard/premium) are **deprecated aliases**: accepted with a
-  deprecation warning that resolves them through internal rank anchors to a concrete
-  provider/model id — they are not the validation surface
+- A malformed id, or anything else that isn't a well-formed id or a known alias, **MUST** be
+  rejected with a hard error listing the current role policy
+- Tier names (`economy`/`standard`/`premium`) are **not accepted** anywhere a model is
+  expected (removed in 0.2.0, D-2 exit) — they fall into the hard-error case above, exactly
+  like any other malformed input. They are not resolved, warned about specially, or given
+  their own error message
 
 **Reference**: `validate_model()` in `src/docket/core/models_policy.py` returns
-`(canonical_model, warnings)` and raises `ValueError` on a malformed id (the `cli/` layer
-converts that into a `ui.error` + `typer.Exit`). The id grammar is the module-level
-`_MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")`. Resolution order is:
+`(canonical_model, warnings)` and raises `ValueError` on a malformed id or tier name (the
+`cli/` layer converts that into a `ui.error` + `typer.Exit`). The id grammar is the
+module-level `_MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")`. Resolution order
+is:
 
-1. deprecated tier name → its rank anchor (with a deprecation warning);
-2. known alias → its resolved id (warned);
-3. well-formed `provider/model` id → accepted (warned only if unpriced);
-4. otherwise → `ValueError` with the current role policy listing.
+1. known model-id alias → its resolved id (warned);
+2. well-formed `provider/model` id → accepted (warned only if unpriced);
+3. otherwise (malformed, including tier names) → `ValueError` with the current role policy
+   listing.
 
 ```python
 from docket.core.models_policy import validate_model
@@ -478,6 +482,13 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-02)
+- CH-10 spec truth pass: tier names (`economy`/`standard`/`premium`) were "deprecated
+  aliases" as of 0.1.x; 0.2.0 (CH-6, D-2 exit) removed them from the model-validation surface
+  entirely. Updated the model-id validation rules and `validate_model()` resolution order to
+  match — tier names now hard-error exactly like any other malformed input, with no special
+  resolution or warning path.
 
 ### Version 1.1.0 (2026-06-24)
 - Ported the spec from Bash to the Python reality after the Bash→Python (M6) cutover.

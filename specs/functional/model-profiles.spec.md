@@ -1,15 +1,16 @@
 # Model Policy Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Complete
-**Last Updated**: 2026-06-12
+**Last Updated**: 2026-07-02
 
 ## Purpose
 
 This specification defines the **role→model policy** that decides which model every kind of
 agent runs on, how agents record their model intent (follow the policy vs. an explicit pin),
 and how policy changes propagate to the fleet. It replaces the v1 tier system
-(economy/standard/premium), which survives only as deprecated aliases.
+(economy/standard/premium), which was removed entirely in 0.2.0 — the rank values survive only
+as a private internal seed table, never as accepted user input.
 
 ## Scope
 
@@ -20,7 +21,8 @@ This specification covers:
 - Model intent per agent (`modelSource: policy | pinned`) and migration inference
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
-- Deprecated tier aliases and the fallback rank anchors
+- Removed tier names and the private internal rank-anchor seed table; the one-shot legacy
+  `profiles:` registry migration
 - The pricing table used for cost estimation
 
 This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md).
@@ -86,16 +88,30 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
    source (policy/pinned), and budget.
 4. `docket profile` **MUST** work for specialists as well as project agents.
 
-### Deprecated tier aliases
+### Tier names (removed, 0.2.0)
 
-1. The tier names `economy`, `standard`, `premium` **MUST** remain accepted wherever a
-   model is accepted, resolving through the rank anchors, and **MUST** emit a deprecation
-   warning.
-2. `docket models set <tier> <model>` **MUST** warn, update the anchor, and map the change
-   onto the roles of that class (economy → cheap roles, standard → strong roles,
-   premium → anchor only).
-3. The fallback chain **MUST** walk the rank anchors: premium → standard → economy, with
-   economy as the floor for unknown models.
+1. The tier names `economy`, `standard`, `premium` **MUST NOT** be accepted anywhere a model
+   or role value is expected — `docket profile <id> premium` and `docket models set premium
+   <model>` both **MUST** fail with an error naming a full `provider/model` id, not resolve.
+   Removed in 0.2.0 per the D-2 deprecation-window exit; see ROADMAP.md D-2.
+2. The three rank values survive **only** as a private internal seed table
+   (`_RANK_ANCHORS` in `core/models_policy.py`) used to (a) pick each role's default model —
+   `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles — and
+   (b) reconstruct per-role overrides when migrating a legacy `profiles:` registry key (see
+   Legacy registry migration below). This table is **not** surfaced by any command and is not
+   a live runtime fallback chain.
+
+### Legacy registry migration
+
+1. On first load of a user's `~/.openclaw/docket-models.json`, if it has a `profiles:` key
+   but no `roles:` key, docket **MUST** derive equivalent per-role overrides from the
+   `profiles:` tier-anchor values (using the same cheap/strong-class mapping as the built-in
+   seed) and write them under `roles:`, then remove `profiles:`. This migration **MUST** run
+   at most once — a no-op on every subsequent load.
+2. If a registry already has both `profiles:` and `roles:`, the migration **MUST NOT** touch
+   `profiles:` (it is left as a residual key rather than silently discarded).
+3. `docket doctor` **SHOULD** flag a residual `profiles:` key found under the condition in
+   (2) as an advisory, non-blocking finding.
 
 ### Pricing
 
@@ -139,22 +155,32 @@ docket profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
 | standard | claude-sonnet-4-6 | 3.00 | 15.00 |
 | premium | claude-opus-4-6 | 15.00 | 75.00 |
 
-### Registry file shape
+### Registry file shape (current)
 
 ```json
 {
   "default": "anthropic/claude-sonnet-4-6",
   "roles":    { "programmer": "openai/gpt-4.1" },
-  "profiles": { "economy": "openai/gpt-4.1-nano" },
   "pricing":  { "openai/gpt-4.1": {"input": 2.00, "output": 8.00} }
 }
 ```
 
+### Registry file shape (legacy, pre-migration — auto-converted on load)
+
+```json
+{
+  "default": "anthropic/claude-sonnet-4-6",
+  "profiles": { "economy": "openai/gpt-4.1-nano" }
+}
+```
+
+Loading the file above migrates it once to `{"default": "...", "roles": {"knowledge": "openai/gpt-4.1-nano", "task": "openai/gpt-4.1-nano", ...}}` (the `economy` value fanned out to the cheap-class roles) and drops `profiles:`.
+
 ### Return Codes
 
-- `0`: Success
-- `2`: Agent not found
-- `4`: Invalid model / unknown role
+Like the workflow command (see workflow-integration.spec.md), `docket profile` and `docket
+models` use a plain success/failure contract — `0` on success, `1` on any error (agent not
+found, invalid model, unknown role). There is no distinct exit code per error kind.
 
 ## Examples
 
@@ -202,6 +228,15 @@ $ docket profile mywebsite default
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.1.0 (2026-07-02)
+
+- CH-10 spec truth pass (following CH-6's tier-shim removal, D-2 exit): tier names are no
+  longer "deprecated aliases" — they are rejected outright with an error. Rewrote the section
+  to describe the rank anchors as a private, non-user-facing internal seed table with no
+  CLI-layer presence, not a resolved/warned user input path. Added the Legacy registry
+  migration requirements and a matching example (the one-shot `profiles:` → `roles:`
+  conversion CH-6 shipped). Fixed the Return Codes section to the real plain `0`/`1` contract.
 
 ### Version 2.0.0 (2026-06-12)
 
