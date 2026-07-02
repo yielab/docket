@@ -312,16 +312,19 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 ## Org Specialists
 
 Shared across all projects, created once by `docket install`. The `manager` is a cross-cutting
-coordinator and task queue — **not** a router with a classifier, and it does not compress
-prompts into briefs.
+coordinator — **not** a router with a classifier, and it does not compress prompts into briefs.
+Its own task queue (`docket team`) was retired in Phase 12: per-pod dispatch
+(`docket pod <project> delegate/queue/dispatch`) is the only queue now, and the manager role is
+transitional, being superseded by per-pod Leads.
 
 ### Manager
 
-**Role:** Cross-cutting coordination and the shared task queue
+**Role:** Cross-cutting coordination (transitional)
 
 **Capabilities:**
-- Holds the org-wide task queue (`docket team queue` / `docket team delegate`)
-- Coordinates work that spans more than one pod
+- Coordinates work that spans more than one pod (advisory/instruction-level; no task-queue
+  tooling of its own — see [Portfolio Manager](#portfolio-manager-optional) below for the
+  fleet-visibility surface that replaced it)
 - Reads memory/snapshots, not full history
 
 **Tools:**
@@ -436,7 +439,7 @@ Context stays scoped to one project's pod
 
 ### SNAPSHOT.md Contents
 
-Created by `docket context snapshot <project>`:
+Created by `docket context <project> snapshot`:
 
 ```markdown
 # Project Snapshot — 2026-03-06
@@ -478,7 +481,7 @@ Created by `docket context snapshot <project>`:
 
 ### Memory Index
 
-Created by `docket context index <project>`:
+Created by `docket context <project> index`:
 
 ```json
 {
@@ -505,19 +508,19 @@ Created by `docket context index <project>`:
 
 ```bash
 # Create fast-access snapshot
-docket context snapshot <project>
+docket context <project> snapshot
 
 # Index for search
-docket context index <project>
+docket context <project> index
 
 # Search indexed memory
-docket context search <project> "authentication bug"
+docket context <project> search "authentication bug"
 
 # Archive old logs (>30 days)
-docket context compress <project>
+docket context <project> compress
 
 # Show quick reference
-docket context project <project>
+docket context <project> project
 ```
 
 ---
@@ -620,13 +623,14 @@ Reviewer:    ✓ Read-only veto (6-point checklist)
 Tester:      ✓ Behavior-only validation
 Knowledge:   ✓ Org specialist (tools + memory management)
 Security:    ✓ Org specialist (HITL gates + threat modeling)
-Manager:     ✓ Org specialist (cross-cutting coordination + task queue)
+Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 ```
 
 ### Features Implemented ✅
 
 - [x] Memory management system (`docket context`)
-- [x] Team management (`docket team`)
+- [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`) — replaces the
+  retired `docket team` queue
 - [x] SNAPSHOT.md generation
 - [x] Memory indexing & search
 - [x] Per-pod context isolation (workspace + session key)
@@ -797,7 +801,7 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 1. **If not installed:** `docket install` (creates org specialists)
 2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
-3. **Create snapshots:** `docket context snapshot <project>` (for all projects)
+3. **Create snapshots:** `docket context <project> snapshot` (for all projects)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (recorded spend)
 

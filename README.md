@@ -375,9 +375,9 @@ docket workflow <id> create <name>   # Create a Lobster pipeline template
 docket workflow <id> validate <name> # Structural lint — returns errors or "valid"
 docket workflow <id> plan <name>     # Dry-run: render the resolved steps
 
-docket team delegate "Fix bug"   # Queue task for the org manager (--priority high)
-docket team queue                 # Show pending tasks
-docket team done <task-id>        # Mark task complete
+docket pod <project> delegate "Fix bug" # Queue task for that project's pod (--priority high)
+docket pod <project> queue              # Show the pod's pending tasks
+docket pod <project> dispatch           # Run the pod's pending tasks through the pipeline
 
 docket serve                      # Start read-only HTTP server (/status.json, /metrics, /health)
 docket serve --dispatch           # + drive all pod queues in the background
