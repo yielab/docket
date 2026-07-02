@@ -3862,7 +3862,7 @@ def cmd_eval(
     role: str = typer.Option("", "--role", help="Restrict to one role"),
     recommend: bool = typer.Option(False, "--recommend", help="Emit tier recommendations"),
 ) -> None:
-    """Run specialist-role evaluation stubs."""
+    """Run non-blocking specialist-role evals."""
     from docket.cli._eval import run_eval
 
     raise typer.Exit(run_eval(live=live, tier=tier, role=role, recommend=recommend))
