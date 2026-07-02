@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from dataclasses import dataclass
@@ -181,13 +182,8 @@ def _parse_session_file(path: Path) -> dict[str, Any]:
 
 def _write_cost_index(index_path: Path, index: dict[str, Any]) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = index_path.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps(index), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, index_path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(index_path, index)
 
 
 @dataclass
@@ -278,13 +274,8 @@ def _write_hist_index(
     hist: dict[str, dict[str, Any]],
 ) -> None:
     hist_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = hist_path.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps({"sigs": sigs, "history": hist}), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, hist_path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(hist_path, {"sigs": sigs, "history": hist})
 
 
 def model_source(agent_id: str) -> str:

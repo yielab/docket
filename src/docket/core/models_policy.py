@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any
 
 import docket.config as cfg
+from docket.edges import store as _store
 
 TIER_ANCHORS: dict[str, str] = {
     "economy": "anthropic/claude-haiku-4-5",
@@ -303,7 +303,7 @@ def reapply_role_policy() -> int:
 
 
 def write_registry(updates: dict[str, str], reset: bool = False) -> None:
-    """Atomically update docket-models.json.
+    """Update docket-models.json via the store.py single-writer chokepoint (D-12).
 
     Key format: 'default', 'role.<name>', 'tier.<name>'.
     reset=True clears all user overrides (deletes the file if empty).
@@ -330,11 +330,4 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                     reg.setdefault("profiles", {})[tier] = v
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps(reg, indent=2), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    _store.write_json(path, reg)

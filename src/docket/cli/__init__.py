@@ -739,8 +739,7 @@ def _provision_agent(
         meta_data["budgetUsd"] = budget
 
     meta_file = _cfg.PROJECTS_DIR / agent_id / ".docket-meta.json"
-    meta_file.write_text(_json.dumps(meta_data, indent=2), encoding="utf-8")
-    meta_file.chmod(0o600)
+    store.write_json(meta_file, meta_data)
 
     sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -1650,8 +1649,7 @@ def _context_index(agent_id: str, ws: Path) -> None:
     }
 
     index_path = ws / ".memory-index.json"
-    index_path.write_text(_json.dumps(index, indent=2), encoding="utf-8")
-    index_path.chmod(0o600)
+    store.write_json(index_path, index)
 
     ui.success(
         f"Index built: {len(files)} file(s), {len(keywords)} keyword(s), {len(decisions)} decision(s)"
@@ -2230,11 +2228,7 @@ def _load_secrets() -> dict[str, str]:
 
 
 def _save_secrets(secrets: dict[str, str]) -> None:
-    path = _secrets_path()
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(_json.dumps(secrets, indent=2) + "\n", encoding="utf-8")
-    tmp.chmod(0o600)
-    tmp.replace(path)
+    store.write_json(_secrets_path(), secrets)
 
 
 def _load_secrets_meta() -> dict[str, Any]:
@@ -2258,11 +2252,7 @@ def _touch_secrets_meta(name: str, event: str) -> None:
         if event == "rotated":
             entry["rotated_at"] = now
         meta[name] = entry
-    path = _secrets_meta_path()
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(_json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-    tmp.chmod(0o600)
-    tmp.replace(path)
+    store.write_json(_secrets_meta_path(), meta)
 
 
 _PROVIDER_KEYS: dict[str, str] = {
@@ -3020,15 +3010,7 @@ def _ensure_task_list() -> None:
         raise typer.Exit(1)
     path = _task_list_path()
     if not path.is_file():
-        path.write_text(_json.dumps({"tasks": []}, indent=2), encoding="utf-8")
-        path.chmod(0o600)
-
-
-def _atomic_write_json(path: Path, data: object) -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(_json.dumps(data, indent=2), encoding="utf-8")
-    tmp.chmod(0o600)
-    tmp.replace(path)
+        store.write_json(path, {"tasks": []})
 
 
 def _team_delegate(extra: list[str]) -> None:
@@ -3079,7 +3061,7 @@ def _team_delegate(extra: list[str]) -> None:
             "source": "operator",
         }
     )
-    _atomic_write_json(path, data)
+    store.write_json(path, data)
 
     queue_count = sum(
         1 for t in data.get("tasks", []) if t.get("status") in ("pending", "in_progress")
@@ -3196,7 +3178,7 @@ def _team_transition(new_state: str, extra: list[str]) -> None:
     elif new_state in ("done", "cancelled"):
         found["completedAt"] = now
 
-    _atomic_write_json(path, data)
+    store.write_json(path, data)
     ui.success(f"Task → {new_state}: {found.get('description', task_id)}")
 
 

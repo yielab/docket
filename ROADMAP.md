@@ -107,7 +107,7 @@ language, replacing OpenClaw, adding features not listed here. If tempted, stop 
 > historical phases; do not apply them to new Python work.
 
 - **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
-- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600). `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
+- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600), except append-only JSONL logs (`core/trace.py`, `core/audit.py`), which write directly (D-12); `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
 - **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no file-format knowledge.
 - **Shell-out invariant scope (D-13):** every `openclaw`/`git`/`docker`/`systemctl` shell-out funnels through `edges/adapters/openclaw.py` or `edges/adapters/system.py` — no other module invokes those four binaries directly. Other shell-outs (`bash` in `cli/_eval.py`, `tail -f` in `cli/_trace.py`, `$EDITOR` in `cli/__init__.py` `cmd_edit`, `python --version` in `cli/_install.py`) are CLI-only, one-off, and out of scope for this invariant — they stay where they are.
 - After any change to `openclaw.json`, restart the gateway **once** via `system.restart_gateway()` ([edges/adapters/system.py](src/docket/edges/adapters/system.py)); it degrades gracefully on non-systemd hosts.

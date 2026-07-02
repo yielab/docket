@@ -4,8 +4,9 @@ Records persist to ``$APPROVALS_DIR/<token>.json`` (atomic, 0600) with the
 shape ``{token, project, role, action, state, created}``. The CLI ``approve`` /
 ``deny`` commands transition pending → granted / denied.
 
-Approval records are docket-owned artefacts (not openclaw config), so this
-module writes them directly with atomic/0600 discipline.
+Approval records are docket-owned artefacts (not openclaw config), so writes
+go through the ``edges/store.py`` single-writer chokepoint (D-12) rather than
+the ACL.
 Trace emission and secret redaction are best-effort and isolated behind the thin
 ``_emit_trace`` / ``_redact`` hooks so tests can stub them.
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.edges import store as _store
 
 
 class ApprovalError(Exception):
@@ -77,13 +79,6 @@ def _utc_now() -> str:
     return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _atomic_write(path: Path, data: dict[str, Any]) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
-
-
 def _read(token: str) -> dict[str, Any]:
     path = _approval_path(token)
     if not path.is_file():
@@ -95,7 +90,7 @@ def _read(token: str) -> dict[str, Any]:
 def _set_state(token: str, new_state: str) -> dict[str, Any]:
     data = _read(token)
     data["state"] = new_state
-    _atomic_write(_approval_path(token), data)
+    _store.write_json(_approval_path(token), data)
     return data
 
 
@@ -119,7 +114,7 @@ def approval_create(project: str, role: str, action: str) -> str:
         "state": "pending",
         "created": created,
     }
-    _atomic_write(_approval_path(token), data)
+    _store.write_json(_approval_path(token), data)
 
     _emit_trace(
         project,
@@ -222,6 +217,6 @@ def approval_sweep_expired() -> int:
             continue
         if (now - dt.timestamp()) > timeout:
             data["state"] = "expired"
-            _atomic_write(path, data)
+            _store.write_json(path, data)
             swept += 1
     return swept
