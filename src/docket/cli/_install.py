@@ -209,7 +209,7 @@ def _step_auth() -> int:
 
 
 def _step_security(want_gates: bool) -> None:
-    """Step 7 — harden config perms and optionally apply exec gates."""
+    """Step 7 — harden config perms and apply exec gates (on by default; --no-gates skips)."""
     hardened = _oc.harden_config_perms()
     if hardened:
         for path in hardened:
@@ -219,7 +219,9 @@ def _step_security(want_gates: bool) -> None:
     ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
 
     if not want_gates:
-        ui.dim("  Exec-approval enforcement is opt-in: 'docket gates enable' (or install --gates).")
+        ui.dim(
+            "  Exec-approval enforcement skipped (--no-gates). Enable later: 'docket gates enable'."
+        )
         ui.dim("  Spec: specs/functional/security-gates.spec.md.")
         return
 
@@ -378,11 +380,12 @@ def _provision_portfolio_manager() -> None:
 
 
 def run_install(
-    want_gates: bool = False, assume_yes: bool = False, want_portfolio: bool = False
+    want_gates: bool = True, assume_yes: bool = False, want_portfolio: bool = False
 ) -> int:
     """Bootstrap OpenClaw + specialist agents. Returns the process exit code.
 
-    want_gates:      apply opt-in exec-approval enforcement.
+    want_gates:      apply exec-approval enforcement (on by default; False when the
+                     caller passed --no-gates).
     assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
     want_portfolio:  also provision the opt-in org Portfolio Manager.
     """

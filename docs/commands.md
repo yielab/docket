@@ -28,9 +28,9 @@ Bootstrap a complete OpenClaw setup from scratch, including the shared **org spe
 
 **Syntax:**
 ```bash
-docket install                  # manager, knowledge, security
+docket install                  # manager, knowledge, security — exec-approval gates ON by default
 docket install --portfolio      # + the optional org Portfolio Manager
-docket install --gates          # enable enforced tool-approval gates at install time
+docket install --no-gates       # opt out of exec-approval gates at install time
 docket install --yes            # skip confirmation prompts (non-interactive/CI)
 ```
 
@@ -47,18 +47,19 @@ docket install --yes            # skip confirmation prompts (non-interactive/CI)
   `portfolio-manager` agent (`scope: org`) that is an advisory cross-pod planner over fleet
   *metadata* (which pods exist, their queues, budgets, health). It never edits code, never
   dispatches into a pod, and is never a pod member. Opt-in.
-- **`--gates`** (`--no-gates` to explicitly opt out; default `no-gates`): turn on the enforced
-  tool-approval gates for dangerous operations (gates are otherwise opt-in via
-  `docket gates enable`) — see `specs/functional/security-gates.spec.md`.
+- **`--gates`/`--no-gates`** (default `--gates`, i.e. **on**): the enforced tool-approval gates
+  for dangerous operations are applied automatically; pass `--no-gates` to explicitly opt out.
+  Re-apply or reverse anytime with `docket gates enable`/`docket gates disable` — see
+  `specs/functional/security-gates.spec.md`.
 - **`--yes`/`-y`**: skip interactive confirmation prompts — for scripted/CI installs.
 
 **Example:**
 ```bash
-# First-time setup
+# First-time setup (gates on by default)
 docket install
 
-# With the org Portfolio Manager and enforced gates
-docket install --portfolio --gates
+# With the org Portfolio Manager, opting out of gates
+docket install --portfolio --no-gates
 
 # Non-interactive (CI)
 docket install --yes
@@ -1364,8 +1365,10 @@ docket snapshot -o /tmp/fleet-state.json
 ### gates
 
 Manage the enforced tool-approval gates for dangerous operations (`rm`, `git push`,
-`docker stop`, …) and Docker workspace isolation. Gates are **opt-in** — see
-`specs/functional/security-gates.spec.md`.
+`docker stop`, …) and Docker workspace isolation. Exec-approval gates are **on by default**
+for new installs (`docket install`, unless `--no-gates`); this command re-applies, tunes, or
+reverses that configuration on an existing fleet. Docker workspace isolation
+(`gates isolate`) stays opt-in. See `specs/functional/security-gates.spec.md`.
 
 **Syntax:**
 ```bash
@@ -1439,9 +1442,10 @@ docket gates classes
 **Aliases:** `security`
 
 **Notes:**
-- Also settable at install time with `docket install --gates`
+- `docket install` applies this configuration by default; pass `--no-gates` to opt out
 - Every state change is written to the audit log (`gates.enable`/`gates.disable`/`gates.isolate`)
-- Never described as on-by-default: `docket install` alone does **not** turn gates on
+- Approvals are answerable headlessly via `docket approve`/`docket deny` or `POST /approvals/<token>`
+  (`docket serve`), in addition to Telegram — see [`approve` / `deny`](#approve--deny)
 
 ---
 

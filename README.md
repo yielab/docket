@@ -63,11 +63,14 @@ Three isolation layers, each independent:
 
 ### 3 — Governance / HITL / audit spine
 
-docket's security model is **layered**: instruction-level constraints by default; enforced
-tool-approval gates, a headless approval HTTP channel, Telegram approval routing, Docker
-workspace isolation, and a full audit log are available opt-in (`docket gates enable`). Every
-risky action can require human sign-off before it executes; the headless channel means CI jobs
-and automation can vote without a Telegram account. Approvals fail closed on timeout.
+docket's security model is **layered**: instruction-level constraints, plus enforced
+tool-approval gates that are **on by default** for new installs (`docket install`, opt out with
+`--no-gates`). A CLI channel (`docket approve`/`docket deny`), a headless approval HTTP channel,
+and Telegram approval routing all work today, with a full audit log recording every grant/deny
+on every channel. Docker workspace isolation stays opt-in (`docket gates isolate on`). Risky
+operations not on the curated allowlist require human sign-off before they execute; the headless
+channels mean CI jobs and automation can vote without a Telegram account. Approvals fail closed
+on timeout.
 
 ---
 
@@ -189,7 +192,7 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
-| Approval gates + headless channel + audit log (HITL) | — | ✅ opt-in; `GET/POST /approvals`, Telegram routing |
+| Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; `GET/POST /approvals`, Telegram routing |
 | Pre-merge verification gate | — | ✅ `verifyCmd` per pod; non-zero → task stays `pending` |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Workflow validate + dry-run plan | — | ✅ `docket workflow <id> validate/plan` |
@@ -250,7 +253,8 @@ auto-pause fires on; treat model-to-model savings comparisons as directional onl
 | Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` — budget-gated, traced, pod-local |
 | Pre-merge verification gate | ✅ Working | `verifyCmd` per pod; non-zero → task stays `pending` + `verification_failed` trace event |
 | Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod fleet visibility (advisory) |
-| Approval gates + headless channel | ✅ Opt-in | `GET/POST /approvals`, Telegram routing, Docker isolation, audit log — `docket gates enable` |
+| Approval gates + headless channel | ✅ Working | On by default (`--no-gates` to opt out); `GET/POST /approvals`, Telegram routing, audit log |
+| Docker workspace isolation | ✅ Opt-in | `docket gates isolate on` — separate from the approval gates above |
 | Scheduled + webhook dispatch | ✅ Working | `@every N` / `HH:MM` UTC schedules + `POST /dispatch/<project>` webhook |
 | Lobster workflow validate + plan | ✅ Working | `docket workflow <id> validate/plan` — structural lint + dry-run; daemon executes, not docket |
 | Versioned read API | ✅ Working | `/status.json` v1 (pods, scope, budget, model), `/metrics` (Prometheus), `/health` |
@@ -351,14 +355,14 @@ docket serve --dispatch                  # Background: drive every pod's queue c
 </details>
 
 <details>
-<summary><strong>Security gates (opt-in)</strong></summary>
+<summary><strong>Security gates (on by default)</strong></summary>
 
 ```bash
 docket gates status           # Approval gate state, routing, isolation, audit posture
-docket gates enable           # Apply exec-approval gates + allowlist + chat routing
-docket gates isolate on       # Confine tool execution to a per-agent Docker sandbox
+docket gates enable           # (Re-)apply exec-approval gates + allowlist + chat routing
+docket gates isolate on       # Confine tool execution to a per-agent Docker sandbox (opt-in)
 docket gates disable          # Revert gate defaults
-docket install --gates        # Apply gates during initial install
+docket install --no-gates     # Opt out of gates during initial install
 ```
 </details>
 
@@ -423,14 +427,14 @@ See [specs/README.md](specs/README.md) for the SSD documentation and
 
 ### By the numbers
 
-- **~13,538 lines** of Python in the shipped `docket` package (`src/docket/`)
-- **793 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
+- **~13,545 lines** of Python in the shipped `docket` package (`src/docket/`)
+- **795 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
   (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
 - Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
 - **17 specifications** (RFC 2119), validated in CI
 
 ```bash
-uv run pytest                                        # 793-test Python suite
+uv run pytest                                        # 795-test Python suite
 uv run ruff check . && uv run ruff format --check .  # lint + format
 uv run mypy src                                      # strict type check
 bash tests/golden/run.sh verify-all                  # 16-case byte-parity suite
@@ -440,9 +444,11 @@ bash tests/golden/run.sh verify-all                  # 16-case byte-parity suite
 ## Security
 
 docket manages autonomous agents that can execute commands. Its safety model is **layered**:
-agent-level constraints are instruction-based by default, and enforced tool-approval gates,
-Telegram approval routing, and Docker workspace isolation are available **opt-in** via
-`docket gates enable` / `docket gates isolate on` (or `docket install --gates`).
+agent-level constraints are instruction-based, and enforced tool-approval gates are **on by
+default** for new installs (opt out with `docket install --no-gates`; re-apply or reverse later
+with `docket gates enable` / `docket gates disable`). Approvals are answerable via a CLI channel
+(`docket approve`/`docket deny`), a headless HTTP channel, or Telegram, and every grant/deny is
+audit-logged. Docker workspace isolation (`docket gates isolate on`) stays **opt-in**.
 
 **Where you run docket matters.** A trusted homelab is a very different risk profile from a
 public VPS — see [SECURITY.md](SECURITY.md) for the homelab-vs-VPS guidance, the privilege and
@@ -466,8 +472,6 @@ See [ROADMAP.md](ROADMAP.md) for the full phased plan. Near-term priorities:
 1. Expand the eval harness (`tests/evals/`) and feed results into model right-sizing
 2. Run integration tests in CI; promote the macOS job to a required check
 3. CI-test against pinned OpenClaw versions (auto-issue on schema break)
-4. Consider turning security gates on by default — headless approval channel is now
-   available (Phase 11 CD-4); the flip itself is a separate, explicit decision
 
 ## Contributing
 

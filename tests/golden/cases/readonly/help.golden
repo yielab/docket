@@ -58,7 +58,7 @@ CONTEXT & MEMORY  (docket context [id] <subcommand>)
 MONITORING
   cost     [id]      Token usage and cost breakdown with budget status
   doctor             System health: gateway, config, drift, budget, runaway
-  gates              Exec-approval gates: status / enable / disable (opt-in)
+  gates              Exec-approval gates: status / enable / disable (on by default)
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
   eval               Specialist-role evals: structural checks + live golden tasks
 

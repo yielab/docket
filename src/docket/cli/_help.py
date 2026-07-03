@@ -84,7 +84,7 @@ def run_help() -> int:
 {B}MONITORING{R}
   {G}cost{R}     [id]      Token usage and cost breakdown with budget status
   {G}doctor{R}             System health: gateway, config, drift, budget, runaway
-  {G}gates{R}              Exec-approval gates: status / enable / disable (opt-in)
+  {G}gates{R}              Exec-approval gates: status / enable / disable (on by default)
   {G}audit{R}    [N]       Recent mutating operations (keys, gates, profile, agents)
   {G}eval{R}               Specialist-role evals: structural checks + live golden tasks
 

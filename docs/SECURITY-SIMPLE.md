@@ -2,7 +2,7 @@
 
 **Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
 
-> **Status / honesty note.** docket's default security model is **instruction- and review-based**, not hard-enforced. Agent constraints live in prompts (SOUL.md), not in a technical sandbox, and the reviewer is a specialist agent, not a blocking gate. **Enforced tool-approval gates, Telegram approval routing, and Docker workspace isolation are available opt-in** via `docket gates enable` / `docket gates isolate on` (or `docket install --gates`) — see [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, opt-in). Without gates enabled, treat the constraints below as strong defaults, not guarantees.
+> **Status / honesty note.** docket layers two things: instruction-level agent constraints (SOUL.md, a reviewer role, human git review) plus **enforced tool-approval gates, which are ON by default for new installs** (`docket install`, unless you pass `--no-gates`). Gates require explicit approval — via `docket approve`/`docket deny` (headless, any shell), `docket serve`'s `POST /approvals/<token>` (headless HTTP, for CI/automation), or Telegram — before dangerous operations not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, ...) run, and fail closed (deny) on timeout. `git`/`npm` stay on the allowlist for usability, so a `git push` isn't gated by this layer alone — see the spec's high-risk-class section. Docker **workspace isolation** (`docket gates isolate on`) is a separate, still-**opt-in** layer on top. See [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, on by default). If you ran `docket install --no-gates`, treat the constraints below as strong defaults, not guarantees — re-enable anytime with `docket gates enable`.
 
 ---
 
@@ -20,7 +20,7 @@
 5. NEVER store secrets
 ```
 
-These are **prompt-level constraints**: agents are instructed to follow them, but they are not technically enforced by default. For hard enforcement, enable the opt-in gates layer with `docket gates enable`.
+These are **prompt-level constraints**: agents are instructed to follow them. On top of that, a fresh `docket install` also turns on the enforced tool-approval gates layer by default, so non-allowlisted dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require a human (or CI) approval regardless of what the prompt says — see the status note above for the `git`/`npm` carve-out. If you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -128,8 +128,11 @@ grep -rn "ignore previous\|you are now" ~/Sites/myproject/src/
 
 ### Agent Tries to Commit
 The agent is instructed never to commit (SOUL.md), and the reviewer plus your git-diff review
-are the backstops. By default this is a convention, not a hard gate — enable enforced gating
-with `docket gates enable` (see the status note above).
+are the backstops. Note: `git` stays on the gates' curated allowlist (it's used constantly for
+benign work), so `git push` does **not** by itself trigger an approval prompt even with gates
+enabled — the prompt-level instruction and your git-diff review are what actually stop it today.
+Truly destructive bins (`rm`, `dd`, `docker`, `systemctl`, ...) are gated on a default install
+(see the status note above).
 
 ### Hardcoded Secret Found
 ```bash
@@ -148,7 +151,7 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
 3. **Engineer review** (git diff) → Final human check
 
-**Want hard enforcement? Opt in with `docket gates enable` (tool-approval gates) and `docket gates isolate on` (Docker workspace isolation).**
+**Hard enforcement (tool-approval gates) is on by default for new installs.** Opted out with `--no-gates`? Turn it on with `docket gates enable`. Docker workspace isolation stays opt-in: `docket gates isolate on`.
 
 ---
 
