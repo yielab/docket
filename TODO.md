@@ -60,13 +60,12 @@
 ## Dependency map (what unblocks what)
 
 ```text
-FD-0, FD-1, FD-2, FD-3, FD-4 — DONE, all merged into develop 2026-07-02.
-  (FD-3 was narrowed before merge — see its Status note: git/npm stay
-  allowlisted, per-argument enforcement deferred to backlog.)
+FD-0, FD-1, FD-2, FD-3, FD-4, FD-5, FD-6 — DONE, all merged into develop 2026-07-02.
+  (FD-3 was narrowed before merge — git/npm stay allowlisted, per-argument
+  enforcement deferred to backlog. FD-5/FD-6 had one real conflict in
+  security-gates.spec.md, resolved by hand.)
 
-FD-5 (spec truth + gates-default-on flip) ── depends on FD-3 + FD-4 — UNBLOCKED
-FD-6 (spec/data truth pass)               ── depends on FD-0..FD-4 — UNBLOCKED
-FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5 — blocked on FD-5
+FD-7 (docs/positioning pass) ── depends on FD-0..FD-5 — UNBLOCKED, last card in Phase 13
 ```
 
 ---
@@ -169,7 +168,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5 — block
 - **Out of scope:** retroactively enabling gates on already-installed fleets (this only changes the default for new installs); any change to the gates mechanism itself beyond the default.
 - **Deliverables:** updated spec; flipped install default; updated docs; tests.
 - **Acceptance gate:** [ ] spec accurately describes all real approval channels and states the on-by-default condition is met · [ ] `docket install` defaults to gates-on · [ ] `--no-gates` still works · [ ] suite + goldens green (new golden case for changed `install --help`/output if any).
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `4996595`). Real conflict with FD-6 in `security-gates.spec.md` (both branches independently wrote a "High-risk action classes" requirements section) — resolved by hand: kept FD-6's more detailed section, removed the duplicate, combined both branches' Changelog entries into one, merged the Examples section to keep both the docker-stop note and the `gates classes` output example.
 
 ---
 
@@ -186,7 +185,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5 — block
 - **Out of scope:** a full spec audit (CH-10 already did that broadly; this is targeted to what FD-0…FD-4 changed).
 - **Deliverables:** updated specs with correct version headers.
 - **Acceptance gate:** [ ] every field/flag/behavior FD-0..FD-4 added is documented in the relevant spec · [ ] version headers bumped · [ ] `validate-specs.sh` (or equivalent) passes.
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `0838522`). Added `specs/functional/pod-dispatch.spec.md` (new — no prior spec owned the dispatch state machine, confirmed still true from Phase 12's research). Updated `docket-meta.spec.md` and `cli-interface.spec.md`. Its `security-gates.spec.md` edit was later reconciled with FD-5's during that merge (see FD-5's note).
 
 ---
 
@@ -213,7 +212,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5 — block
 - [x] FD-2 — a tester hop reporting FAIL (or unparseable) blocks pipeline advancement. *(DONE 2026-07-02)*
 - [~] FD-3 — a defined high-risk action-class list always routes to approval regardless of allowlist. *(DONE 2026-07-02 — narrowed: fully true for money-movement/secret-access; prod-deploy's git/npm overlap stays allowlisted, deferred to backlog per the daemon's binary-only gating limit)*
 - [x] FD-4 — every approval grant/deny, any channel, writes an audit-log entry. *(DONE 2026-07-02)*
-- [ ] FD-5 — `security-gates.spec.md` reflects the real channel set; `docket install` gates default flips to on.
-- [ ] FD-6 — specs/data truth pass for every field/behavior this phase touched.
+- [x] FD-5 — `security-gates.spec.md` reflects the real channel set; `docket install` gates default flips to on. *(DONE 2026-07-02)*
+- [x] FD-6 — specs/data truth pass for every field/behavior this phase touched. *(DONE 2026-07-02)*
 - [ ] FD-7 — docs/positioning claim the closed gaps; competitive-analysis.md corrected.
 - [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens.
