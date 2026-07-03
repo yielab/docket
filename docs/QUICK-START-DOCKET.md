@@ -108,50 +108,10 @@ and how isolation works, read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the h
 
 ## How It Works
 
-### Before DOCKET (One Shared Context)
-
-```
-User: "Fix the login bug"
-         ↓
-A single agent (or a shared pool) carries every project's
-history in one context window:
-         [Reads 100K tokens of mixed-project conversation]
-         [Implements fix]
-         [Reviews its own work]
-         ↓
-TOTAL: ~320K tokens (one bloated context)
-PROBLEM: projects contaminate each other; no role separation
-```
-
-### After DOCKET (Isolated Pod Workflow)
-
-```
-User: "Fix the login bug"  (to the <project> pod's Lead)
-         ↓
-Lead: [Owns the pod's context/memory + human comms]
-      [Reads SNAPSHOT.md for this project — 2K tokens]
-      [Decomposes the work, dispatches to the Implementer]
-      [NEVER edits code]
-         ↓
-Implementer: [Runs INSIDE the project workspace]
-             [Reads the project files it needs — full read/write]
-             [Implements fix]
-             [Signals DONE.md]
-             ↓
-Reviewer (optional): [Read-only veto on the diff]
-                     [Runs 6-point checklist]
-                     [Approves]
-             ↓
-Tester (optional): [Behaviour only — runs reproduction steps]
-                   [PASS / FAIL]
-             ↓
-RESULT: each project's work stays in its own pod + workspace,
-        so one project's context never bleeds into another's
-```
-
-Each pod has its own workspace and per-pod session key, so no worker is
-ever shared across projects — that isolation is what keeps each agent's
-context (and token count) scoped to a single project.
+Each pod has its own workspace and per-pod session key, so no worker is ever shared across
+projects — that isolation is what keeps each agent's context (and token count) scoped to a
+single project. For the full before/after picture and the pipeline diagram, see
+**[DOCKET.md](DOCKET.md#overview)** — not repeated here.
 
 ---
 
@@ -162,7 +122,7 @@ context (and token count) scoped to a single project.
 docket list               # Org specialists + pods (with scope)
 docket doctor             # Health check + auto-fix
 docket pod <project>      # Inspect a project's pod and its roles
-docket team queue         # The org manager's pending task queue
+docket pod <project> queue # That pod's pending task queue
 ```
 
 ### Run a Pod's Work
@@ -175,10 +135,10 @@ docket serve --dispatch                  # Background: drive every pod's queue
 
 ### Memory Management
 ```bash
-docket context snapshot <project-id>   # Create fast-access context
-docket context index <project-id>      # Index memory for search
-docket context search <project-id> <q> # Search indexed memory
-docket context compress <project-id>   # Archive old logs (>30 days)
+docket context <project-id> snapshot   # Create fast-access context
+docket context <project-id> index      # Index memory for search
+docket context <project-id> search <q> # Search indexed memory
+docket context <project-id> compress   # Archive old logs (>30 days)
 ```
 
 ---
@@ -188,7 +148,7 @@ docket context compress <project-id>   # Archive old logs (>30 days)
 ### Test 1: Memory Snapshot
 ```bash
 # Create snapshot for a project
-docket context snapshot <project-name>
+docket context <project-name> snapshot
 
 # Verify it exists
 cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
@@ -235,92 +195,25 @@ cross-project conversation history.
 
 ## Pod Roles
 
-A project pod is created by `docket add <project>` and managed with
-`docket pod <project>`. By default it is a lean **Lead + Implementer**; add a
-Reviewer and Tester with `--pod full` or `--with reviewer,tester`. The org
-specialists (`manager`, `knowledge`, `security`) are shared and created once by
-`docket install` — they are not part of any single pod.
-
-### Lead
-The per-pod orchestrator.
-- Owns the pod's context, memory, and human (Telegram) comms
-- Reads this pod's SNAPSHOT.md instead of full history
-- Decomposes work and dispatches to the pod's workers
-- **NEVER edits code**
-
-### Implementer
-The agent that actually writes the code.
-- Runs **inside the project workspace**, so it has full read/write on the project
-- Reads the project files it needs directly (it is in the workspace, not handed a tiny brief)
-- Implements the requested change and signals completion via DONE.md
-- Replaces the old global "programmer" role — now per-pod and project-scoped
-
-### Reviewer (optional)
-- **Read-only veto** on the diff
-- **6-point mandatory checklist:**
-  1. Prompt injection vectors
-  2. Authentication & authorization
-  3. Data security (SQL injection, XSS)
-  4. Side effects & scope
-  5. Completeness (root cause fixed)
-  6. Test coverage
-- Bad code doesn't proceed
-
-### Tester (optional)
-- **Behaviour-only validation** (does NOT read code!)
-- Executes reproduction steps objectively
-- Binary verdict: PASS or FAIL
-- Runs on the cheap model class (sufficient for validation)
+A project pod is created by `docket add <project>` and managed with `docket pod <project>`. By
+default it is a lean **Lead + Implementer**; add a Reviewer and Tester with `--pod full` or
+`--with reviewer,tester`. The org specialists (`manager`, `knowledge`, `security`) are shared and
+created once by `docket install` — they are not part of any single pod. Full per-role detail
+(capabilities, tools, model class) lives in **[DOCKET.md](DOCKET.md#pod-roles)** and
+**[AGENT-TEAMS.md](AGENT-TEAMS.md)** — the short version: the Lead orchestrates and never edits
+code, the Implementer writes the code, an optional Reviewer is a read-only veto, and an optional
+Tester validates behavior only (never reads code).
 
 ---
 
-## Token Savings Examples
+## Token Savings
 
-> The reduction here is in **tokens**, which is what per-pod context isolation actually controls
-> and what you can measure directly. We don't quote dollar savings — your real spend depends on your
-> models and current pricing; read it with `docket cost`. See
-> [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
-
-### Example 1: Status Query
-**Before (one shared context):**
-```
-Engineer: "What's the status?"
-Agent reads 100K tokens of mixed-project history
-```
-
-**After (isolated pod):**
-```
-Engineer: "What's the status?"
-The pod's Lead reads this project's SNAPSHOT.md (2K tokens)
-```
-**Far fewer tokens** — the Lead only ever reads this pod's snapshot, not a shared
-cross-project history.
-
-### Example 2: Simple Change
-**Before (one shared context):**
-```
-Shared history read + implementation = 200K tokens
-```
-
-**After (isolated pod):**
-```
-Implementer works in the project workspace, reading only the files it touches
-```
-**Far fewer tokens** — the Implementer's context is scoped to one project's
-workspace, not the whole fleet's history.
-
-### Example 3: Bug Fix Pipeline
-**Before (one shared context):**
-```
-Investigation + fix + review + test all share one bloated context
-```
-
-**After (isolated pod):**
-```
-Lead → Implementer → Reviewer → Tester, each scoped to this pod's workspace
-```
-**Fewer tokens, no cross-project contamination** — every role's context stays
-inside the pod. Read your actual numbers with `docket cost`.
+Per-pod context isolation is what controls token usage — each agent reads only its own project's
+context instead of one shared, growing cross-project history. We don't quote a fixed percentage;
+read your actual numbers with `docket cost`. See
+[DOCKET.md's Performance Results](DOCKET.md#performance-results) for the mechanism and
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) for why docket
+doesn't project dollar savings.
 
 ---
 
@@ -372,49 +265,9 @@ systemctl --user restart openclaw-gateway.service
 
 ## Troubleshooting
 
-### Agents Still Using Large Context?
-1. **Verify the fleet is healthy:**
-   ```bash
-   docket list
-   docket doctor
-   ```
-
-2. **Check SNAPSHOT.md exists:**
-   ```bash
-   ls ~/.openclaw/workspaces/projects/*/SNAPSHOT.md
-   ```
-
-3. **Create snapshot if missing:**
-   ```bash
-   docket context snapshot <project-id>
-   ```
-
-4. **Restart gateway:**
-   ```bash
-   systemctl --user restart openclaw-gateway.service
-   ```
-
-### Agents Not Acknowledging Immediately?
-1. Check SOUL.md has "IMMEDIATE ACKNOWLEDGMENT" section:
-   ```bash
-   grep "IMMEDIATE ACKNOWLEDGMENT" ~/.openclaw/workspaces/manager/SOUL.md
-   ```
-
-2. If missing, regenerate the agent's templates from its metadata:
-   ```bash
-   docket maintain manager rebuild
-   ```
-
-### Memory Index Not Working?
-1. Create index first:
-   ```bash
-   docket context index <project-id>
-   ```
-
-2. Verify index file:
-   ```bash
-   ls ~/.openclaw/workspaces/projects/<project-id>/.memory-index.json
-   ```
+Memory/context issues (large context, delayed acknowledgment, a broken memory index), Telegram
+issues, and pod/dispatch issues are all covered in **[troubleshooting.md](troubleshooting.md)** —
+kept in one place rather than duplicated across every doc that touches them.
 
 ---
 
@@ -423,7 +276,7 @@ systemctl --user restart openclaw-gateway.service
 1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
 2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
 3. **Monitor cost:** Check recorded spend with `docket cost`
-4. **Create snapshots & index memory:** `docket context snapshot <project>` / `docket context index <project>` per project
+4. **Create snapshots & index memory:** `docket context <project> snapshot` / `docket context <project> index` per project
 5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 
 ---

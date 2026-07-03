@@ -168,26 +168,13 @@ Tester ONLY reads:
 
 ## Performance Results
 
-### Token Usage (Before vs After)
+### Token Usage
 
-The lever DOCKET actually controls is **per-pod context isolation**. When every project
-lives in its own pod + workspace with its own session key, each agent only ever reads
-*its* project's context instead of one shared, ever-growing cross-project history.
-
-```
-Before: every project shares one context window
-        → agents read mixed-project history (100K+ tokens) on every turn
-
-After:  each project is an isolated pod
-        → the Lead reads this pod's SNAPSHOT.md (~2K tokens)
-        → the Implementer reads only the workspace files it touches
-        → context never accumulates across projects
-```
-
-Token reduction is what isolation controls and what you can measure. We don't quote a fixed
-percentage — the real number depends on your projects and usage. Read your **recorded** spend
-with `docket cost`; it also depends on your models and current pricing, so we don't project
-dollars here.
+The lever DOCKET actually controls is **per-pod context isolation** (see the
+[Before/After](#the-problem-before-docket) diagram above) — token reduction is what isolation
+controls and what you can measure, not a fixed percentage. Read your **recorded** spend with
+`docket cost`; see [Cost Optimization](#cost-optimization) below for the model-selection half of
+the story.
 
 ### Response Time
 
@@ -312,16 +299,19 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 ## Org Specialists
 
 Shared across all projects, created once by `docket install`. The `manager` is a cross-cutting
-coordinator and task queue — **not** a router with a classifier, and it does not compress
-prompts into briefs.
+coordinator — **not** a router with a classifier, and it does not compress prompts into briefs.
+Its own task queue (`docket team`) was retired in Phase 12: per-pod dispatch
+(`docket pod <project> delegate/queue/dispatch`) is the only queue now, and the manager role is
+transitional, being superseded by per-pod Leads.
 
 ### Manager
 
-**Role:** Cross-cutting coordination and the shared task queue
+**Role:** Cross-cutting coordination (transitional)
 
 **Capabilities:**
-- Holds the org-wide task queue (`docket team queue` / `docket team delegate`)
-- Coordinates work that spans more than one pod
+- Coordinates work that spans more than one pod (advisory/instruction-level; no task-queue
+  tooling of its own — see [Portfolio Manager](#portfolio-manager-optional) below for the
+  fleet-visibility surface that replaced it)
 - Reads memory/snapshots, not full history
 
 **Tools:**
@@ -436,7 +426,7 @@ Context stays scoped to one project's pod
 
 ### SNAPSHOT.md Contents
 
-Created by `docket context snapshot <project>`:
+Created by `docket context <project> snapshot`:
 
 ```markdown
 # Project Snapshot — 2026-03-06
@@ -478,7 +468,7 @@ Created by `docket context snapshot <project>`:
 
 ### Memory Index
 
-Created by `docket context index <project>`:
+Created by `docket context <project> index`:
 
 ```json
 {
@@ -505,67 +495,32 @@ Created by `docket context index <project>`:
 
 ```bash
 # Create fast-access snapshot
-docket context snapshot <project>
+docket context <project> snapshot
 
 # Index for search
-docket context index <project>
+docket context <project> index
 
 # Search indexed memory
-docket context search <project> "authentication bug"
+docket context <project> search "authentication bug"
 
 # Archive old logs (>30 days)
-docket context compress <project>
+docket context <project> compress
 
 # Show quick reference
-docket context project <project>
+docket context <project> project
 ```
 
 ---
 
 ## Security Model
 
-See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for full details.
-
-### Three Layers (All Automatic)
-
-**Layer 1: Prevention (Agent SOUL.md)**
-```markdown
-## Safety Constraints (NEVER Violate)
-1. NEVER commit to git
-2. NEVER push to remote
-3. NEVER delete files without instruction
-4. NEVER run production commands
-5. NEVER store secrets
-```
-
-**Layer 2: Detection (Reviewer Checklist)**
-- Runs automatically on EVERY code change
-- 6-point mandatory checklist
-- Veto power (rejects immediately if any fail)
-
-**Layer 3: Audit (Engineer Review)**
-- Engineer reviews `git diff` before commit
-- Final human check
-
-### Prompt Injection Protection
-
-**Reviewer detects:**
-```regex
-(ignore|disregard|override).*previous.*(instruction|rule|prompt)
-you are now|act as|system:|assistant:
-<!--\s*AGENT:.*-->
-```
-
-**If found → REJECTED immediately**
-
-### Commit Prevention
-
-**How it works:**
-1. Agent SOUL.md says: "NEVER commit"
-2. Reviewer checks: "No git commands in code"
-3. Engineer commits manually
-
-**Result:** Zero agent commits, full engineer control
+Three automatic layers — instruction-level SOUL.md constraints (never commit/push/delete without
+instruction), the Reviewer's 6-point checklist (prompt-injection patterns, hardcoded secrets,
+SQL injection/XSS, auth checks, dangerous operations, test coverage) as a read-only veto, and a
+final human `git diff` review. Enforced tool-approval gates, a headless approval channel, and
+Docker workspace isolation layer on top and are **on by default** for new installs. Full detail,
+including the exact reviewer checklist and gate/approval-channel mechanics, lives in
+**[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)** — this section intentionally isn't a second copy.
 
 ---
 
@@ -620,13 +575,14 @@ Reviewer:    ✓ Read-only veto (6-point checklist)
 Tester:      ✓ Behavior-only validation
 Knowledge:   ✓ Org specialist (tools + memory management)
 Security:    ✓ Org specialist (HITL gates + threat modeling)
-Manager:     ✓ Org specialist (cross-cutting coordination + task queue)
+Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 ```
 
 ### Features Implemented ✅
 
 - [x] Memory management system (`docket context`)
-- [x] Team management (`docket team`)
+- [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`) — replaces the
+  retired `docket team` queue
 - [x] SNAPSHOT.md generation
 - [x] Memory indexing & search
 - [x] Per-pod context isolation (workspace + session key)
@@ -651,17 +607,6 @@ Manager:     ✓ Org specialist (cross-cutting coordination + task queue)
 
 ### Agent Communication
 
-**Before DOCKET (one shared context):**
-```
-A single agent (or shared pool) drags every project's history
-into one window on every turn:
-{
-  "conversation_history": [...100K tokens, mixed projects...],
-  ...
-}
-```
-
-**After DOCKET (isolated pod):**
 ```
 Lead writes: memory/tasks/T001/TASK.md
 ─────────────────────────────────────────────
@@ -719,34 +664,6 @@ Reviewer → APPROVED? ──Yes──→ Tester
 
 ---
 
-## Comparison: Before vs After
-
-### Before DOCKET
-
-**Problems:**
-- ❌ Agents read 100K+ tokens of mixed-project history
-- ❌ One shared context — projects contaminate each other
-- ❌ No security gate
-- ❌ Tester read code (biased validation)
-- ❌ No clean split between orchestration and code-writing
-- ❌ Overlapping work between roles
-
-**Token usage:** context grows without bound across projects
-
-### After DOCKET
-
-**Solutions:**
-- ✅ Each project is an isolated pod (own workspace + session key)
-- ✅ The Lead reads this pod's SNAPSHOT.md (~2K tokens); the Implementer reads its own workspace
-- ✅ Mandatory 6-point security checklist (read-only reviewer veto)
-- ✅ Behavior-only validation (objective)
-- ✅ Lead orchestrates, Implementer codes — never the same agent
-- ✅ Linear pipeline (no overlap)
-
-**Token usage:** scoped per pod — measure it with `docket cost`
-
----
-
 ## FAQ
 
 ### Q: What does DOCKET stand for?
@@ -782,14 +699,10 @@ provisions each project's pod with the right templates. Everything else works th
 
 ### Q: How much will I save?
 
-**A:** The reliable lever is **token reduction from per-pod context isolation** — each agent
-reads only its own project's context instead of one shared, ever-growing cross-project history.
-How much that saves depends entirely on your projects and usage, so we don't quote a fixed
-percentage.
-
-Dollar savings track tokens *and* which models you run, so they vary with current pricing.
-docket reports your **recorded** spend (`docket cost`) rather than promising a percentage —
-see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
+**A:** See [Cost Optimization](#cost-optimization) above and
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) — the short version
+is: token reduction from isolation is real but not a fixed percentage, and docket reports
+**recorded** spend rather than a savings promise.
 
 ---
 
@@ -797,7 +710,7 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 1. **If not installed:** `docket install` (creates org specialists)
 2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
-3. **Create snapshots:** `docket context snapshot <project>` (for all projects)
+3. **Create snapshots:** `docket context <project> snapshot` (for all projects)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (recorded spend)
 
@@ -813,5 +726,6 @@ see [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ---
 
-**Date:** 2026-03-06
-**Status:** Implemented; in active use
+**Last Updated:** 2026-07-03
+**Status:** Implemented, automated-test-backed — not yet field-hardened (see the beta warning at
+the top of this document)

@@ -55,7 +55,9 @@ Three isolation layers, each independent:
   bleed, even when two pods run the same model.
 - **Runtime resources**: each pod gets a **non-overlapping port range** and a **scratch
   directory** (allocated once, freed on delete) so two projects can run dev servers and test
-  databases simultaneously without colliding.
+  databases simultaneously without colliding — injected into the Implementer's real process
+  environment (`DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR`), not just documented
+  as prose it has to read and remember to follow.
 - **Git worktrees**: for repo pods the Implementer works in a dedicated `git worktree` on its
   own branch (`docket/<project>/<member-id>`) — the convergent isolation pattern every major
   coding-agent tool has landed on (Cursor, Codex, etc.). Falls back to the flat workspace
@@ -63,11 +65,14 @@ Three isolation layers, each independent:
 
 ### 3 — Governance / HITL / audit spine
 
-docket's security model is **layered**: instruction-level constraints by default; enforced
-tool-approval gates, a headless approval HTTP channel, Telegram approval routing, Docker
-workspace isolation, and a full audit log are available opt-in (`docket gates enable`). Every
-risky action can require human sign-off before it executes; the headless channel means CI jobs
-and automation can vote without a Telegram account. Approvals fail closed on timeout.
+docket's security model is **layered**: instruction-level constraints, plus enforced
+tool-approval gates that are **on by default** for new installs (`docket install`, opt out with
+`--no-gates`). A CLI channel (`docket approve`/`docket deny`), a headless approval HTTP channel,
+and Telegram approval routing all work today, with a full audit log recording every grant/deny
+on every channel. Docker workspace isolation stays opt-in (`docket gates isolate on`). Risky
+operations not on the curated allowlist require human sign-off before they execute; the headless
+channels mean CI jobs and automation can vote without a Telegram account. Approvals fail closed
+on timeout.
 
 ---
 
@@ -145,22 +150,6 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 </td>
 <td width="50%">
 
-**`docket gates status` — governance posture**
-
-<img src="docs/assets/gates.png" alt="docket gates status: approval gate state, headless HTTP approval channel, audit log status" width="100%">
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**`docket doctor` — fleet health**
-
-<img src="docs/assets/doctor.png" alt="docket doctor: gateway, config drift, budget, runaway sessions, API key hygiene, security gates" width="100%">
-
-</td>
-<td width="50%">
-
 **`docket models` — role→model policy**
 
 <img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
@@ -170,6 +159,10 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 </table>
 
 > Screenshots are from a real run against a live OpenClaw install; project names are anonymized.
+> (Two prior screenshots here, `docket gates status` and `docket doctor`, were pulled because
+> they showed pre-0.2.0 output — gates as opt-in/inactive — that no longer matches the
+> gates-on-by-default behavior below; see [docs/assets/README.md](docs/assets/README.md) for
+> the recapture note.)
 
 ## How it relates to OpenClaw
 
@@ -181,7 +174,7 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Spawn / coordinate agents | ✅ `agents.md`, `@mention` | (uses it) |
 | One-command per-project pod provisioning | — | ✅ `docket add` (stack auto-detect) |
 | Project isolation: session keys (no context leak) | partial | ✅ `agent:<id>:<project>` per pod member |
-| Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir per pod |
+| Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir, injected into the Implementer's real env |
 | Project isolation: git worktree per Implementer | — | ✅ dedicated branch + worktree; flat-workspace fallback |
 | Pod pipeline dispatch (Lead → Implementer → Reviewer → Tester) | — | ✅ `docket pod <p> dispatch` / `serve --dispatch` |
 | Declarative fleet from version-controlled YAML | — | ✅ `docket add --from` |
@@ -189,8 +182,8 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
-| Approval gates + headless channel + audit log (HITL) | — | ✅ opt-in; `GET/POST /approvals`, Telegram routing |
-| Pre-merge verification gate | — | ✅ `verifyCmd` per pod; non-zero → task stays `pending` |
+| Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; `GET/POST /approvals`, Telegram routing |
+| Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate; either failing → task stays `pending` |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Workflow validate + dry-run plan | — | ✅ `docket workflow <id> validate/plan` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health` |
@@ -244,13 +237,15 @@ auto-pause fires on; treat model-to-model savings comparisons as directional onl
 |---------|--------|-------|
 | Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
-| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod; freed on delete |
+| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod, injected into the Implementer's process env; freed on delete |
 | Git worktree isolation for Implementers | ✅ Working | Dedicated branch + worktree per repo-pod Implementer; flat-workspace fallback |
 | Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
 | Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` — budget-gated, traced, pod-local |
-| Pre-merge verification gate | ✅ Working | `verifyCmd` per pod; non-zero → task stays `pending` + `verification_failed` trace event |
+| Pre-merge verification gate | ✅ Working | `verifyCmd` per pod (settable via `pod add --verify`/`set-verify`) + a structural Tester PASS/FAIL gate |
 | Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod fleet visibility (advisory) |
-| Approval gates + headless channel | ✅ Opt-in | `GET/POST /approvals`, Telegram routing, Docker isolation, audit log — `docket gates enable` |
+| Approval gates + headless channel | ✅ Working | On by default (`--no-gates` to opt out); `GET/POST /approvals`, Telegram routing, audit log |
+| High-risk action-class policy | ✅ Working (partial) | `docket gates classes` — money-movement/secret-access always ask; prod-deploy's `git`/`npm` overlap is documented, not yet daemon-enforced (deferred — the daemon can't gate by argument text) |
+| Docker workspace isolation | ✅ Opt-in | `docket gates isolate on` — separate from the approval gates above |
 | Scheduled + webhook dispatch | ✅ Working | `@every N` / `HH:MM` UTC schedules + `POST /dispatch/<project>` webhook |
 | Lobster workflow validate + plan | ✅ Working | `docket workflow <id> validate/plan` — structural lint + dry-run; daemon executes, not docket |
 | Versioned read API | ✅ Working | `/status.json` v1 (pods, scope, budget, model), `/metrics` (Prometheus), `/health` |
@@ -278,9 +273,12 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
   Implementer → Reviewer if present → Tester if present), budget-gated, traced, and
   **pod-local** — never crosses pod boundaries. `docket serve --dispatch` drives all pods
   continuously from the background.
-- **Pre-merge verification** — if a pod has `verifyCmd` set, the dispatch pipeline runs it in
-  the Implementer's workspace after each Implementer hop. Non-zero exit leaves the task
-  `pending` and emits a `verification_failed` trace event; tasks never silently auto-close.
+- **Pre-merge verification** — set `verifyCmd` with `docket pod <project> add --verify "<cmd>"`
+  (or `set-verify` on an existing member); the dispatch pipeline runs it in the Implementer's
+  workspace after each Implementer hop and leaves the task `pending` (with a `verification_failed`
+  trace event) on non-zero exit. If a pod has a Tester, its hop is gated too: the Tester's first
+  line must read `PASS`/`FAIL` — a `FAIL` or unparseable report blocks the pipeline the same way,
+  instead of "the Tester agent said it was fine" being taken on faith.
 - **Org specialists** — `security`, `knowledge`, and `manager` are created once by `docket install`
   and shared across the fleet (`scope: org`). An optional org **Portfolio Manager**
   (`docket install --portfolio`) adds cross-pod fleet visibility — advisory only, never a pod member.
@@ -295,158 +293,37 @@ view) and `~/.openclaw/openclaw.json` (the daemon's view).
 
 ## Command reference
 
-<details>
-<summary><strong>Core lifecycle</strong></summary>
-
 ```bash
-docket install              # Bootstrap OpenClaw + org specialists (security, knowledge, manager)
-docket install --portfolio  # + optional org Portfolio Manager (cross-pod fleet visibility)
-docket add [id] [path]      # Create a project pod (Lead + Implementer; --pod full / --with for more)
-docket add --from spec.yaml # Provision a fleet from a YAML/JSON spec (declarative)
-docket pod <id>             # Inspect a pod; `pod <id> add <role>` / `remove <member>` to resize
-docket list                 # Show all agents (scope + pod)
-docket info <id>            # Display agent details
-docket delete <id>          # Remove an agent or a whole pod
-```
-</details>
-
-<details>
-<summary><strong>Cost & configuration</strong></summary>
-
-```bash
-docket models               # Role→model policy (set <role> <model>, preset, reset)
-docket profile <id> [model] # Pin an agent's model (<provider/model>) or 'default' = follow policy
-docket profile <id> --budget 5  # Set a $5 spending cap (auto-pause on breach)
-docket scope <id> set <key> # Change project session key
-docket keys                 # Manage API keys
-docket cost [id]            # Token usage and costs (--json, --history [--days N])
-```
-</details>
-
-<details>
-<summary><strong>Maintenance & health</strong></summary>
-
-```bash
-docket maintain [id] check    # Health check and auto-fix
-docket maintain [id] clean    # Clear memory logs
-docket maintain [id] reset    # Clear memory + heartbeat
-docket maintain [id] rebuild  # Full rebuild from metadata
-docket maintain [id] sessions # Archive large/old sessions
-docket doctor                 # System-wide diagnostics (budget, drift, runaway, gates)
-```
-</details>
-
-<details>
-<summary><strong>Pod dispatch & task queue</strong></summary>
-
-```bash
-docket pod <id>                          # Inspect pod members, roles, isolation details
-docket pod <id> add <role>               # Grow the pod (reviewer, tester, or a second implementer)
-docket pod <id> remove <member-id>       # Remove one pod member
-docket pod <id> delegate "Fix login bug" # Queue a task (--priority high)
-docket pod <id> queue                    # Show pending tasks + per-task status/cost
-docket pod <id> dispatch                 # Run the pod pipeline once (Lead→Implementer→Reviewer→Tester)
-docket serve --dispatch                  # Background: drive every pod's queue continuously
-```
-</details>
-
-<details>
-<summary><strong>Security gates (opt-in)</strong></summary>
-
-```bash
-docket gates status           # Approval gate state, routing, isolation, audit posture
-docket gates enable           # Apply exec-approval gates + allowlist + chat routing
-docket gates isolate on       # Confine tool execution to a per-agent Docker sandbox
-docket gates disable          # Revert gate defaults
-docket install --gates        # Apply gates during initial install
-```
-</details>
-
-<details>
-<summary><strong>Context, workflows & observability</strong></summary>
-
-```bash
-docket context [id]              # Recent activity overview
-docket context [id] search <q>   # Search indexed memory
-docket context [id] snapshot     # Create SNAPSHOT.md for fast agent context
-docket context [id] compress     # Archive logs older than 30 days
-
-docket workflow <id> create <name>   # Create a Lobster pipeline template
-docket workflow <id> validate <name> # Structural lint — returns errors or "valid"
-docket workflow <id> plan <name>     # Dry-run: render the resolved steps
-
-docket team delegate "Fix bug"   # Queue task for the org manager (--priority high)
-docket team queue                 # Show pending tasks
-docket team done <task-id>        # Mark task complete
-
-docket serve                      # Start read-only HTTP server (/status.json, /metrics, /health)
-docket serve --dispatch           # + drive all pod queues in the background
-```
-</details>
-
-### Role→model policy & provider support
-
-Each agent **role** maps to the cheapest adequate model — the policy — and you can override any role:
-
-| Role | Default (Anthropic) | Why |
-| ---- | ------------------- | --- |
-| manager, reviewer, tester, knowledge | claude-haiku-4-5 | High-volume, low reasoning-density |
-| programmer, security | claude-sonnet-4-6 | Reasoning-dense work |
-| repo / task (project agents) | sonnet / haiku | Project-agent type defaults |
-
-Stronger models (opus-class) are an explicit per-agent pin, never a default. Changing the
-policy (or switching provider preset) re-resolves every policy-following agent automatically.
-
-```bash
-docket models preset openrouter-free   # All roles to OpenRouter free tier
-docket models preset openai            # OpenAI (gpt-4.1-nano / gpt-4.1-mini)
-docket models preset google            # Google (gemini flash family)
-docket models preset anthropic         # Restore Anthropic defaults
-docket models set programmer openai/gpt-4.1          # Override one role
-docket profile myproject anthropic/claude-opus-4-6   # Pin one agent
-docket profile myproject default       # Re-attach to role policy
+docket install [--portfolio] [--no-gates]  # Bootstrap OpenClaw + org specialists
+docket add [id] [path]                     # Create a project pod (--from spec.yaml for a fleet)
+docket pod <id> [add <role> | remove <m>]  # Inspect/resize a pod
+docket pod <id> delegate/queue/dispatch    # Queue and run pod work
+docket list / info <id> / delete <id>      # Fleet-wide view / one agent / teardown
+docket models / profile <id>               # Role→model policy / pin or budget-cap one agent
+docket cost [id] / doctor / maintain <id>  # Spend / fleet health / per-agent upkeep
+docket gates status                        # Approval-gate, routing, and audit posture
+docket serve [--dispatch]                  # Read-only API, optionally driving pod queues
 ```
 
-## Engineering: spec-driven development
+Every command, subcommand, and flag — including `context`, `workflow`, `keys`/`auth`, `gates
+enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — is documented in
+**[docs/commands.md](docs/commands.md)**, the full reference.
 
-docket is where I practice spec-driven development: write the specification before the
-implementation, use RFC 2119 keywords (MUST/SHOULD/MAY) to make requirements testable, and
-measure real coverage. Specs cover the core lifecycle and expand outward.
+## Engineering
 
-```bash
-./scripts/validate-specs.sh    # Validate spec structure/completeness (blocking in CI)
-./scripts/spec-coverage.sh     # Report command/feature/test coverage (informational)
-```
-
-`spec-coverage.sh` reports **100% command coverage (25/25), 100% feature coverage (10/10),
-100% of tracked specs test-backed**. "Covered" means a feature has a structured, validated
-spec — not that every feature is fully built. The tooling reports honestly.
-
-See [specs/README.md](specs/README.md) for the SSD documentation and
-[CONTRIBUTING.md](CONTRIBUTING.md) for how to add a command.
-
-### By the numbers
-
-- **~12,700 lines** of Python in the shipped `docket` package (`src/docket/`)
-- **694 tests** in the pytest suite (`tests/python/`) + a **17-case golden parity suite**
-  (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
-- Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
-- **16 specifications** (RFC 2119), validated in CI
-
-```bash
-uv run pytest                                        # 694-test Python suite
-uv run ruff check . && uv run ruff format --check .  # lint + format
-uv run mypy src                                      # strict type check
-bash tests/golden/run.sh verify-all                  # 17-case byte-parity suite
-./tests/evals/run-evals.sh                           # specialist-role evals
-```
+docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
+coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
+a 795-test pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security
 
 docket manages autonomous agents that can execute commands. Its safety model is **layered**:
-agent-level constraints are instruction-based by default, and enforced tool-approval gates,
-Telegram approval routing, and Docker workspace isolation are available **opt-in** via
-`docket gates enable` / `docket gates isolate on` (or `docket install --gates`).
+agent-level constraints are instruction-based, and enforced tool-approval gates are **on by
+default** for new installs (opt out with `docket install --no-gates`; re-apply or reverse later
+with `docket gates enable` / `docket gates disable`). Approvals are answerable via a CLI channel
+(`docket approve`/`docket deny`), a headless HTTP channel, or Telegram, and every grant/deny is
+audit-logged. Docker workspace isolation (`docket gates isolate on`) stays **opt-in**.
 
 **Where you run docket matters.** A trusted homelab is a very different risk profile from a
 public VPS — see [SECURITY.md](SECURITY.md) for the homelab-vs-VPS guidance, the privilege and
@@ -459,7 +336,7 @@ docket tracks the current OpenClaw release line and the v1 `openclaw.json` schem
 
 | docket-cli | Tested OpenClaw | `openclaw.json` schema | Notes |
 |------------|-----------------|------------------------|-------|
-| 0.1.x | current release line (2026.x) | v1 | Manual verification; no version pin yet |
+| 0.2.x | current release line (2026.x) | v1 | Manual verification; no version pin yet |
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the policy and how breaks are tracked.
 
@@ -470,8 +347,6 @@ See [ROADMAP.md](ROADMAP.md) for the full phased plan. Near-term priorities:
 1. Expand the eval harness (`tests/evals/`) and feed results into model right-sizing
 2. Run integration tests in CI; promote the macOS job to a required check
 3. CI-test against pinned OpenClaw versions (auto-issue on schema break)
-4. Consider turning security gates on by default — headless approval channel is now
-   available (Phase 11 CD-4); the flip itself is a separate, explicit decision
 
 ## Contributing
 

@@ -166,8 +166,10 @@ def test_restart_gateway_dry_run(
         raise AssertionError("dry-run must not shell out")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    assert system.restart_gateway() is True
-    assert "[dry-run] restart_gateway called" in capsys.readouterr().out
+    result = system.restart_gateway()
+    assert result == system.RestartResult(status="dry_run", ok=True)
+    # edges/ never prints (ROADMAP §2) — the cli layer renders the result.
+    assert capsys.readouterr().out == ""
 
 
 def test_restart_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,7 +178,7 @@ def test_restart_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(system, "gateway_active", lambda: True)
     monkeypatch.setattr(system, "systemctl_restart", lambda unit=system.GATEWAY_UNIT: True)
     monkeypatch.setattr(system.time, "sleep", lambda _s: None)
-    assert system.restart_gateway() is True
+    assert system.restart_gateway() == system.RestartResult(status="restarted", ok=True)
 
 
 def test_restart_gateway_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,7 +186,10 @@ def test_restart_gateway_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     _force_systemd(monkeypatch)
     monkeypatch.setattr(system, "gateway_active", lambda: True)
     monkeypatch.setattr(system, "systemctl_restart", lambda unit=system.GATEWAY_UNIT: False)
-    assert system.restart_gateway() is False
+    result = system.restart_gateway()
+    assert result.ok is False
+    assert result.status == "failed"
+    assert result.hint  # service_hint('status') text, rendered by cli/
 
 
 def test_restart_gateway_not_running_returns_true(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,7 +201,10 @@ def test_restart_gateway_not_running_returns_true(monkeypatch: pytest.MonkeyPatc
         raise AssertionError("must not restart a stopped service")
 
     monkeypatch.setattr(system, "systemctl_restart", boom)
-    assert system.restart_gateway() is True
+    result = system.restart_gateway()
+    assert result.ok is True
+    assert result.status == "not_running"
+    assert result.hint  # service_hint('start') text, rendered by cli/
 
 
 def test_restart_gateway_no_systemd_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,7 +217,9 @@ def test_restart_gateway_no_systemd_fallback(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(subprocess, "run", boom)
     # gateway_active() -> systemctl_is_active() -> False off systemd, no shell-out.
-    assert system.restart_gateway() is True
+    result = system.restart_gateway()
+    assert result.ok is True
+    assert result.status == "not_running"
 
 
 # ── docker ──────────────────────────────────────────────────────────────────────

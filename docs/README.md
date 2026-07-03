@@ -49,7 +49,7 @@ docket install                 # Install OpenClaw + specialist agents
 docket add                     # Create a project agent
 docket list                    # Show all agents
 docket info <id>               # Agent details
-docket context snapshot <id>   # Create fast-access context
+docket context <id> snapshot   # Create fast-access context
 
 # Pod teams (see Agent Teams guide)
 docket add <project>                       # Provision a pod (Lead + Implementer)
@@ -66,7 +66,13 @@ docket scope <id> set <key>    # Switch project context
 # Maintenance & health
 docket maintain <id> check     # Health check + auto-fix
 docket cost [id]               # Token usage and cost
-docket doctor                  # System-wide diagnostics
+docket doctor                  # System-wide diagnostics (add --fix to apply auto-fixes)
+
+# Keys, auth & security (see Command Reference for the full surface)
+docket keys setup              # Interactive API key wizard
+docket auth status             # Claude model auth profiles
+docket gates enable            # (Re-)apply enforced tool-approval gates (on by default at install)
+docket audit                   # Recent docket-initiated changes
 ```
 
 See the [Command Reference](commands.md) for the full set.

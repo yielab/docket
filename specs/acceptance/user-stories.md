@@ -120,9 +120,18 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 - Export formats validated
 - Budget alert thresholds implemented
 
-## Epic: Team Coordination
+## Epic: Team Coordination (Retired, D-11 / CH-4)
 
-### Story: TEAM-001 - Initialize Org Manager
+`docket team` — the org-wide manual task queue this epic originally described — was retired in
+0.2.0. It was never dispatched (no code ever executed a queued task), and several of its
+`TEAM-002` acceptance criteria below (load balancing, a monitoring dashboard, 100+ concurrent
+tasks) were never implemented under `team` either — they were aspirational when written. Real,
+working delegation with actual execution now lives in **Epic: Pod Lifecycle (Phase 10)** below,
+specifically **Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes both stories
+here. Running `docket team <anything>` now prints a removed-command notice mapping to the pod
+equivalent. The original stories are kept below for historical reference only.
+
+### Story: TEAM-001 - Initialize Org Manager (historical)
 
 **As a** team lead
 **I want** to run `docket install` to create the shared org Manager specialist
@@ -144,7 +153,7 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 - Pod Leads confirmed as the per-project orchestrators (not the Manager)
 - Team workflow documented in AGENT-TEAMS.md
 
-### Story: TEAM-002 - Delegate Tasks
+### Story: TEAM-002 - Delegate Tasks (historical, never fully implemented under `team`)
 
 **As a** manager agent
 **I want** to assign tasks to appropriate specialist agents

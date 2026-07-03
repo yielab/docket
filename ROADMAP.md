@@ -10,8 +10,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–10 complete ☑ (including the **Bash→Python core migration**, M0–M6, and the **agent-pod architecture**, AA-0…AA-9 — see §0 and the Phase 10 record). **Phase 11 — Competitive differentiation is the active phase** 🟡; its executable task board is [TODO.md](TODO.md), grounded in `internal-docs/competitive-analysis.md`. Other remaining: Phase 0 gates default-on flip (now sequenced under Phase 11 CD-4), Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
-**Last Updated:** 2026-06-25
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -107,8 +107,9 @@ language, replacing OpenClaw, adding features not listed here. If tempted, stop 
 > historical phases; do not apply them to new Python work.
 
 - **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
-- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600). `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
+- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600), except append-only JSONL logs (`core/trace.py`, `core/audit.py`), which write directly (D-12); `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
 - **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no file-format knowledge.
+- **Shell-out invariant scope (D-13):** every `openclaw`/`git`/`docker`/`systemctl` shell-out funnels through `edges/adapters/openclaw.py` or `edges/adapters/system.py` — no other module invokes those four binaries directly. Other shell-outs (`bash` in `cli/_eval.py`, `tail -f` in `cli/_trace.py`, `$EDITOR` in `cli/__init__.py` `cmd_edit`, `python --version` in `cli/_install.py`) are CLI-only, one-off, and out of scope for this invariant — they stay where they are.
 - After any change to `openclaw.json`, restart the gateway **once** via `system.restart_gateway()` ([edges/adapters/system.py](src/docket/edges/adapters/system.py)); it degrades gracefully on non-systemd hosts.
 - User-facing status goes through the Rich helpers in [ui.py](src/docket/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.
 - Permissions: workspace dirs `700`, files `600`.
@@ -365,6 +366,9 @@ address exactly those.
 | D-8 | Does the manager-coordination layer get its own metrics role? (spec Q3) | OBS-4 | **No (v1)** — observe it through the agents it dispatches; manager emits session_start/end for its own planning runs, dispatched work is attributed to the executing agent. Add a `manager` rollup only if delegation overhead becomes a question. |
 | D-9 | Per agent field: `synced` to openclaw.json or `local`-only? | CDD-1/CDD-3 | Record per field in the schema table. Proposed: `model`/`sessionKey`/`projectKey` = synced (daemon needs them); `budgetUsd`/`paused`/`pausedReason`/`modelSource`/`templateVersion` = local (docket-only policy/state) — but document them as local so no one expects sync. Revisit if the daemon ever reads a budget/pause. |
 | D-10 | `--json` envelope: adopt the spec's `{data,…}` wrapper (A) or delete it and document actual shapes (B)? | CDD-4 | **B (delete + document reality)** — no command emits the wrapper today and external scripts already parse the bare shapes; retrofitting a wrapper is a breaking change for zero benefit. Pin the real shapes in `specs/data/` instead. |
+| D-11 | `docket team` (legacy manager queue): retire into pods, or give it real dispatch? | CH-4 | **Retire** — it is a second, manual task queue (`workspaces/manager/TASK_LIST.json`) with **no dispatcher**; pods own delegation (`docket pod <p> delegate/queue/dispatch`, real execution via `core/dispatch.py`) and the opt-in Portfolio Manager owns the cross-pod view. Replace with a removed-command notice mapping each subcommand to its pod equivalent. |
+| D-12 | Docket-owned JSON writes: single `store.py` chokepoint, or per-module writers? | CH-1 | **Single chokepoint** — every docket-owned JSON write goes through `edges/store.py` (append-only JSONL logs in `trace.py`/`audit.py` are the one documented exemption, named in the store.py docstring). Removes 8+ hand-rolled atomic-write copies with inconsistent locking. |
+| D-13 | The audit also flagged non-`openclaw` shell-outs (`_eval.py` bash, `_trace.py` tail, `$EDITOR`, `_install.py` python-version): fold them behind `edges/adapters/system.py` too, or scope the shell-out invariant narrower? | CH-2 | **Scope narrower** — the ACL/`system.py` invariant covers `openclaw`/`git`/`docker`/`systemctl` only (§3). The remaining four are CLI-only, one-off, and not OpenClaw/daemon coupling; wrapping them would add indirection with no coupling to remove. Revisit only if one of them grows a second call site. |
 
 ---
 
@@ -1060,7 +1064,7 @@ address exactly those.
 
 ---
 
-### PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(🟡 active — work top to bottom)*
+### PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(☑ COMPLETE 2026-06-25)*
 
 > Source of record: `internal-docs/competitive-analysis.md` (deep-research pass + a
 > GitHub-verified competitor sweep, 2026-06-25). Read it before claiming a CD-task — it has the
@@ -1118,6 +1122,156 @@ consume (CD-6/CD-8); public docs lead with the verified differentiators and make
 claims (CD-9). Out of scope (→ §7 Backlog): a full web UI of our own, microVM/gVisor isolation,
 multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
 
+> **☑ Phase 11 shipped 2026-06-25 — all cards CD-0…CD-9 DONE, full suite green (693 passed).**
+> Every exit criterion above was met: disjoint per-pod runtime resources with reclaim (CD-1),
+> git-worktree Implementer isolation with documented fallback (CD-5), the `verifyCmd` mechanical
+> gate blocking task-done on failure (CD-2), always-approve high-risk policy classes (CD-3), the
+> headless `serve` approval channel unblocking gates-default-on (CD-4), scheduled + webhook
+> dispatch (CD-6), Lobster `validate`/`plan` without execution overclaim (CD-7), the versioned
+> read API pinned by `specs/data/serve-read-api.spec.md` (CD-8), and the positioning truth pass
+> (CD-9). The TODO board was cleared per convention; this note is the durable record.
+
+---
+
+### PHASE 12 — Consolidation & hardening  *(☑ COMPLETE 2026-07-02)*
+
+> **Source of record:** `internal-docs/architecture-audit.md` (2026-07-02 full-repo audit — four
+> parallel passes over architecture invariants, docs↔code sync, feature value, and dead
+> code/hardcoded data; every finding carries file:line evidence). Read it before claiming a
+> CH-card. Executable board: [TODO.md](TODO.md).
+
+**Why this phase.** Eleven phases of feature work landed with the architecture *mostly* honest:
+the audit confirmed the cli→core→edges direction holds (nothing in core/edges imports cli) and
+the ACL really is the only OpenClaw-format parser. But it also found (a) **invariant breaches** —
+`.docket-meta.json`/registry writes bypassing `store.py` with the atomic-write dance hand-copied
+8+ times, raw `openclaw` shell-outs outside the ACL, `core/provider.py` printing Rich UI from the
+domain layer; (b) **a 4,194-line `cli/__init__.py`** (32% of the codebase); (c) **carried features
+that no longer earn their keep** — `core/drift.py` (one caller, feeds an unimplemented
+notification), the legacy `team` manual queue (no dispatcher; pods own delegation), hand-written
+completions already drifted, overdue tier/`profiles:` deprecation shims, three dead template
+files; (d) **docs/specs drifted from the CLI** — 8 commands missing from the command reference,
+wrong extensions/exit codes/state names in specs, contradictory test counts, a changelog missing
+Phases 10–11; and (e) **broken Bash-era scripts still wired into CI** (`spec-coverage.sh`,
+`metrics.sh` count the deleted `lib/` tree — which is why the README drift-guard went blind).
+
+**The bet (one line):** before any new capability, make the codebase *match its own documentation
+and principles* — one JSON chokepoint, one OpenClaw boundary, one delegation system, specs that
+are current-state contracts rather than historical patches, and a re-armed drift guard so it
+stays that way.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):** CH-0 quick truth/dead-file sweep · CH-1
+store.py single-writer rule (D-12) · CH-2 `openclaw` shell-outs behind the ACL · CH-3 core/edges
+UI-printing violations · CH-4 retire `team` (D-11) · CH-5 delete `core/drift.py` · CH-6 remove
+tier/`profiles:` shims (D-2 exit) · CH-7 split `cli/__init__.py` · CH-8 drift-proof completions ·
+CH-9 fix/retire Bash-era scripts + re-arm the CI drift guard · CH-10 spec (SDD) truth pass ·
+CH-11 docs completeness pass · CH-12 changelog backfill + 0.2.0 prep · CH-13 local test-harness
+hygiene.
+
+**Explicit keeps (audited, do NOT cut):** the ACL + `store.py` + dual-source `sync.py` (documented
+architecture); the audit log, approval store, and opt-in gates (substrate of CD-3/CD-4); the
+`serve` read API incl. `/metrics` and scheduled/webhook dispatch (CD-6/CD-8 differentiators,
+spec-pinned); Lobster `validate`/`plan` (CD-7); `resources.py` (small, CD-1 substrate); the
+`policy.py`/`models_policy.py`/`provider.py` trio (distinct concerns — naming, not duplication).
+
+**Phase 12 exit criteria:** zero docket-owned JSON writes outside `store.py` (except the named
+JSONL exemption, D-12); zero `openclaw` shell-outs outside the ACL; zero `ui` imports in
+`core/`/`edges/`; no module over ~1,500 lines in `cli/`; `team`, `drift.py`, tier/`profiles:`
+shims and the three dead templates gone (with removed-command notices where user-facing);
+`docs/commands.md` covers every live command and flag; every spec's Status line and contract
+matches code (extension, exit codes, state strings); CHANGELOG documents Phases 10–11 and cuts
+0.2.0; the README-numbers drift guard runs green in CI against the Python tree; full suite +
+goldens green throughout.
+
+> **☑ Phase 12 shipped 2026-07-02 — all 14 cards CH-0…CH-13 DONE, full suite green.** Every
+> exit criterion above was met, with one negotiated deviation: `cli/__init__.py` landed at
+> **1,702 lines**, not ≤1,500 — the CH-7 card's own Do-list named 5 extraction targets
+> (`_keys.py`, `_context.py`, `_workflow.py`, `_cost.py`, `_agents.py`) and none of the
+> remaining commands, so no 6th stage was invented purely to force the number under the target.
+> `docket` **0.2.0** was drafted in CHANGELOG/`VERSION`/`pyproject.toml`/`uv.lock`/`__version__`
+> at this point, but not yet tagged — Phase 13 landed on top before the tag was cut, and the
+> release actually shipped as **`0.2.0-beta.1`** (see the Phase 13 completion note and §8) once
+> the operator clarified every release from this project carries a SemVer `-beta.N` suffix. The
+> TODO board was cleared per convention; this note is the durable record. Full findings:
+> `internal-docs/architecture-audit.md`; execution trail: TODO.md's CH-0…CH-13 cards (kept, per
+> this phase's own convention, until the next phase overwrites them).
+
+---
+
+### PHASE 13 — Close the differentiation gaps  *(☑ COMPLETE 2026-07-02)*
+
+> **Source of record:** `internal-docs/competitive-analysis.md` (2026-06-25 research pass) named
+> three "Tier 1 — Now" bets as docket's highest-leverage, no-daemon-change differentiators: **P1**
+> pod-level runtime-resource isolation, **O2** a deterministic pre-merge verification gate, **S1**
+> high-risk action classes + a headless approval channel. A 2026-07-02 grounding pass (three
+> parallel code investigations, file:line-cited) found the framing had gone stale: **Phase 11's
+> own CD-1/CD-2/CD-3/CD-4 cards already built most of this** the same week the analysis was
+> written. Executable board: [TODO.md](TODO.md).
+
+**Why this phase.** Re-checking the three bets against the current tree:
+
+- **P1** — `AgentMeta` already has `port_range_start/count`, `scratch_dir` (`core/models.py:75-77`);
+  `core/resources.py` allocates ports/scratch dirs per pod; `_pod.py` documents them into TOOLS.md.
+  What's missing: none of it reaches the implementer's actual **process environment** —
+  `edges/adapters/openclaw.py`'s `agent_run` (~L971-976) shells out with no `env=` override, so an
+  implementer can only *read about* its port range/scratch dir as prose in TOOLS.md, never rely on
+  it being set. The disposable DB/cache "namespace" is a naming convention only (`_pod.py:116-117`),
+  no real provisioning — that stays out of scope (no DB engine assumption; see keeps below).
+- **O2** — this *is* CD-2, already shipped 2026-06-25: `dispatch.py` runs `verifyCmd` via
+  `edges/adapters/system.py`'s `run_verify_cmd` after the implementer hop and hard-fails on
+  non-zero. Two real gaps remain: (a) there is no way to **set** `verifyCmd` short of the internal
+  `meta-set` debug command — no TOOLS.md field, no public `docket pod add --verify` flag, despite
+  `specs/data/docket-meta.spec.md:74` already (incorrectly) documenting one; (b) the Tester hop's
+  PASS/FAIL is prose the pipeline never parses — only adapter-level `run_res.ok` gates it, so a
+  Tester agent that writes "FAIL" in its response can still advance the pipeline.
+- **S1** — `docket approve`/`docket deny` (CLI channel) and `serve.py`'s `POST /approvals/<token>`
+  (HTTP channel) both already work end-to-end (`cli/_approve.py`, `serve.py` ~L321-368). The
+  headless approval routing that `specs/functional/security-gates.spec.md` says gates-default-on
+  is blocked on already exists in code — the spec just hasn't caught up. Two real gaps remain:
+  (a) no "high-risk action class" concept exists anywhere — `core/security.py` is a flat binary
+  allowlist, no always-route category for money/prod-deploy/secret-access actions; (b) approval
+  grants/denials only emit trace events, never `audit_log()` — so an approval channel other than
+  Telegram leaves no audit trail.
+
+**The bet (one line):** don't build three features from scratch — close the five specific,
+file:line-identified gaps that stand between "the substrate exists" and "the differentiation claim
+is true," then flip gates-default-on now that its own spec's blocking condition is actually met.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):** FD-0 inject pod resources into the
+implementer's process env (completes P1) · FD-1 TOOLS.md verify-command field + public
+`--verify` flag (completes O2a) · FD-2 structural Tester PASS/FAIL gate in dispatch (completes O2b)
+· FD-3 high-risk action-class always-approve policy (completes S1a) · FD-4 audit-log parity for
+approval grant/deny across all channels (completes S1b) · FD-5 security-gates.spec.md truth pass +
+flip gates-default-on · FD-6 spec/data truth pass for the fields touched above · FD-7
+docs/positioning pass — claim the closed gaps, correct the stale competitive-analysis framing.
+
+**Explicit keeps (do NOT build in this phase):** a real disposable DB/cache namespace (stays a
+naming convention — no docket-owned DB engine to provision against); microVM/gVisor isolation,
+multi-host provisioning, cross-runtime adapters (all still §7 Backlog, deferred); the existing
+CLI/HTTP approval channels themselves (already correct — this phase documents and hardens them,
+does not rebuild them).
+
+**Phase 13 exit criteria:** an implementer subprocess's real environment contains its allocated
+port range + scratch dir (test-verified, not just TOOLS.md prose); `verifyCmd` is settable via a
+public CLI flag and documented in TOOLS.md; a Tester hop reporting FAIL (or an unparseable result)
+blocks pipeline advancement; a defined high-risk action-class list always routes to approval
+regardless of the allowlist; every approval grant/deny (any channel) writes an audit-log entry;
+`security-gates.spec.md` reflects the real channel set and states the on-by-default condition is
+met; `docket install`'s gates default flips; full suite + goldens green throughout.
+
+> **☑ Phase 13 shipped 2026-07-02 — all 8 cards FD-0…FD-7 DONE, full suite green (795 tests).**
+> Every exit criterion above was met, with one honest narrowing: the high-risk action-class
+> policy (FD-3) is **fully enforced only for money-movement and secret-access** (their bins were
+> never in the curated allowlist); prod-deploy's `git`/`npm` overlap is documented policy, not
+> daemon-enforced — an initial implementation that excluded `git`/`npm` wholesale was rejected
+> during review because the daemon's exec-allowlist gates by binary path only, and would have
+> forced every benign invocation (`git status`, `npm test`) to also require approval. Per-argument
+> enforcement for allowlisted bins is now a tracked backlog item, not silently claimed as shipped.
+> `internal-docs/competitive-analysis.md` (gitignored, local-only) was corrected with per-bet
+> status notes so its Tier-1 framing — which had already gone stale by the time this phase started,
+> since Phase 11's CD-1…CD-4 had built most of the substrate the same week it was written — doesn't
+> mislead a future planning pass the same way. Full findings: this section above; execution trail:
+> TODO.md's FD-0…FD-7 cards (kept until the next phase overwrites them, per convention).
+
 ---
 
 ## 7. Backlog (deferred indefinitely)
@@ -1139,30 +1293,95 @@ multi-host/remote provisioning, cross-runtime (non-OpenClaw) adapters.
 
 ---
 
-## 8. How to start (current — Phase 11)
+## 8. How to start (current — no active phase)
 
-Phases 0–10 are complete (§5 + the Phase 10 record). The active work is **Phase 11 — Competitive
-differentiation**; read `internal-docs/competitive-analysis.md` first, then claim tasks from
-[TODO.md](TODO.md).
-
-```bash
-git checkout -b pc/cd-0-agent-json-schema    # one branch per CD-task
-# CD-0 first — it confirms the openclaw agent --json cost schema CD-1/CD-2 rely on.
-uv run pytest                                # baseline green before you start
-# ...do the task, add tests, then:
-uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest
-bash tests/golden/run.sh verify-all          # byte-parity net
-git commit -m "Feat: CD-0 — confirm openclaw agent --json schema; tighten agent_run"
-```
-
-Work CD-tasks **in dependency order** (CD-0 schema → CD-1 resource isolation → CD-2 verify gate →
-CD-3/CD-4 governance → CD-5/6/7 orchestration → CD-8 read API → CD-9 docs). Tick boxes in the task
-board as you go. When a decision blocks you, record it (§6 pattern) and apply the documented default.
+Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
+and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
+pre-release suffix (not a bare version) for as long as the project stays beta/early-stage per
+README's warning banner; `v0.1.0` predates this convention and stays as-is. **No phase is
+currently active.** TODO.md's board is spent and awaiting the next phase per the standing
+convention (clear the old cards, keep the phase record here, append the new board). Before
+starting new work: decide what Phase 14 is — the deferred prod-deploy per-argument enforcement
+(needs a daemon capability that doesn't exist today), a fresh audit, or a product-plan-driven
+feature phase — and write its ROADMAP section + TODO.md board following the pattern established
+by Phases 10–13.
 
 ---
 
 ### Changelog
 
+- **2026-07-03** — **Cut and tagged `v0.2.0-beta.1`** — folded Phase 13 (FD-0…FD-7) into
+  CHANGELOG's previously-blank-since-drafting 0.2.0 entry; trimmed README.md (492→361 lines:
+  cut the redundant Command Reference and Engineering sections down to short pointers at
+  `docs/commands.md`/`CONTRIBUTING.md`, pulled two screenshots — `gates.png`/`doctor.png` — that
+  showed pre-0.2.0 "gates inactive" output contradicting the new gates-on-by-default default);
+  consolidated repeated before/after + token-savings narrative across `docs/DOCKET.md`
+  (821→731 lines) and `docs/QUICK-START-DOCKET.md` (454→307 lines); merged three separate
+  troubleshooting sections (`WORKFLOW-GUIDE.md`, `QUICK-START-DOCKET.md`, and
+  `docs/troubleshooting.md` itself) into one canonical `troubleshooting.md`. **Versioning
+  correction:** the operator clarified every release from this project must carry a SemVer
+  `-beta.N` pre-release suffix while it stays beta software — corrected the in-flight plain
+  `0.2.0` cut to `0.2.0-beta.1` (VERSION, `pyproject.toml`, `__version__`, `uv.lock`, CHANGELOG
+  header + compare links) rather than reusing `0.1.0-beta.*`, since `v0.1.0` is already tagged
+  and a `0.1.0-beta.N` would sort *before* it in SemVer precedence. `.github/workflows/release.yml`
+  updated to mark the GitHub Release as a pre-release whenever the tag contains a `-` (so this
+  and future beta tags don't show as "Latest release").
+- **2026-07-02 (later same day)** — **PHASE 13 COMPLETE.** All 8 FD-cards landed and merged into
+  `develop` (795 tests green). Execution: FD-0…FD-4 ran as a first parallel wave of 5
+  worktree-isolated agents; FD-5/FD-6 ran as a second wave of 2 once the first wave landed; FD-7
+  was done directly (solo, small docs-only card). Two real merge conflicts resolved by hand: test
+  fixtures in `core/dispatch.py` needed widening to FD-0's 5-arg `Runner` signature after FD-2
+  merged first; `security-gates.spec.md` had a genuine content conflict between FD-5 and FD-6
+  (both independently wrote a "High-risk action classes" section) — resolved by keeping the more
+  detailed version and combining both Changelog entries. One design correction made mid-phase,
+  before merging: FD-3's first implementation excluded `git`/`npm` entirely from the exec
+  allowlist to force high-risk invocations to always ask; caught during review that the daemon's
+  binary-only gating would have also blocked benign invocations (`git status`, `npm test`) —
+  presented to the operator as a real tradeoff, who chose to narrow the fix rather than accept the
+  full exclusion. Per-argument enforcement for prod-deploy's `git`/`npm` overlap is now an
+  explicit, tracked backlog item. TODO.md's board is now spent and awaiting the next phase.
+- **2026-07-02 (later same day)** — **Added PHASE 13 — Close the differentiation gaps** (FD-0…FD-7),
+  scoped after the operator chose "Tier-1 competitive bets" from `internal-docs/competitive-analysis.md`.
+  A grounding pass (three parallel code investigations) found the analysis's framing had gone stale:
+  Phase 11's own CD-1 (port/scratch allocation), CD-2 (verify-cmd gate), and CD-3/CD-4 (approval
+  store + CLI/HTTP channels) already built most of what P1/O2/S1 asked for, the same week the
+  analysis was written. Rescoped to the five real residual gaps instead of rebuilding: env-injection
+  for pod resources (FD-0), a public way to set `verifyCmd` (FD-1), a structural Tester PASS/FAIL
+  gate (FD-2), a high-risk action-class always-approve policy (FD-3), audit-log parity for approval
+  channels (FD-4), plus the spec truth pass and gates-default-on flip those unblock (FD-5) and a
+  docs/positioning pass (FD-7). Board in TODO.md.
+- **2026-07-02** — **Marked PHASE 11 complete** (CD-0…CD-9 all DONE 2026-06-25, suite green at 693;
+  durable record added to the Phase 11 section, TODO board cleared per convention) and **added
+  PHASE 12 — Consolidation & hardening** (CH-0…CH-13), driven by `internal-docs/architecture-audit.md`
+  (2026-07-02: four parallel audit passes — architecture invariants, docs↔code sync, feature value,
+  dead code/hardcoded data). Verified findings baked into the plan: store.py bypassed by
+  `.docket-meta.json`/registry writes (atomic-write logic hand-copied 8+×), raw `openclaw` shell-outs
+  outside the ACL, `core/provider.py` printing UI from the domain layer, `cli/__init__.py` at 4,194
+  lines, `core/drift.py` with one caller feeding an unimplemented notification, the legacy `team`
+  queue duplicating pod dispatch with no dispatcher, drifted hand-written completions, overdue D-2
+  deprecation shims, 3 dead templates, 8 commands missing from docs/commands.md, spec/code mismatches
+  (workflow extension + exit codes, team done-state), contradictory test counts (416/694 vs actual
+  688), and the Bash-era `scripts/spec-coverage.sh`/`metrics.sh` still in CI while counting the
+  deleted `lib/` tree. Decisions D-11 (retire `team` → pods) and D-12 (store.py single-writer rule,
+  JSONL logs exempt) added. Explicit keeps recorded so the phase doesn't over-cut: the CD-6/7/8
+  differentiators, ACL/store/sync, audit+approval, `resources.py`, and the policy/models_policy/
+  provider trio (naming collision, not duplication).
+- **2026-07-02 (later same day)** — **PHASE 12 COMPLETE.** All 14 CH-cards landed and merged
+  into `develop`; `docket` 0.2.0 cut (CHANGELOG + VERSION + pyproject.toml + uv.lock +
+  `__version__`; not tagged — operator step). Execution notes: 9 cards ran via parallel
+  worktree-isolated agents on the first pass; a second wave (CH-7/CH-8/CH-10) was interrupted
+  by an infrastructure session-limit error before any commits landed (cleanly recovered — CH-10
+  was then done directly, CH-7/CH-8 re-ran successfully once the limit reset); CH-11 landed
+  solo; CH-12 was done directly. Three real merge conflicts resolved by hand (`cli/__init__.py`
+  together with `core/provider.py` on CH-4; a store-import alias in `core/models_policy.py` on
+  CH-6). The
+  README-numbers drift guard (re-armed by CH-9) caught real drift three times as later cards
+  added tests/files — confirming it works. One negotiated deviation from the original exit
+  criteria: `cli/__init__.py` landed at 1,702 lines (target ≤1,500) — CH-7's Do-list named 5
+  extraction targets and no more; no 6th stage was invented to force the number down further.
+  `CLAUDE.md` (gitignored/untracked) was synced directly on the local checkout throughout,
+  since no git branch could carry an edit to it. TODO.md's board is now spent and awaiting the
+  next phase.
 - **2026-06-25** — **Added PHASE 11 — Competitive differentiation**, and marked Phase 10 complete in
   the status header. Driven by `internal-docs/competitive-analysis.md`: a deep-research pass (12
   sources, load-bearing claims re-fetched and confirmed verbatim) + a **GitHub-verified** sweep of the

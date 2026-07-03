@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
+import re as _re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,9 +27,29 @@ from docket.edges.adapters import system as _sys
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
 # Injectable runner for tests (matches the ACL ``agent_run`` signature).
-Runner = Callable[[str, str, str, int], _oc.AgentRunResult]
+Runner = Callable[[str, str, str, int, dict[str, str] | None], _oc.AgentRunResult]
 
 DEFAULT_TIMEOUT = 300
+
+# FD-2: the Tester's documented contract (see cli/_pod.py's Tester SOUL.md body) is a
+# binary PASS/FAIL first line. Matched case-insensitively; anything else is unparseable.
+_TESTER_VERDICT_RE = _re.compile(r"^\s*(PASS|FAIL)\b", _re.IGNORECASE)
+
+
+def _parse_tester_verdict(output: str) -> str | None:
+    """Parse the Tester hop's first non-blank line for a PASS/FAIL marker.
+
+    Returns ``"pass"``/``"fail"`` (lowercased) on a match, or ``None`` if the
+    output doesn't start with one of those markers (unparseable — treated as
+    distinct from an explicit FAIL, see ``dispatch_task``).
+    """
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _TESTER_VERDICT_RE.match(stripped)
+        return match.group(1).lower() if match else None
+    return None
 
 
 class DispatchError(Exception):
@@ -169,8 +190,35 @@ def _hop_message(task: dict[str, Any], role: str, prior: list[HopResult]) -> str
             "You are the Reviewer. Review the diff (read-only). Approve or request changes."
         )
     elif role == "tester":
-        lines.append("You are the Tester. Validate behaviour only and return PASS or FAIL.")
+        lines.append(
+            "You are the Tester. Validate behaviour only. Your reply's first "
+            "non-blank line must be exactly PASS or FAIL (case-insensitive), "
+            "followed by evidence."
+        )
     return "\n".join(lines)
+
+
+def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
+    """Build the subprocess env override for a hop, if any (FD-0).
+
+    Only an **implementer** hop that has an allocated pod port range gets an
+    override — the pod's port range + scratch dir become real env vars in that
+    subprocess, not just prose in TOOLS.md. Every other hop (lead/reviewer/tester,
+    or an implementer with no allocation) returns ``None`` — no override, today's
+    inherit-the-parent-env behaviour.
+    """
+    if role != "implementer":
+        return None
+    port_start = _oc.meta_get(member_id, "portRangeStart", "")
+    if not port_start:
+        return None
+    port_count = _oc.meta_get(member_id, "portRangeCount", "")
+    scratch_dir = _oc.meta_get(member_id, "scratchDir", "")
+    return {
+        "DOCKET_PORT_BASE": port_start,
+        "DOCKET_PORT_COUNT": port_count,
+        "DOCKET_SCRATCH_DIR": scratch_dir,
+    }
 
 
 def dispatch_task(
@@ -234,7 +282,8 @@ def dispatch_task(
             "tool_call",
             _json.dumps({"hop": role, "agent": member_id}),
         )
-        run_res = run(member_id, session_id, message, timeout)
+        env = _hop_env(member_id, role)
+        run_res = run(member_id, session_id, message, timeout, env)
         hop = HopResult(
             role=role,
             member_id=member_id,
@@ -268,6 +317,29 @@ def dispatch_task(
             result.status = "failed"
             result.reason = f"{role} hop failed: {run_res.error or 'no result'}"
             break
+
+        # Structural Tester gate (FD-2): the Tester's whole contract is a binary
+        # PASS/FAIL report (see cli/_pod.py's Tester SOUL.md body) — a successful
+        # subprocess call (run_res.ok) says nothing about *what* the Tester found,
+        # so parse the marker convention here and block advancement on FAIL or on
+        # output that doesn't follow the convention at all.
+        if role == "tester":
+            verdict = _parse_tester_verdict(run_res.output)
+            if verdict != "pass":
+                redacted = _trace.redact(run_res.output)
+                _trace.trace_event(
+                    project,
+                    session_id,
+                    role,
+                    "tester_verdict_failed",
+                    _json.dumps({"verdict": verdict or "unparseable", "output": redacted}),
+                )
+                result.status = "failed"
+                if verdict == "fail":
+                    result.reason = "tester reported FAIL"
+                else:
+                    result.reason = "tester output unparseable (expected a PASS/FAIL first line)"
+                break
 
         # Verification gate: run after a successful Implementer hop, before reviewer/tester.
         if role == "implementer":

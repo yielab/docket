@@ -1,10 +1,26 @@
 # Team Coordination Specification
 
-**Version**: 2.0.0
-**Status**: Implemented
-**Last Updated**: 2026-06-24
+**Version**: 3.0.0
+**Status**: Retired
+**Last Updated**: 2026-07-02
 
-## Purpose
+## Retired (D-11 / CH-4)
+
+`docket team` has been removed. It was a second, manual task queue
+(`~/.openclaw/workspaces/manager/TASK_LIST.json`) whose tasks were hand-transitioned and
+**never executed** — no dispatcher ever read it. Pods now own delegation *with* real
+execution: `docket pod <project> delegate "<task>"` queues work, `docket pod <project> queue`
+lists it, and `docket pod <project> dispatch` actually runs it through the pod's Lead →
+Implementer (→ Reviewer/Tester) pipeline (`src/docket/core/dispatch.py`). The org-wide,
+cross-pod view is the opt-in Portfolio Manager (`docket install --portfolio`). Running
+`docket team <anything>` now prints this mapping and exits 1
+(`src/docket/__main__.py`'s `_REMOVED` table); any pre-existing
+`~/.openclaw/workspaces/manager/TASK_LIST.json` is left on disk untouched, it is simply no
+longer read. The rest of this document is preserved for historical reference only — see
+`specs/api/cli-interface.spec.md` (`docket pod`/`docket serve --dispatch`) and
+`docs/AGENT-TEAMS.md` for the pod model that replaced it.
+
+## Purpose (historical)
 
 This specification defines docket's `team` surface: the **org manager's shared task queue**.
 `docket team` delegates work to the Manager agent and tracks each task through its lifecycle.
@@ -106,6 +122,13 @@ $ docket team done T-014
 - The manager agent **MUST** remain delegation-only and never gain code-edit tools.
 
 ## Changelog
+
+### Version 3.0.0 (2026-07-02)
+
+- Retired (D-11 / CH-4): `docket team` removed — it was a second, undispatched task queue.
+  Replaced by pod delegation (`docket pod <project> delegate/queue/dispatch`, real execution)
+  and the opt-in Portfolio Manager for the cross-pod view.
+- Status: Retired
 
 ### Version 2.0.0 (2026-06-24)
 

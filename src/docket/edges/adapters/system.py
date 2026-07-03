@@ -15,14 +15,32 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-
-from docket import ui
+from dataclasses import dataclass
+from typing import Literal
 
 GATEWAY_UNIT = "openclaw-gateway.service"
 
 # Kept short so a hung daemon never blocks a CLI command.
 _QUERY_TIMEOUT = 5
 _RESTART_TIMEOUT = 15
+
+# Outcome tags for restart_gateway(); the cli layer renders these via ui.*
+# (edges/ has no knowledge of terminals — see ROADMAP §2).
+RestartStatus = Literal["dry_run", "not_running", "restarted", "failed"]
+
+
+@dataclass(frozen=True)
+class RestartResult:
+    """Typed outcome of restart_gateway(). Never printed here — cli/ renders it.
+
+    ``hint`` carries the platform command a user would run next (only set for
+    ``not_running``/``failed``); ``ok`` mirrors the old boolean contract (False
+    only for ``failed``).
+    """
+
+    status: RestartStatus
+    ok: bool
+    hint: str = ""
 
 
 def _which(binary: str) -> bool:
@@ -121,29 +139,23 @@ def gateway_active() -> bool:
     return systemctl_is_active(GATEWAY_UNIT)
 
 
-def restart_gateway() -> bool:
+def restart_gateway() -> RestartResult:
     """Restart the OpenClaw gateway if it is running.
 
-    Honors DOCKET_NO_RESTART=1 for test hermeticity. Returns True on success or
-    when the service is already down; False if the restart failed.
+    Honors DOCKET_NO_RESTART=1 for test hermeticity. Returns a RestartResult;
+    ``ok`` is True on success or when the service is already down, False if the
+    restart failed. Never prints — the cli layer renders the result via ui.*.
     """
     if os.environ.get("DOCKET_NO_RESTART") == "1":
-        print("[dry-run] restart_gateway called")
-        return True
+        return RestartResult(status="dry_run", ok=True)
 
     if not gateway_active():
-        ui.warn("Gateway not running. Start it with:")
-        print(f"  {service_hint('start')}")
-        return True  # nothing to restart — not an error
+        return RestartResult(status="not_running", ok=True, hint=service_hint("start"))
 
-    ui.info("Restarting gateway...")
     if not systemctl_restart(GATEWAY_UNIT):
-        ui.warn("Gateway restart failed.")
-        print(f"  Check: {service_hint('status')}")
-        return False
+        return RestartResult(status="failed", ok=False, hint=service_hint("status"))
     time.sleep(2)
-    ui.success("Gateway restarted")
-    return True
+    return RestartResult(status="restarted", ok=True)
 
 
 def docker_available() -> bool:

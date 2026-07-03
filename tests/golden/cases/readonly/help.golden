@@ -58,7 +58,7 @@ CONTEXT & MEMORY  (docket context [id] <subcommand>)
 MONITORING
   cost     [id]      Token usage and cost breakdown with budget status
   doctor             System health: gateway, config, drift, budget, runaway
-  gates              Exec-approval gates: status / enable / disable (opt-in)
+  gates              Exec-approval gates: status / enable / disable (on by default)
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
   eval               Specialist-role evals: structural checks + live golden tasks
 
@@ -75,11 +75,11 @@ OBSERVABILITY
   deny     <token>   Deny a pending HITL approval
 
 PODS, QUEUE & WORKFLOWS
-  pod <project>      Inspect/manage a project pod (add/remove members)
-  team delegate      Queue a task for the org manager agent
-  team queue         Show pending manager tasks
-  team done          Mark a task as complete
-  workflow [id]      Manage Lobster YAML pipelines
+  pod <project>          Inspect/manage a project pod (add/remove members)
+  pod <project> delegate Queue a task for the pod
+  pod <project> queue    Show the pod's task queue
+  pod <project> dispatch Run queued tasks through the pod pipeline
+  workflow [id]          Manage Lobster YAML pipelines
 
 UTILITIES
   logs      [id]     View memory logs and gateway entries
@@ -111,8 +111,8 @@ EXAMPLES
   docket profile myproject --budget 5  # set $5 spending cap
   docket context myproject search "auth bug"  # search memory
   docket cost                       # cost breakdown for all agents
-  docket team delegate "Fix login bug"  # queue task for manager
-  docket team queue                 # show pending tasks
+  docket pod myproject delegate "Fix login bug"  # queue task for the pod
+  docket pod myproject dispatch     # run queued tasks
 
 PATHS
   Workspaces:  ~/.openclaw/workspaces/projects/

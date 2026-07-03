@@ -36,7 +36,9 @@ The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the w
 A **shared team** created once by `docket install` — genuinely cross-cutting, one instance for
 the whole fleet (`scope: org`):
 
-- **manager** — cross-cutting coordination and the org task queue (`docket team …`).
+- **manager** — cross-cutting coordination (transitional; `docket team`'s own task queue was
+  retired — per-pod dispatch is the only queue now — so this role is being superseded by
+  per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
 - **portfolio-manager** *(optional, `docket install --portfolio`)* — advisory cross-pod
@@ -58,7 +60,7 @@ the whole fleet (`scope: org`):
 │  • set budget caps                    • approve HITL gates    │
 └──────────────┬───────────────────────────────┬──────────────┘
                │                                │
-   per-project │ pod pipeline      cross-cutting│ org queue
+   per-project │ pod pipeline      cross-cutting│ advisory only
                ▼                                ▼
 ┌──────────────────────────┐        ┌──────────────────────────┐
 │  Pod: myapp              │        │  Org specialists (shared)│
@@ -271,30 +273,30 @@ docket serve               # READ-ONLY monitor — health checks only, never dis
 
 ---
 
-## The org queue vs. per-pod dispatch
+## There is now one queue: per-pod dispatch
 
-There are **two distinct queues**, and they don't overlap:
+`docket team` (the org manager's own delegate/queue/start/done/cancel task queue) was
+**retired** — the old manager queue was never dispatched, so it added ceremony without running
+anything. **Per-pod dispatch is the only queue now:**
 
-| | **Per-pod dispatch** | **Org manager queue** |
-|---|---|---|
-| Command | `docket pod <project> delegate / queue / dispatch` | `docket team delegate / queue / start / done / cancel` |
-| Scope | one project's pod (`scope: project`) | cross-cutting org work (`scope: org`) |
-| Runs code? | yes — Implementer writes inside the project workspace | no — coordination/planning only |
-| Isolation | pod-local; no cross-pod path | fleet-wide |
+| | **Per-pod dispatch** |
+|---|---|
+| Command | `docket pod <project> delegate / queue / dispatch` |
+| Scope | one project's pod (`scope: project`) |
+| Runs code? | yes — Implementer writes inside the project workspace |
+| Isolation | pod-local; no cross-pod path |
 
-Use **per-pod dispatch** for "do this work in *this* codebase." Use the **org queue**
-(`docket team …`) for genuinely cross-cutting coordination that isn't a single project's code —
-e.g. "draft a fleet-wide security-audit plan," handled by the shared `manager`.
+Use it for "do this work in *this* codebase":
 
 ```bash
-# Per-pod (writes code in one project):
 docket pod myapp delegate "Add a contact form to the homepage"
 docket pod myapp dispatch
-
-# Org-level (cross-cutting coordination, no code):
-docket team delegate "Plan an auth-hardening pass across the fleet"
-docket team queue
 ```
+
+For genuinely cross-cutting *planning* (not code) — "what should the fleet focus on this
+week" — there is no queue at all, only the advisory Portfolio Manager described next: it reads
+fleet metadata and recommends in words; you act on its advice by delegating into the pods it
+names.
 
 ### Cross-pod planning, the honest way
 
@@ -474,65 +476,10 @@ cap is enforced between hops on every dispatch.
 
 ## Troubleshooting
 
-### Pod not running a delegated task?
-
-1. **Confirm the pod and its members exist and are healthy:**
-   ```bash
-   docket pod myapp
-   docket doctor
-   ```
-2. **Check the queue — is the task pending because of budget?**
-   ```bash
-   docket pod myapp queue        # look at status + the budget header
-   ```
-3. **If over budget, raise the cap and re-dispatch:**
-   ```bash
-   docket profile myapp-lead --budget 10
-   docket pod myapp dispatch
-   ```
-4. **Did you actually dispatch?** `delegate` only queues — `dispatch` runs the pipeline (or
-   start the background loop with `docket serve --dispatch`).
-
-### Pipeline stops after the Implementer?
-
-That's expected for a **lean** pod — it only has two hops. Add the gate roles if you want them:
-
-```bash
-docket pod myapp add reviewer
-docket pod myapp add tester
-```
-
-### Implementer touching the wrong project?
-
-1. **Check its session key / scope:**
-   ```bash
-   docket scope myapp-implementer show
-   ```
-2. **Reset if needed:**
-   ```bash
-   docket scope myapp-implementer reset
-   ```
-3. **Verify the workspace identity:**
-   ```bash
-   grep "Session Key" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
-   ```
-
-### Leftover global `programmer`/`reviewer`/`tester`?
-
-A pre-pods install may have left a shared worker workspace. `docket doctor` flags it and
-backfills `scope` on legacy metadata — run it and follow its advice:
-
-```bash
-docket doctor
-```
-
-### Gateway / Telegram issues
-
-```bash
-docket list                                   # shows wire status per agent
-docket wire myapp-lead                         # (re)wire a Lead to Telegram
-systemctl --user status openclaw-gateway.service
-```
+Pod/dispatch, scope, and gateway/Telegram issues (including "pod not running a delegated task,"
+"pipeline stops after the Implementer," and leftover pre-pods global roles) are all covered in
+**[troubleshooting.md](troubleshooting.md)**'s "Pods & Dispatch" and "Agents Not Responding in
+Telegram" sections — kept in one place rather than duplicated here.
 
 ---
 
@@ -547,7 +494,8 @@ systemctl --user status openclaw-gateway.service
 
 **Org specialists** (`scope: org`, shared once):
 - manager / knowledge / security; optional advisory portfolio-manager.
-- The org queue (`docket team …`) is for cross-cutting coordination, **not** a project's code.
+- `docket team` (the old org task queue) was retired — per-pod dispatch is the only queue now;
+  the portfolio-manager is advisory-only and never dispatches or touches a project's code.
 
 **Engineer:**
 - Sets budget caps, delegates and dispatches, reviews diffs, commits, approves HITL gates.

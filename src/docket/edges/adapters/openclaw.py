@@ -11,7 +11,10 @@ import contextlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import subprocess
 
 from docket.config import (
     CONFIG_FILE,
@@ -693,6 +696,128 @@ def configure_agent_defaults(default_model: str) -> None:
     store.write_json(CONFIG_FILE, raw)
 
 
+@dataclass
+class VersionProbe:
+    """Outcome of probing `openclaw --version`.
+
+    available=False means the subprocess never returned cleanly (binary missing,
+    launch error, or timeout) — output/returncode are meaningless in that case.
+    Callers apply their own fallback text; this stays a raw, honest probe.
+    """
+
+    available: bool
+    returncode: int
+    output: str
+
+
+def openclaw_version(timeout: float = 5) -> VersionProbe:
+    """Run `openclaw --version` and return the raw outcome. Never raises."""
+    import subprocess as _sp
+
+    try:
+        res = _sp.run(["openclaw", "--version"], capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, OSError, _sp.TimeoutExpired):
+        return VersionProbe(available=False, returncode=-1, output="")
+    return VersionProbe(
+        available=True, returncode=res.returncode, output=(res.stdout or "").strip()
+    )
+
+
+@dataclass
+class AgentsAddResult:
+    """Outcome of `openclaw agents add <id> --workspace <ws> --model <model> --non-interactive`.
+
+    found=False means the openclaw binary was not on PATH — the process was
+    never launched (the caller typically falls back to a direct openclaw.json
+    write in that case). timed_out covers both an actual timeout and any
+    OSError raised launching the process.
+    """
+
+    found: bool
+    ok: bool
+    returncode: int | None
+    timed_out: bool
+
+
+def agents_add(agent_id: str, workspace: str, model: str, timeout: float = 15) -> AgentsAddResult:
+    """Register an agent via `openclaw agents add ... --non-interactive`. Never raises."""
+    import shutil as _shutil
+    import subprocess as _sp
+
+    if not _shutil.which("openclaw"):
+        return AgentsAddResult(found=False, ok=False, returncode=None, timed_out=False)
+    try:
+        res = _sp.run(
+            [
+                "openclaw",
+                "agents",
+                "add",
+                agent_id,
+                "--workspace",
+                workspace,
+                "--model",
+                model,
+                "--non-interactive",
+            ],
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, _sp.TimeoutExpired):
+        return AgentsAddResult(found=True, ok=False, returncode=None, timed_out=True)
+    return AgentsAddResult(
+        found=True, ok=res.returncode == 0, returncode=res.returncode, timed_out=False
+    )
+
+
+def auth_setup_token(
+    extra: list[str] | None = None, timeout: float | None = None
+) -> subprocess.CompletedProcess[bytes]:
+    """Run `openclaw models auth setup-token --provider anthropic [extra...]`.
+
+    Interactive: stdio is NOT captured so the OAuth-like flow can prompt/print
+    directly on the caller's terminal. Does not catch subprocess errors itself
+    (matches the pre-ACL call sites — some let them propagate, some wrap this
+    in their own try/except); returns the raw CompletedProcess.
+    """
+    import subprocess as _sp
+
+    return _sp.run(
+        ["openclaw", "models", "auth", "setup-token", "--provider", "anthropic", *(extra or [])],
+        timeout=timeout,
+    )
+
+
+def auth_paste_token(
+    extra: list[str] | None = None, timeout: float | None = None
+) -> subprocess.CompletedProcess[bytes]:
+    """Run `openclaw models auth paste-token --provider anthropic [extra...]`.
+
+    Interactive: stdio is NOT captured — see `auth_setup_token` docstring.
+    """
+    import subprocess as _sp
+
+    return _sp.run(
+        ["openclaw", "models", "auth", "paste-token", "--provider", "anthropic", *(extra or [])],
+        timeout=timeout,
+    )
+
+
+def onboard(timeout: float = 600) -> bool:
+    """Run `openclaw onboard` interactively (no output capture). Never raises.
+
+    Returns True on a clean (exit 0) run, False on any failure/timeout/missing
+    binary — mirrors the pre-ACL caller, which ignores the return value and
+    only uses this for its side effect.
+    """
+    import subprocess as _sp
+
+    try:
+        res = _sp.run(["openclaw", "onboard"], timeout=timeout)
+    except (OSError, _sp.TimeoutExpired):
+        return False
+    return res.returncode == 0
+
+
 def register_agent_cli(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
     """Register an agent via `openclaw agents add`.
 
@@ -816,14 +941,21 @@ def agent_run(
     session_key: str,
     message: str,
     timeout: int = 300,
+    env: dict[str, str] | None = None,
 ) -> AgentRunResult:
     """Run one real agent turn via the openclaw CLI (the ONLY place docket does this).
 
     Each call is a real, costed LLM turn; the caller is responsible for budget gating.
     Returns AgentRunResult(ok=False, ...) on CLI missing, timeout, non-zero exit, or
     unparseable output — never raises for ordinary failure modes.
+
+    ``env``, when given, is layered on top of the current process environment for
+    this subprocess only (e.g. a pod's allocated port range / scratch dir) — the
+    parent docket process's own environment is never mutated. ``None``/empty
+    preserves today's behaviour of inheriting the parent env unchanged.
     """
     import json as _json
+    import os as _os
     import shutil as _shutil
     import subprocess as _sp
 
@@ -842,12 +974,14 @@ def agent_run(
         "--timeout",
         str(int(timeout)),
     ]
+    run_env = {**_os.environ, **env} if env else None
     try:
         res = _sp.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout + 15,
+            env=run_env,
         )
     except _sp.TimeoutExpired:
         return AgentRunResult(False, "", 0.0, {}, f"timed out after {timeout}s")

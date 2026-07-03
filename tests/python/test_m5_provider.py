@@ -1,9 +1,12 @@
 """M5 T5.6 tests: local provider registration (models provider add).
 
-Port of scripts/wire-local-provider.sh. These call register_local_provider()
-in-process with OPENCLAW_DIR repointed at a temp seed and the endpoint ping
-monkeypatched (no real network). We assert the resulting models.providers block
-matches the script's output, and that a re-run is a no-op.
+Port of scripts/wire-local-provider.sh. `core.provider.register_local_provider`
+is the pure ping->register orchestration (no output, returns a
+ProviderRegistration); `cli._provider.run_provider_add` renders it — this is
+the split introduced by CH-3 ("core has no knowledge of terminals"). We assert
+the resulting models.providers block matches the script's output, that a
+re-run is a no-op, and that the cli layer prints the same wording as the
+pre-split flow.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from typing import Any
 import pytest
 
 import docket.config as _cfg
+from docket.cli import _provider as _cliprov
 from docket.core import provider as _prov
 from docket.edges.adapters import openclaw as _oc
 
@@ -77,14 +81,67 @@ def test_local_provider_config_matches_script() -> None:
     }
 
 
-# ── registration writes the expected block ─────────────────────────────────────
+# ── core: pure ping → register orchestration, no output ────────────────────────
 
 
-def test_register_writes_provider_block(
+def test_register_local_provider_returns_typed_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _seed(tmp_path, monkeypatch)
+    reg = _prov.register_local_provider()
+    assert reg.name == _prov.DEFAULT_PROVIDER
+    assert reg.base_url == _prov.DEFAULT_BASE_URL
+    assert reg.model_id == _prov.DEFAULT_MODEL_ID
+    assert reg.reachable is False  # ping stubbed to False
+    assert reg.changed is True  # first write
+    # Pure orchestration — core/ prints nothing (ROADMAP §2).
+    assert capsys.readouterr().out == ""
+
+
+def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    oc_dir = _seed(tmp_path, monkeypatch)
+    reg = _prov.register_local_provider(
+        name="lab",
+        base_url="http://10.0.0.5:1234/v1",
+        model_id="llama-3.3-70b",
+        model_name="Llama 3.3 70B",
+        ctx=32768,
+        max_tokens=4096,
+    )
+    assert reg.changed is True
+    entry = _providers(oc_dir)["lab"]
+    assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
+    assert entry["models"][0]["id"] == "llama-3.3-70b"
+    assert entry["models"][0]["contextWindow"] == 32768
+    assert entry["models"][0]["maxTokens"] == 4096
+
+
+def test_other_config_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    oc_dir = _seed(tmp_path, monkeypatch)
+    _prov.register_local_provider()
+    cfg = json.loads((oc_dir / "openclaw.json").read_text())
+    # Unrelated top-level keys survive the providers write.
+    assert cfg["agents"]["defaults"]["model"] == "anthropic/claude-sonnet-4-6"
+    assert cfg["security"]["gates"]["enabled"] is False
+
+
+def test_update_existing_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed(tmp_path, monkeypatch)
+    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 8192, 4096) is True
+    # Changing the context window is a real change.
+    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 16384, 4096) is True
+    assert _oc.get_local_provider("local") is not None
+    assert _oc.get_local_provider("local")["models"][0]["contextWindow"] == 16384  # type: ignore[index]
+
+
+# ── cli: renders the result, wording matches the pre-split flow ────────────────
+
+
+def test_run_provider_add_writes_provider_block(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     oc_dir = _seed(tmp_path, monkeypatch)
-    rc = _prov.register_local_provider()
+    rc = _cliprov.run_provider_add()
     assert rc == 0
 
     providers = _providers(oc_dir)
@@ -103,27 +160,6 @@ def test_register_writes_provider_block(
     assert "docket models set manager    anthropic/claude-sonnet-4-6" in out
 
 
-def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
-    rc = _prov.register_local_provider(
-        name="lab",
-        base_url="http://10.0.0.5:1234/v1",
-        model_id="llama-3.3-70b",
-        model_name="Llama 3.3 70B",
-        ctx=32768,
-        max_tokens=4096,
-    )
-    assert rc == 0
-    entry = _providers(oc_dir)["lab"]
-    assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
-    assert entry["models"][0]["id"] == "llama-3.3-70b"
-    assert entry["models"][0]["contextWindow"] == 32768
-    assert entry["models"][0]["maxTokens"] == 4096
-
-
-# ── idempotency ────────────────────────────────────────────────────────────────
-
-
 def test_rerun_is_noop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -133,39 +169,36 @@ def test_rerun_is_noop(
     assert _oc.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is False
 
     before = (oc_dir / "openclaw.json").read_text()
-    _prov.register_local_provider(model_id="q", model_name="Q")
+    _cliprov.run_provider_add(model_id="q", model_name="Q")
     capsys.readouterr()
-    _prov.register_local_provider(model_id="q", model_name="Q")
+    _cliprov.run_provider_add(model_id="q", model_name="Q")
     out = capsys.readouterr().out
     after = (oc_dir / "openclaw.json").read_text()
     assert before == after
     assert "no change" in out
 
 
-def test_update_existing_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _seed(tmp_path, monkeypatch)
-    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 8192, 4096) is True
-    # Changing the context window is a real change.
-    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 16384, 4096) is True
-    assert _oc.get_local_provider("local") is not None
-    assert _oc.get_local_provider("local")["models"][0]["contextWindow"] == 16384  # type: ignore[index]
-
-
 def test_ping_failure_is_non_fatal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     oc_dir = _seed(tmp_path, monkeypatch)  # ping already stubbed to False
-    rc = _prov.register_local_provider()
+    rc = _cliprov.run_provider_add()
     assert rc == 0
     assert "local" in _providers(oc_dir)
     out = capsys.readouterr().out
     assert "Could not reach" in out  # warn() → stdout (mirrors Bash)
 
 
-def test_other_config_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
-    _prov.register_local_provider()
-    cfg = json.loads((oc_dir / "openclaw.json").read_text())
-    # Unrelated top-level keys survive the providers write.
-    assert cfg["agents"]["defaults"]["model"] == "anthropic/claude-sonnet-4-6"
-    assert cfg["security"]["gates"]["enabled"] is False
+def test_run_provider_add_output_order_matches_pre_split_flow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checking -> (ping) -> warn(unreachable) -> Registering -> success/no-change -> role split."""
+    _seed(tmp_path, monkeypatch)
+    _cliprov.run_provider_add()
+    out = capsys.readouterr().out
+    checking_idx = out.index("Checking the endpoint is alive")
+    warn_idx = out.index("Could not reach")
+    registering_idx = out.index("Registering provider")
+    wired_idx = out.index("Local provider wired")
+    role_split_idx = out.index("Next — apply the smart-planner")
+    assert checking_idx < warn_idx < registering_idx < wired_idx < role_split_idx

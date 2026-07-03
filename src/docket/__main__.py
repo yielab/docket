@@ -14,7 +14,6 @@ _ALIASES = {
     "remove": "delete",
     "rm": "delete",
     "telegram": "wire",
-    "tier": "profile",
     "key": "keys",
     "secret": "keys",
     "wf": "workflow",
@@ -37,6 +36,12 @@ _REMOVED: dict[str, tuple[str, ...]] = {
     "model": (
         "docket model was renamed → use: docket profile [id] <provider/model|default>, "
         "or docket models for the role policy",
+    ),
+    "tier": (
+        "docket tier was removed — tier names (economy/standard/premium) are no longer "
+        "accepted anywhere (D-2 exit, 0.2.0).",
+        "Use: docket profile [id] <provider/model|default> to pin/unpin one agent, or "
+        "docket models for the role policy",
     ),
     "billing": ("docket billing was renamed → use: docket cost [id]",),
     "credits": ("docket billing was renamed → use: docket cost [id]",),
@@ -74,6 +79,16 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "docket mode / docket terminal has been removed.",
         "Use: docket models (role policy) or docket profile [id] <provider/model> to "
         "choose models.",
+    ),
+    "team": (
+        "docket team was retired — pods own delegation now, with real execution "
+        "(the old manager queue was never dispatched).",
+        'Use: docket pod <project> delegate "<task>"  (was: team delegate "<task>")',
+        "Use: docket pod <project> queue                (was: team queue)",
+        "Use: docket pod <project> dispatch              to actually run queued tasks",
+        "Org-wide view: docket install --portfolio       (Portfolio Manager)",
+        "Any old queue file at ~/.openclaw/workspaces/manager/TASK_LIST.json is preserved, "
+        "untouched, but no longer read by docket.",
     ),
 }
 

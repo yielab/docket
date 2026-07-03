@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import docket.config as cfg
 from docket.edges import store
+
+if TYPE_CHECKING:
+    from docket.edges.adapters.system import RestartResult
 
 
 def project_ids() -> list[str]:
@@ -42,25 +45,23 @@ def gateway_active() -> bool:
 
 
 def openclaw_version() -> str:
-    """Return `openclaw --version` output, or '?' if unavailable."""
-    try:
-        result = subprocess.run(
-            ["openclaw", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        out = result.stdout.strip()
-        return out if (result.returncode == 0 and out) else "?"
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return "?"
+    """Return `openclaw --version` output, or '?' if unavailable.
+
+    The subprocess call lives behind the ACL (core has no subprocess of its
+    own — ROADMAP §3); this just applies the display fallback.
+    """
+    from docket.edges.adapters import openclaw as _oc
+
+    probe = _oc.openclaw_version()
+    return probe.output if (probe.available and probe.returncode == 0 and probe.output) else "?"
 
 
-def restart_gateway() -> bool:
+def restart_gateway() -> RestartResult:
     """Restart openclaw-gateway.service if it is running.
 
-    Honors DOCKET_NO_RESTART=1 for test hermeticity (prints a dry-run notice).
-    Returns True on success or when the service is already down.
+    Honors DOCKET_NO_RESTART=1 for test hermeticity. Thin pass-through to the
+    edges adapter; returns a typed result (never prints — cli/ renders it via
+    ui.*, since core has no knowledge of terminals).
     """
     from docket.edges.adapters import system as _system
 
@@ -181,13 +182,8 @@ def _parse_session_file(path: Path) -> dict[str, Any]:
 
 def _write_cost_index(index_path: Path, index: dict[str, Any]) -> None:
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = index_path.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps(index), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, index_path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(index_path, index)
 
 
 @dataclass
@@ -278,13 +274,8 @@ def _write_hist_index(
     hist: dict[str, dict[str, Any]],
 ) -> None:
     hist_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = hist_path.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps({"sigs": sigs, "history": hist}), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, hist_path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(hist_path, {"sigs": sigs, "history": hist})
 
 
 def model_source(agent_id: str) -> str:

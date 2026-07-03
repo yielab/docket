@@ -255,6 +255,28 @@ def _check_models() -> int:
     return len(invalid)
 
 
+def _check_legacy_model_registry() -> int:
+    """One-shot ``profiles:`` → ``roles:`` migration report + residual-key warning.
+
+    Advisory — never affects the issue count. Migrating is an automatic fix
+    (same pattern as the metadata backfill above); a residual ``profiles:``
+    key left behind (because ``roles:`` already existed, so the one-shot
+    migration in ``migrate_legacy_profiles`` declined to touch it) is
+    something to clean up manually, not a health defect.
+    """
+    ui.console.print()
+    ui.console.print("[bold]Model registry (docket-models.json):[/bold]")
+    note = _mp.migrate_legacy_profiles()
+    if note:
+        ui.success(f"  {note}")
+    if _mp.has_residual_profiles_key():
+        ui.warn("  Residual 'profiles:' key found (alongside 'roles:') — it is no longer read.")
+        ui.dim("    Remove it from docket-models.json; 'roles:' is the source of truth.")
+    elif not note:
+        ui.success("  No legacy 'profiles:' key")
+    return 0
+
+
 def _check_drift(ids: list[str], do_fix: bool) -> int:
     """Config drift (meta ↔ openclaw.json) on model + sessionKey."""
     if not ids:
@@ -306,7 +328,9 @@ def _check_drift(ids: list[str], do_fix: bool) -> int:
                         _oc.set_agent_session_key(aid, fix_sk)
                 ui.success(f"  {aid}: re-synced")
             with contextlib.suppress(Exception):
-                restart_gateway()
+                from docket.cli import _render_restart_result
+
+                _render_restart_result(restart_gateway())
             issues -= len(drift_agents)
         else:
             ui.console.print("  Fix with: docket doctor --fix")
@@ -755,6 +779,12 @@ def _doctor_json() -> dict[str, Any]:
             invalid_models.append({"id": a.id, "model": a.model, "suggest": _STALE_MODELS[a.model]})
             issues += 1
 
+    legacy_migration_note = _mp.migrate_legacy_profiles()
+    model_registry = {
+        "migrated": legacy_migration_note,
+        "residualProfilesKey": _mp.has_residual_profiles_key(),
+    }
+
     drift_results: list[dict[str, Any]] = []
     for aid in ids:
         meta = store.read_json(_cfg.meta_path(aid))
@@ -859,6 +889,7 @@ def _doctor_json() -> dict[str, Any]:
             "telegram": {"enabled": tg_enabled},
             "agents": agents_json,
             "modelConfig": {"ok": not invalid_models, "invalid": invalid_models},
+            "modelRegistry": model_registry,
             "drift": drift_results,
             "budget": budget_results,
             "runaway": runaway_results,
@@ -895,6 +926,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_brave_browser()
     _check_today_log()
     issues += _check_models()
+    _check_legacy_model_registry()
     issues += _check_drift(ids, do_fix)
     issues += _check_budget(ids, cost)
     issues += _check_runaway(ids, cost)

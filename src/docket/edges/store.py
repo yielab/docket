@@ -3,6 +3,12 @@
 All reads and writes to docket-owned JSON files (both .docket-meta.json and
 openclaw.json) go through these two functions. The ACL (edges/adapters/openclaw.py)
 is the only caller for openclaw-owned files.
+
+Single-writer rule (D-12, ROADMAP §6): this module is the one chokepoint for
+docket-owned JSON writes. The one documented exemption is append-only JSONL
+logs — ``core/trace.py`` and ``core/audit.py`` write directly, since each line
+is an independent, self-contained append rather than a read-modify-write of a
+whole document; everything else goes through ``write_json``.
 """
 
 from __future__ import annotations

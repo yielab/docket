@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.0.0
+**Version**: 1.4.0
 **Status**: Complete
-**Last Updated**: 2026-06-26
+**Last Updated**: 2026-07-02
 
 ## Purpose
 
@@ -219,29 +219,47 @@ docket [global-options] <command> [command-options] [arguments]
 ### Workflow Commands
 
 #### docket workflow
-**Purpose**: Manage Lobster YAML pipelines
+**Purpose**: Manage Lobster YAML pipelines (docket authors/validates/plans; the Lobster daemon executes)
 **Syntax**: `docket workflow <agent-id> <action> [name]`
 **Actions**:
-- `create <name>`: Generate new workflow template
+- `create <name>`: Generate new `<name>.lobster.yml` workflow template
 - `list`: Show agent's workflows
 - `show <name>`: Display workflow content
 - `delete <name>`: Remove workflow
-**Output**: Workflow content or listing
-**Return**: 0 on success, 2 if not found
+- `validate <name>`: Structural/lint check; does not execute
+- `plan <name>` (alias `dry-run`): Render the resolved step plan; does not execute or consume tokens
+**Output**: Workflow content, listing, validation result, or plan
+**Return**: `0` on success (including "already exists" on `create`, which warns but doesn't fail); `1` on any error — see workflow-integration.spec.md for the full contract
 
-### Team Commands
+### Pod Commands
 
-#### docket team
-**Purpose**: Manage team coordination features
-**Syntax**: `docket team <action> [args]`
+`docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
+dispatcher and never executed anything. Delegation now belongs to each project's pod. See
+team-coordination.spec.md's "Retired" section for the mapping from the old `team` subcommands
+to their pod equivalents below.
+
+#### docket pod
+**Purpose**: Manage a project's pod (list/add/remove members; delegate, queue, and dispatch real work)
+**Syntax**: `docket pod <project> <action> [args]`
 **Actions**:
-- `delegate "<task>" [--priority high]`: Queue a task for the Manager agent
-- `queue [--all]`: List pending (or all) tasks
-- `start <task-id>`: Mark a task in progress
-- `done <task-id>`: Mark a task complete
-- `cancel <task-id>`: Cancel a task
-**Output**: Team status or action confirmation
-**Return**: 0 on success, various errors
+- `list`: Show the pod's members (Lead, Implementer, optional Reviewer/Tester)
+- `add <role> [--count N] [--verify "<cmd>"]`: Add a member (role may be duplicated, e.g. a
+  second implementer). `--verify` is Implementer-only — it writes the new member's `verifyCmd`
+  (FD-1); passing it for a non-implementer role warns and is ignored
+- `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
+  (FD-1); rejected with an error for a non-implementer member id
+- `remove <member-id>`: Remove a pod member
+- `delegate "<task>" [--priority high|normal|low]`: Queue a task on this pod's own list
+  (one queue per pod, at `~/.openclaw/workspaces/<project>-lead/TASK_LIST.json`)
+- `queue`: List the pod's pending tasks
+- `dispatch`: Run the pod's pending tasks through its real pipeline — one real, costed agent
+  turn per hop (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`. Gated by
+  the budget cap, the Implementer's `verifyCmd` (if set), and — when a Tester is present — a
+  structural PASS/FAIL parse of the Tester's reply (FD-2); see `pod-dispatch.spec.md` for the
+  full per-hop state machine
+**Output**: Pod roster, queue listing, or per-hop dispatch results (including cost)
+**Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
+the project)
 
 ### Memory and Context Commands
 
@@ -332,6 +350,9 @@ docket [global-options] <command> [command-options] [arguments]
 - `enable`: Enable exec-approval gates (writes to openclaw.json)
 - `disable`: Disable exec-approval gates
 - `isolate <on|off>`: Toggle Docker workspace isolation
+- `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
+  secret-access) that always route to approval regardless of allowlist status (FD-3); read-only,
+  makes no config changes
 **Output**: Gates status or update confirmation
 **Return**: 0 on success
 
@@ -521,7 +542,7 @@ the contract-level summary follows.
 ### Model Validation
 - Must be well-formed `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
 - The daemon validates the actual model; docket accepts any well-formed string and warns if pricing is unknown
-- Deprecated tier names (`economy`, `standard`, `premium`) are accepted with a warning and resolve to internal rank anchors
+- Tier names (`economy`, `standard`, `premium`) are **not accepted** — removed in 0.2.0 (D-2 exit); they hard-error like any other malformed input (see input-validation.spec.md)
 
 ### Numeric Validation
 - Reset level: 1-3
@@ -590,6 +611,22 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.4.0 (2026-07-02)
+- FD-6 spec truth pass for Phase 13's FD-1/FD-2/FD-3 cards: added the public `--verify "<cmd>"`
+  option on `docket pod <project> add` and the `set-verify <member-id> "<cmd>"` action (FD-1,
+  previously only settable via the internal `meta-set` debug command); noted `dispatch`'s budget/
+  verify/Tester-PASS-FAIL gates and cross-referenced the new `pod-dispatch.spec.md` for the full
+  state machine (FD-2); added `docket gates classes` (FD-3's read-only high-risk-class listing).
+
+### Version 1.3.0 (2026-07-02)
+- CH-10 spec truth pass: fixed the version header (was stuck at 1.0.0 while this changelog
+  had already reached 1.2.0). Replaced the "Team Commands" / `docket team` section — retired
+  in 0.2.0 (D-11), no dispatcher, never executed — with a "Pod Commands" / `docket pod`
+  section documenting the real, executing delegation surface (list/add/remove/delegate/
+  queue/dispatch). Added `validate`/`plan` to the `docket workflow` actions and fixed its
+  return-code claim to the real plain `0`/`1` contract. Fixed the model-validation tier claim:
+  tier names are rejected outright (0.2.0, D-2 exit), not accepted with a warning.
 
 ### Version 1.2.0 (2026-06-26)
 - Replaced tier argument (`economy|standard|premium`) with `provider/model` — tier names are now deprecated aliases only

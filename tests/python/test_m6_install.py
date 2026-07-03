@@ -246,7 +246,7 @@ def test_step6_missing_auth_interactive_invokes_chooser(
     assert called == [True]
 
 
-# ── Step 7 security gates (opt-in) ──────────────────────────────────────────────
+# ── Step 7 security gates (on by default; want_gates=False simulates --no-gates) ─
 
 
 def test_install_no_gates_leaves_exec_approvals_absent(
@@ -281,6 +281,54 @@ def test_install_with_gates_applies_exec_approvals(
 def _write_local(oc_dir: Path, data: dict[str, Any]) -> bool:
     (oc_dir / "exec-approvals.json").write_text(json.dumps(data))
     return False  # not via daemon
+
+
+# ── FD-5: gates-default-on at the CLI layer ─────────────────────────────────────
+#
+# The tests above drive run_install() directly with an explicit want_gates=
+# True/False, exercising the security step in isolation. The two tests below
+# instead go through the real Typer `install` command (docket.cli.app) to prove
+# the *CLI flag's own default* now applies gates with zero flags passed, and that
+# --no-gates remains a working, explicit opt-out.
+
+
+def test_install_cli_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from typer.testing import CliRunner
+
+    from docket.cli import app
+
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+    # Keep gate application off the live daemon (write directly to the file).
+    monkeypatch.setattr(
+        "docket.core.security._oc.write_exec_approvals",
+        lambda data: _write_local(oc_dir, data),
+        raising=False,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["install", "--yes"])  # no --gates/--no-gates passed
+
+    assert result.exit_code == 0
+    assert "Exec-approval gates applied" in result.output
+    assert (oc_dir / "exec-approvals.json").is_file()
+
+
+def test_install_cli_no_gates_flag_still_opts_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from docket.cli import app
+
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["install", "--yes", "--no-gates"])
+
+    assert result.exit_code == 0
+    assert not (oc_dir / "exec-approvals.json").exists()
 
 
 # ── perms hardening (Step 7 / G2) ───────────────────────────────────────────────

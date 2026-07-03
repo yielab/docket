@@ -12,7 +12,6 @@ templates + meta + daemon registration via the ACL.
 from __future__ import annotations
 
 import contextlib
-import json
 import shutil
 from datetime import UTC, datetime
 
@@ -89,23 +88,38 @@ def _member_soul(
             "- You run the test suite and reproduction steps and report a binary "
             "**PASS/FAIL** with evidence.\n"
             "- Observe behaviour only — do not read or critique the implementation.\n"
+            "- **Marker convention:** the first non-blank line of your reply must be "
+            "exactly `PASS` or `FAIL` (case-insensitive) — dispatch parses this line "
+            "to gate the pipeline. Evidence goes on the lines after it. Anything else "
+            "on that first line blocks the pipeline the same as a FAIL.\n"
         )
     return head + body
 
 
 def _member_tools(
-    member: pod.PodMember,
+    project: str,
+    role: str,
     codebase: str,
     port_range_start: int,
     port_range_count: int,
     scratch_dir: str,
+    verify_cmd: str = "",
 ) -> str:
-    """TOOLS.md for an Implementer — includes allocated runtime resources."""
+    """TOOLS.md for an Implementer — includes allocated runtime resources.
+
+    ``verify_cmd``, when set, is the mechanical gate ``dispatch.py`` runs after this
+    Implementer's hop (CD-2) — surfaced here so the agent can see what its work
+    must pass before signaling done.
+    """
     port_end = port_range_start + port_range_count - 1
     lines = [
-        f"# TOOLS.md — {member.project} · {member.role}",
+        f"# TOOLS.md — {project} · {role}",
         "",
         "## Runtime Resources (pod-isolated — allocated by docket)",
+        "",
+        "These are real **environment variables** docket sets on your process at "
+        "dispatch time — not just documentation here, so read them at runtime "
+        "instead of hardcoding values.",
         "",
         "Your pod has a reserved, non-overlapping port range.  "
         "**Never use ports outside it** — other pods may have adjacent ranges.",
@@ -114,14 +128,21 @@ def _member_tools(
         "",
         "Isolated scratch data directory (yours alone — safe for test DBs, caches, temp state):",
         f"- `DOCKET_SCRATCH_DIR={scratch_dir}`",
-        f"- DB namespace prefix: `{member.project}_`  "
-        f"(e.g. `{member.project}_test`, `{member.project}_cache`)",
+        f"- DB namespace prefix: `{project}_`  (e.g. `{project}_test`, `{project}_cache`)",
     ]
     if codebase:
         lines += [
             "",
             "## Codebase",
             f"Project root: `{codebase}`",
+        ]
+    if verify_cmd:
+        lines += [
+            "",
+            "## Verification Gate",
+            "After each of your hops, docket mechanically runs this command and blocks "
+            "completion on a non-zero exit — make it pass before signaling done:",
+            f"- `{verify_cmd}`",
         ]
     return "\n".join(lines) + "\n"
 
@@ -157,6 +178,7 @@ def _write_member_workspace(
     port_range_count: int = 0,
     scratch_dir: str = "",
     worktree_dir: str = "",
+    verify_cmd: str = "",
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
@@ -168,14 +190,16 @@ def _write_member_workspace(
     (ws / "HEARTBEAT.md").write_text(
         f"# HEARTBEAT — {member.member_id}\n\n_No active tasks._\n", encoding="utf-8"
     )
-    if member.role == "implementer" and port_range_start and scratch_dir:
+    if member.role == "implementer" and ((port_range_start and scratch_dir) or verify_cmd):
         (ws / "TOOLS.md").write_text(
             _member_tools(
-                member,
+                project,
+                member.role,
                 worktree_dir or codebase,
                 port_range_start,
                 port_range_count,
                 scratch_dir,
+                verify_cmd,
             ),
             encoding="utf-8",
         )
@@ -203,13 +227,13 @@ def _write_member_workspace(
         meta["portRangeStart"] = port_range_start
         meta["portRangeCount"] = port_range_count
         meta["scratchDir"] = scratch_dir
+    if member.role == "implementer" and verify_cmd:
+        meta["verifyCmd"] = verify_cmd
     if worktree_dir:
         meta["worktreeDir"] = worktree_dir
         meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
     meta_file = ws / _cfg.META_FILE
-    meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        meta_file.chmod(0o600)
+    _store.write_json(meta_file, meta)
 
 
 def _provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:
@@ -246,13 +270,15 @@ def provision_member(
     port_range_start: int = 0,
     port_range_count: int = 0,
     scratch_dir: str = "",
+    verify_cmd: str = "",
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it with the daemon.
 
     Does NOT restart the gateway — the caller batches one restart per command.
     For repo pods, Implementers get a git worktree on a dedicated branch.
     Falls back to the flat docket workspace if git is unavailable or the
-    codebase is not a git repo.
+    codebase is not a git repo. ``verify_cmd`` (Implementer only) is the
+    mechanical gate `dispatch.py` runs after this member's hop (CD-2/FD-1).
     """
     worktree_dir, fallback_reason = _provision_worktree(member, project, codebase)
     if fallback_reason:
@@ -268,6 +294,7 @@ def provision_member(
         port_range_count=port_range_count,
         scratch_dir=scratch_dir,
         worktree_dir=worktree_dir,
+        verify_cmd=verify_cmd,
     )
     ws_path = str(_cfg.PROJECTS_DIR / member.member_id)
 
@@ -421,7 +448,9 @@ def build_pod(
             created.append(m.member_id)
         else:
             ui.warn(f"  {m.member_id}: registration failed — {msg}")
-    _sys.restart_gateway()
+    from docket.cli import _render_restart_result
+
+    _render_restart_result(_sys.restart_gateway())
     return created
 
 
@@ -434,6 +463,8 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_add(project, extra)
     elif action == "remove":
         _pod_remove(project, extra)
+    elif action == "set-verify":
+        _pod_set_verify(project, extra)
     elif action == "delegate":
         _pod_delegate(project, extra)
     elif action == "queue":
@@ -442,7 +473,8 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
         _pod_dispatch(project)
     else:
         ui.error(
-            f"Unknown pod action {action!r}. Use: list | add | remove | delegate | queue | dispatch."
+            f"Unknown pod action {action!r}. "
+            "Use: list | add | remove | set-verify | delegate | queue | dispatch."
         )
         raise typer.Exit(1)
 
@@ -486,9 +518,9 @@ def _pod_add(project: str, extra: list[str]) -> None:
     if not pod_member_ids(project):
         ui.error(f"No pod for '{project}'. Create one first: docket add {project}")
         raise typer.Exit(1)
-    role, count = _parse_add_args(extra)
+    role, count, verify_cmd = _parse_add_args(extra)
     if role is None:
-        ui.error("Usage: docket pod <project> add <role> [--count N]")
+        ui.error('Usage: docket pod <project> add <role> [--count N] [--verify "<cmd>"]')
         raise typer.Exit(1)
 
     # Inherit codebase/stack/description from the pod's Lead (or any member).
@@ -504,6 +536,11 @@ def _pod_add(project: str, extra: list[str]) -> None:
         port_start, port_count, scratch = _allocate_pod_resources(project)
     else:
         port_start, port_count, scratch = 0, 0, ""
+        if verify_cmd:
+            ui.warn(
+                f"--verify only applies to implementer members — ignoring for role '{canon_role}'."
+            )
+            verify_cmd = ""
 
     created: list[str] = []
     for _ in range(max(1, count)):
@@ -528,6 +565,7 @@ def _pod_add(project: str, extra: list[str]) -> None:
             port_range_start=port_start,
             port_range_count=port_count,
             scratch_dir=scratch,
+            verify_cmd=verify_cmd,
         )
         if ok:
             ui.success(f"Added {member.member_id} [{member.role}] {member.model}")
@@ -535,7 +573,9 @@ def _pod_add(project: str, extra: list[str]) -> None:
         else:
             ui.warn(f"{member.member_id}: registration failed — {msg}")
     if created:
-        _sys.restart_gateway()
+        from docket.cli import _render_restart_result
+
+        _render_restart_result(_sys.restart_gateway())
 
 
 def _pod_remove(project: str, extra: list[str]) -> None:
@@ -559,7 +599,63 @@ def _pod_remove(project: str, extra: list[str]) -> None:
         remaining_roles = {_oc.meta_get(mid, "role", "") for mid in remaining}
         if "implementer" not in remaining_roles:
             free_pod_resources(project)
-    _sys.restart_gateway()
+    from docket.cli import _render_restart_result
+
+    _render_restart_result(_sys.restart_gateway())
+
+
+def _regenerate_member_tools(member_id: str, project: str) -> None:
+    """Rewrite TOOLS.md for an existing Implementer after a meta change (e.g. set-verify).
+
+    No-op for non-implementers and for members with no allocated resources and no
+    verify command (nothing to render).
+    """
+    role = _oc.meta_get(member_id, "role", "")
+    if role != "implementer":
+        return
+    port_start_s = _oc.meta_get(member_id, "portRangeStart", "")
+    port_count_s = _oc.meta_get(member_id, "portRangeCount", "")
+    scratch = _oc.meta_get(member_id, "scratchDir", "")
+    verify_cmd = _oc.meta_get(member_id, "verifyCmd", "")
+    if not ((port_start_s and scratch) or verify_cmd):
+        return
+    codebase = _oc.meta_get(member_id, "worktreeDir", "") or _oc.meta_get(member_id, "codebase", "")
+    content = _member_tools(
+        project,
+        role,
+        codebase,
+        int(port_start_s) if port_start_s else 0,
+        int(port_count_s) if port_count_s else 0,
+        scratch,
+        verify_cmd,
+    )
+    ws = _cfg.PROJECTS_DIR / member_id
+    (ws / "TOOLS.md").write_text(content, encoding="utf-8")
+
+
+def _pod_set_verify(project: str, extra: list[str]) -> None:
+    """Set the verify command on an existing Implementer.
+
+    Usage: ``docket pod <project> set-verify <member-id> "<cmd>"``. Rewrites
+    TOOLS.md so the Implementer sees the updated gate.
+    """
+    if len(extra) < 2:
+        ui.error('Usage: docket pod <project> set-verify <member-id> "<cmd>"')
+        raise typer.Exit(1)
+    member_id, *cmd_parts = extra
+    verify_cmd = " ".join(cmd_parts)
+    if pod.parse_member_id(member_id, project) is None:
+        ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
+        raise typer.Exit(1)
+    role = _oc.meta_get(member_id, "role", "")
+    if role != "implementer":
+        ui.error(
+            f"'{member_id}' is a {role or 'unknown role'} — verifyCmd only applies to implementers."
+        )
+        raise typer.Exit(1)
+    _oc.meta_set(member_id, "verifyCmd", verify_cmd)
+    _regenerate_member_tools(member_id, project)
+    ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")
 
 
 def _pod_delegate(project: str, extra: list[str]) -> None:
@@ -643,10 +739,15 @@ def _pod_dispatch(project: str) -> None:
             ui.error(f"  [{res.task_id}] {res.status} — {res.reason}")
 
 
-def _parse_add_args(extra: list[str]) -> tuple[str | None, int]:
-    """Parse ``<role> [--count N | -n N]`` (or a trailing integer) from extra args."""
+def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
+    """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]`` (or a trailing integer).
+
+    ``--verify`` (Implementer only; ignored with a warning for other roles) sets the
+    mechanical verification gate `dispatch.py` runs after the new member's hop (CD-2).
+    """
     role: str | None = None
     count = 1
+    verify_cmd = ""
     i = 0
     while i < len(extra):
         tok = extra[i]
@@ -655,9 +756,17 @@ def _parse_add_args(extra: list[str]) -> tuple[str | None, int]:
             count = int(with_val) if with_val.isdigit() else 1
             i += 2
             continue
+        if tok == "--verify" and i + 1 < len(extra):
+            verify_cmd = extra[i + 1]
+            i += 2
+            continue
+        if tok.startswith("--verify="):
+            verify_cmd = tok[len("--verify=") :]
+            i += 1
+            continue
         if tok.isdigit():
             count = int(tok)
         elif role is None:
             role = tok
         i += 1
-    return role, count
+    return role, count, verify_cmd

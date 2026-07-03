@@ -27,7 +27,7 @@ def run_deny(token: str | None = None) -> int:
         return _help()
 
     try:
-        _ap.approval_deny(token)
+        _ap.approval_deny(token, channel="cli")
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
         return 0

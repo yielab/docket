@@ -70,7 +70,8 @@ A pod has **exactly one Lead** (its single orchestrator); every other role may b
 `docket install` creates the cross-cutting specialists once. They are genuinely fleet-wide, so a
 per-project copy would be waste:
 
-- **manager** — cross-cutting coordination and the org task queue (`docket team …`).
+- **manager** — cross-cutting coordination (transitional; `docket team`'s queue was retired in
+  favor of per-pod dispatch — see below — so this role is being superseded by per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
 
@@ -204,6 +205,9 @@ docket serve --dispatch                  # autonomous: drive every pod's queue
 
 # Org specialists
 docket install                           # manager, knowledge, security
-docket install --portfolio               # + the optional org Portfolio Manager
-docket team delegate "<task>"            # org manager task queue (delegate/queue/start/done/cancel)
+docket install --portfolio               # + the optional org Portfolio Manager (advisory, read-only)
 ```
+
+> `docket team` (the org manager's own task queue) was **retired** — every project's pod owns
+> its own delegate/queue/dispatch now (see above). There is no remaining org-wide queue; the
+> optional Portfolio Manager is advisory-only and never dispatches.

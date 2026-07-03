@@ -23,6 +23,7 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
+from docket.core import resources as _res
 from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
@@ -81,15 +82,20 @@ class _RecordingRunner:
     """Stub matching agent_run's signature; records calls, returns canned results."""
 
     def __init__(self, *, ok: bool = True, cost: float = 0.02, fail_role: str | None = None):
-        self.calls: list[tuple[str, str, str, int]] = []
+        self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
         self.ok = ok
         self.cost = cost
         self.fail_role = fail_role
 
     def __call__(
-        self, agent_id: str, session_key: str, message: str, timeout: int
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
     ) -> _oc.AgentRunResult:
-        self.calls.append((agent_id, session_key, message, timeout))
+        self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
         if self.fail_role and role == self.fail_role:
             return _oc.AgentRunResult(False, "", 0.0, {}, "boom")
@@ -159,6 +165,61 @@ class TestAgentRun:
         res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
         assert not res.ok
         assert "not found" in res.error
+
+
+# ── FD-0: env override actually reaches the real subprocess ──────────────────────
+
+
+class TestAgentRunEnv:
+    def test_env_kwarg_merges_into_subprocess(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole point of FD-0: env=... is not just plumbed, it lands in the child."""
+        bindir = tmp_path / "bin"
+        bindir.mkdir(parents=True, exist_ok=True)
+        script = bindir / "openclaw"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, json\n"
+            "print(json.dumps({\n"
+            "    'output': 'env seen',\n"
+            "    'cost': 0.0,\n"
+            "    'port_base': os.environ.get('DOCKET_PORT_BASE'),\n"
+            "    'scratch': os.environ.get('DOCKET_SCRATCH_DIR'),\n"
+            "}))\n"
+        )
+        script.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+        res = _oc.agent_run(
+            "demo-implementer",
+            "agent:demo:t1",
+            "do it",
+            30,
+            env={"DOCKET_PORT_BASE": "3000", "DOCKET_SCRATCH_DIR": "/tmp/demo-scratch"},
+        )
+        assert res.ok
+        assert res.raw.get("port_base") == "3000"
+        assert res.raw.get("scratch") == "/tmp/demo-scratch"
+
+    def test_no_env_kwarg_inherits_parent_env_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No env override (the default) behaves exactly as before FD-0."""
+        bindir = tmp_path / "bin"
+        bindir.mkdir(parents=True, exist_ok=True)
+        script = bindir / "openclaw"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, json\n"
+            "print(json.dumps({'output': 'x', 'cost': 0.0, "
+            "'marker': os.environ.get('DOCKET_TEST_MARKER', '')}))\n"
+        )
+        script.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+        monkeypatch.setenv("DOCKET_TEST_MARKER", "inherited")
+        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
+        assert res.ok
+        assert res.raw.get("marker") == "inherited"
 
 
 # ── pipeline driver (injected runner) ────────────────────────────────────────────
@@ -251,6 +312,77 @@ class TestPipeline:
         _cfg.CONFIG_FILE.write_text(json.dumps(raw))
         with pytest.raises(_dispatch.DispatchError):
             _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+
+
+# ── FD-0: pod port range / scratch dir reach the implementer hop's real env ──────
+
+
+class TestHopEnvInjection:
+    """completes P1: the implementer subprocess's actual env, not just TOOLS.md prose."""
+
+    def test_hop_env_none_for_lead(self) -> None:
+        assert _dispatch._hop_env("demo-lead", "lead") is None
+
+    def test_hop_env_none_for_reviewer_and_tester(self) -> None:
+        assert _dispatch._hop_env("demo-reviewer", "reviewer") is None
+        assert _dispatch._hop_env("demo-tester", "tester") is None
+
+    def test_hop_env_none_for_implementer_without_allocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        # build_pod always allocates ports for an implementer; simulate a member
+        # with no allocation by clearing the meta fields directly.
+        path = _cfg.meta_path("demo-implementer")
+        raw = json.loads(path.read_text())
+        raw.pop("portRangeStart", None)
+        raw.pop("portRangeCount", None)
+        raw.pop("scratchDir", None)
+        path.write_text(json.dumps(raw))
+        assert _dispatch._hop_env("demo-implementer", "implementer") is None
+
+    def test_hop_env_set_for_implementer_with_allocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        env = _dispatch._hop_env("demo-implementer", "implementer")
+        assert env is not None
+        assert env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
+        assert env["DOCKET_PORT_COUNT"] == str(_res.PORT_RANGE_SIZE)
+        assert env["DOCKET_SCRATCH_DIR"]
+
+    def test_dispatch_pod_env_only_overridden_on_implementer_hop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Integration: dispatch_pod passes env=<dict> to the implementer hop's
+        runner call and env=None to the lead hop — the acceptance gate end to end."""
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "Use my env")
+        runner = _RecordingRunner()
+        _dispatch.dispatch_pod("demo", runner=runner)
+        by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
+        assert by_role["lead"] is None
+        impl_env = by_role["implementer"]
+        assert impl_env is not None
+        assert impl_env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
+        assert impl_env["DOCKET_PORT_COUNT"] == str(_res.PORT_RANGE_SIZE)
+        assert impl_env["DOCKET_SCRATCH_DIR"]
+
+    def test_dispatch_pod_no_env_override_for_implementer_without_allocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        path = _cfg.meta_path("demo-implementer")
+        raw = json.loads(path.read_text())
+        raw.pop("portRangeStart", None)
+        raw.pop("portRangeCount", None)
+        raw.pop("scratchDir", None)
+        path.write_text(json.dumps(raw))
+        _dispatch.enqueue_task("demo", "No allocation here")
+        runner = _RecordingRunner()
+        _dispatch.dispatch_pod("demo", runner=runner)
+        by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
+        assert by_role["implementer"] is None
 
 
 # ── CD-0: canned real daemon JSON shape ──────────────────────────────────────────

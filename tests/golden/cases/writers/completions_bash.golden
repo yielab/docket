@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire telegram scope profile keys pod team workflow logs edit cost doctor gates audit eval snapshot serve models trace metrics policies approve deny completions help version"
+  local commands="install list add info delete maintain context wire unwire scope profile keys auth models pod workflow logs edit cost doctor gates audit eval snapshot serve completions trace metrics policies approve deny help"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
@@ -32,18 +32,18 @@ _docket_complete() {
   case "$cmd" in
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
-    context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show search snapshot index compress" ;;
-    workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show delete" ;;
-    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="add remove delegate queue dispatch" ;;
-    team)            words="delegate queue start done cancel" ;;
-    gates|security)  words="status enable disable isolate" ;;
+    context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show search snapshot index compress project" ;;
+    workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show validate plan delete" ;;
+    pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
+    gates|security)  words="status enable disable isolate classes" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
-    models)          words="set preset reset" ;;
+    models)          words="list set preset reset provider" ;;
+    auth)            words="status login key setup" ;;
     trace)           words="tail export ingest" ;;
     policies|policy) words="list show init test" ;;
-    completions)     words="bash zsh" ;;
+    completions|completion) words="bash zsh" ;;
     cost|usage)      [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
-    info|show|delete|remove|rm|profile|tier|wire|unwire|telegram|logs|log|edit|snapshot|export|audit)
+    info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)
                      [[ $cword -eq 2 ]] && words="$_ids" ;;
     *)               words="" ;;
   esac

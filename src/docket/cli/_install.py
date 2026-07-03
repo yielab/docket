@@ -77,12 +77,8 @@ def _check_dependencies() -> list[str]:
 
 
 def _openclaw_version() -> str:
-    try:
-        res = subprocess.run(["openclaw", "--version"], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return "found"
-    out = (res.stdout or "").strip()
-    return out or "found"
+    probe = _oc.openclaw_version()
+    return probe.output or "found"
 
 
 def _run_onboard() -> None:
@@ -90,8 +86,7 @@ def _run_onboard() -> None:
 
     Live-daemon path; isolated so the orchestration around it stays testable.
     """
-    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-        subprocess.run(["openclaw", "onboard"], timeout=600)
+    _oc.onboard()
 
 
 def _auth_print_profiles() -> None:
@@ -163,14 +158,18 @@ def _auth_setup_interactive() -> bool:
         ui.dim("  Skipped — configure later with: docket auth (or openclaw models auth).")
         return False
 
-    _sys.restart_gateway()
+    from docket.cli import _render_restart_result
+
+    _render_restart_result(_sys.restart_gateway())
     return True
 
 
 def _run_openclaw_auth(method: str) -> bool:
     try:
-        res = subprocess.run(
-            ["openclaw", "models", "auth", method, "--provider", "anthropic"], timeout=600
+        res = (
+            _oc.auth_paste_token(timeout=600)
+            if method == "paste-token"
+            else _oc.auth_setup_token(timeout=600)
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -210,7 +209,7 @@ def _step_auth() -> int:
 
 
 def _step_security(want_gates: bool) -> None:
-    """Step 7 — harden config perms and optionally apply exec gates."""
+    """Step 7 — harden config perms and apply exec gates (on by default; --no-gates skips)."""
     hardened = _oc.harden_config_perms()
     if hardened:
         for path in hardened:
@@ -220,7 +219,9 @@ def _step_security(want_gates: bool) -> None:
     ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
 
     if not want_gates:
-        ui.dim("  Exec-approval enforcement is opt-in: 'docket gates enable' (or install --gates).")
+        ui.dim(
+            "  Exec-approval enforcement skipped (--no-gates). Enable later: 'docket gates enable'."
+        )
         ui.dim("  Spec: specs/functional/security-gates.spec.md.")
         return
 
@@ -379,11 +380,12 @@ def _provision_portfolio_manager() -> None:
 
 
 def run_install(
-    want_gates: bool = False, assume_yes: bool = False, want_portfolio: bool = False
+    want_gates: bool = True, assume_yes: bool = False, want_portfolio: bool = False
 ) -> int:
     """Bootstrap OpenClaw + specialist agents. Returns the process exit code.
 
-    want_gates:      apply opt-in exec-approval enforcement.
+    want_gates:      apply exec-approval enforcement (on by default; False when the
+                     caller passed --no-gates).
     assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
     want_portfolio:  also provision the opt-in org Portfolio Manager.
     """
