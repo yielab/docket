@@ -150,22 +150,6 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 </td>
 <td width="50%">
 
-**`docket gates status` — governance posture**
-
-<img src="docs/assets/gates.png" alt="docket gates status: approval gate state, headless HTTP approval channel, audit log status" width="100%">
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**`docket doctor` — fleet health**
-
-<img src="docs/assets/doctor.png" alt="docket doctor: gateway, config drift, budget, runaway sessions, API key hygiene, security gates" width="100%">
-
-</td>
-<td width="50%">
-
 **`docket models` — role→model policy**
 
 <img src="docs/assets/models.png" alt="docket models: each agent role mapped to the cheapest adequate model with pricing" width="100%">
@@ -175,6 +159,10 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 </table>
 
 > Screenshots are from a real run against a live OpenClaw install; project names are anonymized.
+> (Two prior screenshots here, `docket gates status` and `docket doctor`, were pulled because
+> they showed pre-0.2.0 output — gates as opt-in/inactive — that no longer matches the
+> gates-on-by-default behavior below; see [docs/assets/README.md](docs/assets/README.md) for
+> the recapture note.)
 
 ## How it relates to OpenClaw
 
@@ -305,147 +293,28 @@ view) and `~/.openclaw/openclaw.json` (the daemon's view).
 
 ## Command reference
 
-<details>
-<summary><strong>Core lifecycle</strong></summary>
-
 ```bash
-docket install              # Bootstrap OpenClaw + org specialists (security, knowledge, manager)
-docket install --portfolio  # + optional org Portfolio Manager (cross-pod fleet visibility)
-docket add [id] [path]      # Create a project pod (Lead + Implementer; --pod full / --with for more)
-docket add --from spec.yaml # Provision a fleet from a YAML/JSON spec (declarative)
-docket pod <id>             # Inspect a pod; `pod <id> add <role>` / `remove <member>` to resize
-docket list                 # Show all agents (scope + pod)
-docket info <id>            # Display agent details
-docket delete <id>          # Remove an agent or a whole pod
-```
-</details>
-
-<details>
-<summary><strong>Cost & configuration</strong></summary>
-
-```bash
-docket models               # Role→model policy (set <role> <model>, preset, reset)
-docket profile <id> [model] # Pin an agent's model (<provider/model>) or 'default' = follow policy
-docket profile <id> --budget 5  # Set a $5 spending cap (auto-pause on breach)
-docket scope <id> set <key> # Change project session key
-docket keys                 # Manage API keys
-docket cost [id]            # Token usage and costs (--json, --history [--days N])
-```
-</details>
-
-<details>
-<summary><strong>Maintenance & health</strong></summary>
-
-```bash
-docket maintain [id] check    # Health check and auto-fix
-docket maintain [id] clean    # Clear memory logs
-docket maintain [id] reset    # Clear memory + heartbeat
-docket maintain [id] rebuild  # Full rebuild from metadata
-docket maintain [id] sessions # Archive large/old sessions
-docket doctor                 # System-wide diagnostics (budget, drift, runaway, gates)
-```
-</details>
-
-<details>
-<summary><strong>Pod dispatch & task queue</strong></summary>
-
-```bash
-docket pod <id>                          # Inspect pod members, roles, isolation details
-docket pod <id> add <role>               # Grow the pod (reviewer, tester, or a second implementer)
-docket pod <id> remove <member-id>       # Remove one pod member
-docket pod <id> delegate "Fix login bug" # Queue a task (--priority high)
-docket pod <id> queue                    # Show pending tasks + per-task status/cost
-docket pod <id> dispatch                 # Run the pod pipeline once (Lead→Implementer→Reviewer→Tester)
-docket serve --dispatch                  # Background: drive every pod's queue continuously
-```
-</details>
-
-<details>
-<summary><strong>Security gates (on by default)</strong></summary>
-
-```bash
-docket gates status           # Approval gate state, routing, isolation, audit posture
-docket gates enable           # (Re-)apply exec-approval gates + allowlist + chat routing
-docket gates isolate on       # Confine tool execution to a per-agent Docker sandbox (opt-in)
-docket gates disable          # Revert gate defaults
-docket install --no-gates     # Opt out of gates during initial install
-```
-</details>
-
-<details>
-<summary><strong>Context, workflows & observability</strong></summary>
-
-```bash
-docket context [id]              # Recent activity overview
-docket context [id] search <q>   # Search indexed memory
-docket context [id] snapshot     # Create SNAPSHOT.md for fast agent context
-docket context [id] compress     # Archive logs older than 30 days
-
-docket workflow <id> create <name>   # Create a Lobster pipeline template
-docket workflow <id> validate <name> # Structural lint — returns errors or "valid"
-docket workflow <id> plan <name>     # Dry-run: render the resolved steps
-
-docket pod <project> delegate "Fix bug" # Queue task for that project's pod (--priority high)
-docket pod <project> queue              # Show the pod's pending tasks
-docket pod <project> dispatch           # Run the pod's pending tasks through the pipeline
-
-docket serve                      # Start read-only HTTP server (/status.json, /metrics, /health)
-docket serve --dispatch           # + drive all pod queues in the background
-```
-</details>
-
-### Role→model policy & provider support
-
-Each agent **role** maps to the cheapest adequate model — the policy — and you can override any role:
-
-| Role | Default (Anthropic) | Why |
-| ---- | ------------------- | --- |
-| manager, reviewer, tester, knowledge | claude-haiku-4-5 | High-volume, low reasoning-density |
-| programmer, security | claude-sonnet-4-6 | Reasoning-dense work |
-| repo / task (project agents) | sonnet / haiku | Project-agent type defaults |
-
-Stronger models (opus-class) are an explicit per-agent pin, never a default. Changing the
-policy (or switching provider preset) re-resolves every policy-following agent automatically.
-
-```bash
-docket models preset openrouter-free   # All roles to OpenRouter free tier
-docket models preset openai            # OpenAI (gpt-4.1-nano / gpt-4.1-mini)
-docket models preset google            # Google (gemini flash family)
-docket models preset anthropic         # Restore Anthropic defaults
-docket models set programmer openai/gpt-4.1          # Override one role
-docket profile myproject anthropic/claude-opus-4-6   # Pin one agent
-docket profile myproject default       # Re-attach to role policy
+docket install [--portfolio] [--no-gates]  # Bootstrap OpenClaw + org specialists
+docket add [id] [path]                     # Create a project pod (--from spec.yaml for a fleet)
+docket pod <id> [add <role> | remove <m>]  # Inspect/resize a pod
+docket pod <id> delegate/queue/dispatch    # Queue and run pod work
+docket list / info <id> / delete <id>      # Fleet-wide view / one agent / teardown
+docket models / profile <id>               # Role→model policy / pin or budget-cap one agent
+docket cost [id] / doctor / maintain <id>  # Spend / fleet health / per-agent upkeep
+docket gates status                        # Approval-gate, routing, and audit posture
+docket serve [--dispatch]                  # Read-only API, optionally driving pod queues
 ```
 
-## Engineering: spec-driven development
+Every command, subcommand, and flag — including `context`, `workflow`, `keys`/`auth`, `gates
+enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — is documented in
+**[docs/commands.md](docs/commands.md)**, the full reference.
 
-docket is where I practice spec-driven development: write the specification before the
-implementation, use RFC 2119 keywords (MUST/SHOULD/MAY) to make requirements testable, and
-measure real coverage. Specs cover the core lifecycle and expand outward.
+## Engineering
 
-```bash
-./scripts/validate-specs.sh    # Validate spec structure/completeness (blocking in CI)
-./scripts/metrics.py --check   # Verify README's quoted numbers match the tree (blocking in CI)
-```
-
-See [specs/README.md](specs/README.md) for the SSD documentation and
-[CONTRIBUTING.md](CONTRIBUTING.md) for how to add a command.
-
-### By the numbers
-
-- **~13,545 lines** of Python in the shipped `docket` package (`src/docket/`)
-- **795 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
-  (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
-- Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
-- **18 specifications** (RFC 2119), validated in CI
-
-```bash
-uv run pytest                                        # 795-test Python suite
-uv run ruff check . && uv run ruff format --check .  # lint + format
-uv run mypy src                                      # strict type check
-bash tests/golden/run.sh verify-all                  # 16-case byte-parity suite
-./tests/evals/run-evals.sh                           # specialist-role evals
-```
+docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
+coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
+a 795-test pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security
 
@@ -467,7 +336,7 @@ docket tracks the current OpenClaw release line and the v1 `openclaw.json` schem
 
 | docket-cli | Tested OpenClaw | `openclaw.json` schema | Notes |
 |------------|-----------------|------------------------|-------|
-| 0.1.x | current release line (2026.x) | v1 | Manual verification; no version pin yet |
+| 0.2.x | current release line (2026.x) | v1 | Manual verification; no version pin yet |
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the policy and how breaks are tracked.
 

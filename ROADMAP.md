@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0 is cut** (not yet tagged; Phase 13's work landed on top of it, not yet re-cut as 0.2.1/0.3.0). No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
 **Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1187,11 +1187,13 @@ goldens green throughout.
 > **1,702 lines**, not ≤1,500 — the CH-7 card's own Do-list named 5 extraction targets
 > (`_keys.py`, `_context.py`, `_workflow.py`, `_cost.py`, `_agents.py`) and none of the
 > remaining commands, so no 6th stage was invented purely to force the number under the target.
-> `docket` **0.2.0** was cut (CHANGELOG + `VERSION` + `pyproject.toml` + `uv.lock` +
-> `__version__`) but **not tagged** — `git tag v0.2.0` is an operator-approved step, checklist
-> in TODO.md's CH-12 card. The TODO board was cleared per convention; this note is the durable
-> record. Full findings: `internal-docs/architecture-audit.md`; execution trail: TODO.md's
-> CH-0…CH-13 cards (kept, per this phase's own convention, until the next phase overwrites them).
+> `docket` **0.2.0** was drafted in CHANGELOG/`VERSION`/`pyproject.toml`/`uv.lock`/`__version__`
+> at this point, but not yet tagged — Phase 13 landed on top before the tag was cut, and the
+> release actually shipped as **`0.2.0-beta.1`** (see the Phase 13 completion note and §8) once
+> the operator clarified every release from this project carries a SemVer `-beta.N` suffix. The
+> TODO board was cleared per convention; this note is the durable record. Full findings:
+> `internal-docs/architecture-audit.md`; execution trail: TODO.md's CH-0…CH-13 cards (kept, per
+> this phase's own convention, until the next phase overwrites them).
 
 ---
 
@@ -1293,19 +1295,37 @@ met; `docket install`'s gates default flips; full suite + goldens green througho
 
 ## 8. How to start (current — no active phase)
 
-Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` 0.2.0 is cut (not yet
-tagged — see TODO.md's CH-12 tag checklist; Phase 13's work landed on top of 0.2.0 and hasn't
-been re-cut as a new version yet). **No phase is currently active.** TODO.md's board is spent
-and awaiting the next phase per the standing convention (clear the old cards, keep the phase
-record here, append the new board). Before starting new work: decide what Phase 14 is — a version
-cut/tag for Phase 13's work, the deferred prod-deploy per-argument enforcement (needs a daemon
-capability that doesn't exist today), a fresh audit, or a product-plan-driven feature phase — and
-write its ROADMAP section + TODO.md board following the pattern established by Phases 10–13.
+Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
+and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
+pre-release suffix (not a bare version) for as long as the project stays beta/early-stage per
+README's warning banner; `v0.1.0` predates this convention and stays as-is. **No phase is
+currently active.** TODO.md's board is spent and awaiting the next phase per the standing
+convention (clear the old cards, keep the phase record here, append the new board). Before
+starting new work: decide what Phase 14 is — the deferred prod-deploy per-argument enforcement
+(needs a daemon capability that doesn't exist today), a fresh audit, or a product-plan-driven
+feature phase — and write its ROADMAP section + TODO.md board following the pattern established
+by Phases 10–13.
 
 ---
 
 ### Changelog
 
+- **2026-07-03** — **Cut and tagged `v0.2.0-beta.1`** — folded Phase 13 (FD-0…FD-7) into
+  CHANGELOG's previously-blank-since-drafting 0.2.0 entry; trimmed README.md (492→361 lines:
+  cut the redundant Command Reference and Engineering sections down to short pointers at
+  `docs/commands.md`/`CONTRIBUTING.md`, pulled two screenshots — `gates.png`/`doctor.png` — that
+  showed pre-0.2.0 "gates inactive" output contradicting the new gates-on-by-default default);
+  consolidated repeated before/after + token-savings narrative across `docs/DOCKET.md`
+  (821→731 lines) and `docs/QUICK-START-DOCKET.md` (454→307 lines); merged three separate
+  troubleshooting sections (`WORKFLOW-GUIDE.md`, `QUICK-START-DOCKET.md`, and
+  `docs/troubleshooting.md` itself) into one canonical `troubleshooting.md`. **Versioning
+  correction:** the operator clarified every release from this project must carry a SemVer
+  `-beta.N` pre-release suffix while it stays beta software — corrected the in-flight plain
+  `0.2.0` cut to `0.2.0-beta.1` (VERSION, `pyproject.toml`, `__version__`, `uv.lock`, CHANGELOG
+  header + compare links) rather than reusing `0.1.0-beta.*`, since `v0.1.0` is already tagged
+  and a `0.1.0-beta.N` would sort *before* it in SemVer precedence. `.github/workflows/release.yml`
+  updated to mark the GitHub Release as a pre-release whenever the tag contains a `-` (so this
+  and future beta tags don't show as "Latest release").
 - **2026-07-02 (later same day)** — **PHASE 13 COMPLETE.** All 8 FD-cards landed and merged into
   `develop` (795 tests green). Execution: FD-0…FD-4 ran as a first parallel wave of 5
   worktree-isolated agents; FD-5/FD-6 ran as a second wave of 2 once the first wave landed; FD-7

@@ -7,24 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-07-02
+## [0.2.0-beta.1] - 2026-07-03
 
-**Three feature waves land together in this release, none of which had been cut before now:**
+**Four feature waves land together in this release, none of which had been cut before now:**
 Phase 10 (agent pods — provisioning, real dispatch, the opt-in Portfolio Manager), Phase 11
 (competitive differentiation, CD-1…CD-8 — runtime-resource isolation, a mechanical verify
-gate, governance/HITL, the scheduled/webhook control plane, the versioned read API), and
+gate, governance/HITL, the scheduled/webhook control plane, the versioned read API),
 **Phase 12 (Consolidation & hardening)** — the audit-driven pass that closed gaps the other two
 left behind: a single enforced JSON-writer chokepoint, ACL-only OpenClaw shell-outs, no UI
 printing from `core`/`edges`, retirement of the never-dispatched `docket team` command, a hard
 exit on the deprecated tier-name vocabulary, deletion of an unused role-drift engine, a
 4,194→1,702-line split of the CLI's largest module, a re-armed CI drift guard, and a spec/docs
-truth pass. Full detail: `ROADMAP.md` (Phase 10/11/12 sections),
-`internal-docs/architecture-audit.md`, and TODO.md's CH-0…CH-13 cards.
+truth pass — and **Phase 13 (Close the differentiation gaps)** — a second audit-driven pass
+that found Phase 11's CD-1/CD-2/CD-3/CD-4 had already built most of what a fresh competitive
+read asked for, and closed the five real residual gaps instead of rebuilding: pod resources now
+reach the Implementer's actual process environment (not just TOOLS.md prose), `verifyCmd` is
+settable via a public flag, the Tester hop is structurally gated on PASS/FAIL, a built-in
+high-risk action-class policy always routes money-movement/secret-access actions to approval,
+every approval (any channel) is now audit-logged, and exec-approval gates are **on by default**
+for new installs. Full detail: `ROADMAP.md` (Phase 10/11/12/13 sections),
+`internal-docs/architecture-audit.md`, and TODO.md's CH-0…CH-13 / FD-0…FD-7 cards.
 
-> *Section consolidated 2026-07-02: duplicate `Added`/`Changed` headings merged, and the
-> Phase 10 (agent pods) + Phase 11 (competitive differentiation, CD-1…CD-8) feature waves —
-> previously missing entirely — backfilled. Two stale Bash-era claims corrected in place
-> (noted inline).*
+> *Section consolidated 2026-07-02, extended 2026-07-03: duplicate `Added`/`Changed` headings
+> merged, and the Phase 10 (agent pods) + Phase 11 (competitive differentiation, CD-1…CD-8)
+> feature waves — previously missing entirely — backfilled. Two stale Bash-era claims corrected
+> in place (noted inline). Phase 13 (FD-0…FD-7) folded in on 2026-07-03, the day this version
+> was actually tagged.*
 
 ### Added
 
@@ -41,22 +49,42 @@ truth pass. Full detail: `ROADMAP.md` (Phase 10/11/12 sections),
   --dispatch` runs it as a background loop.
 - **Org Portfolio Manager (opt-in).** `docket install --portfolio` provisions a single
   `scope: org` planning/visibility agent over fleet metadata (never project code).
-- **Pod runtime-resource isolation** (CD-1) — each pod gets a **disjoint port range** and a
-  private scratch dir, injected into the Implementer's `TOOLS.md`/env
-  (`DOCKET_PORT_BASE`, `DOCKET_SCRATCH_DIR`, …), shown by `docket pod <p>`, and reclaimed on
-  `docket delete`/`pod remove`.
+- **Pod runtime-resource isolation** (CD-1, completed by Phase 13's FD-0) — each pod gets a
+  **disjoint port range** and a private scratch dir, injected into the Implementer's **real
+  dispatch subprocess environment** (`DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`,
+  `DOCKET_SCRATCH_DIR`) — not just documented as TOOLS.md prose the agent has to read and
+  remember to follow — shown by `docket pod <p>`, and reclaimed on `docket delete`/`pod remove`.
 - **Git-worktree Implementer isolation** for repo pods (CD-5) — the Implementer works in a
   dedicated `git worktree`/branch, torn down with the pod; documented fallback when the daemon
   can't target a worktree.
-- **Deterministic pre-merge verification gate** (CD-2) — an opt-in per-pod `verifyCmd` runs in
-  the Implementer's workspace before a dispatched task can be marked done; non-zero exit blocks
-  completion and emits a redacted `verification_failed` trace event; unset ⇒ visibly logged skip.
-- **High-risk action classes** (CD-3) — a `high-risk` policy class (money/payment,
-  production-deploy, secret access) that **always** routes to approval even for allowlisted
-  binaries; surfaced and testable via `docket policies show` / `policies test`.
-- **Headless approval channel** (CD-4) — token-guarded `GET /approvals` + `POST
-  /approvals/<token>` on `docket serve` (local-bind by default) alongside `docket approve/deny`;
-  fail-closed expiry preserved. Unblocks a future gates-on-by-default decision.
+- **Deterministic pre-merge verification gate** (CD-2, completed by Phase 13's FD-1/FD-2) — an
+  opt-in per-pod `verifyCmd` — now settable via a public `docket pod <project> add --verify
+  "<cmd>"` / `set-verify <member-id> "<cmd>"` (previously only an internal debug command could
+  set it) — runs in the Implementer's workspace before a dispatched task can be marked done;
+  non-zero exit blocks completion and emits a redacted `verification_failed` trace event; unset
+  ⇒ visibly logged skip. If the pod has a Tester, its hop is now **also** gated: the first
+  non-blank line of its report must read `PASS`/`FAIL` (case-insensitive); `FAIL` or unparseable
+  output blocks the pipeline (`tester_verdict_failed`) instead of the Tester's word being taken
+  on faith.
+- **Policy template presets** (CD-3) — `templates/policies/*.json` ships curated,
+  human-reviewable policy presets (`block-destructive`, `high-risk-payment`,
+  `high-risk-deploy`, `high-risk-credentials`, `prompt-injection`, `secret-pii-redact`) an
+  operator can inspect/apply via `docket policies show` / `policies test`.
+- **Built-in high-risk action-class policy** (Phase 13's FD-3 — distinct from the CD-3 policy
+  *templates* above) — `core/security.py`'s `HIGH_RISK_PATTERNS` (money-movement, prod-deploy,
+  secret-access) is wired directly into what `docket gates enable` seeds, visible read-only via
+  `docket gates classes`. Money-movement and secret-access are **fully enforced today** (their
+  bins were never on the curated allowlist to begin with). Prod-deploy's overlap with `git`/`npm`
+  is **documented policy, not daemon-enforced** — the OpenClaw exec-allowlist gates by binary
+  path only, so excluding those two constantly-used bins wholesale to force enforcement would
+  also block benign use (`git status`, `npm test`); per-argument enforcement is a tracked
+  backlog item, not shipped behavior.
+- **Headless approval channel** (CD-4, completed by Phase 13's FD-4/FD-5) — token-guarded `GET
+  /approvals` + `POST /approvals/<token>` on `docket serve` (local-bind by default) alongside
+  `docket approve/deny`; fail-closed expiry preserved. Every grant/deny, on **any** channel
+  (CLI, HTTP, Telegram), now writes an `audit_log()` entry tagged with the channel — previously
+  only a trace event was recorded. This closed condition is what unblocked **gates-on-by-default
+  for new installs** (`docket install`, `--no-gates` to opt out) — see Changed, below.
 - **Scheduled & webhook-triggered dispatch** (CD-6) — cron-like schedules and a token-guarded
   `POST /dispatch/<project>` endpoint turn the `serve --dispatch` poller into an event-driven
   control plane.
@@ -96,6 +124,13 @@ truth pass. Full detail: `ROADMAP.md` (Phase 10/11/12 sections),
 
 ### Changed
 
+- **Exec-approval gates are now on by default for new installs** (Phase 13, FD-5) — `docket
+  install` applies conservative exec-approval defaults + a curated allowlist automatically;
+  `--no-gates` is the explicit opt-out (previously `--gates` was required to opt in). The
+  security-gates spec's own blocking condition — a headless (non-Telegram) approval channel —
+  was already met by CD-4's CLI/HTTP channels; this flip and the FD-4 audit-log parity above are
+  what closed the remaining gap honestly before flipping the default. Docker workspace isolation
+  (`docket gates isolate on`) remains a separate, still-opt-in layer.
 - **Bash → Python rewrite (M6 cutover).** docket is now a Python package (`src/docket/`)
   built on Typer + Rich + Pydantic (plus pydantic-settings and filelock), installed via
   `uv`/pip. `bin/docket` is now a thin Bash launcher that execs `python -m docket "$@"`; all
@@ -213,6 +248,13 @@ truth pass. Full detail: `ROADMAP.md` (Phase 10/11/12 sections),
   described the retired `docket team` as live; `QUICK-START-DOCKET.md` and `DOCKET.md` had the
   `docket context` argument order backwards. All corrected; see `internal-docs/architecture-audit.md`
   for the full findings this phase worked from.
+- **Spec/data truth pass for Phase 13's changes** (FD-6) — `specs/data/docket-meta.spec.md` and
+  `specs/api/cli-interface.spec.md` updated for the `--verify`/`set-verify` surface and
+  env-injection behavior; a new `specs/functional/pod-dispatch.spec.md` documents the dispatch
+  pipeline's hop order, gates, and failure semantics — no spec previously owned that contract;
+  `specs/functional/security-gates.spec.md` brought current for the real approval-channel set,
+  the high-risk action-class policy's honest (partial) enforcement scope, and the
+  gates-on-by-default status.
 
 ## [0.1.0] - 2026-06-10
 
@@ -264,6 +306,6 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0
+[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.1...HEAD
+[0.2.0-beta.1]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0-beta.1
 [0.1.0]: https://github.com/yielab/docket/releases/tag/v0.1.0

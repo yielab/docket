@@ -476,65 +476,10 @@ cap is enforced between hops on every dispatch.
 
 ## Troubleshooting
 
-### Pod not running a delegated task?
-
-1. **Confirm the pod and its members exist and are healthy:**
-   ```bash
-   docket pod myapp
-   docket doctor
-   ```
-2. **Check the queue — is the task pending because of budget?**
-   ```bash
-   docket pod myapp queue        # look at status + the budget header
-   ```
-3. **If over budget, raise the cap and re-dispatch:**
-   ```bash
-   docket profile myapp-lead --budget 10
-   docket pod myapp dispatch
-   ```
-4. **Did you actually dispatch?** `delegate` only queues — `dispatch` runs the pipeline (or
-   start the background loop with `docket serve --dispatch`).
-
-### Pipeline stops after the Implementer?
-
-That's expected for a **lean** pod — it only has two hops. Add the gate roles if you want them:
-
-```bash
-docket pod myapp add reviewer
-docket pod myapp add tester
-```
-
-### Implementer touching the wrong project?
-
-1. **Check its session key / scope:**
-   ```bash
-   docket scope myapp-implementer show
-   ```
-2. **Reset if needed:**
-   ```bash
-   docket scope myapp-implementer reset
-   ```
-3. **Verify the workspace identity:**
-   ```bash
-   grep "Session Key" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
-   ```
-
-### Leftover global `programmer`/`reviewer`/`tester`?
-
-A pre-pods install may have left a shared worker workspace. `docket doctor` flags it and
-backfills `scope` on legacy metadata — run it and follow its advice:
-
-```bash
-docket doctor
-```
-
-### Gateway / Telegram issues
-
-```bash
-docket list                                   # shows wire status per agent
-docket wire myapp-lead                         # (re)wire a Lead to Telegram
-systemctl --user status openclaw-gateway.service
-```
+Pod/dispatch, scope, and gateway/Telegram issues (including "pod not running a delegated task,"
+"pipeline stops after the Implementer," and leftover pre-pods global roles) are all covered in
+**[troubleshooting.md](troubleshooting.md)**'s "Pods & Dispatch" and "Agents Not Responding in
+Telegram" sections — kept in one place rather than duplicated here.
 
 ---
 

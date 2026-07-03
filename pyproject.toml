@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docket"
-version = "0.2.0"
+version = "0.2.0-beta.1"
 description = "OpenClaw project agent manager"
 requires-python = ">=3.11"
 dependencies = [

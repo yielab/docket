@@ -270,6 +270,78 @@ docket pod <p>     # list the pod's members
 docket doctor      # system-wide diagnostics + auto-fix
 ```
 
+### Implementer touching the wrong project?
+Check its session key / scope, and reset if needed:
+```bash
+docket scope <p>-implementer show
+docket scope <p>-implementer reset
+grep "Session Key" ~/.openclaw/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
+```
+
+### Leftover global `programmer`/`reviewer`/`tester`?
+A pre-pods install may have left a shared worker workspace behind. `docket doctor` flags it and
+backfills `scope` on legacy metadata — run it and follow its advice:
+```bash
+docket doctor
+```
+
+## Memory & Context
+
+### Agents still using large context?
+
+1. **Verify the fleet is healthy:**
+
+   ```bash
+   docket list
+   docket doctor
+   ```
+
+2. **Check SNAPSHOT.md exists:**
+
+   ```bash
+   ls ~/.openclaw/workspaces/projects/*/SNAPSHOT.md
+   ```
+
+3. **Create snapshot if missing:**
+
+   ```bash
+   docket context <project-id> snapshot
+   ```
+
+4. **Restart gateway:**
+
+   ```bash
+   systemctl --user restart openclaw-gateway.service
+   ```
+
+### Agents not acknowledging immediately?
+
+1. Check SOUL.md has an "IMMEDIATE ACKNOWLEDGMENT" section:
+
+   ```bash
+   grep "IMMEDIATE ACKNOWLEDGMENT" ~/.openclaw/workspaces/manager/SOUL.md
+   ```
+
+2. If missing, regenerate the agent's templates from its metadata:
+
+   ```bash
+   docket maintain manager rebuild
+   ```
+
+### Memory index not working?
+
+1. Create the index first:
+
+   ```bash
+   docket context <project-id> index
+   ```
+
+2. Verify the index file:
+
+   ```bash
+   ls ~/.openclaw/workspaces/projects/<project-id>/.memory-index.json
+   ```
+
 ## Getting Help
 
 1. **Run diagnostics:**
