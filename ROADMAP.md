@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–12 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, and **consolidation & hardening**, CH-0…CH-13 — see §0 and the Phase 10/11/12 records). **docket 0.2.0 is cut** (not yet tagged). **PHASE 13 — Close the differentiation gaps (FD-0…FD-7) is active** — see the Phase 13 section below and [TODO.md](TODO.md). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); plus the §7 Backlog.
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0 is cut** (not yet tagged; Phase 13's work landed on top of it, not yet re-cut as 0.2.1/0.3.0). No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
 **Last Updated:** 2026-07-02
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1195,7 +1195,7 @@ goldens green throughout.
 
 ---
 
-### PHASE 13 — Close the differentiation gaps  *(🚧 active 2026-07-02)*
+### PHASE 13 — Close the differentiation gaps  *(☑ COMPLETE 2026-07-02)*
 
 > **Source of record:** `internal-docs/competitive-analysis.md` (2026-06-25 research pass) named
 > three "Tier 1 — Now" bets as docket's highest-leverage, no-daemon-change differentiators: **P1**
@@ -1256,6 +1256,20 @@ regardless of the allowlist; every approval grant/deny (any channel) writes an a
 `security-gates.spec.md` reflects the real channel set and states the on-by-default condition is
 met; `docket install`'s gates default flips; full suite + goldens green throughout.
 
+> **☑ Phase 13 shipped 2026-07-02 — all 8 cards FD-0…FD-7 DONE, full suite green (795 tests).**
+> Every exit criterion above was met, with one honest narrowing: the high-risk action-class
+> policy (FD-3) is **fully enforced only for money-movement and secret-access** (their bins were
+> never in the curated allowlist); prod-deploy's `git`/`npm` overlap is documented policy, not
+> daemon-enforced — an initial implementation that excluded `git`/`npm` wholesale was rejected
+> during review because the daemon's exec-allowlist gates by binary path only, and would have
+> forced every benign invocation (`git status`, `npm test`) to also require approval. Per-argument
+> enforcement for allowlisted bins is now a tracked backlog item, not silently claimed as shipped.
+> `internal-docs/competitive-analysis.md` (gitignored, local-only) was corrected with per-bet
+> status notes so its Tier-1 framing — which had already gone stale by the time this phase started,
+> since Phase 11's CD-1…CD-4 had built most of the substrate the same week it was written — doesn't
+> mislead a future planning pass the same way. Full findings: this section above; execution trail:
+> TODO.md's FD-0…FD-7 cards (kept until the next phase overwrites them, per convention).
+
 ---
 
 ## 7. Backlog (deferred indefinitely)
@@ -1277,18 +1291,35 @@ met; `docket install`'s gates default flips; full suite + goldens green througho
 
 ---
 
-## 8. How to start (current — Phase 13 active)
+## 8. How to start (current — no active phase)
 
-Phases 0–12 are complete (§5 + the Phase 10/11/12 records). `docket` 0.2.0 is cut (not yet
-tagged — see TODO.md's CH-12 tag checklist). **PHASE 13 — Close the differentiation gaps** is
-active (see the Phase 13 section above); its executable board (FD-0…FD-7) is in TODO.md. Work
-top to bottom per the dependency map there; FD-5 (the gates-default-on flip) depends on FD-3 and
-FD-4 landing first, since it closes the exact gap the flip is conditioned on.
+Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` 0.2.0 is cut (not yet
+tagged — see TODO.md's CH-12 tag checklist; Phase 13's work landed on top of 0.2.0 and hasn't
+been re-cut as a new version yet). **No phase is currently active.** TODO.md's board is spent
+and awaiting the next phase per the standing convention (clear the old cards, keep the phase
+record here, append the new board). Before starting new work: decide what Phase 14 is — a version
+cut/tag for Phase 13's work, the deferred prod-deploy per-argument enforcement (needs a daemon
+capability that doesn't exist today), a fresh audit, or a product-plan-driven feature phase — and
+write its ROADMAP section + TODO.md board following the pattern established by Phases 10–13.
 
 ---
 
 ### Changelog
 
+- **2026-07-02 (later same day)** — **PHASE 13 COMPLETE.** All 8 FD-cards landed and merged into
+  `develop` (795 tests green). Execution: FD-0…FD-4 ran as a first parallel wave of 5
+  worktree-isolated agents; FD-5/FD-6 ran as a second wave of 2 once the first wave landed; FD-7
+  was done directly (solo, small docs-only card). Two real merge conflicts resolved by hand: test
+  fixtures in `core/dispatch.py` needed widening to FD-0's 5-arg `Runner` signature after FD-2
+  merged first; `security-gates.spec.md` had a genuine content conflict between FD-5 and FD-6
+  (both independently wrote a "High-risk action classes" section) — resolved by keeping the more
+  detailed version and combining both Changelog entries. One design correction made mid-phase,
+  before merging: FD-3's first implementation excluded `git`/`npm` entirely from the exec
+  allowlist to force high-risk invocations to always ask; caught during review that the daemon's
+  binary-only gating would have also blocked benign invocations (`git status`, `npm test`) —
+  presented to the operator as a real tradeoff, who chose to narrow the fix rather than accept the
+  full exclusion. Per-argument enforcement for prod-deploy's `git`/`npm` overlap is now an
+  explicit, tracked backlog item. TODO.md's board is now spent and awaiting the next phase.
 - **2026-07-02 (later same day)** — **Added PHASE 13 — Close the differentiation gaps** (FD-0…FD-7),
   scoped after the operator chose "Tier-1 competitive bets" from `internal-docs/competitive-analysis.md`.
   A grounding pass (three parallel code investigations) found the analysis's framing had gone stale:

@@ -201,7 +201,7 @@ FD-7 (docs/positioning pass) ── depends on FD-0..FD-5 — UNBLOCKED, last ca
 - **Out of scope:** a full docs sweep (CH-11 already did that broadly in Phase 12); new marketing copy beyond factual claims already true in the tree.
 - **Deliverables:** corrected competitive-analysis.md; updated positioning copy; drift guard green.
 - **Acceptance gate:** [ ] competitive-analysis.md records the Tier-1 bets as closed · [ ] positioning copy matches shipped behavior · [ ] `scripts/metrics.py --check` green.
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — done directly (solo, no subagent — small docs-only card) 2026-07-02. `internal-docs/competitive-analysis.md`'s Tier-1 section got a status note per bet (P1/O2/S1); README's positioning, feature-matrix, and status tables updated to claim env-level pod isolation, the Tester PASS/FAIL gate, and the high-risk action-class policy with its honest partial scope.
 
 ---
 
@@ -214,5 +214,47 @@ FD-7 (docs/positioning pass) ── depends on FD-0..FD-5 — UNBLOCKED, last ca
 - [x] FD-4 — every approval grant/deny, any channel, writes an audit-log entry. *(DONE 2026-07-02)*
 - [x] FD-5 — `security-gates.spec.md` reflects the real channel set; `docket install` gates default flips to on. *(DONE 2026-07-02)*
 - [x] FD-6 — specs/data truth pass for every field/behavior this phase touched. *(DONE 2026-07-02)*
-- [ ] FD-7 — docs/positioning claim the closed gaps; competitive-analysis.md corrected.
-- [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens.
+- [x] FD-7 — docs/positioning claim the closed gaps; competitive-analysis.md corrected. *(DONE 2026-07-02)*
+- [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. `scripts/validate-specs.sh` and the README drift guard)*
+
+## Phase 13 — COMPLETE (2026-07-02)
+
+All 8 cards landed and merged into `develop`. FD-0 through FD-4 ran as a first parallel wave of
+5 worktree-isolated agents; FD-5 and FD-6 ran as a second wave of 2 (both depended on the first
+wave landing); FD-7 was done directly (solo). Two real merge conflicts were resolved by hand:
+`core/dispatch.py`'s test fixtures needed widening to FD-0's 5-arg `Runner` signature after FD-2
+merged first (a small follow-up commit, not a true git conflict — the auto-merge succeeded but
+left FD-2's local fake runners on the old signature); and `security-gates.spec.md` had a genuine
+content conflict between FD-5 and FD-6 (both independently wrote a "High-risk action classes"
+requirements section) — resolved by keeping FD-6's more detailed version and combining both
+branches' Changelog entries.
+
+**One design correction made mid-phase, before merging:** FD-3's first implementation excluded
+`git`/`npm` entirely from the seeded exec-allowlist to force high-risk invocations (prod
+git-push, npm publish) to always require approval. Caught during review: since the OpenClaw
+daemon's exec-allowlist gates by binary path only (no argument-aware matching), this would have
+also forced every benign invocation (`git status`, `npm test`) to require approval — a bigger
+usability regression than the card scoped, and one that would have made the very next card
+(FD-5, gates-default-on) a rough experience for anyone using git or npm under gates. Presented
+to the operator as a real tradeoff; the operator chose to narrow it rather than accept the full
+exclusion. Re-scoped in place: `HIGH_RISK_PATTERNS`/`docket gates classes` ship as documented
+policy; `git`/`npm` stay allowlisted; per-argument enforcement for allowlisted bins is now an
+explicit, tracked backlog item instead of a silently-overclaimed feature.
+
+**Grounding-pass correction that shaped the whole phase:** the phase was originally scoped
+around `internal-docs/competitive-analysis.md`'s three "Tier 1 — Now" bets (P1/O2/S1) as if they
+were unbuilt. A pre-work grounding pass (three parallel code investigations) found Phase 11's
+own CD-1/CD-2/CD-3/CD-4 cards had already built most of the substrate the same week the analysis
+was written — the phase was rescoped around the five real residual gaps instead of rebuilding
+three features from scratch. `internal-docs/competitive-analysis.md` (gitignored, local-only)
+was corrected with per-bet status notes so a future planning pass doesn't repeat the mistake.
+
+**Explicitly NOT in this phase (deferred, tracked as backlog):** a real disposable DB/cache
+namespace for pods (stays a naming convention — no docket-owned DB engine to provision
+against); per-argument enforcement of the prod-deploy high-risk class for `git`/`npm`
+(needs a daemon-side capability that doesn't exist today); retroactively enabling gates on
+already-installed fleets (the default flip only applies to new installs).
+
+**Next:** this board is now spent. Per the standing convention (top of this file), a future
+session should clear these cards (the phase record stays in ROADMAP.md's Phase 13 section) and
+append whatever phase comes next.
