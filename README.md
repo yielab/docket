@@ -423,14 +423,14 @@ See [specs/README.md](specs/README.md) for the SSD documentation and
 
 ### By the numbers
 
-- **~13,275 lines** of Python in the shipped `docket` package (`src/docket/`)
-- **763 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
+- **~13,538 lines** of Python in the shipped `docket` package (`src/docket/`)
+- **793 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
   (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
 - Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
 - **17 specifications** (RFC 2119), validated in CI
 
 ```bash
-uv run pytest                                        # 763-test Python suite
+uv run pytest                                        # 793-test Python suite
 uv run ruff check . && uv run ruff format --check .  # lint + format
 uv run mypy src                                      # strict type check
 bash tests/golden/run.sh verify-all                  # 16-case byte-parity suite
