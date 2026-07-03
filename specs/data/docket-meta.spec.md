@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Complete
-**Last Updated**: 2026-06-25
+**Last Updated**: 2026-07-02
 
 ## Purpose
 
@@ -68,10 +68,10 @@ this table fails type-checking or the test suite.
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
 | `paused` | bool | — | local | No | `doctor`, `profile` | Whether the agent is paused (e.g. budget exceeded) |
 | `pausedReason` | string | — | local | No | `doctor`, `profile` | Human-readable pause reason |
-| `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers |
-| `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1) |
-| `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers |
-| `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged) |
+| `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
+| `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1). Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
+| `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
+| `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 
 ## Sync contract
@@ -86,6 +86,19 @@ All other fields are **local** to docket. Do not expect them in `openclaw.json`.
 
 `docket doctor` compares every `synced` field between `.docket-meta.json` and `openclaw.json`
 and reports drift. `--fix` re-syncs from `.docket-meta.json` (the source of truth).
+
+## Runtime environment injection (FD-0)
+
+`portRangeStart`/`portRangeCount`/`scratchDir` are **local** fields (never synced to
+`openclaw.json`), but they are not docket-only bookkeeping either: `core/dispatch.py` reads
+them for every Implementer hop and, when `portRangeStart` is set, passes
+`DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR` into that hop's real subprocess
+environment via `agent_run`'s `env` parameter (layered on top of the parent process's own
+environment, which is never mutated). An Implementer with no allocated resources, and every
+non-Implementer hop, receives no override. This is enforced binding, not advisory prose — the
+same values are still written into the Implementer's `TOOLS.md` for human/agent-readable
+context, but the subprocess environment is what an implementer can actually rely on
+programmatically. See `pod-dispatch.spec.md` for the full per-hop behavioral contract.
 
 ## Validation
 
@@ -156,6 +169,17 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```
 
 ## Changelog
+
+### Version 2.2.0 (2026-07-02)
+
+- FD-6 spec truth pass for Phase 13's FD-0/FD-1 cards:
+  - Documented that `portRangeStart`/`portRangeCount`/`scratchDir` now reach the Implementer's
+    real dispatch subprocess environment as `DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/
+    `DOCKET_SCRATCH_DIR` (FD-0) — previously only TOOLS.md prose, now an enforced binding. Added
+    a "Runtime environment injection" section and cross-referenced the new `pod-dispatch.spec.md`.
+  - Corrected `verifyCmd`'s "Written by" column to include `pod set-verify` (FD-1's public
+    setter for an existing member); the pre-existing `pod add --verify` claim was verified
+    accurate against the now-shipped flag.
 
 ### Version 2.1.0 (2026-06-25)
 

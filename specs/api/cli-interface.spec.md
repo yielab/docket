@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Complete
 **Last Updated**: 2026-07-02
 
@@ -243,13 +243,20 @@ to their pod equivalents below.
 **Syntax**: `docket pod <project> <action> [args]`
 **Actions**:
 - `list`: Show the pod's members (Lead, Implementer, optional Reviewer/Tester)
-- `add <role> [--count N]`: Add a member (role may be duplicated, e.g. a second implementer)
+- `add <role> [--count N] [--verify "<cmd>"]`: Add a member (role may be duplicated, e.g. a
+  second implementer). `--verify` is Implementer-only — it writes the new member's `verifyCmd`
+  (FD-1); passing it for a non-implementer role warns and is ignored
+- `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
+  (FD-1); rejected with an error for a non-implementer member id
 - `remove <member-id>`: Remove a pod member
 - `delegate "<task>" [--priority high|normal|low]`: Queue a task on this pod's own list
   (one queue per pod, at `~/.openclaw/workspaces/<project>-lead/TASK_LIST.json`)
 - `queue`: List the pod's pending tasks
 - `dispatch`: Run the pod's pending tasks through its real pipeline — one real, costed agent
-  turn per hop (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`
+  turn per hop (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`. Gated by
+  the budget cap, the Implementer's `verifyCmd` (if set), and — when a Tester is present — a
+  structural PASS/FAIL parse of the Tester's reply (FD-2); see `pod-dispatch.spec.md` for the
+  full per-hop state machine
 **Output**: Pod roster, queue listing, or per-hop dispatch results (including cost)
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
 the project)
@@ -343,6 +350,9 @@ the project)
 - `enable`: Enable exec-approval gates (writes to openclaw.json)
 - `disable`: Disable exec-approval gates
 - `isolate <on|off>`: Toggle Docker workspace isolation
+- `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
+  secret-access) that always route to approval regardless of allowlist status (FD-3); read-only,
+  makes no config changes
 **Output**: Gates status or update confirmation
 **Return**: 0 on success
 
@@ -601,6 +611,13 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.4.0 (2026-07-02)
+- FD-6 spec truth pass for Phase 13's FD-1/FD-2/FD-3 cards: added the public `--verify "<cmd>"`
+  option on `docket pod <project> add` and the `set-verify <member-id> "<cmd>"` action (FD-1,
+  previously only settable via the internal `meta-set` debug command); noted `dispatch`'s budget/
+  verify/Tester-PASS-FAIL gates and cross-referenced the new `pod-dispatch.spec.md` for the full
+  state machine (FD-2); added `docket gates classes` (FD-3's read-only high-risk-class listing).
 
 ### Version 1.3.0 (2026-07-02)
 - CH-10 spec truth pass: fixed the version header (was stuck at 1.0.0 while this changelog
