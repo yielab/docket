@@ -427,7 +427,7 @@ See [specs/README.md](specs/README.md) for the SSD documentation and
 - **793 tests** in the pytest suite (`tests/python/`) + a **16-case golden parity suite**
   (`tests/golden/run.sh verify-all`, byte-for-byte against frozen output) + specialist-role evals
 - Real lint/format/type gates: `ruff` + `mypy --strict`, all enforced in CI
-- **17 specifications** (RFC 2119), validated in CI
+- **18 specifications** (RFC 2119), validated in CI
 
 ```bash
 uv run pytest                                        # 793-test Python suite

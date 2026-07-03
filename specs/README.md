@@ -15,6 +15,7 @@ specs/
 │   ├── cost-tracking.spec.md             # Token usage and cost reporting
 │   ├── eval.spec.md                      # Specialist-role eval harness
 │   ├── model-profiles.spec.md            # Role→model policy and pinning
+│   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── security-gates.spec.md            # Enforced exec-approval gates (opt-in)
 │   ├── session-scoping.spec.md           # Multi-project session isolation
 │   ├── team-coordination.spec.md         # Manager queue and team features
