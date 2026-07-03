@@ -26,9 +26,11 @@ from docket.edges.adapters import openclaw as _oc
 # Curated set of common, lower-risk binaries that skip the approval prompt.
 # Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and shell
 # interpreters are deliberately OMITTED so they fall through the allowlist gate.
-# NOTE: a bin listed here can still be excluded from the *seeded* allowlist at
-# runtime if it also appears in a HIGH_RISK_PATTERNS class's `bins` — see
-# `high_risk_bins()` / `resolve_safe_bin_paths()` below.
+# NOTE: a bin listed here (e.g. git, npm) can still have a HIGH_RISK_PATTERNS
+# class attached for documentation/visibility (`docket gates classes`) — that
+# does NOT exclude it from the seeded allowlist. See `high_risk_bins()`'s
+# docstring for why: the daemon's allowlist gates by binary path, not
+# argument text, so excluding a whole bin would also block its benign uses.
 SAFE_BINS: tuple[str, ...] = (
     "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "nl",
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
@@ -46,17 +48,24 @@ class HighRiskClass:
     """A named, documented high-risk action class.
 
     ``pattern`` is a case-insensitive regex matched against a full command
-    string (e.g. ``"git push origin production"``), not just a binary name —
-    the daemon's exec-allowlist can only gate by binary path (confirmed via
+    string (e.g. ``"git push origin production"``), not just a binary name.
+
+    ``bins`` names the SAFE_BINS members this class can be performed through,
+    for documentation/visibility only (``docket gates classes``) — it does
+    **not** exclude them from the seeded allowlist. The daemon's exec-
+    allowlist can only gate by binary path (confirmed via
     ``openclaw approvals allowlist --help``: entries are bare glob paths like
     ``/usr/bin/uptime``, with no argument-aware matching and no denylist
-    concept). Because of that, the only way to *honestly* guarantee a
-    high-risk invocation of an otherwise-curated binary always asks is to
-    never admit that binary into the seeded allowlist at all — ``bins`` names
-    exactly the SAFE_BINS members this class can be performed through, and
-    `high_risk_bins()` / `resolve_safe_bin_paths()` exclude them wholesale.
-    ``pattern`` remains useful on its own via `match_high_risk`/`is_high_risk`
-    for any caller that has an actual command string to classify.
+    concept), so it genuinely cannot tell ``git push origin main`` apart from
+    ``git status``. Excluding a bin like ``git``/``npm`` wholesale to force
+    its high-risk invocations to ask would also force every benign invocation
+    to ask — an unacceptable usability regression for tools used constantly.
+    Per-argument enforcement of these classes is deferred pending a daemon-
+    side capability that doesn't exist today (tracked as a backlog item,
+    similar to the deferred S2 redaction work). ``match_high_risk``/
+    ``is_high_risk``/``resolve_command_action`` remain useful now for any
+    caller that has an actual command string to classify (tests, a future
+    daemon hook, or docket's own subprocess call sites).
     """
 
     name: str
@@ -68,7 +77,12 @@ class HighRiskClass:
 # Seed list of high-risk action classes: money-movement, prod-deploy, and
 # secret-access. Intentionally small and named — a policy foundation, not
 # exhaustive coverage. Not user-configurable yet (see FD-3 "out of scope");
-# a config-file override is a natural follow-up.
+# a config-file override is a natural follow-up. NOTE: matching these
+# patterns is currently advisory/visible only for classes whose bins overlap
+# SAFE_BINS (git, npm) — see HighRiskClass's docstring for why full
+# enforcement needs a daemon capability that doesn't exist yet. Classes with
+# no SAFE_BINS overlap (money-movement, secret-access) are already fully
+# enforced today, since their bins were never allowlisted to begin with.
 HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
     HighRiskClass(
         name="money-movement",
@@ -100,11 +114,12 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
 
 
 def high_risk_bins() -> frozenset[str]:
-    """SAFE_BINS members capable of performing a high-risk action class.
+    """SAFE_BINS members named by a HIGH_RISK_PATTERNS class, for visibility only.
 
-    These are excluded from the seeded exec allowlist regardless of their
-    SAFE_BINS membership (see `resolve_safe_bin_paths`) — allowlist status
-    must never bypass a high-risk match.
+    NOT used to exclude anything from the seeded exec allowlist (see
+    HighRiskClass's docstring) — ``resolve_safe_bin_paths`` seeds these bins
+    normally. Exposed for ``docket gates classes`` and for any future caller
+    that wants to know which curated bins have a high-risk class attached.
     """
     out: set[str] = set()
     for cls in HIGH_RISK_PATTERNS:
@@ -130,11 +145,13 @@ def resolve_command_action(command: str, allowlist_paths: Sequence[str] = ()) ->
 
     A high-risk pattern match ALWAYS forces "ask", regardless of whether the
     invoked binary's resolved path appears in *allowlist_paths* — allowlist
-    status must never bypass a high-risk match. In practice
-    `resolve_safe_bin_paths` never admits a high-risk-capable bin into
-    *allowlist_paths* to begin with, so this mirrors the same invariant at
-    the single-command granularity, for any caller (tests, future dispatch-
-    time checks) that has a live command string to classify.
+    status must never bypass a high-risk match, for any caller that has an
+    actual live command string to classify (tests, a future daemon hook, or
+    docket's own subprocess call sites). This is the mechanism available
+    *today*; it is not currently wired into the daemon's own allowlist gate,
+    which can only key on binary path (see HighRiskClass's docstring) — so a
+    live agent invocation of ``git``/``npm`` is not yet gated through this
+    function at daemon-approval time.
     """
     if is_high_risk(command):
         return "ask"
@@ -162,16 +179,12 @@ def resolve_safe_bin_paths() -> list[str]:
     """Resolve the curated safe bins to absolute, symlink-resolved paths.
 
     Bins that are not on PATH are skipped (Bash ``command -v ... || continue``).
-    Bins in `high_risk_bins()` (e.g. ``git``, ``npm``) are skipped even though
-    they're SAFE_BINS members — the daemon's allowlist gates by binary path,
-    not argument text, so a high-risk-capable binary can never be blanket-
-    admitted without silently letting its high-risk invocations skip approval.
+    Every SAFE_BINS member is seeded here, including ``git``/``npm`` — see
+    `high_risk_bins()`'s docstring for why they are *not* excluded despite
+    having an attached HIGH_RISK_PATTERNS class.
     """
-    excluded = high_risk_bins()
     paths: list[str] = []
     for name in SAFE_BINS:
-        if name in excluded:
-            continue
         resolved = shutil.which(name)
         if not resolved:
             continue

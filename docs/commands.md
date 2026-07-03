@@ -1361,7 +1361,7 @@ docket gates enable [--force]      # turn on conservative exec-approval defaults
 docket gates disable               # turn exec-approval gates back off
 docket gates isolate on            # turn on Docker workspace isolation (default if no on/off given)
 docket gates isolate off           # turn Docker workspace isolation back off
-docket gates classes               # list the high-risk action classes that always require approval
+docket gates classes               # list the documented high-risk action classes
 ```
 
 **Subcommands:**
@@ -1409,11 +1409,14 @@ docket gates isolate off
 
 #### classes
 Lists the built-in high-risk action classes (`HIGH_RISK_PATTERNS` in `core/security.py`) —
-money-movement, prod-deploy, and secret-access. Commands matching one of these always route to
-approval regardless of allowlist status; SAFE_BINS members capable of a high-risk action
-(currently `git`, `npm`) are excluded from the curated allowlist entirely, since the daemon's
-allowlist gates by binary path, not argument text. Read-only; the pattern list is not yet
-user-configurable.
+money-movement, prod-deploy, and secret-access. The daemon's exec-allowlist only gates by binary
+path, not argument text, so today this is fully enforced (always asks, regardless of allowlist
+status) only for classes with no overlap in the curated allowlist (money-movement, secret-access).
+For `prod-deploy`, whose pattern matches specific `git`/`npm` invocations, those bins remain
+allowlisted — excluding them wholesale would also block every benign use (`git status`, `npm
+test`, ...). Per-argument enforcement for allowlisted bins needs a daemon capability that doesn't
+exist yet (deferred; see `specs/functional/security-gates.spec.md`). Read-only; the pattern list
+is not yet user-configurable.
 
 ```bash
 docket gates classes

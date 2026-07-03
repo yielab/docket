@@ -45,7 +45,7 @@ def _usage() -> None:
     )
     ui.console.print(
         "  [green]classes[/green]           "
-        "List the high-risk action classes that always require approval"
+        "List the documented high-risk action classes (see 'docket gates classes')"
     )
     ui.console.print()
     ui.console.print("[bold]What 'enable' does:[/bold]")
@@ -99,15 +99,21 @@ def _classes() -> int:
     ui.header("High-risk action classes")
     ui.console.print()
     ui.console.print(
-        "  Commands matching one of these always route to approval (ask), "
-        "regardless of allowlist status."
+        "  Documented action classes considered especially consequential "
+        "(money movement, prod deploys, secret access)."
     )
     ui.console.print()
     for cls in _sec.HIGH_RISK_PATTERNS:
         ui.console.print(f"[bold]{cls.name}[/bold] — {cls.description}")
         ui.dim(f"  pattern: {cls.pattern}")
         if cls.bins:
-            ui.dim(f"  excluded from the curated allowlist (SAFE_BINS): {', '.join(cls.bins)}")
+            ui.dim(
+                f"  overlaps curated allowlist bins: {', '.join(cls.bins)} — daemon gates by "
+                "binary path only, so these bins stay allowlisted; per-argument enforcement "
+                "is not yet available (deferred, see security-gates.spec.md)"
+            )
+        else:
+            ui.dim("  none of this class's bins are in the curated allowlist — always asks today")
         ui.console.print()
     ui.dim("  This seed list is intentionally small and built-in (not yet user-configurable).")
     return 0

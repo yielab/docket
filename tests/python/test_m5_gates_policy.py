@@ -135,15 +135,20 @@ class TestResolveCommandAction:
 
 
 class TestResolveSafeBinPaths:
-    def test_high_risk_bins_excluded_from_seeded_allowlist(
+    def test_high_risk_attached_bins_still_seeded(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # git/npm resolve on this machine's real PATH (oc_dir only stubs
-        # openclaw/docker off) but must never appear in the seeded allowlist.
+        # git/npm have a HIGH_RISK_PATTERNS class attached for documentation
+        # (docket gates classes) but the daemon can only gate by binary path,
+        # not argument text -- excluding them wholesale would also block
+        # every benign invocation (git status, npm test, ...), so they stay
+        # seeded like any other SAFE_BINS member. Stub PATH resolution so the
+        # assertion doesn't depend on npm actually being installed here.
+        monkeypatch.setattr(_sec.shutil, "which", lambda name: f"/usr/bin/{name}")
         paths = _sec.resolve_safe_bin_paths()
-        for p in paths:
-            base = p.rsplit("/", 1)[-1]
-            assert base not in _sec.high_risk_bins()
+        bases = {p.rsplit("/", 1)[-1] for p in paths}
+        for name in _sec.high_risk_bins():
+            assert name in bases
 
     def test_non_high_risk_bin_still_resolved(self, oc_dir: Path) -> None:
         paths = _sec.resolve_safe_bin_paths()
@@ -152,14 +157,19 @@ class TestResolveSafeBinPaths:
 
 
 class TestBuildExecApprovalsHighRisk:
-    def test_seeded_allowlist_never_contains_high_risk_bins(self, oc_dir: Path) -> None:
+    def test_seeded_allowlist_includes_high_risk_attached_bins(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # See test_high_risk_attached_bins_still_seeded: these bins remain
+        # allowlisted despite having a documented high-risk class, since the
+        # daemon can't distinguish their risky/benign invocations.
+        monkeypatch.setattr(_sec.shutil, "which", lambda name: f"/usr/bin/{name}")
         paths = _sec.resolve_safe_bin_paths()
         merged, _, _ = _sec.build_exec_approvals({}, paths, ["myshop"], force=False)
         for agent in merged["agents"].values():
-            patterns = [e["pattern"] for e in agent["allowlist"]]
-            for pattern in patterns:
-                base = pattern.rsplit("/", 1)[-1]
-                assert base not in _sec.high_risk_bins()
+            bases = {e["pattern"].rsplit("/", 1)[-1] for e in agent["allowlist"]}
+            for name in _sec.high_risk_bins():
+                assert name in bases
 
 
 # ── gates ─────────────────────────────────────────────────────────────────────
@@ -263,13 +273,14 @@ class TestGatesClasses:
             assert cls.description in out
         assert "not yet user-configurable" in out
 
-    def test_classes_shows_excluded_bins(
+    def test_classes_shows_overlapping_bins(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         rc = _gates.run_gates("classes")
         out = capsys.readouterr().out
         assert rc == 0
         assert "git" in out
+        assert "stay allowlisted" in out
         assert "npm" in out
 
 
