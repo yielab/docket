@@ -60,15 +60,13 @@
 ## Dependency map (what unblocks what)
 
 ```text
-FD-0 (env injection)         ─┐
-FD-1 (--verify flag)          ├─ independent, parallel-safe
-FD-3 (high-risk classes)      │  (FD-0 and FD-2 both touch core/dispatch.py — coordinate merge
-FD-4 (audit-log parity)      ─┘   order or expect one conflict to resolve by hand, as Phase 12 did)
-FD-2 (tester PASS/FAIL gate) ── independent logic, shares a file with FD-0
+FD-0, FD-1, FD-2, FD-3, FD-4 — DONE, all merged into develop 2026-07-02.
+  (FD-3 was narrowed before merge — see its Status note: git/npm stay
+  allowlisted, per-argument enforcement deferred to backlog.)
 
-FD-5 (spec truth + gates-default-on flip) ── depends on FD-3 + FD-4
-FD-6 (spec/data truth pass)               ── depends on FD-0, FD-1, FD-2, FD-3, FD-4
-FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
+FD-5 (spec truth + gates-default-on flip) ── depends on FD-3 + FD-4 — UNBLOCKED
+FD-6 (spec/data truth pass)               ── depends on FD-0..FD-4 — UNBLOCKED
+FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5 — blocked on FD-5
 ```
 
 ---
@@ -86,7 +84,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Out of scope:** a real disposable DB/cache namespace (stays a naming convention — no docket-owned DB engine to provision against, per the Phase 13 explicit keeps); giving reviewer/tester roles pod resources.
 - **Deliverables:** `agent_run` env-injection support; dispatch wiring for implementer hops; tests.
 - **Acceptance gate:** [ ] an implementer subprocess's real environment contains `DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR` when resources are allocated · [ ] no env override for agents without allocated resources · [ ] suite + goldens green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `2253b46`). Auto-merged cleanly against FD-2 (merged first) at the file level; the two cards' shared `Runner` type-alias widening left FD-2's local test fixtures on the old 4-arg signature, fixed in a small follow-up commit right after the merge.
 
 ---
 
@@ -104,7 +102,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Out of scope:** changing what `run_verify_cmd` itself does (CD-2's mechanics are correct as-is); gating reviewer/tester hops (that's FD-2).
 - **Deliverables:** `--verify` flag on pod add; `set-verify` subcommand; updated TOOLS.md generator; tests; spec fix if needed.
 - **Acceptance gate:** [ ] `docket pod <p> add --verify "<cmd>"` sets `verifyCmd` on the new member · [ ] `set-verify` updates it on an existing member · [ ] TOOLS.md reflects the configured command · [ ] suite + goldens green (new golden case if `pod add --help`/TOOLS.md output changes).
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `45db2b9`). Conflicted with the README test-count line only (both branches bumped it independently); resolved to the actual merged tree's count. `_pod.py` TOOLS.md changes auto-merged cleanly against FD-0.
 
 ---
 
@@ -121,7 +119,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Out of scope:** reviewer-hop gating (the reviewer's signal is already a real adapter-level `ok`, not a text convention needing parsing — no gap found there); redefining the Tester's SOUL.md prose beyond stating the marker convention it must follow.
 - **Deliverables:** tester-output parser; dispatch gate wiring; new trace event; tests.
 - **Acceptance gate:** [ ] a tester hop reporting FAIL blocks pipeline advancement with a distinct status/trace reason · [ ] unparseable tester output also blocks, distinguishably from FAIL · [ ] PASS and no-tester-in-pod cases unaffected · [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `1312ca0`), first of the wave to merge, clean (no conflicts against the then-empty develop delta).
 
 ---
 
@@ -138,7 +136,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Out of scope:** making the pattern list user-configurable via a config file (ship a sane built-in default; a config override is a natural follow-up card, not required here); changing the allowlist mechanism itself.
 - **Deliverables:** `HIGH_RISK_PATTERNS` + always-ask wiring; visibility command/output; tests.
 - **Acceptance gate:** [ ] a high-risk-matching command always routes to approval even if its binary is allowlisted · [ ] non-matching allowlisted commands unaffected · [ ] the enforced pattern list is visible via the CLI · [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `4a47c44`, amended from the original `0ddee9b`). **Narrowed before merge:** the subagent's original implementation excluded `git`/`npm` entirely from the seeded allowlist to force high-risk invocations to always ask; caught via user review that the daemon's binary-only gating means this also blocks every benign invocation (`git status`, `npm test`). Re-scoped in-place: `HIGH_RISK_PATTERNS`/`docket gates classes` ship as documented policy, but `git`/`npm` stay allowlisted — per-argument enforcement for allowlisted bins is now an explicit deferred backlog item, not silently claimed as enforced. money-movement/secret-access classes (no allowlist overlap) are fully enforced today.
 
 ---
 
@@ -154,7 +152,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Out of scope:** redesigning the trace mechanism itself; changing `approval_create`'s record shape.
 - **Deliverables:** `audit_log` calls in `approval_grant`/`approval_deny`; channel threading through CLI/HTTP/Telegram call sites; tests.
 - **Acceptance gate:** [ ] every grant/deny, from any channel, produces an audit-log entry with a correct channel tag · [ ] existing trace-event behavior unchanged · [ ] suite green.
-- **Size:** S · **Status:** TODO
+- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `0894a4f`), clean. No production Telegram call site for `approval_grant`/`approval_deny` was found to exist yet (confirmed: `approval_create` has zero production callers today) — `channel="telegram"` is ready for whenever that path is wired up.
 
 ---
 
@@ -162,9 +160,9 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 
 - **Depends on:** FD-3, FD-4 landed (the spec's own stated blocking condition — headless routing + an audit trail — must actually be true before the spec can say so) · **Do after FD-3/FD-4 merge.**
 - **Read:** `specs/functional/security-gates.spec.md` in full, especially its "Implementation status" callout deferring on-by-default pending "per-agent headless approval routing"; `cli/_install.py` (the current `--gates` opt-in flag and its default); `CLAUDE.md`'s security bullet; `docs/SECURITY-SIMPLE.md`.
-- **Why:** the spec explicitly defers gates-default-on because session-mode (Telegram) delivery "only answers prompts during an interactive session" and default-on "could deny an unattended agent with no approver." But the CLI (`docket approve`/`deny`, list-pending) and HTTP (`serve.py`'s webhook) channels already work headlessly today, and after FD-3/FD-4 land, high-risk actions always route to approval and every decision is audit-logged. The spec's own blocking condition is met — leaving it un-flipped is exactly the kind of doc/code drift Phase 12 fixed once already.
+- **Why:** the spec explicitly defers gates-default-on because session-mode (Telegram) delivery "only answers prompts during an interactive session" and default-on "could deny an unattended agent with no approver." But the CLI (`docket approve`/`deny`, list-pending) and HTTP (`serve.py`'s webhook) channels already work headlessly today, and after FD-3/FD-4 land, every approval decision is audit-logged and money-movement/secret-access actions always route to approval. The spec's own blocking condition (headless routing) is met — leaving it un-flipped is exactly the kind of doc/code drift Phase 12 fixed once already. **Note on FD-3's actual scope (narrowed during review):** don't claim high-risk enforcement is complete for `git`/`npm` — those stay allowlisted because the daemon's exec-gate can't tell `git push origin main` apart from `git status` at the binary-path level; only money-movement/secret-access (no allowlist overlap) are fully enforced today. State this honestly rather than overclaiming — it doesn't block the flip, since gates-default-on was never conditioned on prod-deploy git/npm enforcement specifically, only on headless routing existing.
 - **Do:**
-  1. Update `security-gates.spec.md`: document the CLI/HTTP approval channels as real and headless-capable (not "Telegram is the intended channel"); document the high-risk action-class policy (FD-3) and audit-log parity (FD-4); change the on-by-default status line from deferred to current, with the reasoning above.
+  1. Update `security-gates.spec.md`: document the CLI/HTTP approval channels as real and headless-capable (not "Telegram is the intended channel"); document the high-risk action-class policy (FD-3) accurately (money-movement/secret-access fully enforced; prod-deploy's git/npm overlap is policy-documented but not daemon-enforced, a deferred backlog item) and audit-log parity (FD-4); change the on-by-default status line from deferred to current, with the reasoning above.
   2. Flip `docket install`'s gates flag default from opt-in to on; keep an explicit `--no-gates` escape hatch.
   3. Update `docs/SECURITY-SIMPLE.md`, `CLAUDE.md`'s security bullet, and README (if it states gates are opt-in) to match.
   4. Tests: `docket install` with no flags produces a gates-enabled state; `--no-gates` still opts out; update any existing gates tests that assumed opt-in-by-default.
@@ -183,7 +181,7 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 - **Do:**
   1. Update `docket-meta.spec.md` for the now-real `--verify` flag and env-injection behavior (FD-0/FD-1).
   2. Add or update a dispatch-behavior spec section documenting the tester PASS/FAIL gate and hop-failure semantics (FD-2) — CH-10's research found no spec currently owns the dispatch state machine directly; add one if still true.
-  3. Document the high-risk action-class policy (FD-3) in the appropriate functional spec.
+  3. Document the high-risk action-class policy (FD-3) in the appropriate functional spec — accurately: money-movement/secret-access classes are fully enforced (no allowlist overlap); prod-deploy's `git`/`npm` overlap is documented policy but not daemon-enforced (deferred, tracked as backlog), since the daemon's allowlist can't gate by argument text. Don't overclaim this as "always blocks."
   4. Bump each touched spec's version header per the existing convention.
 - **Out of scope:** a full spec audit (CH-10 already did that broadly; this is targeted to what FD-0…FD-4 changed).
 - **Deliverables:** updated specs with correct version headers.
@@ -210,11 +208,11 @@ FD-7 (docs/positioning pass)              ── depends on FD-0..FD-5
 
 ## Roll-up checklist (Phase 13 definition of done — mirrors ROADMAP exit criteria)
 
-- [ ] FD-0 — implementer subprocess env contains its real allocated port range + scratch dir.
-- [ ] FD-1 — `verifyCmd` settable via a public CLI flag, documented in TOOLS.md.
-- [ ] FD-2 — a tester hop reporting FAIL (or unparseable) blocks pipeline advancement.
-- [ ] FD-3 — a defined high-risk action-class list always routes to approval regardless of allowlist.
-- [ ] FD-4 — every approval grant/deny, any channel, writes an audit-log entry.
+- [x] FD-0 — implementer subprocess env contains its real allocated port range + scratch dir. *(DONE 2026-07-02)*
+- [x] FD-1 — `verifyCmd` settable via a public CLI flag, documented in TOOLS.md. *(DONE 2026-07-02)*
+- [x] FD-2 — a tester hop reporting FAIL (or unparseable) blocks pipeline advancement. *(DONE 2026-07-02)*
+- [~] FD-3 — a defined high-risk action-class list always routes to approval regardless of allowlist. *(DONE 2026-07-02 — narrowed: fully true for money-movement/secret-access; prod-deploy's git/npm overlap stays allowlisted, deferred to backlog per the daemon's binary-only gating limit)*
+- [x] FD-4 — every approval grant/deny, any channel, writes an audit-log entry. *(DONE 2026-07-02)*
 - [ ] FD-5 — `security-gates.spec.md` reflects the real channel set; `docket install` gates default flips to on.
 - [ ] FD-6 — specs/data truth pass for every field/behavior this phase touched.
 - [ ] FD-7 — docs/positioning claim the closed gaps; competitive-analysis.md corrected.
