@@ -55,7 +55,9 @@ Three isolation layers, each independent:
   bleed, even when two pods run the same model.
 - **Runtime resources**: each pod gets a **non-overlapping port range** and a **scratch
   directory** (allocated once, freed on delete) so two projects can run dev servers and test
-  databases simultaneously without colliding.
+  databases simultaneously without colliding — injected into the Implementer's real process
+  environment (`DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR`), not just documented
+  as prose it has to read and remember to follow.
 - **Git worktrees**: for repo pods the Implementer works in a dedicated `git worktree` on its
   own branch (`docket/<project>/<member-id>`) — the convergent isolation pattern every major
   coding-agent tool has landed on (Cursor, Codex, etc.). Falls back to the flat workspace
@@ -184,7 +186,7 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Spawn / coordinate agents | ✅ `agents.md`, `@mention` | (uses it) |
 | One-command per-project pod provisioning | — | ✅ `docket add` (stack auto-detect) |
 | Project isolation: session keys (no context leak) | partial | ✅ `agent:<id>:<project>` per pod member |
-| Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir per pod |
+| Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir, injected into the Implementer's real env |
 | Project isolation: git worktree per Implementer | — | ✅ dedicated branch + worktree; flat-workspace fallback |
 | Pod pipeline dispatch (Lead → Implementer → Reviewer → Tester) | — | ✅ `docket pod <p> dispatch` / `serve --dispatch` |
 | Declarative fleet from version-controlled YAML | — | ✅ `docket add --from` |
@@ -193,7 +195,7 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
 | Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; `GET/POST /approvals`, Telegram routing |
-| Pre-merge verification gate | — | ✅ `verifyCmd` per pod; non-zero → task stays `pending` |
+| Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate; either failing → task stays `pending` |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Workflow validate + dry-run plan | — | ✅ `docket workflow <id> validate/plan` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health` |
@@ -247,13 +249,14 @@ auto-pause fires on; treat model-to-model savings comparisons as directional onl
 |---------|--------|-------|
 | Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
 | Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
-| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod; freed on delete |
+| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod, injected into the Implementer's process env; freed on delete |
 | Git worktree isolation for Implementers | ✅ Working | Dedicated branch + worktree per repo-pod Implementer; flat-workspace fallback |
 | Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
 | Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` — budget-gated, traced, pod-local |
-| Pre-merge verification gate | ✅ Working | `verifyCmd` per pod; non-zero → task stays `pending` + `verification_failed` trace event |
+| Pre-merge verification gate | ✅ Working | `verifyCmd` per pod (settable via `pod add --verify`/`set-verify`) + a structural Tester PASS/FAIL gate |
 | Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod fleet visibility (advisory) |
 | Approval gates + headless channel | ✅ Working | On by default (`--no-gates` to opt out); `GET/POST /approvals`, Telegram routing, audit log |
+| High-risk action-class policy | ✅ Working (partial) | `docket gates classes` — money-movement/secret-access always ask; prod-deploy's `git`/`npm` overlap is documented, not yet daemon-enforced (deferred — the daemon can't gate by argument text) |
 | Docker workspace isolation | ✅ Opt-in | `docket gates isolate on` — separate from the approval gates above |
 | Scheduled + webhook dispatch | ✅ Working | `@every N` / `HH:MM` UTC schedules + `POST /dispatch/<project>` webhook |
 | Lobster workflow validate + plan | ✅ Working | `docket workflow <id> validate/plan` — structural lint + dry-run; daemon executes, not docket |
@@ -282,9 +285,12 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
   Implementer → Reviewer if present → Tester if present), budget-gated, traced, and
   **pod-local** — never crosses pod boundaries. `docket serve --dispatch` drives all pods
   continuously from the background.
-- **Pre-merge verification** — if a pod has `verifyCmd` set, the dispatch pipeline runs it in
-  the Implementer's workspace after each Implementer hop. Non-zero exit leaves the task
-  `pending` and emits a `verification_failed` trace event; tasks never silently auto-close.
+- **Pre-merge verification** — set `verifyCmd` with `docket pod <project> add --verify "<cmd>"`
+  (or `set-verify` on an existing member); the dispatch pipeline runs it in the Implementer's
+  workspace after each Implementer hop and leaves the task `pending` (with a `verification_failed`
+  trace event) on non-zero exit. If a pod has a Tester, its hop is gated too: the Tester's first
+  line must read `PASS`/`FAIL` — a `FAIL` or unparseable report blocks the pipeline the same way,
+  instead of "the Tester agent said it was fine" being taken on faith.
 - **Org specialists** — `security`, `knowledge`, and `manager` are created once by `docket install`
   and shared across the fleet (`scope: org`). An optional org **Portfolio Manager**
   (`docket install --portfolio`) adds cross-pod fleet visibility — advisory only, never a pod member.
