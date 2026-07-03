@@ -71,7 +71,7 @@ docket doctor                  # System-wide diagnostics (add --fix to apply aut
 # Keys, auth & security (see Command Reference for the full surface)
 docket keys setup              # Interactive API key wizard
 docket auth status             # Claude model auth profiles
-docket gates enable            # Turn on enforced tool-approval gates (opt-in)
+docket gates enable            # (Re-)apply enforced tool-approval gates (on by default at install)
 docket audit                   # Recent docket-initiated changes
 ```
 

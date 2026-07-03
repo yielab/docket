@@ -129,7 +129,11 @@ def _default(
 
 @app.command("install")
 def cmd_install(
-    gates: bool = typer.Option(False, "--gates/--no-gates", help="Enable exec-approval gates"),
+    gates: bool = typer.Option(
+        True,
+        "--gates/--no-gates",
+        help="Exec-approval gates (on by default; use --no-gates to opt out)",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
     portfolio: bool = typer.Option(
         False, "--portfolio", help="Also provision the optional org Portfolio Manager"

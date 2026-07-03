@@ -41,15 +41,21 @@ docket itself is a configuration and reporting tool. The thing that holds privil
 - enforces `700` on workspace dirs and `600` on files, and keeps secrets out of `argv`
   (values flow via stdin/env/inside-Python, never as process arguments — no `/proc` leakage).
 
-**The approval-gate model.** By default, agent-level safety constraints are *instruction-based*
-(written into each agent's `SOUL.md` prompt) — they are guidance, not enforcement. Enforced
-tool-approval gates are **opt-in**: `docket gates enable` installs a curated allowlist and routes
-dangerous operations (e.g. `rm`, `git push`, `docker stop`) through an approval step with a
-fail-closed default (`askFallback: deny`). `docket gates isolate on` additionally confines tool
-execution to a per-agent Docker sandbox. Enable them with `docket install --gates`, or later with
-`docket gates enable`. `docket doctor` and `docket gates status` report the live posture. See
+**The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
+into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,
+`docket install` **enforces tool-approval gates by default** (opt out with `--no-gates`): a
+curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
+`docker`, `systemctl`), with a fail-closed default (`askFallback: deny`). Approvals are
+answerable headlessly — `docket approve`/`docket deny` from any shell, or `docket serve`'s
+`POST /approvals/<token>` for CI/automation — as well as via Telegram, and every grant/deny is
+audit-logged regardless of channel. Note: `git`/`npm` stay on the allowlist for usability (the
+daemon can't gate by argument text), so a bare `git push` is not itself blocked by this layer —
+see the spec's high-risk-class section. `docket gates isolate on` is a separate, still opt-in
+layer that additionally confines tool execution to a per-agent Docker sandbox. Re-apply or
+reverse gate config anytime with `docket gates enable`/`docket gates disable`. `docket doctor`
+and `docket gates status` report the live posture. See
 [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
-(Status: Implemented, opt-in; on-by-default deferred pending headless approval routing).
+(Status: Implemented, on by default for new installs).
 
 ## Where you run docket matters: homelab vs. public VPS
 
@@ -58,10 +64,12 @@ execution to a per-agent Docker sandbox. Enable them with `docket install --gate
 > proportionate. Budget caps and session isolation are the features doing the most work here.
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
-> with exec access on an exposed host is a serious liability. **Enable enforced gates and Docker
-> isolation** (`docket install --gates` + `docket gates isolate on`), use the `keyring` secret
+> with exec access on an exposed host is a serious liability. Gates are on by default, but also
+> **enable Docker workspace isolation** (`docket gates isolate on`), use the `keyring` secret
 > backend, restrict the OpenClaw daemon's network exposure, and never run with broad ambient
-> credentials. The instruction-level defaults are *not* sufficient here.
+> credentials. Instruction-level constraints alone are *not* sufficient here — and remember
+> `git`/`npm` invocations stay allowlisted even with gates on, so don't rely on gates to catch a
+> bad `git push` by itself.
 
 ## Secret storage
 
@@ -77,7 +85,9 @@ docket is honest about its limits. It does **not**:
 
 - sandbox or contain the OpenClaw daemon or models themselves — if OpenClaw or a model is
   compromised, docket's config cannot save you;
-- defend against a malicious or prompt-injected agent when gates are **disabled** (the default);
+- defend against a malicious or prompt-injected agent when gates were explicitly disabled
+  (`--no-gates` at install, or `docket gates disable` later), or against a `git`/`npm`
+  invocation specifically (allowlisted even with gates on — see the approval-gate model above);
 - audit or vet the code your agents write or the third-party tools/MCP servers they invoke;
 - encrypt data at rest beyond the `0600`/keyring options above, or protect against an attacker
   who already has your user account or root;
