@@ -27,11 +27,9 @@ def project_ids() -> list[str]:
 
 def last_activity(agent_id: str) -> str:
     """Return the most recent memory-log date (YYYY-MM-DD) or '—'."""
-    mem_dir = cfg.workspace_dir(agent_id) / "memory"
-    if not mem_dir.is_dir():
-        return "—"
-    files = sorted(mem_dir.glob("*.md"))
-    return files[-1].stem if files else "—"
+    from docket.core import memory
+
+    return memory.last_activity(cfg.workspace_dir(agent_id))
 
 
 _GATEWAY_UNIT = "openclaw-gateway.service"

@@ -75,10 +75,6 @@ def run_help() -> int:
 
 {B}CONTEXT & MEMORY  (docket context [id] <subcommand>){R}
   {G}show{R}               Recent activity, active tasks, stats (default)
-  {G}search{R}  <query>    Search indexed memory
-  {G}snapshot{R}           Create SNAPSHOT.md for fast agent context
-  {G}index{R}              Index memory files for search
-  {G}compress{R}           Archive logs older than 30 days
   {G}project{R}            Quick-reference: codebase, stack, decisions
 
 {B}MONITORING{R}
@@ -135,7 +131,7 @@ def run_help() -> int:
   docket profile myproject default  # follow the role policy model
   docket profile myproject anthropic/claude-opus-4-6  # pin a stronger model
   docket profile myproject --budget 5  # set $5 spending cap
-  docket context myproject search "auth bug"  # search memory
+  docket context myproject          # recent activity, tasks, stats
   docket cost                       # cost breakdown for all agents
   docket pod myproject delegate "Fix login bug"  # queue task for the pod
   docket pod myproject dispatch     # run queued tasks

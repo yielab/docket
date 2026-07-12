@@ -295,7 +295,6 @@ class TestCmdModels:
             "knowledge",
             "security",
             "repo",
-            "task",
         ):
             assert role in out
 

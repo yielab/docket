@@ -22,7 +22,6 @@ META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "modelSource": "policy",
     "stack": "Node.js",
@@ -98,7 +97,6 @@ class TestCmdList:
         a = data["agents"][0]
         assert a["id"] == "myshop"
         assert a["name"] == "My Shop"
-        assert a["type"] == "repo"
         assert a["registered"] is True
         assert a["telegram"] is None
         assert a["stack"] == "Node.js"
@@ -165,7 +163,7 @@ class TestCmdList:
         # Add second agent
         ws2 = oc_dir / "workspaces" / "projects" / "blog"
         ws2.mkdir(parents=True)
-        meta2 = {**META, "name": "Blog", "type": "task"}
+        meta2 = {**META, "name": "Blog"}
         (ws2 / ".docket-meta.json").write_text(json.dumps(meta2))
         rc, out, _ = _run(["list", "--json"], oc_dir)
         assert rc == 0
@@ -189,7 +187,6 @@ class TestCmdInfo:
         data = json.loads(out)
         assert data["id"] == "myshop"
         assert data["name"] == "My Shop"
-        assert data["type"] == "repo"
         assert data["registered"] is True
         assert data["telegram"] is None
         assert data["paused"] is False

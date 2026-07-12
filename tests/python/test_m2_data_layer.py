@@ -148,7 +148,7 @@ class TestAgentMeta:
     def test_scope_backfill_project_agent(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
 
-        meta = AgentMeta.model_validate({"kind": "project", "type": "task"})
+        meta = AgentMeta.model_validate({"kind": "project"})
         assert meta.scope == AgentScope.project
 
     def test_scope_backfill_org_specialist(self) -> None:

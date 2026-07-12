@@ -49,9 +49,7 @@ def _last_activity_or_never(agent_id: str) -> str:
     return "never" if val == "—" else val
 
 
-def _agent_record(
-    agent_id: str, *, kind: str, default_type: str, registered: set[str]
-) -> dict[str, Any]:
+def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     from docket.edges import store
 
     meta_path = cfg.meta_path(agent_id)
@@ -65,7 +63,6 @@ def _agent_record(
     return {
         "id": agent_id,
         "name": str(meta.get("name", agent_id)),
-        "type": str(meta.get("type", default_type)) if kind == "project" else "specialist",
         "kind": kind,
         "scope": str(meta.get("scope", default_scope)),
         "model": str(meta.get("model", "")),
@@ -85,7 +82,7 @@ def build_status() -> dict[str, Any]:
         {apiVersion, timestamp, gateway, channels, agents:[...], totalCostUsd}
 
     ``gateway`` is ``"active"`` or ``"inactive"``; each agent carries
-    {id,name,type,kind,scope,model,registered,bindings,lastActivity,costUsd,budgetUsd}.
+    {id,name,kind,scope,model,registered,bindings,lastActivity,costUsd,budgetUsd}.
     Contract is versioned by ``SERVE_API_VERSION`` and pinned in
     ``specs/data/serve-read-api.spec.md``.
     """
@@ -97,7 +94,7 @@ def build_status() -> dict[str, Any]:
     total_cost = 0.0
 
     for pid in utils.project_ids():
-        rec = _agent_record(pid, kind="project", default_type="repo", registered=registered)
+        rec = _agent_record(pid, kind="project", registered=registered)
         total_cost += float(rec["costUsd"])
         agents.append(rec)
 
@@ -105,9 +102,7 @@ def build_status() -> dict[str, Any]:
         spec_dir = cfg.OPENCLAW_DIR / "workspaces" / spec
         if not spec_dir.is_dir():
             continue
-        rec = _agent_record(
-            spec, kind="specialist", default_type="specialist", registered=registered
-        )
+        rec = _agent_record(spec, kind="specialist", registered=registered)
         total_cost += float(rec["costUsd"])
         agents.append(rec)
 

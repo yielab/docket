@@ -45,6 +45,13 @@ A **Lead** agent owns context, memory, and human communication for a project; **
 code. This is not multi-agent for its own sake — it is the separation of duties that turns
 "an agent changed the code" into "a change was reviewed before it landed."
 
+Every pod member is provisioned with a **startup contract** — the exact files the OpenClaw
+runtime re-reads after each context compaction (`WORKFLOW_AUTO.md` + a dated memory log),
+seeded so a fresh or just-compacted agent reliably knows its codebase path, its read order,
+and what the project actually **is** (a curated `MEMORY.md` product summary), instead of losing
+that context and answering from its own scaffolding. `docket doctor` re-seeds any agent whose
+contract is missing or stale.
+
 See **[Agent Teams (Pods)](docs/AGENT-TEAMS.md)**, the core reference.
 
 ### 2 — Per-project runtime-resource isolation
@@ -313,7 +320,7 @@ enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — i
 
 docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
 coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
-a 795-test pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
+an 812-test pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security

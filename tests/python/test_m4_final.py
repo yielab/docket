@@ -30,7 +30,6 @@ META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",
     "name": "Test Agent",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "modelSource": "policy",
     "stack": "Node.js",
@@ -196,52 +195,6 @@ class TestCmdContext:
         assert rc == 0
         assert "Recent Activity" in out
 
-    def test_index_creates_memory_index_json(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, _out, _err = _run(["context", "test-agent", "index"], _make_env(oc_dir))
-        assert rc == 0
-        ws = oc_dir / "workspaces" / "projects" / "test-agent"
-        index_file = ws / ".memory-index.json"
-        assert index_file.is_file()
-        data = json.loads(index_file.read_text())
-        assert "indexed_at" in data
-        assert "files" in data
-        assert "keywords" in data
-        assert "decisions" in data
-
-    def test_search_without_index_warns(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["context", "test-agent", "search", "something"], _make_env(oc_dir))
-        assert rc == 0
-        combined = out + err
-        assert "index" in combined.lower() or "not indexed" in combined.lower()
-
-    def test_search_after_index_finds_matches(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, with_memory=True)
-        # First index
-        _run(["context", "test-agent", "index"], _make_env(oc_dir))
-        # Then search
-        rc, out, _err = _run(["context", "test-agent", "search", "key-concept"], _make_env(oc_dir))
-        assert rc == 0
-        assert "key-concept" in out or "match" in out.lower() or "keyword" in out.lower()
-
-    def test_snapshot_creates_snapshot_md(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, _out, _err = _run(["context", "test-agent", "snapshot"], _make_env(oc_dir))
-        assert rc == 0
-        ws = oc_dir / "workspaces" / "projects" / "test-agent"
-        snap = ws / "SNAPSHOT.md"
-        assert snap.is_file()
-        content = snap.read_text()
-        assert "SNAPSHOT" in content or "test-agent" in content.lower()
-
-    def test_compress_with_no_old_files(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "compress"], _make_env(oc_dir))
-        assert rc == 0
-        combined = out + err
-        assert "no old" in combined.lower() or "compress" in combined.lower()
-
     def test_project_shows_metadata(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, with_memory=True)
         rc, out, err = _run(["context", "test-agent", "project"], _make_env(oc_dir))
@@ -400,7 +353,6 @@ class TestCmdAdd:
             json.dumps(
                 {
                     "id": "myshop",
-                    "type": "repo",
                     "name": "My Shop",
                     "codebase": "/tmp/myshop",
                     "stack": "Node.js",
@@ -421,7 +373,7 @@ class TestCmdAdd:
         # Check meta content
         meta = json.loads((ws / ".docket-meta.json").read_text())
         assert meta["name"] == "My Shop"
-        assert meta["type"] == "repo"
+        assert "type" not in meta  # agent-type concept removed — every agent is a repo
 
     def test_from_missing_file_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
@@ -434,7 +386,7 @@ class TestCmdAdd:
         oc_dir = _setup_agent(tmp_path, "test-agent")
         spec = self._spec_file(
             tmp_path,
-            json.dumps({"id": "test-agent", "name": "Test Agent", "type": "repo"}),
+            json.dumps({"id": "test-agent", "name": "Test Agent"}),
         )
         rc, out, err = _run(["add", "--from", str(spec)], _make_env(oc_dir))
         assert rc == 0
@@ -455,7 +407,7 @@ class TestCmdAdd:
     def test_from_yaml_without_pyyaml_gives_error(self, tmp_path: Path) -> None:
         oc_dir = _setup_bare(tmp_path)
         spec = tmp_path / "spec.yaml"
-        spec.write_text("id: myagent\nname: My Agent\ntype: task\n")
+        spec.write_text("id: myagent\nname: My Agent\n")
 
         # Try importing yaml — if PyYAML is installed this test won't test the error path
         try:
@@ -480,8 +432,8 @@ class TestCmdAdd:
             tmp_path,
             json.dumps(
                 [
-                    {"id": "agent-a", "name": "Agent A", "type": "task", "description": "First"},
-                    {"id": "agent-b", "name": "Agent B", "type": "repo", "description": "Second"},
+                    {"id": "agent-a", "name": "Agent A", "description": "First"},
+                    {"id": "agent-b", "name": "Agent B", "description": "Second"},
                 ]
             ),
         )

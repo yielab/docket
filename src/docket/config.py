@@ -92,10 +92,9 @@ ROLE_WHY: dict[str, str] = {
     "reviewer": "triage and review, low reasoning density",
     "tester": "run tests and report",
     "knowledge": "retrieval and summarization",
-    "task": "project default for task agents",
     "programmer": "code generation",
     "security": "audit depth",
-    "repo": "project default for repo agents",
+    "repo": "project default for project (repo) agents",
     "portfolio-manager": "cross-pod planning over fleet metadata, shallow reasoning",
 }
 

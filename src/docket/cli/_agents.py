@@ -22,26 +22,83 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import provisioning as _prov
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
 
+# Flags that consume the following token as their value (skipped when scanning
+# for bare positionals). --with/--pod are handled by parse_pod_roles.
+_ADD_VALUE_FLAGS = frozenset(
+    {"--from", "--codebase", "--path", "--name", "--with", "--pod", "--model", "--count"}
+)
 
-def run_add(all_args: list[str]) -> int:
-    """Dispatch `docket add` (interactive, or `--from <spec-file>`)."""
+
+def _parse_add_args(all_args: list[str]) -> tuple[str | None, str | None, str | None]:
+    """Extract (from_file, codebase, name) from `docket add` args.
+
+    ``--from <f>`` selects declarative mode. Codebase may be given as
+    ``--codebase``/``--path`` (or the 2nd bare positional); name as ``--name``
+    (or the 1st bare positional). Any value supplied here is trusted and skips
+    its interactive prompt. Returns ``None`` for anything not supplied.
+    """
     from_file: str | None = None
+    codebase: str | None = None
+    name: str | None = None
+    positionals: list[str] = []
+
     i = 0
     while i < len(all_args):
         arg = all_args[i]
-        if arg.startswith("--from="):
-            from_file = arg[len("--from=") :]
-            i += 1
-        elif arg == "--from" and i + 1 < len(all_args):
-            from_file = all_args[i + 1]
-            i += 2
+        for flag, setter in (
+            ("--from", "from"),
+            ("--codebase", "cb"),
+            ("--path", "cb"),
+            ("--name", "nm"),
+        ):
+            if arg == flag and i + 1 < len(all_args):
+                val = all_args[i + 1]
+                i += 2
+                break
+            if arg.startswith(flag + "="):
+                val, setter = arg[len(flag) + 1 :], setter
+                i += 1
+                break
         else:
+            # Not one of our value flags. Skip other flags (and their value if
+            # they take one) so pod flags don't leak into positionals.
+            if arg.startswith("-"):
+                i += 2 if arg in _ADD_VALUE_FLAGS else 1
+                continue
+            positionals.append(arg)
             i += 1
+            continue
+        if setter == "from":
+            from_file = val
+        elif setter == "cb":
+            codebase = val
+        elif setter == "nm":
+            name = val
+
+    if positionals:
+        if name is None:
+            name = positionals[0]
+        if codebase is None and len(positionals) > 1:
+            codebase = positionals[1]
+    return from_file, codebase, name
+
+
+def run_add(all_args: list[str]) -> int:
+    """Dispatch `docket add` (interactive, or `--from <spec-file>`).
+
+    Interactive flow: every project is a repo tied to a codebase. The codebase
+    defaults to the directory `docket add` ran in (or `--codebase <path>` /
+    the first positional, in which case it is *not* re-prompted), and the
+    project name is suggested from that path's directory name.
+    """
+    from_file, cli_codebase, cli_name = _parse_add_args(all_args)
 
     if from_file is not None:
         return _cmd_add_declarative(from_file)
@@ -50,25 +107,27 @@ def run_add(all_args: list[str]) -> int:
         ui.error("interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.")
         return 1
 
-    ui.console.print()
-    ui.console.print("[bold]Agent type:[/bold]")
-    ui.console.print("  1) repo  — tied to a codebase, has stack detection")
-    ui.console.print("  2) task  — general-purpose work agent, no fixed codebase")
-    ui.console.print()
-    type_choice = input("Type (1=repo / 2=task) [1]: ").strip() or "1"
-    agent_type = "task" if type_choice == "2" else "repo"
+    # Codebase: an explicit path set up front is trusted and not re-prompted;
+    # otherwise offer the current working directory as the detected default.
+    if cli_codebase is not None:
+        codebase = str(Path(cli_codebase).expanduser())
+    else:
+        default_cb = str(_prov.default_codebase())
+        codebase = input(f"Codebase path [{default_cb}]: ").strip() or default_cb
+        codebase = str(Path(codebase).expanduser())
+    cb_path = Path(codebase)
 
-    name = input("Display name (e.g. 'My Shop API'): ").strip()
+    # Name: suggested from the codebase directory name; not prompted if given.
+    suggested_name = cli_name or _prov.suggest_project_name(cb_path)
+    if cli_name is not None:
+        name = cli_name
+    else:
+        name = input(f"Display name [{suggested_name}]: ").strip() or suggested_name
     if not name:
         ui.error("Name is required.")
         return 1
 
-    def _slugify(s: str) -> str:
-        s = s.lower()
-        s = _re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-        return s
-
-    slug = _slugify(name)
+    slug = _prov.slugify(name)
     aid_input = input(f"Agent ID [{slug}]: ").strip() or slug
     aid: str = aid_input
 
@@ -76,24 +135,8 @@ def run_add(all_args: list[str]) -> int:
         ui.error(f"A project or pod '{aid}' already exists.")
         return 1
 
-    codebase = ""
-    stack = ""
-    if agent_type == "repo":
-        default_cb = str(_cfg.OPENCLAW_DIR.parent / "Sites" / slug)
-        codebase = input(f"Codebase path [{default_cb}]: ").strip() or default_cb
-        cb_path = Path(codebase)
-        if cb_path.is_dir():
-            if (cb_path / "package.json").is_file():
-                stack = "Node.js"
-            elif (cb_path / "requirements.txt").is_file() or (cb_path / "pyproject.toml").is_file():
-                stack = "Python"
-            elif (cb_path / "composer.json").is_file():
-                stack = "PHP"
-            elif (cb_path / "go.mod").is_file():
-                stack = "Go"
-            elif (cb_path / "Cargo.toml").is_file():
-                stack = "Rust"
-        stack = input(f"Stack [{stack or 'unknown'}]: ").strip() or stack or "unknown"
+    detected_stack = _prov.detect_stack(cb_path)
+    stack = input(f"Stack [{detected_stack or 'unknown'}]: ").strip() or detected_stack or "unknown"
 
     description = input("Description (one line): ").strip()
     tg_group = input("Telegram group ID (Enter to skip): ").strip()
@@ -182,7 +225,6 @@ def _cmd_add_declarative(from_file: str) -> int:
             skipped.append(aid)
             continue
 
-        agent_type = str(spec.get("type", "repo"))
         name = str(spec.get("name", aid))
         codebase = str(spec.get("codebase", ""))
         stack = str(spec.get("stack", ""))
@@ -194,7 +236,6 @@ def _cmd_add_declarative(from_file: str) -> int:
 
         _provision_agent(
             aid,
-            agent_type,
             name,
             codebase,
             stack,
@@ -228,14 +269,13 @@ def _cmd_add_declarative(from_file: str) -> int:
 
 def _create_workspace(
     agent_id: str,
-    agent_type: str,
     name: str,
     codebase: str,
     stack: str,
     description: str,
     model: str,
 ) -> None:
-    """Create workspace directory and template files."""
+    """Create a single project agent's workspace directory and template files."""
     ws = _cfg.PROJECTS_DIR / agent_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
@@ -246,121 +286,80 @@ def _create_workspace(
 
     test_cmd = _test_cmd_for_stack(stack)
 
-    if agent_type == "repo":
-        soul = (
-            f"# SOUL.md — {name}\n\n"
-            "## Identity\n"
-            f"You are the autonomous agent for **{name}**. "
-            "You know this project deeply. You do not discuss or act on other projects.\n\n"
-            f"**Session Key:** `{session_key}`\n\n"
-            "This session key isolates you from other project contexts. "
-            "You may only access resources and memory within this coordinate space.\n\n"
-            "## Description\n"
-            f"{description}\n\n"
-            "## Codebase\n"
-            f"{codebase}\n\n"
-            "## Stack\n"
-            f"{stack}\n\n"
-            "## Test Command\n"
-            f"`{test_cmd}`\n\n"
-            "## Traits\n"
-            "- Read files before making any changes. Never assume structure.\n"
-            "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
-            "- Proactive: check HEARTBEAT.md every session.\n"
-            f"- Scope: never act outside {codebase}.\n"
-            "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
-            "## Safety\n"
-            "- Never push to main/master without HITL approval.\n"
-            "- Never delete files without explicit instruction.\n"
-        )
-        agents = (
-            f"# AGENTS.md — {name}\n\n"
-            "## Every Session (keep this lean — it is re-sent every turn)\n"
-            "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
-            "2. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
-            "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
-            "   memory/ dir or re-read MEMORY.md when the task doesn't need it —\n"
-            "   every byte you read is re-sent on every later turn.\n"
-            "3. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
-            "## Project Path\n"
-            f"{codebase}\n\n"
-            "## Org Specialists\n"
-            "Escalate cross-cutting work to the shared org specialists:\n"
-            "| Concern           | Specialist   |\n"
-            "|-------------------|--------------|\n"
-            "| Memory/patterns   | knowledge    |\n"
-            "| Risky actions     | security     |\n\n"
-            "## Scope Rule\n"
-            f"Only act on {name}. Redirect other project questions to the correct group.\n\n"
-            "## First Run\n"
-            "If MEMORY.md is missing, read the codebase and write it:\n"
-            "1. Check package.json / requirements.txt / composer.json\n"
-            "2. Read key entry points\n"
-            "3. Check git log --oneline -20\n"
-            "4. Write MEMORY.md: architecture, current state, key files, known issues\n"
-        )
-        tools = (
-            f"# TOOLS.md — {name}\n\n"
-            "## Project Path\n"
-            f"{codebase}\n\n"
-            "## Stack\n"
-            f"{stack}\n\n"
-            "## Commands\n"
-            "```bash\n"
-            f"{test_cmd}       # run tests\n"
-            "git log --oneline -10  # recent history\n"
-            "git diff HEAD          # review before commit\n"
-            "```\n\n"
-            "## Environment Notes\n"
-            "_Add: DB name, ports, env vars, dev server command, seed scripts._\n"
-        )
-    else:
-        soul = (
-            f"# SOUL.md — {name}\n\n"
-            "## Identity\n"
-            f"You are the autonomous agent for **{name}**. "
-            "You handle tasks, research, and file operations for this context only.\n\n"
-            f"**Session Key:** `{session_key}`\n\n"
-            "This session key isolates you from other project contexts. "
-            "You may only access resources and memory within this coordinate space.\n\n"
-            "## Description\n"
-            f"{description}\n\n"
-            "## Work Directory\n"
-            f"~/Sites/{agent_id}/\n\n"
-            "## Traits\n"
-            "- Break requests into numbered steps and execute them.\n"
-            "- Log all completed tasks to memory/YYYY-MM-DD.md.\n"
-            "- Proactive: check HEARTBEAT.md every session.\n"
-            "- Scope: stay within this context. Do not reference other projects.\n"
-            "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
-            "## Safety\n"
-            "- Never post publicly or send external messages without HITL approval.\n"
-            "- Ask before overwriting existing files.\n"
-        )
-        agents = (
-            f"# AGENTS.md — {name}\n\n"
-            "## Every Session (keep this lean — it is re-sent every turn)\n"
-            "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
-            "2. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
-            "   don't slurp the whole memory/ dir — what you read is re-sent on\n"
-            "   every later turn.\n\n"
-            "## Work Directory\n"
-            f"~/Sites/{agent_id}/\n\n"
-            "## Task Protocol\n"
-            "1. Break request into numbered steps\n"
-            "2. Execute each step\n"
-            "3. Log results to memory/YYYY-MM-DD.md\n"
-            "4. Report blockers immediately\n\n"
-            "## Scope Rule\n"
-            f"Only handle {name} tasks.\n"
-        )
-        tools = (
-            f"# TOOLS.md — {name}\n\n"
-            "## Work Directory\n"
-            f"~/Sites/{agent_id}/\n\n"
-            "## Notes\n"
-            "_Add: API keys needed, URLs to monitor, file locations, tools to use._\n"
-        )
+    soul = (
+        f"# SOUL.md — {name}\n\n"
+        "## Identity\n"
+        f"You are the autonomous agent for **{name}**. "
+        "You know this project deeply. You do not discuss or act on other projects.\n\n"
+        f"**Session Key:** `{session_key}`\n\n"
+        "This session key isolates you from other project contexts. "
+        "You may only access resources and memory within this coordinate space.\n\n"
+        "## Description\n"
+        f"{description}\n\n"
+        "## Codebase\n"
+        f"{codebase}\n\n"
+        "## Stack\n"
+        f"{stack}\n\n"
+        "## Test Command\n"
+        f"`{test_cmd}`\n\n"
+        "## Traits\n"
+        "- Read files before making any changes. Never assume structure.\n"
+        "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
+        "- Proactive: check HEARTBEAT.md every session.\n"
+        f"- Scope: never act outside {codebase}.\n"
+        "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
+        "## Safety\n"
+        "- Never push to main/master without HITL approval.\n"
+        "- Never delete files without explicit instruction.\n"
+    )
+    # Section names matter: the openclaw runtime re-injects the "Session Startup"
+    # and "Red Lines" H2 blocks after every compaction (readPostCompactionContext).
+    # Keep these headings verbatim or the injection silently stops firing.
+    agents = (
+        f"# AGENTS.md — {name}\n\n"
+        "## Session Startup\n"
+        "_Lean — re-sent every turn._\n"
+        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
+        "   path (the runtime requires this after every context reset).\n"
+        "2. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+        "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
+        "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
+        "   memory/ dir or re-read MEMORY.md when the task doesn't need it —\n"
+        "   every byte you read is re-sent on every later turn.\n"
+        "4. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
+        "## Red Lines\n"
+        f"- Only act on {name}. Redirect other project questions to the correct group.\n"
+        "- Never push to main/master or delete files without HITL approval.\n\n"
+        "## Project Path\n"
+        f"{codebase}\n\n"
+        "## Org Specialists\n"
+        "Escalate cross-cutting work to the shared org specialists:\n"
+        "| Concern           | Specialist   |\n"
+        "|-------------------|--------------|\n"
+        "| Memory/patterns   | knowledge    |\n"
+        "| Risky actions     | security     |\n\n"
+        "## First Run\n"
+        "If MEMORY.md is missing, read the codebase and write it:\n"
+        "1. Check package.json / requirements.txt / composer.json\n"
+        "2. Read key entry points\n"
+        "3. Check git log --oneline -20\n"
+        "4. Write MEMORY.md: architecture, current state, key files, known issues\n"
+    )
+    tools = (
+        f"# TOOLS.md — {name}\n\n"
+        "## Project Path\n"
+        f"{codebase}\n\n"
+        "## Stack\n"
+        f"{stack}\n\n"
+        "## Commands\n"
+        "```bash\n"
+        f"{test_cmd}       # run tests\n"
+        "git log --oneline -10  # recent history\n"
+        "git diff HEAD          # review before commit\n"
+        "```\n\n"
+        "## Environment Notes\n"
+        "_Add: DB name, ports, env vars, dev server command, seed scripts._\n"
+    )
 
     heartbeat = (
         f"# HEARTBEAT.md — {name}\n\n"
@@ -383,13 +382,15 @@ def _create_workspace(
         fpath.write_text(text, encoding="utf-8")
         fpath.chmod(0o600)
 
+    # Seed the files the openclaw post-compaction audit re-reads every reset.
+    _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
+
     ws.chmod(0o700)
     (ws / "memory").chmod(0o700)
 
 
 def _provision_agent(
     agent_id: str,
-    agent_type: str,
     name: str,
     codebase: str,
     stack: str,
@@ -400,24 +401,22 @@ def _provision_agent(
     source: str,
 ) -> None:
     """Create workspace, write metadata, register with openclaw."""
-    role = "repo" if agent_type == "repo" else "task"
     if not model:
-        model = _mp.resolve_role_model(role)
+        model = _mp.resolve_role_model("repo")
         model_source_val = "policy"
     else:
         with contextlib.suppress(Exception):
             model = _mp.validate_model(model)[0]
-        policy_model = _mp.resolve_role_model(role)
+        policy_model = _mp.resolve_role_model("repo")
         model_source_val = "policy" if model == policy_model else "pinned"
 
     session_key = f"agent:{agent_id}:{project_key}"
 
-    _create_workspace(agent_id, agent_type, name, codebase, stack, description, model)
+    _create_workspace(agent_id, name, codebase, stack, description, model)
 
     meta_data: dict[str, Any] = {
         "schemaVersion": 1,
         "kind": "project",
-        "type": agent_type,
         "name": name,
         "codebase": codebase,
         "stack": stack,
@@ -511,7 +510,6 @@ def _cmd_info_json(agent_id: str) -> None:
             {
                 "id": agent_id,
                 "name": raw.get("name", agent_id),
-                "type": raw.get("type", "repo"),
                 "codebase": raw.get("codebase", ""),
                 "stack": raw.get("stack", ""),
                 "model": raw.get("model", _cfg.DEFAULT_MODEL),
@@ -533,7 +531,6 @@ def _cmd_info_human(agent_id: str) -> None:
     ws = _cfg.workspace_dir(agent_id)
 
     name = str(raw.get("name", agent_id))
-    atype = str(raw.get("type", "repo"))
     codebase = str(raw.get("codebase", "—"))
     stack = str(raw.get("stack", "—"))
     model = str(raw.get("model", _cfg.DEFAULT_MODEL))
@@ -553,7 +550,6 @@ def _cmd_info_human(agent_id: str) -> None:
 
     ui.header(f"Project: {name} ({agent_id})")
     ui.console.print()
-    ui.console.print(f"  [bold]{'Type:':<18}[/bold] {atype}")
     ui.console.print(f"  [bold]{'Workspace:':<18}[/bold] {ws}")
     ui.console.print(f"  [bold]{'Codebase:':<18}[/bold] {codebase}")
     ui.console.print(f"  [bold]{'Stack:':<18}[/bold] {stack}")
@@ -591,7 +587,7 @@ def _cmd_info_human(agent_id: str) -> None:
             lines = 0
         ui.console.print(f"  {f.name:<30} {lines} lines")
 
-    if tg and atype == "repo" and codebase not in ("", "—"):
+    if tg and codebase not in ("", "—"):
         ui.console.print()
         ui.header("First-run prompt (send in Telegram group if MEMORY.md is missing)")
         ui.console.print()
@@ -749,7 +745,6 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
                 raw = store.read_json(_cfg.meta_path(agent_id))
                 _create_workspace(
                     agent_id,
-                    str(raw.get("type", "repo")),
                     str(raw.get("name", agent_id)),
                     str(raw.get("codebase", "")),
                     str(raw.get("stack", "")),
@@ -923,7 +918,6 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
 
     _create_workspace(
         agent_id,
-        str(raw.get("type", "repo")),
         str(raw.get("name", agent_id)),
         str(raw.get("codebase", "")),
         str(raw.get("stack", "")),

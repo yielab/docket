@@ -106,7 +106,6 @@ class TestBuildStatus:
         assert set(a.keys()) == {
             "id",
             "name",
-            "type",
             "kind",
             "scope",
             "model",
@@ -118,7 +117,6 @@ class TestBuildStatus:
         }
         assert a["id"] == "myshop"
         assert a["name"] == "My Shop"
-        assert a["type"] == "repo"
         assert a["kind"] == "project"
         assert a["registered"] is True
         assert a["lastActivity"] == "2026-06-20"

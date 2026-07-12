@@ -29,7 +29,6 @@ ALL_ROLES: tuple[str, ...] = (
     "knowledge",
     "security",
     "repo",
-    "task",
 )
 
 # cheap = high-volume / low reasoning-density; strong = reasoning-dense.
@@ -38,7 +37,6 @@ ROLE_CLASS: dict[str, str] = {
     "reviewer": "cheap",
     "tester": "cheap",
     "knowledge": "cheap",
-    "task": "cheap",
     "programmer": "strong",
     "security": "strong",
     "repo": "strong",
@@ -248,11 +246,12 @@ def is_role(role: str) -> bool:
 
 
 def agent_role(agent_id: str) -> str:
-    """Policy role for an agent: specialist id, pod-member role, or project type.
+    """Policy role for an agent: specialist id, pod-member role, or ``repo``.
 
     For pod members the meta carries a pod ``role`` (lead/implementer/…)
     which maps to a role→model policy key, so model re-resolution targets the
-    right policy. Otherwise: specialist id, or project ``type`` (repo|task).
+    right policy. Otherwise: specialist id, or ``repo`` for a plain project
+    agent (every project agent is a repo agent).
     """
     from docket.edges.adapters import openclaw as _oc
 
@@ -263,7 +262,7 @@ def agent_role(agent_id: str) -> str:
         from docket.core import pod
 
         return pod.POD_ROLE_POLICY.get(pod_role, pod_role)
-    return _oc.meta_get(agent_id, "type", "repo")
+    return "repo"
 
 
 def agent_model_source(agent_id: str) -> str:

@@ -585,6 +585,38 @@ def _check_metadata_backfill(ids: list[str]) -> int:
     return 0
 
 
+def _check_runtime_contract(ids: list[str]) -> int:
+    """Ensure each project workspace satisfies the openclaw post-compaction
+    contract (``WORKFLOW_AUTO.md`` re-read on every reset).
+
+    Heals agents whose contract file is missing *or* stale/legacy (detected via
+    the embedded contract-version marker): without a current file the runtime
+    audit demands it forever, and a weak model loops offering to create it
+    instead of working. Re-seeds (idempotent) from the agent's stored
+    codebase/stack. Advisory — never fails the run.
+    """
+    from docket.core import memory as _mem
+
+    ui.console.print()
+    ui.console.print("[bold]Runtime startup contract:[/bold]")
+    healed = 0
+    for aid in ids:
+        ws = _cfg.PROJECTS_DIR / aid
+        if not ws.is_dir() or _mem.contract_ok(ws):
+            continue
+        meta = store.read_json(_cfg.meta_path(aid))
+        codebase = str(meta.get("codebase", ""))
+        stack = str(meta.get("stack", ""))
+        name = str(meta.get("name", "") or aid)
+        _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
+        where = f" (codebase {codebase})" if codebase else " (no codebase in meta)"
+        ui.success(f"  {aid}: seeded {_mem.REQUIRED_STARTUP_FILE}{where}")
+        healed += 1
+    if healed == 0:
+        ui.success(f"  All agents have a current {_mem.REQUIRED_STARTUP_FILE}")
+    return 0
+
+
 def _check_eval_results() -> int:
     """Eval-results model-tier recommendations (advisory).
 
@@ -935,6 +967,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_security_gates()
     _check_template_version(ids)
     _check_metadata_backfill(ids)
+    _check_runtime_contract(ids)
     _check_eval_results()
 
     ui.console.print()

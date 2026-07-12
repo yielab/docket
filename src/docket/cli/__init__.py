@@ -175,7 +175,6 @@ def _cmd_list_json() -> None:
                 "role": raw.get("role", ""),
                 "pod": raw.get("pod", "") or (_pod_mod.pod_of(aid) or ""),
                 "name": raw.get("name", aid),
-                "type": raw.get("type", "repo"),
                 "model": raw.get("model", _cfg.DEFAULT_MODEL),
                 "modelSource": raw.get("modelSource", ""),
                 "stack": raw.get("stack", ""),
@@ -231,10 +230,9 @@ def _cmd_list_human() -> None:
     for aid in ids:
         raw = store.read_json(_cfg.meta_path(aid))
         name = str(raw.get("name", aid))
-        atype = str(raw.get("type", "repo"))
         role = str(raw.get("role", ""))
         pod_name = str(raw.get("pod", "")) or (_pod_mod.pod_of(aid) or "")
-        descriptor = f"{role} · pod:{pod_name}" if role and pod_name else atype
+        descriptor = f"{role} · pod:{pod_name}" if role and pod_name else "repo"
         model = str(raw.get("model", _cfg.DEFAULT_MODEL))
         stack = str(raw.get("stack", ""))
         codebase = str(raw.get("codebase", ""))
@@ -432,7 +430,7 @@ def cmd_context(
     agent_id: str | None = typer.Argument(None),
     sub: str | None = typer.Argument(None),
 ) -> None:
-    """Agent context and memory management (show/search/index/snapshot/compress/project)."""
+    """Agent context views (show/project)."""
     from docket.cli._context import run_context
 
     extra: list[str] = list(ctx.args)
@@ -1422,7 +1420,6 @@ def cmd_snapshot(
             {
                 "id": pid,
                 "name": str(raw.get("name", pid)),
-                "type": str(raw.get("type", "repo")),
                 "kind": "project",
                 "model": str(raw.get("model", _cfg.DEFAULT_MODEL)),
                 "registered": pid in registered_ids,
@@ -1446,7 +1443,6 @@ def cmd_snapshot(
             {
                 "id": spec,
                 "name": str(raw.get("name", spec)),
-                "type": "specialist",
                 "kind": "specialist",
                 "model": str(raw.get("model", "")),
                 "registered": spec in registered_ids,

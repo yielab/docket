@@ -47,12 +47,8 @@ _REMOVED: dict[str, tuple[str, ...]] = {
     "credits": ("docket billing was renamed → use: docket cost [id]",),
     "monitor": ("docket monitor was renamed → use: docket cost [id]",),
     "mon": ("docket monitor was renamed → use: docket cost [id]",),
-    "memory": (
-        "docket memory was renamed → use: docket context [id] <search|snapshot|index|compress>",
-    ),
-    "mem": (
-        "docket memory was renamed → use: docket context [id] <search|snapshot|index|compress>",
-    ),
+    "memory": ("docket memory was renamed → use: docket context [id] [show|project]",),
+    "mem": ("docket memory was renamed → use: docket context [id] [show|project]",),
     "smart": (
         "docket smart was removed — smart routing was placebo (prose in SOUL.md does not "
         "change the gateway model)",

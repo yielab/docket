@@ -148,19 +148,25 @@ Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-reviewer`,
 (duplicated roles get `-2`, `-3` suffixes). A pod has **exactly one Lead**. Resize the pod later
 with [`docket pod`](#pod), and tear the whole pod down with [`docket delete`](#delete).
 
-**Interactive prompts:**
-1. **Agent type:** `repo` (codebase-based) or `task` (general work)
-2. **Project name:** Display name for the agent
-3. **Codebase path:** (repo type only) Absolute path to codebase
-4. **Description:** Optional description
-5. **Tech stack:** Auto-detected or manual entry
-6. **Model selection:** Choose from available models or profiles
-7. **Telegram group:** Optional group ID for wiring
+Every project is a **repo** — a pod tied to a codebase. The codebase defaults to the directory
+you run `docket add` in (or the `path` argument / `--codebase <path>`, in which case you are not
+re-prompted), and the project name is suggested from that directory's name.
+
+**Interactive prompts** (each prompt is skipped when the value is supplied up front):
+1. **Codebase path:** defaults to the current directory
+2. **Project name:** suggested from the codebase directory name
+3. **Agent ID:** slug suggested from the name
+4. **Tech stack:** auto-detected from the codebase, or entered manually
+5. **Description:** optional
+6. **Telegram group:** optional group ID for wiring
 
 **Example:**
 ```bash
 # Lean pod (Lead + Implementer) for a codebase
 docket add myapp ~/code/myapp
+
+# From inside the repo — codebase + name are detected from the cwd
+cd ~/code/myapp && docket add
 
 # Full pod with a review + test gate
 docket add myapp ~/code/myapp --pod full
@@ -168,19 +174,14 @@ docket add myapp ~/code/myapp --pod full
 # Lean pod plus a reviewer
 docket add myapp ~/code/myapp --with reviewer
 
-# Interactive session:
-# → Select agent type:
-#   1) repo (codebase-based project)
-#   2) task (general work)
-# Choice: 1
-#
-# → Enter project name: My Awesome Project
+# Interactive session (run from inside ~/code/myapp):
+# → Codebase path [/home/you/code/myapp]:
+# → Display name [myapp]: My Awesome Project
+# → Agent ID [my-awesome-project]:
 # → Detecting stack...
-# ✓ Detected: Node.js, React, TypeScript
-# → Model [policy: anthropic/claude-sonnet-4-6]:
-#   (Enter = follow the role policy; type a provider/model ID to pin)
+# → Stack [Node.js]:
 #
-# ✓ Pod 'myapp' created (myapp-lead, myapp-implementer)
+# ✓ Pod 'my-awesome-project' created (…-lead, …-implementer)
 ```
 
 **Aliases:** `create`, `new`
@@ -381,17 +382,14 @@ docket scope myproject reset
 
 ### context
 
-Inspect and manage an agent's memory and working context — a dashboard, a keyword search over
-its memory logs, and per-agent memory maintenance.
+Read-only views over an agent's memory and working context. Semantic *search* over an agent's
+memory is the OpenClaw runtime's job (its `memory_search`/`memory_get` tools) — docket does not
+maintain a rival keyword index, so `context` is just two dashboards.
 
 **Syntax:**
 ```bash
 docket context <agent-id>                 # show: dashboard (default)
 docket context <agent-id> show            # same as above
-docket context <agent-id> search <query>  # keyword search over indexed memory
-docket context <agent-id> index           # (re)build the search index
-docket context <agent-id> snapshot        # write SNAPSHOT.md into the agent's own workspace
-docket context <agent-id> compress        # archive (gzip) memory logs older than 30 days
 docket context <agent-id> project         # project/stack-focused view (codebase, stack, tasks)
 ```
 
@@ -406,50 +404,10 @@ count, session size, last-active timestamp).
 docket context myproject
 ```
 
-#### search
-Keyword search over memory logs and `MEMORY.md` decision headers. Requires `docket context <id>
-index` to have been run at least once (if the index is missing, it tells you so and exits 0
-rather than erroring). Any words after `search` (or after the agent id, with no subcommand at
-all) are treated as the query.
-
-```bash
-docket context myproject search "auth middleware"
-docket context myproject auth middleware   # same — bare text also means "search"
-```
-
-#### index
-(Re)builds `.memory-index.json` from `memory/*.md` (bolded/code-span tokens as keywords) and
-`MEMORY.md`'s `## ` headers (as decisions). Run this after new memory logs accumulate and before
-`search`.
-
-```bash
-docket context myproject index
-```
-
-#### snapshot
-Writes a **markdown** snapshot (`SNAPSHOT.md`, chmod 600) into *that agent's own workspace* —
-metadata, recent memory activity, and the full `HEARTBEAT.md`/`MEMORY.md` contents. This is a
-**different command from the top-level [`docket snapshot`](#snapshot-1)**, which exports the
-whole fleet as JSON to stdout or a file. Same word, different scope and format — don't confuse
-the two.
-
-```bash
-docket context myproject snapshot
-# ✓ Snapshot written: ~/.openclaw/workspaces/projects/myproject/SNAPSHOT.md
-```
-
-#### compress
-Gzips memory-log files older than 30 days into `memory/archive/*.md.gz` and deletes the
-originals. No-op (with an info message) if nothing qualifies.
-
-```bash
-docket context myproject compress
-```
-
 #### project
 A project-metadata-focused view: codebase path, stack, model, session key, active tasks, and
-memory decision headers — a quicker "what is this agent working on" glance than the full `show`
-dashboard.
+`MEMORY.md` section headers — a quicker "what is this agent working on" glance than the full
+`show` dashboard.
 
 ```bash
 docket context myproject project
@@ -459,9 +417,11 @@ docket context myproject project
 [Removed Commands](#removed-commands).)
 
 **Notes:**
-- All context data lives inside the agent's own workspace; nothing here touches other agents
-- `search` needs `index` to have been run first
-- `docket context <id> snapshot` (markdown, one agent) ≠ `docket snapshot` (JSON, whole fleet)
+- Both subcommands are read-only and touch only the named agent's own workspace.
+- The `search`/`index`/`snapshot`/`compress` subcommands were **removed**: the runtime does
+  semantic memory search itself, and the snapshot/gzip-archive files were read by nothing (the
+  archive even hid old logs from the runtime's own recall). Use `docket snapshot` for a
+  whole-fleet JSON export.
 
 ---
 
@@ -1354,8 +1314,7 @@ docket snapshot -o /tmp/fleet-state.json
 **Aliases:** `export`
 
 **Notes:**
-- A whole-fleet **JSON** export — not the same command as `docket context <id> snapshot`, which
-  writes one agent's **markdown** memory snapshot into its own workspace; see [context](#context)
+- A whole-fleet **JSON** export to stdout or a file.
 - Useful for backups, dashboards, or feeding fleet state into another tool
 
 ---
@@ -1657,9 +1616,9 @@ docket <command> --help
 
 ### help
 
-A dedicated top-level command that prints docket's full hand-written help text (agent types,
-common commands, and the current role→model policy) — richer than `docket --help`'s
-auto-generated command list, and always exits 0.
+A dedicated top-level command that prints docket's full hand-written help text (common commands
+and the current role→model policy) — richer than `docket --help`'s auto-generated command list,
+and always exits 0.
 
 **Syntax:**
 ```bash
@@ -1722,7 +1681,8 @@ These command names are **not aliases** — typing them prints a migration notic
 | `model` | `docket profile [id] <provider/model\|default>`, or `docket models` |
 | `tier` | tier names (economy/standard/premium) are no longer accepted anywhere (D-2, 0.2.0) — use `docket profile [id] <provider/model>` or `docket models` |
 | `billing`, `credits`, `monitor`, `mon` | `docket cost [id]` |
-| `memory`, `mem` | `docket context [id] <search\|snapshot\|index\|compress>` |
+| `memory`, `mem` | `docket context [id] <show\|project>` |
+| `context <id> <search\|index\|snapshot\|compress>` | removed — the OpenClaw runtime does semantic memory search itself; use `docket context [id] <show\|project>` or `docket snapshot` (fleet JSON) |
 | `smart`, `ai` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |

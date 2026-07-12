@@ -28,7 +28,6 @@ META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",
     "name": "Api Test Agent",
-    "type": "lead",
     "scope": "project",
     "model": "anthropic/claude-haiku-4-5-20251001",
     "modelSource": "policy",
@@ -89,7 +88,6 @@ class TestApiContract:
         {
             "id",
             "name",
-            "type",
             "kind",
             "scope",
             "model",

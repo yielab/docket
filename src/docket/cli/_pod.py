@@ -21,6 +21,7 @@ from rich.table import Table
 import docket.config as _cfg
 from docket import ui
 from docket.core import dispatch as _dispatch
+from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod
 from docket.core import resources as _res
@@ -52,7 +53,7 @@ def _member_soul(
         "You belong to one project only. Respect the pod session-key boundary — "
         "no cross-project access.\n\n"
         f"## Project\n{description or project}\n\n"
-        f"## Codebase\n{codebase or '(task pod — no fixed codebase)'}\n\n"
+        f"## Codebase\n{codebase or '(no codebase configured)'}\n\n"
         f"## Stack\n{stack}\n\n"
     )
     if member.role == "lead":
@@ -148,16 +149,23 @@ def _member_tools(
 
 
 def _member_agents(member: pod.PodMember, project: str) -> str:
+    # Section names matter: the openclaw runtime re-injects the "Session Startup"
+    # and "Red Lines" H2 blocks after every compaction (readPostCompactionContext).
+    # Keep these headings verbatim or the injection silently stops firing.
     return (
         f"# AGENTS.md — {project} · {member.role}\n\n"
-        "## Every Session (keep this lean — it is re-sent every turn)\n"
-        "1. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
-        "2. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
+        "## Session Startup\n"
+        "_Lean — re-sent every turn._\n"
+        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
+        "   path (the runtime requires this after every context reset).\n"
+        "2. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+        "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
         "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
         "   later turn.\n\n"
-        "## Pod\n"
-        f"You are part of the `{project}` pod. Coordinate only within this pod; "
-        "the Lead routes work between members.\n"
+        "## Red Lines\n"
+        f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"
+        "  routes work between members). No cross-project access.\n"
+        "- Never push to main/master or delete files without HITL approval.\n"
     )
 
 
@@ -203,6 +211,10 @@ def _write_member_workspace(
             ),
             encoding="utf-8",
         )
+    # Seed the files the openclaw post-compaction audit re-reads every reset,
+    # anchoring the codebase path where a just-reset agent will actually see it.
+    _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack)
+
     with contextlib.suppress(OSError):
         ws.chmod(0o700)
 
@@ -244,7 +256,7 @@ def _provision_worktree(member: pod.PodMember, project: str, codebase: str) -> t
     and ``fallback_reason`` explains why the flat-dir fallback was used.
     """
     if not codebase:
-        return "", ""  # task pod — no codebase, worktrees do not apply
+        return "", ""  # no codebase — worktrees do not apply
     if member.role != "implementer":
         return "", ""
     if not _sys.git_is_repo(codebase):

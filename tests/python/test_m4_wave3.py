@@ -23,7 +23,6 @@ META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "modelSource": "policy",
     "stack": "Node.js",
@@ -200,7 +199,6 @@ class TestCmdSnapshot:
         for key in (
             "id",
             "name",
-            "type",
             "kind",
             "model",
             "registered",

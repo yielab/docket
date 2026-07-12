@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Provisioning startup contract** (`core/memory.py`): every agent workspace is now seeded with
+  the files the OpenClaw runtime re-reads after each compaction — `WORKFLOW_AUTO.md` (anchors the
+  codebase path, the read order, and a "answer about the product, not your scaffolding" directive)
+  plus a curated `MEMORY.md` (with a *What this project is* product summary) and today's dated
+  memory log. Fixes agents that looped after compaction demanding files that never existed, and
+  that answered "what is this project about" with their own pod/workspace metadata.
+- `docket doctor` now heals any agent whose startup contract is **missing or stale** (detected via
+  an embedded contract-version marker), not just absent.
+
+### Changed
+- `docket add` is repo-only and detects the codebase from the current directory (or a `path`
+  argument / `--codebase`, not re-prompted), suggesting the project name from the codebase
+  directory. Generated `AGENTS.md` uses the runtime-recognized `Session Startup` / `Red Lines`
+  section headings so the post-compaction re-injection actually fires. Memory day math is UTC.
+
+### Removed
+- The `repo` vs `task` agent-type concept (the `AgentType` enum, the meta `type` field, and every
+  `type` echo in `list`/`info`/`serve`/`snapshot` output and the read-API spec). Every project
+  agent is a repo agent.
+- `docket context` `search` / `index` / `snapshot` / `compress` subcommands and their artifacts
+  (`.memory-index.json`, per-agent `SNAPSHOT.md`, `memory/archive/`). The OpenClaw runtime does
+  semantic memory search itself; `context` is now just `show` / `project`.
+
 ## [0.2.0-beta.1] - 2026-07-03
 
 **Four feature waves land together in this release, none of which had been cut before now:**

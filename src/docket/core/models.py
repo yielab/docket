@@ -16,11 +16,6 @@ class AgentKind(StrEnum):
     specialist = "specialist"
 
 
-class AgentType(StrEnum):
-    repo = "repo"
-    task = "task"
-
-
 class ModelSource(StrEnum):
     policy = "policy"
     pinned = "pinned"
@@ -57,7 +52,6 @@ class AgentMeta(BaseModel):
     kind: AgentKind
     scope: AgentScope = Field(AgentScope.project)
     name: str = ""
-    type: AgentType | None = None
     codebase: str = ""
     stack: str = ""
     description: str = ""

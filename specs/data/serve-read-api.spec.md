@@ -58,7 +58,6 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
     {
       "id":           "myapp-lead",
       "name":         "My App Lead",
-      "type":         "lead | implementer | reviewer | tester | specialist",
       "kind":         "project | specialist",
       "scope":        "project | org",
       "model":        "anthropic/claude-haiku-4-5-20251001",
