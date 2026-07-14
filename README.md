@@ -18,20 +18,31 @@
 *Independent project. Not affiliated with or endorsed by OpenClaw or the OpenClaw Foundation.*
 
 > [!WARNING]
-> **Early-stage / beta software — use with care.** docket is under active development and has
-> **not** reached a stable release. Every feature marked **✅ Working** below is implemented and
-> covered by the automated suite (pytest + golden parity + `ruff`/`mypy --strict`), but
-> **passing automated tests is not the same as being production-ready.** Most features have not
-> yet had hands-on QA against real fleets, varied OpenClaw versions, or messy real-world edge
-> cases. Expect rough edges, breaking changes between versions, and occasional gaps between the
-> docs and actual behavior. **Verify anything important yourself before relying on it**, and treat
-> every dollar figure as an estimate, not a bill (see [Cost reporting and its limits](#cost-reporting-and-its-limits)).
+> **Early-stage / beta software — treat it as a prototype, not a hardened tool.** docket has
+> **not** reached a stable release, and every release ships with a `-beta.N` version suffix for
+> as long as that stays true. What exists today — agent-pod provisioning, per-project runtime
+> isolation (session keys, port ranges, scratch dirs, git worktrees), real pod dispatch with
+> budget and verification gates, layered security (approval gates on by default, an audit log,
+> three approval channels), cost tracking, and a read-only API — is implemented and covered by
+> the automated suite (pytest + golden parity + `ruff`/`mypy --strict`). **Passing tests is not
+> the same as production-ready:** none of it has been hardened against real fleets at scale,
+> adversarial input, or every OpenClaw version. Expect rough edges and breaking changes between
+> versions. **Verify anything important yourself before relying on it**, and treat every dollar
+> figure as an estimate, not a bill (see [Cost reporting and its limits](#cost-reporting-and-its-limits)).
 
 <p align="center">
   <img src="docs/assets/hero.gif" alt="docket in action: provision an isolated project pod, delegate a task, check the governance posture, and run a fleet health check" width="760">
 </p>
 
 <p align="center"><em>The whole loop in one terminal: <strong>provision → delegate → govern → keep healthy.</strong></em></p>
+
+**Contents:** [Why](#why) · [Telegram](#mobile-control-via-telegram) · [Install](#install) ·
+[Tour](#60-second-tour) · [Screenshots](#see-it-in-action) · [vs OpenClaw](#how-it-relates-to-openclaw)
+· [Cost](#cost-reporting-and-its-limits) · [Concepts](#concepts) · [Commands](#command-reference)
+· [Security](#security) · [Compatibility](#compatibility) · [Roadmap](#whats-next) ·
+[Contributing](#contributing)
+
+---
 
 ## Why
 
@@ -74,12 +85,12 @@ Three isolation layers, each independent:
 
 docket's security model is **layered**: instruction-level constraints, plus enforced
 tool-approval gates that are **on by default** for new installs (`docket install`, opt out with
-`--no-gates`). A CLI channel (`docket approve`/`docket deny`), a headless approval HTTP channel,
-and Telegram approval routing all work today, with a full audit log recording every grant/deny
-on every channel. Docker workspace isolation stays opt-in (`docket gates isolate on`). Risky
-operations not on the curated allowlist require human sign-off before they execute; the headless
-channels mean CI jobs and automation can vote without a Telegram account. Approvals fail closed
-on timeout.
+`--no-gates`). Three approval channels work today — a CLI channel (`docket approve`/`docket
+deny`), a headless HTTP channel, and Telegram (see [Mobile control via Telegram](#mobile-control-via-telegram)
+below) — with a full audit log recording every grant/deny on every channel. Docker workspace
+isolation stays opt-in (`docket gates isolate on`). Risky operations not on the curated allowlist
+require human sign-off before they execute; the headless channels mean CI jobs and automation can
+vote without a Telegram account. Approvals fail closed on timeout.
 
 ---
 
@@ -99,6 +110,30 @@ this three-layer stack running reliably:
 - **Read API for dashboards**: `docket serve` exposes a versioned read-only API
   (`/status.json`, `/metrics`, `/health`) dashboards can consume. docket governs and keeps
   agents healthy; a purpose-built dashboard reads from it.
+
+---
+
+## Mobile control via Telegram
+
+Wiring a pod's Lead to Telegram (`docket wire <id>`) turns your phone into a second control
+surface, not just a notification feed:
+
+- **Conversational dispatch** — message the Lead directly ("Fix the login bug," "what's the
+  status?") and it runs through the same pipeline `docket pod <id> dispatch` runs from a shell.
+  No laptop required to queue or check on work.
+- **Approve from your phone** — gates are on by default, so a risky action pings the wired group;
+  reply to grant or deny it. Telegram is one of three approval channels, not the only one — a CLI
+  channel and a headless HTTP endpoint work too, so automation isn't locked to a chat app.
+- **Status without a shell** — ask a Lead what's active, or check in on a fleet, from wherever you
+  are.
+
+```bash
+docket wire myproject-lead     # bind a pod's Lead to a Telegram group
+docket unwire myproject-lead   # remove the binding
+```
+
+Setup is manual today (create a bot, add it to a group, run `wire`) — see
+[docs/commands.md](docs/commands.md#wire) for the walkthrough.
 
 ## Install
 
@@ -231,38 +266,6 @@ docket's cost numbers come in two flavors:
 Within those limits: the recorded-spend and budget-cap numbers track real usage and are what the
 auto-pause fires on; treat model-to-model savings comparisons as directional only.
 
-## Project Status
-
-> **What the badges mean.** This is **beta** software. **✅ Working** means a feature is
-> implemented and exercised by the automated test suite — *not* that it has been QA-hardened in
-> production. Automated coverage catches regressions; it does not replace manual verification
-> against your own OpenClaw install. **✅ Opt-in** means the same, for a feature that is off by
-> default and must be turned on explicitly. Until a tagged stable release, assume each row still
-> needs hands-on validation in your environment.
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Agent lifecycle (add/delete/maintain) | ✅ Working | Full CRUD via `docket maintain` |
-| Session scoping & isolation | ✅ Working | Multi-project isolation via session keys |
-| Runtime-resource isolation (ports + scratch) | ✅ Working | Disjoint port range + scratch dir per pod, injected into the Implementer's process env; freed on delete |
-| Git worktree isolation for Implementers | ✅ Working | Dedicated branch + worktree per repo-pod Implementer; flat-workspace fallback |
-| Project pods + org specialists | ✅ Working | Per-project pods (Lead + Implementer, optional Reviewer/Tester) + shared security/knowledge/manager |
-| Pod pipeline dispatch | ✅ Working | `docket pod <p> dispatch` / `serve --dispatch` — budget-gated, traced, pod-local |
-| Pre-merge verification gate | ✅ Working | `verifyCmd` per pod (settable via `pod add --verify`/`set-verify`) + a structural Tester PASS/FAIL gate |
-| Org Portfolio Manager | ✅ Working | Opt-in via `docket install --portfolio`; cross-pod fleet visibility (advisory) |
-| Approval gates + headless channel | ✅ Working | On by default (`--no-gates` to opt out); `GET/POST /approvals`, Telegram routing, audit log |
-| High-risk action-class policy | ✅ Working (partial) | `docket gates classes` — money-movement/secret-access always ask; prod-deploy's `git`/`npm` overlap is documented, not yet daemon-enforced (deferred — the daemon can't gate by argument text) |
-| Docker workspace isolation | ✅ Opt-in | `docket gates isolate on` — separate from the approval gates above |
-| Scheduled + webhook dispatch | ✅ Working | `@every N` / `HH:MM` UTC schedules + `POST /dispatch/<project>` webhook |
-| Lobster workflow validate + plan | ✅ Working | `docket workflow <id> validate/plan` — structural lint + dry-run; daemon executes, not docket |
-| Versioned read API | ✅ Working | `/status.json` v1 (pods, scope, budget, model), `/metrics` (Prometheus), `/health` |
-| Cost tracking & budget caps | ✅ Working | Role→model policy, per-agent budget, runaway detection |
-| API key management | ✅ Working | Centralized key distribution |
-| CI pipeline | ✅ Working | GitHub Actions on every push/PR |
-| Telegram integration | ✅ Working | Manual wire: create group, add bot, run `docket wire` |
-| Secret storage backends | ✅ Working | `file` (0600 JSON, default) or `keyring` (libsecret) via `DOCKET_SECRETS_BACKEND` |
-| Manager coordination | ✅ Working | Org task queue with delegation state machine; per-pod work runs via `docket pod <p> dispatch` |
-
 ## Concepts
 
 **Agent teams are the heart of docket.** Everything else (isolation, cost guardrails, health
@@ -298,6 +301,8 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
 Configuration is kept in two synchronized places: `.docket-meta.json` per workspace (docket's
 view) and `~/.openclaw/openclaw.json` (the daemon's view).
 
+---
+
 ## Command reference
 
 ```bash
@@ -320,7 +325,7 @@ enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — i
 
 docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
 coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
-an 812-test pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
+**813 tests** in the pytest suite, a 16-case golden-parity suite, and specialist-role evals — see
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security
@@ -331,6 +336,12 @@ default** for new installs (opt out with `docket install --no-gates`; re-apply o
 with `docket gates enable` / `docket gates disable`). Approvals are answerable via a CLI channel
 (`docket approve`/`docket deny`), a headless HTTP channel, or Telegram, and every grant/deny is
 audit-logged. Docker workspace isolation (`docket gates isolate on`) stays **opt-in**.
+
+A built-in high-risk action-class policy (`docket gates classes`) always routes money-movement
+and secret-access commands to approval. Being honest about its limit: prod-deploy actions that
+overlap the curated allowlist (`git`, `npm`) are documented policy, not yet daemon-enforced — the
+exec-allowlist gates by binary path, not arguments, so `git push` isn't blocked by this layer
+alone. Tracked as an open gap, not glossed over.
 
 **Where you run docket matters.** A trusted homelab is a very different risk profile from a
 public VPS — see [SECURITY.md](SECURITY.md) for the homelab-vs-VPS guidance, the privilege and
