@@ -2,7 +2,6 @@ EXIT:0
 {
   "id": "myshop",
   "name": "My Shop",
-  "type": "repo",
   "codebase": "<HOME>/Sites/myshop",
   "stack": "Docker,git",
   "model": "anthropic/claude-sonnet-4-6",

@@ -2,7 +2,6 @@ EXIT:0
 
 Project: Content Blog (content)
 
-  Type:              task
   Workspace:         <HOME>/.openclaw/workspaces/projects/content
   Codebase:
   Stack:

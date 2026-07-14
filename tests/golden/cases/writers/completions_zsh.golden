@@ -10,7 +10,7 @@ _docket() {
     'info:Detailed status of one agent'
     'delete:Remove a project agent or a whole pod, and optionally its workspace'
     'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions)'
-    'context:Agent context and memory management (show/search/index/snapshot/compress/project)'
+    'context:Agent context views (show/project)'
     'wire:Wire or update a channel group binding'
     'unwire:Remove a channel binding'
     'scope:Manage session scope / project isolation key'
@@ -54,7 +54,7 @@ _docket() {
   case "${words[2]}" in
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
-    context)         (( CURRENT == 3 )) && _docket_ids || compadd show search snapshot index compress project ;;
+    context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
     gates|security)  compadd status enable disable isolate classes ;;

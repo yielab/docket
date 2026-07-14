@@ -147,7 +147,7 @@ def _memory_md_seed(*, project: str, codebase: str, stack: str) -> str:
         "## What this project is",
         f"_One paragraph: what {project} does and who it's for — the product, "
         "not this agent's pod role. Fill from the codebase README on first run; "
-        "this is the answer to \"what is this project about\"._",
+        'this is the answer to "what is this project about"._',
         "",
         "## Repo",
     ]

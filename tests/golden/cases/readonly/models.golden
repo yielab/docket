@@ -10,8 +10,7 @@ Role→model policy
   tester        anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   run tests and report
   knowledge     anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   retrieval and summarization
   security      anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   audit depth
-  repo          anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   project default for repo agents
-  task          anthropic/claude-haiku-4-5              $0.80/$4.00     builtin   project default for task agents
+  repo          anthropic/claude-sonnet-4-6             $3.00/$15.00    builtin   project default for project (repo) agents
 
   default       anthropic/claude-sonnet-4-6
   fallback      anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 → anthropic/claude-haiku-4-5

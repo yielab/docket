@@ -2,7 +2,6 @@ EXIT:0
 
 Project: My Shop (myshop)
 
-  Type:              repo
   Workspace:         <HOME>/.openclaw/workspaces/projects/myshop
   Codebase:          <HOME>/Sites/myshop
   Stack:             Docker,git
