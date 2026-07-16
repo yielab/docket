@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an embedded contract-version marker), not just absent.
 
 ### Changed
+- **License: MIT → Apache 2.0.** Sole-copyright-holder relicense, effective from this commit
+  forward; applies to the current state of the repository, not a rewrite of historical commits.
 - `docket add` is repo-only and detects the codebase from the current directory (or a `path`
   argument / `--codebase`, not re-prompted), suggesting the project name from the codebase
   directory. Generated `AGENTS.md` uses the runtime-recognized `Session Startup` / `Red Lines`
