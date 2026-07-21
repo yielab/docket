@@ -345,8 +345,8 @@ class TestACL:
     def test_upsert_and_remove_binding(self, oc_env: Path) -> None:
         from docket.edges.adapters import openclaw as oc
 
-        oc.upsert_binding("myshop", "-1234567890")
-        assert oc.get_binding("myshop") == "-1234567890"
+        oc.upsert_binding("myshop", "-1001234567890")
+        assert oc.get_binding("myshop") == "-1001234567890"
         oc.remove_binding("myshop")
         assert oc.get_binding("myshop") == ""
 

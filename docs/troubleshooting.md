@@ -57,7 +57,7 @@ docket wire <agent-id>
 ```
 
 #### 3. **Group Not in Allowlist**
-**Error in logs:** `{"reason":"not-allowed", "chatId":-4857844358}`
+**Error in logs:** `{"reason":"not-allowed", "chatId":-1001234567890}`
 
 **How to diagnose:**
 ```bash
