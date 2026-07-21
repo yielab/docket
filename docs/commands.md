@@ -425,6 +425,27 @@ docket context myproject project
 
 ---
 
+### persona
+
+Set or clear an agent's optional **display persona** (a name/emoji). Identity of record is the
+agent's *role*; the persona is a docket-owned skin rendered into `SOUL.md` — never a
+self-authored `IDENTITY.md`.
+
+**Syntax:**
+```bash
+docket persona <agent-id>                 # (show) current persona + role
+docket persona <agent-id> set "Orion 🔭"  # assign a display name
+docket persona <agent-id> clear           # remove it (back to role/name)
+```
+
+**Notes:**
+- Stored in `.docket-meta.json` (`persona`) and rendered into `SOUL.md`; survives `maintain rebuild`.
+- `docket doctor` quarantines OpenClaw's `IDENTITY.md`/`BOOTSTRAP.md` scaffolding from managed
+  workspaces — use this command instead to give an agent a friendly name.
+- Restarts the gateway after a change.
+
+---
+
 ## Pod Coordination
 
 > `docket team` was **retired** — see [Removed Commands](#removed-commands). Delegation and
@@ -734,6 +755,28 @@ docket unwire myproject
 - Agent can still function without Telegram
 - Approvals will require CLI interaction
 - Restarts gateway after unwiring
+
+---
+
+### conversations
+
+Inspect and resume the **conversation registry** — docket's durable index of channel
+threads. OpenClaw keeps no durable transcript, so docket tracks which agent handles
+each thread, its topic, status, and a resume pointer.
+
+**Syntax:**
+```bash
+docket conversations                       # (list) all tracked conversations
+docket conversations show <id|agent-id>    # full detail for one
+docket conversations resume <id|agent-id>  # mark in_progress + print a resume brief
+docket conversations set <agent-id> <peer-id> [--topic ..] [--status ..] [--last ..] [--task ..]
+```
+
+**Notes:**
+- Auto-seeded when you `docket wire` an agent to a channel; cleaned up on `docket delete`.
+- `status` ∈ `active | in_progress | waiting | done`.
+- Durable conversation *content* lives in the agent's `HEARTBEAT.md` + `memory/` (which the
+  agent resumes on its next turn via the durability contract); this registry tracks *state*.
 
 ---
 

@@ -389,14 +389,19 @@ def _delete_pod(project: str, members: list[str]) -> int:
             ui.warn("Aborted.")
             return 0
 
+    from docket.core import conversations as _conv
+
+    reg = _conv.load()
     for mid in members:
         if _oc.get_binding(mid):
             _oc.remove_binding(mid)
+        reg = _conv.remove_agent(reg, mid)
         ok, msg = _pod.teardown_member(mid)
         if ok:
             ui.success(f"Removed {mid}")
         else:
             ui.warn(f"{mid}: daemon delete reported: {msg} (workspace cleaned)")
+    _conv.save(reg)
 
     # Free pod runtime resources (port range + scratch dir) after all members gone.
     _pod.free_pod_resources(project)
@@ -596,6 +601,19 @@ def cmd_wire(
     else:
         ui.warn("Could not set allowlist entry — check manually")
     ui.success(f"Binding: {aid} ← {channel} group {peer_id}")
+
+    # Register the thread in the docket-owned conversation registry so it is
+    # tracked/resumable (OpenClaw keeps no durable transcript).
+    from datetime import UTC, datetime
+
+    from docket.core import conversations as _conv
+
+    reg = _conv.load()
+    _, reg = _conv.record(
+        reg, agent_id=aid, peer_id=peer_id, channel=channel, now=datetime.now(UTC).isoformat()
+    )
+    _conv.save(reg)
+
     _do_restart_gateway()
     ui.success(f"Done. '{aid}' is now wired to {channel} peer {peer_id}")
 
@@ -809,6 +827,78 @@ def cmd_profile(
         ui.success(f"Model: {current} → {new_model} (follows role policy '{role}')")
     else:
         ui.success(f"Model pinned: {current} → {new_model}")
+    _do_restart_gateway()
+
+
+@app.command("persona")
+def cmd_persona(
+    agent_id: str | None = typer.Argument(None),
+    action: str | None = typer.Argument(None, help="set | clear | show (default: show)"),
+    label: str | None = typer.Argument(None, help='display label for set, e.g. "Orion 🔭"'),
+) -> None:
+    """Set/clear an agent's optional display persona (docket-owned; rendered into SOUL.md).
+
+    Identity of record is the agent's role; a persona is only a display skin docket
+    controls — never a self-authored IDENTITY.md.
+    """
+    from docket.core import identity as _identity
+    from docket.core.models import AgentMeta, Persona
+
+    if agent_id is None:
+        if not sys.stdin.isatty():
+            ui.error("An agent id is required.")
+            raise typer.Exit(1)
+        agent_id = _pick_agent("Set persona for")
+    aid: str = agent_id
+    ws = _cfg.workspace_dir(aid)
+    if not ws.is_dir():
+        ui.error(f"Agent '{aid}' not found.")
+        raise typer.Exit(1)
+
+    meta = AgentMeta.model_validate(store.read_json(_cfg.meta_path(aid)))
+
+    if action in (None, "show"):
+        cur = meta.persona.label() if meta.persona else ""
+        ui.header(f"Persona: {meta.display_name() or aid} ({aid})")
+        ui.console.print()
+        ui.console.print(
+            f"  [bold]{'Role:':<12}[/bold] {meta.role or '—'}  [dim](real identity)[/dim]"
+        )
+        ui.console.print(f"  [bold]{'Persona:':<12}[/bold] {cur or '[dim]none[/dim]'}")
+        ui.console.print()
+        ui.console.print(f'  docket persona {aid} set "Orion 🔭"   # assign a display name')
+        ui.console.print(f"  docket persona {aid} clear           # remove it")
+        ui.console.print()
+        return
+
+    if action == "clear":
+        new_persona: Persona | None = None
+    elif action == "set":
+        if not label or not label.strip():
+            ui.error("A label is required, e.g. docket persona " + aid + ' set "Orion 🔭"')
+            raise typer.Exit(1)
+        new_persona = _identity.parse_persona_label(label)
+    else:
+        ui.error(f"Unknown action '{action}'. Use: set | clear | show.")
+        raise typer.Exit(1)
+
+    # 1. Update the docket-owned source of truth (.docket-meta.json).
+    _oc.meta_set(aid, "persona", new_persona.model_dump() if new_persona else None)
+
+    # 2. Re-render the persona block in SOUL.md (idempotent; role text untouched).
+    soul = ws / "SOUL.md"
+    if soul.is_file():
+        soul.write_text(
+            _identity.upsert_persona_block(soul.read_text(encoding="utf-8"), new_persona),
+            encoding="utf-8",
+        )
+        with contextlib.suppress(OSError):
+            soul.chmod(0o600)
+
+    if new_persona:
+        ui.success(f"Persona set to '{new_persona.label()}' for '{aid}'.")
+    else:
+        ui.success(f"Persona cleared for '{aid}'.")
     _do_restart_gateway()
 
 
@@ -1273,17 +1363,17 @@ def cmd_edit(agent_id: str | None = typer.Argument(None)) -> None:
         ui.error(f"Agent '{aid}' not found.")
         raise typer.Exit(1)
 
-    # Resolve display name from IDENTITY.md or SOUL.md (specialists have IDENTITY.md)
-    name = aid
-    for candidate in [ws / "IDENTITY.md", ws / "SOUL.md"]:
-        if candidate.exists():
-            for line in candidate.read_text(encoding="utf-8").splitlines():
-                if line.startswith("# "):
-                    name = line[2:].strip()
-                    break
-            break
+    # Display name comes from docket metadata (persona → name → role → id), never
+    # from a self-authored IDENTITY.md — identity of record is docket-owned.
+    from docket.core.models import AgentMeta
 
-    _WORKSPACE_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md"]
+    meta_path = _cfg.meta_path(aid)
+    name = aid
+    if meta_path.exists():
+        with contextlib.suppress(Exception):
+            name = AgentMeta.model_validate(store.read_json(meta_path)).display_name() or aid
+
+    _WORKSPACE_FILES = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "WORKFLOW_AUTO.md"]
     files = [ws / f for f in _WORKSPACE_FILES if (ws / f).is_file()]
 
     ui.header(f"Edit: {name} ({aid})")
@@ -1350,6 +1440,19 @@ def cmd_gates(ctx: typer.Context) -> None:
     rest = [a for a in args[1:] if a != "--force"]
     want = rest[0] if rest else "on"
     raise typer.Exit(run_gates(sub, want=want, force=force))
+
+
+@app.command(
+    "conversations",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_conversations(ctx: typer.Context) -> None:
+    """Inspect and resume the conversation registry (list/show/resume/set)."""
+    from docket.cli._conversations import run_conversations
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_conversations(sub, args[1:]))
 
 
 @app.command("audit")

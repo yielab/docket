@@ -14,7 +14,10 @@ callers over this module — none of them re-derive paths or dates.
                              root document from turn one.
 - ``memory/YYYY-MM-DD.md`` — daily logs, one file per day.
 - ``WORKFLOW_AUTO.md``     — the startup protocol. See "The runtime contract".
-- ``HEARTBEAT.md``         — active tasks (owned by _pod.py / _agents.py templates).
+- ``HEARTBEAT.md``         — the durable in-flight task ledger (body from
+                             ``heartbeat_seed`` here; rendered by _pod.py /
+                             _agents.py). Written before starting multi-step work
+                             and resumed on reset, per the WORKFLOW_AUTO contract.
 
 ## The runtime contract
 
@@ -49,9 +52,14 @@ DAILY_MEMORY_PATTERN = "memory/%Y-%m-%d.md"
 #: Long-term curated memory document (runtime memory-backend root).
 MEMORY_FILE = "MEMORY.md"
 
+#: Durable task ledger (in-flight work that must survive a context reset).
+HEARTBEAT_FILE = "HEARTBEAT.md"
+
 #: Bumped when the generated WORKFLOW_AUTO.md body changes. Embedded as a marker
 #: so ``docket doctor`` can detect and re-seed *stale* content, not just absence.
-CONTRACT_VERSION = 2
+#: v3 adds the resume/durability contract (write in-flight tasks to HEARTBEAT.md
+#: before starting; resume unchecked tasks on reset instead of greeting idle).
+CONTRACT_VERSION = 3
 _CONTRACT_MARKER = f"<!-- docket-contract: v{CONTRACT_VERSION} -->"
 
 
@@ -110,8 +118,23 @@ def _workflow_auto_text(*, project: str, codebase: str, stack: str, origin: str)
         "All real work happens **here**, not in this agent workspace. Before any "
         "file operation, `cd` into the codebase (or use absolute paths under it). "
         "Treat relative paths as relative to the codebase root.\n\n"
+        "## Resume before you greet\n"
+        "A context reset wiped your working memory — not your job. **Before** you "
+        "reply, greet, or say there is nothing to do, open `HEARTBEAT.md`:\n"
+        "- If `## Active Tasks` has any unchecked `- [ ]` step, you were interrupted "
+        "**mid-task**. Pick up the next unchecked step and keep going — do not "
+        "restart from scratch and do not announce you are idle.\n"
+        "- Only when every task is checked off or removed are you actually idle.\n\n"
+        "## Durability rule — how a task survives a reset\n"
+        "The moment you accept work you can't finish in one reply (anything "
+        "multi-step, multi-file, or long-running), **write it to `HEARTBEAT.md` "
+        "under `## Active Tasks` as a checklist _before you start_**, then tick "
+        "steps off as you go. In-context plans and mental notes do **not** survive "
+        "a context reset — only what is on disk does. An unwritten task is a task "
+        "you will silently lose.\n\n"
         "## Read these, in order\n"
-        "1. `HEARTBEAT.md` — active tasks / pending decisions (always).\n"
+        "1. `HEARTBEAT.md` — active tasks / pending decisions (always; obey the "
+        "resume rule above before doing anything else).\n"
         "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
         "3. `MEMORY.md` — what this project **is** and durable facts about it "
         "(product summary, architecture, current state).\n"
@@ -132,6 +155,39 @@ def _workflow_auto_text(*, project: str, codebase: str, stack: str, origin: str)
         "You are almost certainly in the wrong directory — the agent workspace, "
         "not the codebase. Re-check that you are under the codebase root above "
         "**before** concluding the file does not exist or offering to create it.\n"
+    )
+
+
+def heartbeat_seed(name: str) -> str:
+    """The durable task-ledger body for a fresh (or reset) ``HEARTBEAT.md``.
+
+    Single source for every workspace's ledger — the CLI create/reset paths
+    (``cli/_agents.py``) and pod provisioning (``cli/_pod.py``) all render this,
+    so the resume/durability contract in ``WORKFLOW_AUTO.md`` always has a ledger
+    shaped the way it describes. The embedded HTML comment is a fill-in template:
+    invisible to a human reader, but it shows a weak model the exact task format
+    so an accepted task gets written down consistently instead of held in context.
+    """
+    return (
+        f"# HEARTBEAT.md — {name}\n\n"
+        "_Your durable task ledger. It survives context resets; your working "
+        "memory does not._\n"
+        "_The moment you accept multi-step work, record it here **before** you "
+        "start. Read it first every session — unchecked items mean you were "
+        "interrupted, so resume them instead of greeting as if idle._\n\n"
+        "## Active Tasks\n"
+        "_none yet_\n\n"
+        "<!-- When you accept a task, add it in this shape and work the checklist:\n"
+        "### <short task title>  ·  started <YYYY-MM-DD>\n"
+        'Goal: <what "done" looks like>\n'
+        "- [ ] first step\n"
+        "- [ ] next step\n"
+        "Tick each `- [ ]` as you finish it. When the whole task is done, remove it\n"
+        "here and log the outcome to memory/YYYY-MM-DD.md. -->\n\n"
+        "## Pending Decisions\n"
+        "_none_\n\n"
+        "## Notes\n"
+        "_none_\n"
     )
 
 

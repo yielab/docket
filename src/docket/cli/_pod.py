@@ -158,7 +158,8 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
         "_Lean — re-sent every turn._\n"
         f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
         "   path (the runtime requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
         "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
         "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
         "   later turn.\n\n"
@@ -166,6 +167,8 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
         f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"
         "  routes work between members). No cross-project access.\n"
         "- Never push to main/master or delete files without HITL approval.\n"
+        "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
+        "  task does not survive a context reset.\n"
     )
 
 
@@ -195,9 +198,7 @@ def _write_member_workspace(
         _member_soul(member, project, codebase, stack, description), encoding="utf-8"
     )
     (ws / "AGENTS.md").write_text(_member_agents(member, project), encoding="utf-8")
-    (ws / "HEARTBEAT.md").write_text(
-        f"# HEARTBEAT — {member.member_id}\n\n_No active tasks._\n", encoding="utf-8"
-    )
+    (ws / "HEARTBEAT.md").write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
     if member.role == "implementer" and ((port_range_start and scratch_dir) or verify_cmd):
         (ws / "TOOLS.md").write_text(
             _member_tools(
@@ -214,6 +215,12 @@ def _write_member_workspace(
     # Seed the files the openclaw post-compaction audit re-reads every reset,
     # anchoring the codebase path where a just-reset agent will actually see it.
     _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack)
+
+    # Keep pod-member identity docket-owned: quarantine OpenClaw's self-authoring
+    # scaffolding (IDENTITY.md/BOOTSTRAP.md) so it can't split the member's identity.
+    from docket.core import identity as _identity
+
+    _identity.quarantine_scaffolding(ws)
 
     with contextlib.suppress(OSError):
         ws.chmod(0o700)

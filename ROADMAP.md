@@ -30,6 +30,29 @@ Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned
 - 🗓️ **OpenClaw version-pinned CI.** Install the latest OpenClaw weekly, run the integration
   suite, and open an auto-issue on schema break. Until then [COMPATIBILITY.md](COMPATIBILITY.md)
   reflects manual verification.
+- ☑ **Telegram conversation memory (TC-1…TC-7, shipped 2026-07-20).** A live investigation
+  (triggered by the docket Telegram group dropping an accepted task across a context reset) found
+  three gaps *beyond* the memory-durability fix (WORKFLOW_AUTO `CONTRACT_VERSION` v3): split
+  identity from leftover OpenClaw scaffolding, no durable conversation persistence, and no
+  registry. **Delivered:** docket-owned identity — optional `Persona` on `AgentMeta` rendered into
+  `SOUL.md`, `docket persona`, and `docket doctor` quarantine of `IDENTITY.md`/`BOOTSTRAP.md`
+  (`core/identity.py`); a docket-owned **conversation registry** (`core/conversations.py`,
+  `docket conversations list/show/resume/set`, seeded at `docket wire`); and a doctor advisory on
+  the memory index. TC-3 established OpenClaw's per-agent sqlite is a rebuildable RAG index (not a
+  transcript), so durability is docket-owned by design. Full record:
+  [internal-docs/telegram-conversation-memory.md](internal-docs/telegram-conversation-memory.md)
+  and [agent-structure-analysis.md §6](internal-docs/agent-structure-analysis.md). Deferred:
+  `--persona` at `docket add` time; auto-populating `last_message`/`task_ref` from dispatch/serve.
+- ☑ **External "opencode" audits evaluated + dismissed (2026-07-20).** Two agent-generated audits
+  (`DESIGN-PATTERN-AUDIT.md`, `SECURITY-AUDIT-REPORT.md`) were reviewed against the code and
+  **deleted** as net-negative: they fabricated non-existent functions (`_create_agent_meta`,
+  `exec_in_workspace`), flagged a dispatch "layer violation" that doesn't exist (`core/dispatch.py`
+  delegates execution to `_oc.agent_run`/`_sys.*`, no raw subprocess), cited a stale
+  `_install.py` size, and otherwise recommended cargo-cult OOP against the deliberate
+  functional style. The **one** actionable idea — a boundary guard — was implemented as the true
+  invariant: `tests/python/test_ch4_no_subprocess_in_core.py` (core/ must be process-free),
+  a sibling of the CH-3 no-UI-in-core test. Optional-only leftover: splitting the 1204-line
+  `edges/adapters/openclaw.py` into a sub-package (maintainability, not a need).
 
 > This document is self-contained. A developer or AI agent should be able to start from
 > here **without reading anything else first** and not lose scope. Read §1–§4 once, then

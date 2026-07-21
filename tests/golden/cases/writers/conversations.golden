@@ -1,0 +1,7 @@
+EXIT:0
+
+Conversations
+
+→ No conversations tracked yet.
+  They are registered when you wire an agent to a channel (docket wire) or with: docket conversations set <agent> <peer> --topic ...
+

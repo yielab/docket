@@ -147,6 +147,11 @@ def policy_templates_dir() -> Path:
 
 PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 
+# docket-owned registry of channel conversations (Telegram threads etc.). OpenClaw
+# persists no durable transcript, so docket tracks conversation state here for
+# resume/visibility. See internal-docs/telegram-conversation-memory.md.
+CONVERSATIONS_FILE = DOCKET_HOME / "docket-conversations.json"
+
 
 def pod_scratch_dir(project: str) -> Path:
     """Isolated scratch data directory for a pod's runtime state.

@@ -38,6 +38,30 @@ class AgentScope(StrEnum):
 _PROJECT_SPECIALIST_ROLES = frozenset({"programmer", "reviewer", "tester"})
 
 
+class Persona(BaseModel):
+    """Optional, operator-assigned cosmetic identity for an agent.
+
+    docket owns this and renders it into ``SOUL.md`` — it is **not** read from a
+    self-authored OpenClaw ``IDENTITY.md``. Keeping the persona as docket metadata
+    (re-derivable, re-renderable, healable) is what keeps a friendly name like
+    "Orion" congruent with docket's "identity = a pure function of metadata" model
+    (see ``internal-docs/agent-structure-analysis.md`` §6). An agent's *role* is its
+    real identity; this is only the display skin on top.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    name: str = ""
+    emoji: str = ""
+    vibe: str = ""
+
+    def label(self) -> str:
+        """Human display label, e.g. ``"Orion 🔭"`` — empty if no name set."""
+        if not self.name:
+            return ""
+        return f"{self.name} {self.emoji}".strip()
+
+
 class AgentMeta(BaseModel):
     """Canonical in-memory representation of .docket-meta.json.
 
@@ -74,6 +98,20 @@ class AgentMeta(BaseModel):
     verify_cmd: str = Field("", alias="verifyCmd")
 
     template_version: str = Field("", alias="templateVersion")
+
+    # Optional operator-assigned cosmetic identity, rendered into SOUL.md by docket.
+    # Absent (None) for agents with no persona — they display by role/id.
+    persona: Persona | None = None
+
+    def display_name(self) -> str:
+        """The name a human sees: persona label → ``name`` → role.
+
+        Never derived from a self-authored ``IDENTITY.md`` — identity of record is
+        docket metadata. Used by ``docket info``/``edit``/listing surfaces.
+        """
+        if self.persona and self.persona.label():
+            return self.persona.label()
+        return self.name or self.role or ""
 
     @model_validator(mode="before")
     @classmethod

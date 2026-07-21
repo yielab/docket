@@ -267,6 +267,26 @@ def _cmd_add_declarative(from_file: str) -> int:
     return 0
 
 
+def _apply_persona_from_meta(ws: Path, soul_text: str) -> str:
+    """Upsert the persona block into *soul_text* from ``ws``'s existing meta.
+
+    A no-op for a brand-new agent (meta not written yet → no persona) and for
+    agents without a persona; on ``maintain rebuild`` it re-renders the
+    docket-owned persona so identity stays a pure function of metadata.
+    """
+    from docket.core import identity as _identity
+    from docket.core.models import AgentMeta
+
+    meta_file = ws / _cfg.META_FILE
+    if not meta_file.exists():
+        return soul_text
+    try:
+        meta = AgentMeta.model_validate(store.read_json(meta_file))
+    except Exception:
+        return soul_text
+    return _identity.upsert_persona_block(soul_text, meta.persona)
+
+
 def _create_workspace(
     agent_id: str,
     name: str,
@@ -321,7 +341,8 @@ def _create_workspace(
         "_Lean — re-sent every turn._\n"
         f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
         "   path (the runtime requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — current tasks/decisions (small; always).\n"
+        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
         "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
         "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
         "   memory/ dir or re-read MEMORY.md when the task doesn't need it —\n"
@@ -329,7 +350,9 @@ def _create_workspace(
         "4. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
         "## Red Lines\n"
         f"- Only act on {name}. Redirect other project questions to the correct group.\n"
-        "- Never push to main/master or delete files without HITL approval.\n\n"
+        "- Never push to main/master or delete files without HITL approval.\n"
+        "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
+        "  task does not survive a context reset.\n\n"
         "## Project Path\n"
         f"{codebase}\n\n"
         "## Org Specialists\n"
@@ -361,16 +384,11 @@ def _create_workspace(
         "_Add: DB name, ports, env vars, dev server command, seed scripts._\n"
     )
 
-    heartbeat = (
-        f"# HEARTBEAT.md — {name}\n\n"
-        "Check every session. Delete items when done.\n\n"
-        "## Active Tasks\n"
-        "_none yet_\n\n"
-        "## Pending Decisions\n"
-        "_none_\n\n"
-        "## Notes\n"
-        "_none_\n"
-    )
+    heartbeat = _mem.heartbeat_seed(name)
+
+    # Re-apply the docket-owned persona from metadata (if any) so a `maintain
+    # rebuild` regenerates identity from meta rather than dropping the persona.
+    soul = _apply_persona_from_meta(ws, soul)
 
     for fname, text in [
         ("SOUL.md", soul),
@@ -384,6 +402,12 @@ def _create_workspace(
 
     # Seed the files the openclaw post-compaction audit re-reads every reset.
     _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
+
+    # Quarantine any OpenClaw base-assistant scaffolding so identity stays
+    # docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
+    from docket.core import identity as _identity
+
+    _identity.quarantine_scaffolding(ws)
 
     ws.chmod(0o700)
     (ws / "memory").chmod(0o700)
@@ -660,6 +684,10 @@ def run_delete(agent_id: str | None) -> int:
         _oc.remove_binding(aid)
         ui.success("Telegram binding removed")
 
+    from docket.core import conversations as _conv
+
+    _conv.save(_conv.remove_agent(_conv.load(), aid))
+
     if del_ws.lower() == "y":
         _shutil.rmtree(ws, ignore_errors=True)
         ui.success(f"Workspace deleted: {ws}")
@@ -876,15 +904,8 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
 
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
-    heartbeat_text = (
-        f"# HEARTBEAT.md — {name}\n\n"
-        "Check every session. Delete items when done.\n\n"
-        "## Active Tasks\n_none_\n\n"
-        "## Pending Decisions\n_none_\n\n"
-        "## Notes\n_none_\n"
-    )
     hb = ws / "HEARTBEAT.md"
-    hb.write_text(heartbeat_text, encoding="utf-8")
+    hb.write_text(_mem.heartbeat_seed(name), encoding="utf-8")
     hb.chmod(0o600)
 
     ui.success(

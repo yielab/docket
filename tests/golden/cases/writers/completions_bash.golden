@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire scope profile keys auth models pod workflow logs edit cost doctor gates audit eval snapshot serve completions trace metrics policies approve deny help"
+  local commands="install list add info delete maintain context wire unwire scope profile persona keys auth models pod workflow logs edit cost doctor gates conversations audit eval snapshot serve completions trace metrics policies approve deny help"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"

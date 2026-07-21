@@ -617,6 +617,72 @@ def _check_runtime_contract(ids: list[str]) -> int:
     return 0
 
 
+def _managed_workspace_ids(ids: list[str]) -> list[str]:
+    """Project pod members plus any provisioned org specialists — all docket-managed.
+
+    Excludes the base ``~/.openclaw/workspace`` personal assistant, which docket does
+    not manage and must not touch.
+    """
+    specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
+    return list(ids) + specialists
+
+
+def _check_scaffolding(ids: list[str]) -> int:
+    """Quarantine OpenClaw base-assistant scaffolding leaking into managed workspaces.
+
+    ``IDENTITY.md``/``BOOTSTRAP.md`` self-author a drifting identity that fights
+    docket's role-derived ``SOUL.md`` (agent-structure-analysis.md §6). Moves them to
+    ``.docket-archive/`` (reversible). Advisory — never fails the run.
+    """
+    from docket.core import identity as _identity
+
+    ui.console.print()
+    ui.console.print("[bold]Agent identity (docket-owned):[/bold]")
+    cleaned = 0
+    for aid in _managed_workspace_ids(ids):
+        ws = _cfg.workspace_dir(aid)
+        if not ws.is_dir():
+            continue
+        archived = _identity.quarantine_scaffolding(ws)
+        if archived:
+            ui.success(
+                f"  {aid}: archived {', '.join(archived)} → .docket-archive/ "
+                "(identity is docket-owned; set a display name with 'docket persona')"
+            )
+            cleaned += 1
+    if cleaned == 0:
+        ui.success("  No stray OpenClaw scaffolding in managed workspaces")
+    return 0
+
+
+def _check_memory_index(ids: list[str]) -> int:
+    """Advisory: report channel-bound agents with no OpenClaw memory index yet.
+
+    OpenClaw's ``~/.openclaw/memory/<id>.sqlite`` is a **rebuildable RAG index** over
+    the workspace memory files, built lazily on first recall use — not a durable
+    transcript and not a file docket fabricates (TC-3, POD-DAEMON-NOTES.md). Its
+    absence is normal for an agent that hasn't used recall yet; durable conversation
+    state lives in the docket-owned registry + workspace files. Purely informational —
+    never fails the run, never creates the file.
+    """
+    ui.console.print()
+    ui.console.print("[bold]Conversation memory backend (advisory):[/bold]")
+    mem_dir = _cfg.OPENCLAW_DIR / "memory"
+    missing = 0
+    for aid in ids:
+        if not _oc.get_binding(aid):
+            continue  # only channel-bound agents converse
+        if not (mem_dir / f"{aid}.sqlite").exists():
+            missing += 1
+            ui.dim(
+                f"  {aid}: no memory index yet (built on first recall use; "
+                "durable state is the docket registry + workspace memory files)"
+            )
+    if missing == 0:
+        ui.success("  All channel-bound agents have a memory index (or none are bound)")
+    return 0
+
+
 def _check_eval_results() -> int:
     """Eval-results model-tier recommendations (advisory).
 
@@ -968,6 +1034,8 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_template_version(ids)
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
+    _check_scaffolding(ids)
+    _check_memory_index(ids)
     _check_eval_results()
 
     ui.console.print()

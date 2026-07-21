@@ -83,6 +83,29 @@ class TestSeedContract:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src", day=_dt.date(2026, 1, 2))
         assert (tmp_path / "memory" / "2026-01-02.md").is_file()
 
+    def test_workflow_auto_carries_resume_and_durability_contract(self, tmp_path: Path) -> None:
+        # The runtime-forced re-read file must tell a just-reset agent to resume an
+        # in-flight task and to write tasks down *before* starting — the fix for
+        # accepted work being silently dropped across a context reset.
+        _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
+        text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text().lower()
+        assert "resume" in text
+        assert "before you greet" in text or "greet" in text
+        assert "unwritten task" in text
+        assert "heartbeat.md" in text
+
+
+class TestHeartbeatSeed:
+    def test_ledger_teaches_write_before_start_and_resume(self) -> None:
+        body = _mem.heartbeat_seed("demo-lead")
+        assert "# HEARTBEAT.md — demo-lead" in body
+        assert "## Active Tasks" in body
+        # Durability + resume language a weak model needs to see.
+        assert "before" in body.lower()
+        assert "resume" in body.lower()
+        # The fill-in template shows the exact task shape (checklist) to record.
+        assert "- [ ]" in body
+
 
 class TestContractOk:
     def test_true_after_seed(self, tmp_path: Path) -> None:
