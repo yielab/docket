@@ -19,7 +19,7 @@ def _reg(*convs: C.Conversation) -> C.ConversationRegistry:
 
 class TestPureOps:
     def test_make_id_is_stable(self) -> None:
-        assert C.make_id("docket-lead", "-5344500015") == "telegram:docket-lead:-5344500015"
+        assert C.make_id("myapp-lead", "-1001234567890") == "telegram:myapp-lead:-1001234567890"
 
     def test_upsert_appends_then_replaces(self) -> None:
         r = C.upsert(_reg(), C.Conversation(id="a", agent_id="x"))
