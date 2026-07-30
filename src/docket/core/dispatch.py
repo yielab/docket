@@ -244,18 +244,111 @@ def pod_budget(project: str) -> float:
         return 0.0
 
 
-def _hop_message(task: dict[str, Any], role: str, prior: list[HopResult]) -> str:
-    """Build the message handed to one role, threading prior hops' output."""
+_TRUNCATION_MARKER = "\n[... truncated {n} bytes ...]\n"
+
+
+def _hop_carryover_budget(rank: int, total_budget: int) -> int:
+    """Byte budget for one prior hop's output, by recency ``rank`` (0 = most recent).
+
+    R-7's safety-cap policy, deliberately simple: each hop one step further into
+    the past gets half the budget of the one before it (``total_budget >> (rank+1)``).
+    That halving series never sums to more than ``total_budget`` no matter how many
+    prior hops exist (a partial geometric series with ratio 1/2), so the *total*
+    carryover threaded into a prompt is bounded regardless of pipeline length —
+    while the most recent (most relevant) hop is always squeezed the least.
+    """
+    return total_budget >> (rank + 1)
+
+
+def _truncate_carryover(output: str, budget: int) -> tuple[str, bool, int]:
+    """Truncate *output* to at most *budget* UTF-8 bytes, head + tail.
+
+    Returns ``(text, truncated, sent_bytes)``. If *output* already fits within
+    *budget* it is returned unchanged (``truncated=False`` — this is what keeps
+    small tasks byte-identical to pre-cap behaviour). Otherwise the head and
+    tail are kept in roughly equal shares of the remaining room (after
+    reserving space for the marker itself, so the result never exceeds
+    *budget*) and the omitted middle is replaced with an explicit
+    ``[... truncated N bytes ...]`` marker recording exactly how many bytes
+    were dropped.
+    """
+    encoded = output.encode("utf-8")
+    if len(encoded) <= budget:
+        return output, False, len(encoded)
+
+    # Reserve room for the marker using the *total* length as a safe upper
+    # bound for its digit width — the real omitted count can only be smaller,
+    # so the marker built from it below never ends up longer than reserved.
+    reserved = _TRUNCATION_MARKER.format(n=len(encoded))
+    remaining = max(budget - len(reserved.encode("utf-8")), 0)
+    head_len = remaining // 2
+    tail_len = remaining - head_len
+    omitted = len(encoded) - head_len - tail_len
+    marker = _TRUNCATION_MARKER.format(n=omitted)
+    head = encoded[:head_len].decode("utf-8", errors="ignore")
+    tail = encoded[len(encoded) - tail_len :].decode("utf-8", errors="ignore") if tail_len else ""
+    text = f"{head}{marker}{tail}"
+    return text, True, len(text.encode("utf-8"))
+
+
+@dataclass
+class _HopComposition:
+    """Per-hop prompt-composition stats, recorded via the ``context_composed`` trace event."""
+
+    description_bytes: int
+    sections: list[dict[str, Any]] = field(default_factory=list)
+    total_bytes: int = 0
+    truncated: bool = False
+
+
+def _hop_message(
+    task: dict[str, Any], role: str, prior: list[HopResult]
+) -> tuple[str, _HopComposition]:
+    """Build the message handed to one role, threading prior hops' output.
+
+    The task description is never truncated. Each prior hop's output is capped
+    per ``_hop_carryover_budget`` (newest hop least-truncated) and truncated
+    head+tail via ``_truncate_carryover`` when it doesn't fit. Returns the
+    composed message plus a ``_HopComposition`` recording what was sent, for
+    the ``context_composed`` trace event — a measured baseline for Phase 17's
+    context compiler, not a compiler itself.
+    """
     desc = str(task.get("description", "")).strip()
     if role == "lead":
-        return (
+        message = (
             f"You are the pod Lead. Decompose this task into a concrete plan for "
             f"the Implementer (you never edit code yourself):\n\n{desc}"
         )
+        comp = _HopComposition(
+            description_bytes=len(desc.encode("utf-8")), total_bytes=len(message.encode("utf-8"))
+        )
+        return message, comp
+
+    budget = _cfg.HOP_CARRYOVER_BYTES
     lines = [f"Task: {desc}", ""]
-    for h in prior:
-        if h.output:
-            lines.append(f"--- {h.role} output ---\n{h.output}\n")
+    comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
+    last_index = len(prior) - 1
+    # Iterate in the original chronological order (oldest first) — unchanged
+    # from pre-cap behaviour, so message *layout* never changes, only content.
+    # Only the per-hop budget is recency-aware: rank counts back from the most
+    # recent hop (rank 0), so `_hop_carryover_budget` gives it the biggest share.
+    for i, h in enumerate(prior):
+        if not h.output:
+            continue
+        rank = last_index - i
+        hop_budget = _hop_carryover_budget(rank, budget)
+        original_bytes = len(h.output.encode("utf-8"))
+        text, truncated, sent_bytes = _truncate_carryover(h.output, hop_budget)
+        comp.sections.append(
+            {
+                "role": h.role,
+                "original_bytes": original_bytes,
+                "sent_bytes": sent_bytes,
+                "truncated": truncated,
+            }
+        )
+        comp.truncated = comp.truncated or truncated
+        lines.append(f"--- {h.role} output ---\n{text}\n")
     if role == "implementer":
         lines.append("You are the Implementer. Implement the change in the workspace.")
     elif role == "reviewer":
@@ -268,7 +361,9 @@ def _hop_message(task: dict[str, Any], role: str, prior: list[HopResult]) -> str
             "non-blank line must be exactly PASS or FAIL (case-insensitive), "
             "followed by evidence."
         )
-    return "\n".join(lines)
+    message = "\n".join(lines)
+    comp.total_bytes = len(message.encode("utf-8"))
+    return message, comp
 
 
 def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
@@ -385,7 +480,22 @@ def dispatch_task(
                 result.reason = f"pod budget reached (${spent:.2f} ≥ ${cap:.2f}) before {role}"
                 break
 
-        message = _hop_message(task, role, prior)
+        message, composition = _hop_message(task, role, prior)
+        _trace.trace_event(
+            project,
+            session_id,
+            role,
+            "context_composed",
+            _json.dumps(
+                {
+                    "hop": role,
+                    "description_bytes": composition.description_bytes,
+                    "sections": composition.sections,
+                    "total_bytes": composition.total_bytes,
+                    "truncated": composition.truncated,
+                }
+            ),
+        )
         _trace.trace_event(
             project,
             session_id,
