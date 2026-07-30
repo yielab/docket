@@ -71,7 +71,7 @@ eval_run_task() {
   # read top-level payloads/meta and a lastCallUsage key that doesn't exist
   # in the real shape — Phase 18 L-2 fixed the drift). Note usage.total is a
   # TOKEN count (input+output+cacheRead), not a USD figure — the daemon has
-  # no USD cost field (see the ACL's AgentRunResult docstring); it is kept
+  # no USD cost field (see the ACL's agent_run/TurnResult docstring); it is kept
   # here only as a relative, same-units cost-proxy across eval runs.
   local parsed
   parsed=$(python3 -c "

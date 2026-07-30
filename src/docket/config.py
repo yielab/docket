@@ -70,7 +70,7 @@ SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "
 # real context compiler is Phase 17 C-1.
 HOP_CARRYOVER_BYTES = int(os.environ.get("HOP_CARRYOVER_BYTES", str(32 * 1024)))
 
-# R-2: per-role retry budget for a *retryable* AgentRunResult failure (timeout or
+# R-2: per-role retry budget for a *retryable* TurnResult failure (timeout or
 # daemon_error only — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS; a non-zero
 # exit or a bad tester/reviewer verdict is a real answer and is never retried).
 # Value = retry attempts AFTER the first try, so "2" means up to 3 total tries.

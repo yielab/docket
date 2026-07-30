@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 2.1.0
+**Version**: 2.1.1
 **Status**: Complete for what it documents (task cancellation and parallel hop execution are
 explicitly out of scope — see "Does NOT cover"; tracked as Phase 16 W-2). The require_approval
 gate itself (Requirements → "require_approval gate and waiting_approval") ships with exactly one
@@ -226,13 +226,14 @@ This specification does NOT cover:
 
 ### Retries and the failure-kind taxonomy
 
-1. Every agent turn's outcome (`AgentRunResult` — an alias of `core.runtime_driver.TurnResult`
-   since Phase 18 L-1; same fields, same positional-construction compatibility) **MUST**
-   carry a `failure_kind` on failure: `timeout` (the turn exceeded its timeout), `daemon_error`
-   (a CLI/daemon-level failure — process couldn't run, OS error, malformed daemon response),
-   `nonzero_exit` (the daemon ran and returned a real non-zero result), or `invalid_output`
-   (the daemon succeeded but its output couldn't be used). A successful turn carries no
-   `failure_kind`.
+1. Every agent turn's outcome (`core.runtime_driver.TurnResult`; `edges/adapters/openclaw.py`
+   still re-exports the pre-Phase-18 name `AgentRunResult` as a plain alias, kept only because
+   `core/dispatch.py`'s `Runner` type alias still spells the old name — see that module's cleanup
+   note, Phase 18 CL-1) **MUST** carry a `failure_kind` on failure: `timeout` (the turn exceeded
+   its timeout), `daemon_error` (a CLI/daemon-level failure — process couldn't run, OS error,
+   malformed daemon response), `nonzero_exit` (the daemon ran and returned a real non-zero
+   result), or `invalid_output` (the daemon succeeded but its output couldn't be used). A
+   successful turn carries no `failure_kind`.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable — a transient hiccup, not a
    real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer/Tester
    verdict — see those gates) **MUST NEVER** be retried: retrying a real failure risks masking it
@@ -642,6 +643,17 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   verification-skipped notice).
 
 ## Changelog
+
+### Version 2.1.1 (2026-07-30)
+
+- **Phase 18 CL-1 (legacy/dead-code cleanup) — documentation only, no behavior change.**
+  `edges/adapters/openclaw.py`'s own code (the `agent_run` free function and its docstring) now
+  spells the canonical name `core.runtime_driver.TurnResult` directly instead of the Phase 18
+  L-1 alias `AgentRunResult`. The `AgentRunResult` name itself is **not** deleted — it still
+  has one real consumer, `core/dispatch.py`'s `Runner = Callable[..., _oc.AgentRunResult]` type
+  alias, and that file is owned by a different in-flight card (Phase 16 W-2) and out of CL-1's
+  file scope. This section's wording is updated to match; the alias, its fields, and its
+  positional-construction compatibility are otherwise unchanged from 2.0.1.
 
 ### Version 2.1.0 (2026-07-30)
 
