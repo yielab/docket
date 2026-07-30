@@ -34,21 +34,38 @@ from docket.edges.adapters import openclaw as _oc
 # Flags that consume the following token as their value (skipped when scanning
 # for bare positionals). --with/--pod are handled by parse_pod_roles.
 _ADD_VALUE_FLAGS = frozenset(
-    {"--from", "--codebase", "--path", "--name", "--with", "--pod", "--model", "--count"}
+    {
+        "--from",
+        "--codebase",
+        "--path",
+        "--name",
+        "--with",
+        "--pod",
+        "--model",
+        "--count",
+        "--blueprint",
+    }
 )
 
 
-def _parse_add_args(all_args: list[str]) -> tuple[str | None, str | None, str | None]:
-    """Extract (from_file, codebase, name) from `docket add` args.
+def _parse_add_args(
+    all_args: list[str],
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Extract (from_file, codebase, name, blueprint) from `docket add` args.
 
     ``--from <f>`` selects declarative mode. Codebase may be given as
-    ``--codebase``/``--path`` (or the 2nd bare positional); name as ``--name``
-    (or the 1st bare positional). Any value supplied here is trusted and skips
-    its interactive prompt. Returns ``None`` for anything not supplied.
+    ``--codebase``/``--path`` (or the 2nd bare positional; for a `workdir`
+    blueprint this is its working directory instead — see
+    ``core/blueprints.py``); name as ``--name`` (or the 1st bare positional);
+    blueprint as ``--blueprint <name>`` (ROADMAP Phase 16 W-7) — unset means
+    the caller falls back to the default blueprint (`software`). Any value
+    supplied here is trusted and skips its interactive prompt. Returns
+    ``None`` for anything not supplied.
     """
     from_file: str | None = None
     codebase: str | None = None
     name: str | None = None
+    blueprint: str | None = None
     positionals: list[str] = []
 
     i = 0
@@ -59,6 +76,7 @@ def _parse_add_args(all_args: list[str]) -> tuple[str | None, str | None, str | 
             ("--codebase", "cb"),
             ("--path", "cb"),
             ("--name", "nm"),
+            ("--blueprint", "bp"),
         ):
             if arg == flag and i + 1 < len(all_args):
                 val = all_args[i + 1]
@@ -83,24 +101,30 @@ def _parse_add_args(all_args: list[str]) -> tuple[str | None, str | None, str | 
             codebase = val
         elif setter == "nm":
             name = val
+        elif setter == "bp":
+            blueprint = val
 
     if positionals:
         if name is None:
             name = positionals[0]
         if codebase is None and len(positionals) > 1:
             codebase = positionals[1]
-    return from_file, codebase, name
+    return from_file, codebase, name, blueprint
 
 
 def run_add(all_args: list[str]) -> int:
     """Dispatch `docket add` (interactive, or `--from <spec-file>`).
 
-    Interactive flow: every project is a repo tied to a codebase. The codebase
-    defaults to the directory `docket add` ran in (or `--codebase <path>` /
-    the first positional, in which case it is *not* re-prompted), and the
-    project name is suggested from that path's directory name.
+    Interactive flow: provisions a pod from a blueprint (ROADMAP Phase 16
+    W-7) — ``--blueprint <name>`` selects one; omitted defaults to
+    `software`, today's Lead+Implementer pod against a codebase, unchanged.
+    A `codebase`-kind blueprint prompts for the codebase path (defaults to
+    the directory `docket add` ran in); a `workdir`-kind blueprint
+    (research/content/ops) prompts for a working directory instead — no
+    codebase is assumed, and none is auto-detected for stack. The project
+    name is suggested from that path's directory name.
     """
-    from_file, cli_codebase, cli_name = _parse_add_args(all_args)
+    from_file, cli_codebase, cli_name, cli_blueprint = _parse_add_args(all_args)
 
     if from_file is not None:
         return _cmd_add_declarative(from_file)
@@ -109,18 +133,30 @@ def run_add(all_args: list[str]) -> int:
         ui.error("interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.")
         return 1
 
-    # Codebase: an explicit path set up front is trusted and not re-prompted;
-    # otherwise offer the current working directory as the detected default.
-    if cli_codebase is not None:
-        codebase = str(Path(cli_codebase).expanduser())
-    else:
-        default_cb = str(_prov.default_codebase())
-        codebase = input(f"Codebase path [{default_cb}]: ").strip() or default_cb
-        codebase = str(Path(codebase).expanduser())
-    cb_path = Path(codebase)
+    from docket.core import blueprints as _bp
 
-    # Name: suggested from the codebase directory name; not prompted if given.
-    suggested_name = cli_name or _prov.suggest_project_name(cb_path)
+    blueprint_name = cli_blueprint or _bp.DEFAULT_BLUEPRINT
+    try:
+        blueprint = _bp.get_blueprint(blueprint_name)
+    except _bp.BlueprintError as exc:
+        ui.error(str(exc))
+        return 1
+
+    # Location: an explicit path set up front is trusted and not re-prompted;
+    # otherwise offer a sensible default. Meaning depends on workspace_kind —
+    # a codebase to detect stack from, or a plain working directory.
+    is_workdir = blueprint.workspace_kind == "workdir"
+    prompt_label = "Working directory" if is_workdir else "Codebase path"
+    if cli_codebase is not None:
+        location = str(Path(cli_codebase).expanduser())
+    else:
+        default_loc = str(_prov.default_codebase())
+        location = input(f"{prompt_label} [{default_loc}]: ").strip() or default_loc
+        location = str(Path(location).expanduser())
+    loc_path = Path(location)
+
+    # Name: suggested from the location's directory name; not prompted if given.
+    suggested_name = cli_name or _prov.suggest_project_name(loc_path)
     if cli_name is not None:
         name = cli_name
     else:
@@ -137,7 +173,9 @@ def run_add(all_args: list[str]) -> int:
         ui.error(f"A project or pod '{aid}' already exists.")
         return 1
 
-    detected_stack = _prov.detect_stack(cb_path)
+    # No codebase to inspect for a workdir blueprint — stack is whatever the
+    # operator types (or blank), never auto-detected from marker files.
+    detected_stack = "" if is_workdir else _prov.detect_stack(loc_path)
     stack = input(f"Stack [{detected_stack or 'unknown'}]: ").strip() or detected_stack or "unknown"
 
     description = input("Description (one line): ").strip()
@@ -145,15 +183,30 @@ def run_add(all_args: list[str]) -> int:
 
     from docket.cli import _pod
 
-    roles = _pod.parse_pod_roles(all_args)
+    # --pod full / --with only make sense against the `software` roster —
+    # any other blueprint provisions its own fixed roster as-is.
+    if blueprint.name == "software":
+        roles = _pod.parse_pod_roles(all_args)
+    else:
+        if any(a in ("--pod", "--with") or a.startswith("--with=") for a in all_args):
+            ui.warn(
+                f"--pod/--with only apply to the 'software' blueprint — ignoring for '{blueprint.name}'."
+            )
+        roles = blueprint.roles
+
     ui.console.print()
-    ui.info(f"Provisioning pod '{aid}' ({', '.join(roles)})...")
-    created = _pod.build_pod(aid, roles, codebase=codebase, stack=stack, description=description)
+    ui.info(f"Provisioning '{blueprint.name}' pod '{aid}' ({', '.join(roles)})...")
+    created = _pod.build_pod_from_blueprint(
+        aid, blueprint.name, location=location, stack=stack, description=description, roles=roles
+    )
     if not created:
         ui.error("Pod provisioning failed — no members were registered.")
         return 1
 
-    audit_log("agent.add", f"{aid} pod=({','.join(roles)}) source=interactive")
+    audit_log(
+        "agent.add",
+        f"{aid} blueprint={blueprint.name} pod=({','.join(roles)}) source=interactive",
+    )
 
     lead_id = f"{aid}-lead"
     if tg_group:
@@ -173,6 +226,60 @@ def run_add(all_args: list[str]) -> int:
     ui.console.print(f"  docket pod {aid} add reviewer # add a role")
     ui.console.print(f"  docket wire {lead_id}   (if no Telegram group yet)")
     return 0
+
+
+def _provision_pod_from_spec(
+    aid: str, blueprint_name: str, spec: dict[str, Any]
+) -> list[str] | None:
+    """Provision one pod from a `blueprint`-bearing `--from spec.yaml` entry.
+
+    Returns the created member ids, or ``None`` (already warned) if the pod
+    already exists or the blueprint name is unknown — the caller counts that
+    as a skip, matching the single-agent path's idempotence contract.
+    """
+    from docket.cli import _pod
+
+    if _pod.pod_member_ids(aid):
+        ui.warn(f"'{aid}' already exists — skipping.")
+        return None
+
+    from docket.core import blueprints as _bp
+
+    try:
+        blueprint = _bp.get_blueprint(blueprint_name)
+    except _bp.BlueprintError as exc:
+        ui.warn(f"'{aid}': {exc} — skipping.")
+        return None
+
+    location_field = "workDir" if blueprint.workspace_kind == "workdir" else "codebase"
+    location = str(spec.get(location_field, ""))
+    stack = str(spec.get("stack", ""))
+    description = str(spec.get("description", ""))
+    project_key = str(spec.get("projectKey", "default"))
+    budget = str(spec.get("budgetUsd", ""))
+
+    created = _pod.build_pod_from_blueprint(
+        aid,
+        blueprint.name,
+        location=location,
+        stack=stack,
+        description=description,
+        project_key=project_key,
+    )
+    if not created:
+        ui.warn(f"'{aid}': pod provisioning failed — no members were registered.")
+        return None
+
+    if budget and budget != "0":
+        with contextlib.suppress(Exception):
+            _oc.meta_set(f"{aid}-lead", "budgetUsd", budget)
+
+    audit_log(
+        "agent.add",
+        f"{aid} blueprint={blueprint.name} pod=({','.join(blueprint.roles)}) source=declarative",
+    )
+    ui.success(f"Provisioned '{blueprint.name}' pod '{aid}' with {len(created)} member(s).")
+    return created
 
 
 def _cmd_add_declarative(from_file: str) -> int:
@@ -222,6 +329,27 @@ def _cmd_add_declarative(from_file: str) -> int:
         aid = str(spec.get("id", "")).strip()
         if not aid:
             ui.warn("Skipping spec entry with no 'id' field.")
+            continue
+
+        # ROADMAP Phase 16 W-7: a spec entry carrying a `blueprint` field
+        # provisions a *pod* (build_pod_from_blueprint) instead of the single
+        # flat agent below — a genuinely different shape (a blueprint pod is
+        # never fewer than a Lead + one worker), so it gets its own existence
+        # check (`<aid>-lead`, not the bare `<aid>` workspace dir) rather than
+        # forcing the single-agent branch to understand pods.
+        blueprint_name = str(spec.get("blueprint", "")).strip()
+        if blueprint_name:
+            pod_created = _provision_pod_from_spec(aid, blueprint_name, spec)
+            if pod_created is None:
+                skipped.append(aid)
+                continue
+            created.extend(pod_created)
+            tg_group = str(spec.get("telegram", "")).strip()
+            if tg_group:
+                lead_id = f"{aid}-lead"
+                _oc.upsert_binding(lead_id, tg_group, "telegram", "group")
+                ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
+                wired = True
             continue
 
         if (_cfg.PROJECTS_DIR / aid).is_dir():

@@ -174,31 +174,51 @@ class TestContractOk:
 
 class TestParseAddArgs:
     def test_empty(self) -> None:
-        assert _parse_add_args([]) == (None, None, None)
+        assert _parse_add_args([]) == (None, None, None, None)
 
     def test_from_flag_space(self) -> None:
-        assert _parse_add_args(["--from", "spec.json"]) == ("spec.json", None, None)
+        assert _parse_add_args(["--from", "spec.json"]) == ("spec.json", None, None, None)
 
     def test_from_flag_equals(self) -> None:
-        assert _parse_add_args(["--from=spec.yaml"]) == ("spec.yaml", None, None)
+        assert _parse_add_args(["--from=spec.yaml"]) == ("spec.yaml", None, None, None)
 
     def test_codebase_flag(self) -> None:
-        assert _parse_add_args(["--codebase", "/src/x"]) == (None, "/src/x", None)
-        assert _parse_add_args(["--path=/src/y"]) == (None, "/src/y", None)
+        assert _parse_add_args(["--codebase", "/src/x"]) == (None, "/src/x", None, None)
+        assert _parse_add_args(["--path=/src/y"]) == (None, "/src/y", None, None)
 
     def test_name_flag(self) -> None:
-        assert _parse_add_args(["--name", "My App"]) == (None, None, "My App")
+        assert _parse_add_args(["--name", "My App"]) == (None, None, "My App", None)
 
     def test_positional_name_then_path(self) -> None:
-        assert _parse_add_args(["myapp", "/src/myapp"]) == (None, "/src/myapp", "myapp")
+        assert _parse_add_args(["myapp", "/src/myapp"]) == (None, "/src/myapp", "myapp", None)
 
     def test_flags_win_over_positionals(self) -> None:
-        assert _parse_add_args(["pos-name", "--name", "Flag Name"]) == (None, None, "Flag Name")
+        assert _parse_add_args(["pos-name", "--name", "Flag Name"]) == (
+            None,
+            None,
+            "Flag Name",
+            None,
+        )
 
     def test_pod_flags_do_not_leak_into_positionals(self) -> None:
-        assert _parse_add_args(["blog", "--pod", "full"]) == (None, None, "blog")
+        assert _parse_add_args(["blog", "--pod", "full"]) == (None, None, "blog", None)
         assert _parse_add_args(["blog", "/src/blog", "--with", "reviewer,tester"]) == (
             None,
             "/src/blog",
             "blog",
+            None,
         )
+
+    def test_blueprint_flag_space(self) -> None:
+        assert _parse_add_args(["research-demo", "--blueprint", "research"]) == (
+            None,
+            None,
+            "research-demo",
+            "research",
+        )
+
+    def test_blueprint_flag_equals(self) -> None:
+        assert _parse_add_args(["--blueprint=ops"]) == (None, None, None, "ops")
+
+    def test_blueprint_flag_does_not_leak_into_positionals(self) -> None:
+        assert _parse_add_args(["myops", "--blueprint", "ops"]) == (None, None, "myops", "ops")
