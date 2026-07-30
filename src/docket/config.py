@@ -86,12 +86,21 @@ def _optional_int_env(name: str) -> int | None:
     return int(raw) if raw else None
 
 
-# R-2: process-wide fallback timeouts for the serve dispatch loop (the "serve
-# config knob" — serve.py runs unattended, with no CLI flags to read). Precedence,
-# highest first: an explicit --timeout on `docket pod <p> dispatch` > a pod's own
-# Lead-meta turnTimeoutS/verifyTimeoutS > these > core/dispatch.py's DEFAULT_TIMEOUT.
+# R-2: process-wide timeouts for the serve dispatch loop (the "serve config
+# knob" — serve.py runs unattended, with no CLI flags to read). These are read
+# *only* by serve.py; the CLI never consults them.
+#
+# Precedence is per-caller, because each passes its own value as dispatch's
+# `explicit` argument (see core/dispatch.py's _resolve_timeout):
+#   CLI    `docket pod <p> dispatch --timeout N` > Lead-meta turn/verifyTimeoutS > DEFAULT_TIMEOUT
+#   serve  these envs (when set)                 > Lead-meta turn/verifyTimeoutS > DEFAULT_TIMEOUT
+#
+# Note the asymmetry: a set serve env knob *overrides* a pod's own Lead-meta
+# timeout for serve-triggered dispatches — it is a process-wide ceiling for
+# unattended runs, not a fallback beneath per-pod config.
+#
 # None (the default) means "no serve-wide override" — unset envs change nothing
-# from pre-R-2 behaviour.
+# from pre-R-2 behaviour, and Lead-meta then applies as usual.
 DISPATCH_TURN_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_TURN_TIMEOUT_S")
 DISPATCH_VERIFY_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_VERIFY_TIMEOUT_S")
 

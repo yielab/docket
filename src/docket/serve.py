@@ -21,11 +21,6 @@ token); it is printed at startup by default, or written to a 0600 file via
 systemd unit's journal). The approval endpoints reject all requests without a
 valid token — compared with `secrets.compare_digest` (Phase 18 G-6), not
 `==`, before touching approval state.
-=======
-Security model: the server binds to 127.0.0.1 by default. A randomly-generated
-Bearer token is printed at startup and required on every /approvals, /runs, and
-/dispatch request (DOCKET_SERVE_TOKEN env var pins a fixed token). Those
-endpoints reject all requests without a valid token before touching any state.
 
 R-3 (D-17): every dispatch this server triggers — webhook, due schedule, or the
 periodic sweep — is recorded in the ``core.runs`` registry *before* it starts
@@ -34,7 +29,6 @@ distinguish "done", "failed", and "never ran" via ``docket runs show`` /
 ``GET /runs/<id>``. No dispatch call site in this module silently discards an
 exception any more (no bare ``contextlib.suppress(Exception)`` around
 dispatch) — see ``core/runs.py``'s ``execute()``.
->>>>>>> pc/r-3
 """
 
 from __future__ import annotations
