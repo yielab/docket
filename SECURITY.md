@@ -57,6 +57,23 @@ and `docket gates status` report the live posture. See
 [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
 (Status: Implemented, on by default for new installs).
 
+## `docket mcp serve`: the control plane over MCP
+
+`docket mcp serve` (ROADMAP Phase 18 L-3) exposes docket's control plane — pods, task queue,
+dispatch, the run registry, HITL approvals, and recorded cost — as MCP (Model Context Protocol)
+tools over stdio, so a client like Claude Code or Codex can drive docket the same way a human
+would from a shell. It changes docket's *surface*, not its *model*: every tool call goes through
+the exact same audit log, approval gate, and dispatch pipeline a CLI invocation does — there is no
+MCP-specific bypass, and every call (including read-only ones) is audit-logged. Trust boundary:
+whoever can spawn the `docket mcp serve` process can do anything the CLI can do — the same
+boundary the CLI itself already has, since the server only speaks stdio (no network listener, no
+bearer token, unlike `docket serve`'s HTTP API). See
+[`specs/api/mcp-server.spec.md`](specs/api/mcp-server.spec.md).
+
+**This is a server, not a host.** `docket mcp serve` never executes another MCP server's tools
+inside an agent turn — docket consuming third-party MCP tools (the concern in the "What docket
+does NOT protect against" section below) is a separate, deliberately unbuilt capability.
+
 ## Where you run docket matters: homelab vs. public VPS
 
 > **Homelab / trusted single-user machine — relatively safe.** You are the only operator, the

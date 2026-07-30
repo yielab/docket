@@ -309,6 +309,20 @@ pipeline, whatever triggered it (ROADMAP Phase 14 R-3)
 **Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`)
 **Return**: `0` on success, `1` if `show`'s run id is unknown or no id was given
 
+#### docket mcp
+
+**Purpose**: Expose docket's control plane as an MCP (Model Context Protocol) stdio server
+(ROADMAP Phase 18 L-3) — full contract in `mcp-server.spec.md`
+**Syntax**: `docket mcp serve`
+**Actions**:
+- `serve`: Start the stdio MCP server (blocks until the client disconnects). Requires the
+  optional `mcp` extra (`pip install 'docket[mcp]'`); prints an actionable hint and exits 1 if
+  it isn't installed, rather than a bare traceback
+**Output**: Nothing on stdout (stdout is the JSON-RPC transport once serving); one stderr line at
+startup naming the registered tools
+**Return**: `0` on clean shutdown or bare `docket mcp` (prints usage), `1` if the SDK is missing or
+an unrecognized subcommand was given
+
 ### Memory and Context Commands
 
 #### docket context
@@ -690,6 +704,9 @@ Format: `"Action description. Continue? (y/N): "`
 
 - ROADMAP Phase 16 W-6 (declarative role archetypes): documented the new `docket roles
   list/show/add/validate` command — see role-archetypes.spec.md for the registry it manages.
+- ROADMAP Phase 18 L-3: added the `docket mcp serve` section — the new MCP (Model Context
+  Protocol) stdio server exposing docket's control plane as tools. Full contract in the new
+  `mcp-server.spec.md`.
 
 ### Version 1.7.0 (2026-07-30)
 

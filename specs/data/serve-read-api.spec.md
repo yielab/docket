@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Stable
 **Last Updated**: 2026-07-30
 
@@ -136,7 +136,7 @@ to one pod.
   "runs": [
     {
       "id":         "run-3f2a1c9e-...",
-      "source":     "cli | webhook | schedule | sweep",
+      "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "myapp",
       "state":      "queued | running | succeeded | failed",
       "taskIds":    ["task-91a2..."],
@@ -179,7 +179,8 @@ silently discarded.
 - `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer token with `401`,
   before touching the run registry.
 - A run record's `state` MUST be one of `queued | running | succeeded | failed`; `source` MUST be
-  one of `cli | webhook | schedule | sweep`.
+  one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
+  `dispatch` tool).
 - `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
   `GET /runs/<id>` immediately after the response is sent (the record exists before the HTTP
   response is written, even though the dispatch itself is still in flight).
@@ -228,6 +229,13 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.1.0 — 2026-07-30
+
+- Phase 18 L-3: `mcp` added as a valid run `source` (`docket mcp serve`'s `dispatch` tool creates
+  a run record before any dispatch work starts, exactly like this webhook does — see
+  `specs/api/mcp-server.spec.md`). Additive: existing `cli | webhook | schedule | sweep` values
+  are unchanged, so this does not bump `apiVersion`.
 
 ### 2.0.1 — 2026-07-30
 

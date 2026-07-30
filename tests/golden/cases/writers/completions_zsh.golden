@@ -29,6 +29,7 @@ _docket() {
     'gates:Manage tool-approval security gates'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set)'
     'runs:Inspect the dispatch run registry (list/show) — one record per dispatch invocation'
+    'mcp:Expose the control plane as an MCP server (stdio) — `docket mcp serve`'
     'audit:Show the audit log, or verify its tamper-evidence chain'
     'eval:Run non-blocking specialist-role evals'
     'snapshot:Export system state snapshot as JSON'
@@ -61,6 +62,7 @@ _docket() {
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
+    mcp)             compadd serve ;;
     gates|security)  compadd status enable disable isolate classes ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;

@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
 removal below are all shipped; `models.*` and a future `runs.cancel` remain tracked gaps — see
 Requirements)
@@ -54,6 +54,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      passed) — ROADMAP Phase 14 R-6; names the member and the (validated) command being set,
      never the raw command's stdout
    - `persona.set` / `persona.clear` (`cli/__init__.py`'s `persona` command)
+   - `mcp.<tool>` (`cli/_mcp.py`, ROADMAP Phase 18 L-3) — **every** `docket mcp serve` tool call
+     (`status`, `pods`, `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`,
+     `approvals_grant`, `approvals_deny`, `cost`) writes one entry unconditionally, before the
+     underlying operation runs — including the six read-only tools, which have no other
+     mutating-command analogue in this list. A mutating tool (`delegate`, `dispatch`,
+     `approvals_grant`/`approvals_deny`) additionally triggers whatever domain-specific entry the
+     `core/` function it calls already writes (e.g. `approval.grant` tagged `channel=mcp`) — two
+     entries for one call is intentional, not a duplicate bug: the `mcp.*` line is the uniform
+     "an MCP call happened" record, the domain line is the same record any other channel producing
+     that same effect would write. See `specs/api/mcp-server.spec.md`.
 2. **Tracked gaps (NOT recorded — out of this version's scope):** role→model
    policy changes (`docket models set/preset/reset`) and a future `docket runs
    cancel` (Phase 16 — the run registry these would cancel does not exist yet).
@@ -215,6 +225,15 @@ $ docket audit verify   # after a line was hand-edited
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.1.0 (2026-07-30)
+
+- ROADMAP Phase 18 L-3 (docket as an MCP server): added the `mcp.<tool>` action family — every
+  `docket mcp serve` tool call is audited unconditionally, first thing, before the underlying
+  operation runs, regardless of whether that operation also has its own action family (e.g.
+  `approval.grant`). This is the first action family that covers read-only operations (`status`,
+  `pods`, `queue`, `runs`, `approvals_list`, `cost` have no other audited surface anywhere else in
+  this project). See `specs/api/mcp-server.spec.md`.
 
 ### Version 2.0.1 (2026-07-30)
 
