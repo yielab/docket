@@ -2,9 +2,9 @@
 
 ``core/pipeline.py`` defines the format only — a Pydantic model for the YAML
 dialect that ROADMAP Phase 16's W-2 executor will eventually run pods
-through, retiring the Lobster dialect docket lints but can't execute
-(decision D-16). No executor exists yet; this suite tests the model and its
-validation, not any dispatch behavior.
+through, replacing the Lobster dialect docket used to lint but could never
+fully execute (retired by W-3, decision D-16). No executor exists yet; this
+suite tests the model and its validation, not any dispatch behavior.
 
   * TestRoundTrip          — a valid, full-featured pipeline parses and
     round-trips through dump/validate unchanged.
