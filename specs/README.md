@@ -110,10 +110,10 @@ Each specification document must include:
 | Agent Lifecycle | 1.3.0 | Complete | |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.0.1 | Implemented | Hash-chained + `docket audit verify`; `models.*`/`runs.cancel` still uncovered (Phase 15 G-4 follow-up) |
-| Cost Tracking | 1.2.0 | Implemented | Auto-pause is real (Phase 14 R-5); enforcement stays scoped to the pod-dispatch lane |
+| Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
 | Model Profiles | 2.3.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2) |
-| Pod Dispatch | 2.0.0 | Complete | v2 state machine: locked claims, crash resume, retries, bounded rework, auto-pause (Phase 14 R-1…R-7) |
+| Pod Dispatch | 2.0.1 | Complete | v2 state machine: locked claims, crash resume, retries, bounded rework, auto-pause (Phase 14 R-1…R-7); hops now run through the RuntimeDriver port (Phase 18 L-1) |
 | Security Gates | 0.4.1 | Implemented (on by default) | Approval-seam gap stated inside → Phase 15 G-1/G-5 |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |

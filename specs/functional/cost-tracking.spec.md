@@ -1,6 +1,6 @@
 # Cost Tracking Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
 scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause")
 **Last Updated**: 2026-07-30
@@ -35,6 +35,15 @@ pod-dispatch.spec.md).
    ("none recorded by the daemon for these sessions") rather than print a computed
    figure as if recorded. The bundled pricing table powers comparative estimates only
    (see model-profiles.spec.md).
+4. **(Phase 18 L-1 / D-14)** The session-JSONL parsing behind requirement 2 **MUST** live
+   entirely inside `edges/adapters/openclaw.py`'s `OpenClawDriver` — the one shipped
+   implementation of the `RuntimeDriver` port (`core/runtime_driver.py`) — and **MUST NOT**
+   appear anywhere under `core/`. `core/utils.py`'s `aggregate_cost`/`cost_history` are pure
+   translations of the driver's `usage()` return value into the legacy `CostTotals`/
+   `DayRecord` shapes `cli/_cost.py`, `cli/_doctor.py`, and `core/dispatch.py` already depend
+   on; they no longer open a session file themselves. A guard test
+   (`test_ch2_openclaw_acl_guard.py::test_core_has_no_session_format_knowledge`) fails the
+   build if this regresses.
 
 ### Budget caps
 
@@ -164,6 +173,20 @@ $ docket pod myproject dispatch
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+
+- ROADMAP Phase 18 L-1 (D-14): the session-JSONL parsing behind cost reporting (requirement 2)
+  moved from `core/utils.py` into `edges/adapters/openclaw.py`'s `OpenClawDriver` — the one
+  shipped implementation of the new `RuntimeDriver` port (`core/runtime_driver.py`). This closes
+  an ACL leak a 2026-07-29 platform audit found: `core/utils.py`'s `aggregate_cost`/
+  `cost_history` used to open `sessions/*.jsonl` and parse the daemon's `message.usage` record
+  shape directly. Both functions keep their exact names, signatures, and return shapes
+  (`CostTotals`/`DayRecord`) — every existing caller (`cli/_cost.py`, `cli/_doctor.py`,
+  `core/dispatch.py`'s `pod_recorded_cost`/`pod_gating_cost`) is unaffected — but they are now
+  pure translations of `OpenClawDriver.usage()`'s `UsageReport`, not parsers. Added requirement 4
+  naming the guard test that enforces this going forward. No behavior change to what `docket
+  cost` reports or how it's derived — this is a containment refactor, not a new capability.
 
 ### Version 1.2.0 (2026-07-30)
 

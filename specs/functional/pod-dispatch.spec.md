@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Complete (task cancellation and parallel hop execution are explicitly out of
 scope — see "Does NOT cover"; tracked as Phase 16 W-2)
 **Last Updated**: 2026-07-30
@@ -177,8 +177,13 @@ This specification does NOT cover:
 
 ### Per-hop execution
 
-1. Each hop **MUST** be one real, costed agent turn via the ACL's `agent_run` — dispatch never
-   simulates or skips a turn to save cost.
+1. Each hop **MUST** be one real, costed agent turn via the `RuntimeDriver` port's `run_turn`
+   (`core/runtime_driver.py`; **Phase 18 L-1 / D-14** — `dispatch_task`'s default runner is
+   `edges.adapters.openclaw.default_driver().run_turn`, a one-line swap from the pre-L-1
+   `_oc.agent_run` at the same call site) — dispatch never simulates or skips a turn to save
+   cost. `OpenClawDriver.run_turn` is a thin delegation to the pre-existing `agent_run` free
+   function, so this is a containment refactor, not a behavior change: the daemon subprocess
+   call, its argv, and its JSON-parsing are exactly what they were before L-1.
 2. The message handed to each role **MUST** thread prior hops' output so a later role sees what
    earlier roles produced, subject to the bounded carryover cap (see "Bounded hop prompts"
    below); the Reviewer and Tester messages additionally state their required verdict-marker
@@ -196,7 +201,8 @@ This specification does NOT cover:
 
 ### Retries and the failure-kind taxonomy
 
-1. Every agent turn's outcome (`AgentRunResult`, the ACL's `agent_run` return value) **MUST**
+1. Every agent turn's outcome (`AgentRunResult` — an alias of `core.runtime_driver.TurnResult`
+   since Phase 18 L-1; same fields, same positional-construction compatibility) **MUST**
    carry a `failure_kind` on failure: `timeout` (the turn exceeded its timeout), `daemon_error`
    (a CLI/daemon-level failure — process couldn't run, OS error, malformed daemon response),
    `nonzero_exit` (the daemon ran and returned a real non-zero result), or `invalid_output`
@@ -499,6 +505,22 @@ run continues from the Reviewer.)
   verification-skipped notice).
 
 ## Changelog
+
+### Version 2.0.1 (2026-07-30)
+
+- ROADMAP Phase 18 L-1 (D-14): each hop's agent turn now runs through the typed `RuntimeDriver`
+  port (`core/runtime_driver.py`) — `dispatch_task`'s default runner is
+  `edges.adapters.openclaw.default_driver().run_turn`, swapped in at the exact call site that
+  used to read `_oc.agent_run` (a one-line change; `core/dispatch.py` is otherwise untouched).
+  `OpenClawDriver.run_turn` delegates straight through to the pre-existing `agent_run` free
+  function, so the daemon subprocess call, its argv, and its retry/timeout/failure-kind semantics
+  are byte-for-byte unchanged — this is a containment refactor (closing an ACL leak the
+  session-JSONL cost/trace parsing had opened), not a behavior change to the pipeline.
+  `AgentRunResult` is now an alias of `core.runtime_driver.TurnResult`; every existing
+  positional-construction call site (tests included) keeps working unchanged. Test coverage
+  gained a shared `FakeDriver` test double (`tests/python/fakes.py`) implementing the full
+  `RuntimeDriver` protocol, adopted by `test_dispatch.py` in place of its former ad-hoc
+  `_RecordingRunner` shim.
 
 ### Version 2.0.0 (2026-07-30)
 

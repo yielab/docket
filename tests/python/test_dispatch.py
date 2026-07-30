@@ -35,6 +35,8 @@ from docket.core import dispatch as _dispatch
 from docket.core import resources as _res
 from docket.edges.adapters import openclaw as _oc
 
+from .fakes import FakeDriver
+
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
 
 
@@ -87,28 +89,11 @@ def _seed_pod(
     return oc_dir
 
 
-class _RecordingRunner:
-    """Stub matching agent_run's signature; records calls, returns canned results."""
-
-    def __init__(self, *, ok: bool = True, cost: float = 0.02, fail_role: str | None = None):
-        self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
-        self.ok = ok
-        self.cost = cost
-        self.fail_role = fail_role
-
-    def __call__(
-        self,
-        agent_id: str,
-        session_key: str,
-        message: str,
-        timeout: int,
-        env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
-        self.calls.append((agent_id, session_key, message, timeout, env))
-        role = agent_id.rsplit("-", 1)[-1]
-        if self.fail_role and role == self.fail_role:
-            return _oc.AgentRunResult(False, "", 0.0, {}, "boom")
-        return _oc.AgentRunResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+# Phase 18 L-1: the pipeline-semantics tests below inject `FakeDriver` (the one
+# RuntimeDriver test double, tests/python/fakes.py) as dispatch.py's Runner —
+# it is callable with agent_run's exact signature, so it drops in unchanged
+# wherever a `runner=` kwarg is passed. Replaces this file's former ad-hoc
+# `FakeDriver` shim.
 
 
 # ── ACL agent_run against a fake binary ──────────────────────────────────────────
@@ -240,7 +225,7 @@ class TestPipeline:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _dispatch.enqueue_task("demo", "Fix the bug")
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         results = _dispatch.dispatch_pod("demo", runner=runner)
         assert len(results) == 1
         res = results[0]
@@ -257,7 +242,7 @@ class TestPipeline:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
         _dispatch.enqueue_task("demo", "Ship it")
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner(cost=0.05))
+        _dispatch.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
         tasks = _dispatch.read_tasks("demo")
         assert tasks[0]["status"] == "done"
         assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
@@ -266,7 +251,7 @@ class TestPipeline:
     def test_traces_written_per_hop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         _dispatch.enqueue_task("demo", "Trace me")
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
         trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
         assert len(trace_files) == 1
         events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
@@ -281,7 +266,7 @@ class TestPipeline:
     ) -> None:
         _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
         _dispatch.enqueue_task("demo", "Break early")
-        runner = _RecordingRunner(fail_role="implementer")
+        runner = FakeDriver(fail_role="implementer")
         res = _dispatch.dispatch_pod("demo", runner=runner)[0]
         assert res.status == "failed"
         # Lead + Implementer ran; Reviewer + Tester never got dispatched.
@@ -295,7 +280,7 @@ class TestPipeline:
         _dispatch.enqueue_task("demo", "Too expensive")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         res = _dispatch.dispatch_pod("demo", runner=runner)[0]
         assert res.status == "blocked"
         assert runner.calls == []  # nothing dispatched
@@ -308,7 +293,7 @@ class TestPipeline:
         oc_dir = _seed_pod(tmp_path, monkeypatch, project="demo")
         _pod.build_pod("other", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/other")
         _dispatch.enqueue_task("demo", "Stay in my lane")
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         _dispatch.dispatch_pod("demo", runner=runner)
         assert runner.calls, "expected dispatch to run"
         assert all(c[0].startswith("demo-") for c in runner.calls)
@@ -321,7 +306,7 @@ class TestPipeline:
         raw["agents"]["list"] = [a for a in raw["agents"]["list"] if a["id"] != "demo-lead"]
         _cfg.CONFIG_FILE.write_text(json.dumps(raw))
         with pytest.raises(_dispatch.DispatchError):
-            _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+            _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
 
 # ── FD-0: pod port range / scratch dir reach the implementer hop's real env ──────
@@ -368,7 +353,7 @@ class TestHopEnvInjection:
         runner call and env=None to the lead hop — the acceptance gate end to end."""
         _seed_pod(tmp_path, monkeypatch)
         _dispatch.enqueue_task("demo", "Use my env")
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         _dispatch.dispatch_pod("demo", runner=runner)
         by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
         assert by_role["lead"] is None
@@ -389,7 +374,7 @@ class TestHopEnvInjection:
         raw.pop("scratchDir", None)
         path.write_text(json.dumps(raw))
         _dispatch.enqueue_task("demo", "No allocation here")
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         _dispatch.dispatch_pod("demo", runner=runner)
         by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
         assert by_role["implementer"] is None
@@ -584,7 +569,7 @@ class _CrashOnRoleRunner:
 
 
 class _VerdictAwareRunner:
-    """Like _RecordingRunner, but Reviewer/Tester hops carry a real verdict so a
+    """Like FakeDriver, but Reviewer/Tester hops carry a real verdict so a
     full pod can finish `done` (R-4 parses the Reviewer's APPROVE/REQUEST-CHANGES
     first line the same way FD-2 parses the Tester's PASS/FAIL)."""
 
@@ -657,7 +642,7 @@ class TestCrashRecovery:
             _dispatch.dispatch_pod("demo", runner=crasher)
 
         monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        runner = _RecordingRunner()
+        runner = FakeDriver()
         results = _dispatch.dispatch_pod("demo", runner=runner)  # resume defaults to False
         assert results == []  # nothing eligible without --resume
         assert runner.calls == []
@@ -675,7 +660,7 @@ class TestCrashRecovery:
             _dispatch.dispatch_pod("demo", runner=crasher)
 
         monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
         trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
         events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
@@ -693,7 +678,7 @@ class TestBlockedStaysBlocked:
         _dispatch.enqueue_task("demo", "Too expensive")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-        runner = _RecordingRunner()
+        runner = FakeDriver()
 
         first = _dispatch.dispatch_pod("demo", runner=runner)
         assert first[0].status == "blocked"
@@ -712,7 +697,7 @@ class TestBlockedStaysBlocked:
         task = _dispatch.enqueue_task("demo", "Too expensive")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
         assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
 
         assert _dispatch.retry_task("demo", task["id"]) is True
@@ -731,7 +716,7 @@ class TestBlockedStaysBlocked:
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
         lead_id = _pod.pod.member_id("demo", "lead")
 
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
         # R-5: the first cap breach also pauses the Lead, so a second dispatch
         # call is refused outright at claim time — task Two is never even
         # attempted (still "pending"). Clear the pause (what a real
@@ -739,7 +724,7 @@ class TestBlockedStaysBlocked:
         # call can claim and block it too, exercising the same
         # `unblock_pod` contract the original (pre-R-5) test covered.
         _oc.meta_set(lead_id, "paused", False)
-        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=FakeDriver())
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == 2
         assert all(t["status"] == "blocked" for t in tasks)
@@ -789,7 +774,7 @@ class TestLegacyQueueLoads:
         assert tasks[0]["claimId"] is None
         assert tasks[0]["claimedAt"] is None
 
-        results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        results = _dispatch.dispatch_pod("demo", runner=FakeDriver())
         assert results[0].status == "done"
         assert _dispatch.read_tasks("demo")[0]["status"] == "done"
 

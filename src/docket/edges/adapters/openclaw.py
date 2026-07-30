@@ -1,8 +1,16 @@
 """Anti-Corruption Layer: the single Python module that knows OpenClaw.
 
 INVARIANT: No other Python module in this codebase may import or reference
-openclaw.json, auth-profiles.json, or any other OpenClaw-owned file format.
-All knowledge of those formats lives here and nowhere else.
+openclaw.json, auth-profiles.json, session-JSONL, or any other OpenClaw-owned
+file format. All knowledge of those formats lives here and nowhere else.
+
+Phase 18 L-1 (D-14) added ``OpenClawDriver``, the one shipped implementation
+of ``core.runtime_driver.RuntimeDriver`` — see that module's docstring for
+the port's rationale. ``OpenClawDriver`` is what now owns the session-JSONL
+cost/turn parsing that used to leak into ``core/utils.py`` and
+``core/trace.py``; the free functions below (``agent_run``,
+``register_agent_cli``, …) are unchanged and the driver delegates to them
+directly, so nothing about their tested behavior moves.
 """
 
 from __future__ import annotations
@@ -11,11 +19,12 @@ import contextlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import subprocess
 
+import docket.config as _cfg
 from docket.config import (
     CONFIG_FILE,
     auth_profiles_path,
@@ -30,6 +39,18 @@ from docket.core.oc_models import (
     OcMatch,
     OcPeer,
     OpenClawConfig,
+)
+from docket.core.runtime_driver import (
+    DriverCapabilities,
+    ProvisionResult,
+    SessionSlice,
+    SessionSummary,
+    SessionTurn,
+    TeardownResult,
+    TurnResult,
+    UsageDay,
+    UsageReport,
+    UsageTotals,
 )
 from docket.edges import store
 
@@ -896,26 +917,13 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
 # ``invalid_output`` are real answers (the turn ran and said something, or the
 # CLI is fundamentally misbehaving) and are never retried. Always ``None`` when
 # ``ok`` is True.
-FailureKind = Literal["timeout", "daemon_error", "nonzero_exit", "invalid_output"]
-
-
-@dataclass
-class AgentRunResult:
-    """Outcome of one `openclaw agent` turn.
-
-    cost_usd is always 0.0 against daemon v2026.2.23 — that version returns only
-    token counts (usage.input/output), not a USD cost field.
-    """
-
-    ok: bool
-    output: str
-    cost_usd: float  # 0.0 when the daemon doesn't report a USD cost
-    raw: dict[str, Any]  # full parsed JSON (empty when unparseable)
-    error: str = ""
-    # R-2: populated only when ok is False (see FailureKind). Additive field with
-    # a default, appended last, so every existing positional call site
-    # (``AgentRunResult(False, "", 0.0, {}, "boom")``) keeps working unchanged.
-    failure_kind: FailureKind | None = None
+#
+# Phase 18 L-1: ``FailureKind``/``AgentRunResult`` now live as
+# ``core.runtime_driver.FailureKind``/``TurnResult`` (the RuntimeDriver port) —
+# aliased back to these names here so every existing call site (positional
+# construction included, e.g. ``AgentRunResult(False, "", 0.0, {}, "boom")``)
+# keeps working unchanged.
+AgentRunResult = TurnResult
 
 
 # Confirmed daemon shape (v2026.2.23): text at result.payloads[0].text.
@@ -1232,3 +1240,348 @@ def all_agent_ids() -> list[str]:
     except Exception:
         return []
     return ids
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RuntimeDriver port (Phase 18 L-1 / D-14): OpenClawDriver
+#
+# Everything below this line owns the session-JSONL parsing that used to leak
+# into core/utils.py (aggregate_cost/cost_history) and core/trace.py
+# (trace_ingest). See core/runtime_driver.py's module docstring for the port's
+# rationale and core/dispatch.py for the one real integration point
+# (``default_driver().run_turn`` is the pipeline's Runner).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _sessions_dir(agent_id: str) -> Path:
+    """Daemon session-log directory for *agent_id* (OpenClaw's own layout)."""
+    return _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
+
+
+def _iso_now() -> str:
+    import datetime as _dt
+
+    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_session_jsonl(path: Path) -> dict[str, Any]:
+    """Aggregate one session JSONL file's ``message.usage`` records.
+
+    Moved verbatim from core/utils.py's ``_parse_session_file`` (Phase 18 L-1) —
+    this is the actual daemon session-record format knowledge the card exists
+    to pull out of ``core/``.
+    """
+    import json as _json
+
+    t: dict[str, Any] = {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "cost": 0.0,
+        "turns": 0,
+    }
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                data: dict[str, Any] = _json.loads(line)
+            except Exception:
+                continue
+            msg = data.get("message", {})
+            usage: dict[str, Any] = msg.get("usage", {}) if isinstance(msg, dict) else {}
+            if usage:
+                t["input"] = int(t["input"]) + int(usage.get("input", 0))
+                t["output"] = int(t["output"]) + int(usage.get("output", 0))
+                t["cacheRead"] = int(t["cacheRead"]) + int(usage.get("cacheRead", 0))
+                t["cacheWrite"] = int(t["cacheWrite"]) + int(usage.get("cacheWrite", 0))
+                cost_field = usage.get("cost", {})
+                t["cost"] = float(t["cost"]) + (
+                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
+                )
+                t["turns"] = int(t["turns"]) + 1
+    except Exception:
+        pass
+    return t
+
+
+def _write_cost_index(index_path: Path, index: dict[str, Any]) -> None:
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(index_path, index)
+
+
+def _usage_totals(agent_id: str) -> UsageTotals:
+    """Token/cost totals for *agent_id*, incrementally cached by (mtime, size).
+
+    Moved verbatim from core/utils.py's ``aggregate_cost`` (Phase 18 L-1). Set
+    ``DOCKET_NO_COST_INDEX=1`` to force a full recompute.
+    """
+    import json as _json
+    import os as _os
+
+    sessions_dir = _sessions_dir(agent_id)
+    index_path = _cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-index.json"
+    use_index = _os.environ.get("DOCKET_NO_COST_INDEX") != "1"
+
+    index: dict[str, Any] = {}
+    if use_index and index_path.exists():
+        try:
+            index = _json.loads(index_path.read_text(encoding="utf-8"))
+        except Exception:
+            index = {}
+
+    totals = UsageTotals()
+    seen: set[str] = set()
+    changed = False
+
+    if sessions_dir.is_dir():
+        for path in sorted(sessions_dir.glob("*.jsonl")):
+            name = path.name
+            seen.add(name)
+            try:
+                st = path.stat()
+                sig: list[int] = [int(st.st_mtime), st.st_size]
+            except OSError:
+                continue
+
+            ent = index.get(name)
+            if use_index and ent and ent.get("sig") == sig:
+                t: dict[str, Any] = ent["totals"]
+            else:
+                t = _parse_session_jsonl(path)
+                index[name] = {"sig": sig, "totals": t}
+                changed = True
+
+            totals.input_tokens += int(t.get("input", 0))
+            totals.output_tokens += int(t.get("output", 0))
+            totals.cache_read += int(t.get("cacheRead", 0))
+            totals.cache_write += int(t.get("cacheWrite", 0))
+            totals.cost_usd += float(t.get("cost", 0.0))
+            totals.turns += int(t.get("turns", 0))
+
+    if use_index:
+        for name in list(index.keys()):
+            if name not in seen:
+                del index[name]
+                changed = True
+        if changed:
+            _write_cost_index(index_path, index)
+
+    return totals
+
+
+def _write_hist_index(
+    hist_path: Path,
+    sigs: dict[str, list[int]],
+    hist: dict[str, dict[str, Any]],
+) -> None:
+    hist_path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(Exception):
+        store.write_json(hist_path, {"sigs": sigs, "history": hist})
+
+
+def _usage_by_day(agent_id: str) -> list[UsageDay]:
+    """Per-day token/cost breakdown for *agent_id*, cached by the file-set signature.
+
+    Moved verbatim from core/utils.py's ``cost_history`` (Phase 18 L-1).
+    """
+    import json as _json
+    import os as _os
+
+    sessions_dir = _sessions_dir(agent_id)
+    hist_path = _cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-history.json"
+    use_index = _os.environ.get("DOCKET_NO_COST_INDEX") != "1"
+
+    sigs: dict[str, list[int]] = {}
+    files: list[Path] = []
+    if sessions_dir.is_dir():
+        files = sorted(sessions_dir.glob("*.jsonl"))
+        for f in files:
+            try:
+                st = f.stat()
+                sigs[f.name] = [int(st.st_mtime), st.st_size]
+            except OSError:
+                pass
+
+    cached: dict[str, Any] = {}
+    if use_index and hist_path.exists():
+        try:
+            cached = _json.loads(hist_path.read_text(encoding="utf-8"))
+        except Exception:
+            cached = {}
+
+    hist: dict[str, dict[str, Any]]
+    if use_index and cached.get("sigs") == sigs:
+        hist = cached.get("history", {})
+    else:
+        hist = {}
+        for f in files:
+            try:
+                lines = f.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                try:
+                    d: dict[str, Any] = _json.loads(line)
+                except Exception:
+                    continue
+                msg = d.get("message", {})
+                usage: dict[str, Any] = msg.get("usage", {}) if isinstance(msg, dict) else {}
+                if not usage:
+                    continue
+                ts = d.get("timestamp", "")
+                day = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else "unknown"
+                b = hist.setdefault(day, {"turns": 0, "input": 0, "output": 0, "cost": 0.0})
+                b["turns"] = int(b["turns"]) + 1
+                b["input"] = int(b["input"]) + int(usage.get("input", 0))
+                b["output"] = int(b["output"]) + int(usage.get("output", 0))
+                cost_field = usage.get("cost", {})
+                b["cost"] = float(b["cost"]) + (
+                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
+                )
+        if use_index:
+            _write_hist_index(hist_path, sigs, hist)
+
+    return [
+        UsageDay(
+            date=day,
+            turns=int(b["turns"]),
+            input_tokens=int(b["input"]),
+            output_tokens=int(b["output"]),
+            cost_usd=round(float(b["cost"]), 6),
+        )
+        for day, b in sorted(hist.items())
+    ]
+
+
+def _read_new_turns(agent_id: str, session_id: str, offset: int) -> SessionSlice:
+    """Decode one session file's records past *offset* (a line-count cursor).
+
+    Moved verbatim (semantics-preserving) from core/trace.py's ``trace_ingest``
+    inner loop (Phase 18 L-1) — the daemon session-record ``type``/``timestamp``
+    vocabulary is decoded here and nowhere else.
+    """
+    import json as _json
+
+    src = _sessions_dir(agent_id) / f"{session_id}.jsonl"
+    try:
+        all_lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return SessionSlice(session_id, False, "", [], None, offset)
+
+    new_lines = all_lines[offset:]
+    if not new_lines:
+        return SessionSlice(session_id, False, "", [], None, offset)
+
+    session_start_ts = ""
+    with contextlib.suppress(Exception):
+        session_start_ts = str(_json.loads(all_lines[0]).get("timestamp", ""))
+
+    turns: list[SessionTurn] = []
+    last_ts: str | None = None
+    for line in new_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            rec: dict[str, Any] = _json.loads(stripped)
+        except _json.JSONDecodeError:
+            continue
+
+        etype = str(rec.get("type", ""))
+        ts = str(rec.get("timestamp", _iso_now()))
+        last_ts = ts
+
+        if etype == "tool_use":
+            turns.append(
+                SessionTurn(ts=ts, kind="tool_call", daemon_type=etype, record_id=rec.get("id"))
+            )
+        elif etype == "tool_result":
+            turns.append(
+                SessionTurn(ts=ts, kind="tool_result", daemon_type=etype, record_id=rec.get("id"))
+            )
+        # "message" and any other daemon record type: last_ts is updated above,
+        # but nothing is projected — matches trace_ingest's pre-L-1 behaviour.
+
+    return SessionSlice(
+        session_id=session_id,
+        had_new_content=True,
+        session_start_ts=session_start_ts,
+        turns=turns,
+        last_ts=last_ts,
+        next_offset=offset + len(new_lines),
+    )
+
+
+class OpenClawDriver:
+    """The one shipped ``RuntimeDriver`` (Phase 18 L-1 / D-14).
+
+    Every method either delegates to an existing, already-tested ACL free
+    function (``run_turn``/``provision``/``teardown``) or owns session-JSONL
+    parsing that used to live outside the ACL (``list_sessions``/
+    ``read_new_turns``/``usage``). Stateless — safe to share via
+    ``default_driver()`` or construct fresh; nothing here retains per-instance
+    state.
+    """
+
+    def run_turn(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int = 300,
+        env: dict[str, str] | None = None,
+    ) -> TurnResult:
+        return agent_run(agent_id, session_key, message, timeout, env)
+
+    def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
+        ok, message = register_agent_cli(agent_id, workspace, model)
+        return ProvisionResult(ok=ok, message=message)
+
+    def teardown(self, agent_id: str) -> TeardownResult:
+        ok, message = unregister_agent_cli(agent_id)
+        return TeardownResult(ok=ok, message=message)
+
+    def list_sessions(self, agent_id: str) -> list[SessionSummary]:
+        sessions_dir = _sessions_dir(agent_id)
+        if not sessions_dir.is_dir():
+            return []
+        return [
+            SessionSummary(session_id=path.name[: -len(".jsonl")])
+            for path in sorted(sessions_dir.glob("*.jsonl"))
+        ]
+
+    def read_new_turns(self, agent_id: str, session_id: str, offset: int) -> SessionSlice:
+        return _read_new_turns(agent_id, session_id, offset)
+
+    def usage(self, agent_id: str) -> UsageReport:
+        return UsageReport(totals=_usage_totals(agent_id), by_day=_usage_by_day(agent_id))
+
+    def capabilities(self) -> DriverCapabilities:
+        return DriverCapabilities(
+            driver_name="openclaw",
+            # Confirmed against daemon v2026.2.23: `openclaw agent --json` never
+            # populates a USD cost field, so run_turn's cost_usd is always 0.0
+            # (see agent_run's docstring) even though usage()'s session-JSONL
+            # read can surface a real recorded cost when a session file does
+            # carry usage.cost.total.
+            reports_cost_usd=False,
+            supports_provisioning=True,
+            supports_sessions=True,
+        )
+
+
+_DRIVER: OpenClawDriver | None = None
+
+
+def default_driver() -> OpenClawDriver:
+    """Return the process-wide ``OpenClawDriver`` singleton.
+
+    Stateless, so a fresh instance would behave identically — this just gives
+    callers (``core/dispatch.py``'s ``run = runner or default_driver().run_turn``)
+    a single named object rather than constructing one per call.
+    """
+    global _DRIVER
+    if _DRIVER is None:
+        _DRIVER = OpenClawDriver()
+    return _DRIVER
