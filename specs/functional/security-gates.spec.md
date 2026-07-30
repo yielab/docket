@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.4.1
+**Version**: 0.5.0
 **Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below)
 **Last Updated**: 2026-07-30
 
@@ -37,16 +37,25 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 >
 > Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
 >
-> **The approval seam (honesty note, 2026-07-30).** There are two approval systems in play and
-> they are **not yet bridged**: (a) the **daemon's** exec-approval prompt — the thing that
-> actually fires when a gated binary is invoked — which is delivered to the agent's chat
-> session and answered with the daemon's own `/approve <id>` mechanism; and (b) **docket's**
-> approval store (`apr-*` tokens under `$APPROVALS_DIR`), which the CLI/HTTP channels above
-> read and write. Today **no production code creates records in docket's store** (`approval_create`
-> has no production caller): the daemon's gate prompt does not mint an `apr-*` token, so
-> `docket approve` cannot answer a live daemon gate. Bridging the two is tracked as ROADMAP
-> Phase 15 G-5 (daemon-gated spike); docket's store gains its first production producer in
-> Phase 15 G-1 (approval-gated dispatch).
+> **The approval seam (honesty note, 2026-07-30; G-5 spike concluded 2026-07-30).** There are
+> two approval systems in play and they remain **not bridged**: (a) the **daemon's**
+> exec-approval prompt — the thing that actually fires when a gated binary is invoked — which is
+> delivered to the agent's chat session and answered with the daemon's own `/approve <id>`
+> mechanism; and (b) **docket's** approval store (`apr-*` tokens under `$APPROVALS_DIR`), which
+> the CLI/HTTP channels above read and write. Today **no production code creates records in
+> docket's store** (`approval_create` has no production caller): the daemon's gate prompt does
+> not mint an `apr-*` token, so `docket approve` cannot answer a live daemon gate. docket's store
+> gains its first production producer in Phase 15 G-1 (approval-gated dispatch) — an unrelated,
+> purely-internal gate, not this bridge.
+>
+> **G-5 spike verdict: No — a practical bridge does not exist today.** ROADMAP Phase 15 G-5 asked
+> whether the daemon's exec-approval prompt can notify an external hook. It was investigated
+> against a locally installed `openclaw 2026.2.23` daemon (live gateway, real registered agents)
+> plus its published documentation. Short answer: half of a bridge is real and reachable
+> (resolving a *known* prompt), the other, load-bearing half (learning that a prompt exists) is
+> not reachable from anywhere in docket's current toolbox. See "The `[GATE]` seam — G-5 spike
+> findings" below for the full evidence trail. No code was shipped; this remains a documentation
+> update, per the spike's own evidence standard.
 >
 > **Why on-by-default is still safe:** the fail-closed property for an unattended agent is the
 > daemon's own `askFallback: deny` — a prompt nobody answers is denied by the daemon, full
@@ -87,8 +96,84 @@ are owned here, not there.
    `docket serve` is up and is bookkeeping, not enforcement.
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
    log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`cli`, `http`). The `telegram` tag is reserved for the G-5 bridge: today a
-   daemon-side `/approve` writes **no** docket audit entry.
+   through (`cli`, `http`). The `telegram` tag is reserved for a future daemon bridge, which
+   the G-5 spike (below) concluded is not currently practical to build: today a daemon-side
+   `/approve` writes **no** docket audit entry.
+
+### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged)
+
+1. **Question.** Can the daemon's native exec-approval prompt notify an external hook, so docket
+   could bridge it into its own `apr-*` token store and answer it via `docket approve`/`docket
+   deny`/`POST /approvals/<token>`, making the target-state example below genuinely real?
+   Investigated against a locally installed `openclaw 2026.2.23` daemon — a live, already-running
+   gateway with real registered agents — plus its published docs at docs.openclaw.ai.
+
+2. **Confirmed present: the write half.** `exec.approval.resolve` is a real, registered Gateway
+   RPC method on the installed daemon: calling it with no params returns a schema-validation
+   error (`must have required property 'id'; must have required property 'decision'`), not
+   `unknown method` — the daemon's distinct error for a genuinely absent method (see point 3). It
+   is reachable via `openclaw gateway call exec.approval.resolve --params '{...}'`, the same
+   CLI-subprocess pattern `edges/adapters/openclaw.py` already uses everywhere else — so
+   *writing* a decision back to the daemon, once its id is known, needs no new client, dependency,
+   or credential type beyond what docket already shells out to.
+
+3. **Confirmed absent: the notify half.** Official docs (docs.openclaw.ai/gateway/clients,
+   /tools/exec-approvals-advanced) describe an `exec.approval.requested` broadcast event plus an
+   `exec.approval.list` backfill call, consumed by a WebSocket "operator" client holding the
+   `operator.approvals` scope, via the officially "published Gateway packages"
+   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` — both **npm-only**; no Python SDK is
+   published or documented anywhere. The docs themselves flag this surface as still rolling out
+   ("npm may return `E404` until the first package-bearing OpenClaw release is published").
+   Probing the installed daemon's `openclaw gateway call <method>` escape hatch (a request/
+   response CLI call, not a subscription) for a backfill/list method under every plausible name
+   returned `unknown method` in every case: `exec.approval.list`, `exec.approvals.list`,
+   `exec.approval.pending`, `exec.approvals.pending`, `approval.list`, `approvals.list`,
+   `commands.list`. There is no `openclaw gateway subscribe`/`listen`/`watch` CLI command either —
+   `openclaw gateway call` is the only CLI-level RPC surface, and it is strictly request/response,
+   so it structurally cannot deliver a push notification.
+
+4. **Confirmed absent: a generic webhook.** `openclaw webhooks --help` covers only Gmail Pub/Sub
+   (via `gogcli`) — unrelated to exec approvals. No config key under `approvals.exec` accepts an
+   arbitrary URL; the only built-in "forwarding" is `approvals.exec.targets`, a fixed enum of
+   native chat channels (Slack/Telegram/Discord/Matrix/Google Chat/WhatsApp/Signal/QQ bot),
+   resolved via each channel's own `/approve` command — not an integration point docket (a CLI
+   tool, not a chat channel) can register into.
+
+5. **Confirmed absent: an HTTP path to resolution.** The bundled, opt-in `admin-http-rpc` plugin
+   (disabled by default) exposes a curated method allowlist over plain HTTP —
+   `exec.approvals.get`/`exec.approvals.set`/`exec.approvals.node.get`/`exec.approvals.node.set`
+   (the static *policy* file: allowlist entries, `security`/`ask`/`askFallback` mode) — but
+   explicitly **excludes** `exec.approval.resolve`/`approval.resolve` (the live per-request
+   grant/deny action) from that allowlist per its own documentation. So even enabling that plugin
+   does not give docket's HTTP-based `serve.py` a way to resolve a live prompt, let alone list one.
+
+6. **Confirmed absent: the plugin hook system is a different, independent gate.** OpenClaw
+   plugins can register `before_tool_call` with `requireApproval` (matched on tool ids like
+   `exec`) to add their *own* approval step — but per the docs, "`approvals.plugin` is
+   independent from `approvals.exec`. Enabling exec approval forwarding does not route plugin
+   approval prompts." A plugin cannot use this hook to observe or resolve the *native*
+   exec-approval prompt; it can only bolt on a second, parallel approval gate with its own,
+   separate prompt.
+
+7. **Verdict: No.** Half of a bridge exists and is genuinely reachable
+   (`exec.approval.resolve`, over the existing CLI-subprocess pattern) — but the other,
+   load-bearing half (learning that a prompt exists, and its `id`) is not reachable from
+   anywhere in docket's current toolbox (subprocess calls + JSON file I/O). The only documented
+   way to receive it is a persistent, authenticated WebSocket "operator" session — a protocol
+   with no Python implementation published anywhere, requiring docket to mint and hold a new,
+   high-privilege `operator.approvals` device credential (described by OpenClaw's own docs as
+   "remote-execution-grade authority") that docket has never needed before. Implementing that
+   from the wire-protocol docs alone, with no official Python SDK to validate against and no
+   confirmation the backfill/list call even exists in the shipped daemon, is a multi-week
+   protocol-implementation project, not a spike-scoped bridge — so no bridge was built. The
+   `[GATE]` example below stays labeled target state, not shipped.
+
+8. **What would change this answer.** Either (a) OpenClaw ships a Python-compatible client (or a
+   documented, HTTP-reachable equivalent of `exec.approval.list` / `exec.approval.requested`), or
+   (b) the `admin-http-rpc` plugin's exposed method allowlist is extended to include
+   `exec.approval.resolve` *and* a way to list or stream pending requests over plain HTTP. Until
+   one of those lands upstream, this spec's `[GATE]` bridge example remains aspirational by
+   necessity, not by omission.
 
 ### Workspace isolation (implemented, opt-in)
 
@@ -180,7 +265,7 @@ with the daemon's `/approve <id>` (or denied by `askFallback: deny` when nobody 
 `git push origin main` does *not* trigger this prompt by default — see "High-risk action
 classes" above for why.
 
-### Approval flow — target state (daemon-gated, NOT implemented; ROADMAP Phase 15 G-5)
+### Approval flow — target state (daemon-gated; investigated by G-5, confirmed not practical today)
 
 ```text
 [GATE] Agent 'mywebsite' requested: docker stop mywebsite-db
@@ -189,9 +274,11 @@ classes" above for why.
        Times out in APPROVAL_TIMEOUT → denied.
 ```
 
-This worked example requires the G-5 bridge (daemon gate prompt → docket `apr-*` token).
-No docket code emits a `[GATE]` line today; the example is retained as the target contract
-only. **Do not cite it as shipped behavior.**
+This worked example would require the daemon-notify bridge that the G-5 spike investigated and
+found **not practically buildable today** — see "The `[GATE]` seam — G-5 spike findings" above
+for the evidence. No docket code emits a `[GATE]` line, and none is planned until OpenClaw
+exposes a Python-reachable way to learn that a live exec-approval prompt exists. The example is
+retained as the target contract only. **Do not cite it as shipped behavior.**
 
 ### High-risk action classes (implemented)
 
@@ -246,6 +333,28 @@ secret-access — Secret/credential writes and key generation
   documented policy only.
 
 ## Changelog
+
+### Version 0.5.0 (2026-07-30)
+
+- **G-5 spike concluded: the `[GATE]` seam investigated, not bridged.** Investigated whether the
+  OpenClaw daemon's native exec-approval prompt can notify an external hook that docket could
+  bridge into its own `apr-*` token store. Verdict: **no** practical bridge exists today.
+  `exec.approval.resolve` is a real, callable Gateway RPC method (verified against the installed
+  `openclaw 2026.2.23` daemon; reachable via the existing `openclaw` CLI-subprocess pattern) —
+  but there is no reachable way for docket to learn that a prompt exists in the first place: no
+  working list/backfill method could be found under any plausible name (`exec.approval.list`,
+  `exec.approvals.list`, `exec.approval.pending`, `exec.approvals.pending`, `approval.list`,
+  `approvals.list`, `commands.list` — all `unknown method`) via `openclaw gateway call` against
+  the real running daemon; the documented notification path (`exec.approval.requested` over a
+  WebSocket operator session) has no Python SDK (only npm packages, which the docs themselves
+  note may still be rolling out); the `admin-http-rpc` plugin explicitly excludes
+  resolve/list-pending methods from its HTTP surface; and the plugin `before_tool_call` hook is a
+  separate, independent approval system (`approvals.plugin`) that does not intercept native
+  exec-approval prompts. The `[GATE]` worked example stays labeled target state (unchanged
+  conclusion from 0.4.0) — this version adds the concrete, dated evidence trail behind that
+  label so it reflects an actual investigation rather than an open question. No code shipped;
+  this is a documentation-only update per the spike's own evidence standard (see ROADMAP Phase
+  15 G-5).
 
 ### Version 0.4.1 (2026-07-30)
 
