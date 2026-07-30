@@ -107,8 +107,11 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (after the Phases 15/16/18 wave: G-1, G-5, W-1, W-2, W-6, W-8, L-1,
-> L-3).
+> Last synchronized: 2026-07-30 (after wave 4: CL-1, L-6, W-3, W-7, W-2+W-8 — following wave 3's
+> G-1, G-5, W-1, W-6, L-1, L-3).
+> The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
+> (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
+> `.spec.md` files on disk.
 > Verified row-by-row against every spec's own `**Version**` header, not carried forward — an
 > index table cannot be auto-merged correctly when several branches bump versions in parallel.
 
@@ -127,7 +130,6 @@ Each specification document must include:
 | Security Gates | 0.5.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5) |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
-| Workflow Integration | 1.2.0 | Complete (slated for retirement) | ROADMAP D-16 / Phase 16 W-3 |
 | Workspace Structure | 1.3.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
 | CLI Interface | 1.9.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` added (Phase 16 W-2) |
 | MCP Server | 1.1.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6) |

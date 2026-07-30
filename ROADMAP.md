@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is complete ☑** (R-1…R-8, 2026-07-30 — see the Phase 14 record below); **Phase 15 is next**, though four cards from later phases were already pulled forward onto `platform` ahead of schedule, each with no Phase 14 dispatch-lane dependency: **Phase 15's G-4** (audit v2) and **G-6** (serve auth hardening), **Phase 17's C-4** (specialists join the workspace contract), and **Phase 18's L-2** (finish provider agnosticism) — see their own "DONE — pulled forward" notes in the Phase 15/17/18 sections below. Phase 14's board is in TODO.md (kept until Phase 15's board overwrites it, per convention). Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is complete ☑** (R-1…R-8, 2026-07-30 — see the Phase 14 record below), and **waves 3–4 then merged 11 more cards** (2026-07-30): **Phase 16's exit criteria are met** (W-1/W-2/W-3/W-6/W-7/W-8 — declarative pipelines, role archetypes, pod blueprints, generalized gates, working cancellation; W-4 and W-5 remain open), **Phase 18 is done but for its two daemon-gated spikes** (L-1/L-2/L-3/L-6), and **Phase 15 is 4 of 6** (G-1/G-4/G-5/G-6 — G-2 and G-3 remain). Four of those cards were pulled forward ahead of schedule, each with no Phase 14 dispatch-lane dependency: **Phase 15's G-4** (audit v2) and **G-6** (serve auth hardening), **Phase 17's C-4** (specialists join the workspace contract), and **Phase 18's L-2** (finish provider agnosticism) — see their own "DONE — pulled forward" notes in the Phase 15/17/18 sections below. **Phase 17 is the next phase to open**, once W-5 unblocks C-1. Phase 14's board is in TODO.md (kept until Phase 15's board overwrites it, per convention). Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
 **Last Updated:** 2026-07-30
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1417,7 +1417,7 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
 
 ---
 
-### PHASE 15 — Platformization II: deterministic governance, wired  *(🟡 planned — after 14)*
+### PHASE 15 — Platformization II: deterministic governance, wired  *(🟠 4 of 6 shipped — G-1/G-4/G-5/G-6 done; G-2, G-3 open)*
 
 > **The audit's single most damning pattern:** three governance organs are fully built, tested, and
 > documented — and connected to nothing. `approval_create` has **zero** production callers (the
@@ -1467,7 +1467,7 @@ a real dispatched task until granted; `docket audit verify` detects a tampered l
 
 ---
 
-### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟡 planned — after 14; G-1 for approval steps)*
+### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟠 6 of 8 shipped — exit criteria met; W-4, W-5 open)*
 
 > **Why:** the pipeline is a hardcoded constant and the role system knows exactly one objective —
 > shipping code. `POD_ROLES` is a closed 4-tuple (`core/pod.py:21`), every role identity is a
@@ -1523,6 +1523,57 @@ but gate contracts, edit rights, and scope stay closed typed sets docket can rea
 the four legacy roles produce byte-identical workspaces (goldens); `docket workflow` prints the
 removed-command notice; suite green.
 
+> **☑ Waves 3–4 shipped 2026-07-30 — 11 cards across Phases 15/16/18, plus one standing cleanup
+> card. `platform` at `7fc6233`: 1,512 tests (1,509 passed / 3 skipped), 18/18 goldens, 20 specs,
+> 37 commands, `ruff` + `ruff format` + `mypy --strict` clean, `metrics.py --check` in sync.**
+>
+> **Wave 3** (six cards, merged in contention order): G-1 approval-gated dispatch — `approval_create`
+> finally has a production caller · G-5 the `[GATE]` seam spike, answered **no** with a dated
+> evidence trail against a live daemon · W-1 pipeline format · W-6 declarative role archetypes,
+> legacy roles byte-identical · L-1 RuntimeDriver port (D-14) · L-3 MCP server, 10 tools.
+>
+> **Wave 4** (five cards, merged `cl-1 → l-6 → w-3 → w-7 → w-2`): CL-1 dead-code sweep (register
+> below) · L-6 `mcp` SDK 1.x→2.x migration, pin now `mcp>=2.0.0` · W-3 Lobster retirement (D-16) —
+> `core/lobster.py`, `cli/_workflow.py`, `test_cd7_lobster.py` and `workflow-integration.spec.md`
+> **deleted**, `docket workflow` is a removed-command notice · W-7 pod blueprints (four built-ins,
+> `workdir` workspace kind restored) · W-2 + W-8 the executor and generalized gates.
+>
+> **Phase 16 exit criteria: met.** A `research` blueprint pod provisions, dispatches through a
+> custom pipeline, and blocks on an unverified-sources verdict by the same executor path a software
+> pod blocks on failing tests — because after W-8 the executor branches on the resolved gate's
+> **type**, never on a role name (four hardcoded verdict helpers deleted). The four legacy roles
+> stayed byte-identical throughout (goldens). Two cards remain open (**W-4**, **W-5**) — they extend
+> the phase rather than gate its criteria.
+>
+> **W-2 found and fixed cancellation's real root cause** rather than working around it: `agent_run`
+> used a blocking `subprocess.run` and never created a process group, so there was nothing to kill —
+> which is why cancellation had never existed. It is now `Popen(start_new_session=True)` with
+> process-group SIGTERM → grace → SIGKILL, proven against a real spawned subprocess rather than a mock.
+>
+> **What was narrowed or deferred (stated here so it isn't quietly re-claimed later):**
+> `runs.cancel` writes **no audit entry** (W-4's card now owns it) · resuming a task that crashed
+> mid-parallel-group **re-runs the whole group**, not just the incomplete members · approval gates
+> are **rejected inside a parallel group** as a configuration error, not supported · W-4 (durable
+> scheduling, event triggers, `dispatch --follow`) and W-5 (structured handoff artifacts) are not
+> started, so hops still exchange concatenated raw text and Phase 17's C-1 stays blocked ·
+> `maxReworkCycles` still has no dedicated CLI setter · every Phase 14 carried-forward gap in
+> TODO.md's "Known-open gaps" list is still true unless named above.
+>
+> **Two integration defects were caught by cross-checking, not by the gates**, and both would have
+> shipped silently: a golden conflict whose either-side resolution deletes a shipped command from
+> the completion surface (twice — `roles`/`mcp`, then `pipeline`/`workflow`; no single side ever had
+> the right set, so the golden must be **regenerated**, never picked), and `specs/README.md`'s index
+> table taking a stale side that downgraded three spec versions and dropped a row. Both are now
+> standing integrator checks in TODO.md.
+>
+> **A CI-blocking guard was found failing open.** `scripts/metrics.py --check` combined comma-blind
+> `(\d+)` claim regexes with a silent skip for unmatched claims, so once the suite crossed 1,000
+> tests it verified **nothing** while still reporting success — and an earlier README cleanup had
+> removed 3 of its 4 claims from the prose. Every "metrics in sync" line reported during Phase 14 was
+> therefore meaningless (the test counts themselves came from pytest and were accurate). Fixed:
+> claims accept thousands separators, and a README stating **none** of the tracked metrics is now a
+> hard failure rather than a silent pass. The repaired guard immediately caught real drift.
+
 ---
 
 ### PHASE 17 — Platformization IV: context engineering & memory management  *(🟡 planned — after 16's W-5)*
@@ -1557,7 +1608,7 @@ workspace; suite green.
 
 ---
 
-### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟡 planned — after 14; independent of 15–17 except L-5)*
+### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟠 4 of 6 shipped — L-1/L-2/L-3/L-6 done; only the two daemon-gated spikes L-4, L-5 remain)*
 
 > **Why:** provider-agnosticism was declared complete (Phase 6) but the audit found Anthropic
 > hardcoded in the rank anchors (non-overridable), the auth commands, and the preset/pricing gaps —
@@ -1641,10 +1692,19 @@ so cards from Phases 15, 16 and 18 run concurrently. The scheduling rule Phase 1
 `core/dispatch.py` is the contention hotspot (nine remaining cards touch it), so **at most one
 in-flight card may own it per wave** — cards with disjoint footprints merged cleanly in Phase 14,
 while the two that both edited `serve.py`'s dispatch call sites produced the phase's only dangerous
-merge. **Wave 3 (in flight):** G-1 (the wave's dispatch owner), W-1, W-6, L-1, L-3, G-5. Phase 17 is
-deliberately held back — C-1 depends on W-5, and C-2/C-3/C-5 all want `core/dispatch.py`. Four cards
-were already pulled forward with no Phase 14 dependency (G-4, G-6, C-4, L-2 — see each card's note).
-The per-card boards, blockers and carried-forward gaps live in TODO.md.
+merge. **Wave 3 ☑** (G-1 the dispatch owner, W-1, W-6, L-1, L-3, G-5) and **wave 4 ☑** (W-2 the
+dispatch owner, CL-1, L-6, W-3, W-7 — W-8 rode with W-2) are both merged; see the `☑ Waves 3–4
+shipped` record in the Phase 16 section. Four cards were pulled forward earlier with no Phase 14
+dependency (G-4, G-6, C-4, L-2 — see each card's note). **Wave 5 (in flight):** W-5 (the wave's
+dispatch owner), CL-2, W-4, G-4b, L-4. Phase 17 stays held back one more wave — C-1 depends on W-5,
+and C-2/C-3/C-5 all want `core/dispatch.py`, which W-5 owns. The per-card boards, blockers and
+carried-forward gaps live in TODO.md.
+
+**A second scheduling rule, learned in waves 3–4 (keep it):** an index or roll-up table that several
+branches edit in parallel — `specs/README.md`'s status table, README's metric counts, a golden's
+command list — **cannot be merged by picking a side**, because no side holds every branch's change.
+Regenerate it from ground truth (the spec headers, the real CLI, the actual suite) and verify the
+diff. This caught real regressions on three consecutive merges.
 
 **Branch model for this program:** all Platformization work happens on the long-running
 **`platform`** branch, a deliberate fork-candidate line — the operator may promote it to the next
@@ -1657,6 +1717,18 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-07-30 (waves 3–4)** — **11 Platformization cards merged onto `platform`**, taking the tree
+  from 1,112 → **1,512 tests**, 18 → 20 specs, 35 → 37 commands. Phase 16's exit criteria are met
+  (W-1/W-2/W-3/W-6/W-7/W-8); Phase 18 is done but for its two daemon-gated spikes (L-1/L-2/L-3/L-6);
+  Phase 15 is 4 of 6 (G-1/G-4/G-5/G-6). **D-16 executed:** `core/lobster.py`, `cli/_workflow.py`,
+  their tests and `workflow-integration.spec.md` are deleted — `docket workflow` is a removed-command
+  notice, and docket now lints only the one pipeline dialect it actually executes. **D-14 executed:**
+  the RuntimeDriver port ships with exactly one driver, per the decision. Cancellation works for the
+  first time because W-2 fixed its root cause (`agent_run` had no process group to kill). Full
+  record, including what was narrowed: the `☑ Waves 3–4 shipped` block in the Phase 16 section.
+  Two process lessons are recorded in §8: an index/roll-up table edited by parallel branches must be
+  **regenerated from ground truth, never side-picked**, and `scripts/metrics.py --check` was found
+  **failing open** — a CI-blocking guard that reported success while verifying nothing.
 - **2026-07-30 (later same day)** — **PHASE 14 COMPLETE.** All 8 cards R-1…R-8 landed on
   `platform` (1,112 tests, 18 goldens, full suite green). R-8 (the spec/docs truth pass) rewrote
   `pod-dispatch.spec.md` to v2.0.0 for the full v2 state machine (locked claims, crash resume,
