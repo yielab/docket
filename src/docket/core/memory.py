@@ -37,6 +37,7 @@ which daily file is "today" across a local-midnight boundary.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 from pathlib import Path
 
@@ -270,23 +271,33 @@ def seed_contract(
     Rewrites ``WORKFLOW_AUTO.md`` (derived — always refreshed). Creates
     ``MEMORY.md`` and today's ``memory/YYYY-MM-DD.md`` only if absent, so
     re-seeding never clobbers a real day's log or curated memory. Idempotent.
+    Every file this function touches is normalized to ``0600`` (workspace files
+    are owner-only, per the permissions invariant) whether freshly written or
+    already present — so a doctor-driven heal also fixes stale permissions.
     """
     d = day or today()
     memory_dir(ws).mkdir(parents=True, exist_ok=True)
 
-    (ws / REQUIRED_STARTUP_FILE).write_text(
+    workflow_auto = ws / REQUIRED_STARTUP_FILE
+    workflow_auto.write_text(
         _workflow_auto_text(project=project, codebase=codebase, stack=stack, origin=origin),
         encoding="utf-8",
     )
+    with contextlib.suppress(OSError):
+        workflow_auto.chmod(0o600)
 
     mem_md = memory_md_path(ws)
     if not mem_md.exists():
         mem_md.write_text(
             _memory_md_seed(project=project, codebase=codebase, stack=stack), encoding="utf-8"
         )
+    with contextlib.suppress(OSError):
+        mem_md.chmod(0o600)
 
     daily = daily_log_path(ws, d)
     if not daily.exists():
         daily.write_text(
             _daily_seed(project=project, codebase=codebase, stack=stack, day=d), encoding="utf-8"
         )
+    with contextlib.suppress(OSError):
+        daily.chmod(0o600)

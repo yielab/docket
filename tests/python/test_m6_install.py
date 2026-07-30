@@ -148,6 +148,124 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
         assert not (oc_dir / "workspaces" / role / _cfg.META_FILE).is_file()
 
 
+# ── C-4: specialists join the workspace contract ────────────────────────────────
+
+
+def test_specialist_gets_full_workspace_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 17 C-4: a freshly provisioned specialist gets the same durable
+    workspace set a project agent gets — SOUL/AGENTS/HEARTBEAT plus the
+    WORKFLOW_AUTO/MEMORY/daily-log contract — with 700/600 permissions and a
+    current-version contract marker.
+    """
+    from docket.core import memory as _mem
+
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+
+    _install.run_install(want_gates=False, assume_yes=True)
+
+    for spec in _ORG_SPECIALISTS:
+        ws = oc_dir / "workspaces" / spec
+        assert ws.stat().st_mode & 0o777 == 0o700
+
+        for fname in (
+            "SOUL.md",
+            "AGENTS.md",
+            "HEARTBEAT.md",
+            _mem.REQUIRED_STARTUP_FILE,
+            _mem.MEMORY_FILE,
+        ):
+            fpath = ws / fname
+            assert fpath.is_file(), f"{spec}: missing {fname}"
+            assert fpath.stat().st_mode & 0o777 == 0o600, f"{spec}: {fname} not 0600"
+
+        assert (ws / _mem.today_memory_relpath()).is_file(), f"{spec}: missing today's daily log"
+        assert _mem.contract_ok(ws), f"{spec}: WORKFLOW_AUTO.md missing/stale contract marker"
+
+        soul = (ws / "SOUL.md").read_text()
+        assert f"agent:{spec}:org" in soul
+        assert spec in soul
+
+        # TOOLS.md is deliberately NOT written — a specialist has no codebase.
+        assert not (ws / "TOOLS.md").exists()
+
+    meta = json.loads((oc_dir / "workspaces" / "security" / _cfg.META_FILE).read_text())
+    assert meta["sessionKey"] == "agent:security:org"
+    assert meta["projectKey"] == "org"
+
+
+def test_specialist_reprovisioning_preserves_real_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-running `docket install` on an already-provisioned fleet must not
+    clobber a HEARTBEAT.md/MEMORY.md the agent has actually written to.
+    """
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+    _install.run_install(want_gates=False, assume_yes=True)
+
+    ws = oc_dir / "workspaces" / "security"
+    hb = ws / "HEARTBEAT.md"
+    mem_md = ws / "MEMORY.md"
+    hb.write_text("# HEARTBEAT.md — security\n\n## Active Tasks\n- [ ] real in-flight task\n")
+    mem_md.write_text("# MEMORY.md — security\n\nreal curated memory, do not lose this\n")
+    soul_before = (ws / "SOUL.md").read_text()
+
+    _install.run_install(want_gates=False, assume_yes=True)
+
+    assert "real in-flight task" in hb.read_text()
+    assert "real curated memory, do not lose this" in mem_md.read_text()
+    assert (ws / "SOUL.md").read_text() == soul_before
+
+
+def test_specialist_backfills_bare_legacy_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-C-4 install left specialists with only `.docket-meta.json` (the
+    exact defect this card fixes) — a subsequent `docket install` must backfill
+    the full workspace set without needing a fresh agent registration.
+    """
+    from docket.core import memory as _mem
+
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+
+    # Simulate the pre-C-4 state: registered + meta only, nothing else.
+    ws = oc_dir / "workspaces" / "knowledge"
+    ws.mkdir(parents=True)
+    ws.chmod(0o700)
+    (ws / _cfg.META_FILE).write_text(
+        json.dumps(
+            {
+                "kind": "specialist",
+                "scope": "org",
+                "role": "knowledge",
+                "name": "knowledge",
+                "model": "anthropic/claude-haiku-4-5",
+                "modelSource": "policy",
+                "created": "2026-01-01T00:00:00+00:00",
+            }
+        )
+    )
+    (ws / _cfg.META_FILE).chmod(0o600)
+    raw = json.loads((oc_dir / "openclaw.json").read_text())
+    raw["agents"]["list"].append(
+        {"id": "knowledge", "model": "anthropic/claude-haiku-4-5", "metadata": {}}
+    )
+    (oc_dir / "openclaw.json").write_text(json.dumps(raw))
+
+    assert not (ws / "SOUL.md").exists()
+
+    _install.run_install(want_gates=False, assume_yes=True)
+
+    assert (ws / "SOUL.md").is_file()
+    assert (ws / "AGENTS.md").is_file()
+    assert (ws / "HEARTBEAT.md").is_file()
+    assert _mem.contract_ok(ws)
+
+
 def test_install_configures_agent_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     oc_dir = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth(monkeypatch)

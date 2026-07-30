@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -14,7 +14,7 @@ their roles, and the permission rules that keep a workspace valid.
 This specification covers:
 
 - The directory and files that make up a project-agent (and pod-member) workspace
-- The org-specialist layout and its known provisioning gap
+- The org-specialist layout
 - Permission invariants and scaffolding quarantine
 
 This specification does NOT cover the `.docket-meta.json` field schema or the
@@ -52,13 +52,36 @@ nor the pod task queue's semantics (see pod-dispatch.spec.md).
 
 ### Org specialists
 
-1. Org specialists (security, knowledge, manager) live at
-   `~/.openclaw/workspaces/<role>/` with a `.docket-meta.json` (`kind: specialist`).
-2. **Known gap (tracked as ROADMAP Phase 17 C-4):** specialist provisioning currently
-   writes only the metadata — not the SOUL/AGENTS/HEARTBEAT/WORKFLOW_AUTO/MEMORY set — and
-   `docket doctor`'s contract healer covers project workspaces only. Until C-4 lands,
-   requirement 1 of the project-agent section **MUST NOT** be assumed for specialists.
-3. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json`) is
+1. Org specialists (security, knowledge, manager, and the opt-in
+   `portfolio-manager`) live at `~/.openclaw/workspaces/<role>/` and **MUST**
+   have the same durable workspace set a project agent gets, minus `TOOLS.md`
+   and any codebase-specific field neither exists for:
+   - `SOUL.md` — role identity, scope, and a session key of the form
+     `agent:<role>:org` (the org-scoped counterpart of a project agent's
+     `agent:<id>:<project>`)
+   - `AGENTS.md` — the same session-startup protocol every project agent follows
+   - `HEARTBEAT.md` — the durable task ledger
+   - `WORKFLOW_AUTO.md` / `MEMORY.md` / `memory/YYYY-MM-DD.md` — the runtime
+     contract set, from the same `core/memory.py` `seed_contract` a project
+     agent uses
+   - `.docket-meta.json` (`kind: specialist`)
+   - `TOOLS.md` **MUST NOT** be written for a specialist — it has no fixed
+     codebase or build commands to document.
+2. `docket install` provisions the full set above for every org specialist and
+   the opt-in Portfolio Manager (`docket install --portfolio`). Provisioning is
+   idempotent and backfill-safe: `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` are
+   written only when absent (never clobbering agent-written content or a
+   persona-decorated `SOUL.md`), and `seed_contract` never overwrites an
+   existing `MEMORY.md` or daily log.
+3. `docket doctor`'s runtime-contract healer covers org specialists as well as
+   project agents (ROADMAP Phase 17 C-4 closed the gap where specialists had
+   no contract files and this healer never saw them): a specialist with a
+   missing or stale `WORKFLOW_AUTO.md` is re-seeded exactly like a project
+   agent's. A specialist workspace left fully bare by a pre-C-4 install
+   (`.docket-meta.json` only, no `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` at all)
+   is backfilled by re-running `docket install`, which never touches a file
+   that already exists.
+4. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json`) is
    retired; if present from a pre-Phase-10 install it is left on disk untouched and is read
    by nothing.
 
@@ -75,6 +98,8 @@ Workspaces are created and repaired through commands, not edited by hand:
 docket add <agent-id> [codebase-path]     # Provision a workspace (pods: docket add <project>)
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
+docket install                            # Provision (or backfill) org specialist workspaces
+docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md, project or specialist
 ```
 
 ## Examples
@@ -95,6 +120,20 @@ docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 └── workflows/
 ```
 
+### A provisioned org-specialist workspace
+
+```text
+~/.openclaw/workspaces/security/
+├── SOUL.md
+├── AGENTS.md
+├── HEARTBEAT.md
+├── WORKFLOW_AUTO.md
+├── MEMORY.md
+├── .docket-meta.json
+└── memory/
+    └── 2026-07-30.md
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -105,6 +144,9 @@ docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 
 - After `docket add`, all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
+- After `docket install`, every org specialist (and the opt-in Portfolio Manager, when
+  provisioned) **MUST** have the specialist file set above with `700`/`600` permissions and a
+  current-version contract marker in `WORKFLOW_AUTO.md`.
 - After `docket maintain rebuild`, core files **MUST** be regenerated from metadata (persona
   reapplied from `.docket-meta.json`).
 
@@ -115,6 +157,23 @@ docket maintain <agent-id> rebuild        # Regenerate all files from metadata
   `.docket-archive/`).
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-30)
+
+- **ROADMAP Phase 17 C-4 shipped**: org specialists (security, knowledge, manager, and the
+  opt-in Portfolio Manager) now get the same durable workspace set a project agent gets —
+  `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` plus the `WORKFLOW_AUTO.md`/`MEMORY.md`/daily-log
+  contract from `core/memory.py`'s `seed_contract` — instead of `.docket-meta.json` alone.
+  `TOOLS.md` is deliberately never written for a specialist (no fixed codebase/build commands).
+  `docket doctor`'s runtime-contract healer now enumerates specialist workspaces too (previously
+  project-agent-only), so a missing/stale `WORKFLOW_AUTO.md` is healed for a specialist exactly
+  as it is for a project agent. Provisioning and healing are both idempotent/backfill-safe: a
+  file is written only when absent, so a real `HEARTBEAT.md`/`MEMORY.md` or a persona-decorated
+  `SOUL.md` is never clobbered by a second `docket install` or `docket doctor --fix`. Replaced
+  the "known gap" framing in the org-specialists section with the shipped contract. Also closed
+  a latent gap this surfaced: `seed_contract`'s own files (`WORKFLOW_AUTO.md`/`MEMORY.md`/daily
+  log) are now normalized to `600` like every other workspace file (previously created with
+  whatever the process umask gave them).
 
 ### Version 1.1.0 (2026-07-30)
 
