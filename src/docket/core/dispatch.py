@@ -357,6 +357,8 @@ def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
     if pod_value is not None:
         return pod_value
     return DEFAULT_TIMEOUT
+
+
 def pod_gating_cost(project: str) -> tuple[float, bool]:
     """The pod's spend for budget-**gating** purposes: recorded, or estimated.
 
