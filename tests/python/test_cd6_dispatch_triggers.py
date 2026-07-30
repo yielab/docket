@@ -5,6 +5,14 @@ Acceptance criteria:
   - A webhook POST triggers a dispatch
   - Unauthorized requests are rejected
   - suite green
+
+R-3 (D-17) updated this file: the last-run bookkeeping ``TestCheckSchedules``
+exercises moved from an in-memory ``_serve._schedule_state`` dict (reset on
+every ``docket serve`` restart — the bug that made every schedule re-fire
+immediately after one) to durable state persisted in the schedules file
+itself (``core.schedule.load_last_run``/``record_last_run``). The dedicated
+restart-survival test lives here too; per-dispatch run-record coverage (the
+rest of R-3's surface) lives in ``test_r3_dispatch_paths.py``.
 """
 
 from __future__ import annotations
@@ -21,6 +29,7 @@ import pytest
 
 import docket.config as _cfg
 import docket.serve as _serve
+from docket.core import runs as _runs
 from docket.core import schedule as _sched
 from docket.serve import _DocketHandler
 
@@ -30,18 +39,11 @@ _TEST_TOKEN = "test-serve-token-cd6-xyz987"
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture(autouse=True)
-def reset_schedule_state() -> None:
-    """Clear the module-level _schedule_state between tests."""
-    _serve._schedule_state.clear()
-    yield
-    _serve._schedule_state.clear()
-
-
 @pytest.fixture()
 def schedule_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     f = tmp_path / "docket-schedules.json"
     monkeypatch.setattr(_cfg, "SCHEDULE_FILE", f, raising=True)
+    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
     return f
 
 
@@ -52,6 +54,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     d = tmp_path / "approvals"
     d.mkdir()
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
+    monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
 
     class _Handler(_DocketHandler):
         serve_token = _TEST_TOKEN
@@ -169,6 +172,44 @@ class TestLoadSchedules:
         assert _sched.load_schedules(schedule_file) == {}
 
 
+# ── R-3: durable last-run persistence (core.schedule.load_last_run / record_last_run) ─
+
+
+class TestLastRunPersistence:
+    def test_missing_file_returns_empty(self, schedule_file: Path) -> None:
+        assert _sched.load_last_run(schedule_file) == {}
+
+    def test_record_then_load_round_trips(self, schedule_file: Path) -> None:
+        _sched.record_last_run(schedule_file, "proj1", 12345.0)
+        assert _sched.load_last_run(schedule_file) == {"proj1": 12345.0}
+
+    def test_record_preserves_existing_schedules_key(self, schedule_file: Path) -> None:
+        schedule_file.write_text(
+            json.dumps({"schedules": {"proj1": "@every 5m"}}), encoding="utf-8"
+        )
+        _sched.record_last_run(schedule_file, "proj1", 999.0)
+        assert _sched.load_schedules(schedule_file) == {"proj1": "@every 5m"}
+        assert _sched.load_last_run(schedule_file) == {"proj1": 999.0}
+
+    def test_record_preserves_other_projects_last_run(self, schedule_file: Path) -> None:
+        _sched.record_last_run(schedule_file, "proj1", 100.0)
+        _sched.record_last_run(schedule_file, "proj2", 200.0)
+        assert _sched.load_last_run(schedule_file) == {"proj1": 100.0, "proj2": 200.0}
+
+    def test_invalid_json_returns_empty(self, schedule_file: Path) -> None:
+        schedule_file.write_text("not json", encoding="utf-8")
+        assert _sched.load_last_run(schedule_file) == {}
+
+    def test_record_last_run_survives_a_simulated_restart(self, schedule_file: Path) -> None:
+        """The exact R-3 acceptance criterion: last-run state must be readable
+        by a process that has no shared memory with the one that wrote it —
+        i.e. it lives in the file, not a module-level dict."""
+        _sched.record_last_run(schedule_file, "proj1", 555.0)
+        # Simulate "no in-memory state" by only ever reading through the file.
+        reloaded = _sched.load_last_run(Path(str(schedule_file)))
+        assert reloaded["proj1"] == 555.0
+
+
 # ── _check_schedules integration ──────────────────────────────────────────────
 
 
@@ -181,10 +222,12 @@ class TestCheckSchedules:
             encoding="utf-8",
         )
         dispatched: list[str] = []
-        monkeypatch.setattr(
-            "docket.core.dispatch.dispatch_pod",
-            lambda proj, **kw: dispatched.append(proj),
-        )
+
+        def _record_and_return(proj: str, **kw: object) -> list[object]:
+            dispatched.append(proj)
+            return []
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
         _serve._check_schedules(time.time())
         # Allow daemon thread to run
         deadline = time.time() + 2
@@ -200,30 +243,79 @@ class TestCheckSchedules:
             encoding="utf-8",
         )
         dispatched: list[str] = []
-        monkeypatch.setattr(
-            "docket.core.dispatch.dispatch_pod",
-            lambda proj, **kw: dispatched.append(proj),
-        )
+
+        def _record_and_return(proj: str, **kw: object) -> list[object]:
+            dispatched.append(proj)
+            return []
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
         # last run was just now — not due
-        _serve._schedule_state["projB"] = time.time()
+        _sched.record_last_run(_cfg.SCHEDULE_FILE, "projB", time.time())
         _serve._check_schedules(time.time())
         time.sleep(0.1)
         assert dispatched == []
 
-    def test_state_updated_after_dispatch(
+    def test_last_run_recorded_durably_after_dispatch(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """R-3: the last-run timestamp is written into the schedules FILE
+        (not an in-memory dict), so it is readable by a fresh
+        `load_last_run` call — the same read path a restarted `docket serve`
+        process would use."""
         schedule_file.write_text(
             json.dumps({"schedules": {"projC": "@every 1s"}}),
             encoding="utf-8",
         )
         monkeypatch.setattr(
             "docket.core.dispatch.dispatch_pod",
-            lambda proj, **kw: None,
+            lambda proj, **kw: [],
         )
         before = time.time()
         _serve._check_schedules(before)
-        assert _serve._schedule_state.get("projC", 0.0) >= before
+        last_run = _sched.load_last_run(_cfg.SCHEDULE_FILE)
+        assert last_run.get("projC", 0.0) >= before
+
+        # Drain the daemon thread this spawned before the test ends and
+        # monkeypatch tears down `dispatch_pod` -- otherwise a slow-scheduled
+        # thread can still be holding the *current* (about to be reverted)
+        # fake and fire into a LATER test's monkeypatch window instead,
+        # corrupting that test's assertions.
+        deadline = time.time() + 2
+        records = _runs.list_runs("projC")
+        while records and records[0]["state"] not in ("succeeded", "failed"):
+            if time.time() > deadline:
+                raise AssertionError("projC dispatch thread never reached a terminal state")
+            time.sleep(0.02)
+            records = _runs.list_runs("projC")
+
+    def test_restart_does_not_immediately_refire_a_recently_run_schedule(
+        self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The R-3 bug this closes: before durable state, every `docket serve`
+        restart reset last-run to 0.0 in memory, so every schedule looked
+        newly-due on the very first post-restart sweep. Simulate a restart by
+        calling `_check_schedules` again with nothing but the FILE as state
+        (no shared process memory) and confirm a just-run schedule stays
+        quiet."""
+        schedule_file.write_text(
+            json.dumps({"schedules": {"projD": "@every 3600s"}}),
+            encoding="utf-8",
+        )
+        dispatched: list[str] = []
+
+        def _record_and_return(proj: str, **kw: object) -> list[object]:
+            dispatched.append(proj)
+            return []
+
+        monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _record_and_return)
+        now = time.time()
+        _sched.record_last_run(_cfg.SCHEDULE_FILE, "projD", now)
+
+        # "Restart": nothing in memory survives — load_last_run must read the
+        # persisted value straight back off disk.
+        _serve._check_schedules(now + 1)
+        time.sleep(0.1)
+        assert dispatched == [], "schedule re-fired immediately after a simulated restart"
 
 
 # ── POST /dispatch/<project> webhook ─────────────────────────────────────────
@@ -239,9 +331,10 @@ class TestWebhookDispatch:
         dispatched: list[str] = []
         event = threading.Event()
 
-        def _fake_dispatch_pod(proj: str, **kw: object) -> None:
+        def _fake_dispatch_pod(proj: str, **kw: object) -> list[object]:
             dispatched.append(proj)
             event.set()
+            return []
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _fake_dispatch_pod)
 
@@ -250,10 +343,17 @@ class TestWebhookDispatch:
         assert body["ok"] is True
         assert body["project"] == "myproject"
         assert body["status"] == "dispatched"
+        # R-3: the webhook hands back a queryable run id before any work runs.
+        assert isinstance(body["run"], str) and body["run"].startswith("run-")
 
         # Wait for the daemon thread to call dispatch
         assert event.wait(timeout=3), "dispatch_pod not called within 3 s"
         assert dispatched == ["myproject"]
+
+        rec = _runs.get_run(body["run"])
+        assert rec is not None
+        assert rec["source"] == "webhook"
+        assert rec["project"] == "myproject"
 
     def test_webhook_no_auth_rejected(self, live_server: tuple[str, str]) -> None:
         url, _ = live_server

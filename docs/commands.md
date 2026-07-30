@@ -1531,6 +1531,49 @@ docket deny <token>      # Deny the pending approval
 
 ## Observability Commands
 
+### runs
+
+Inspect the dispatch run registry — one persisted record per pod-dispatch invocation, whatever
+triggered it (the CLI, the `docket serve` webhook, a due schedule, or the sweep loop). Answers
+"is it done, did it fail, or did it never run" for background dispatch, which previously discarded
+every exception silently.
+
+**Syntax:**
+```bash
+docket runs list [--project <project>] [--json]
+docket runs show <run-id> [--json]
+```
+
+**Options:**
+- **`--project <project>`** (list only): filter to one pod's runs.
+- **`--json`**: emit the bare record(s) as JSON instead of a Rich table.
+
+**Example:**
+```bash
+docket runs list
+#   ID          SOURCE   PROJECT  STATE      TASKS  CREATED              ERROR
+#   run-3f2a…   cli      myapp    succeeded  2      2026-07-30T02:10:00
+
+docket runs show run-3f2a1c9e-...
+#   Source:   cli
+#   Project:  myapp
+#   State:    succeeded
+#   Tasks:    task-91a2, task-c410
+```
+
+**Notes:**
+- A run record's `source` is one of `cli | webhook | schedule | sweep`; `state` is one of
+  `queued | running | succeeded | failed`.
+- A `failed` run carries the exception text in `error` — no dispatch call site silently discards
+  an exception any more (`docket serve`'s webhook, schedule check, and sweep loop all record their
+  outcome here instead of a bare `contextlib.suppress(Exception)`).
+- Persisted to `~/.openclaw/docket-runs.json` (docket-owned JSON via `edges/store.py`).
+- `POST /dispatch/<project>` (see [serve](#serve)) returns `{"run": "<id>"}` immediately, before
+  any dispatch work is attempted; `GET /runs/<id>` and `GET /runs?project=` mirror this command
+  over HTTP (Bearer-authed, same as `/approvals`).
+
+---
+
 ### trace
 
 View, follow, and export agent action traces. Every dispatch hop emits a JSONL trace event; use `trace` to inspect them.

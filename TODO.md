@@ -166,10 +166,29 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** cancellation (Phase 16 W-2 — needs process-group plumbing); a web UI.
 - **Deliverables:** `core/runs.py`, `docket runs`, extended serve endpoints + spec bump, durable
   scheduler state, zero suppressed dispatch exceptions; tests; goldens for new CLI surface.
-- **Acceptance gate:** [ ] every dispatch path yields a queryable run record · [ ] induced failure
-  visible with its error · [ ] no `suppress(Exception)` remains around dispatch (grep-pinned test) ·
-  [ ] scheduler state survives restart · [ ] suite + goldens green.
-- **Size:** L (split: registry/CLI vs serve wiring) · **Status:** TODO
+- **Acceptance gate:** [x] every dispatch path yields a queryable run record · [x] induced failure
+  visible with its error · [x] no `suppress(Exception)` remains around dispatch (grep-pinned test) ·
+  [x] scheduler state survives restart · [x] suite + goldens green.
+- **Size:** L (split: registry/CLI vs serve wiring) · **Status:** DONE (pc/r-3) — `core/runs.py`
+  (persisted registry: `create_run`/`mark_running`/`finish_run`/`get_run`/`list_runs`/`execute`,
+  locked via `store.read_modify_write`); `docket runs list [--project P] [--json]` / `docket runs
+  show <id> [--json]` (`cli/_runs.py`); `POST /dispatch/<project>` now creates the run record
+  before returning and its response carries `{"run": "<id>"}`; new `GET /runs` (`?project=`) and
+  `GET /runs/<id>`, Bearer-authed; `SERVE_API_VERSION` bumped 1→2, `serve-read-api.spec.md` and
+  `cli-json-shapes.spec.md` updated. All four dispatch-lane `contextlib.suppress(Exception)` sites
+  (schedule-thread, sweep's `dispatch_all_pods()` call, sweep's `_check_schedules()` call, webhook
+  thread) replaced with real handling via `core.runs.execute()` — the sweep loop's per-pod
+  dispatch is now an explicit `dispatchable_pods()` loop (one run record per pod) instead of the
+  single opaque `dispatch_all_pods()` call, so one pod's exception no longer risks aborting the
+  others. Scheduler last-run moved from serve.py's in-memory `_schedule_state` dict into the
+  schedules file itself (`core/schedule.py`'s new `load_last_run`/`record_last_run`, through
+  `store.read_modify_write`) — a `docket serve` restart no longer re-fires every schedule.
+  `core/dispatch.py` untouched (zero changes) — every wrapper lives in `core/runs.py`/`serve.py`/
+  `cli/_pod.py`, duck-typing `TaskResult.task_id` rather than importing dispatch's types, per the
+  card's "touch dispatch.py as little as humanly possible" instruction. Regenerated
+  `completions_bash`/`completions_zsh` goldens (new top-level command in the list); `help.golden`
+  unaffected. 57 new tests (952 total); full suite + 17-case golden suite + validate-specs +
+  metrics --check green.
 
 ---
 
@@ -329,7 +348,7 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
   `blocked` never auto-retries.
 - [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
-- [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
+- [x] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
   scheduler state survives restart.
 - [ ] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
 - [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.

@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Complete
-**Last Updated**: 2026-06-24
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -14,9 +14,9 @@ against that code.
 ## Scope
 
 Covers every command that supports `--json` output: `list`, `info`, `cost` (and
-`cost --history`), `doctor`, `snapshot`, and the `serve` HTTP endpoints. It does **not** cover
-human-readable (Rich) output, nor the OpenClaw daemon's own `openclaw.json` format (owned by the
-daemon; see the Anti-Corruption Layer).
+`cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3), and the `serve` HTTP
+endpoints. It does **not** cover human-readable (Rich) output, nor the OpenClaw daemon's own
+`openclaw.json` format (owned by the daemon; see the Anti-Corruption Layer).
 
 ## Structure
 
@@ -136,6 +136,46 @@ structural rules hold everywhere:
 }
 ```
 
+### `docket runs list --json` (R-3)
+
+```json
+{
+  "runs": [
+    {
+      "id":         "string (run-<uuid4>)",
+      "source":     "cli | webhook | schedule | sweep",
+      "project":    "string",
+      "state":      "queued | running | succeeded | failed",
+      "taskIds":    "array of strings",
+      "error":      "string (empty unless state is failed)",
+      "created":    "string (ISO-8601, local offset)",
+      "startedAt":  "string (ISO-8601) | null",
+      "finishedAt": "string (ISO-8601) | null"
+    }
+  ]
+}
+```
+
+`docket runs list --project <p> --json` filters the array to one pod; newest-first ordering.
+
+### `docket runs show <id> --json` (R-3)
+
+Same shape as one element of `runs list`'s array, unwrapped (a bare object, not `{"runs": [...]}`):
+
+```json
+{
+  "id":         "string (run-<uuid4>)",
+  "source":     "cli | webhook | schedule | sweep",
+  "project":    "string",
+  "state":      "queued | running | succeeded | failed",
+  "taskIds":    "array of strings",
+  "error":      "string",
+  "created":    "string (ISO-8601)",
+  "startedAt":  "string (ISO-8601) | null",
+  "finishedAt": "string (ISO-8601) | null"
+}
+```
+
 ### `docket snapshot` (full output)
 
 The snapshot command writes to a file (or stdout). The outer shape:
@@ -174,6 +214,8 @@ Each agent object in the snapshot:
 | `/status.json` | `application/json` | Same as `docket snapshot` output |
 | `/health` | `application/json` | `{"status": "ok", "gateway": <boolean>}` |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
+| `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
+| `/runs/<id>` | `application/json` | Same as `docket runs show <id> --json` (auth required) |
 
 Prometheus metrics emitted by `/metrics`:
 
@@ -224,6 +266,12 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
 ```
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-30)
+
+- R-3 (D-17): documented `docket runs list --json` and `docket runs show <id> --json` (the run
+  registry — one persisted record per dispatch invocation) and the corresponding
+  `GET /runs` / `GET /runs/<id>` serve endpoints.
 
 ### Version 1.1.0 (2026-06-24)
 

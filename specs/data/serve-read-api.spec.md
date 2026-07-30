@@ -1,43 +1,57 @@
 # serve read API — contract spec
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Status**: Stable
-**Last Updated**: 2026-06-26
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
 This specification defines the read API exposed by `docket serve` — a lightweight HTTP server
 that gives dashboards, CI pipelines, and external tools a stable, versioned window into fleet
-state. The API is intentionally read-only at the unauthenticated layer; all mutation flows
-through the CLI (`docket approve/deny`, etc.) or token-guarded write endpoints.
+state. Three endpoints (`/status.json`, `/metrics`, `/health`) are read-only and unauthenticated;
+a second tier (`/approvals`, `/runs`) is also read-only but requires the same Bearer token as the
+write endpoints, since it exposes per-agent/per-dispatch detail an unauthenticated caller
+shouldn't see. All mutation flows through the CLI (`docket approve/deny`, `docket pod <p>
+dispatch`, etc.) or these same token-guarded write endpoints.
 
 ## Scope
 
 This specification covers:
 
-- The three stable read endpoints (`/status.json`, `/metrics`, `/health`)
+- The three stable, unauthenticated read endpoints (`/status.json`, `/metrics`, `/health`)
+- The authenticated read-registry endpoints added in R-3 (`/runs`, `/runs/<id>`) and their
+  relationship to `POST /dispatch/<project>`
 - The JSON schema for each response
 - The Prometheus metric names and semantics
 - The versioning policy (what constitutes a breaking change)
 - The security model (auth requirements per endpoint)
 
-It does NOT cover write endpoints (`POST /approvals/<token>`, `POST /dispatch/<project>`), which
-are implementation details gated by `Authorization: Bearer <token>` and documented in
-`src/docket/serve.py`.
+It does NOT cover the write endpoints' request handling (`POST /approvals/<token>`,
+`POST /dispatch/<project>`) beyond the shape of their response body — those are implementation
+details gated by `Authorization: Bearer <token>` and documented in `src/docket/serve.py`.
 
-**API version:** `1`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
+**API version:** `2`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
-`/health`) require no auth.
+`/health`) require no auth. `/approvals`, `/runs`, `/runs/<id>`, and the write endpoints all
+require `Authorization: Bearer <token>`.
 
 ## Structure
 
-The server exposes three stable read endpoints:
+The server exposes three stable, unauthenticated read endpoints:
 
 | Endpoint | Content-Type | Auth required |
 |---|---|---|
 | `GET /status.json` | `application/json` | No |
 | `GET /metrics` | `text/plain; version=0.0.4` | No |
 | `GET /health` | `application/json` | No |
+
+...and an authenticated read-registry tier (R-3 / D-17), one dispatch-run record per invocation
+of the pod pipeline — the CLI, the serve webhook, a due schedule, or the sweep loop:
+
+| Endpoint | Content-Type | Auth required |
+|---|---|---|
+| `GET /runs` | `application/json` | Yes |
+| `GET /runs/<id>` | `application/json` | Yes |
 
 All responses are served from `127.0.0.1` (localhost only). Responses include
 `Cache-Control: no-store` — consumers must not cache.
@@ -111,6 +125,49 @@ Liveness check. Always returns HTTP 200 while the process is alive.
 
 `gateway` is `1` (active) or `0` (inactive).
 
+### GET /runs
+
+**Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns every
+persisted dispatch-run record, newest first. An optional `?project=<name>` query parameter filters
+to one pod.
+
+```json
+{
+  "runs": [
+    {
+      "id":         "run-3f2a1c9e-...",
+      "source":     "cli | webhook | schedule | sweep",
+      "project":    "myapp",
+      "state":      "queued | running | succeeded | failed",
+      "taskIds":    ["task-91a2..."],
+      "error":      "",
+      "created":    "2026-07-30T02:10:00.123456+00:00",
+      "startedAt":  "2026-07-30T02:10:00.200000+00:00",
+      "finishedAt": "2026-07-30T02:10:04.500000+00:00"
+    }
+  ]
+}
+```
+
+### GET /runs/&lt;id&gt;
+
+**Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns one run
+record (the same shape as one element of `/runs`' array, unwrapped). `404` if the id is unknown.
+
+### POST /dispatch/&lt;project&gt; (response shape only)
+
+**Changed in API version 2.** The webhook now creates a run record *before* returning, and the
+response body carries its id:
+
+```json
+{"ok": true, "run": "run-3f2a1c9e-...", "project": "myapp", "status": "dispatched"}
+```
+
+The dispatch pipeline itself still runs asynchronously (this endpoint must not block on a real
+agent turn) — poll `GET /runs/<id>` (or `docket runs show <id>`) for the outcome. Before API
+version 2 this response had no `run` field and the dispatch outcome, including any exception, was
+silently discarded.
+
 ## Validation
 
 - `apiVersion` MUST be a string matching `SERVE_API_VERSION` in `src/docket/serve.py`.
@@ -119,6 +176,13 @@ Liveness check. Always returns HTTP 200 while the process is alive.
 - `agents[*].budgetUsd` MUST be a float or `null`.
 - `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
 - `/metrics` MUST conform to Prometheus text format 0.0.4.
+- `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer token with `401`,
+  before touching the run registry.
+- A run record's `state` MUST be one of `queued | running | succeeded | failed`; `source` MUST be
+  one of `cli | webhook | schedule | sweep`.
+- `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
+  `GET /runs/<id>` immediately after the response is sent (the record exists before the HTTP
+  response is written, even though the dispatch itself is still in flight).
 - The contract is pinned by `tests/python/test_cd8_read_api.py` (class `TestApiContract`).
   Any change that breaks that test is a breaking API change and MUST bump `apiVersion`.
 
@@ -145,7 +209,39 @@ curl -s http://127.0.0.1:7474/health
 # {"status": "ok", "gateway": 1}
 ```
 
+### Trigger a dispatch and poll its run (curl)
+
+```bash
+TOKEN=... # printed at `docket serve` startup, or $DOCKET_SERVE_TOKEN
+
+run_id=$(curl -s -H "Authorization: Bearer $TOKEN" -X POST \
+  http://127.0.0.1:7474/dispatch/myapp | jq -r .run)
+
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7474/runs/$run_id | jq .
+```
+
+### List runs for one project (curl)
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:7474/runs?project=myapp" | jq .
+```
+
 ## Changelog
+
+### 2.0.0 — 2026-07-30
+
+- R-3 (D-17): added the authenticated read-registry tier — `GET /runs` (newest-first, optional
+  `?project=` filter) and `GET /runs/<id>` — backed by the persisted dispatch-run registry
+  (`core/runs.py`).
+- `POST /dispatch/<project>`'s response body gained a `run` field (the created run's id), returned
+  before the dispatch pipeline itself runs. This is a breaking change to that endpoint's response
+  shape (a consumer parsing the old `{ok, project, status}` shape unchanged still works — `run` is
+  additive — but the *guarantee* that a run id always accompanies a 200 response is new and the
+  reason for the major bump), hence `apiVersion` → `2`.
+- Documented the security-model split: `/status.json` / `/metrics` / `/health` stay unauthenticated
+  read endpoints; `/approvals`, `/runs`, `/runs/<id>` join the write endpoints in requiring a
+  Bearer token.
 
 ### 1.0.0 — 2026-06-26
 

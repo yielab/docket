@@ -6,11 +6,22 @@ Exposes:
   /health              liveness JSON
   /approvals           list pending approvals (auth required)
   /approvals/<token>   grant or deny a pending approval (auth required)
+  /runs                 list dispatch run records, newest first (auth required)
+  /runs/<id>            one dispatch run record (auth required)
+  /dispatch/<project>   trigger a pod dispatch; returns a queryable run id (auth required)
 
 Security model: the server binds to 127.0.0.1 by default. A randomly-generated
-Bearer token is printed at startup and required on every /approvals request
-(DOCKET_SERVE_TOKEN env var pins a fixed token). The approval endpoints reject
-all requests without a valid token before touching approval state.
+Bearer token is printed at startup and required on every /approvals, /runs, and
+/dispatch request (DOCKET_SERVE_TOKEN env var pins a fixed token). Those
+endpoints reject all requests without a valid token before touching any state.
+
+R-3 (D-17): every dispatch this server triggers — webhook, due schedule, or the
+periodic sweep — is recorded in the ``core.runs`` registry *before* it starts
+and folded to a terminal state when it finishes, so an operator can always
+distinguish "done", "failed", and "never ran" via ``docket runs show`` /
+``GET /runs/<id>``. No dispatch call site in this module silently discards an
+exception any more (no bare ``contextlib.suppress(Exception)`` around
+dispatch) — see ``core/runs.py``'s ``execute()``.
 """
 
 from __future__ import annotations
@@ -21,6 +32,7 @@ import json
 import os
 import secrets
 import threading
+import urllib.parse as _urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -31,9 +43,10 @@ from docket.edges.adapters import openclaw as oc
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
 
-# Bumped on any breaking change to /status.json or /metrics contract.
+# Bumped on any breaking change to /status.json or /metrics contract, or to the
+# authenticated write/read-registry endpoints (/dispatch, /runs).
 # Pinned by tests/python/test_cd8_read_api.py (TestApiContract).
-SERVE_API_VERSION = "1"
+SERVE_API_VERSION = "2"
 
 _SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)
 
@@ -209,31 +222,37 @@ def render_status() -> str:
     return json.dumps(build_status(), indent=2)
 
 
-# Last-dispatch timestamp per project for the schedule checker.
-# Initialised to 0.0 so every spec fires on the first sweep after serve starts.
-_schedule_state: dict[str, float] = {}
-
-
 def _check_schedules(now_ts: float) -> None:
     """Trigger dispatch for pods whose schedule spec is due.
 
-    Reads the schedule config from ``cfg.SCHEDULE_FILE``. Each due project is
-    dispatched in a daemon thread so the sweep loop is never blocked by an agent
-    run. Failures are swallowed per-project (best-effort).
+    Reads the schedule config from ``cfg.SCHEDULE_FILE``; the last-run
+    timestamp used to decide "due" is read from — and, once a project fires,
+    written back into — that same file (``core.schedule.load_last_run`` /
+    ``record_last_run``) rather than an in-memory dict, so a ``docket serve``
+    restart does not re-fire every schedule on its first sweep (R-3).
+
+    Each due project gets a run record (source ``"schedule"``) created up
+    front, then is dispatched in a daemon thread via ``core.runs.execute`` so
+    the sweep loop is never blocked by an agent run — and so the outcome
+    (including an exception) always lands in the run registry instead of
+    being silently discarded.
     """
     from docket.core import dispatch as _dispatch
+    from docket.core import runs as _runs
     from docket.core import schedule as _sched
 
     schedules = _sched.load_schedules(cfg.SCHEDULE_FILE)
+    last_run_map = _sched.load_last_run(cfg.SCHEDULE_FILE)
     for project, spec in schedules.items():
-        last_run = _schedule_state.get(project, 0.0)
+        last_run = last_run_map.get(project, 0.0)
         if not _sched.is_schedule_due(spec, last_run, now_ts):
             continue
-        _schedule_state[project] = now_ts
+        _sched.record_last_run(cfg.SCHEDULE_FILE, project, now_ts)
 
-        def _run(proj: str = project) -> None:
-            with contextlib.suppress(Exception):
-                _dispatch.dispatch_pod(proj)
+        record = _runs.create_run("schedule", project)
+
+        def _run(proj: str = project, run_id: str = record["id"]) -> None:
+            _runs.execute(run_id, lambda: _dispatch.dispatch_pod(proj))
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
@@ -246,10 +265,11 @@ def _run_sweeps(dispatch: bool = False) -> None:
     APPROVAL_TIMEOUT. Every sweep is guarded so one failure never aborts the
     others or the server.
 
-    When *dispatch* is set, also drives every pod's queued tasks through its
-    pipeline and checks the schedule file for due projects. These run real,
-    budget-gated agent turns so they are opt-in (`docket serve --dispatch`)
-    and never part of the read-only monitor.
+    When *dispatch* is set, also drives every dispatchable pod's queued tasks
+    through its pipeline (one run record per pod, source ``"sweep"``) and
+    checks the schedule file for due projects. These run real, budget-gated
+    agent turns so they are opt-in (`docket serve --dispatch`) and never part
+    of the read-only monitor.
     """
     import time
 
@@ -261,11 +281,24 @@ def _run_sweeps(dispatch: bool = False) -> None:
         approval.approval_sweep_expired()
     if dispatch:
         from docket.core import dispatch as _dispatch
+        from docket.core import runs as _runs
 
-        with contextlib.suppress(Exception):
-            _dispatch.dispatch_all_pods()
-        with contextlib.suppress(Exception):
+        try:
+            pods_to_dispatch = _dispatch.dispatchable_pods()
+        except Exception as exc:
+            print(f"[serve] sweep: could not list dispatchable pods: {exc}")
+            pods_to_dispatch = []
+        for project in pods_to_dispatch:
+            record = _runs.create_run("sweep", project)
+
+            def _dispatch_one(proj: str = project) -> list[_dispatch.TaskResult]:
+                return _dispatch.dispatch_pod(proj)
+
+            _runs.execute(record["id"], _dispatch_one)
+        try:
             _check_schedules(time.time())
+        except Exception as exc:
+            print(f"[serve] sweep: schedule check failed: {exc}")
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
@@ -306,7 +339,8 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self._send(body, "application/json", status)
 
     def do_GET(self) -> None:
-        path = self.path.split("?", 1)[0].rstrip("/")
+        full_path = self.path
+        path = full_path.split("?", 1)[0].rstrip("/")
         if path in ("/status.json", "/status"):
             self._send(render_status().encode("utf-8"), "application/json")
         elif path == "/metrics":
@@ -321,6 +355,32 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
             body = json.dumps({"pending": approval.list_pending()}).encode("utf-8")
             self._send(body, "application/json")
+        elif path == "/runs":
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            from docket.core import runs as _runs
+
+            query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
+            project_values = query.get("project")
+            project = project_values[0] if project_values else None
+            body = json.dumps({"runs": _runs.list_runs(project)}).encode("utf-8")
+            self._send(body, "application/json")
+        elif path.startswith("/runs/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            run_id = path[len("/runs/") :]
+            if not run_id:
+                self._send_json_error("Missing run id", 400)
+                return
+            from docket.core import runs as _runs
+
+            rec = _runs.get_run(run_id)
+            if rec is None:
+                self._send_json_error(f"Unknown run: {run_id}", 404)
+                return
+            self._send(json.dumps(rec).encode("utf-8"), "application/json")
         else:
             self._send(b"not found\n", "text/plain", status=404)
 
@@ -370,14 +430,21 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Missing project", 400)
                 return
             from docket.core import dispatch as _dispatch
+            from docket.core import runs as _runs
 
-            def _run(proj: str = project) -> None:
-                with contextlib.suppress(Exception):
-                    _dispatch.dispatch_pod(proj)
+            # R-3 (D-17): the run record is created — and its id handed back to
+            # the caller — BEFORE any dispatch work is attempted. The actual
+            # pipeline still runs async (this endpoint must not block on a real
+            # agent turn), but its outcome always lands in the run registry
+            # instead of vanishing behind a fire-and-forget thread.
+            record = _runs.create_run("webhook", project)
+
+            def _run(proj: str = project, run_id: str = record["id"]) -> None:
+                _runs.execute(run_id, lambda: _dispatch.dispatch_pod(proj))
 
             threading.Thread(target=_run, daemon=True).start()
             resp_body = json.dumps(
-                {"ok": True, "project": project, "status": "dispatched"}
+                {"ok": True, "run": record["id"], "project": project, "status": "dispatched"}
             ).encode()
             self._send(resp_body, "application/json")
         else:
@@ -417,7 +484,7 @@ def run_serve(
     disp = "  dispatch=on" if dispatch else ""
     print(f"docket serve  port={actual_port}  refresh={interval}s{disp}  (Ctrl-C to stop)")
     print(
-        f"Endpoints: /status.json  /metrics  /health  /approvals"
+        f"Endpoints: /status.json  /metrics  /health  /approvals  /runs  /dispatch"
         f"  ->  http://localhost:{actual_port}/"
     )
     print(f"Approval API token: {_token}  (override: DOCKET_SERVE_TOKEN)")

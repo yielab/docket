@@ -812,7 +812,13 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
     stale claim (it crashed mid-task) and continues each one from its last
     persisted hop instead of restarting at hop 0 (R-1 crash recovery).
+
+    R-3: this invocation is recorded in the run registry (source ``"cli"``)
+    like every other dispatch path — an exception here is no longer just a
+    traceback, it is also visible afterwards via ``docket runs show``.
     """
+    from docket.core import runs as _runs
+
     resume = "--resume" in extra
     try:
         pipeline = _dispatch.pod_pipeline(project)
@@ -837,7 +843,15 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     cap = _dispatch.pod_budget(project)
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
-    results = _dispatch.dispatch_pod(project, resume=resume)
+
+    record = _runs.create_run("cli", project)
+    results = _runs.execute(record["id"], lambda: _dispatch.dispatch_pod(project, resume=resume))
+    if results is None:
+        rec = _runs.get_run(record["id"])
+        error = str(rec.get("error", "")) if rec else ""
+        ui.error(f"Dispatch failed: {error}")
+        ui.dim(f"  Details: docket runs show {record['id']}")
+        raise typer.Exit(1)
     for res in results:
         if res.status == "done":
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")

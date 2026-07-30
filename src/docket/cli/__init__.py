@@ -1467,6 +1467,19 @@ def cmd_conversations(ctx: typer.Context) -> None:
     raise typer.Exit(run_conversations(sub, args[1:]))
 
 
+@app.command(
+    "runs",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_runs(ctx: typer.Context) -> None:
+    """Inspect the dispatch run registry (list/show) — one record per dispatch invocation."""
+    from docket.cli._runs import run_runs
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_runs(sub, args[1:]))
+
+
 @app.command("audit")
 def cmd_audit(
     arg: str | None = typer.Argument(None, help="Last-N count, or --json"),
