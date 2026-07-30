@@ -158,6 +158,30 @@ def test_auth_paste_token_builds_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[0] == ["openclaw", "models", "auth", "paste-token", "--provider", "anthropic"]
 
 
+def test_auth_setup_token_provider_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 18 L-2: --provider threads through instead of a hardcoded 'anthropic'."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **k: calls.append(cmd) or _FakeCompleted(0))
+    _oc.auth_setup_token(["--flag", "x"], provider="openai")
+    assert calls[0] == [
+        "openclaw",
+        "models",
+        "auth",
+        "setup-token",
+        "--provider",
+        "openai",
+        "--flag",
+        "x",
+    ]
+
+
+def test_auth_paste_token_provider_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **k: calls.append(cmd) or _FakeCompleted(0))
+    _oc.auth_paste_token(provider="openrouter")
+    assert calls[0] == ["openclaw", "models", "auth", "paste-token", "--provider", "openrouter"]
+
+
 def test_auth_paste_token_propagates_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
     """cmd_auth's login/key/setup branches don't wrap this call — an unexpected
     OSError should propagate, not be swallowed by the ACL."""

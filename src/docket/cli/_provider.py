@@ -81,7 +81,6 @@ def _print_role_split(name: str, model_id: str) -> None:
         f"  docket models set repo       {name}/{model_id}"
         "            # project agents execute locally"
     )
-    ui.console.print(f"  docket models set task       {name}/{model_id}")
     ui.console.print(
         "  docket models                                               "
         "# confirm the role→model table"
@@ -97,6 +96,6 @@ def _print_role_split(name: str, model_id: str) -> None:
         "# lead(Claude) plan → implementer(local)"
     )
     ui.console.print(
-        f"  openclaw models status --agent programmer                  "
+        "  docket profile programmer                                   "
         f"# confirm it resolves to {name}/{model_id}"
     )

@@ -70,7 +70,7 @@ def run_help() -> int:
                         follow the role policy; --budget <USD> sets a spending cap
   {G}models{R}             View/change the role→model policy; switch provider presets
   {G}scope{R}    [id] [a]  Manage session scopes for multi-project isolation
-  {G}auth{R}     <action>  Configure Claude model auth (subscription or API key)
+  {G}auth{R}     <action>  Configure model-provider auth (subscription or API key)
   {G}keys{R}     <action>  Manage workspace secrets — syncs to all agents
 
 {B}CONTEXT & MEMORY  (docket context [id] <subcommand>){R}

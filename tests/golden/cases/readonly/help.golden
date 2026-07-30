@@ -44,7 +44,7 @@ CONFIGURATION
                         follow the role policy; --budget <USD> sets a spending cap
   models             View/change the role→model policy; switch provider presets
   scope    [id] [a]  Manage session scopes for multi-project isolation
-  auth     <action>  Configure Claude model auth (subscription or API key)
+  auth     <action>  Configure model-provider auth (subscription or API key)
   keys     <action>  Manage workspace secrets — syncs to all agents
 
 CONTEXT & MEMORY  (docket context [id] <subcommand>)

@@ -770,9 +770,16 @@ def agents_add(agent_id: str, workspace: str, model: str, timeout: float = 15) -
 
 
 def auth_setup_token(
-    extra: list[str] | None = None, timeout: float | None = None
+    extra: list[str] | None = None,
+    provider: str = "anthropic",
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """Run `openclaw models auth setup-token --provider anthropic [extra...]`.
+    """Run `openclaw models auth setup-token --provider <provider> [extra...]`.
+
+    ``provider`` defaults to "anthropic" for backward compatibility with
+    every pre-existing call site (Phase 18 L-2 added the parameter so
+    `docket auth --provider <x>` can thread a real choice through instead of
+    the value being hardcoded).
 
     Interactive: stdio is NOT captured so the OAuth-like flow can prompt/print
     directly on the caller's terminal. Does not catch subprocess errors itself
@@ -782,22 +789,26 @@ def auth_setup_token(
     import subprocess as _sp
 
     return _sp.run(
-        ["openclaw", "models", "auth", "setup-token", "--provider", "anthropic", *(extra or [])],
+        ["openclaw", "models", "auth", "setup-token", "--provider", provider, *(extra or [])],
         timeout=timeout,
     )
 
 
 def auth_paste_token(
-    extra: list[str] | None = None, timeout: float | None = None
+    extra: list[str] | None = None,
+    provider: str = "anthropic",
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """Run `openclaw models auth paste-token --provider anthropic [extra...]`.
+    """Run `openclaw models auth paste-token --provider <provider> [extra...]`.
+
+    ``provider`` defaults to "anthropic" — see `auth_setup_token` docstring.
 
     Interactive: stdio is NOT captured — see `auth_setup_token` docstring.
     """
     import subprocess as _sp
 
     return _sp.run(
-        ["openclaw", "models", "auth", "paste-token", "--provider", "anthropic", *(extra or [])],
+        ["openclaw", "models", "auth", "paste-token", "--provider", provider, *(extra or [])],
         timeout=timeout,
     )
 

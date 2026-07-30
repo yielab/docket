@@ -10,16 +10,40 @@ import docket.config as cfg
 from docket.edges import store as _store
 
 # Internal rank anchors: per-class defaults (used to seed each role's default
-# model) and the fallback ceiling shown by `docket models`. NOT a user-facing
-# vocabulary — "economy"/"standard"/"premium" are no longer accepted as model
-# arguments or registry keys (user-facing tier names removed in 0.2.0, D-2
-# exit; see ROADMAP.md D-2). This table is the sole surviving piece of the old
-# tier system, kept private because the fallback chain still reads it.
+# model) and the seed values `docket models` displays alongside the policy
+# table. NOT a user-facing vocabulary — "economy"/"standard"/"premium" are no
+# longer accepted as model arguments or registry keys (user-facing tier names
+# removed in 0.2.0, D-2 exit; see ROADMAP.md D-2). This table is the sole
+# surviving piece of the old tier system, kept private because role-default
+# seeding still reads it. It is NOT a runtime fallback chain — nothing in
+# docket degrades a request to a cheaper model on failure (Phase 18 L-2);
+# `docket models` labels it "rank anchors", never "fallback".
+#
+# Registry-overridable (Phase 18 L-2): a user's docket-models.json MAY carry a
+# top-level ``rankAnchors`` map (``{"economy": "...", "standard": "...",
+# "premium": "..."}``) that overrides these Anthropic defaults before role
+# defaults are derived — see `load_registry`. This is how a fleet on a
+# non-Anthropic preset stops showing Claude residue in the anchor display.
 _RANK_ANCHORS: dict[str, str] = {
     "economy": "anthropic/claude-haiku-4-5",
     "standard": "anthropic/claude-sonnet-4-6",
     "premium": "anthropic/claude-opus-4-6",
 }
+
+# Provider prefixes that never carry a per-token dollar cost — a local
+# OpenAI-compatible endpoint (llama.cpp / LM Studio / vLLM / Ollama, all of
+# which speak the same /v1 surface `core/provider.py` registers). Priced as
+# "$0 (local)", never "n/a" (there is no missing data — the true cost is
+# zero) and never a fabricated non-zero figure.
+LOCAL_PROVIDERS: tuple[str, ...] = ("local", "ollama", "lmstudio")
+
+# Providers whose per-model pricing docket deliberately does NOT hardcode: a
+# marketplace router (OpenRouter) re-prices per underlying model and account
+# tier, changes often, and isn't something a manual snapshot table can track
+# honestly. Anything under this prefix that isn't an explicit MODEL_PRICING
+# row (e.g. the curated openrouter-free models below) reports the informative
+# "unpriced, bring your own" label instead of a stale or invented number.
+UNPRICED_MARKETPLACE_PROVIDERS: tuple[str, ...] = ("openrouter",)
 
 ALL_ROLES: tuple[str, ...] = (
     "manager",
@@ -74,6 +98,21 @@ MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "google/gemini-2.0-flash-lite": (0.075, 0.30, 0.0, 0.0),
     "google/gemini-2.5-flash": (0.15, 0.60, 0.0, 0.0),
     "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
+    # The three models the `openrouter-free` preset pins (below): OpenRouter's
+    # own free-tier catalog is advertised at zero per-token cost — that claim
+    # already lives on this preset's `cost`/`note` fields (MA-4, 2026-06-11);
+    # this just makes the pricing table agree with it instead of reporting
+    # "n/a" for a preset docket itself labels "free". Not a sourced live
+    # OpenRouter price lookup — a restatement of docket's own free-tier
+    # selection. Revisit if OpenRouter's free tier changes terms.
+    "openrouter/google/gemini-flash-1.5-8b": (0.0, 0.0, 0.0, 0.0),
+    "openrouter/meta-llama/llama-3.3-70b-instruct": (0.0, 0.0, 0.0, 0.0),
+    "openrouter/deepseek/deepseek-r1": (0.0, 0.0, 0.0, 0.0),
+    # Local OpenAI-compatible endpoint (core/provider.py's DEFAULT_MODEL_ID) —
+    # genuinely zero per-token cost, not an estimate. pricing_label() also
+    # short-circuits on LOCAL_PROVIDERS, so this row is belt-and-suspenders
+    # for any code path that reads MODEL_PRICING directly.
+    "local/qwen3-30b-a3b": (0.0, 0.0, 0.0, 0.0),
 }
 
 KNOWN_PRESETS: tuple[str, ...] = (
@@ -82,6 +121,7 @@ KNOWN_PRESETS: tuple[str, ...] = (
     "google",
     "openrouter-free",
     "openrouter",
+    "local",
 )
 
 PRESET_TABLE: dict[str, dict[str, str]] = {
@@ -124,6 +164,18 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "key": "OPENROUTER_API_KEY",
         "cost": "paid",
         "note": "Unified access to 200+ models via one key.",
+    },
+    "local": {
+        "economy": "local/qwen3-30b-a3b",
+        "standard": "local/qwen3-30b-a3b",
+        "premium": "local/qwen3-30b-a3b",
+        "key": "",
+        "cost": "free",
+        "note": (
+            "Local OpenAI-compatible endpoint (llama.cpp/LM Studio/vLLM/Ollama) — no API key, "
+            "no per-token cost. Register your endpoint first: docket models provider "
+            "[name] [base_url]."
+        ),
     },
 }
 
@@ -206,6 +258,14 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
 
     Falls back to built-in defaults on any read/parse error. Self-migrates a
     legacy ``profiles:`` key (see ``migrate_legacy_profiles``) before reading.
+
+    ``tiers`` (the rank anchors) are registry-overridable via a top-level
+    ``rankAnchors`` map (Phase 18 L-2) — applied *before* role defaults are
+    derived, so an overridden anchor reshapes every cheap/strong-class role
+    default too, and the value `docket models` displays next to it is never
+    stale Claude residue for a fleet on another provider. Malformed entries
+    (unknown anchor name, not a well-formed model id) are silently ignored,
+    matching the tolerance already applied to ``default``/``roles`` below.
     """
     migrate_legacy_profiles()  # silent, idempotent — see the CLI layer for the warning
 
@@ -220,6 +280,10 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
         reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return _init_role_models(tiers), tiers, default_model
+
+    for anchor, m in reg.get("rankAnchors", {}).items():
+        if anchor in tiers and isinstance(m, str) and _MODEL_ID_RE.match(m):
+            tiers[anchor] = m
 
     if isinstance(reg.get("default"), str) and _MODEL_ID_RE.match(reg["default"]):
         default_model = reg["default"]
@@ -292,12 +356,23 @@ def validate_model(model: str) -> tuple[str, list[str]]:
         warnings.append(f"Model alias '{model}' → '{resolved}'.")
         return resolved, warnings
 
-    # 2. Well-formed provider/model — accepted; warn if unpriced.
+    # 2. Well-formed provider/model — accepted; warn if unpriced (never for a
+    #    local endpoint, which is honestly priced at $0, not "unknown").
     if _MODEL_ID_RE.match(model):
-        if model not in MODEL_PRICING:
-            warnings.append(
-                f"Model '{model}' is not in docket's pricing table — cost will show as n/a."
-            )
+        provider = model.split("/", 1)[0]
+        if provider in LOCAL_PROVIDERS:
+            pass
+        elif model not in MODEL_PRICING:
+            if provider in UNPRICED_MARKETPLACE_PROVIDERS:
+                warnings.append(
+                    f"Model '{model}' routes through a marketplace provider whose per-model "
+                    "pricing changes often — docket does not track it; cost will show as "
+                    "'n/a (bring your own)'."
+                )
+            else:
+                warnings.append(
+                    f"Model '{model}' is not in docket's pricing table — cost will show as n/a."
+                )
         return model, warnings
 
     # 3. Malformed (includes the retired tier names economy/standard/premium).
@@ -312,11 +387,22 @@ def validate_model(model: str) -> tuple[str, list[str]]:
 
 
 def pricing_label(model: str) -> str:
-    """Return '$inp/$out' (per-M-token) or 'n/a' for a model."""
+    """Return '$inp/$out' (per-M-token), '$0 (local)', or 'n/a' for a model.
+
+    Never returns a fabricated "$0.00" for a model docket has no pricing
+    data for — that path returns 'n/a' (or the marketplace-specific variant)
+    instead. Local providers are the one case where $0 is the *true* cost,
+    not a placeholder for missing data.
+    """
+    provider = model.split("/", 1)[0] if "/" in model else model
+    if provider in LOCAL_PROVIDERS:
+        return "$0 (local)"
     p = MODEL_PRICING.get(model)
-    if p is None:
-        return "n/a"
-    return f"${p[0]:.2f}/${p[1]:.2f}"
+    if p is not None:
+        return f"${p[0]:.2f}/${p[1]:.2f}"
+    if provider in UNPRICED_MARKETPLACE_PROVIDERS:
+        return "n/a (bring your own)"
+    return "n/a"
 
 
 def policy_agent_ids() -> list[str]:
@@ -360,7 +446,10 @@ def reapply_role_policy() -> int:
 def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     """Update docket-models.json via the store.py single-writer chokepoint (D-12).
 
-    Key format: 'default', 'role.<name>'.
+    Key format: 'default', 'role.<name>', 'rank.<economy|standard|premium>'.
+    The 'rank.*' form persists a registry-overridable rank anchor (Phase 18
+    L-2) — used by `docket models preset` so a non-Anthropic preset also
+    replaces the anchor values `docket models` displays, not just the roles.
     reset=True clears all user overrides (deletes the file if empty).
     """
     path = cfg.MODEL_REGISTRY_FILE
@@ -379,6 +468,10 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                 role = k[5:]
                 if role in ROLE_CLASS:
                     reg.setdefault("roles", {})[role] = v
+            elif k.startswith("rank."):
+                anchor = k[5:]
+                if anchor in _RANK_ANCHORS:
+                    reg.setdefault("rankAnchors", {})[anchor] = v
 
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(path, reg)

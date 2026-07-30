@@ -1,4 +1,4 @@
-"""docket keys / docket auth — API key management and Claude model auth.
+"""docket keys / docket auth — API key management and model-provider auth.
 
 ``run_keys(sub, extra)`` and ``run_auth(sub, extra)`` return the process exit
 code; the coordinator wraps each in a Typer command and raises
@@ -405,11 +405,41 @@ def run_keys(sub: str | None, extra: list[str]) -> int:
     return 1
 
 
+def _extract_provider(extra: list[str], default: str = "anthropic") -> tuple[str, list[str]]:
+    """Pull a `--provider <name>` / `--provider=<name>` flag out of ``extra``.
+
+    Returns (provider, remaining_extra) — ``remaining_extra`` has the flag
+    (and its value) stripped so it is never duplicated onto the openclaw
+    argv the ACL builds (which already places `--provider <provider>` itself;
+    see `edges/adapters/openclaw.py`'s `auth_setup_token`/`auth_paste_token`).
+    Defaults to "anthropic" when no flag is present, for backward
+    compatibility with every pre-Phase-18 invocation.
+    """
+    provider = default
+    remaining: list[str] = []
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok == "--provider" and i + 1 < len(extra):
+            provider = extra[i + 1]
+            i += 2
+            continue
+        if tok.startswith("--provider="):
+            provider = tok.split("=", 1)[1]
+            i += 1
+            continue
+        remaining.append(tok)
+        i += 1
+    return provider, remaining
+
+
 def run_auth(sub: str | None, extra: list[str]) -> int:
     """Dispatch the auth subcommand. Returns the process exit code.
 
     sub:   status (default) | login | key | setup | choose
-    extra: trailing positional args forwarded to the openclaw auth helpers.
+    extra: trailing positional args forwarded to the openclaw auth helpers;
+           may include `--provider <name>` (defaults to "anthropic" — see
+           `_extract_provider`).
     """
     action = sub or "status"
 
@@ -443,8 +473,9 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
         if not shutil.which("openclaw"):
             ui.error("'openclaw' not found in PATH. Is it installed?")
             return 1
-        ui.info("Authenticating with Anthropic (setup-token)...")
-        result = _oc.auth_setup_token(extra)
+        provider, rest = _extract_provider(extra)
+        ui.info(f"Authenticating with {provider} (setup-token)...")
+        result = _oc.auth_setup_token(rest, provider=provider)
         if result.returncode == 0:
             ui.success("Authentication successful.")
 
@@ -459,8 +490,9 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
         if not shutil.which("openclaw"):
             ui.error("'openclaw' not found in PATH. Is it installed?")
             return 1
-        ui.info("Authenticating with Anthropic (paste-token)...")
-        result = _oc.auth_paste_token(extra)
+        provider, rest = _extract_provider(extra)
+        ui.info(f"Authenticating with {provider} (paste-token)...")
+        result = _oc.auth_paste_token(rest, provider=provider)
         if result.returncode == 0:
             ui.success("Key stored successfully.")
 
@@ -478,8 +510,9 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
         if not sys.stdin.isatty():
             ui.error("docket auth setup requires an interactive TTY.")
             return 1
+        provider, _rest = _extract_provider(extra)
         ui.console.print()
-        ui.console.print("[bold]Authentication setup:[/bold]")
+        ui.console.print(f"[bold]Authentication setup ({provider}):[/bold]")
         ui.console.print("  1) Setup token (recommended — automatic token refresh)")
         ui.console.print("  2) Paste API key (manual — no refresh)")
         ui.console.print("  3) Cancel")
@@ -489,7 +522,11 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
             ui.warn("Cancelled.")
             return 0
         method = "paste-token" if choice == "2" else "setup-token"
-        result = _oc.auth_paste_token() if method == "paste-token" else _oc.auth_setup_token()
+        result = (
+            _oc.auth_paste_token(provider=provider)
+            if method == "paste-token"
+            else _oc.auth_setup_token(provider=provider)
+        )
         if result.returncode == 0:
             ui.success("Authentication configured.")
 
@@ -503,9 +540,10 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
     ui.error(
         f"Unknown auth subcommand '{action}'.\n"
         "Usage:\n"
-        "  docket auth              — show auth profile status\n"
-        "  docket auth login        — setup-token (OAuth-like refresh)\n"
-        "  docket auth key          — paste-token (manual API key)\n"
-        "  docket auth setup        — interactive choice"
+        "  docket auth                        — show auth profile status\n"
+        "  docket auth login [--provider <p>] — setup-token (OAuth-like refresh)\n"
+        "  docket auth key [--provider <p>]   — paste-token (manual API key)\n"
+        "  docket auth setup [--provider <p>] — interactive choice\n"
+        "  <p> defaults to 'anthropic'."
     )
     return 1

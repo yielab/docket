@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -17,13 +17,16 @@ as a private internal seed table, never as accepted user input.
 This specification covers:
 
 - The agent roles the policy knows about and their built-in model classes
-- The user registry overlay (`~/.openclaw/docket-models.json`)
+- The user registry overlay (`~/.openclaw/docket-models.json`), including the registry-
+  overridable rank-anchor seed table (`rankAnchors`)
 - Model intent per agent (`modelSource: policy | pinned`) and migration inference
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
+- The built-in provider presets (`docket models preset`), including the free/local path
 - Removed tier names and the private internal rank-anchor seed table; the one-shot legacy
   `profiles:` registry migration
-- The pricing table used for cost estimation
+- The pricing table used for cost estimation, including local-provider and marketplace-
+  provider (OpenRouter) pricing honesty
 
 This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md).
 
@@ -53,6 +56,12 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
    anchors are overridden first, then role defaults re-derive from them, then any `roles`
    entries overlay on top.
 3. A corrupt registry **MUST** warn on stderr and keep built-in defaults (no crash).
+4. The registry **MAY** contain a `rankAnchors` map (`{"economy"|"standard"|"premium":
+   "provider/model"}`) that overrides the private rank-anchor seed table (see Tier names
+   below) *before* role defaults are derived from it (Phase 18 L-2). This is how a fleet on
+   a non-Anthropic preset stops showing Claude ids in the anchor value `docket models`
+   displays. Unknown anchor names or malformed model ids **MUST** be ignored (same tolerance
+   as `roles`/`default`).
 
 ### Model intent per agent
 
@@ -68,7 +77,8 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
 ### Changing the policy (docket models)
 
 1. `docket models` **MUST** list ROLE, MODEL, PRICE, SOURCE (builtin/user), and WHY for all
-   eight roles, plus the default model and the fallback chain.
+   eight roles, plus the default model and the rank anchors (labeled "rank anchors", not
+   "fallback" — see Tier names below for why that label was corrected).
 2. `docket models set <role> <provider/model>` **MUST** validate the model, persist the
    override to the registry, and apply it live.
 3. `docket models preset <name>` **MUST** map the preset's cheap/strong classes onto all
@@ -94,12 +104,17 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
    or role value is expected — `docket profile <id> premium` and `docket models set premium
    <model>` both **MUST** fail with an error naming a full `provider/model` id, not resolve.
    Removed in 0.2.0 per the D-2 deprecation-window exit; see ROADMAP.md D-2.
-2. The three rank values survive **only** as a private internal seed table
-   (`_RANK_ANCHORS` in `core/models_policy.py`) used to (a) pick each role's default model —
-   `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles — and
-   (b) reconstruct per-role overrides when migrating a legacy `profiles:` registry key (see
-   Legacy registry migration below). This table is **not** surfaced by any command and is not
-   a live runtime fallback chain.
+2. The three rank values survive as a private internal seed table (`_RANK_ANCHORS` in
+   `core/models_policy.py`, defaulting to Anthropic ids) used to (a) pick each role's default
+   model — `economy` seeds the cheap-class roles, `standard` seeds the strong-class roles —
+   and (b) reconstruct per-role overrides when migrating a legacy `profiles:` registry key
+   (see Legacy registry migration below). "Private" means **not accepted as a CLI argument
+   under the tier names** — `docket models set economy <model>` still fails per rule 1 above.
+   It is, however, **registry-overridable** (see User registry overlay's `rankAnchors`, Phase
+   18 L-2) and **is displayed** (read-only) by `docket models`, labeled "rank anchors" — a
+   correction from the prior "fallback" label, which was a false claim: nothing in docket
+   degrades a request to a cheaper model on failure. It is a role-default seed table, not a
+   live runtime fallback chain, and the display now says so.
 3. **Scope note:** the eval harness's `docket eval --tier <economy|standard|premium>` flag
    (eval.spec.md) is a live-eval matrix selector for spot-checks, not a model value or role
    key — it is the one deliberately surviving user-facing use of the tier words and does not
@@ -117,11 +132,31 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
 3. `docket doctor` **SHOULD** flag a residual `profiles:` key found under the condition in
    (2) as an advisory, non-blocking finding.
 
+### Presets (docket models preset)
+
+1. The built-in presets **MUST** include `anthropic` (default), `openai`, `google`,
+   `openrouter-free`, `openrouter`, and `local`.
+2. The `local` preset **MUST** require no API key (a local OpenAI-compatible endpoint —
+   llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket models provider`) and
+   **MUST** price its models at `$0 (local)`.
+3. Applying a preset **MUST** persist the preset's own economy/standard/premium values as the
+   registry's `rankAnchors` (see User registry overlay), not just the per-role overrides — so
+   the anchor value `docket models` displays never lags behind the fleet's actual preset after
+   a non-Anthropic preset is applied.
+
 ### Pricing
 
 1. Each built-in model **MUST** have a pricing entry in USD per million tokens, expressed
    as `input:output:cacheWrite:cacheRead`.
 2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
+3. A model whose provider prefix is a recognized local provider (`local`, `ollama`,
+   `lmstudio`) **MUST** report `$0 (local)` — this is the true cost, not a placeholder for
+   missing data, and **MUST NOT** fall through to the generic `n/a` path.
+4. A model routed through a marketplace provider whose per-model pricing docket does not
+   track (`openrouter`, unless the specific model id is one of the curated
+   `openrouter-free` rows priced at `$0.00`) **MUST** report a distinct, informative label
+   (`n/a (bring your own)`) rather than the plain `n/a` used for an ordinary uncatalogued
+   model — docket does not invent a number for pricing that changes per model/account.
 
 ## Interface Contracts
 
@@ -130,7 +165,7 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
 ```bash
 docket models                              # Show the role→model policy
 docket models set <role|default> <provider/model>
-docket models preset [anthropic|openai|google|openrouter-free|openrouter]
+docket models preset [anthropic|openai|google|openrouter-free|openrouter|local]
 docket models reset                        # Restore built-in defaults
 docket profile <agent-id>                  # Show model, role, source, budget
 docket profile <agent-id> <provider/model> # Pin
@@ -165,16 +200,23 @@ table unless set — a known display quirk.
 
 Pricing is a manual snapshot (`MODEL_PRICING`, dated by `MODEL_PRICING_AS_OF`) used for
 display and comparative estimates only — recorded spend comes from the daemon
-(cost-tracking.spec.md). Known gap: the table has no OpenRouter/local rows, so applying the
-`openrouter`/`openrouter-free` presets yields `n/a` pricing warnings (Phase 18 L-2).
+(cost-tracking.spec.md). Resolved gap (Phase 18 L-2): the table now carries a `local/
+qwen3-30b-a3b` row and the three `openrouter-free` preset models, all priced at zero
+(sourced from docket's own free-tier/local claims, not an invented figure); `LOCAL_PROVIDERS`
+(`local`, `ollama`, `lmstudio`) independently price at `$0 (local)` regardless of whether the
+specific model id is catalogued. The `openrouter` (paid) preset's two non-free-tier models
+are deliberately left uncatalogued — OpenRouter re-prices per underlying model and account
+tier and docket will not hardcode a number it cannot keep current — and report `n/a (bring
+your own)` instead.
 
 ### Registry file shape (current)
 
 ```json
 {
   "default": "anthropic/claude-sonnet-4-6",
-  "roles":    { "programmer": "openai/gpt-4.1" },
-  "pricing":  { "openai/gpt-4.1": {"input": 2.00, "output": 8.00} }
+  "roles":       { "programmer": "openai/gpt-4.1" },
+  "rankAnchors": { "standard": "openai/gpt-4.1-mini" },
+  "pricing":     { "openai/gpt-4.1": {"input": 2.00, "output": 8.00} }
 }
 ```
 
@@ -187,7 +229,7 @@ display and comparative estimates only — recorded spend comes from the daemon
 }
 ```
 
-Loading the file above migrates it once to `{"default": "...", "roles": {"knowledge": "openai/gpt-4.1-nano", "task": "openai/gpt-4.1-nano", ...}}` (the `economy` value fanned out to the cheap-class roles) and drops `profiles:`.
+Loading the file above migrates it once to `{"default": "...", "roles": {"manager": "openai/gpt-4.1-nano", "reviewer": "openai/gpt-4.1-nano", "tester": "openai/gpt-4.1-nano", "knowledge": "openai/gpt-4.1-nano"}}` (the `economy` value fanned out to the cheap-class roles — there is no `task` role; see Built-in policy above) and drops `profiles:`.
 
 ### Return Codes
 
@@ -222,6 +264,24 @@ $ docket profile mywebsite default
 ✓ Model: anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 (follows role policy 'repo')
 ```
 
+### Switching the whole fleet to a free/local preset
+
+```bash
+$ docket models preset local
+✓ Preset 'local' applied.
+  No API key needed. Verify your local runtime is up, then register the endpoint:
+  docket models provider [name] [base_url]   # ping + register
+
+$ docket models
+  ROLE          MODEL                    PRICE        SOURCE    WHY
+  manager       local/qwen3-30b-a3b      $0 (local)   user      high-volume coordination...
+  programmer    local/qwen3-30b-a3b      $0 (local)   user      code generation
+  ...
+  default       local/qwen3-30b-a3b
+  rank anchors  local/qwen3-30b-a3b → local/qwen3-30b-a3b → local/qwen3-30b-a3b
+  (role-default seed table — not a runtime fallback chain; overridable in docket-models.json)
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -241,6 +301,31 @@ $ docket profile mywebsite default
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.3.0 (2026-07-30)
+
+- Phase 18 L-2 (finish provider agnosticism) — closed the gaps 2.2.0 identified but left open:
+  - The rank-anchor seed table is now **registry-overridable** via a `rankAnchors` map (User
+    registry overlay); `docket models preset` persists its own economy/standard/premium as
+    `rankAnchors` too, so a non-Anthropic preset leaves no Claude residue anywhere in the
+    display.
+  - The anchor display line is relabeled "rank anchors" (was "fallback" — a false claim;
+    nothing in docket degrades a request to a cheaper model on failure).
+  - Added the `local` preset (Presets section) — no API key, prices at `$0 (local)`.
+  - Closed the pricing gap: `local`/`ollama`/`lmstudio` provider prefixes always price at `$0
+    (local)`; the `openrouter-free` preset's three curated models are priced at `$0.00` (a
+    restatement of docket's own pre-existing free-tier claim, not an invented figure); any
+    other OpenRouter route reports `n/a (bring your own)` instead of a stale/fabricated
+    number.
+  - Fixed the stale `docket models set task <model>` and raw `openclaw models status`
+    guidance strings in `cli/_provider.py` (`task` is not a role; the second string violated
+    "no direct OpenClaw CLI") — both now name real, existing `docket` commands.
+  - Fixed a stale example in this spec's own Legacy registry migration section that still
+    listed a `task` role in the migrated output.
+  - `docket auth login/key/setup` now accept `--provider <name>` (default: `anthropic`),
+    threaded through the ACL's `auth_setup_token`/`auth_paste_token` instead of a hardcoded
+    provider string (documented in cli-interface.spec.md, not this file — auth profiles are
+    out of this spec's scope).
 
 ### Version 2.2.0 (2026-07-30)
 

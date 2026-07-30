@@ -872,17 +872,21 @@ docket keys setup
 
 ### auth
 
-Manage Claude model authentication profiles (separate from `docket keys` — this drives
+Manage model-provider authentication profiles (separate from `docket keys` — this drives
 OpenClaw's own auth-profile store via the `openclaw` CLI, not the `secrets.json` file).
 
 **Syntax:**
 ```bash
-docket auth                 # status (default)
-docket auth status          # list configured auth profiles
-docket auth login           # OAuth-style refreshable setup-token flow
-docket auth key              # paste a static API key as an auth profile
-docket auth setup            # interactive menu (login vs key vs cancel)
+docket auth                              # status (default)
+docket auth status                       # list configured auth profiles
+docket auth login [--provider <name>]    # OAuth-style refreshable setup-token flow
+docket auth key [--provider <name>]      # paste a static API key as an auth profile
+docket auth setup [--provider <name>]    # interactive menu (login vs key vs cancel)
 ```
+
+`--provider <name>` defaults to `anthropic` when omitted (backward compatible with every
+pre-Phase-18 invocation) — pass any provider the OpenClaw daemon supports, e.g. `openai`,
+`google`, `openrouter`.
 
 **Subcommands:**
 
@@ -902,6 +906,7 @@ restarts the gateway on success.
 
 ```bash
 docket auth login
+docket auth login --provider openai
 ```
 
 #### key
@@ -909,6 +914,7 @@ Requires `openclaw` on PATH. Pastes a static (non-refreshing) API key as an auth
 
 ```bash
 docket auth key
+docket auth key --provider openrouter
 ```
 
 #### setup
@@ -917,6 +923,7 @@ Requires `openclaw` on PATH **and** an interactive TTY. Presents a menu: setup-t
 
 ```bash
 docket auth setup
+docket auth setup --provider google
 ```
 
 **Aliases:** None
@@ -1062,7 +1069,7 @@ docket profile myproject default
 
 View and change the role→model policy — the single place that decides which model each
 kind of agent runs on. Built-in defaults put high-volume/low-reasoning roles (manager,
-reviewer, tester, knowledge, task) on the cheap model class and reasoning-dense roles
+reviewer, tester, knowledge) on the cheap model class and reasoning-dense roles
 (programmer, security, repo) on the strong class.
 
 ![docket models output: role→model policy table with pricing, source, and rationale](assets/models.png)
@@ -1076,7 +1083,7 @@ docket models preset [name]              # List or apply a provider preset
 docket models reset                      # Restore built-in defaults
 ```
 
-**Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`
+**Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`, `local` (no API key — run your own OpenAI-compatible endpoint, priced at `$0 (local)`)
 
 **Example:**
 ```bash
@@ -1089,7 +1096,10 @@ docket models set programmer openai/gpt-4.1
 **Notes:**
 - Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`docket profile <id> <model>`) are never touched
 - Overrides persist in `~/.openclaw/docket-models.json` (`roles:` map); delete it or run `docket models reset` to restore built-ins
-- Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the actual model; pricing shows `n/a`
+- Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the
+  actual model; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter route
+  outside docket's curated free-tier rows, and `$0 (local)` for a local/ollama/lmstudio
+  provider — never a fabricated dollar figure)
 - Tier names (`economy`/`standard`/`premium`) are rejected everywhere a model/role value is
   expected — including here — per D-2 (0.2.0)
 
