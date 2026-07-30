@@ -117,9 +117,38 @@ class TestProvisioning:
         assert meta["scope"] == "org"
         assert meta["role"] == PM
         assert meta["modelSource"] == "policy"
+        assert meta["sessionKey"] == f"agent:{PM}:org"
+        assert meta["projectKey"] == "org"
         soul = (oc_dir / "workspaces" / PM / "SOUL.md").read_text()
         assert "Portfolio Manager" in soul
         assert "never" in soul.lower()  # never edits code
+        assert f"agent:{PM}:org" in soul
+
+    def test_gets_full_workspace_contract(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Phase 17 C-4: the Portfolio Manager gets the same durable workspace
+        set every other org specialist gets, not just a hardcoded SOUL.md.
+        """
+        from docket.core import memory as _mem
+
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _install.run_install(want_gates=False, assume_yes=True, want_portfolio=True)
+
+        ws = oc_dir / "workspaces" / PM
+        assert ws.stat().st_mode & 0o777 == 0o700
+        for fname in (
+            "SOUL.md",
+            "AGENTS.md",
+            "HEARTBEAT.md",
+            _mem.REQUIRED_STARTUP_FILE,
+            _mem.MEMORY_FILE,
+        ):
+            fpath = ws / fname
+            assert fpath.is_file(), f"missing {fname}"
+            assert fpath.stat().st_mode & 0o777 == 0o600
+        assert _mem.contract_ok(ws)
+        assert (ws / _mem.today_memory_relpath()).is_file()
 
     def test_idempotent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)

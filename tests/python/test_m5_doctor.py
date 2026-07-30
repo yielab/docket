@@ -411,6 +411,107 @@ class TestChecks:
         assert "programmer" in out and "legacy shared specialist" in out
 
 
+# ── Phase 17 C-4: specialists join the runtime contract healer ──────────────────
+
+
+def _seed_bare_specialist(oc_dir: Path, role: str = "security") -> Path:
+    """A specialist workspace with only `.docket-meta.json` — the exact
+    pre-C-4 defect (`_provision_specialists` used to write nothing else).
+    """
+    ws = oc_dir / "workspaces" / role
+    ws.mkdir(parents=True)
+    ws.chmod(0o700)
+    meta = {
+        "kind": "specialist",
+        "scope": "org",
+        "role": role,
+        "name": role,
+        "model": "anthropic/claude-sonnet-4-6",
+        "modelSource": "policy",
+    }
+    (ws / ".docket-meta.json").write_text(json.dumps(meta))
+    (ws / ".docket-meta.json").chmod(0o600)
+    return ws
+
+
+class TestRuntimeContractSpecialists:
+    def test_managed_workspace_ids_includes_provisioned_specialists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed(tmp_path, monkeypatch)
+        _seed_bare_specialist(oc_dir, "security")
+        ids = _doctor._managed_workspace_ids(["myshop"])
+        assert "myshop" in ids
+        assert "security" in ids
+        # Never-provisioned specialists (no workspace dir) are not included.
+        assert "knowledge" not in ids
+
+    def test_heals_missing_workflow_auto_for_specialist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import memory as _mem
+
+        oc_dir = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(oc_dir, "security")
+        assert not (ws / _mem.REQUIRED_STARTUP_FILE).exists()
+
+        issues = _doctor._check_runtime_contract(["myshop"])
+        out = capsys.readouterr().out
+
+        assert issues == 0  # advisory — never fails the run
+        assert "security: seeded WORKFLOW_AUTO.md" in out
+        assert _mem.contract_ok(ws)
+
+    def test_heals_stale_contract_marker_for_specialist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import memory as _mem
+
+        oc_dir = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(oc_dir, "knowledge")
+        (ws / _mem.REQUIRED_STARTUP_FILE).write_text("# Auto-generated workflow steps\n(legacy)\n")
+        assert not _mem.contract_ok(ws)
+
+        _doctor._check_runtime_contract(["myshop"])
+
+        assert _mem.contract_ok(ws)
+        assert "knowledge: seeded WORKFLOW_AUTO.md" in capsys.readouterr().out
+
+    def test_does_not_touch_an_already_current_specialist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.core import memory as _mem
+
+        # myshop (from _seed) has no WORKFLOW_AUTO.md of its own — isolate the
+        # specialist-only assertion by checking just the "manager" agent.
+        oc_dir = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(oc_dir, "manager")
+        _mem.seed_contract(ws, project="manager", codebase="")
+        (ws / "MEMORY.md").write_text("real curated memory\n")
+
+        _doctor._check_runtime_contract(["myshop"])
+
+        out = capsys.readouterr().out
+        assert "manager: seeded" not in out
+        assert (ws / "MEMORY.md").read_text() == "real curated memory\n"
+
+    def test_full_doctor_run_heals_specialist_and_fix_keeps_it_healthy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """End-to-end: `docket doctor` (with --fix) repairs a specialist with a
+        missing WORKFLOW_AUTO.md as part of a normal full run.
+        """
+        from docket.core import memory as _mem
+
+        oc_dir = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        ws = _seed_bare_specialist(oc_dir, "security")
+        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
+
+        _doctor.run_doctor(json_out=False, do_fix=True)
+
+        assert _mem.contract_ok(ws)
+
+
 # ── full human run ─────────────────────────────────────────────────────────────
 
 

@@ -586,22 +586,28 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
 
 def _check_runtime_contract(ids: list[str]) -> int:
-    """Ensure each project workspace satisfies the openclaw post-compaction
-    contract (``WORKFLOW_AUTO.md`` re-read on every reset).
+    """Ensure each managed workspace — project agents **and** org specialists —
+    satisfies the openclaw post-compaction contract (``WORKFLOW_AUTO.md``
+    re-read on every reset).
 
     Heals agents whose contract file is missing *or* stale/legacy (detected via
     the embedded contract-version marker): without a current file the runtime
     audit demands it forever, and a weak model loops offering to create it
     instead of working. Re-seeds (idempotent) from the agent's stored
-    codebase/stack. Advisory — never fails the run.
+    codebase/stack — a specialist has neither, so those fields are simply
+    absent from its re-seeded ``WORKFLOW_AUTO.md``. Advisory — never fails the
+    run. Org specialists joined this healer in ROADMAP Phase 17 C-4; before
+    that they had no contract files at all and this check never saw them
+    (`_cfg.PROJECTS_DIR`-only enumeration, `_check_scaffolding`'s enumeration
+    below is the precedent this now follows).
     """
     from docket.core import memory as _mem
 
     ui.console.print()
     ui.console.print("[bold]Runtime startup contract:[/bold]")
     healed = 0
-    for aid in ids:
-        ws = _cfg.PROJECTS_DIR / aid
+    for aid in _managed_workspace_ids(ids):
+        ws = _cfg.workspace_dir(aid)
         if not ws.is_dir() or _mem.contract_ok(ws):
             continue
         meta = store.read_json(_cfg.meta_path(aid))
@@ -621,9 +627,13 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
     """Project pod members plus any provisioned org specialists — all docket-managed.
 
     Excludes the base ``~/.openclaw/workspace`` personal assistant, which docket does
-    not manage and must not touch.
+    not manage and must not touch. Includes the opt-in Portfolio Manager when it
+    has been provisioned (``docket install --portfolio``) — it is docket-managed
+    too, just never auto-installed.
     """
     specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
+    if _cfg.workspace_dir(_cfg.PORTFOLIO_MANAGER_ROLE).is_dir():
+        specialists.append(_cfg.PORTFOLIO_MANAGER_ROLE)
     return list(ids) + specialists
 
 

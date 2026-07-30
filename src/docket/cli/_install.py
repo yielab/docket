@@ -25,9 +25,11 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core.audit import audit_log
 from docket.core.security import apply_approval_routing, apply_exec_approval_gates
@@ -268,8 +270,147 @@ def _step_gateway() -> None:
         ui.console.print(f"  Start manually: {_sys.service_hint('start')}")
 
 
+# One-line role identity for each org specialist's SOUL.md `## Scope` section
+# (paraphrased from docs/DOCKET.md's per-role capability tables — the durable
+# description of what each shared singleton is *for*).
+_SPECIALIST_IDENTITY: dict[str, str] = {
+    "security": (
+        "Deep security audits, threat modeling, and the HITL gate for risky or "
+        "destructive actions — across every pod, not just one project."
+    ),
+    "knowledge": (
+        "Documentation, research, and pattern extraction across every project's "
+        "memory. You distill durable facts; you do not touch source code."
+    ),
+    "manager": (
+        "Cross-cutting coordination across pods (transitional — being superseded "
+        "by per-pod Leads). Advisory only: you read memory/snapshots, you don't "
+        "execute work yourself."
+    ),
+}
+
+
+def _specialist_session_key(role: str) -> str:
+    """Session key for an org specialist: `agent:<role>:org`.
+
+    Mirrors project agents' `agent:<id>:<project>` pattern (see
+    ``specs/data/docket-meta.spec.md``), using ``org`` as the project component
+    since a specialist is shared across the whole fleet, not scoped to one.
+    """
+    return f"agent:{role}:org"
+
+
+def _specialist_agents_md(role: str) -> str:
+    """AGENTS.md for an org specialist — the same session protocol every
+    project agent gets (see ``cli/_agents.py``'s ``_create_workspace``), minus
+    the codebase/stack sections a specialist has neither of.
+
+    Section names matter: the openclaw runtime re-injects the "Session Startup"
+    and "Red Lines" H2 blocks after every compaction — keep them verbatim.
+    """
+    return (
+        f"# AGENTS.md — {role}\n\n"
+        "## Session Startup\n"
+        "_Lean — re-sent every turn._\n"
+        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol (the runtime "
+        "requires this after every context reset).\n"
+        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
+        "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
+        "   specific memory/YYYY-MM-DD.md you need. Every byte you read is re-sent\n"
+        "   on every later turn.\n"
+        "4. Log outcomes to today's memory/YYYY-MM-DD.md (one file per day).\n\n"
+        "## Red Lines\n"
+        f"- You are the shared org **{role}** specialist: act across every pod,\n"
+        "  never as if you were a member of just one.\n"
+        "- Never edit code, run builds, or commit — that is a pod's own\n"
+        "  Implementer's job.\n"
+        "- Before starting multi-step work, write it to HEARTBEAT.md — an\n"
+        "  unwritten task does not survive a context reset.\n"
+    )
+
+
+def _specialist_soul(role: str) -> str:
+    """SOUL.md for an org specialist: identity, scope, and session key.
+
+    Mirrors ``cli/_agents.py``'s ``_create_workspace`` / ``cli/_pod.py``'s
+    ``_member_soul`` — adapted for a role with no codebase and no single
+    project (shared, singleton, cross-pod).
+    """
+    identity = _SPECIALIST_IDENTITY.get(role, f"You are the org-level **{role}** specialist.")
+    return (
+        f"# SOUL.md — {role}\n\n"
+        "## Identity\n"
+        f"You are the org-level **{role}** specialist — shared across every "
+        "project pod, not scoped to any single project.\n\n"
+        f"**Session Key:** `{_specialist_session_key(role)}`\n\n"
+        "This session key isolates your org-level context. You may only access "
+        "resources and memory within this coordinate space.\n\n"
+        "## Scope\n"
+        f"{identity}\n\n"
+        "## Traits\n"
+        "- Proactive: check HEARTBEAT.md every session.\n"
+        "- You do not edit code, run builds, or commit — that is a pod's own "
+        "Implementer's job.\n\n"
+        "## Safety\n"
+        "- Never take a destructive or irreversible action without HITL approval.\n"
+    )
+
+
+def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> None:
+    """Give an org specialist (or the opt-in Portfolio Manager) the same
+    durable workspace contract a project agent gets (ROADMAP Phase 17 C-4):
+    ``SOUL.md`` (caller-supplied, role-specific), a generic org-specialist
+    ``AGENTS.md``, ``HEARTBEAT.md`` (the durable task ledger), and the
+    ``WORKFLOW_AUTO.md``/``MEMORY.md``/daily-log set from
+    ``core/memory.py``'s ``seed_contract``. ``TOOLS.md`` is deliberately
+    skipped — a specialist has no fixed codebase or build commands to document.
+
+    Idempotent and backfill-safe: ``SOUL.md``/``AGENTS.md``/``HEARTBEAT.md``
+    are written only when absent, so re-running `docket install` (or healing a
+    pre-C-4 install via `docket doctor`) never clobbers an agent-written
+    ``HEARTBEAT.md`` or a persona-decorated ``SOUL.md``. ``seed_contract``
+    itself only ever creates ``MEMORY.md``/the daily log when absent —
+    ``WORKFLOW_AUTO.md`` is wholly derived and always refreshed, never
+    hand-edited.
+    """
+    ws.mkdir(parents=True, exist_ok=True)
+    (ws / "memory").mkdir(exist_ok=True)
+
+    for fname, text in (
+        ("SOUL.md", soul_text),
+        ("AGENTS.md", _specialist_agents_md(role)),
+        ("HEARTBEAT.md", _mem.heartbeat_seed(role)),
+    ):
+        fpath = ws / fname
+        if not fpath.is_file():
+            fpath.write_text(text, encoding="utf-8")
+        with contextlib.suppress(OSError):
+            fpath.chmod(0o600)
+
+    # Seed the files the openclaw post-compaction audit re-reads every reset.
+    # Specialists have no codebase — say so plainly rather than the project
+    # default's "ask the human for the repo path" (which would be misleading).
+    _mem.seed_contract(
+        ws,
+        project=role,
+        codebase="(none — shared org specialist, not scoped to one project)",
+    )
+
+    # Quarantine any OpenClaw base-assistant scaffolding so identity stays
+    # docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
+    from docket.core import identity as _identity
+
+    _identity.quarantine_scaffolding(ws)
+
+    with contextlib.suppress(OSError):
+        ws.chmod(0o700)
+        (ws / "memory").chmod(0o700)
+
+
 def _provision_specialists() -> None:
-    """Step 5 — register the shared **org** specialist agents + backfill their meta.
+    """Step 5 — register the shared **org** specialist agents + backfill their
+    meta and full workspace contract.
 
     Install provisions only the cross-cutting org roles (security, knowledge,
     manager) as shared singletons. The project roles (programmer, reviewer, tester)
@@ -308,14 +449,23 @@ def _provision_specialists() -> None:
                     "name": spec,
                     "model": spec_model,
                     "modelSource": "policy",
+                    "sessionKey": _specialist_session_key(spec),
+                    "projectKey": "org",
                     "created": datetime.now(UTC).isoformat(),
                 },
             )
 
+        # Full workspace contract (SOUL/AGENTS/HEARTBEAT + the runtime's
+        # WORKFLOW_AUTO/MEMORY/daily-log set) — ROADMAP Phase 17 C-4.
+        if spec_dir.is_dir():
+            _write_specialist_contract_files(spec, spec_dir, _specialist_soul(spec))
 
-_PORTFOLIO_SOUL = """# SOUL — Portfolio Manager
+
+_PORTFOLIO_SOUL_TEMPLATE = """# SOUL — Portfolio Manager
 
 **Scope:** org (cross-pod). **Role:** portfolio-manager. **Edits code:** never.
+
+**Session Key:** `{session_key}`
 
 You are the org-level Portfolio Manager: a single planning/visibility surface
 across every project pod. You see fleet **metadata** — agents, queues, budgets,
@@ -340,7 +490,8 @@ def _provision_portfolio_manager() -> None:
 
     A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
     over fleet metadata (not project code). Opt-in (`docket install --portfolio`),
-    never auto-installed, never a pod member. Idempotent.
+    never auto-installed, never a pod member. Idempotent. Gets the same full
+    workspace contract as the other org specialists (ROADMAP Phase 17 C-4).
     """
     role = _cfg.PORTFOLIO_MANAGER_ROLE
     model = _mp.resolve_role_model(role)
@@ -358,11 +509,6 @@ def _provision_portfolio_manager() -> None:
             ui.warn(f"{role}: registration failed — {message}")
 
     if ws.is_dir():
-        soul = ws / "SOUL.md"
-        if not soul.is_file():
-            soul.write_text(_PORTFOLIO_SOUL, encoding="utf-8")
-            with contextlib.suppress(OSError):
-                os.chmod(soul, 0o600)
         meta_file = ws / _cfg.META_FILE
         if not meta_file.is_file():
             store.write_json(
@@ -374,9 +520,13 @@ def _provision_portfolio_manager() -> None:
                     "name": role,
                     "model": model,
                     "modelSource": "policy",
+                    "sessionKey": _specialist_session_key(role),
+                    "projectKey": "org",
                     "created": datetime.now(UTC).isoformat(),
                 },
             )
+        soul = _PORTFOLIO_SOUL_TEMPLATE.format(session_key=_specialist_session_key(role))
+        _write_specialist_contract_files(role, ws, soul)
 
 
 def run_install(
