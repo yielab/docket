@@ -73,6 +73,7 @@ from docket.core import models as _models
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
@@ -997,6 +998,13 @@ def dispatch_task(
     timestamp (see ``_touch_claim``) before it goes stale.
     """
     run = runner or _oc.default_driver().run_turn
+    # W-2: pid tracking (for `docket runs cancel`) only makes sense for a real
+    # OS process, i.e. the production driver — never an injected test
+    # runner/fake, none of which accept an `on_spawn` kwarg (and none of which
+    # have a process to report anyway). Gating on `runner is None` (rather
+    # than duck-typing) keeps every existing 5-arg-Callable test double
+    # working completely unchanged.
+    track_pid = runner is None
     do_sleep = sleep or _time.sleep
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
@@ -1160,9 +1168,34 @@ def dispatch_task(
         # pod's role-based retry budget and the resolved agent-turn timeout.
         retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
         hop_timeout = node.timeout if node.timeout is not None else resolved_turn_timeout
+
+        # W-2: record the production driver's spawned pid as in-flight for
+        # `docket runs cancel` — only while the subprocess is actually
+        # running; removed again the moment this attempt returns, so a long
+        # multi-hop task never accumulates stale pids from finished hops.
+        run_id_for_pids = _runs.current_run_id() if track_pid else None
+        spawned_pid: list[int] = []
+
+        def _on_spawn(pid: int) -> None:
+            spawned_pid.append(pid)
+            if run_id_for_pids is not None:
+                _runs.add_hop_pid(run_id_for_pids, pid)
+
         attempt = 1
         while True:
-            run_res = run(member_id, session_id, message, hop_timeout, env)
+            spawned_pid.clear()
+            if track_pid:
+                # `run` is typed as the plain 5-arg `Runner` Callable (every
+                # test double's exact shape); calling the concrete production
+                # driver directly here (rather than through `run`) is what
+                # lets it take the extra `on_spawn` kwarg type-safely.
+                run_res = _oc.default_driver().run_turn(
+                    member_id, session_id, message, hop_timeout, env, on_spawn=_on_spawn
+                )
+            else:
+                run_res = run(member_id, session_id, message, hop_timeout, env)
+            if run_id_for_pids is not None and spawned_pid:
+                _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
             if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
                 break
             if attempt > retry_budget:

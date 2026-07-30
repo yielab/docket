@@ -128,6 +128,29 @@ def _write_fake_openclaw(bindir: Path, mode: str) -> Path:
     return script
 
 
+class _FakeTimeoutPopen:
+    """A ``subprocess.Popen`` stand-in whose ``communicate`` times out once.
+
+    W-2: ``agent_run`` switched from ``subprocess.run`` to
+    ``subprocess.Popen``/``.communicate()`` (so it can report the child's pid
+    via ``on_spawn`` before blocking, and kill its *process group* — not just
+    the immediate child — on a real timeout). The second ``communicate`` call
+    is ``agent_run``'s own best-effort post-kill cleanup read and must not
+    raise, or the test would be exercising a different code path than a real
+    timeout does.
+    """
+
+    def __init__(self, *_a: Any, **_kw: Any) -> None:
+        self.pid = 999_999_999  # never a real process/group — safe to "kill"
+        self._calls = 0
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        self._calls += 1
+        if self._calls == 1:
+            raise subprocess.TimeoutExpired(cmd=["openclaw"], timeout=timeout or 1)
+        return "", ""
+
+
 class TestFailureKindClassification:
     def test_timeout_sets_timeout_failure_kind(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A real timed-out subprocess would need to outlive agent_run's own
@@ -135,11 +158,7 @@ class TestFailureKindClassification:
         # exact exception agent_run's own except-clause handles, same as a
         # real timeout would, without an actual multi-second sleep.
         monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-        def _raise_timeout(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 1))
-
-        monkeypatch.setattr(subprocess, "run", _raise_timeout)
+        monkeypatch.setattr(subprocess, "Popen", _FakeTimeoutPopen)
         res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 1)
         assert not res.ok
         assert res.failure_kind == "timeout"

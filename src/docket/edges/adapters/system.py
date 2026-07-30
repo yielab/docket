@@ -215,6 +215,55 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
         return False, f"[verify error: {exc}]"
 
 
+def _process_group_alive(pgid: int) -> bool:
+    """Best-effort liveness check for a process group (signal 0 = probe only)."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Exists but we can't signal it — treat as alive (a real, distinct
+        # failure mode from "already gone"; escalation below will hit the
+        # same PermissionError and just stop trying, never crash the caller).
+        return True
+    return True
+
+
+def kill_process_group(pgid: int, grace_s: float = 2.0) -> bool:
+    """SIGTERM a process group; escalate to SIGKILL if still alive after *grace_s*.
+
+    Used both by ``edges.adapters.openclaw.agent_run`` (a timed-out agent
+    turn) and ``core/runs.py``'s ``cancel_run`` (an operator-requested
+    ``docket runs cancel``) — the one place that knows how to actually stop
+    an in-flight hop's subprocess *and everything it shelled out to*, not
+    just its immediate pid. Relies on the subprocess having been started
+    with ``start_new_session=True`` (so its own pid doubles as its process
+    group id — see ``agent_run``); calling this on a pid that was never
+    started that way would signal whatever unrelated group happens to share
+    that id, so callers must only ever pass a pid ``agent_run`` itself
+    reported via its ``on_spawn`` hook.
+
+    Returns ``True`` if the group was observed alive at all (a signal was
+    meaningfully sent), ``False`` if it was already gone — a harmless no-op,
+    not an error. Never raises: a process that exits mid-call (a real race,
+    not a bug) is treated the same as one that was already gone.
+    """
+    import contextlib
+    import signal as _signal
+
+    if not _process_group_alive(pgid):
+        return False
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pgid, _signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline and _process_group_alive(pgid):
+        time.sleep(0.05)
+    if _process_group_alive(pgid):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(pgid, _signal.SIGKILL)
+    return True
+
+
 def git_available() -> bool:
     """Return True if a git binary is on PATH."""
     return _which("git")

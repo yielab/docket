@@ -38,6 +38,7 @@ openclaw.json's *schema* without being the thing that reads or writes it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -230,8 +231,17 @@ class RuntimeDriver(Protocol):
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
+        *,
+        on_spawn: Callable[[int], None] | None = None,
     ) -> TurnResult:
-        """Run one real, costed agent turn. Never raises for ordinary failure modes."""
+        """Run one real, costed agent turn. Never raises for ordinary failure modes.
+
+        ``on_spawn`` (ROADMAP Phase 16 W-2, cancellation) — if the driver
+        backs onto a real OS process, fires with its pid immediately after
+        it starts, before this call blocks on its result. A driver with no
+        real process to report (or a test double) may simply ignore it —
+        every existing caller omits it, so this is purely additive.
+        """
         ...
 
     def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
