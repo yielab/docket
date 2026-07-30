@@ -17,17 +17,22 @@ dependencies = [
 ]
 
 # Optional extras: kept out of the base install so `pip install docket` stays
-# dependency-light. `docket mcp serve` (Phase 18 L-3) needs the official MCP
-# Python SDK's high-level `FastMCP` server (`mcp.server.fastmcp`) — pinned to
-# the 1.x line, whose decorator-based tool-registration API this integration
-# is written against; `mcp` 2.0 replaced `mcp.server.fastmcp` with a
-# lower-level callback-based `Server` API this code does not use. Install with
+# dependency-light. `docket mcp serve` (Phase 18 L-3/L-6) needs the official
+# MCP Python SDK's high-level, decorator/`add_tool`-based server
+# (`mcp.server.MCPServer`) — the direct successor to the 1.x line's
+# `mcp.server.fastmcp.FastMCP` (same ergonomics: `add_tool(fn, name=...)`,
+# `server.run(transport="stdio")`), just renamed and relocated as part of the
+# SDK's 2.0 rework; `mcp.server.fastmcp` no longer exists as of 2.0 (removed
+# outright, not deprecated-in-place), so this integration targets
+# `mcp.server.MCPServer` with a floor pin and no ceiling — the previous
+# `<2.0.0` ceiling excluded the current release for no reason once the actual
+# 2.0 API was verified against the installed package. Install with
 # `pip install 'docket[mcp]'` (or `uv sync --extra mcp`); a missing SDK prints
 # an actionable hint instead of a bare ImportError traceback (see
 # `cli/_mcp.py`, following the existing PyYAML optional-dependency pattern in
 # `core/lobster.py`/`cli/_agents.py`).
 [project.optional-dependencies]
-mcp = ["mcp>=1.2.0,<2.0.0"]
+mcp = ["mcp>=2.0.0"]
 
 [project.scripts]
 docket-py = "docket.cli:app"

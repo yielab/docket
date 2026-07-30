@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented
 **Last Updated**: 2026-07-30
 
@@ -93,12 +93,12 @@ startup) MUST go to stderr, never stdout.
 ## Optional dependency
 
 The official `mcp` Python SDK is **not** a base dependency — it is an optional extra
-(`docket[mcp]`, pinned `mcp>=1.2.0,<2.0.0`) so a base `pip install docket` stays dependency-light
-(the SDK pulls in starlette, uvicorn, cryptography, jsonschema, and more). `docket mcp serve`
-imports the SDK lazily, inside its own function, guarded by `try`/`except ImportError` — the same
-pattern this project already uses for the optional PyYAML dependency
-(`core/lobster.py`/`cli/_agents.py`). When the SDK is missing, `docket mcp serve` prints an
-actionable install hint to stderr and exits `1` instead of raising a bare traceback:
+(`docket[mcp]`, pinned `mcp>=2.0.0`, no upper bound) so a base `pip install docket` stays
+dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema, and more).
+`docket mcp serve` imports the SDK lazily, inside its own function, guarded by
+`try`/`except ImportError` — the same pattern this project already uses for the optional PyYAML
+dependency (`core/lobster.py`/`cli/_agents.py`). When the SDK is missing, `docket mcp serve` prints
+an actionable install hint to stderr and exits `1` instead of raising a bare traceback:
 
 ```
 The 'mcp' package is not installed — `docket mcp serve` needs the optional MCP extra.
@@ -106,10 +106,13 @@ Install it with:  pip install 'docket[mcp]'
 (uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')
 ```
 
-`mcp` is pinned to the `1.x` line specifically because this integration is written against its
-high-level, decorator-based `mcp.server.fastmcp.FastMCP` server API; `mcp` 2.0 replaced
-`mcp.server.fastmcp` with a lower-level, callback-based `Server` constructor this integration does
-not use.
+This integration targets `mcp`'s 2.x line's `mcp.server.MCPServer` — a high-level,
+decorator/`add_tool`-based server that is the direct successor of the 1.x line's
+`mcp.server.fastmcp.FastMCP` (same registration ergonomics: `add_tool(fn, name=...)`,
+`server.run(transport="stdio")`), just renamed and relocated as part of the SDK's 2.0 rework.
+`mcp.server.fastmcp` was removed outright in 2.0 (not deprecated in place), which is why the
+extra's floor moved to `2.0.0`; there is no reason to keep an upper bound once the integration
+targets the module that actually ships.
 
 ## Tools
 
@@ -338,6 +341,22 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
 ```
 
 ## Changelog
+
+### Version 1.1.0 (2026-07-30)
+
+- ROADMAP Phase 18 L-6: migrated the transport/registration layer from the `mcp` SDK's 1.x line
+  (`mcp.server.fastmcp.FastMCP`) to its 2.x line (`mcp.server.MCPServer`) — the `docket[mcp]` pin
+  widened from `mcp>=1.2.0,<2.0.0` to `mcp>=2.0.0` (no ceiling). This was verified by installing
+  `mcp==2.0.0` and reading the shipped package directly, not assumed: `MCPServer` is a straight
+  rename/relocation of `FastMCP`, keeping identical registration ergonomics (`add_tool(fn,
+  name=...)`, `server.run(transport="stdio")`); `mcp.server.fastmcp` no longer exists as an import
+  target in 2.0. **No contract change** — all ten tool names, arguments, return shapes, the
+  audit-before-work guarantee, and the no-bypass guarantee (mutating tools still call the exact
+  same `core/` functions) are unchanged; this is a transport-layer migration only. One
+  SDK-integration-test-only difference: `MCPServer.call_tool` now returns a `CallToolResult` object
+  (`.structured_content`/`.is_error`) rather than 1.x's `(content, structured_dict)` tuple — this
+  affects only test code that calls the SDK's `call_tool` directly, not any tool's documented
+  return shape (which was always the bare dict now found at `.structured_content`).
 
 ### Version 1.0.0 (2026-07-30)
 

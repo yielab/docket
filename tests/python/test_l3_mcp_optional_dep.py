@@ -27,6 +27,7 @@ from __future__ import annotations
 import builtins
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -59,8 +60,12 @@ class TestMissingSdkSimulated:
     ) -> None:
         real_import = builtins.__import__
 
+        # `_build_server()` does `from mcp.server import MCPServer` (the mcp>=2.0
+        # SDK's server, see test_l6_mcp_sdk_v2.py) — block that exact import
+        # target, simulating the SDK being absent regardless of what's actually
+        # installed in this test environment.
         def _blocked_import(name: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
-            if name == "mcp.server.fastmcp" or name.startswith("mcp.server.fastmcp."):
+            if name == "mcp.server" or name.startswith("mcp.server."):
                 raise ImportError("simulated: mcp SDK not installed")
             return real_import(name, *args, **kwargs)
 
@@ -68,7 +73,7 @@ class TestMissingSdkSimulated:
         # Also evict any already-imported submodule so the blocked `__import__`
         # is actually exercised rather than served from sys.modules' cache.
         for name in list(sys.modules):
-            if name == "mcp.server.fastmcp" or name.startswith("mcp.server.fastmcp."):
+            if name == "mcp.server" or name.startswith("mcp.server."):
                 monkeypatch.delitem(sys.modules, name, raising=False)
 
         rc = _mcp.serve_stdio()
@@ -159,10 +164,15 @@ class TestRealSdkIntegration:
 
         server = _mcp._build_server()
 
-        async def _call() -> tuple[object, dict[str, object]]:
+        # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
+        # (`.structured_content`/`.is_error`), not the 1.x line's
+        # `(content, structured_dict)` tuple — see test_l6_mcp_sdk_v2.py for
+        # the full migration write-up.
+        async def _call() -> Any:
             return await server.call_tool("status", {})
 
-        _content, structured = asyncio.run(_call())
+        result = asyncio.run(_call())
+        structured = result.structured_content
         assert isinstance(structured, dict)
         assert structured["apiVersion"] == "2"
         # Round-trips through the SDK's own JSON serialization too.
