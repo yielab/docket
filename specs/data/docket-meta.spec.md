@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -38,11 +38,11 @@ arrays (`persona` is the one structured exception; see its row). The documented 
 is the one every writer in `src/docket/` targets, backed by the `AgentMeta` Pydantic model in
 `src/docket/core/models.py` — but the model is **not closed**: it declares
 `extra="allow"` (deliberately, for forward-compat round-tripping — see "Validation" below), so
-`meta_set` does not reject an undeclared field name. `maxReworkCycles` (see its row) is the one
-shipped field that relies on this: it has no dedicated `AgentMeta` attribute yet and survives
-only because unknown keys are allowed through, not rejected. The file is docket's source of
-truth for an agent; the daemon's `openclaw.json` mirrors only the `synced` fields (see Sync
-contract).
+`meta_set` does not reject an undeclared field name. `maxReworkCycles` and `requireApprovalRoles`
+(see their rows) are the shipped fields that rely on this: neither has a dedicated `AgentMeta`
+attribute yet, and both survive only because unknown keys are allowed through, not rejected. The
+file is docket's source of truth for an agent; the daemon's `openclaw.json` mirrors only the
+`synced` fields (see Sync contract).
 
 ## Schema
 
@@ -76,6 +76,7 @@ this table fails type-checking or the test suite.
 | `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS` |
 | `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention and fallback chain as `turnTimeoutS` |
 | `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. **Not yet a field on the `AgentMeta` Pydantic model** (unlike `turnTimeoutS`/`verifyTimeoutS`) — it round-trips only because `AgentMeta` allows extra keys (see "Validation" below); it has no dedicated CLI setter, only the internal `meta-set` debug path, matching this version's shipped scope |
+| `requireApprovalRoles` | string | comma-separated pod role list | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | ROADMAP Phase 15 G-1: pod-level require_approval gate source — a comma-separated, case-insensitive list of pod roles (e.g. `"implementer,reviewer"`) whose hop must wait for a granted approval before it runs (`core/dispatch.py`'s `_pod_requires_approval`, read the same Lead-only way as `maxReworkCycles`/`budgetUsd`). Blank or missing = no pod-level gate for any role. **Not yet a field on the `AgentMeta` Pydantic model** — same `extra="allow"` round-trip as `maxReworkCycles`; no dedicated CLI setter yet, only the internal `meta-set` debug path. See `pod-dispatch.spec.md` for the full gate/`waiting_approval` state-machine contract this field feeds, including the two other (currently inert seam) gate sources |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1). Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
@@ -187,6 +188,12 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```
 
 ## Changelog
+
+### Version 2.6.0 (2026-07-30)
+
+- ROADMAP Phase 15 G-1: added the `requireApprovalRoles` row — the pod-level require_approval
+  gate source (Lead-only, same `meta_set`/no-dedicated-CLI-setter convention as
+  `maxReworkCycles`). See `pod-dispatch.spec.md` v2.1.0 for the full gate contract.
 
 ### Version 2.5.0 (2026-07-30)
 

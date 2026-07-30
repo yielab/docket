@@ -1,8 +1,11 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 2.0.0
-**Status**: Complete (task cancellation and parallel hop execution are explicitly out of
-scope — see "Does NOT cover"; tracked as Phase 16 W-2)
+**Version**: 2.1.0
+**Status**: Complete for what it documents (task cancellation and parallel hop execution are
+explicitly out of scope — see "Does NOT cover"; tracked as Phase 16 W-2). The require_approval
+gate itself (Requirements → "require_approval gate and waiting_approval") ships with exactly one
+wired source (pod-level); its two other documented sources are explicit, inert seams — see that
+section's "Sources" list.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -10,15 +13,18 @@ scope — see "Does NOT cover"; tracked as Phase 16 W-2)
 This specification defines the pod dispatch pipeline's state machine — how `docket pod
 <project> dispatch` (and the opt-in `docket serve --dispatch` loop) claims and drives queued
 tasks through a pod's roles hop by hop, how it survives a crash mid-task, how a task retries,
-blocks, and resumes, what gates can stop advancement at each hop, and what a caller can observe
-(task status, per-hop record, trace events) after a run. The pipeline itself lives in
-`src/docket/core/dispatch.py`; this document is its behavioral contract. **Version 1.0.0** (Phase
-12/13) documented the original straight-line pipeline (three gates, `done`/`failed`/`blocked`
-only, no persisted `running` state, no retries, one hardcoded timeout). **ROADMAP Phase 14**
-(R-1…R-7, "runtime truth & dispatch hardening") rebuilt the state machine underneath that
-contract: locked claims, a persisted `running` state, crash recovery, retries with a failure
-taxonomy, independent timeouts, a real Reviewer gate with bounded rework, real budget auto-pause,
-and a bounded hop prompt. This version documents that machine as it actually ships.
+blocks, waits for a human decision, and resumes, what gates can stop advancement at each hop, and
+what a caller can observe (task status, per-hop record, trace events) after a run. The pipeline
+itself lives in `src/docket/core/dispatch.py`; this document is its behavioral contract.
+**Version 1.0.0** (Phase 12/13) documented the original straight-line pipeline (three gates,
+`done`/`failed`/`blocked` only, no persisted `running` state, no retries, one hardcoded timeout).
+**ROADMAP Phase 14** (R-1…R-7, "runtime truth & dispatch hardening") rebuilt the state machine
+underneath that contract: locked claims, a persisted `running` state, crash recovery, retries
+with a failure taxonomy, independent timeouts, a real Reviewer gate with bounded rework, real
+budget auto-pause, and a bounded hop prompt. **ROADMAP Phase 15 G-1** ("approval-gated dispatch")
+added a sixth task status, `waiting_approval`, and the require_approval gate that produces it —
+`core/approval.py`'s pending-approval store previously had no production producer at all; this is
+that missing producer. This version documents that machine as it actually ships.
 
 ## Scope
 
@@ -35,16 +41,28 @@ This specification covers:
   injection, the real agent turn, and retries of a transient failure
 - Timeout configuration: independent agent-turn vs. `verifyCmd` timeouts and their resolution
   order
-- The gates that can block pipeline advancement mid-run: budget (with auto-pause), Implementer
-  verification (`verifyCmd`, run in the correct working tree), Reviewer verdict (with bounded
-  rework), and Tester PASS/FAIL
+- The gates that can block pipeline advancement mid-run: budget (with auto-pause), the
+  require_approval gate (waits on a human decision, resumable), Implementer verification
+  (`verifyCmd`, run in the correct working tree), Reviewer verdict (with bounded rework), and
+  Tester PASS/FAIL
+- The require_approval gate's single wired source for this version (a pod-level Lead-meta role
+  list), how a fired gate is resolved (grant resumes at the exact hop, deny fails the task
+  immediately, an expiry fail-closes to denied), and why a `waiting_approval` task is never
+  claimable by a plain dispatch run
 - The complete task-status and failure-kind vocabulary, and every trace event this pipeline emits
 
 This specification does NOT cover:
 
 - The `.docket-meta.json` fields that configure a pod member (`portRangeStart`,
   `portRangeCount`, `scratchDir`, `verifyCmd`, `turnTimeoutS`, `verifyTimeoutS`,
-  `maxReworkCycles`, `paused`/`pausedReason`) — see `docket-meta.spec.md`
+  `maxReworkCycles`, `requireApprovalRoles`, `paused`/`pausedReason`) — see `docket-meta.spec.md`
+- A policy-driven require_approval match (ROADMAP Phase 15 G-2) and a pipeline-defined `approval`
+  step (ROADMAP Phase 16 W-1/W-2) — both are explicit, documented seams in `core/dispatch.py`
+  (`_policy_requires_approval`, `_pipeline_step_requires_approval`) that always return `False`
+  today; neither is wired to any real source yet, and this spec does not invent one
+- `core/approval.py`'s own approval-record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
+  channels, audit-log parity) — see `security-gates.spec.md`. This spec covers only how
+  *dispatch* creates and reacts to a record, not the record's own store contract
 - The CLI surface for queuing/inspecting/dispatching tasks (`docket pod <project>
   delegate/queue/add/set-verify/dispatch`, including their flags) — see `cli-interface.spec.md`
 - Budget-cap accounting in general, and the `docket profile <id> --budget`/`--resume` CLI
@@ -261,6 +279,63 @@ This specification does NOT cover:
    outright at claim time (see "Claiming", item 6), not merely re-blocked hop by hop, until an
    operator clears the pause (`docket profile <lead-id> --resume`; see `cost-tracking.spec.md`).
 
+### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1)
+
+1. Immediately after the budget gate (affordability) and before a hop's message is composed or
+   its agent turn runs (permission), dispatch **MUST** evaluate whether that hop requires a human
+   decision (`_hop_requires_approval`). This is an **OR** of independent sources — any one of them
+   firing is enough to gate:
+   - **Pod-level (wired this version):** the pod Lead's `requireApprovalRoles` meta field, a
+     comma-separated, case-insensitive role list (e.g. `"implementer,reviewer"`) — see
+     `docket-meta.spec.md`. Read the same way `maxReworkCycles`/`budgetUsd` are: only the Lead's
+     value is consulted, and it has no dedicated CLI setter yet (`meta-set` only).
+   - **Policy-driven (seam only — ROADMAP Phase 15 G-2, not wired):** `_policy_requires_approval`
+     always returns `False` today. No policy source (e.g. a high-risk action-class match) is
+     consulted. This is an explicit, documented gap, not a claim of coverage.
+   - **Pipeline-defined (seam only — ROADMAP Phase 16 W-1/W-2, not wired):** `_pipeline_step_requires_approval`
+     always returns `False` today — no task record has an explicit per-step `approval` format;
+     this spec does not invent one.
+2. A fired gate **MUST**: create a real, persisted approval record via `core/approval.py`'s
+   `approval_create` (project, role, a human-readable action string, and a `context` of
+   `{"taskId", "pipelineIndex"}` so the record can be traced back to the exact task and hop it
+   gated); emit an `approval_required` trace event on the task's own session; and transition the
+   task to `waiting_approval` **without** running the gated hop's agent turn at all. The task's
+   `approvalToken` and `pendingApprovalIndex` (the pipeline position the gate fired at) **MUST**
+   be persisted; its `claimId` **MUST** be cleared (no active claim while waiting). This is a real
+   producer for a store that, before this card, had zero production callers.
+3. A `waiting_approval` task **MUST NOT** be claimable by any dispatch run, with or without
+   `--resume` — `_eligible_for_claim` recognizes only `pending` and a `stale_claim`-tagged
+   `failed`. It re-enters `pending` only through a resolved approval (below), never automatically,
+   and never via `retry_task`/`unblock_pod` (those are budget-gate-only escape hatches).
+4. Resolving the gate's approval (`core/dispatch.py`'s `resolve_waiting_approval`, called by
+   `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, and
+   `approval_sweep_expired`'s fail-closed timeout path — see `security-gates.spec.md`) **MUST**:
+   - **On a grant:** transition the task `waiting_approval` -> `pending`, clear `approvalToken`/
+     `pendingApprovalIndex`, and hand the exact pipeline position the gate fired at to the *next*
+     claim as a **single-use** `gateOverridePipelineIndex` — "the next dispatch continues from
+     that hop." No agent turn runs as part of resolving the grant itself; a real dispatch
+     invocation is still required to actually continue the pipeline.
+   - **On a deny:** transition the task `waiting_approval` -> `failed` **immediately** (no agent
+     turn needed to fail a task that never ran its gated hop), `failureKind: "approval_denied"`,
+     `reason: "approval denied"`, `completedAt` set, `claimId` cleared. Terminal — never
+     auto-retried by a later `dispatch_pod` call, with or without `--resume`.
+   - Resolving a token not created by this gate (missing `context.taskId`/`project`), an unknown
+     token, or a task no longer `waiting_approval` on that exact token (already resolved by a
+     concurrent caller) **MUST** be a harmless no-op — it **MUST NOT** raise.
+5. The gate-override handoff **MUST** be single-use and consumed atomically at claim time: the
+   *next* `_claim_next_task` call for this task captures `gateOverridePipelineIndex` into the
+   claimed copy handed to `dispatch_task`, then clears it from the **stored** record in the same
+   locked operation — so it can never leak into a later, unrelated claim of the same task (e.g. a
+   crash-and-`--resume`, or the task revisiting the same pipeline position on a Reviewer rework
+   cycle). `dispatch_task` consumes the override **in memory** the first time it reaches that
+   exact pipeline position in the run; a later hop at the same role within the *same* run (a
+   rework cycle sending the task back to the Implementer a second time) **MUST** gate again
+   normally, with a fresh token — the override never suppresses more than the one resumed hop it
+   was minted for.
+6. The require_approval gate **MUST NOT** bypass, or be bypassed by, the budget gate — budget is
+   always checked first (affordability before permission); a hop blocked on budget **MUST**
+   transition to `blocked`, not `waiting_approval`, and no approval record is created for it.
+
 ### Implementer verification gate (`verifyCmd`)
 
 1. After a **successful** Implementer hop, if the Implementer's `verifyCmd` is set, dispatch
@@ -376,12 +451,21 @@ This specification does NOT cover:
    Terminal.
 4. `failed` — a hop's subprocess call failed (after exhausting any retries), a `verifyCmd`
    failed, a Tester verdict was FAIL/unparseable, a Reviewer's rework budget was exhausted or its
-   verdict was unparseable, or a stale claim was swept. Terminal for this dispatch attempt,
+   verdict was unparseable, a stale claim was swept, or a require_approval gate's approval was
+   denied (`failureKind: "approval_denied"`, see below). Terminal for this dispatch attempt,
    **except** a `failureKind: "stale_claim"` failure, which is reclaimable via `--resume` (see
-   "Crash recovery").
+   "Crash recovery") — a `failureKind: "approval_denied"` failure is **never** reclaimable, with
+   or without `--resume`.
 5. `blocked` — the pod's budget cap was reached before a hop could run. Not terminal — re-enters
    `pending` only via `docket pod <project> queue --retry <task-id>` or a pod-wide budget change
    on the Lead (never automatically, never via a plain dispatch run).
+6. `waiting_approval` (ROADMAP Phase 15 G-1) — a require_approval gate fired before a hop could
+   run; a real approval record was created and the task is waiting on a human (or automated
+   headless) decision. Not terminal — re-enters `pending` only via a granted approval
+   (`resolve_waiting_approval`, handing the exact pipeline position back as a single-use
+   override), never automatically, never via a plain dispatch run, `retry_task`, or `unblock_pod`.
+   A denied (or fail-closed-expired) approval instead moves the task straight to `failed` (see
+   above) — it does not pass through `pending` at all.
 
 ## Interface Contracts
 
@@ -409,6 +493,9 @@ review_rejected              # a second REQUEST-CHANGES exhausted the rework bud
 reviewer_verdict_unparseable # the Reviewer's reply had no APPROVE/REQUEST-CHANGES first line
 stale_claim                  # the crash sweep failed a running task whose claim went stale
 paused_refused                # a claim attempt was refused because the pod's Lead is paused
+approval_required              # a require_approval gate fired (task -> waiting_approval)
+approval_resumed                # a granted approval flipped the task back to pending (G-1)
+approval_task_denied             # a denied approval failed the task terminally (G-1)
 session_end                  # once, at the end of dispatch_task, carrying the final status
 ```
 
@@ -463,6 +550,39 @@ Dispatching 0 pending task(s), 1 resumable task(s) through: lead → implementer
 (The Implementer hop that had already completed before the crash is not re-invoked; the resumed
 run continues from the Reviewer.)
 
+### A require_approval gate (pod-level), granted, then continued (G-1)
+
+```text
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
+
+$ docket approve apr-1234
+✓ Approval granted: apr-1234
+  The waiting action may now proceed.
+
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0091
+```
+
+(The Lead hop already completed before the gate fired is not re-invoked; `docket approve` moves
+the task back to `pending`, and the *next* `docket pod myapp dispatch` continues from the
+Implementer — the exact hop the gate stopped it on.)
+
+### The same gate, denied instead
+
+```text
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
+
+$ docket deny apr-1234
+✓ Approval denied: apr-1234
+  The waiting action has been blocked.
+```
+
+(The task is now `failed`, `failureKind: "approval_denied"`, immediately — no further dispatch
+run is needed to observe this; a later `docket pod myapp dispatch` — with or without `--resume`
+— will not touch it again.)
+
 ## Validation
 
 ### Pre-conditions
@@ -481,6 +601,10 @@ run continues from the Reviewer.)
   **MUST** be persisted back, and its `claimId` cleared.
 - A `blocked` task **MUST** stay `blocked` in storage — it is never rewritten to `pending` by
   `dispatch_pod` itself.
+- A gate firing **MUST** persist the task's `approvalToken` and `pendingApprovalIndex` before
+  `dispatch_pod` returns, and **MUST** create the approval record before the task is persisted as
+  `waiting_approval` (never the reverse — a persisted `waiting_approval` task **MUST NOT** exist
+  without a corresponding approval record for its `approvalToken`).
 
 ### Invariants
 
@@ -488,17 +612,51 @@ run continues from the Reviewer.)
   pod.
 - Two concurrent `dispatch_pod` calls against the same pod **MUST NOT** both claim (flip to
   `running`) the same task.
-- A gate (budget, `verifyCmd`, Reviewer verdict, Tester verdict) **MUST NOT** be bypassed by an
-  otherwise-`ok` subprocess call — `ok=True` is necessary but not sufficient for pipeline
-  advancement past the Implementer, Reviewer, or Tester hops.
+- A gate (budget, require_approval, `verifyCmd`, Reviewer verdict, Tester verdict) **MUST NOT** be
+  bypassed by an otherwise-`ok` subprocess call — `ok=True` is necessary but not sufficient for
+  pipeline advancement past the Implementer, Reviewer, or Tester hops.
 - A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or
   `daemon_error`.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.
+- A `waiting_approval` task **MUST NOT** be claimable by any `dispatch_pod` call, with or without
+  `--resume`, until its approval resolves (grant or deny).
+- The gate-override handoff (`gateOverridePipelineIndex`) **MUST** be consumed at most once per
+  grant: captured and cleared from storage atomically at claim time, and consumed in memory the
+  first time the resumed run reaches that pipeline position — a later occurrence of the same
+  position within the same run (a Reviewer rework cycle) **MUST** gate again, not skip silently.
 - Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
   trace tail <project>` — nothing in the pipeline is silent (including the printed
   verification-skipped notice).
 
 ## Changelog
+
+### Version 2.1.0 (2026-07-30)
+
+- **ROADMAP Phase 15 G-1 — approval-gated dispatch.** `core/approval.py`'s pending-approval
+  store previously had zero production callers (`approval_create` was called only by tests); this
+  card gives it its first one. Added:
+  - A sixth task status, `waiting_approval`, and the require_approval gate that produces it
+    (`_hop_requires_approval`, evaluated pre-hop, after the budget gate and before the hop's
+    message is composed or its agent turn runs).
+  - One wired gate source for this version: the pod Lead's `requireApprovalRoles` meta field
+    (`_pod_requires_approval`). Two more sources are documented, explicit, inert seams —
+    `_policy_requires_approval` (ROADMAP Phase 15 G-2) and `_pipeline_step_requires_approval`
+    (ROADMAP Phase 16 W-1/W-2) — both always return `False` today; neither is claimed as wired.
+  - `resolve_waiting_approval`: reacts to a grant/deny already applied by `core/approval.py` (via
+    `docket approve`/`docket deny`, `serve.py`'s `POST /approvals/<token>`, or the expiry sweep)
+    by moving the gated task `waiting_approval` -> `pending` (grant, with a single-use
+    `gateOverridePipelineIndex` handoff to the next claim) or `waiting_approval` -> `failed`
+    (deny, immediately, `failureKind: "approval_denied"`, never reclaimed).
+  - Three new trace events: `approval_required`, `approval_resumed`, `approval_task_denied`.
+  - `core/approval.py`'s `approval_sweep_expired` now resolves a stale pending record to
+    **denied** (fail-closed), not the prior, read-by-nobody `"expired"` state, and reaches into
+    dispatch (a guarded, best-effort local import) to fail any task waiting on that exact token —
+    see `security-gates.spec.md` v0.5.0 for the approval-store side of this change.
+  - `docket pod <project> dispatch`'s human-readable output now renders `waiting_approval` with
+    the same warn-not-error treatment as `blocked` (an expected pause, not a failure).
+  - Not shipped: a policy-driven gate source and a pipeline-defined `approval` step (see the
+    seams above); task cancellation of an in-flight hop remains out of scope per Phase 16 W-2
+    (unchanged from 2.0.0).
 
 ### Version 2.0.0 (2026-07-30)
 

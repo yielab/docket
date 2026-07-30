@@ -542,7 +542,9 @@ class TestSweep:
         path.write_text(json.dumps(rec))
         swept = _ap.approval_sweep_expired()
         assert swept == 1
-        assert json.loads(path.read_text())["state"] == "expired"
+        # G-1: the timeout sweep resolves to "denied" (fail-closed), not the
+        # prior, read-by-nobody "expired" state.
+        assert json.loads(path.read_text())["state"] == "denied"
 
     def test_sweep_leaves_fresh(self, oc_dir: Path) -> None:
         token = _create(oc_dir)

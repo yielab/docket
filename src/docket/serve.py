@@ -29,6 +29,10 @@ distinguish "done", "failed", and "never ran" via ``docket runs show`` /
 ``GET /runs/<id>``. No dispatch call site in this module silently discards an
 exception any more (no bare ``contextlib.suppress(Exception)`` around
 dispatch) — see ``core/runs.py``'s ``execute()``.
+
+G-1: ``POST /approvals/<token>`` genuinely resumes or kills a pod-dispatch task the
+require_approval gate stopped, not just the approval record's own state — see
+``core/dispatch.py``'s ``resolve_waiting_approval`` (a no-op for any other approval).
 """
 
 from __future__ import annotations
@@ -433,18 +437,25 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error('action must be "grant" or "deny"', 400)
                 return
             from docket.core import approval
+            from docket.core import dispatch as _dispatch
 
+            decision = "granted" if action == "grant" else "denied"
             try:
                 if action == "grant":
                     approval.approval_grant(approval_token, channel="http")
                 else:
                     approval.approval_deny(approval_token, channel="http")
+                # G-1: if this token gated a dispatch task, genuinely resume
+                # (grant) or kill (deny) it — see core/dispatch.py's
+                # resolve_waiting_approval. A no-op for any other approval.
+                _dispatch.resolve_waiting_approval(approval_token, decision)
                 rec = approval.approval_get(approval_token)
                 resp_body = json.dumps(
                     {"ok": True, "token": approval_token, "state": rec["state"]}
                 ).encode()
                 self._send(resp_body, "application/json")
             except approval.ApprovalNoop as exc:
+                _dispatch.resolve_waiting_approval(approval_token, decision)
                 self._send_json_error(exc.message, 409)
             except approval.ApprovalError as exc:
                 self._send_json_error(str(exc), 404)

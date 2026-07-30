@@ -221,7 +221,7 @@ class TestExpiryStillFailCloses:
         url, token = live_server
         apr_token = _approval.approval_create("projE", "implementer", "x")
         rec = _approval.approval_get(apr_token)
-        rec["state"] = "expired"
+        rec["state"] = "denied"
         _store.write_json(_approval_path(apr_token), rec)
 
         status, body = _get(f"{url}/approvals", token)
@@ -237,7 +237,9 @@ class TestExpiryStillFailCloses:
 
         swept = _approval.approval_sweep_expired()
         assert swept == 1
-        assert _approval.approval_get(apr_token)["state"] == "expired"
+        # G-1: the timeout sweep resolves to "denied" (fail-closed), not the
+        # prior, read-by-nobody "expired" state.
+        assert _approval.approval_get(apr_token)["state"] == "denied"
 
     def test_sweep_leaves_recent_pending_alone(self, approvals_dir: Path) -> None:
         apr_token = _approval.approval_create("projR", "implementer", "x")

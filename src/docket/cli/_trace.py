@@ -32,6 +32,9 @@ _EVENT_COLOR: dict[str, str] = {
     "approval_requested": "magenta",
     "approval_granted": "green",
     "approval_denied": "red",
+    "approval_required": "magenta",
+    "approval_resumed": "green",
+    "approval_task_denied": "red",
     "drift_alert": "red",
     "error": "red",
 }
