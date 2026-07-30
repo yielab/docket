@@ -4,36 +4,40 @@
 > currently active in [ROADMAP.md](ROADMAP.md). Do **not** create per-phase task files — when a phase
 > finishes, clear its cards (the phase record stays in ROADMAP) and append the next phase's cards here.
 >
-> *Phase 13 (Close the differentiation gaps, FD-0…FD-7) is **COMPLETE** (2026-07-02) — its durable
-> record lives in ROADMAP.md's Phase 13 section. Its board was cleared per the convention above.*
+> *Phase 13 (Close the differentiation gaps, FD-0…FD-7) is **COMPLETE** (2026-07-02).*
+> *Phase 14 (Platformization I: runtime truth & dispatch hardening, R-1…R-8) is **COMPLETE**
+> (2026-07-30) — its durable record lives in ROADMAP.md's Phase 14 section, including the honest
+> "what was narrowed or deferred" list. Its board was cleared per the convention above. The two
+> defects R-8 found but left unfixed (a stray merge-conflict marker in `serve.py`'s docstring and a
+> backwards precedence comment in `config.py`) were fixed on `platform` in `facc78c`.*
 >
 > ---
 >
-> ## Active: PHASE 14 — Platformization I: runtime truth & dispatch hardening
+> ## Active: PHASES 15 · 16 · 18 — Platformization II/III/V, executed in waves
 >
-> Executable board for **PHASE 14** in [ROADMAP.md](ROADMAP.md) (read that section first — the
-> defect rationale, explicit **keeps**, and exit criteria; also decisions **D-15/D-17** in §6 and
-> the 2026-07-30 Platformization amendment in §4.5). Source of record:
-> `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29 four-pass platform audit,
+> Executable board for **Phases 15, 16 and 18** in [ROADMAP.md](ROADMAP.md) (read those sections
+> first — the defect rationale, the anti-overengineering rules, and each phase's exit criteria; also
+> decisions **D-14/D-16/D-18** in §6 and the 2026-07-30 Platformization amendment in §4.5). Source of
+> record: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29 four-pass platform audit,
 > gitignored local rationale — every defect below was code-verified with file:line evidence and is
-> restated self-containedly here). This phase is the **foundation** of the Platformization program
-> (Phases 14–18): Phases 15–18 (wired governance, declarative orchestration + role archetypes,
-> context/memory, driver port + MCP) all execute through this dispatch lane, so it hardens first
-> and **nothing from a later phase ships before this board is green**.
+> restated self-containedly here).
 >
-> **What we're doing (one paragraph):** make the dispatch lane crash-safe, race-free, observable,
-> and honest. Today the pod queue has an unlocked read-modify-write (concurrent serve threads can
-> double-run a task), no persisted `running` state (a crash re-pays every hop), no retries, no
-> cancellation, one hardcoded 300s timeout, budget-`blocked` tasks that silently retry forever, a
-> Reviewer role whose verdict is never parsed, an auto-pause that was never ported from Bash, a
-> verifyCmd that runs in the wrong tree, unbounded hop prompts, and a serve lane that swallows every
-> exception behind fire-and-forget threads. R-1…R-7 fix the mechanics; R-8 makes the specs/docs stop
-> overclaiming what the code does.
+> **Why three phases at once.** ROADMAP marks Phase 18 *"independent of 15–17 except L-5"* and Phase 16
+> *"after 14; G-1 for approval steps"*. With Phase 14 green, the genuine blockers are narrow, so cards
+> are scheduled by **file contention** rather than by phase number. Phase 17 stays out of this wave:
+> C-1 depends on Phase 16's W-5, and C-2/C-3/C-5 all want `core/dispatch.py`, which is spoken for.
+>
+> **Scheduling rule learned in Phase 14 (keep it):** `core/dispatch.py` is the contention hotspot —
+> nine remaining cards touch it. **At most one in-flight card may own `core/dispatch.py` per wave.**
+> Phase 14 proved the payoff: cards with disjoint file footprints (R-6, R-7) auto-merged onto the big
+> R-1 rewrite with zero code conflicts, while the two cards that both edited `serve.py`'s dispatch
+> call sites (R-2, R-3) produced the only genuinely dangerous merge of the phase — each had to be
+> hand-reconciled or one card's feature would have been silently dropped.
 
 ## How to use this board (read before claiming a task)
 
 1. **Claim:** set Status → `IN-PROGRESS (@you)`. One agent per task.
-2. **Read first (always):** ROADMAP.md's Phase 14 section, §2 (Python ground truth), §4.5
+2. **Read first (always):** ROADMAP.md's section for the card's phase, §2 (Python ground truth), §4.5
    (architectural principles, incl. the 2026-07-30 Platformization amendment), [CLAUDE.md](CLAUDE.md),
    and the task's own "Read" list.
 3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. OpenClaw formats live **only**
@@ -41,425 +45,178 @@
    (JSONL append logs are the one D-12 exemption). Every shell-out goes through `edges/adapters/`.
    `core/`/`edges/` never import `ui.py` or print (D-3 from Phase 12).
 4. **No-behavior-change rule, except where a card says otherwise:** the golden suite
-   (`bash tests/golden/run.sh verify-all`) must stay byte-identical unless a card explicitly adds
-   new CLI surface (R-2's `--timeout` flags, R-3's `docket runs`, R-5's `--resume`) — those cards
-   say so and require regenerated goldens with the diff explained in the PR.
+   (`bash tests/golden/run.sh verify-all`) must stay byte-identical unless a card explicitly adds new
+   CLI surface — those cards say so and require regenerated goldens with the diff explained.
+   **Regenerating a golden to paper over an unintended behaviour change is never acceptable**; W-6 in
+   particular must prove the four legacy roles still emit byte-identical workspaces.
 5. **Definition of done (per task):** acceptance criteria pass · a pytest covers it (add/refresh a
    golden case if output changes) · `uv run ruff check . && uv run ruff format --check . && uv run
    mypy src && uv run pytest` green · `bash tests/golden/run.sh verify-all` green ·
-   `uv run python scripts/metrics.py --check` green · committed `Type: description` (no
-   Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the diff for real names /
+   `bash scripts/validate-specs.sh` green · the card's own spec updated with a version bump +
+   changelog entry, **Status line matching what actually shipped** · committed `Type: description`
+   (no Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the diff for real names /
    `/home/<user>` paths before committing).
+6. **Central files:** `ROADMAP.md`, `TODO.md` and `README.md`'s metric counts are maintained by the
+   integrator, **not** by card branches. Phase 14 lost time to roll-up checkboxes and README test
+   counts conflicting on nearly every merge; cards now report what they shipped instead of editing
+   the board.
 
-**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs R-x)` · `DONE`
+**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `DONE`
 **Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model:** this phase lives on the long-running **`platform`** branch (a deliberate
-fork-candidate line — see ROADMAP §8). One short-lived `pc/r-<id>` branch per task → PR into
+**Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
+fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
 
 ---
 
-## Dependency map (what unblocks what)
+## Wave 3 — in flight
 
-```text
-R-1 (state machine v2) ──┬── R-2 (retries/timeouts — extends R-1's task record)
-                         ├── R-3 (run registry — persists R-1's states)
-                         ├── R-4 (reviewer gate + rework loop — new hop edges need R-1's attempts)
-                         └── R-5 (auto-pause — dispatch refusal reads R-1's claim path)
-R-6 (verifyCmd fixes) ── independent, parallel-safe with everything
-R-7 (bounded hop prompts) ── independent, parallel-safe with everything
-R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually shipped
-```
+Six cards, chosen so each owns a distinct file footprint. `G-1` is the wave's single
+`core/dispatch.py` owner.
 
----
+### G-1 — Approval-gated dispatch  *(Phase 15)*
 
-### R-1 — Task state machine v2: persisted `running`, locked claims, crash recovery
+**Status:** IN-PROGRESS · **Size:** M · **Branch:** `pc/g-1` · **Owns:** `core/dispatch.py`
 
-- **Depends on:** — · **Blocks:** R-2, R-3, R-4, R-5.
-- **Read:** `core/dispatch.py` in full (`enqueue_task` ~L110-129, `dispatch_pod` ~L406-436 — the
-  unlocked read at ~L420 vs write at ~L434, `_apply_result` ~L384-403 and its `blocked→pending`
-  rewrite at ~L399-401, `startedAt` set in memory only at ~L430); `edges/store.py` (`read_json`
-  takes no lock ~L35-40; `write_json`'s per-directory filelock ~L43-83); `serve.py` ~L214-268 +
-  ~L364-382 (the three thread sources that can dispatch one pod concurrently);
-  `tests/python/test_dispatch.py`.
-- **Why:** the queue is the substrate for every later phase. Today two concurrent dispatchers can
-  both select the same `pending` task (read is unlocked, there is no claim state) and clobber each
-  other's results; a crash mid-task leaves `pending` and re-runs — re-paying — every hop; a
-  budget-`blocked` task is rewritten to `pending` and retries on every sweep forever.
-- **Do:**
-  1. Add task states `running` and `waiting` (persisted immediately, not post-hoc): claim =
-     locked read-modify-write that flips `pending→running` and writes `startedAt`+`claimId` to disk
-     **before** the first hop. Extend `store.py` with a `with_lock(path)` context (or a
-     `read_modify_write` helper) so the claim is atomic under the existing per-directory filelock.
-  2. Persist per-hop progress as it happens (the `hops[]` array already exists — write it after
-     each hop, not only at task end) so recovery can resume from the last completed hop.
-  3. Crash sweep: a `running` task whose `claimId` is stale past its timeout is swept to `failed`
-     with a `stale_claim` trace event and is resumable (`--resume` re-claims and continues from the
-     last persisted hop instead of hop 0).
-  4. `blocked` stays `blocked` (kill the `→pending` rewrite); it re-enters `pending` only when the
-     pod budget changes (`docket profile --budget`) or via an explicit `docket pod <p> queue
-     --retry <task-id>`.
-  5. Task ids: `task-<uuid4>` (keep a `created` timestamp field; epoch-ms ids collide under
-     concurrent enqueue and leak ordering assumptions).
-  6. Tests: thread-race test proving two concurrent `dispatch_pod` calls cannot double-run one
-     task; kill-mid-task resume test (fake runner, assert earlier hops not re-invoked); blocked
-     stays blocked across sweeps.
-- **Out of scope:** parallel hop execution (Phase 16 W-2); changing the pipeline order or gates.
-- **Deliverables:** state machine v2 in `core/dispatch.py`; locked-claim helper in `edges/store.py`;
-  migration shim (old TASK_LIST.json records without the new fields load fine); tests.
-- **Acceptance gate:** [x] concurrent-dispatch race test green · [x] resume-from-hop test green ·
-  [x] `blocked` never auto-retries · [x] old queue files still load · [x] suite + goldens green.
-- **Size:** L (split: claims/states vs recovery/resume) · **Status:** DONE (pc/r-1) — claims via
-  `store.read_modify_write`; `running`/stale-claim/`--resume` land in `core/dispatch.py`; `blocked`
-  no longer auto-retries (`retry_task`/`unblock_pod`, wired to `queue --retry` and `profile
-  --budget`); task ids are `task-<uuid4>`. R-2/R-3/R-4/R-5 can now proceed.
+The approval store's **missing producer**. The audit's single most damning finding: `core/approval.py`
+is fully built, tested and documented, and `approval_create` has **zero production callers** — docket's
+`apr-*` store and the daemon's exec prompt are disconnected systems.
 
----
+- **Read:** `core/dispatch.py` (R-1's v2 state machine: `_claim_next_task`, `_persist_hop`,
+  `_normalize_task`, `_sweep_stale_claims`, `retry_task`, `unblock_pod`, `_replay_pipeline_position`),
+  `core/approval.py`, `cli/_approve.py`, `cli/_deny.py`, `serve.py`,
+  `specs/functional/pod-dispatch.spec.md` v2.0.0.
+- **Build:** a persisted `waiting_approval` state; a `require_approval` gate evaluated **pre-hop** from
+  pod-level `requireApprovalRoles`; grant/deny (CLI **and** HTTP) genuinely resume/kill the run; the
+  expiry sweep resolves **denied** (fail-closed), not today's read-by-nobody `expired`.
+- **Acceptance gate:** [ ] gate fires → `waiting_approval` persisted · [ ] grant resumes at the right
+  hop · [ ] deny fails terminally · [ ] expiry ⇒ denied · [ ] a `waiting_approval` task is not
+  claimable by a concurrent dispatcher.
+- **Out of scope:** policy-engine wiring (G-2 — leave a typed seam); pipeline `approval` steps
+  (W-1/W-2 — do not invent a pipeline format).
 
-### R-2 — Retries + configurable timeouts (turn vs verify decoupled)
+### W-1 — docket-native pipeline spec  *(Phase 16)*
 
-- **Depends on:** R-1 (task record gains `attempts`) · **Parallel-safe with:** R-3, R-4, R-5, R-6, R-7.
-- **Read:** `core/dispatch.py` `DEFAULT_TIMEOUT = 300` (~L32) and its two consumers (agent turn
-  ~L286, verify ~L350); `edges/adapters/openclaw.py` `agent_run` failure modes (~L979-999 —
-  `TimeoutExpired`, `OSError`, non-zero exit, non-JSON-stdout-treated-as-success); `cli/_pod.py`
-  `_pod_dispatch` (~L735-758, passes no timeout today); `serve.py` dispatch call sites.
-- **Why:** one attempt per hop and one hardcoded constant for two unrelated operations. A transient
-  daemon hiccup kills a whole task; a 20-minute test suite can't be verified; a hung turn and a hung
-  verify are indistinguishable.
-- **Do:**
-  1. Failure taxonomy on `AgentRunResult` (`timeout | daemon_error | nonzero_exit | invalid_output`)
-     — retries apply only to retryable kinds (timeout, daemon_error), with per-role `retries` +
-     linear backoff, `attempts` persisted per hop (R-1's record).
-  2. Config: `turnTimeoutS` / `verifyTimeoutS` per pod (Lead meta), `--timeout` on
-     `docket pod <p> dispatch`, serve config knob; `DEFAULT_TIMEOUT` becomes the fallback only.
-  3. Tests: retryable vs non-retryable paths; attempts persisted; verify timeout independent.
-- **Out of scope:** model-fallback-on-failure (stays out per Phase 6b — retry same model only).
-- **Deliverables:** taxonomy, retry loop, timeout knobs, tests; golden update for new `--help` text.
-- **Acceptance gate:** [x] a timed-out hop retries up to its budget then fails with `attempts`
-  recorded · [x] verify and turn timeouts settable independently · [x] suite + goldens green.
-- **Size:** M · **Status:** DONE (pc/r-2) — `AgentRunResult` gains a `failure_kind`
-  (`timeout | daemon_error | nonzero_exit | invalid_output`), additive/backward-compatible; only
-  `timeout`/`daemon_error` are retryable (`core/dispatch.py`'s `_RETRYABLE_FAILURE_KINDS`). Per-role
-  retry budget + linear backoff (`config.DISPATCH_RETRIES_PER_ROLE`/`DISPATCH_RETRY_BACKOFF_S`);
-  `attempts` persisted per hop (`HopResult.attempts`, round-trips through `_hop_record`/
-  `_hop_from_record`); a `hop_retry` trace event per attempt. `turnTimeoutS`/`verifyTimeoutS` on the
-  Lead's meta (alongside `budgetUsd`), a `--timeout` override on `docket pod <p> dispatch`
-  (overrides both for that run), and a `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S` serve
-  config knob — `DEFAULT_TIMEOUT` is now the last-resort fallback only. **Stale-claim interaction**
-  (the subtle point this card called out): a retry adds backoff + another turn-timeout to a hop's
-  wall-clock time on top of whatever earlier hops already took, so a legitimately-still-running
-  retry loop could now exceed `CLAIM_STALE_TIMEOUT` and get swept as `stale_claim` by a *concurrent*
-  dispatcher's sweep (the same concurrency R-1's locked claims exist for). Fixed by refreshing
-  `claimedAt` on every retry (`dispatch_task`'s `on_retry` → `_touch_claim`) and on every completed
-  hop (`_persist_hop`, extended) — both are real forward progress, not staleness. No golden diff:
-  `docket pod` isn't part of the golden suite (its `--help` text lives in raw `ctx.args`, not a
-  Typer-documented option) and the static `docket help` blob in `cli/_help.py` was left untouched
-  (matching R-1's own `--resume`, which also isn't listed there). New tests in
-  `tests/python/test_r2_retries.py` (23 cases) rather than growing `test_dispatch.py`.
+**Status:** IN-PROGRESS · **Size:** M · **Branch:** `pc/w-1` · **Owns:** new pipeline module
 
----
+One Pydantic-modeled, **unknown-key-rejecting** YAML replacing the Lobster dialect docket lints but
+cannot execute (D-16). Defines a format; **does not** write the executor.
 
-### R-3 — Run registry + job API; ban suppressed exceptions in the dispatch lane (D-17)
+- **Build:** ordered steps (`role|agent`), per-step `retries`/`timeout`/`gate`
+  (mechanical-check | verdict | approval), bounded rework edges consistent with R-4's `maxReworkCycles`,
+  `parallel` groups, variables. Steps reference W-6 archetypes **by name string** (validate shape, not
+  existence, so the two cards compose without ordering).
+- **Zero migration:** no pipeline file ⇒ today's built-in order, byte-identical.
+- **Acceptance gate:** [ ] valid pipeline round-trips · [ ] unknown key rejected · [ ] each gate type
+  validates · [ ] absent file ⇒ built-in order unchanged.
+- **Out of scope:** the executor (W-2). Explicitly **do not** build a second pretty-printer — ROADMAP
+  requires `workflow plan` to render from the real executor.
 
-- **Depends on:** R-1 · **Parallel-safe with:** R-2, R-4, R-5, R-6, R-7.
-- **Read:** `serve.py` in full — the four `contextlib.suppress(Exception)` sites around dispatch
-  (~L235, ~L258-268, ~L375), the fire-and-forget webhook (~L364-382, returns 200 with no id), the
-  in-memory `_schedule_state` (~L214); `cli/__init__.py` serve wiring (~L1575-1595);
-  `specs/data/serve-read-api.spec.md` (the versioned read-API contract to extend, pinned by test).
-- **Why:** D-17. Background dispatch is unobservable: no run id, no status query, and every
-  exception is silently discarded — an operator cannot distinguish "done", "failed", and "never
-  ran".
-- **Do:**
-  1. `core/runs.py`: a persisted run registry (docket-owned JSON via `store.py`) — one record per
-     dispatch invocation (`run-<uuid>`, source: cli|webhook|schedule|sweep, project, task ids,
-     state, error, timestamps). CLI: `docket runs [list|show <id>]`.
-  2. `POST /dispatch/<project>` returns `{"run": "<id>"}` **after** enqueueing the run record;
-     work still executes async, but its outcome lands in the registry. New `GET /runs/<id>` +
-     `GET /runs?project=` (Bearer-authed, added to the read-API spec with a version bump).
-  3. Remove every `contextlib.suppress(Exception)` around dispatch: exceptions are caught, written
-     to the run record + an `error` trace event, and (for the sweep loop) logged without killing
-     the sweeper. Persist scheduler last-run into the schedules file (kills the restart-refire bug).
-  4. Tests: webhook returns a queryable id; an induced dispatch exception is visible in
-     `docket runs show`; scheduler survives restart without re-firing.
-- **Out of scope:** cancellation (Phase 16 W-2 — needs process-group plumbing); a web UI.
-- **Deliverables:** `core/runs.py`, `docket runs`, extended serve endpoints + spec bump, durable
-  scheduler state, zero suppressed dispatch exceptions; tests; goldens for new CLI surface.
-- **Acceptance gate:** [x] every dispatch path yields a queryable run record · [x] induced failure
-  visible with its error · [x] no `suppress(Exception)` remains around dispatch (grep-pinned test) ·
-  [x] scheduler state survives restart · [x] suite + goldens green.
-- **Size:** L (split: registry/CLI vs serve wiring) · **Status:** DONE (pc/r-3) — `core/runs.py`
-  (persisted registry: `create_run`/`mark_running`/`finish_run`/`get_run`/`list_runs`/`execute`,
-  locked via `store.read_modify_write`); `docket runs list [--project P] [--json]` / `docket runs
-  show <id> [--json]` (`cli/_runs.py`); `POST /dispatch/<project>` now creates the run record
-  before returning and its response carries `{"run": "<id>"}`; new `GET /runs` (`?project=`) and
-  `GET /runs/<id>`, Bearer-authed; `SERVE_API_VERSION` bumped 1→2, `serve-read-api.spec.md` and
-  `cli-json-shapes.spec.md` updated. All four dispatch-lane `contextlib.suppress(Exception)` sites
-  (schedule-thread, sweep's `dispatch_all_pods()` call, sweep's `_check_schedules()` call, webhook
-  thread) replaced with real handling via `core.runs.execute()` — the sweep loop's per-pod
-  dispatch is now an explicit `dispatchable_pods()` loop (one run record per pod) instead of the
-  single opaque `dispatch_all_pods()` call, so one pod's exception no longer risks aborting the
-  others. Scheduler last-run moved from serve.py's in-memory `_schedule_state` dict into the
-  schedules file itself (`core/schedule.py`'s new `load_last_run`/`record_last_run`, through
-  `store.read_modify_write`) — a `docket serve` restart no longer re-fires every schedule.
-  `core/dispatch.py` untouched (zero changes) — every wrapper lives in `core/runs.py`/`serve.py`/
-  `cli/_pod.py`, duck-typing `TaskResult.task_id` rather than importing dispatch's types, per the
-  card's "touch dispatch.py as little as humanly possible" instruction. Regenerated
-  `completions_bash`/`completions_zsh` goldens (new top-level command in the list); `help.golden`
-  unaffected. 57 new tests (952 total); full suite + 17-case golden suite + validate-specs +
-  metrics --check green.
+### W-6 — Declarative role archetypes  *(Phase 16)*
+
+**Status:** IN-PROGRESS · **Size:** L · **Branch:** `pc/w-6` · **Owns:** `core/pod.py`, `cli/_pod.py`
+
+The operator's explicit requirement: pods must orchestrate **diverse objectives, not just build a web
+site**. Today `POD_ROLES` is a closed 4-tuple and every role identity is a hardcoded Python string, so
+a research pod, a content pod, an ops pod are *inexpressible*.
+
+- **Build:** versioned YAML archetypes (`name`, `scope`, `modelClass`, `soul`/`agents` templates,
+  `gateContract`, `editRights`, `toolProfile`); the four legacy roles as built-ins; starter library
+  (`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`); `docket roles
+  list/show/add/validate`; user overlay following the `docket-models.json` registry pattern;
+  `normalize_role`/`member_id`/`POD_ROLE_POLICY` rewritten against the registry.
+- **Hard requirement:** legacy roles emit **byte-identical** workspaces and keep their exact ids.
+- **Anti-overengineering rule (ROADMAP, verbatim):** *no fifth role ever lands as a hardcoded string;
+  archetype prose and rosters are user-extensible, but gate contracts, edit rights, and scope stay
+  closed typed sets docket can reason about.*
+- **Acceptance gate:** [ ] legacy output byte-identical (goldens) · [ ] user archetype overlays a
+  built-in · [ ] unknown gate/right/scope rejected · [ ] legacy ids unchanged.
+- **Out of scope:** blueprints (W-7); wiring gates into dispatch (W-8) — define `gateContract` as
+  **data** only.
+
+### L-1 — RuntimeDriver port  *(Phase 18, decision D-14)*
+
+**Status:** IN-PROGRESS · **Size:** L · **Branch:** `pc/l-1` · **Owns:** ACL, `core/utils.py` cost slice
+
+Closes the biggest ACL leak: session-JSONL cost parsing sits in `core/utils.py`, `trace_ingest` format
+knowledge escapes the adapter, and there are 11 argv shapes for the `openclaw` binary.
+
+- **D-14 constrains this card:** *one typed port, ONE shipped driver.* Containment of coupling that
+  already exists — **not** a plugin framework. No driver discovery, no entry points, no
+  config-selectable backends, no second real driver.
+- **Build:** `run_turn / provision / teardown / list_sessions / usage / capabilities`; move session-JSONL
+  and `trace_ingest` knowledge **inside** the OpenClaw driver; extend the ACL guard test to catch
+  session-format parsing; a fake driver replacing ad-hoc test shims.
+- **Acceptance gate:** [ ] `core/` contains zero OpenClaw on-disk-format knowledge, **guard-tested**
+  (the test must genuinely fail if someone parses session JSONL in `core/`).
+- **Coordination:** keep the `core/dispatch.py` call-site diff minimal — G-1 owns that file this wave.
+  C-2 (later) makes docket's first self-originated LLM call through this driver per D-18.
+
+### L-3 — docket as an MCP server  *(Phase 18)*
+
+**Status:** IN-PROGRESS · **Size:** M · **Branch:** `pc/l-3` · **Owns:** new MCP module
+
+MCP is the ecosystem's tool-interop standard and is **entirely absent** from docket (one repo-wide
+mention, a disclaimer in SECURITY.md). Pure docket, no daemon capability needed — hence high leverage.
+
+- **Build:** `docket mcp serve` (stdio, official `mcp` SDK **pinned** and shipped as an optional extra
+  following the existing PyYAML optional-dep pattern) exposing `status, pods, queue, delegate,
+  dispatch, runs, approvals list/grant/deny, cost`.
+- **Critical constraint:** *through* the governance spine, not around it — every call audit-logged into
+  G-4's `seq`/`prev_hash` chain, approvals unchanged, **no MCP-side bypass** of any control the CLI
+  enforces. `dispatch` costs real money: gate it exactly as the CLI/HTTP paths do.
+- **Scope guard (ROADMAP, verbatim):** *a full MCP host (docket executing MCP tools inside agent turns)
+  is the standalone-runtime trap — refuse it.* This is a **server**. Agent-side MCP config is L-4.
+- **stdio discipline:** stray stdout output corrupts the protocol stream — mind the Rich `ui.py` helpers.
+- **Acceptance gate:** [ ] each tool's happy path · [ ] every call writes an audit entry · [ ] missing
+  SDK ⇒ actionable hint, suite still green · [ ] no tool bypasses an approval gate.
+
+### G-5 — the `[GATE]` seam spike  *(Phase 15, daemon-gated)*
+
+**Status:** IN-PROGRESS · **Size:** S · **Branch:** `pc/g-5` · **Owns:** docs/spike
+
+**A spike: the deliverable is a truthful answer, not code.** Question: *can the daemon's exec-approval
+prompt notify an external hook?* Yes ⇒ bridge daemon prompts into docket approval tokens and the
+`security-gates.spec.md` example becomes genuinely true. No ⇒ draft the upstream issue and the example
+stays **explicitly labeled future**.
+
+- **Evidence standard:** cite a file path, config key, doc URL or source line. Do not infer a capability
+  from a plausible config name. Distinguish *confirmed absent* / *confirmed present* / *could not
+  determine*. A well-evidenced "no" is a **success**; an unverified "yes" is the worst outcome.
+- **Acceptance gate:** [ ] the spec tells the truth about what is enforced today, keeping the
+  *docket-enforced / daemon-enforced / convention* labeling discipline.
 
 ---
 
-### R-4 — Reviewer verdict gate + bounded rework loop
+## Wave 4 — queued (blocked on wave 3)
 
-- **Depends on:** R-1 (persisted per-hop progress; rework consumes `attempts`) · **Parallel-safe
-  with:** R-2, R-3, R-5, R-6, R-7.
-- **Read:** `core/dispatch.py` tester gate (~L326-342, `_parse_tester_verdict` ~L39-52 — the
-  structural pattern to mirror) and the straight-line hop loop (~L254); `cli/_pod.py` reviewer SOUL
-  body (~L79-85: "APPROVE or REQUEST-CHANGES", veto prose the pipeline never reads);
-  `tests/python/test_fd2_tester_gate.py` (fixture pattern).
-- **Why:** the Reviewer's documented contract is a veto, but dispatch never parses its output — a
-  REQUEST-CHANGES review advances to the tester and the task completes `done`. The role is
-  mechanically decorative; separation-of-duties is prose.
-- **Do:**
-  1. Parse the reviewer hop's first non-blank line for `APPROVE|REQUEST-CHANGES` (case-insensitive,
-     same regex style as the tester gate). Unparseable ⇒ fail with a distinct reason
-     (`reviewer_verdict_unparseable`), mirroring FD-2's convention.
-  2. REQUEST-CHANGES ⇒ loop back to the implementer **once** (config `maxReworkCycles`, default 1):
-     re-run the implementer hop with the review text appended, then reviewer again; a second
-     REQUEST-CHANGES fails the task (`review_rejected` trace event). Rework cycles are recorded in
-     the persisted `hops[]`.
-  3. Update the reviewer SOUL text to state the parsed marker convention (as FD-2 did for tester).
-  4. Tests: APPROVE advances; REQUEST-CHANGES triggers exactly one rework then re-review; second
-     rejection fails; unparseable fails distinctly; pods without a reviewer unaffected.
-- **Out of scope:** parsing anything beyond the first-line marker (no diff-level review semantics);
-  reviewer gating for non-code pods (Phase 16 W-8 generalizes gates).
-- **Deliverables:** reviewer parser + rework edge in dispatch; SOUL wording; trace events; tests.
-- **Acceptance gate:** [x] REQUEST-CHANGES blocks and triggers a bounded rework cycle · [x]
-  unparseable output blocks distinctly · [x] APPROVE/no-reviewer behavior unchanged · [x] suite green.
-- **Size:** M · **Status:** DONE (pc/r-4) — `_parse_reviewer_verdict` mirrors `_parse_tester_verdict`
-  exactly; the hop loop is now pointer-based (`pipeline_index`) instead of a role-presence set so a
-  role can legitimately run twice (rework). `pod_max_rework_cycles` reads the Lead's
-  `maxReworkCycles` meta (default 1, same convention as `budgetUsd`). A REQUEST-CHANGES with budget
-  left jumps `pipeline_index` back to the Implementer and re-runs it with the review text as a
-  dedicated, un-derated "REWORK REQUIRED" section in `_hop_message` (excluded from the generic
-  recency-ranked carryover loop so it's never truncated away and never rendered twice) — see R-7
-  interaction note below. Every rework hop persists through the existing `on_hop`/`_persist_hop`
-  path into `hops[]`. New `_replay_pipeline_position` helper replays a resumed task's persisted
-  hops to recompute `(pipeline_index, rework_count, pending_rework)` — resuming mid-rework
-  re-enters the rework Implementer hop, not a stale position past the Reviewer (a naive
-  role-was-seen resume would have silently skipped the rework); test-pinned in
-  `TestReviewerReworkResume`. New trace events `rework_started`/`review_rejected`/
-  `reviewer_verdict_unparseable`. Reviewer SOUL text (`cli/_pod.py`) states the marker convention,
-  following FD-2's tester precedent. Fixed several pre-existing test fixtures
-  (`test_cd2_verify.py`'s `_runner_with_tester_output`/`test_verify_pass_continues_to_reviewer`,
-  `test_dispatch.py`'s `_VerdictAwareRunner`) whose generic non-APPROVE reviewer stubs would
-  otherwise now fail under the new gate, plus one exact-string test in
-  `test_r7_hop_carryover.py` for the updated Reviewer instruction line. Tests:
-  `tests/python/test_r4_reviewer_gate.py` (25 cases). `maxReworkCycles` has no dedicated CLI
-  setter yet (out of scope per the card — set via the internal `meta-set` path if a non-default
-  value is needed).
+| Card | Phase | Blocked on | Note |
+| --- | --- | --- | --- |
+| **W-2 · Executor** | 16 | W-1 + W-6 | Runs W-1 specs over R-1's state machine; bounded worker pool, `runs cancel` kills the hop's process group. Renders `workflow plan` from the **real** executor. Wants `core/dispatch.py` — next wave's single owner. |
+| **W-8 · Generalized gates** | 16 | W-6 + W-2 | Verdict/mechanical checks detach from tester/implementer and become gate types any step declares. |
+| **W-7 · Pod blueprints** | 16 | W-6 | `software` (unchanged default), `research`, `content`, `ops`; restores a non-codebase `workdir` workspace path. |
+| **W-3 · Lobster retirement (D-16)** | 16 | W-2 | `docket workflow` → removed-command notice (the D-11 `docket team` pattern); delete `core/lobster.py` + templates. |
+| **W-4 · Durable scheduling + event triggers** | 16 | W-2 | Persisted last-run, cron specs, webhook params → pipeline variables, `dispatch --follow`. |
+| **W-5 · Structured handoff artifacts** | 16 | W-2 | Typed `{summary, files_changed, diff_ref, verdict, notes}` per hop, replacing raw-text concatenation. **Gates Phase 17's C-1.** |
+| **G-2 · Policy engine on the live path** | 15 | G-1 | `install` runs `policies init`; `pre_input` at enqueue, `pre_output` on every hop output; feeds G-1's `require_approval`. Gives `_metrics.py`'s existing reader a producer. |
+| **G-3 · High-risk classes enforced** | 15 | G-2 | Wire `resolve_command_action` (today: **no callers**) into every process docket itself launches. |
+| **C-2 · Memory distillation** | 17 | L-1 | `maintain distill`; `clean/reset` gain `--distill-first` — never bare-delete. docket's first self-originated LLM call, **through the driver** (D-18). |
+| **C-3 · One durable task state** | 17 | dispatch owner | Dispatch writes HEARTBEAT entries mechanically; doctor flags TASK_LIST⇄HEARTBEAT divergence. |
+| **C-5 · Conversation registry auto-population** | 17 | dispatch owner | Dispatch/serve update `last_message`/`task_ref`. |
+| **C-1 · Context compiler** | 17 | W-5 | (task, role, artifacts, workspace) → hop message under a per-role token budget. Supersedes R-7's stopgap cap. |
+| **L-4 · MCP config plumbing** | 18 | daemon capability | Spike; L-3 ships regardless. |
+| **L-5 · Wrapped gateway** | 18 | daemon capability | Spike (D-18). Ship only if the daemon tolerates a base-url swap cleanly. Hand-rolled provider clients: **banned**. |
 
 ---
 
-### R-5 — Budget honesty: implement auto-pause, fix the paused-flag bug, labeled estimates
+## Known-open gaps carried forward (do not let these get quietly re-claimed)
 
-- **Depends on:** R-1 (dispatch refusal integrates with the claim path) · **Parallel-safe with:**
-  R-2, R-3, R-4, R-6, R-7.
-- **Read:** `core/models.py` ~L88-90 (`budget_usd`, `paused`, `paused_reason` — declared, never set
-  true anywhere); `cli/__init__.py` ~L757-766 (`--budget` — the only writer, and it *clears* the
-  flags); `cli/_agents.py` ~L541,562-584 (reads `paused` with a **string** compare `== "true"`
-  while the writer stores a bool); `core/dispatch.py` budget gate (~L263-275, pre-hop, pod-wide via
-  the Lead's cap) and `pod_recorded_cost` (~L155-161); `core/utils.py` `aggregate_cost`
-  (~L91-176 — dollars come only from the daemon's `usage.cost.total`, which daemon v2026.2.23 may
-  never write); `edges/adapters/openclaw.py` ~L881-891 (`cost_usd` always 0.0 note);
-  `core/models_policy.py` `MODEL_PRICING` (~L63-77); ROADMAP D-9 (budget fields are docket-local).
-- **Why:** "per-agent USD budget caps with auto-pause" is a headline claim (CLAUDE.md, README) and
-  the pause half **does not exist** — it was Phase 1 Bash-era behavior the Python port dropped. And
-  when the daemon writes no `usage.cost.total`, recorded spend is 0 and the cap never trips at all.
-- **Do:**
-  1. Implement the pause writer: after each hop and in the serve sweep, if an agent/pod is at ≥100%
-     of cap ⇒ `meta.paused=true, pausedReason="budget"` (through `store.py`); dispatch refuses
-     paused members at claim time with a `paused_refused` trace event; `docket profile <id>
-     --resume` clears with an audit entry. Warn path at ≥80% (display only) stays.
-  2. Fix the read bug: one typed accessor on `AgentMeta` (bool), used by `_agents.py` display and
-     dispatch alike; migration-tolerant of legacy `"true"` strings.
-  3. Estimation fallback for gating: when session JSONL carries tokens but no `cost.total`, compute
-     `estimatedUsd` from token counts × `MODEL_PRICING` **for gating and warning only**, always
-     rendered as `~$X.XX (estimated — daemon recorded no cost)`; never mixed into "recorded" totals
-     (`docket cost` provenance line stays truthful; no-dollar-savings discipline intact).
-  4. Tests: cap breach pauses + dispatch refuses + resume clears; string/bool legacy meta reads
-     correctly; estimate path gates when recorded cost is absent and labels itself.
-- **Out of scope:** daemon-side pause (D-9: budget state is docket-local); per-turn in-flight
-  metering (Phase 18 L-5's problem); any savings claims.
-- **Deliverables:** pause writer + dispatch refusal + `--resume`; typed accessor; labeled estimate
-  path; audit entries; tests; docs line-up (CLAUDE.md/README claim matches shipped behavior).
-- **Acceptance gate:** [x] an over-cap agent is actually paused and refused, test-pinned · [x]
-  legacy string flag reads correctly · [x] estimates gate and are always labeled · [x] suite +
-  goldens green.
-- **Size:** M · **Status:** DONE (pc/r-5) — `core/dispatch.py`'s budget gate now writes
-  `paused=true, pausedReason="budget"` on the pod's Lead the first time the cap is reached
-  (`_pause_lead_for_budget`); `_claim_next_task` refuses every further claim for a paused pod
-  outright at claim time (a `paused_refused` trace event), before a task is ever flipped to
-  `running` — chosen over "claim then immediately block" because it costs nothing further to
-  *not* dispatch a paused pod (no claim write, no re-aggregated cost, no wasted turn) and leaves
-  the queue's own tasks untouched (`pending`) rather than growing more `blocked` tasks for the
-  same root cause. `docket profile <id> --resume` clears both fields, writes a `profile.resume`
-  audit entry, and unblocks the pod's budget-blocked tasks when the target is a Lead.
-  `AgentMeta.coerce_paused`/`is_paused()` fix the string/bool display bug (used by both
-  `cli/_agents.py` and dispatch). `core/utils.estimate_cost_usd` + `core/dispatch.pod_gating_cost`
-  add the labelled token-based estimate fallback for gating only, used when recorded pod spend
-  reads exactly 0 (which it may forever, per daemon v2026.2.23's cost-field gap) — verified with a
-  real, unmocked `aggregate_cost` path in tests, never contaminating `docket cost`'s recorded
-  figures. Tests in `tests/python/test_r5_autopause.py` (26 cases); `test_dispatch.py`'s
-  `unblock_pod` test updated for the new claim-time-refusal behavior. Specs updated:
-  `cost-tracking.spec.md` (1.1.0 → 1.2.0, Status → Implemented), `docket-meta.spec.md` (2.3.0 →
-  2.4.0, `paused`/`pausedReason` rows' "Known gap" resolved). README's auto-pause claims corrected
-  to note the estimate-fallback nuance; one golden regenerated (`profile --help` text in zsh
-  completions, for the new `--resume` flag).
+From Phase 14's honest record — these are **still true** until the cards above close them:
 
----
-
-### R-6 — verifyCmd correctness: worktree cwd, bounded shell surface, audited setter
-
-- **Depends on:** — · **Parallel-safe with:** everything.
-- **Read:** `core/dispatch.py` verify gate (~L345-372 — cwd = `meta["codebase"]` at ~L348-349);
-  `cli/_pod.py` worktree provisioning (~L251-253 writes `worktreeDir`) and
-  `_regenerate_member_tools` (~L641 — already prefers `worktreeDir`, the precedent);
-  `edges/adapters/system.py` `run_verify_cmd` (~L191-215, `shell=True`, 4096-char cap);
-  `cli/_pod.py` `set-verify` (~L655-677).
-- **Why:** a worktree-pod implementer's work is verified against the **shared repo root**, not the
-  worktree it actually changed — the gate can pass on stale code or fail on someone else's; and the
-  command is `shell=True` on a meta value with no independent audit trail of who set it.
-- **Do:**
-  1. cwd resolution: `worktreeDir` if present → else `codebase` → else workspace (one helper,
-     shared with `_regenerate_member_tools` so the two can't diverge again).
-  2. Bound the shell surface: keep `shell=True` (verify commands legitimately use `&&`/pipes) but
-     length-cap the stored command, reject NUL/newline injection at `set-verify` time, and write an
-     `audit_log("pod.set-verify", …)` entry naming member + command (governance for the one
-     process docket itself launches — Phase 15 G-3 extends this).
-  3. Tests: worktree cwd used when present; fallback order; set-verify validation + audit entry.
-- **Out of scope:** sandboxing the verify command (daemon/Docker lane); argument-level high-risk
-  matching (Phase 15 G-3).
-- **Deliverables:** cwd helper + dispatch fix; setter validation + audit; tests.
-- **Acceptance gate:** [x] verify runs in the member's worktree when one exists · [x] set-verify is
-  validated + audited · [x] suite green.
-- **Size:** S · **Status:** DONE (pc/r-6) — `core/pod.py`'s `resolve_member_cwd` (worktree →
-  codebase → workspace) is the one shared helper `core/dispatch.py`'s verify gate and
-  `cli/_pod.py`'s `_regenerate_member_tools` both resolve through, so the two can't diverge
-  again. `_validate_verify_cmd` (`cli/_pod.py`) rejects a NUL byte or embedded newline and caps
-  length at 2000 chars, applied at both `pod add --verify` and `set-verify` time; `shell=True`
-  is kept (verify commands legitimately use `&&`/pipes) since the string is operator-owned, never
-  agent/network input. `set-verify` (and `add --verify`) write an `audit_log("pod.set-verify",
-  …)` entry naming the member and the (validated) command. This card actually merged early
-  (right after R-1, before R-2/R-3/R-4/R-5) since it has no dependency on any of them (marked
-  "Depends on: —" above); the card's own status line had simply been left at `TODO` with
-  unchecked boxes despite the code, tests
-  (`tests/python/test_r6_verify_gate.py`, 18 cases: `TestResolveMemberCwd`,
-  `TestDispatchVerifyCwd`, `TestSetVerifyValidation`, `TestPodAddVerifyValidation`), and the
-  roll-up checklist below already reflecting DONE — corrected as part of R-8's board-truth pass.
-
----
-
-### R-7 — Bounded hop prompts (stopgap until Phase 17's context compiler)
-
-- **Depends on:** — · **Parallel-safe with:** everything.
-- **Read:** `core/dispatch.py` `_hop_message` (~L174-198 — concatenates the **full raw output of
-  every prior hop**, no cap); `config.py` context knobs (~L32-39, the honest bytes/4 comment — the
-  estimator to reuse).
-- **Why:** a 4-hop task's tester prompt carries three complete prior outputs verbatim; long tasks
-  grow context (and cost) unboundedly, and there is no record of what was sent.
-- **Do:**
-  1. Per-hop carryover cap (config `hopCarryoverBytes`, default ~32KB): keep the task description
-     whole; truncate each prior hop's output head+tail with an explicit
-     `[... truncated N bytes ...]` marker, newest hop least-truncated.
-  2. Log composition per hop (a `context_composed` trace event: per-section byte counts,
-     truncated-or-not) so Phase 17's compiler has a measured baseline.
-  3. Tests: cap enforced; marker present; task description never truncated; small tasks unchanged.
-- **Out of scope:** token-accurate budgeting, priority ordering, artifact rendering (all Phase 17
-  C-1 — this card is the safety cap, not the compiler).
-- **Deliverables:** capped `_hop_message` + config knob + trace event; tests.
-- **Acceptance gate:** [x] no hop message exceeds the configured cap (test-pinned) · [x]
-  truncation is explicit in the prompt and the trace · [x] suite green.
-- **Size:** S · **Status:** DONE
-
----
-
-### R-8 — Spec & docs truth pass (LAST — documents what R-1..R-7 actually shipped)
-
-- **Depends on:** R-1…R-7 landed.
-- **Read:** the Phase-14 spec refactor commit on this branch (specs were re-statused 2026-07-30 —
-  keep them true); `specs/functional/pod-dispatch.spec.md` (must gain the v2 state machine, retry,
-  rework-loop, run-registry, pause semantics); `specs/data/serve-read-api.spec.md` (R-3's version
-  bump); `specs/functional/cost-tracking.spec.md` (auto-pause becomes real — flip its gap note);
-  `specs/functional/audit.spec.md` (new entries from R-5/R-6); `cli/_provider.py` ~L84 (nonexistent
-  `docket models set task` guidance) and ~L100 (raw-openclaw instruction — contradicts the product
-  proposition); `tests/evals/lib/eval-helpers.sh` ~L56-80 (parses a different daemon JSON shape
-  than the ACL — reconcile to the ACL's `result.payloads[0].text`); the duplicated
-  `openclaw-gateway.service` constant (`edges/adapters/system.py` ~L21 vs `core/utils.py` ~L35 —
-  single-source it).
-- **Why:** honesty is the product's stated trust edge and Phase 14 changes real behavior; specs and
-  guidance strings must land in the same phase, not drift behind (the exact failure mode Phases 12
-  and 13 each had to clean up once already).
-- **Do:** update every spec touched by R-1..R-7 with version bumps; fix the two `_provider.py`
-  guidance bugs; reconcile the eval harness parser; de-duplicate the unit-name constant; run the
-  full doc drift guard (`scripts/metrics.py --check`) and `docs/commands.md` additions for `docket
-  runs`, `--resume`, `--retry`, timeout flags.
-- **Out of scope:** the broad spec restructure (done 2026-07-30 on this branch, before R-1).
-- **Deliverables:** true specs; fixed guidance; reconciled eval parser; single-sourced constant;
-  green drift guard.
-- **Acceptance gate:** [x] every Phase-14 behavior is specified with a bumped version · [x] no spec
-  Status line contradicts the code (spot-audit) · [x] metrics/drift guard green · [x] suite green.
-- **Size:** M · **Status:** DONE (pc/r-8) — `pod-dispatch.spec.md` rewritten to v2.0.0 (the full
-  v2 state machine: claims, crash resume, retries, timeouts, bounded rework, auto-pause, bounded
-  hop prompts, complete trace-event vocabulary). Truth-swept `docket-meta.spec.md` (2.4.0→2.5.0:
-  added `turnTimeoutS`/`verifyTimeoutS`/`maxReworkCycles` rows; corrected a pre-existing "unknown
-  field → error" claim that predates Phase 14 — `AgentMeta`'s `extra="allow"` actually accepts
-  one, which is exactly how `maxReworkCycles` round-trips with no dedicated model field),
-  `serve-read-api.spec.md` (2.0.0→2.0.1: fixed a stale `apiVersion: "1"` example/note left behind
-  by R-3's own 2.0.0 bump), `cli-json-shapes.spec.md` (1.2.0→1.3.0: removed the phantom `type`
-  field from `list`/`info` shapes and corrected `docket snapshot`'s and `/metrics`'s shapes to
-  match the real code — both pre-existing, Phase-14-unrelated drift caught while touching this
-  file for R-3's additions), `audit.spec.md` (2.0.0→2.0.1: added the missing `pod.set-verify`
-  (R-6) and `profile.resume` (R-5) action families, both shipped but omitted from 2.0.0's
-  coverage list), `cli-interface.spec.md` (1.6.0→1.7.0: `docket runs`, `dispatch
-  --resume/--timeout`, `queue --retry`, `set-verify`'s validation/audit, `profile --resume`,
-  `audit verify`). `specs/README.md`'s status table reconciled to every spec's real header.
-  `docs/commands.md`: rewrote the `pod` section's `dispatch`/`queue`/`set-verify` prose for the
-  real state machine (auto-pause, retries, rework, worktree cwd, run recording), added `profile
-  --resume`, and fixed the `approve`/`deny` section's wrong return code (claimed exit 2; real
-  code returns 1) and provenance claim (claimed tokens come "from `approval_create` or a
-  Telegram notification"; neither exists yet — see the approval-seam note this same section now
-  cites). Fixed this board itself: R-6's own status line was still `TODO` with unchecked boxes
-  despite being fully shipped (code, tests, and this roll-up's checkbox already agreed it was
-  done) — corrected above. De-duplicated this roll-up checklist (see below), which had two
-  contradictory copies of the R-2…R-6 lines from a merge. Verified-not-re-fixed (already done by
-  other cards, confirmed against the code, not re-touched): `cli/_provider.py`'s two dead-end
-  guidance strings and the eval-harness JSON-shape drift (both L-2), the duplicated
-  `openclaw-gateway.service` constant (L-2 — `core/utils.py` now forwards to
-  `edges/adapters/system.py`'s `GATEWAY_UNIT`), `security-gates.spec.md`'s `[GATE]` example and
-  approval-seam labeling (already correct from the 2026-07-30 baseline pass). Found, reported,
-  **not fixed** (production-code changes are out of this card's docs/specs/tests-only scope): an
-  unresolved git merge-conflict marker (`=======`/`>>>>>>> pc/r-3`) left inside `serve.py`'s
-  module docstring by the R-3 merge (cosmetic — inside a docstring, no behavior effect); a
-  precedence-order mismatch in `config.py`'s comment above `DISPATCH_TURN_TIMEOUT_S` (claims
-  pod Lead-meta timeouts beat the serve-wide env knob; the actual code lets the serve knob, when
-  set, override Lead-meta for a serve-triggered dispatch). Full suite green: 1,112 tests, 18
-  goldens, `validate-specs.sh`, `metrics.py --check`.
-
----
-
-## Roll-up checklist (Phase 14 definition of done — mirrors ROADMAP exit criteria)
-
-- [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
-  `blocked` never auto-retries.
-- [x] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
-- [x] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
-  scheduler state survives restart.
-- [x] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
-- [x] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
-- [x] R-6 — verify runs in the worktree; setter validated + audited.
-- [x] R-7 — hop prompts capped with explicit truncation.
-- [x] R-8 — specs/docs/guidance match everything above; drift guard green.
-- [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +
-  `scripts/metrics.py --check`.
+- Cancellation of an in-flight hop and parallel hop execution are **not implemented** (Phase 16 W-2).
+- `docket models set/preset/reset` still write **no audit entry** (G-4 follow-up).
+- Enforcement exists **only** in the pod-dispatch lane — spend or actions from a Telegram session or
+  direct daemon use are entirely ungated, per D-9's "docket orchestrates hops" boundary.
+- Per-argument daemon enforcement for allowlisted bins (`git`, `npm`) still does not exist (G-3 narrows
+  this where docket itself launches the process; the daemon-side half remains backlog).
+- `maxReworkCycles` has no dedicated CLI setter (set via the internal `meta-set` path).

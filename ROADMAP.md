@@ -1622,7 +1622,7 @@ Backlog; every control keeps its one-word label (*docket-enforced / daemon-enfor
 
 ---
 
-## 8. How to start (current — Phase 14 complete, Phase 15 next, on the `platform` branch)
+## 8. How to start (current — Phase 14 complete; Phases 15/16/18 in flight, on the `platform` branch)
 
 Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
 and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
@@ -1633,10 +1633,18 @@ README's warning banner; `v0.1.0` predates this convention and stays as-is.
 Phase 14–18 sections above, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5.
 Rationale audit: `internal-docs/agent-platform-audit-and-build-plan.md` (gitignored, local-only;
 the phase sections are self-contained without it). **Phase 14 is complete** (R-1…R-8, see its
-record above); its board stays in TODO.md until Phase 15's board overwrites it, per convention.
-**Phase 15 is next** — four of its (and later phases') cards were already pulled forward with no
-Phase 14 dependency (G-4, G-6, C-4, L-2 — see the Status line and each card's own note); the
-remaining Phase 15 work (G-1, G-2, G-3, G-5) is unclaimed.
+record above); its board was cleared from TODO.md per convention and replaced by the current board.
+
+**Execution model from here: waves scheduled by file contention, not by phase number.** Phase 18 is
+marked independent of 15–17 (except L-5) and Phase 16 needs only Phase 14 plus G-1 for approval steps,
+so cards from Phases 15, 16 and 18 run concurrently. The scheduling rule Phase 14 taught us:
+`core/dispatch.py` is the contention hotspot (nine remaining cards touch it), so **at most one
+in-flight card may own it per wave** — cards with disjoint footprints merged cleanly in Phase 14,
+while the two that both edited `serve.py`'s dispatch call sites produced the phase's only dangerous
+merge. **Wave 3 (in flight):** G-1 (the wave's dispatch owner), W-1, W-6, L-1, L-3, G-5. Phase 17 is
+deliberately held back — C-1 depends on W-5, and C-2/C-3/C-5 all want `core/dispatch.py`. Four cards
+were already pulled forward with no Phase 14 dependency (G-4, G-6, C-4, L-2 — see each card's note).
+The per-card boards, blockers and carried-forward gaps live in TODO.md.
 
 **Branch model for this program:** all Platformization work happens on the long-running
 **`platform`** branch, a deliberate fork-candidate line — the operator may promote it to the next
