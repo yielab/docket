@@ -1389,10 +1389,14 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
 - **G-3 · High-risk classes enforced where docket can**: wire `resolve_command_action` into every
   process docket itself launches (verifyCmd, future pipeline `shell` steps) and G-2's pre-output
   scan. Per-argument daemon enforcement stays the tracked backlog item (Phase 13's honest narrowing).
-- **G-4 · Audit v2**: coverage to spec (`keys.* profile.* scope.* agent.add/delete pod.* persona.*
-  runs.cancel`); per-line `seq` + `prev_hash` chain + `docket audit verify`; ms timestamps;
-  rotation and retention; env kill-switches removed or TTY-confirmed; suppressed trace writes
-  return a distinct status (never a fake `True`).
+- **G-4 · Audit v2** *(DONE — pulled forward on `pc/g-4`, no Phase 14 dependency)*: coverage to
+  spec (`keys.* profile.* scope.* agent.add/delete pod.* persona.*`); per-line `seq` +
+  `prev_hash` chain + `docket audit verify`; ms timestamps; size-capped rotation
+  (`AUDIT_LOG_MAX_BYTES`); `DOCKET_NO_AUDIT` removed entirely (not TTY-gated — would force
+  interactive I/O into `core/`); suppressed trace writes return a distinct status (never a fake
+  `True`). `runs.cancel` stays a tracked gap — no run registry exists yet (Phase 14 R-3 /
+  Phase 16 W-2); `models.*` (role→model policy changes) also stays out of scope. See
+  audit.spec.md v2.0.0.
 - **G-5 · [daemon-gated spike] the `[GATE]` seam**: can the daemon's exec-approval prompt notify an
   external hook? Yes → bridge daemon prompts into docket approval tokens (the spec's example becomes
   true). No → file upstream, spec example stays labeled future.
@@ -1585,6 +1589,15 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
   port supersedes the AbstractBackend ban's letter, "not in the execution path" retired). Specs
   restructured the same day: statuses trued to code, retired/legacy content cleaned (see the spec
   refactor commit on `platform`).
+- **2026-07-30** — **Phase 15 G-4 (Audit v2) shipped, pulled forward on `pc/g-4`** — the one
+  governance card with no Phase 14 dispatch-lane dependency. Recording coverage went from ~1/6
+  of the spec to the full list minus `models.*`/`runs.cancel` (keys/profile/scope/agent/pod/
+  persona all now audit-logged); added a `seq`+`prev_hash` SHA-256 hash chain and `docket audit
+  verify`; timestamps moved to millisecond resolution; added size-capped rotation
+  (`AUDIT_LOG_MAX_BYTES`, single-generation `audit.log.1`); removed the `DOCKET_NO_AUDIT` kill
+  switch entirely (chose removal over a TTY-confirm gate to keep `core/audit.py` process-free);
+  `core/trace.py`'s suppressed-write honesty bug fixed (`trace_event` now returns
+  `"written"/"rejected"/"suppressed"` instead of a dishonest `True`). See audit.spec.md v2.0.0.
 - **2026-07-03** — **Cut and tagged `v0.2.0-beta.1`** — folded Phase 13 (FD-0…FD-7) into
   CHANGELOG's previously-blank-since-drafting 0.2.0 entry; trimmed README.md (492→361 lines:
   cut the redundant Command Reference and Engineering sections down to short pointers at

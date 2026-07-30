@@ -209,11 +209,30 @@ class TestExplicitChannelArgument:
 
 
 class TestAuditFailureNeverBreaksApproval:
-    def test_audit_write_failure_does_not_raise(
+    def test_audit_kill_switch_removed_still_never_raises(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """G-4: DOCKET_NO_AUDIT is no longer a kill switch.
+
+        Setting it has no effect — the grant still writes its audit entry.
+        What's preserved is best-effort: an audit write failure (missing
+        AUDIT_LOG parent dir, see the sibling test below) must never break
+        the approval transition itself.
+        """
         monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
         token = _ap.approval_create("proj-no-audit", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise
         assert _ap.approval_get(token)["state"] == "granted"
-        assert [e for e in _audit.read_audit() if e["action"] == "approval.grant"] == []
+        entries = [e for e in _audit.read_audit() if e["action"] == "approval.grant"]
+        assert len(entries) == 1
+        assert entries[0]["detail"] == f"token={token} project=proj-no-audit channel=cli"
+
+    def test_audit_write_failure_does_not_raise(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A missing AUDIT_LOG parent dir best-effort no-ops rather than raising."""
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "nope" / "audit.log", raising=True)
+        token = _ap.approval_create("proj-missing-dir", "implementer", "x")
+        _ap.approval_grant(token, channel="cli")  # must not raise
+        assert _ap.approval_get(token)["state"] == "granted"
+        assert not (oc_dir / "nope").exists()

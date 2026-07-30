@@ -25,6 +25,7 @@ from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod
 from docket.core import resources as _res
+from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
@@ -592,6 +593,8 @@ def _pod_add(project: str, extra: list[str]) -> None:
         else:
             ui.warn(f"{member.member_id}: registration failed — {msg}")
     if created:
+        audit_log("pod.add", f"{project} role={canon_role} members={','.join(created)}")
+
         from docket.cli import _render_restart_result
 
         _render_restart_result(_sys.restart_gateway())
@@ -612,6 +615,7 @@ def _pod_remove(project: str, extra: list[str]) -> None:
         ui.success(f"Removed {member_id}")
     else:
         ui.warn(f"{member_id}: daemon delete reported: {msg} (workspace cleaned)")
+    audit_log("pod.remove", f"{project} member={member_id} role={role}")
     # Free runtime resources if this was the last implementer in the pod.
     if role == "implementer":
         remaining = pod_member_ids(project)

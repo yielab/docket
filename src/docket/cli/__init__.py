@@ -21,6 +21,7 @@ import typer
 import docket.config as _cfg
 from docket import ui
 from docket.core import models_policy as _mp
+from docket.core.audit import audit_log
 from docket.core.utils import (
     aggregate_cost,
     gateway_active,
@@ -406,6 +407,7 @@ def _delete_pod(project: str, members: list[str]) -> int:
     # Free pod runtime resources (port range + scratch dir) after all members gone.
     _pod.free_pod_resources(project)
 
+    audit_log("agent.delete", f"{project} pod ({len(members)} members)")
     _do_restart_gateway()
     ui.success(f"Pod '{project}' deleted.")
     return 0
@@ -708,6 +710,7 @@ def cmd_scope(
         _oc.meta_set(aid, "sessionKey", new_session)
         with contextlib.suppress(KeyError):
             _oc.sync_session_key(aid, new_session, project_key)
+        audit_log("scope.set", f"{aid}={project_key}")
         ui.success(f"Session scope updated: {current_key} → {project_key}")
         ui.success(f"Session key: {new_session}")
         ui.info("Update SOUL.md to reflect the new scope if needed.")
@@ -719,6 +722,7 @@ def cmd_scope(
         _oc.meta_set(aid, "sessionKey", new_session)
         with contextlib.suppress(KeyError):
             _oc.sync_session_key(aid, new_session, "default")
+        audit_log("scope.reset", aid)
         ui.success("Session scope reset to: default")
         ui.success(f"Session key: {new_session}")
         _do_restart_gateway()
@@ -756,6 +760,7 @@ def cmd_profile(
             ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
             raise typer.Exit(1) from None
         _oc.meta_set(aid, "budgetUsd", budget)
+        audit_log("profile.budget", f"{aid}=${budget}")
         if budget != "0":
             _oc.meta_set(aid, "paused", False)
             _oc.meta_set(aid, "pausedReason", "")
@@ -822,6 +827,7 @@ def cmd_profile(
 
     _oc.set_model_both(aid, new_model)
     _oc.meta_set(aid, "modelSource", new_src)
+    audit_log("profile.model", f"{aid}={new_model} ({new_src})")
 
     if new_src == "policy":
         ui.success(f"Model: {current} → {new_model} (follows role policy '{role}')")
@@ -896,8 +902,10 @@ def cmd_persona(
             soul.chmod(0o600)
 
     if new_persona:
+        audit_log("persona.set", f"{aid}={new_persona.label()}")
         ui.success(f"Persona set to '{new_persona.label()}' for '{aid}'.")
     else:
+        audit_log("persona.clear", aid)
         ui.success(f"Persona cleared for '{aid}'.")
     _do_restart_gateway()
 
@@ -1457,11 +1465,14 @@ def cmd_conversations(ctx: typer.Context) -> None:
 
 @app.command("audit")
 def cmd_audit(
-    arg: str | None = typer.Argument(None, help="Last-N count, or --json"),
+    arg: str | None = typer.Argument(None, help="Last-N count, 'verify', or --json"),
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
 ) -> None:
-    """Show audit log."""
-    from docket.cli._audit import run_audit
+    """Show the audit log, or verify its tamper-evidence chain."""
+    from docket.cli._audit import run_audit, run_audit_verify
+
+    if arg == "verify":
+        raise typer.Exit(run_audit_verify())
 
     limit: int | None = None
     if arg == "--json":

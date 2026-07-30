@@ -20,6 +20,11 @@ LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", OPENCLAW_DIR))
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
 AUDIT_LOG = OPENCLAW_DIR / "audit.log"
+# AUDIT_LOG_MAX_BYTES: audit.log rotates to a single-generation backup
+# (audit.log.1, overwriting any prior one) once it reaches this size. `docket
+# audit verify` only verifies the current file — each rotation starts a fresh
+# hash chain (see specs/functional/audit.spec.md).
+AUDIT_LOG_MAX_BYTES = int(os.environ.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1024)))
 POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
