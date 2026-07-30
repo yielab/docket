@@ -60,6 +60,14 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "approval_required",  # G-1: a require_approval gate fired pre-hop (task -> waiting_approval)
         "approval_resumed",  # G-1: a granted approval flipped a waiting task back to pending
         "approval_task_denied",  # G-1: a denied approval failed a waiting task terminally
+        # W-8: generic verdict-gate outcomes for any role/archetype beyond the
+        # two built-in ones (which keep emitting their own legacy names above
+        # — rework_started/review_rejected/reviewer_verdict_unparseable for
+        # reviewer, tester_verdict_failed for tester — see
+        # core/dispatch.py's _verdict_event_names).
+        "verdict_rework_started",
+        "verdict_rejected",
+        "verdict_unparseable",
         "error",
         "session_end",
     ]

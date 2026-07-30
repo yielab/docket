@@ -308,6 +308,10 @@ def run_group(
     (``ThreadPoolExecutor.submit`` does not do this on its own) so a
     context-local like "which run id is this dispatch executing under" (see
     ``core/runs.py``'s cancellation support) still applies inside a fan-out.
+    Each child gets its *own* cloned ``Context`` (via ``base_ctx.run(copy_context)``)
+    rather than sharing one — a single ``Context`` object may only be entered
+    by one call at a time, which would otherwise raise once two children
+    genuinely run concurrently.
 
     If any child raises, every other child is still joined (never leaving a
     sibling's subprocess orphaned mid-run) before the first exception is
@@ -315,12 +319,15 @@ def run_group(
     """
     if not children:
         return []
-    ctx = copy_context()
+    base_ctx = copy_context()
     results: list[T | None] = [None] * len(children)
     errors: list[BaseException] = []
     workers = max(1, min(max_workers, len(children)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        future_to_index = {pool.submit(ctx.run, run_one, c): i for i, c in enumerate(children)}
+        future_to_index = {}
+        for i, c in enumerate(children):
+            child_ctx = base_ctx.run(copy_context)
+            future_to_index[pool.submit(child_ctx.run, run_one, c)] = i
         for fut in as_completed(future_to_index):
             i = future_to_index[fut]
             try:

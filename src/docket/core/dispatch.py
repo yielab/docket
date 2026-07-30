@@ -1324,17 +1324,20 @@ def dispatch_task(
                         ),
                     )
 
-            # Anything else — including no match at all — is unparseable/rejected.
-            # Distinct from an explicit rework-triggering rejection, mirroring the
-            # pre-W-8 Tester gate's FAIL-vs-unparseable distinction.
-            _unused5, _unused6, terminal_event = _verdict_event_names(role)
+            # Anything else is either truly unparseable (no match at all) or a
+            # real, parsed marker that's simply neither a pass nor a
+            # rework-trigger — distinct outcomes, mirroring the pre-W-8
+            # Tester gate's FAIL-vs-unparseable distinction (which, for the
+            # tester role specifically, share one event name — see
+            # `_verdict_event_names`).
+            _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
             redacted = _trace.redact(run_res.output)
             if verdict is None:
                 _trace_locked(
                     project,
                     session_id,
                     role,
-                    terminal_event,
+                    unparseable_event,
                     _json.dumps({"verdict": "unparseable", "output": redacted}),
                 )
                 return _UnitOutcome(
@@ -1347,7 +1350,7 @@ def dispatch_task(
                 project,
                 session_id,
                 role,
-                terminal_event,
+                rejected_event2,
                 _json.dumps({"verdict": verdict, "output": redacted}),
             )
             return _UnitOutcome(
