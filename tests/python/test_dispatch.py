@@ -584,7 +584,9 @@ class _CrashOnRoleRunner:
 
 
 class _VerdictAwareRunner:
-    """Like _RecordingRunner, but the Tester hop gets a PASS so a full pod can finish `done`."""
+    """Like _RecordingRunner, but Reviewer/Tester hops carry a real verdict so a
+    full pod can finish `done` (R-4 parses the Reviewer's APPROVE/REQUEST-CHANGES
+    first line the same way FD-2 parses the Tester's PASS/FAIL)."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
@@ -599,7 +601,12 @@ class _VerdictAwareRunner:
     ) -> _oc.AgentRunResult:
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
-        output = "PASS - looks good" if role == "tester" else f"done by {agent_id}"
+        if role == "tester":
+            output = "PASS - looks good"
+        elif role == "reviewer":
+            output = "APPROVE - looks good"
+        else:
+            output = f"done by {agent_id}"
         return _oc.AgentRunResult(True, output, 0.01, {"output": output})
 
 

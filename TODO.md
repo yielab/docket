@@ -198,9 +198,30 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** parsing anything beyond the first-line marker (no diff-level review semantics);
   reviewer gating for non-code pods (Phase 16 W-8 generalizes gates).
 - **Deliverables:** reviewer parser + rework edge in dispatch; SOUL wording; trace events; tests.
-- **Acceptance gate:** [ ] REQUEST-CHANGES blocks and triggers a bounded rework cycle · [ ]
-  unparseable output blocks distinctly · [ ] APPROVE/no-reviewer behavior unchanged · [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] REQUEST-CHANGES blocks and triggers a bounded rework cycle · [x]
+  unparseable output blocks distinctly · [x] APPROVE/no-reviewer behavior unchanged · [x] suite green.
+- **Size:** M · **Status:** DONE (pc/r-4) — `_parse_reviewer_verdict` mirrors `_parse_tester_verdict`
+  exactly; the hop loop is now pointer-based (`pipeline_index`) instead of a role-presence set so a
+  role can legitimately run twice (rework). `pod_max_rework_cycles` reads the Lead's
+  `maxReworkCycles` meta (default 1, same convention as `budgetUsd`). A REQUEST-CHANGES with budget
+  left jumps `pipeline_index` back to the Implementer and re-runs it with the review text as a
+  dedicated, un-derated "REWORK REQUIRED" section in `_hop_message` (excluded from the generic
+  recency-ranked carryover loop so it's never truncated away and never rendered twice) — see R-7
+  interaction note below. Every rework hop persists through the existing `on_hop`/`_persist_hop`
+  path into `hops[]`. New `_replay_pipeline_position` helper replays a resumed task's persisted
+  hops to recompute `(pipeline_index, rework_count, pending_rework)` — resuming mid-rework
+  re-enters the rework Implementer hop, not a stale position past the Reviewer (a naive
+  role-was-seen resume would have silently skipped the rework); test-pinned in
+  `TestReviewerReworkResume`. New trace events `rework_started`/`review_rejected`/
+  `reviewer_verdict_unparseable`. Reviewer SOUL text (`cli/_pod.py`) states the marker convention,
+  following FD-2's tester precedent. Fixed several pre-existing test fixtures
+  (`test_cd2_verify.py`'s `_runner_with_tester_output`/`test_verify_pass_continues_to_reviewer`,
+  `test_dispatch.py`'s `_VerdictAwareRunner`) whose generic non-APPROVE reviewer stubs would
+  otherwise now fail under the new gate, plus one exact-string test in
+  `test_r7_hop_carryover.py` for the updated Reviewer instruction line. Tests:
+  `tests/python/test_r4_reviewer_gate.py` (25 cases). `maxReworkCycles` has no dedicated CLI
+  setter yet (out of scope per the card — set via the internal `meta-set` path if a non-default
+  value is needed).
 
 ---
 
@@ -331,7 +352,7 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
 - [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
   scheduler state survives restart.
-- [ ] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
+- [x] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
 - [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
 - [ ] R-6 — verify runs in the worktree; setter validated + audited.
 - [x] R-7 — hop prompts capped with explicit truncation.

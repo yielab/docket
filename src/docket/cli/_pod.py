@@ -118,7 +118,15 @@ def _member_soul(
             "## Role — Reviewer (veto power)\n"
             "- You review diffs for correctness, security, and requirement fit.\n"
             "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
-            "- Output a clear APPROVE or REQUEST-CHANGES with reasons.\n"
+            "- **Marker convention:** the first non-blank line of your reply must be "
+            "exactly `APPROVE` or `REQUEST-CHANGES` (case-insensitive) — dispatch "
+            "parses this line to gate the pipeline. Reasons go on the lines after "
+            "it. Anything else on that first line is treated as unparseable and "
+            "blocks the pipeline the same as a rejection.\n"
+            "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
+            "for a bounded rework cycle (once, by default) before it becomes a "
+            "hard failure — your review text is what the Implementer sees, so "
+            "make it actionable.\n"
         )
     else:  # tester
         body = (
