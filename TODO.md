@@ -71,10 +71,10 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ## ▶ CURRENT STATE
 
-**`platform` @ `7fc6233`** ("Merge W-2 + W-8"), working tree clean, everything green —
-**1,512 tests** (1,509 passed / 3 skipped), 18/18 goldens, 20 specs valid, 37 commands,
-`ruff` + `ruff format` + `mypy --strict` clean, `metrics.py --check` in sync (and the guard
-itself is now repaired — see below).
+**Wave 5: 4 of 5 merged** — L-4, G-4b, W-4, CL-2 are in; **W-5 is the only card still open**.
+Tree green at each merge: **1,575 tests**, 18/18 goldens, 20 specs valid, 37 commands, `ruff` +
+`ruff format` + `mypy --strict` clean, `metrics.py --check` in sync (and the guard itself is now
+repaired — see below).
 
 **Waves 3 and 4 are fully merged (11 cards).** Their durable record — what shipped, what was
 narrowed, and the two integration defects that the gates did *not* catch — is the
@@ -100,11 +100,27 @@ daemon-gated spikes · Phase 15 at 4 of 6 (G-2/G-3 open) · Phase 17 opens once 
 
 ---
 
-## Wave 5 — IN FLIGHT
+## Wave 5 — 4 of 5 merged, W-5 still open
 
 Five cards, chosen for disjoint file footprints. **W-5 is the wave's single `core/dispatch.py`
 owner** and therefore also absorbs the three dispatch-local dead-code items — the file's owner
 cleans the file, rather than a second branch racing it.
+
+**Merged so far:** ☑ **L-4** (`312787e`) — spike answered *yes upstream, absent from the targeted
+`openclaw 2026.2.23`*; no production code, dated evidence in `mcp-server.spec.md`. ☑ **G-4b**
+(`fe7af1c`) — `models.*` audit family; `VerifyResult.total_lines` rendered in the tamper-failure
+message. ☑ **W-4** (`9e6cd04`) — cron specs, webhook→pipeline variables, `pipeline run --follow`,
+`runs.cancel` audit entry; deliverable 1 needed no code because R-3 had already shipped it.
+☑ **CL-2** (`2084c37`) — dead-code register, non-dispatch half.
+
+**A third neither-side-is-correct conflict** landed here, in `audit.spec.md`: G-4b's draft said
+`models.*` shipped and `runs.cancel` was the open gap; W-4's said the reverse. Both shipped in the
+same wave, so neither card could see the other's merge, and either side alone would have published
+a spec claiming a shipped feature was missing. Resolved by keeping both changelog entries (2.2.0 and
+2.3.0) and rewriting Requirement 2 around the boundary that genuinely remains.
+
+**Two agents branched off `main` instead of `platform`** and caught it themselves before doing real
+work. Worktrees start on `main`; **say the base branch explicitly in every card prompt.**
 
 | Card | Phase | Owns (do not edit outside your card's footprint) |
 | --- | --- | --- |
@@ -236,21 +252,27 @@ server ships regardless; this is about the *other* direction.
 
 ## Dead-code register (CL-1, 2026-07-30) — the standing "no legacy code" work list
 
-Produced by a full-tree sweep. **Two entries were fixed and merged** (`ad8e14e`): `cli/_eval.py`'s
-duplicate of `config.cli_root()`, and a stale `core/security.py` docstring. Everything below is
-**found, verified, and not yet fixed** — mostly because the file belongs to an in-flight card.
-Work these once the owning card merges.
+Produced by a full-tree sweep. **The non-dispatch half is DONE** — CL-2 merged in wave 5; the
+three dispatch-local rows belong to W-5. Kept here as the durable record of what was decided and
+why, because "we looked at this and chose to keep it" is worth exactly as much as "we deleted it",
+and without the record the next sweep re-litigates the same rows.
 
-### High confidence — fix these
+**Operational note learned here:** `CLAUDE.md` is **gitignored on purpose** (`.gitignore:56`, "AI
+assistant dev guidance (kept local, not published)"). It therefore **cannot travel on a card
+branch** — a worktree agent that corrects it changes only its own copy, and the integrator must
+apply the change by hand in the main worktree. Any card whose work makes CLAUDE.md untrue must say
+so in its report; the diff will never show it.
+
+### High confidence — ☑ all fixed (CL-2, except the dispatch row W-5 owns)
 
 | Finding | Location | Blocked by | Note |
 | --- | --- | --- | --- |
-| **`core/sync.py` is an entirely dead module** | whole file | **CL-2 owns this** | `check_agent`/`check_all`/`Drift`/`SYNCED_FIELDS` have **zero** production callers. `cli/_doctor.py:280-334`'s `_check_drift` reimplements the identical model+sessionKey comparison inline without importing it. **Independently verified: zero `import sync` in `src/`.** Note CLAUDE.md describes this module as the thing that "keeps the two config sources in sync" — the docs and the code disagree. Prefer keeping `sync.py` as the single source and pointing doctor at it. `SYNCED_FIELDS` is dead even *within* `check_agent`, which hardcodes the field names instead of iterating it. |
-| **`HEARTBEAT_FILE` constant unused; literal hardcoded 8+ times** | `core/memory.py:57` | **CL-2 owns this** | The string `"HEARTBEAT.md"` is repeated across `cli/_agents.py`, `_pod.py`, `_install.py`, `_context.py`, `_doctor.py`, `cli/__init__.py`. Same shape as the `openclaw-gateway.service` duplicate fixed in L-2. |
+| ☑ **`core/sync.py` was an entirely dead module** | whole file | **fixed (CL-2)** — kept as the single implementation, `cli/_doctor.py` now calls `check_agent` instead of reimplementing it; `SYNCED_FIELDS` is now iterated rather than shadowed by hardcoded field names | `check_agent`/`check_all`/`Drift`/`SYNCED_FIELDS` have **zero** production callers. `cli/_doctor.py:280-334`'s `_check_drift` reimplements the identical model+sessionKey comparison inline without importing it. **Independently verified: zero `import sync` in `src/`.** Note CLAUDE.md describes this module as the thing that "keeps the two config sources in sync" — the docs and the code disagree. Prefer keeping `sync.py` as the single source and pointing doctor at it. `SYNCED_FIELDS` is dead even *within* `check_agent`, which hardcodes the field names instead of iterating it. |
+| ☑ **`HEARTBEAT_FILE` unused; literal hardcoded in 9 files** | `core/memory.py:57` | **fixed (CL-2)** — constant used everywhere, following L-2's `GATEWAY_UNIT` pattern | The string `"HEARTBEAT.md"` is repeated across `cli/_agents.py`, `_pod.py`, `_install.py`, `_context.py`, `_doctor.py`, `cli/__init__.py`. Same shape as the `openclaw-gateway.service` duplicate fixed in L-2. |
 | **`print()` inside `core/` — a layering violation** | `core/dispatch.py:1313` | **W-5 owns this** | `print(f"[dispatch] verification skipped...")` breaks the standing rule that `core/`/`edges/` never print; it should return a typed result for `cli/` to render. |
-| **Zero-caller ACL functions** | `edges/adapters/openclaw.py:127, 173` | **CL-2 owns this** | `meta_write` and `set_agent_project_key` have no callers anywhere, tests included. |
+| ☑ **Zero-caller ACL functions** | `edges/adapters/openclaw.py` | **deleted (CL-2)** — `meta_write`, `set_agent_project_key`; verified gone from `src/` and `tests/` | `meta_write` and `set_agent_project_key` have no callers anywhere, tests included. |
 
-### Medium confidence — verify before acting
+### Medium confidence — ☑ all resolved (CL-2): two fixed, three kept with a dated in-code reason
 
 | Finding | Location | Note |
 | --- | --- | --- |
@@ -279,11 +301,12 @@ Pydantic `model_config` · `RuntimeDriver` Protocol members (used via runtime `i
 **Swept and clean:** `scripts/` (all referenced), `templates/policies/*.json` (all seeded via the
 glob copy), no unconditional skips, no vacuous tests.
 
-### Still owed on CL-1's original card
+### Still owed — all of it now W-5's
 
 The ~76 `_oc.AgentRunResult(...)` test call sites → `TurnResult`, the ad-hoc-double → `FakeDriver`
-sweep, and the legacy `CostTotals`/`DayRecord` decision. W-2 has landed, so these are **unblocked**;
-**W-5 owns them** together with the dispatch-adjacent test families it is already editing.
+sweep, the legacy `CostTotals`/`DayRecord` decision, plus the two dispatch-local rows above
+(`core/dispatch.py`'s `print()` and `dispatch_all_pods`). W-2 unblocked them; W-5 owns
+`core/dispatch.py` and the dispatch-adjacent test families this wave.
 
 ---
 
