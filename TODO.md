@@ -303,6 +303,16 @@ From Phase 14's honest record — these are **still true** until the cards above
   this where docket itself launches the process; the daemon-side half remains backlog).
 - `maxReworkCycles` has no dedicated CLI setter (set via the internal `meta-set` path).
 - Hops still exchange **concatenated raw text**, not structured artifacts (W-5, in flight this wave).
+- **The runtime dependency floors in `pyproject.toml` are unverified.** They claim `typer>=0.12`,
+  `rich>=13`, `pydantic>=2`, `pydantic-settings>=2`, `filelock>=3.13`, while CI runs
+  `uv sync --all-extras --dev` off `uv.lock` and therefore only ever exercises the current versions
+  (typer 0.26, rich 15, pydantic 2.13, filelock 3.29). Nothing has ever tested docket against the
+  floors it advertises, so a `pip install docket` into an older environment may resolve a
+  combination that has never run. The fix is a `--resolution lowest-direct` job in CI — either the
+  floors pass and the claim becomes real, or they fail and get raised to what is actually supported.
+  **Not attempted here: it needs network access to resolve the floor set, which this environment
+  blocks.** Do not raise the floors blind — an untested floor and a wrong floor look identical until
+  someone installs.
 - ~~`scripts/validate-specs.sh` reports two spec references on one line as a broken reference~~ —
   **fixed by the integrator in `771f622`**, along with a second defect found next to it: `check_todos`
   ran its loop in a pipe subshell, so every warning increment was discarded and a spec full of TODO
