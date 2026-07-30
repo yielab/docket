@@ -108,6 +108,7 @@ def run_help() -> int:
   {G}edit{R}      [id]     Open workspace files in $EDITOR
   {G}snapshot{R}           JSON dump of all agents, bindings, costs (--output <file>)
   {G}serve{R}              Live JSON endpoint for dashboards (--port 7331 --interval 30)
+  {G}mcp serve{R}          MCP (Model Context Protocol) stdio server for the control plane
   {G}completions{R}        Shell completion script — eval "$(docket completions bash|zsh)"
   {G}help{R}               This help message
 

@@ -1530,6 +1530,19 @@ def cmd_runs(ctx: typer.Context) -> None:
     raise typer.Exit(run_runs(sub, args[1:]))
 
 
+@app.command(
+    "mcp",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_mcp(ctx: typer.Context) -> None:
+    """Expose the control plane as an MCP server (stdio) — `docket mcp serve`."""
+    from docket.cli._mcp import run_mcp
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_mcp(sub, args[1:]))
+
+
 @app.command("audit")
 def cmd_audit(
     arg: str | None = typer.Argument(None, help="Last-N count, 'verify', or --json"),

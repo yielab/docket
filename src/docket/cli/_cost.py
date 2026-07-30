@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+from typing import Any
 
 import docket.config as _cfg
 from docket import ui
@@ -46,7 +47,16 @@ def run_cost(
     return 0
 
 
-def _cmd_cost_json() -> None:
+def cost_snapshot() -> dict[str, Any]:
+    """Per-agent recorded cost + the fleet total, as a bare dict (no printing).
+
+    The pure data half of `docket cost --json` — factored out so a second
+    presentation-tier caller (``docket mcp serve``'s ``cost`` tool, Phase 18
+    L-3) can reuse the exact same assembly instead of re-deriving it, matching
+    the "reuse core services, don't duplicate business logic" rule for
+    read-only reporting the same way ``docket.serve.build_status()`` already
+    does for the fleet status snapshot.
+    """
     ids = project_ids()
     agents_out = []
     total = 0.0
@@ -70,7 +80,11 @@ def _cmd_cost_json() -> None:
                 "budgetUsd": budget_val,
             }
         )
-    print(_json.dumps({"agents": agents_out, "totalUsd": round(total, 6)}, indent=2))
+    return {"agents": agents_out, "totalUsd": round(total, 6)}
+
+
+def _cmd_cost_json() -> None:
+    print(_json.dumps(cost_snapshot(), indent=2))
 
 
 def _cmd_cost_single(agent_id: str) -> int:

@@ -1407,6 +1407,35 @@ def dispatchable_pods() -> list[str]:
     return projects
 
 
+def pod_roster() -> list[dict[str, Any]]:
+    """Every provisioned pod (grouped by project, alphabetical) with its member roster.
+
+    Pure data assembly for a read-only "list every pod" view — the same
+    registered-agent grounding ``dispatchable_pods()`` uses, extended with each
+    member's role and model (mirrors what ``cli/_pod.py``'s ``_pod_list``
+    renders per-project, just across every pod at once). No printing, no side
+    effects beyond the ACL reads. Used by ``docket mcp serve``'s ``pods`` tool
+    (Phase 18 L-3); ``core/pod.py`` stays I/O-free, so this assembly lives here
+    alongside ``dispatchable_pods()`` rather than there.
+    """
+    all_ids = [a.id for a in _oc.list_agents()]
+    projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
+
+    out: list[dict[str, Any]] = []
+    for project in projects:
+        members = _pod.members_of(all_ids, project)
+        out.append(
+            {
+                "project": project,
+                "members": [
+                    {"id": mid, "role": role, "model": _oc.meta_get(mid, "model", "")}
+                    for mid, role, _idx in members
+                ],
+            }
+        )
+    return out
+
+
 def dispatch_all_pods(
     *,
     runner: Runner | None = None,

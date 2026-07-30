@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -146,7 +146,7 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
   "runs": [
     {
       "id":         "string (run-<uuid4>)",
-      "source":     "cli | webhook | schedule | sweep",
+      "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "string",
       "state":      "queued | running | succeeded | failed",
       "taskIds":    "array of strings",
@@ -280,6 +280,13 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
 ```
 
 ## Changelog
+
+### Version 1.4.0 (2026-07-30)
+
+- Phase 18 L-3: `mcp` added as a valid `runs` `source` value (`docket mcp serve`'s `dispatch`
+  tool) alongside `cli | webhook | schedule | sweep` — see `specs/api/mcp-server.spec.md` for the
+  MCP tool surface itself (its tool responses reuse these same JSON shapes verbatim rather than
+  defining new ones).
 
 ### Version 1.3.0 (2026-07-30)
 

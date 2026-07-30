@@ -91,6 +91,7 @@ _docket_complete() {
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show validate plan delete" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
+    mcp)             words="serve" ;;
     gates|security)  words="status enable disable isolate classes" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
@@ -138,6 +139,7 @@ __ZSH_COMMANDS__
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
+    mcp)             compadd serve ;;
     gates|security)  compadd status enable disable isolate classes ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;

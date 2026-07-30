@@ -16,6 +16,19 @@ dependencies = [
     "pyyaml>=6",
 ]
 
+# Optional extras: kept out of the base install so `pip install docket` stays
+# dependency-light. `docket mcp serve` (Phase 18 L-3) needs the official MCP
+# Python SDK's high-level `FastMCP` server (`mcp.server.fastmcp`) — pinned to
+# the 1.x line, whose decorator-based tool-registration API this integration
+# is written against; `mcp` 2.0 replaced `mcp.server.fastmcp` with a
+# lower-level callback-based `Server` API this code does not use. Install with
+# `pip install 'docket[mcp]'` (or `uv sync --extra mcp`); a missing SDK prints
+# an actionable hint instead of a bare ImportError traceback (see
+# `cli/_mcp.py`, following the existing PyYAML optional-dependency pattern in
+# `core/lobster.py`/`cli/_agents.py`).
+[project.optional-dependencies]
+mcp = ["mcp>=1.2.0,<2.0.0"]
+
 [project.scripts]
 docket-py = "docket.cli:app"
 
@@ -51,6 +64,18 @@ plugins = ["pydantic.mypy"]
 init_forbid_extra = false
 init_typed = true
 warn_required_dynamic_aliases = false
+
+# `mcp` (the optional MCP-server extra, see [project.optional-dependencies])
+# ships its own inline types when installed, so this override only matters in
+# an environment that skipped the extra — `cli/_mcp.py`'s lazy `from mcp...
+# import ...` would otherwise fail mypy with "import-not-found". An inline
+# `# type: ignore` on that line would instead become a *new* strict-mode
+# failure ("unused ignore", via warn_unused_ignores) whenever the extra IS
+# installed (this repo's own CI: `uv sync --all-extras`) — a module-level
+# override is the one form that is correct in both configurations.
+[[tool.mypy.overrides]]
+module = "mcp.*"
+ignore_missing_imports = true
 
 # ── pytest ────────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]

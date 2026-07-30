@@ -82,6 +82,7 @@ UTILITIES
   edit      [id]     Open workspace files in $EDITOR
   snapshot           JSON dump of all agents, bindings, costs (--output <file>)
   serve              Live JSON endpoint for dashboards (--port 7331 --interval 30)
+  mcp serve          MCP (Model Context Protocol) stdio server for the control plane
   completions        Shell completion script — eval "$(docket completions bash|zsh)"
   help               This help message
 

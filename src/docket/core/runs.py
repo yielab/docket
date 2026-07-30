@@ -7,7 +7,8 @@ daemon threads, and every one of those paths wrapped the actual call in
 query, and no way to tell "done" from "failed" from "never ran".
 
 This module is the fix: every time something asks a pod to dispatch (the CLI,
-the serve webhook, a due schedule, or the periodic sweep loop) a run record is
+the serve webhook, a due schedule, the periodic sweep loop, or an MCP tool
+call — ``docket mcp serve``'s ``dispatch`` tool, Phase 18 L-3) a run record is
 created *before* the work starts and folded to a terminal state when it
 finishes — successfully or not. Records persist to ``cfg.RUNS_FILE`` (a single
 docket-owned JSON document, one list of records) through
@@ -33,11 +34,11 @@ from typing import Any, Literal
 import docket.config as _cfg
 from docket.edges import store as _store
 
-RunSource = Literal["cli", "webhook", "schedule", "sweep"]
+RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
 RunState = Literal["queued", "running", "succeeded", "failed"]
 RunTerminalState = Literal["succeeded", "failed"]
 
-_SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep"})
+_SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})
 _TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed"})
 
 
@@ -62,7 +63,7 @@ def create_run(source: RunSource, project: str) -> dict[str, Any]:
     """Persist a new run record in ``queued`` state and return it.
 
     *source* identifies what triggered the dispatch attempt
-    (``cli|webhook|schedule|sweep``); *project* is the pod being dispatched.
+    (``cli|webhook|schedule|sweep|mcp``); *project* is the pod being dispatched.
     Called **before** any dispatch work starts, so a caller like the serve
     webhook can hand the run id back to its own caller before the outcome is
     known.

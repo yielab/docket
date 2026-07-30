@@ -28,7 +28,8 @@ specs/
 │   ├── workflow-integration.spec.md      # Lobster YAML surface (slated for retirement, D-16)
 │   └── workspace-structure.spec.md       # Per-agent workspace layout
 ├── api/                                   # API contracts
-│   └── cli-interface.spec.md             # CLI command contracts and return codes
+│   ├── cli-interface.spec.md             # CLI command contracts and return codes
+│   └── mcp-server.spec.md                # docket mcp serve — MCP tool surface (Phase 18 L-3)
 ├── data/                                  # Data specifications
 │   ├── cli-json-shapes.spec.md           # --json output shapes per command
 │   ├── docket-meta.spec.md               # .docket-meta.json schema
@@ -109,7 +110,7 @@ Each specification document must include:
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.3.0 | Complete | |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 2.0.1 | Implemented | Hash-chained + `docket audit verify`; `models.*`/`runs.cancel` still uncovered (Phase 15 G-4 follow-up) |
+| Audit | 2.1.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` action family added (Phase 18 L-3); `models.*`/`runs.cancel` still uncovered (Phase 15 G-4 follow-up) |
 | Cost Tracking | 1.2.0 | Implemented | Auto-pause is real (Phase 14 R-5); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
 | Model Profiles | 2.3.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2) |
@@ -119,10 +120,11 @@ Each specification document must include:
 | Telegram Integration | 1.0.1 | Complete | |
 | Workflow Integration | 1.2.0 | Complete (slated for retirement) | ROADMAP D-16 / Phase 16 W-3 |
 | Workspace Structure | 1.2.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4) |
-| CLI Interface | 1.7.0 | Complete | Signatures/exit codes; semantics live in functional specs |
-| CLI JSON Shapes | 1.3.0 | Complete | |
+| CLI Interface | 1.8.0 | Complete | Signatures/exit codes; semantics live in functional specs |
+| MCP Server | 1.0.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3) |
+| CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.5.0 | Complete | |
-| Serve Read API | 2.0.1 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier added (Phase 14 R-3) |
+| Serve Read API | 2.1.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier added (Phase 14 R-3); `mcp` run source added (Phase 18 L-3) |
 | Input Validation | 1.2.0 | Complete | |
 | Test Framework | 2.0.0 | Active | Conventions doc (not a `.spec.md`) |
 | User Stories | 1.2.0 | Active | Acceptance criteria (not a `.spec.md`) |
