@@ -59,7 +59,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
-import re as _re
 import time as _time
 import uuid as _uuid
 from collections.abc import Callable
@@ -69,8 +68,12 @@ from typing import Any
 
 import docket.config as _cfg
 from docket.core import approval as _ap
+from docket.core import archetypes as _archetypes
 from docket.core import models as _models
+from docket.core import orchestrator as _orch
+from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
@@ -95,49 +98,16 @@ _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"}
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 
-# FD-2: the Tester's documented contract (see cli/_pod.py's Tester SOUL.md body) is a
-# binary PASS/FAIL first line. Matched case-insensitively; anything else is unparseable.
-_TESTER_VERDICT_RE = _re.compile(r"^\s*(PASS|FAIL)\b", _re.IGNORECASE)
-
-
-def _parse_tester_verdict(output: str) -> str | None:
-    """Parse the Tester hop's first non-blank line for a PASS/FAIL marker.
-
-    Returns ``"pass"``/``"fail"`` (lowercased) on a match, or ``None`` if the
-    output doesn't start with one of those markers (unparseable — treated as
-    distinct from an explicit FAIL, see ``dispatch_task``).
-    """
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        match = _TESTER_VERDICT_RE.match(stripped)
-        return match.group(1).lower() if match else None
-    return None
-
-
-# R-4: the Reviewer's documented contract (see cli/_pod.py's Reviewer SOUL.md body) is
-# an APPROVE/REQUEST-CHANGES first line — the same structural convention as the
-# Tester's PASS/FAIL, matched case-insensitively; anything else is unparseable.
-_REVIEWER_VERDICT_RE = _re.compile(r"^\s*(APPROVE|REQUEST-CHANGES)\b", _re.IGNORECASE)
-
-
-def _parse_reviewer_verdict(output: str) -> str | None:
-    """Parse the Reviewer hop's first non-blank line for an APPROVE/REQUEST-CHANGES marker.
-
-    Mirrors ``_parse_tester_verdict``'s convention exactly. Returns
-    ``"approve"``/``"request-changes"`` (lowercased) on a match, or ``None`` if
-    the output doesn't start with one of those markers (unparseable — treated
-    as distinct from an explicit REQUEST-CHANGES rejection, see
-    ``dispatch_task``).
-    """
-    for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        match = _REVIEWER_VERDICT_RE.match(stripped)
-        return match.group(1).lower() if match else None
-    return None
+# W-8: the Reviewer/Tester verdict regexes and their marker parsers used to be
+# hardcoded here (`_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`,
+# `_parse_reviewer_verdict`/`_parse_tester_verdict`) — dispatch's own private,
+# independent copy of what `core/pipeline.py`'s `default_pipeline()` already
+# declares as real `VerdictGate`s. Gate execution now reads a step's *resolved*
+# gate generically (see `_execute_unit`'s `isinstance(gate, _pipeline.VerdictGate)`
+# branch and `core.orchestrator.parse_verdict`) instead of one hardcoded regex
+# per named role, so that second, drift-prone copy is gone — the single source
+# of truth for these two patterns is now `core/pipeline.py`'s
+# `default_pipeline()` (see `tests/python/test_w1_pipeline_spec.py`).
 
 
 class DispatchError(Exception):
@@ -158,6 +128,15 @@ class HopResult:
     # the first try, no retry). Only retryable failures (see
     # ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
     attempts: int = 1
+    # W-2: the pipeline-spec step id this hop ran for. Defaults to "" when
+    # constructed without one; ``_hop_record``/``_hop_from_record`` backfill it
+    # to ``role`` on both write and read, so a legacy queue record with no
+    # persisted ``stepId`` (or a hand-built HopResult in an existing test)
+    # replays exactly as before — the built-in default pipeline's step ids
+    # equal their role names, so this is never a behavior change for the four
+    # built-in roles, only a real distinction for a custom pipeline whose
+    # step id differs from its target role (see ``_replay_pipeline_position``).
+    step_id: str = ""
 
 
 @dataclass
@@ -314,6 +293,68 @@ def pod_pipeline(project: str) -> list[tuple[str, str]]:
     if "lead" not in by_role:
         raise DispatchError(f"pod '{project}' has no lead — cannot dispatch")
     return [(role, by_role[role]) for role in PIPELINE_ORDER if role in by_role]
+
+
+def pod_full_roster(project: str) -> dict[str, str]:
+    """Every role this pod actually has, first member per role (``role -> member_id``).
+
+    Unlike :func:`pod_pipeline` (which only ever considers the four legacy
+    roles, in ``PIPELINE_ORDER``, for the default pipeline's own use), this
+    considers every role name the pod's members actually carry — needed so a
+    custom :class:`~docket.core.pipeline.PipelineSpec` (``docket pipeline
+    run``/``plan``, W-2) can target a non-legacy role (e.g. a starter-library
+    ``researcher``) and have it resolve against the pod's real roster. Same
+    "first member of a role wins" convention as ``pod_pipeline``.
+    """
+    all_ids = [a.id for a in _oc.list_agents()]
+    by_role: dict[str, str] = {}
+    for mid, role, _idx in _pod.members_of(all_ids, project):
+        by_role.setdefault(role, mid)
+    return by_role
+
+
+def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
+    """The PipelineSpec this dispatch actually runs (W-2).
+
+    A caller-supplied *spec* (a real pipeline file, e.g. ``docket pipeline
+    run --file``) is used exactly as given — never patched. ``None`` (the
+    zero-migration case) resolves ``load_pipeline(None)``'s built-in default,
+    patched so its Reviewer step's rework budget reflects *this pod's own*
+    configured ``maxReworkCycles`` (:func:`pod_max_rework_cycles`).
+
+    This patch exists only to keep that pre-existing, tested, per-pod
+    override working now that gate execution reads a verdict gate's own
+    ``rework.max_cycles`` instead of a separate ``max_rework`` value threaded
+    through the hop loop — ``core/pipeline.py``'s ``default_pipeline()``
+    necessarily hardcodes a fixed ``max_cycles`` in the data format itself
+    (there is no such thing as a "pod" at that layer), so reconciling the two
+    is dispatch's job, not the format's. ``maxReworkCycles`` stays a
+    zero-migration compatibility shim; it is never applied to a real
+    caller-supplied spec.
+
+    Public (not ``_``-prefixed) because ``cli/_pipeline.py``'s ``docket
+    pipeline plan`` needs this exact resolved spec too — it renders from the
+    same code path the real executor runs, never a second interpretation.
+    """
+    if spec is not None:
+        return spec
+    builtin = _pipeline.load_pipeline(None).spec
+    assert builtin is not None  # load_pipeline(None) always succeeds
+    configured = pod_max_rework_cycles(project)
+    new_steps = []
+    changed = False
+    for step in builtin.steps:
+        gate = step.gate
+        if (
+            isinstance(gate, _pipeline.VerdictGate)
+            and gate.rework is not None
+            and gate.rework.max_cycles != configured
+        ):
+            new_rework = gate.rework.model_copy(update={"max_cycles": configured})
+            step = step.model_copy(update={"gate": gate.model_copy(update={"rework": new_rework})})
+            changed = True
+        new_steps.append(step)
+    return builtin.model_copy(update={"steps": new_steps}) if changed else builtin
 
 
 def pod_recorded_cost(project: str) -> float:
@@ -546,7 +587,12 @@ def _hop_message(
     lines = [f"Task: {desc}", ""]
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
-    if role == "implementer" and rework_hop is not None and rework_hop.output:
+    if rework_hop is not None and rework_hop.output:
+        # W-8: attributed to whichever step actually drove the rework — for
+        # the built-in pipeline this is always the reviewer, so the rendered
+        # text is byte-identical to the pre-W-8 hardcoded "reviewer requested
+        # changes" wording; a custom pipeline's rework source (any role with
+        # a verdict gate's `rework` edge) is named correctly too.
         note_text, note_truncated, note_sent = _truncate_carryover(rework_hop.output, budget)
         comp.sections.append(
             {
@@ -557,7 +603,7 @@ def _hop_message(
             }
         )
         comp.truncated = comp.truncated or note_truncated
-        lines.append(f"--- REWORK REQUIRED: reviewer requested changes ---\n{note_text}\n")
+        lines.append(f"--- REWORK REQUIRED: {rework_hop.role} requested changes ---\n{note_text}\n")
 
     last_index = len(prior) - 1
     # Iterate in the original chronological order (oldest first) — unchanged
@@ -639,6 +685,8 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "costUsd": round(h.cost_usd, 6),
         "error": h.error,
         "attempts": h.attempts,
+        # W-2: falls back to `role` when unset — see HopResult.step_id.
+        "stepId": h.step_id or h.role,
     }
 
 
@@ -652,27 +700,38 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         cost_usd=float(rec.get("costUsd", 0.0) or 0.0),
         error=str(rec.get("error", "")),
         attempts=int(rec.get("attempts", 1) or 1),
+        step_id=str(rec.get("stepId", "") or rec.get("role", "")),
     )
 
 
 @dataclass
 class _ResumePosition:
-    """Where a (possibly resumed) dispatch run should continue (R-4).
+    """Where a (possibly resumed) dispatch run should continue (R-4, generalized W-2).
 
-    ``pipeline_index`` is the index into the pod's fixed ``pipeline`` list of
-    the next hop to run. ``rework_count`` is how many REQUEST-CHANGES rework
-    cycles have already been consumed. ``rework_hop`` — set only when
-    ``pipeline_index`` points back at the Implementer for a rework cycle — is
-    the Reviewer ``HopResult`` whose text drives that rework hop's message.
+    ``pipeline_index`` is the index into the resolved run's ``runtime_steps``
+    (top-level ``PlannedUnit``/``PlannedGroup`` nodes) of the next position to
+    run. ``rework_counts`` is how many rework cycles have already been
+    consumed, keyed by the *gated* step's id (a pipeline may declare more than
+    one independent rework-capable verdict gate; the built-in pipeline only
+    ever has one — the Reviewer's — so this dict always has at most one entry
+    in practice today). ``rework_hop`` — set only when ``pipeline_index``
+    points back at a rework target — is the ``HopResult`` whose text drives
+    that rework hop's message.
     """
 
     pipeline_index: int
-    rework_count: int
+    rework_counts: dict[str, int]
     rework_hop: HopResult | None = None
 
 
+def _group_complete(node: _orch.PlannedGroup, prior: list[HopResult]) -> bool:
+    """Whether every child of a parallel group already has a persisted hop."""
+    seen = {h.step_id or h.role for h in prior}
+    return all((c.step_id or "") in seen for c in node.children)
+
+
 def _replay_pipeline_position(
-    pipeline: list[tuple[str, str]], prior: list[HopResult], max_rework: int
+    runtime_steps: tuple[_orch.PlannedNode, ...], prior: list[HopResult]
 ) -> _ResumePosition:
     """Replay a hop history to find where dispatch should continue.
 
@@ -684,17 +743,28 @@ def _replay_pipeline_position(
     the Reviewer re-reviews it), so "has this role's hop happened" is no
     longer the right question — "where in the pipeline are we, and how many
     rework cycles have we already spent" is. This replays the same decision
-    ``dispatch_task`` makes live for a fresh Reviewer hop (REQUEST-CHANGES
-    with budget left ⇒ jump back to the Implementer; anything else ⇒ advance
-    past the Reviewer) against the *persisted* hop sequence, so a crash
-    recorded mid-rework resumes into the correct next hop — the rework
-    Implementer call, carrying the same review text a live run would have
-    carried — rather than skipping straight to whatever comes after the
-    Reviewer's pipeline slot.
+    the live loop makes for a fresh verdict-gated hop (a matching ``rework``
+    marker with budget left ⇒ jump back to the declared target; anything else
+    ⇒ advance) against the *persisted* hop sequence, so a crash recorded
+    mid-rework resumes into the correct next hop — carrying the same review
+    text a live run would have carried — rather than skipping straight past
+    the gated step's slot. (W-2: generalized from a hardcoded
+    reviewer/implementer role check to an arbitrary verdict gate's own
+    ``rework`` edge, matched by step id — the built-in pipeline's step ids
+    equal their role names, so this is not a behavior change for it.)
+
+    A hop whose ``step_id`` names something *inside* a parallel group (a
+    child, never a valid rework target per the pipeline format's own
+    validator) does not by itself advance the top-level position — see the
+    trailing loop below, which instead checks whether a whole group's
+    children are all accounted for. **Known, deliberate limitation:** a crash
+    partway through a group's fan-out is not resumed child-by-child — the
+    *entire* group re-runs from scratch (every already-completed child
+    included) once resume determines the group itself isn't fully done.
 
     This is only ever asked to replay a *non-terminal* history: a hop whose
-    outcome would end the task (a plain FAIL/REQUEST-CHANGES-exhausted/
-    unparseable failure, a passed pipeline) is decided and persisted
+    outcome would end the task (a plain failure, an exhausted rework budget,
+    unparseable output, a passed pipeline) is decided and persisted
     synchronously within the same ``dispatch_task`` call that ran it — the
     task reaches a terminal ``status`` before that call returns, and a
     terminal task is never claimed for resume in the first place
@@ -703,26 +773,42 @@ def _replay_pipeline_position(
     every hop this function ever actually sees left the pipeline *running*,
     which is exactly the set of decisions it knows how to replay.
     """
-    role_to_index = {role: i for i, (role, _mid) in enumerate(pipeline)}
-    impl_index = role_to_index.get("implementer")
-    reviewer_index = role_to_index.get("reviewer")
+    id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
     pi = 0
-    rework = 0
+    rework_counts: dict[str, int] = {}
     rework_hop: HopResult | None = None
     for hop in prior:
-        if hop.role == "reviewer":
-            verdict = _parse_reviewer_verdict(hop.output)
-            if verdict == "request-changes" and rework < max_rework and impl_index is not None:
-                rework += 1
+        step_id = hop.step_id or hop.role
+        idx = id_to_index.get(step_id)
+        if idx is None:
+            continue  # a parallel-group child's hop — handled by the trailing check below
+        node = runtime_steps[idx]
+        gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
+        if isinstance(gate, _pipeline.VerdictGate) and gate.rework is not None:
+            verdict = _orch.parse_verdict(gate, hop.output)
+            when_set = _orch.normalize_values(gate.rework.when, gate.case_sensitive)
+            cycles_so_far = rework_counts.get(step_id, 0)
+            target_index = id_to_index.get(gate.rework.to)
+            if (
+                verdict is not None
+                and verdict in when_set
+                and cycles_so_far < gate.rework.max_cycles
+                and target_index is not None
+            ):
+                rework_counts[step_id] = cycles_so_far + 1
                 rework_hop = hop
-                pi = impl_index
+                pi = target_index
                 continue
-            rework_hop = None
-            pi = (reviewer_index + 1) if reviewer_index is not None else pi + 1
-            continue
         rework_hop = None
-        pi = role_to_index.get(hop.role, pi) + 1
-    return _ResumePosition(pipeline_index=pi, rework_count=rework, rework_hop=rework_hop)
+        pi = idx + 1
+    while (
+        pi < len(runtime_steps)
+        and isinstance(runtime_steps[pi], _orch.PlannedGroup)
+        and _group_complete(runtime_steps[pi], prior)  # type: ignore[arg-type]
+    ):
+        pi += 1
+        rework_hop = None
+    return _ResumePosition(pipeline_index=pi, rework_counts=rework_counts, rework_hop=rework_hop)
 
 
 def _pod_requires_approval(project: str, role: str) -> bool:
@@ -756,21 +842,26 @@ def _policy_requires_approval(project: str, role: str, task: dict[str, Any]) -> 
     return False
 
 
-def _pipeline_step_requires_approval(task: dict[str, Any], pipeline_index: int) -> bool:
-    """Seam for a pipeline-defined ``approval`` step (ROADMAP Phase 16 W-1/W-2) — NOT wired.
+def _pipeline_step_requires_approval(gate: _pipeline.Gate | None) -> bool:
+    """The pipeline-defined ``approval`` step source (ROADMAP Phase 16 W-1/W-2).
 
-    No task record has an explicit per-step pipeline format today — a task's
-    pipeline is always the pod's fixed role order (see ``pod_pipeline``); this
-    stub exists only so W-1/W-2 has one clear place to plug in an explicit
-    per-task ``approval`` step once that format is designed, without touching
-    ``_hop_requires_approval``'s call sites. Always returns ``False`` today — this
-    intentionally does not invent a pipeline-step schema.
+    Previously a permanently-``False`` stub (no task record had an explicit
+    per-step gate to consult) — **W-2 fills this seam**: *gate* is the
+    current pipeline position's own resolved gate (its declared ``gate``, or
+    its archetype's ``gateContract`` fallback — see
+    ``core.orchestrator.resolve_gate``). A step whose resolved gate is an
+    ``approval`` gate now genuinely requires a human decision before its hop
+    runs, the same as the pod-level ``requireApprovalRoles`` source.
     """
-    return False
+    return isinstance(gate, _pipeline.ApprovalGate)
 
 
 def _hop_requires_approval(
-    project: str, role: str, task: dict[str, Any], pipeline_index: int
+    project: str,
+    role: str,
+    task: dict[str, Any],
+    pipeline_index: int,
+    gate: _pipeline.Gate | None,
 ) -> bool:
     """Whether the require_approval gate fires before this hop (G-1).
 
@@ -778,12 +869,13 @@ def _hop_requires_approval(
     enough to gate (a veto, not unanimous consent):
       1. the pod-level ``requireApprovalRoles`` Lead-meta list (G-1, wired today)
       2. a policy match (G-2 — seam only, always False today)
-      3. a pipeline ``approval`` step (W-1/W-2 — seam only, always False today)
+      3. a pipeline ``approval`` step (W-1/W-2 — wired: see
+         ``_pipeline_step_requires_approval``)
     """
     return (
         _pod_requires_approval(project, role)
         or _policy_requires_approval(project, role, task)
-        or _pipeline_step_requires_approval(task, pipeline_index)
+        or _pipeline_step_requires_approval(gate)
     )
 
 
@@ -798,6 +890,58 @@ def _approval_action_text(role: str, task: dict[str, Any]) -> str:
     return f"pod dispatch — {role} hop for task {task_id}: {desc}"[:1000]
 
 
+def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
+    """``trace.trace_event``, serialized against ``orchestrator.trace_write_lock``.
+
+    ``core/trace.py``'s append is not itself filelocked (D-12's documented
+    exemption for an append-only log) — safe across *different* session
+    files (R-1's concurrent-dispatch guarantee already relies on that), but a
+    parallel group's children share one task's session id/tracefile, so
+    their trace writes need to be serialized against each other specifically
+    (W-2). Cheap when uncontended (the ordinary, non-parallel case), so used
+    unconditionally rather than special-cased per call site.
+    """
+    with _orch.trace_write_lock:
+        return _trace.trace_event(*args, **kwargs)
+
+
+def _verdict_event_names(role: str) -> tuple[str, str, str]:
+    """(rework_event, rejected_event, unparseable_event) trace event type names
+    for a verdict gate's three possible non-pass outcomes (W-8).
+
+    Preserves the exact legacy event names the two built-in verdict roles
+    have always emitted (``reviewer``/``tester`` — pinned by
+    ``tests/python/test_r4_reviewer_gate.py``/``test_cd2_verify.py``) so gate
+    *decision logic* can go fully generic (driven by the gate's own type and
+    config, not a role-name branch) without changing what an operator sees in
+    ``docket trace``. Any other role/archetype gets the new, generic W-8
+    event names (registered in ``core/trace.py``'s ``EVENT_TYPES``).
+    """
+    if role == "reviewer":
+        return "rework_started", "review_rejected", "reviewer_verdict_unparseable"
+    if role == "tester":
+        return "verdict_rework_started", "tester_verdict_failed", "tester_verdict_failed"
+    return "verdict_rework_started", "verdict_rejected", "verdict_unparseable"
+
+
+@dataclass
+class _UnitOutcome:
+    """What happened running one ``PlannedUnit``'s hop (W-2/W-8).
+
+    ``kind`` is one of ``"advance" | "rework" | "blocked" | "waiting_approval"
+    | "failed"``. ``hops`` holds the hop this call produced (empty for
+    ``blocked``/``waiting_approval`` — the gate stopped the pipeline before
+    any agent turn ran).
+    """
+
+    kind: str
+    hops: list[HopResult] = field(default_factory=list)
+    reason: str = ""
+    rework_target_index: int | None = None
+    approval_token: str = ""
+    pending_approval_index: int | None = None
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -809,23 +953,37 @@ def dispatch_task(
     on_hop: Callable[[HopResult], None] | None = None,
     on_retry: Callable[[], None] | None = None,
     sleep: Callable[[float], None] | None = None,
+    spec: _pipeline.PipelineSpec | None = None,
 ) -> TaskResult:
-    """Drive one task through the pod pipeline, hop by hop.
+    """Drive one task through the pod pipeline, hop by hop (ROADMAP W-2/W-8).
 
     Budget is checked before EACH hop (every hop is a real costed turn). A failed
-    hop stops the pipeline (later roles only matter if earlier ones succeed). All
+    hop stops the pipeline (later steps only matter if earlier ones succeed). All
     dispatch targets belong to this project's pod — asserted per hop. The one
-    exception to "the pipeline only moves forward" is R-4's bounded rework loop:
-    a Reviewer hop's REQUEST-CHANGES verdict re-runs the Implementer (carrying
-    the review text) and then the Reviewer again, up to the pod's configured
-    ``maxReworkCycles`` (default 1) before it becomes a terminal failure.
+    exception to "the pipeline only moves forward" is a bounded rework loop: a
+    verdict-gated hop's rework-triggering marker re-runs the gate's declared
+    ``rework.to`` target (carrying the gating hop's text) and then the gate
+    again, up to that gate's own configured cycle budget before it becomes a
+    terminal failure.
+
+    *spec* (W-2) is the :class:`~docket.core.pipeline.PipelineSpec` to run;
+    ``None`` (the default) resolves this pod's zero-migration pipeline (see
+    ``effective_pipeline``) — behaviorally identical to the pre-W-2 hardcoded
+    ``PIPELINE_ORDER`` walk for every existing caller that never passes one.
+    Gate execution (W-8) reads each step's *resolved* gate — its own declared
+    ``gate``, or (only when a step omits one) its archetype's ``gateContract``
+    — via ``core.orchestrator.resolve_gate``, rather than branching on a
+    hardcoded role name; a ``parallel`` step's children run concurrently via
+    ``core.orchestrator.run_group`` and are joined before the pipeline
+    advances past that position.
 
     *resume_from* seeds hops that already completed before a crash (role +
-    output preserved) so the roles still to come see the same context an
-    uninterrupted run would have produced; those roles are skipped rather than
-    re-invoked (a role can legitimately have completed more than once, if the
+    output preserved) so the steps still to come see the same context an
+    uninterrupted run would have produced; those steps are skipped rather than
+    re-invoked (a step can legitimately have completed more than once, if the
     crash happened mid-rework — see ``_replay_pipeline_position``). *on_hop* —
-    if given — fires with each new HopResult right after it completes, so the
+    if given — fires with each new HopResult right after it completes (from
+    whichever thread produced it, for a parallel group's children), so the
     caller can persist per-hop progress incrementally instead of only when the
     whole task finishes (R-1 crash-safety); this includes every rework hop, so
     the persisted ``hops[]`` history stays honest about what actually ran.
@@ -833,41 +991,55 @@ def dispatch_task(
     R-2: *turn_timeout*/*verify_timeout* are per-call overrides (e.g. from
     ``docket pod <p> dispatch --timeout``); ``None`` (the default) falls back to
     the pod Lead's meta (``turnTimeoutS``/``verifyTimeoutS``), then
-    ``DEFAULT_TIMEOUT`` (see ``_resolve_timeout``). A hop whose agent turn fails
-    with a retryable ``failure_kind`` is retried in place (linear backoff via
-    *sleep*, real ``time.sleep`` unless a test injects a fake) up to the role's
-    retry budget; *on_retry* — if given — fires before each retry sleep so the
-    caller can refresh the task's claim timestamp (see ``_touch_claim``) before
-    it goes stale.
+    ``DEFAULT_TIMEOUT`` (see ``_resolve_timeout``) — unless a step declares its
+    own ``timeout``/``retries`` override, which always wins for that step. A
+    hop whose agent turn fails with a retryable ``failure_kind`` is retried in
+    place (linear backoff via *sleep*, real ``time.sleep`` unless a test
+    injects a fake) up to the role's retry budget; *on_retry* — if given —
+    fires before each retry sleep so the caller can refresh the task's claim
+    timestamp (see ``_touch_claim``) before it goes stale.
     """
     run = runner or _oc.default_driver().run_turn
+    # W-2: pid tracking (for `docket runs cancel`) only makes sense for a real
+    # OS process, i.e. the production driver — never an injected test
+    # runner/fake, none of which accept an `on_spawn` kwarg (and none of which
+    # have a process to report anyway). Gating on `runner is None` (rather
+    # than duck-typing) keeps every existing 5-arg-Callable test double
+    # working completely unchanged.
+    track_pid = runner is None
     do_sleep = sleep or _time.sleep
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
-    pipeline = pod_pipeline(project)
+    pod_pipeline(project)  # validates pod/lead up front (raises DispatchError otherwise)
     cap = pod_budget(project)
-    max_rework = pod_max_rework_cycles(project)
-    impl_index = next((i for i, (r, _m) in enumerate(pipeline) if r == "implementer"), None)
     resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
     resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
+    effective_spec = effective_pipeline(project, spec)
+    registry = _archetypes.load_registry()
+    roster = pod_full_roster(project)
+    plan = _orch.resolve_plan(effective_spec, roster, registry=registry)
+    runtime_steps = plan.runnable_nodes()
+    id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
+
     prior: list[HopResult] = list(resume_from) if resume_from else []
-    # R-4: a role can now legitimately run more than once (a rework cycle
-    # re-runs the Implementer, then re-runs the Reviewer), so "where do we
-    # continue" is a pipeline position + rework count, not a set of
-    # already-seen role names — see `_replay_pipeline_position`'s docstring
-    # for why this matters for a task resumed mid-rework.
-    resume_pos = _replay_pipeline_position(pipeline, prior, max_rework)
+    # A step can now legitimately run more than once (a rework cycle re-runs
+    # its gate's declared target, then re-runs the gating step), so "where do
+    # we continue" is a pipeline position + per-gate rework counts, not a set
+    # of already-seen role names — see `_replay_pipeline_position`'s
+    # docstring for why this matters for a task resumed mid-rework.
+    resume_pos = _replay_pipeline_position(runtime_steps, prior)
     pipeline_index = resume_pos.pipeline_index
-    rework_count = resume_pos.rework_count
-    pending_rework: HopResult | None = resume_pos.rework_hop
+    rework_counts: dict[str, int] = dict(resume_pos.rework_counts)
+    pending_rework_by_index: dict[int, HopResult] = {}
+    if resume_pos.rework_hop is not None:
+        pending_rework_by_index[pipeline_index] = resume_pos.rework_hop
 
     # G-1: a granted approval hands the exact pipeline position it stopped at
     # back to this one claim as a single-use override (see
     # `_claim_next_task`'s claim-time handoff) — consumed the first time this
-    # run reaches that position, so a later hop at the same role (a Reviewer
-    # rework cycle sending the task back to the Implementer) still gates
-    # normally.
+    # run reaches that position, so a later hop at the same position (a
+    # rework cycle revisiting it) still gates normally.
     override_index = task.get("gateOverridePipelineIndex")
     if not isinstance(override_index, int):
         override_index = None
@@ -882,10 +1054,25 @@ def dispatch_task(
 
     result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
-    while pipeline_index < len(pipeline):
-        role, member_id = pipeline[pipeline_index]
+    def _execute_unit(
+        node: _orch.PlannedUnit,
+        *,
+        prior_snapshot: list[HopResult],
+        rework_hop: HopResult | None,
+        check_approval: bool,
+        index_for_context: int,
+    ) -> _UnitOutcome:
+        """Run one PlannedUnit's hop end to end: budget/approval gates, the
+        agent turn (with retries), and its post-hop gate. Shared by both a
+        top-level step and a parallel group's children — *check_approval*
+        is False for a child (an `approval` gate inside a fan-out is treated
+        as a configuration error, not a mid-group human-approval wait; see
+        the module-level parallel-group note in `core.orchestrator`).
+        """
+        role = node.role or node.agent or node.step_id
+        member_id = node.member_id
+        assert member_id is not None  # runnable_nodes() already filtered out skipped units
 
-        # No-cross-pod guarantee: never dispatch to an id outside this pod.
         if _pod.pod_of(member_id) != project:
             raise DispatchError(
                 f"refusing cross-pod dispatch: '{member_id}' is not in pod '{project}'"
@@ -904,7 +1091,7 @@ def dispatch_task(
                     if estimated
                     else f"${spent:.2f}"
                 )
-                _trace.trace_event(
+                _trace_locked(
                     project,
                     session_id,
                     role,
@@ -918,47 +1105,41 @@ def dispatch_task(
                         }
                     ),
                 )
-                result.status = "blocked"
-                result.reason = f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}"
-                _pause_lead_for_budget(project)
-                break
+                return _UnitOutcome(
+                    kind="blocked",
+                    reason=f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}",
+                )
 
-        # G-1: require_approval gate — pre-hop, after budget (affordability)
-        # and before the hop actually runs (permission). See the override
-        # comment above `override_index`'s assignment for why a matching
-        # position is consumed rather than re-gated.
-        if pipeline_index == override_index:
-            override_index = None
-        elif _hop_requires_approval(project, role, task, pipeline_index):
-            action = _approval_action_text(role, task)
-            token = _ap.approval_create(
-                project,
-                role,
-                action,
-                context={"taskId": task_id, "pipelineIndex": pipeline_index},
-            )
-            _trace.trace_event(
-                project,
-                session_id,
-                role,
-                "approval_required",
-                _json.dumps({"role": role, "token": token, "pipelineIndex": pipeline_index}),
-            )
-            result.status = "waiting_approval"
-            result.reason = f"approval required before {role} hop (token={token})"
-            result.approval_token = token
-            result.pending_approval_index = pipeline_index
-            break
+        # G-1/W-2: require_approval gate — pre-hop, after budget (affordability)
+        # and before the hop actually runs (permission).
+        nonlocal override_index
+        if check_approval:
+            if index_for_context == override_index:
+                override_index = None
+            elif _hop_requires_approval(project, role, task, index_for_context, node.gate):
+                action = _approval_action_text(role, task)
+                token = _ap.approval_create(
+                    project,
+                    role,
+                    action,
+                    context={"taskId": task_id, "pipelineIndex": index_for_context},
+                )
+                _trace_locked(
+                    project,
+                    session_id,
+                    role,
+                    "approval_required",
+                    _json.dumps({"role": role, "token": token, "pipelineIndex": index_for_context}),
+                )
+                return _UnitOutcome(
+                    kind="waiting_approval",
+                    reason=f"approval required before {role} hop (token={token})",
+                    approval_token=token,
+                    pending_approval_index=index_for_context,
+                )
 
-        # A rework note only ever applies to the Implementer hop it was queued
-        # for — consumed here (cleared regardless of outcome) so it can never
-        # leak into a later, unrelated Implementer hop.
-        rework_hop = pending_rework if role == "implementer" else None
-        if role == "implementer":
-            pending_rework = None
-
-        message, composition = _hop_message(task, role, prior, rework_hop)
-        _trace.trace_event(
+        message, composition = _hop_message(task, role, prior_snapshot, rework_hop)
+        _trace_locked(
             project,
             session_id,
             role,
@@ -973,7 +1154,7 @@ def dispatch_task(
                 }
             ),
         )
-        _trace.trace_event(
+        _trace_locked(
             project,
             session_id,
             role,
@@ -985,15 +1166,43 @@ def dispatch_task(
         # R-2: retry only a retryable failure (a transient daemon/CLI hiccup) —
         # a non-zero exit or a bad verdict is a real answer and stops here, same
         # as before this card. `attempt` ends as the total number of tries made.
-        retry_budget = _retries_for_role(role)
+        # A step's own `retries`/`timeout` override always wins; otherwise the
+        # pod's role-based retry budget and the resolved agent-turn timeout.
+        retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
+        hop_timeout = node.timeout if node.timeout is not None else resolved_turn_timeout
+
+        # W-2: record the production driver's spawned pid as in-flight for
+        # `docket runs cancel` — only while the subprocess is actually
+        # running; removed again the moment this attempt returns, so a long
+        # multi-hop task never accumulates stale pids from finished hops.
+        run_id_for_pids = _runs.current_run_id() if track_pid else None
+        spawned_pid: list[int] = []
+
+        def _on_spawn(pid: int) -> None:
+            spawned_pid.append(pid)
+            if run_id_for_pids is not None:
+                _runs.add_hop_pid(run_id_for_pids, pid)
+
         attempt = 1
         while True:
-            run_res = run(member_id, session_id, message, resolved_turn_timeout, env)
+            spawned_pid.clear()
+            if track_pid:
+                # `run` is typed as the plain 5-arg `Runner` Callable (every
+                # test double's exact shape); calling the concrete production
+                # driver directly here (rather than through `run`) is what
+                # lets it take the extra `on_spawn` kwarg type-safely.
+                run_res = _oc.default_driver().run_turn(
+                    member_id, session_id, message, hop_timeout, env, on_spawn=_on_spawn
+                )
+            else:
+                run_res = run(member_id, session_id, message, hop_timeout, env)
+            if run_id_for_pids is not None and spawned_pid:
+                _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
             if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
                 break
             if attempt > retry_budget:
                 break
-            _trace.trace_event(
+            _trace_locked(
                 project,
                 session_id,
                 role,
@@ -1025,13 +1234,15 @@ def dispatch_task(
             cost_usd=run_res.cost_usd,
             error=run_res.error,
             attempts=attempt,
+            step_id=node.step_id,
         )
-        result.hops.append(hop)
-        prior.append(hop)
+        # Persisted immediately (not deferred to a parallel group's join) so a
+        # crash in a *sibling* child never loses a hop that already completed —
+        # R-1's crash-safety guarantee, generalized to a concurrent fan-out.
         if on_hop is not None:
             on_hop(hop)
 
-        _trace.trace_event(
+        _trace_locked(
             project,
             session_id,
             role,
@@ -1040,7 +1251,7 @@ def dispatch_task(
             cost_usd=run_res.cost_usd or None,
         )
         if run_res.cost_usd:
-            _trace.trace_event(
+            _trace_locked(
                 project,
                 session_id,
                 role,
@@ -1050,63 +1261,47 @@ def dispatch_task(
             )
 
         if not run_res.ok:
-            result.status = "failed"
-            result.reason = f"{role} hop failed: {run_res.error or 'no result'}"
-            break
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=f"{role} hop failed: {run_res.error or 'no result'}",
+            )
 
-        # Structural Tester gate (FD-2): the Tester's whole contract is a binary
-        # PASS/FAIL report (see cli/_pod.py's Tester SOUL.md body) — a successful
-        # subprocess call (run_res.ok) says nothing about *what* the Tester found,
-        # so parse the marker convention here and block advancement on FAIL or on
-        # output that doesn't follow the convention at all.
-        if role == "tester":
-            verdict = _parse_tester_verdict(run_res.output)
-            if verdict != "pass":
-                redacted = _trace.redact(run_res.output)
-                _trace.trace_event(
-                    project,
-                    session_id,
-                    role,
-                    "tester_verdict_failed",
-                    _json.dumps({"verdict": verdict or "unparseable", "output": redacted}),
-                )
-                result.status = "failed"
-                if verdict == "fail":
-                    result.reason = "tester reported FAIL"
-                else:
-                    result.reason = "tester output unparseable (expected a PASS/FAIL first line)"
-                break
-            pipeline_index += 1
-            continue
+        gate = node.gate
+        if gate is None:
+            return _UnitOutcome(kind="advance", hops=[hop])
 
-        # Verification gate: run after a successful Implementer hop, before reviewer/tester.
-        if role == "implementer":
-            verify_cmd = str(_oc.meta_get(member_id, "verifyCmd", "") or "")
+        if isinstance(gate, _pipeline.MechanicalGate):
+            verify_cmd = gate.command or str(_oc.meta_get(member_id, "verifyCmd", "") or "")
             if verify_cmd:
-                # R-6: verify in the implementer's own worktree when it has one —
+                # R-6/W-8: verify in the member's own worktree when it has one —
                 # else the shared codebase root — else its workspace dir. Shared
                 # with cli/_pod.py's _regenerate_member_tools via core/pod.py so
-                # the two can't disagree about which tree is being checked.
+                # the two can't disagree about which tree is being checked — now
+                # applied to any mechanically-gated step, not just "implementer".
                 worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
-                impl_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
-                cwd = _pod.resolve_member_cwd(member_id, worktree_dir, impl_codebase)
+                member_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
+                cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
                 # R-2: the verify command gets its own timeout, decoupled from the
                 # agent-turn timeout above — a 20-minute test suite and a hung LLM
                 # turn are no longer forced to share one budget.
-                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, resolved_verify_timeout)
+                mech_timeout = gate.timeout or resolved_verify_timeout
+                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
                 redacted = _trace.redact(raw_output)
                 if not passed:
-                    _trace.trace_event(
+                    _trace_locked(
                         project,
                         session_id,
                         role,
                         "verification_failed",
                         _json.dumps({"cmd": verify_cmd, "output": redacted}),
                     )
-                    result.status = "failed"
-                    result.reason = f"verifyCmd failed: {verify_cmd!r}"
-                    break
-                _trace.trace_event(
+                    return _UnitOutcome(
+                        kind="failed",
+                        hops=[hop],
+                        reason=f"verifyCmd failed: {verify_cmd!r}",
+                    )
+                _trace_locked(
                     project,
                     session_id,
                     role,
@@ -1116,63 +1311,170 @@ def dispatch_task(
             else:
                 # Honesty rule: never silently skip — a missing verifyCmd is visible.
                 print(f"[dispatch] verification skipped — verifyCmd not set for {member_id}")
-            pipeline_index += 1
-            continue
+            return _UnitOutcome(kind="advance", hops=[hop])
 
-        # R-4: Reviewer verdict gate. Unlike the Tester's binary block, a
-        # REQUEST-CHANGES verdict is not necessarily terminal — it drives a
-        # bounded rework loop back to the Implementer before it becomes one.
-        if role == "reviewer":
-            verdict = _parse_reviewer_verdict(run_res.output)
-            if verdict == "approve":
-                pipeline_index += 1
-                continue
-            if verdict == "request-changes":
-                if rework_count < max_rework and impl_index is not None:
-                    rework_count += 1
-                    pending_rework = hop
+        if isinstance(gate, _pipeline.VerdictGate):
+            verdict = _orch.parse_verdict(gate, run_res.output)
+            pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
+            if verdict is not None and verdict in pass_set:
+                return _UnitOutcome(kind="advance", hops=[hop])
+
+            rework = gate.rework
+            if rework is not None and verdict is not None:
+                when_set = _orch.normalize_values(rework.when, gate.case_sensitive)
+                if verdict in when_set:
+                    cycles_so_far = rework_counts.get(node.step_id, 0)
+                    target_index = id_to_index.get(rework.to)
+                    if cycles_so_far < rework.max_cycles and target_index is not None:
+                        rework_counts[node.step_id] = cycles_so_far + 1
+                        rework_event, _unused1, _unused2 = _verdict_event_names(role)
+                        redacted = _trace.redact(run_res.output)
+                        _trace_locked(
+                            project,
+                            session_id,
+                            role,
+                            rework_event,
+                            _json.dumps({"cycle": rework_counts[node.step_id], "output": redacted}),
+                        )
+                        return _UnitOutcome(
+                            kind="rework", hops=[hop], rework_target_index=target_index
+                        )
+                    # Rework budget exhausted (or, defensively, no valid target) —
+                    # this verdict is now terminal.
+                    _unused3, rejected_event, _unused4 = _verdict_event_names(role)
                     redacted = _trace.redact(run_res.output)
-                    _trace.trace_event(
+                    _trace_locked(
                         project,
                         session_id,
                         role,
-                        "rework_started",
-                        _json.dumps({"cycle": rework_count, "output": redacted}),
+                        rejected_event,
+                        _json.dumps({"cycles": cycles_so_far, "output": redacted}),
                     )
-                    pipeline_index = impl_index
-                    continue
-                # Rework budget exhausted (or, defensively, no Implementer to
-                # rework against) — REQUEST-CHANGES is now terminal.
-                redacted = _trace.redact(run_res.output)
-                _trace.trace_event(
+                    return _UnitOutcome(
+                        kind="failed",
+                        hops=[hop],
+                        reason=(
+                            f"{role} rejected after {cycles_so_far} rework "
+                            f"cycle(s): {verdict.upper()}"
+                        ),
+                    )
+
+            # Anything else is either truly unparseable (no match at all) or a
+            # real, parsed marker that's simply neither a pass nor a
+            # rework-trigger — distinct outcomes, mirroring the pre-W-8
+            # Tester gate's FAIL-vs-unparseable distinction (which, for the
+            # tester role specifically, share one event name — see
+            # `_verdict_event_names`).
+            _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
+            redacted = _trace.redact(run_res.output)
+            if verdict is None:
+                _trace_locked(
                     project,
                     session_id,
                     role,
-                    "review_rejected",
-                    _json.dumps({"cycles": rework_count, "output": redacted}),
+                    unparseable_event,
+                    _json.dumps({"verdict": "unparseable", "output": redacted}),
                 )
-                result.status = "failed"
-                result.reason = (
-                    f"reviewer rejected after {rework_count} rework cycle(s): REQUEST-CHANGES"
+                return _UnitOutcome(
+                    kind="failed",
+                    hops=[hop],
+                    reason=f"{role} output unparseable (expected a recognized verdict marker "
+                    "on the first line)",
                 )
-                break
-            # Unparseable — distinct from an explicit REQUEST-CHANGES rejection
-            # (mirrors the Tester gate's FAIL vs. unparseable distinction).
-            redacted = _trace.redact(run_res.output)
-            _trace.trace_event(
+            _trace_locked(
                 project,
                 session_id,
                 role,
-                "reviewer_verdict_unparseable",
-                _json.dumps({"output": redacted}),
+                rejected_event2,
+                _json.dumps({"verdict": verdict, "output": redacted}),
             )
-            result.status = "failed"
-            result.reason = (
-                "reviewer output unparseable (expected an APPROVE/REQUEST-CHANGES first line)"
+            return _UnitOutcome(
+                kind="failed", hops=[hop], reason=f"{role} reported {verdict.upper()}"
             )
-            break
 
-        # role == "lead"
+        if isinstance(gate, _pipeline.ApprovalGate):
+            if not check_approval:
+                return _UnitOutcome(
+                    kind="failed",
+                    hops=[hop],
+                    reason=f"{role}: an 'approval' gate is not supported inside a parallel group",
+                )
+            # Pre-hop already handled this (above) — post-hop, nothing further
+            # to check; a granted/override'd approval simply advances.
+            return _UnitOutcome(kind="advance", hops=[hop])
+
+        return _UnitOutcome(kind="advance", hops=[hop])  # pragma: no cover - closed Gate union
+
+    def _run_group_node(node: _orch.PlannedGroup, index_for_context: int) -> _UnitOutcome:
+        """Run a parallel group's children concurrently; join before advancing.
+
+        Priority when merging children's outcomes: blocked > failed > advance
+        (a rework outcome is impossible here — the pipeline format's own
+        validator forbids a rework edge on a step nested inside a group).
+        """
+        prior_snapshot = list(prior)
+        child_outcomes = _orch.run_group(
+            node.children,
+            lambda child: _execute_unit(
+                child,
+                prior_snapshot=prior_snapshot,
+                rework_hop=None,
+                check_approval=False,
+                index_for_context=index_for_context,
+            ),
+        )
+        merged = _UnitOutcome(kind="advance")
+        for oc in child_outcomes:
+            merged.hops.extend(oc.hops)
+        for oc in child_outcomes:
+            if oc.kind == "blocked":
+                merged.kind, merged.reason = "blocked", oc.reason
+                break
+        else:
+            for oc in child_outcomes:
+                if oc.kind == "failed":
+                    merged.kind, merged.reason = "failed", oc.reason
+                    break
+        return merged
+
+    while pipeline_index < len(runtime_steps):
+        node = runtime_steps[pipeline_index]
+
+        if isinstance(node, _orch.PlannedGroup):
+            outcome = _run_group_node(node, pipeline_index)
+        else:
+            rework_hop = pending_rework_by_index.pop(pipeline_index, None)
+            outcome = _execute_unit(
+                node,
+                prior_snapshot=prior,
+                rework_hop=rework_hop,
+                check_approval=True,
+                index_for_context=pipeline_index,
+            )
+
+        result.hops.extend(outcome.hops)
+        prior.extend(outcome.hops)
+
+        if outcome.kind == "blocked":
+            result.status = "blocked"
+            result.reason = outcome.reason
+            _pause_lead_for_budget(project)
+            break
+        if outcome.kind == "waiting_approval":
+            result.status = "waiting_approval"
+            result.reason = outcome.reason
+            result.approval_token = outcome.approval_token
+            result.pending_approval_index = outcome.pending_approval_index
+            break
+        if outcome.kind == "failed":
+            result.status = "failed"
+            result.reason = outcome.reason
+            break
+        if outcome.kind == "rework":
+            assert outcome.rework_target_index is not None
+            pending_rework_by_index[outcome.rework_target_index] = outcome.hops[0]
+            pipeline_index = outcome.rework_target_index
+            continue
         pipeline_index += 1
 
     _trace.trace_event(
@@ -1580,8 +1882,13 @@ def dispatch_pod(
     max_tasks: int | None = None,
     resume: bool = False,
     sleep: Callable[[float], None] | None = None,
+    spec: _pipeline.PipelineSpec | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first).
+
+    *spec* (W-2) is forwarded to every ``dispatch_task`` call this makes;
+    ``None`` (the default, used by every pre-W-2 caller) resolves this pod's
+    zero-migration pipeline — see ``dispatch_task``.
 
     Each task is claimed under a filelock before its first hop runs (see
     ``_claim_next_task``) rather than read unlocked and mutated in memory, and
@@ -1633,6 +1940,7 @@ def dispatch_pod(
             on_hop=_persist,
             on_retry=_touch,
             sleep=sleep,
+            spec=spec,
         )
         _finalize_task(project, task_id, res)
         results.append(res)

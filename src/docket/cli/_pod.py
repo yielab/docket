@@ -26,6 +26,7 @@ from docket.core import blueprints as _bp
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import pipeline as _pipeline
 from docket.core import pod
 from docket.core import resources as _res
 from docket.core.audit import audit_log
@@ -936,7 +937,9 @@ def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
     return resume, timeout
 
 
-def _pod_dispatch(project: str, extra: list[str]) -> None:
+def _pod_dispatch(
+    project: str, extra: list[str], *, spec: _pipeline.PipelineSpec | None = None
+) -> None:
     """Drive the pod's pending tasks through the pipeline (one real turn per hop).
 
     ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
@@ -949,6 +952,13 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     R-3: this invocation is recorded in the run registry (source ``"cli"``)
     like every other dispatch path — an exception here is no longer just a
     traceback, it is also visible afterwards via ``docket runs show``.
+
+    W-2: *spec* — when given (by ``docket pipeline run``, the only other
+    caller) — is forwarded to ``dispatch_pod`` unchanged; ``None`` (every
+    ``docket pod <project> dispatch`` call) resolves the pod's zero-migration
+    default, identical to pre-W-2 behavior. This is the one shared
+    implementation both CLI surfaces drive, so there is no second,
+    drift-prone copy of this rendering logic.
     """
     from docket.core import runs as _runs
 
@@ -972,11 +982,14 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     if not pending and not resumable:
         ui.warn(f"No pending tasks for pod '{project}'. Queue one: docket pod {project} delegate")
         return
-    roles = " → ".join(role for role, _mid in pipeline)
     count_label = f"{len(pending)} pending"
     if resume:
         count_label += f", {len(resumable)} resumable"
-    ui.info(f"Dispatching {count_label} task(s) through: {roles}")
+    if spec is not None:
+        ui.info(f"Dispatching {count_label} task(s) through pipeline '{spec.name}'")
+    else:
+        roles = " → ".join(role for role, _mid in pipeline)
+        ui.info(f"Dispatching {count_label} task(s) through: {roles}")
     cap = _dispatch.pod_budget(project)
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
@@ -989,6 +1002,7 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
             resume=resume,
             turn_timeout=timeout_override,
             verify_timeout=timeout_override,
+            spec=spec,
         ),
     )
     if results is None:

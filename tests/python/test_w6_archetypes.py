@@ -4,21 +4,26 @@ Covers: closed-enum rejection (scope/modelClass/editRights/gateContract kind),
 the built-in/starter-library archetypes each validating, the user-overlay
 pattern (mirrors `docket-models.json`: built-ins + starter library overlaid by
 `~/.openclaw/docket-roles.json`, user wins by name), `docket roles`
-list/show/add/validate, and that the reviewer/tester gate-contract data
-matches `core/dispatch.py`'s real hardcoded verdict regexes.
+list/show/add/validate, and (W-8 purpose change) that the reviewer/tester
+gate-contract data, translated through `core.orchestrator`'s real
+gate-from-contract resolution, matches `core/pipeline.py`'s own hardcoded
+`default_pipeline()` verdict gates — gate execution is generic now, so this
+is no longer a cross-check against a dispatch-private regex constant (see
+`core/dispatch.py`'s docstring note where `_REVIEWER_VERDICT_RE`/
+`_TESTER_VERDICT_RE` used to live).
 """
 
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
 
 import docket.config as _cfg
 from docket.core import archetypes as arch
-from docket.core import dispatch as _dispatch
+from docket.core import orchestrator as _orch
+from docket.core import pipeline as _pipeline
 
 
 @pytest.fixture
@@ -141,24 +146,51 @@ class TestBuiltinAndStarterArchetypes:
             assert found.policy_role == ""
             assert found.resolved_policy_role == name
 
-    def test_reviewer_gate_matches_dispatch_verdict_regex(self) -> None:
-        """The reviewer archetype's gateContract.regexes must describe exactly the
-        marker words `core/dispatch.py`'s real (hardcoded, unwired-to-W-6) verdict
-        parser matches — data and code must agree the day W-8 wires this up."""
+    def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
+        """W-8 purpose change: this used to byte-match `core/dispatch.py`'s
+        hardcoded, unwired-to-W-6 verdict regex (`_REVIEWER_VERDICT_RE`,
+        deleted once gate execution went generic — see that module's
+        docstring note where it used to live). Gate execution now reads a
+        step's *resolved* gate generically (`core.orchestrator.resolve_gate`/
+        `parse_verdict`), so the cross-check that matters post-W-8 is that
+        this archetype's `gateContract`, translated through
+        `core.orchestrator`'s real gate-from-contract resolution, produces
+        exactly the same pattern/passValues as `core/pipeline.py`'s own
+        hardcoded `default_pipeline()` reviewer step — two independent
+        sources describing the same role must agree.
+        """
         found = arch.BUILTIN_ARCHETYPES["reviewer"]
         assert found.gate_contract.kind == "verdict"
-        rebuilt = re.compile(
-            r"^\s*(" + "|".join(found.gate_contract.regexes) + r")\b", re.IGNORECASE
-        )
-        assert rebuilt.pattern == _dispatch._REVIEWER_VERDICT_RE.pattern
+        resolved = _orch._gate_from_contract(found.gate_contract)
+        assert isinstance(resolved, _pipeline.VerdictGate)
 
-    def test_tester_gate_matches_dispatch_verdict_regex(self) -> None:
+        spec = _pipeline.default_pipeline()
+        reviewer_step = next(s for s in spec.steps if s.id == "reviewer")
+        assert isinstance(reviewer_step.gate, _pipeline.VerdictGate)
+        assert resolved.pattern == reviewer_step.gate.pattern
+        # Both gates are case_sensitive=False (the shared marker convention),
+        # so pass_values only need to agree case-insensitively — the two
+        # sources are free to spell their own literal casing differently
+        # (the archetype's regexes are the marker's canonical, upper-case
+        # spelling; the pipeline default's passValues happen to be lowercase).
+        assert [v.lower() for v in resolved.pass_values] == [
+            v.lower() for v in reviewer_step.gate.pass_values
+        ]
+
+    def test_tester_gate_matches_pipeline_default_verdict_gate(self) -> None:
+        """W-8 purpose change — see the reviewer test's docstring above."""
         found = arch.BUILTIN_ARCHETYPES["tester"]
         assert found.gate_contract.kind == "verdict"
-        rebuilt = re.compile(
-            r"^\s*(" + "|".join(found.gate_contract.regexes) + r")\b", re.IGNORECASE
-        )
-        assert rebuilt.pattern == _dispatch._TESTER_VERDICT_RE.pattern
+        resolved = _orch._gate_from_contract(found.gate_contract)
+        assert isinstance(resolved, _pipeline.VerdictGate)
+
+        spec = _pipeline.default_pipeline()
+        tester_step = next(s for s in spec.steps if s.id == "tester")
+        assert isinstance(tester_step.gate, _pipeline.VerdictGate)
+        assert resolved.pattern == tester_step.gate.pattern
+        assert [v.lower() for v in resolved.pass_values] == [
+            v.lower() for v in tester_step.gate.pass_values
+        ]
 
     def test_lead_gate_is_none(self) -> None:
         assert arch.BUILTIN_ARCHETYPES["lead"].gate_contract.kind == "none"

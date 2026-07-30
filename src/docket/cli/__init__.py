@@ -1306,6 +1306,19 @@ def cmd_pod(
 
 
 @app.command(
+    "pipeline",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_pipeline(ctx: typer.Context) -> None:
+    """Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1/W-2)."""
+    from docket.cli._pipeline import run_pipeline
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_pipeline(sub, args[1:]))
+
+
+@app.command(
     "roles",
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )

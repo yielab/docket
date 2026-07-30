@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -979,6 +980,8 @@ def agent_run(
     message: str,
     timeout: int = 300,
     env: dict[str, str] | None = None,
+    *,
+    on_spawn: Callable[[int], None] | None = None,
 ) -> TurnResult:
     """Run one real agent turn via the openclaw CLI (the ONLY place docket does this).
 
@@ -991,11 +994,25 @@ def agent_run(
     this subprocess only (e.g. a pod's allocated port range / scratch dir) — the
     parent docket process's own environment is never mutated. ``None``/empty
     preserves today's behaviour of inheriting the parent env unchanged.
+
+    ROADMAP Phase 16 W-2 (cancellation): the subprocess is started in its own
+    session (``start_new_session=True``), so its pid doubles as its process
+    group id. ``on_spawn`` — if given — fires with that pid immediately after
+    the subprocess starts (before this call blocks on its output); docket's
+    run registry (``core/runs.py``) uses this to record which OS process
+    group a dispatch run is currently waiting on, so ``docket runs cancel``
+    can kill it later from a separate process. A timeout here kills the
+    *whole group* (``edges.adapters.system.kill_process_group``), not just
+    the immediate ``openclaw`` process — it may itself have shelled out
+    further (e.g. to ``git``/``npm``), and an orphaned process group is
+    exactly the failure mode this guards against.
     """
     import json as _json
     import os as _os
     import shutil as _shutil
     import subprocess as _sp
+
+    from docket.edges.adapters import system as _sys
 
     if not _shutil.which("openclaw"):
         return TurnResult(False, "", 0.0, {}, "openclaw CLI not found", failure_kind="daemon_error")
@@ -1014,21 +1031,33 @@ def agent_run(
     ]
     run_env = {**_os.environ, **env} if env else None
     try:
-        res = _sp.run(
+        proc = _sp.Popen(
             cmd,
-            capture_output=True,
+            stdout=_sp.PIPE,
+            stderr=_sp.PIPE,
             text=True,
-            timeout=timeout + 15,
             env=run_env,
+            start_new_session=True,
         )
+    except OSError as ex:
+        return TurnResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
+
+    if on_spawn is not None:
+        on_spawn(proc.pid)
+
+    try:
+        out_raw, err_raw = proc.communicate(timeout=timeout + 15)
     except _sp.TimeoutExpired:
+        _sys.kill_process_group(proc.pid)
+        with contextlib.suppress(Exception):
+            proc.communicate(timeout=5)
         return TurnResult(False, "", 0.0, {}, f"timed out after {timeout}s", failure_kind="timeout")
     except OSError as ex:
         return TurnResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
 
-    out = (res.stdout or "").strip()
-    if res.returncode != 0:
-        reason = (res.stderr or out or f"exit {res.returncode}").strip()
+    out = (out_raw or "").strip()
+    if proc.returncode != 0:
+        reason = (err_raw or out or f"exit {proc.returncode}").strip()
         return TurnResult(False, "", 0.0, {}, reason, failure_kind="nonzero_exit")
     try:
         data: dict[str, Any] = _json.loads(out) if out else {}
@@ -1531,8 +1560,10 @@ class OpenClawDriver:
         message: str,
         timeout: int = 300,
         env: dict[str, str] | None = None,
+        *,
+        on_spawn: Callable[[int], None] | None = None,
     ) -> TurnResult:
-        return agent_run(agent_id, session_key, message, timeout, env)
+        return agent_run(agent_id, session_key, message, timeout, env, on_spawn=on_spawn)
 
     def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
         ok, message = register_agent_cli(agent_id, workspace, model)

@@ -49,6 +49,7 @@ import docket.config as _cfg
 from docket.cli import _approve, _deny
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
+from docket.core import pipeline as _pipeline
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 from docket.serve import _DocketHandler
@@ -220,13 +221,32 @@ class TestGateSources:
     def test_policy_seam_always_false(self) -> None:
         assert _dispatch._policy_requires_approval("myapp", "implementer", {}) is False
 
-    def test_pipeline_step_seam_always_false(self) -> None:
-        assert _dispatch._pipeline_step_requires_approval({}, 0) is False
+    def test_pipeline_step_seam_is_now_wired(self) -> None:
+        """W-2 fills this seam: it used to ignore its arguments and always
+        return False (see G-1's changelog). It now genuinely reflects the
+        current pipeline position's *resolved* gate — real for any step
+        whose gate is `approval` (declared directly, or via an archetype's
+        gateContract), regardless of role name."""
+        assert _dispatch._pipeline_step_requires_approval(None) is False
+        assert _dispatch._pipeline_step_requires_approval(_pipeline.MechanicalGate()) is False
+        assert _dispatch._pipeline_step_requires_approval(_pipeline.ApprovalGate()) is True
 
     def test_hop_requires_approval_is_an_or_of_all_sources(self) -> None:
         _seed_lean_pod(lead_extra={"requireApprovalRoles": "implementer"})
-        assert _dispatch._hop_requires_approval("myapp", "implementer", {}, 1) is True
-        assert _dispatch._hop_requires_approval("myapp", "lead", {}, 0) is False
+        assert _dispatch._hop_requires_approval("myapp", "implementer", {}, 1, None) is True
+        assert _dispatch._hop_requires_approval("myapp", "lead", {}, 0, None) is False
+
+    def test_hop_requires_approval_fires_from_pipeline_gate_alone(self) -> None:
+        """A step with no pod-level/policy source still gates when its own
+        resolved gate is `approval` — the W-2 seam operating independently
+        of the pod-level `requireApprovalRoles` source."""
+        _seed_lean_pod()
+        assert (
+            _dispatch._hop_requires_approval(
+                "myapp", "implementer", {}, 1, _pipeline.ApprovalGate()
+            )
+            is True
+        )
 
 
 # ── the gate fires pre-hop ────────────────────────────────────────────────────────

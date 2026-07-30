@@ -21,6 +21,21 @@ arbitrary zero-arg callable and duck-types a ``task_id`` attribute off
 whatever it returns (matching ``dispatch.TaskResult`` without a hard
 dependency), so the run registry stays agnostic of what it is recording and
 ``core/dispatch.py`` needs no changes at all for this card.
+
+ROADMAP Phase 16 W-2 adds cancellation. ``execute()`` now publishes "which
+run id is currently executing" via a ``contextvars.ContextVar`` for the
+duration of *fn* — ``core/dispatch.py``'s production-driver hop call site
+reads it (``current_run_id()``) to know which run to record a spawned
+subprocess's pid against (``add_hop_pid``/``remove_hop_pid``), and
+``core.orchestrator.run_group`` explicitly propagates that context into a
+parallel group's worker threads (``ThreadPoolExecutor.submit`` does not do
+this on its own). ``pids`` is a *list* on the run record, not a scalar,
+because a parallel step can have more than one hop genuinely in flight at
+once. ``cancel_run`` — the ``docket runs cancel`` CLI's real work — kills
+every recorded pid's process *group* (``edges.adapters.system.
+kill_process_group``; each hop subprocess starts its own session, so its pid
+doubles as its group id) and marks the run a new terminal state,
+``"cancelled"``, distinct from an ordinary ``"failed"`` invocation.
 """
 
 from __future__ import annotations
@@ -28,18 +43,36 @@ from __future__ import annotations
 import datetime as _dt
 import uuid as _uuid
 from collections.abc import Callable
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 import docket.config as _cfg
 from docket.edges import store as _store
+from docket.edges.adapters import system as _sys
 
 RunSource = Literal["cli", "webhook", "schedule", "sweep", "mcp"]
-RunState = Literal["queued", "running", "succeeded", "failed"]
-RunTerminalState = Literal["succeeded", "failed"]
+RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+RunTerminalState = Literal["succeeded", "failed", "cancelled"]
 
 _SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})
-_TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed"})
+_TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
+
+# W-2: which run id (if any) the *current thread* is executing under — set by
+# `execute()` for the duration of its `fn()` call. `None` outside any run
+# (e.g. a test calling `dispatch_task` directly).
+_CURRENT_RUN_ID: ContextVar[str | None] = ContextVar("_CURRENT_RUN_ID", default=None)
+
+
+@dataclass
+class CancelOutcome:
+    """Result of :func:`cancel_run` — what a ``docket runs cancel <id>`` call
+    found and did. ``core/`` returns typed results; ``cli/`` renders them."""
+
+    ok: bool
+    message: str
+    killed_pids: list[int] = field(default_factory=list)
 
 
 class RunError(Exception):
@@ -83,6 +116,9 @@ def create_run(source: RunSource, project: str) -> dict[str, Any]:
         "created": _now(),
         "startedAt": None,
         "finishedAt": None,
+        # W-2: pids of any hop subprocess currently in flight for this run —
+        # see add_hop_pid/remove_hop_pid/cancel_run.
+        "pids": [],
     }
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
@@ -158,6 +194,111 @@ def list_runs(project: str | None = None) -> list[dict[str, Any]]:
     return sorted(runs, key=lambda r: str(r.get("created", "")), reverse=True)
 
 
+def current_run_id() -> str | None:
+    """The run id this thread's :func:`execute` call is currently inside, if any.
+
+    Set only while ``execute()``'s *fn* is running, and propagated into a
+    parallel group's worker threads via ``contextvars.copy_context()`` (see
+    ``core.orchestrator.run_group``). ``None`` outside any run — e.g. a test
+    that calls ``dispatch_task`` directly, never through ``execute()``.
+    """
+    return _CURRENT_RUN_ID.get()
+
+
+def add_hop_pid(run_id: str, pid: int) -> None:
+    """Record a newly-spawned hop subprocess's pid as in-flight for *run_id*.
+
+    A run's ``pids`` field is a *list*, not a scalar — a ``parallel``
+    pipeline step can have more than one hop genuinely in flight at once
+    (W-2). Called from ``edges.adapters.openclaw.agent_run``'s ``on_spawn``
+    hook via ``core/dispatch.py``'s production-driver hop call site (never
+    for an injected test runner — see that module's ``dispatch_task``).
+    No-op if *run_id* is unknown (e.g. a stale/racing caller).
+    """
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        runs = _runs_list(doc)
+        for r in runs:
+            if r.get("id") == run_id:
+                pids = r.get("pids")
+                if not isinstance(pids, list):
+                    pids = []
+                if pid not in pids:
+                    pids.append(pid)
+                r["pids"] = pids
+                return {"runs": runs}
+        return None
+
+    _store.read_modify_write(runs_path(), _fn)
+
+
+def remove_hop_pid(run_id: str, pid: int) -> None:
+    """Clear a completed hop's pid from *run_id*'s in-flight list.
+
+    No-op if the pid (or the run) is already gone — a hop that finished
+    normally, or a run already cancelled, is a harmless race, not an error.
+    """
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        runs = _runs_list(doc)
+        for r in runs:
+            if r.get("id") == run_id:
+                pids = r.get("pids")
+                if isinstance(pids, list) and pid in pids:
+                    r["pids"] = [p for p in pids if p != pid]
+                    return {"runs": runs}
+                return None
+        return None
+
+    _store.read_modify_write(runs_path(), _fn)
+
+
+def cancel_run(run_id: str) -> CancelOutcome:
+    """Cancel an in-flight dispatch run (``docket runs cancel <id>``).
+
+    Kills every pid recorded as currently in flight for *run_id* — each
+    hop's whole process *group*, not just the immediate child (see
+    ``edges.adapters.system.kill_process_group``; every hop subprocess
+    starts its own session, so its pid doubles as its group id) — then
+    marks the run terminally ``"cancelled"``, distinct from an ordinary
+    ``"failed"`` invocation.
+
+    Idempotent: a run already in a terminal state
+    (``succeeded``/``failed``/``cancelled``) is left untouched and reported
+    as a no-op, never re-signalled or double-finished. A recorded pid that's
+    already gone by the time this runs (the hop finished on its own between
+    the read and the kill attempt — an inherent, harmless race) is silently
+    skipped by ``kill_process_group`` itself.
+    """
+    rec = get_run(run_id)
+    if rec is None:
+        return CancelOutcome(ok=False, message=f"unknown run: {run_id}")
+    state = str(rec.get("state", ""))
+    if state in _TERMINAL_STATES:
+        return CancelOutcome(ok=False, message=f"run {run_id} is already {state}")
+
+    pids_raw = rec.get("pids")
+    pids = [int(p) for p in pids_raw] if isinstance(pids_raw, list) else []
+    killed = [pid for pid in pids if _sys.kill_process_group(pid)]
+
+    def _clear_pids(doc: dict[str, Any]) -> dict[str, Any] | None:
+        runs = _runs_list(doc)
+        for r in runs:
+            if r.get("id") == run_id:
+                r["pids"] = []
+                return {"runs": runs}
+        return None
+
+    _store.read_modify_write(runs_path(), _clear_pids)
+    finish_run(run_id, state="cancelled", error="cancelled by operator")
+    message = (
+        f"cancelled run {run_id} ({len(killed)} process group(s) killed)"
+        if killed
+        else f"cancelled run {run_id} (nothing in flight to kill)"
+    )
+    return CancelOutcome(ok=True, message=message, killed_pids=killed)
+
+
 def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -> None:
     """Best-effort ``error`` trace event for a failed dispatch invocation.
 
@@ -194,18 +335,38 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     (the webhook thread, the schedule thread, the sweep loop, the CLI) replace
     a bare ``contextlib.suppress(Exception)`` with a real, queryable outcome
     instead of one silently discarded.
+
+    W-2: publishes ``run_id`` via ``current_run_id()`` for the duration of
+    *fn* (a ``contextvars.ContextVar``, so it is thread-local and safely
+    propagated into a parallel group's worker threads — see
+    ``core.orchestrator.run_group``), and never lets a normal completion
+    clobber a run a concurrent ``docket runs cancel`` already marked
+    ``"cancelled"`` back to ``"succeeded"``/``"failed"``.
     """
     mark_running(run_id)
     rec = get_run(run_id)
     project = str(rec.get("project", "")) if rec else ""
     source = str(rec.get("source", "")) if rec else ""
+    token = _CURRENT_RUN_ID.set(run_id)
     try:
         results = fn()
     except Exception as exc:
         error_text = f"{type(exc).__name__}: {exc}"
-        finish_run(run_id, state="failed", error=error_text)
-        _emit_error_trace(project, run_id, source, error_text)
+        if not _is_already_cancelled(run_id):
+            finish_run(run_id, state="failed", error=error_text)
+            _emit_error_trace(project, run_id, source, error_text)
         return None
+    finally:
+        _CURRENT_RUN_ID.reset(token)
+    if _is_already_cancelled(run_id):
+        return results
     task_ids = [str(getattr(r, "task_id", "")) for r in results]
     finish_run(run_id, state="succeeded", task_ids=task_ids)
     return results
+
+
+def _is_already_cancelled(run_id: str) -> bool:
+    """Whether *run_id* was already marked ``cancelled`` by a concurrent
+    ``cancel_run`` while its own ``execute()`` call was still in flight."""
+    latest = get_run(run_id)
+    return latest is not None and str(latest.get("state", "")) == "cancelled"

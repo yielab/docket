@@ -1,7 +1,11 @@
 # Role Archetypes Specification
 
-**Version**: 1.1.0
-**Status**: Implemented
+**Version**: 1.2.0
+**Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
+executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
+`pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
+pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). This spec's own scope (the archetype
+schema/registry/CLI) is unchanged by either.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -43,12 +47,13 @@ This specification does NOT cover:
   `docket-meta.spec.md`
 - Named pod *rosters/blueprints* (`docket add --blueprint`) that let `docket add` compose a
   non-default set of archetypes for a whole pod in one step — shipped as ROADMAP Phase 16 W-7;
-  see the new `pod-blueprints.spec.md`
-- Wiring `gateContract` into the dispatch executor's actual gate enforcement — `core/dispatch.py`
-  still hardcodes its own Reviewer/Tester verdict parsing and Implementer `verifyCmd` gate,
-  unaware of this registry; tracked as ROADMAP Phase 16 W-8. This spec's `gateContract` is
-  currently descriptive data only (validated to match `core/dispatch.py`'s real patterns for the
-  four legacy roles — see Requirements — but not consulted by it)
+  see `pod-blueprints.spec.md`
+- The dispatch executor's actual gate *enforcement* — `core.orchestrator.resolve_gate`/
+  `parse_verdict` and the generic mechanical/verdict/approval evaluation loop are documented in
+  `pod-dispatch.spec.md`'s "Generalized gate execution" (ROADMAP Phase 16 W-8, shipped). This spec
+  covers only the `gateContract` *schema* itself (the closed `kind` enum, `regexes`) and that it
+  is validated to match `core/pipeline.py`'s `default_pipeline()` gates for the four legacy roles
+  — see Requirements — not how the executor consumes it
 - The role→model policy's resolution mechanics themselves (rank anchors, presets, pinning,
   `docket models`) — see `model-profiles.spec.md`; this spec only covers how an archetype's
   `modelClass` feeds into that existing system
@@ -121,12 +126,19 @@ This specification does NOT cover:
    policy-table row (`lead`→`manager`, `implementer`→`programmer`, `reviewer`→`reviewer`,
    `tester`→`tester`) — see "Role→model policy integration" below. Their `modelClass` **MUST**
    match that row's existing class (`manager`/`reviewer`/`tester` = cheap, `programmer` = strong).
-3. Their `gateContract` **MUST** match `core/dispatch.py`'s real, independently-hardcoded gate
-   behavior for that role: `lead` = `none`, `implementer` = `mechanical` (the per-member
-   `verifyCmd`, configured separately — see `docket-meta.spec.md`), `reviewer` = `verdict` with
-   regexes `["APPROVE", "REQUEST-CHANGES"]`, `tester` = `verdict` with regexes `["PASS", "FAIL"]`
-   — each byte-equal to the marker words in `core/dispatch.py`'s `_REVIEWER_VERDICT_RE`/
-   `_TESTER_VERDICT_RE` patterns (verified by test).
+3. Their `gateContract` **MUST** match this role's real gate behavior: `lead` = `none`,
+   `implementer` = `mechanical` (the per-member `verifyCmd`, configured separately — see
+   `docket-meta.spec.md`), `reviewer` = `verdict` with regexes `["APPROVE", "REQUEST-CHANGES"]`,
+   `tester` = `verdict` with regexes `["PASS", "FAIL"]` — each byte-equal (case-insensitively; see
+   `pod-dispatch.spec.md`'s "Generalized gate execution") to the marker words
+   `core/pipeline.py`'s `default_pipeline()` declares for that role's step, and to what
+   `core.orchestrator.resolve_gate` resolves for a bare `role: reviewer`/`role: tester` step with
+   no gate of its own — all three (this registry, the pipeline format's hardcoded default, and
+   the executor's own fallback resolution) verified to agree by test
+   (`tests/python/test_w6_archetypes.py`, `tests/python/test_w1_pipeline_spec.py`). Before W-8,
+   this cross-check was against a now-deleted `core/dispatch.py`-private regex constant
+   (`_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`) — gate execution reads this registry (or the
+   pipeline format) directly now, so that private copy no longer exists to drift from.
 4. `core/pod.py`'s `normalize_role`, `member_id`, `pod_prefix`, `parse_member_id`, `pod_of`, and
    `members_of` **MUST** produce identical results for the four legacy roles as before this
    registry existed — same accepted role strings (including the `programmer` → `implementer`
@@ -317,6 +329,18 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-8 (generalized gates, shipped with W-2 per ROADMAP's sequencing
+  rule).** `gateContract` is no longer descriptive-only data — `core.orchestrator.resolve_gate`
+  consults it as a step's gate fallback whenever a pipeline step declares none of its own (see
+  `pod-dispatch.spec.md`'s "Generalized gate execution"). No change to this spec's own schema,
+  registry, or CLI surface; the "Legacy archetype fidelity" cross-check (requirement 3) is
+  reworded now that `core/dispatch.py`'s private `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`
+  constants it used to check against are deleted — the cross-check target is now
+  `core/pipeline.py`'s `default_pipeline()` and the executor's own resolution, both verified to
+  agree with this registry by test.
 
 ### Version 1.1.0 (2026-07-30)
 

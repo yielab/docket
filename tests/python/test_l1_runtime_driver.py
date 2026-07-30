@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -86,15 +87,43 @@ class TestDelegation:
             message: str,
             timeout: int = 300,
             env: dict[str, str] | None = None,
+            *,
+            on_spawn: object = None,
         ) -> _oc.AgentRunResult:
-            calls.append((agent_id, session_key, message, timeout, env))
+            calls.append((agent_id, session_key, message, timeout, env, on_spawn))
             return _oc.AgentRunResult(True, "hi", 0.01, {"output": "hi"})
 
         monkeypatch.setattr(_oc, "agent_run", fake_agent_run)
         driver = _oc.OpenClawDriver()
         result = driver.run_turn("demo-lead", "agent:demo:t1", "plan it", 30, {"X": "1"})
-        assert calls == [("demo-lead", "agent:demo:t1", "plan it", 30, {"X": "1"})]
+        # ROADMAP Phase 16 W-2: run_turn also forwards an `on_spawn` hook
+        # (None when the caller doesn't supply one) — cancellation support,
+        # see core/runs.py / core/dispatch.py's production-driver call site.
+        assert calls == [("demo-lead", "agent:demo:t1", "plan it", 30, {"X": "1"}, None)]
         assert result == _oc.AgentRunResult(True, "hi", 0.01, {"output": "hi"})
+
+    def test_run_turn_forwards_on_spawn_hook(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[int] = []
+
+        def fake_agent_run(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int = 300,
+            env: dict[str, str] | None = None,
+            *,
+            on_spawn: Any = None,
+        ) -> _oc.AgentRunResult:
+            if on_spawn is not None:
+                on_spawn(4242)
+            return _oc.AgentRunResult(True, "hi", 0.0, {"output": "hi"})
+
+        monkeypatch.setattr(_oc, "agent_run", fake_agent_run)
+        driver = _oc.OpenClawDriver()
+        driver.run_turn("demo-lead", "agent:demo:t1", "plan it", 30, on_spawn=seen.append)
+        assert seen == [4242]
 
     def test_provision_delegates_to_register_agent_cli(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
