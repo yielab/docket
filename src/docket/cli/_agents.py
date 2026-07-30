@@ -25,6 +25,7 @@ from docket import ui
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import provisioning as _prov
+from docket.core.audit import audit_log
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
@@ -150,6 +151,8 @@ def run_add(all_args: list[str]) -> int:
     if not created:
         ui.error("Pod provisioning failed — no members were registered.")
         return 1
+
+    audit_log("agent.add", f"{aid} pod=({','.join(roles)}) source=interactive")
 
     lead_id = f"{aid}-lead"
     if tg_group:
@@ -478,6 +481,8 @@ def _provision_agent(
     with contextlib.suppress(Exception):
         _oc.sync_session_key(agent_id, session_key, project_key)
 
+    audit_log("agent.add", f"{agent_id} model={model} source={source}")
+
     if not _oc.has_usable_profile():
         ui.warn("No usable auth profile found. Run: docket auth login")
 
@@ -678,6 +683,7 @@ def run_delete(agent_id: str | None) -> int:
         return 0
 
     _oc.remove_agent(aid)
+    audit_log("agent.delete", aid)
     ui.success("Removed from agent registry")
 
     if tg:

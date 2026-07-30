@@ -20,6 +20,7 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core.audit import audit_log
 from docket.core.utils import project_ids
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
@@ -187,6 +188,7 @@ def _keys_add(name: str) -> int:
     _save_secrets(secrets)
     _touch_secrets_meta(name, "added")
     _sync_keys_to_agents()
+    audit_log("keys.add", name)
 
     from docket.cli import _do_restart_gateway
 
@@ -211,6 +213,7 @@ def _keys_remove(name: str) -> int:
     _save_secrets(secrets)
     _touch_secrets_meta(name, "removed")
     _sync_keys_to_agents()
+    audit_log("keys.remove", name)
 
     from docket.cli import _do_restart_gateway
 
@@ -243,6 +246,7 @@ def _keys_rotate(name: str) -> int:
     _save_secrets(secrets)
     _touch_secrets_meta(name, "rotated")
     _sync_keys_to_agents()
+    audit_log("keys.rotate", name)
 
     from docket.cli import _do_restart_gateway
 
@@ -339,6 +343,7 @@ def _keys_setup() -> int:
         secrets[key_name] = value
         event = "rotated" if exists else "added"
         _touch_secrets_meta(key_name, event)
+        audit_log("keys.rotate" if exists else "keys.add", key_name)
         changed = True
         ui.success(f"  {key_name} saved.")
         ui.console.print()

@@ -1463,20 +1463,24 @@ docket gates classes
 
 ### audit
 
-Show the audit log — a durable, append-only record of docket-initiated mutations (key changes,
-gate toggles, profile pins, scope changes, add/delete, etc.).
+Show the audit log — a durable, append-only, tamper-evident record of docket-initiated
+mutations (key changes, gate toggles, profile pins, scope changes, agent/pod add/delete,
+persona changes, etc.) — and verify its hash chain.
 
 **Syntax:**
 ```bash
 docket audit                # last 20 entries (default), human-readable
 docket audit 5              # last N entries
 docket audit --json         # raw JSONL passthrough
+docket audit verify         # walk the current file's tamper-evidence chain
 ```
 
 **Flags:**
 - **`--json`**: dump the raw `audit.log` JSONL file verbatim to stdout instead of the formatted
   table.
 - `[N]` positional: show the last N entries (default 20 if omitted).
+- `verify` positional: instead of listing entries, walk the hash chain and report the first
+  broken link (exit 1) or that it verified clean (exit 0).
 
 **Example:**
 ```bash
@@ -1484,8 +1488,8 @@ docket audit 5
 
 # Audit log — last 5 change(s)
 #
-#   2026-07-01T14:02:11Z  alice   keys.add        ANTHROPIC_API_KEY
-#   2026-07-01T14:05:44Z  alice   gates.enable    security=allowlist seeded=git,npm,pytest
+#   2026-07-01T14:02:11.041Z  alice   keys.add        ANTHROPIC_API_KEY
+#   2026-07-01T14:05:44.902Z  alice   gates.enable    security=allowlist seeded=git,npm,pytest
 ```
 
 Empty-state example:
@@ -1496,13 +1500,31 @@ docket audit
 #   ~/.openclaw/audit.log once you make a change.
 ```
 
+Verifying the chain:
+```bash
+docket audit verify
+# ✓ 214 chained line(s) verified clean.
+
+docket audit verify   # after a line was hand-edited
+# ✗ Error: Tamper check FAILED at line 87: prev_hash mismatch — an earlier line was altered or removed
+```
+
 **Aliases:** None
 
 **Notes:**
-- Stored at `~/.openclaw/audit.log` — one JSON object per line (`ts`, `user`, `pid`, `action`,
-  `detail`), never containing secret values
-- Best-effort and never raises; disable entirely with `DOCKET_NO_AUDIT=1`
-- Always exits 0, even on an empty or malformed log (malformed lines are skipped, not fatal)
+- Stored at `~/.openclaw/audit.log` — one JSON object per line (`seq`, `ts` (millisecond
+  resolution), `user`, `pid`, `action`, `detail`, `prev_hash`), never containing secret values
+- Every line chains to the previous one via a SHA-256 `prev_hash` (stdlib `hashlib`, no new
+  dependency); `docket audit verify` detects a hand-tampered line. Lines written before this
+  chain existed are treated as legacy/unchained, never as tampering.
+- Rotates to a single-generation `audit.log.1` backup once past `AUDIT_LOG_MAX_BYTES` (default
+  5 MiB, env-overridable); `docket audit verify` only checks the current file — a rotation
+  starts a fresh chain.
+- Best-effort and never raises. There is no environment kill switch — recording cannot be
+  silently disabled.
+- Always exits 0 for `docket audit`/`docket audit --json`, even on an empty or malformed log
+  (malformed lines are skipped, not fatal); `docket audit verify` exits 1 when it detects a
+  broken chain link.
 
 ---
 

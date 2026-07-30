@@ -16,6 +16,23 @@ from pathlib import Path
 
 import pytest
 
+import docket.config as _cfg
+
+
+@pytest.fixture(autouse=True)
+def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Safety net: default AUDIT_LOG to an ephemeral path for every test.
+
+    ``core/audit.py`` no longer has an environment kill switch (G-4) — best-
+    effort recording now genuinely always happens — so a test that exercises
+    a mutating code path but forgets to repoint ``_cfg.AUDIT_LOG`` at its own
+    sandbox would otherwise append real entries to the developer's actual
+    ``~/.openclaw/audit.log``. This applies to every test by default; a test
+    that wants to inspect audit output still repoints ``_cfg.AUDIT_LOG`` to
+    its own fixture-managed directory, which simply overrides this default.
+    """
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "_autouse_audit.log", raising=True)
+
 
 def write_fake_openclaw(bindir: Path) -> Path:
     """Write a minimal `openclaw` shim that answers the read-only probes docket

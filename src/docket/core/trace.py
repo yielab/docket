@@ -23,9 +23,15 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import docket.config as _cfg
+
+# trace_event()'s return contract: "written" (recorded), "rejected" (invalid
+# event_type — the pre-G-4 `False`), or "suppressed" (DOCKET_NO_TRACE=1 — the
+# pre-G-4 dishonest `True`, indistinguishable from a real write). Callers that
+# only care about success can still do `trace_event(...) == "written"`.
+TraceStatus = Literal["written", "rejected", "suppressed"]
 
 EVENT_TYPES: frozenset[str] = frozenset(
     [
@@ -129,16 +135,20 @@ def trace_event(
     payload: str,
     cost_usd: float | str | None = None,
     duration_ms: int | str | None = None,
-) -> bool:
-    """Validate, redact and append one trace event. Returns False when rejected.
+) -> TraceStatus:
+    """Validate, redact and append one trace event.
 
-    No-ops (returns True) when DOCKET_NO_TRACE=1. payload is parsed as JSON when
-    possible, else wrapped as ``{"text": payload}``.
+    Returns ``"written"`` on a real append, ``"rejected"`` for an unknown
+    ``event_type``, or ``"suppressed"`` when DOCKET_NO_TRACE=1 no-ops the
+    write — three distinct outcomes a caller can tell apart, rather than the
+    pre-G-4 contract where a suppressed write and a real one both returned
+    ``True``. payload is parsed as JSON when possible, else wrapped as
+    ``{"text": payload}``.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
-        return True
+        return "suppressed"
     if event_type not in EVENT_TYPES:
-        return False
+        return "rejected"
 
     redacted = redact(payload)
     try:
@@ -162,7 +172,7 @@ def trace_event(
             record["duration_ms"] = int(duration_ms)  # type: ignore[arg-type]
 
     _append(_cfg.TRACES_DIR / project / f"{session_id}.jsonl", [record])
-    return True
+    return "written"
 
 
 def trace_ingest(project: str) -> None:

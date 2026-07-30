@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.4.0
+**Version**: 0.4.1
 **Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below)
 **Last Updated**: 2026-07-30
 
@@ -235,9 +235,10 @@ secret-access — Secret/credential writes and key generation
 ### Invariants
 
 - A denied or timed-out request **MUST NOT** execute (enforced by the daemon).
-- Audit log entries **SHOULD NOT** be silently editable by the agent. **Known gap:** the log
-  currently has no tamper evidence (no hash chain/sequence numbers) and `DOCKET_NO_AUDIT=1`
-  disables it — hardening is tracked as ROADMAP Phase 15 G-4 (see audit.spec.md).
+- Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
+  G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket audit verify` detects
+  an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
+  audit.spec.md.
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status in
   `resolve_command_action` for classes with no allowlist overlap (money-movement,
   secret-access) — those are fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST
@@ -245,6 +246,13 @@ secret-access — Secret/credential writes and key generation
   documented policy only.
 
 ## Changelog
+
+### Version 0.4.1 (2026-07-30)
+
+- Cross-reference update: the audit-log tamper-evidence invariant is no longer a known gap —
+  ROADMAP Phase 15 G-4 shipped the `seq`/`prev_hash` hash chain, `docket audit verify`, and
+  removed the `DOCKET_NO_AUDIT` kill switch entirely (see audit.spec.md v2.0.0). No change to
+  this spec's own requirements — gates, routing, and isolation are unaffected.
 
 ### Version 0.4.0 (2026-07-30)
 

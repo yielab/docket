@@ -57,11 +57,14 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(_cfg, "POLICIES_DIR", d / "policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
+    # audit_log() has no kill switch (G-4) — repoint it explicitly rather than
+    # relying only on the conftest-wide safety net, matching this fixture's
+    # own pattern of repointing every config path it touches.
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
     # ACL bound CONFIG_FILE at import — rebind.
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     # Never touch systemctl.
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
-    monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
 
     # Stub `openclaw` and `docker` off PATH so writes take the direct path and
     # isolation reports "needs Docker". Real binaries (git, python3, ...) pass.

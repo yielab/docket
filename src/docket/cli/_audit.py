@@ -1,7 +1,7 @@
-"""docket audit — view the mutating-operations audit log.
+"""docket audit — view the mutating-operations audit log, and verify its chain.
 
-``run_audit`` returns the process exit code (always 0);
-the coordinator wraps it in a Typer command.
+``run_audit`` / ``run_audit_verify`` return the process exit code; the
+coordinator wraps each in a Typer command.
 """
 
 from __future__ import annotations
@@ -45,4 +45,36 @@ def run_audit(limit: int | None = None, json_out: bool = False) -> int:
 
     ui.console.print()
     ui.dim(f"Full JSONL: docket audit --json  ·  file: {logf}")
+    return 0
+
+
+def run_audit_verify() -> int:
+    """Verify the audit log's tamper-evidence hash chain.
+
+    Returns 0 when the current file is clean (or absent — nothing to
+    verify), 1 when the first broken link is found (reported with its line
+    number). Legacy (pre-chain) lines are reported as unchained, never as
+    tampering.
+    """
+    result = _audit.verify_chain()
+
+    if not result.exists:
+        ui.info("No audit log yet. Nothing to verify.")
+        return 0
+
+    if result.break_at is not None:
+        ui.error(f"Tamper check FAILED at line {result.break_at.line}: {result.break_at.reason}")
+        ui.dim(f"  file: {_cfg.AUDIT_LOG}")
+        return 1
+
+    summary = f"{result.chained} chained line(s) verified clean"
+    if result.legacy:
+        summary += f", {result.legacy} legacy (unchained) line(s) skipped"
+    ui.success(summary + ".")
+
+    if result.rotated_backup:
+        ui.dim(
+            "  A rotated backup exists (audit.log.1) — verify only checks the "
+            "current file; each rotation starts a fresh chain."
+        )
     return 0

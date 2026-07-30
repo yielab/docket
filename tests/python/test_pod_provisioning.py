@@ -10,6 +10,7 @@ import typer
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import audit as _audit
 from docket.edges.adapters import openclaw as _oc
 
 
@@ -25,6 +26,9 @@ def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
+    # G-4: audit_log() has no kill switch, and pod add/remove/delete now write
+    # entries — repoint AUDIT_LOG alongside everything else this pod sandbox owns.
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
 
@@ -220,6 +224,23 @@ class TestDeletePod:
         assert _ids(oc_dir) == []
         assert not (oc_dir / "workspaces" / "projects" / "demo-lead").exists()
 
+    def test_delete_pod_writes_one_agent_delete_audit_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """G-4: pod teardown (docket delete <pod>) writes a single agent.delete line."""
+        from docket import cli
+
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        cli._delete_pod("demo", _pod.pod_member_ids("demo"))
+
+        entries = [e for e in _audit.read_audit() if e["action"] == "agent.delete"]
+        assert len(entries) == 1
+        assert entries[0]["detail"] == "demo pod (2 members)"
+        for e in entries:
+            assert "ANTHROPIC" not in e["detail"] and "sk-" not in e["detail"]
+
 
 class TestParseAddArgs:
     """FD-1: `--verify` parsing in `_parse_add_args`."""
@@ -345,3 +366,53 @@ class TestPodSetVerify:
         _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
         with pytest.raises(typer.Exit):
             _pod.dispatch("demo", "set-verify", [])
+
+
+class TestPodAddRemoveAudit:
+    """G-4: `docket pod <p> add/remove` each write exactly one audit line."""
+
+    def test_pod_add_writes_one_audit_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["reviewer"])
+
+        entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
+        assert len(entries) == 1
+        assert entries[0]["detail"] == "demo role=reviewer members=demo-reviewer"
+
+    def test_pod_add_with_count_writes_one_audit_entry_for_all_members(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["implementer", "--count", "2"])
+
+        entries = [e for e in _audit.read_audit() if e["action"] == "pod.add"]
+        assert len(entries) == 1
+        assert "demo-implementer-2" in entries[0]["detail"]
+        assert "demo-implementer-3" in entries[0]["detail"]
+
+    def test_pod_remove_writes_one_audit_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.FULL_POD_ROLES)
+        _pod.dispatch("demo", "remove", ["demo-reviewer"])
+
+        entries = [e for e in _audit.read_audit() if e["action"] == "pod.remove"]
+        assert len(entries) == 1
+        assert entries[0]["detail"] == "demo member=demo-reviewer role=reviewer"
+
+    def test_pod_add_remove_never_log_secret_values(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        _pod.dispatch("demo", "add", ["reviewer"])
+        _pod.dispatch("demo", "remove", ["demo-reviewer"])
+
+        for e in _audit.read_audit():
+            assert "sk-" not in str(e.get("detail", ""))
+            assert "API_KEY" not in str(e.get("detail", ""))

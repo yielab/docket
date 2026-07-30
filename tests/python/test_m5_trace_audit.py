@@ -58,10 +58,20 @@ class TestAudit:
         actions = [e["action"] for e in audit_core.read_audit()]
         assert actions == ["gates.enable", "agent.delete"]
 
-    def test_no_audit_env_disables(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_audit_env_no_longer_disables(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """G-4: DOCKET_NO_AUDIT was an unauthenticated kill switch — removed.
+
+        Setting it now has no effect; recording is best-effort but can no
+        longer be silently switched off.
+        """
         monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
         audit_core.audit_log("keys.add", "X")
-        assert not (oc_dir / "audit.log").exists()
+        assert (oc_dir / "audit.log").exists()
+        entries = audit_core.read_audit()
+        assert len(entries) == 1
+        assert entries[0]["action"] == "keys.add"
 
     def test_missing_dir_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "nope" / "audit.log", raising=True)
@@ -106,7 +116,7 @@ class TestTraceRecord:
         ok = trace_core.trace_event(
             "myshop", "sess1", "programmer", "tool_call", '{"action": "edit"}'
         )
-        assert ok is True
+        assert ok == "written"
         tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
         assert tf.is_file()
         assert (tf.stat().st_mode & 0o777) == 0o600
@@ -118,7 +128,7 @@ class TestTraceRecord:
 
     def test_record_invalid_event_rejected(self, oc_dir: Path) -> None:
         ok = trace_core.trace_event("myshop", "s", "r", "not_a_type", "{}")
-        assert ok is False
+        assert ok == "rejected"
         assert not (oc_dir / "traces" / "myshop").exists()
 
     def test_record_non_json_payload_wrapped(self, oc_dir: Path) -> None:
@@ -143,8 +153,9 @@ class TestTraceRecord:
         assert rec["duration_ms"] == 120
 
     def test_no_trace_env_disables(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """G-4: a suppressed write is now distinguishable from a real one."""
         monkeypatch.setenv("DOCKET_NO_TRACE", "1")
-        assert trace_core.trace_event("p", "s", "r", "tool_call", "{}") is True
+        assert trace_core.trace_event("p", "s", "r", "tool_call", "{}") == "suppressed"
         assert not (oc_dir / "traces").exists()
 
     def test_show_renders_events(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
