@@ -42,7 +42,20 @@ _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 
 
 def validate_policy(path: Path) -> str:
-    """Validate one policy file. Return '' if valid, else an error message."""
+    """Validate one policy file. Return '' if valid, else an error message.
+
+    2026-07-30 (CL-2 dead-code register): the CLI doesn't call this yet —
+    `cli/_policies.py`'s `_list()`/`_show()` do their own generic JSON parse,
+    they don't schema-check. Kept rather than removed because it is not
+    actually unexercised: `tests/python/test_cd3_high_risk.py` and
+    `test_m5_gates_policy.py` call it directly as the schema-validity guard
+    over the shipped `high-risk-*.json` templates — real regression coverage
+    a plain JSON parse doesn't give. Wiring a `docket policies validate`
+    command (mirroring `docket roles validate`) is the natural next step, but
+    that is new CLI surface (a completions-golden change) and this is a
+    no-behaviour-change cleanup card, so it is left as tested-but-unwired
+    rather than added here.
+    """
     try:
         with path.open(encoding="utf-8") as f:
             p: dict[str, Any] = json.load(f)

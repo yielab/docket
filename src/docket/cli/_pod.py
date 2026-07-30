@@ -243,7 +243,7 @@ def _write_member_workspace(
         encoding="utf-8",
     )
     (ws / "AGENTS.md").write_text(_member_agents(member, project), encoding="utf-8")
-    (ws / "HEARTBEAT.md").write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
+    (ws / _mem.HEARTBEAT_FILE).write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
     if member.role == "implementer" and ((port_range_start and scratch_dir) or verify_cmd):
         (ws / "TOOLS.md").write_text(
             _member_tools(

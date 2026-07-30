@@ -168,6 +168,15 @@ def docker_ps() -> list[str]:
 
     Degrades gracefully: a missing binary, an unreachable daemon, or a timeout
     all yield an empty list rather than raising.
+
+    2026-07-30 (CL-2 dead-code register): no production caller yet. Kept
+    (rather than deleted) because Docker workspace isolation is a live,
+    opt-in feature (`docket gates isolate`) and this is the obvious primitive
+    for a future `docket doctor`/`docket gates isolate status` check that
+    confirms an isolated agent's container is actually running, not just
+    configured — the tested, typed adapter is cheaper to keep than to
+    rewrite when that check gets built. Re-evaluate if it still has no
+    caller by the time isolation grows another feature.
     """
     if not docker_available():
         return []
@@ -273,6 +282,14 @@ def git_current_branch(cwd: str) -> str:
     """Return the current git branch for `cwd`, or '' if not a repo / unavailable.
 
     Degrades gracefully on a missing binary, a non-repo directory, or a timeout.
+
+    2026-07-30 (CL-2 dead-code register): no production caller yet. Kept
+    (rather than deleted) because `git_worktree_add`/`git_worktree_remove`
+    (this same module, ROADMAP Phase 16 W-7) just gave pod Implementers real
+    git worktrees, making "what branch is this pod's worktree on" a plausible
+    near-term `docket doctor`/`docket pod` display — this is the obvious
+    primitive for that, already tested. Re-evaluate if it still has no caller
+    once pod worktrees grow another feature.
     """
     if not git_available():
         return ""

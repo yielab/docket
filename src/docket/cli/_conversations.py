@@ -16,6 +16,7 @@ from rich.table import Table
 import docket.config as _cfg
 from docket import ui
 from docket.core import conversations as _conv
+from docket.core import memory as _mem
 
 
 def _now() -> str:
@@ -135,7 +136,7 @@ def _resume(args: list[str]) -> int:
     ws = _cfg.workspace_dir(resumed.agent_id)
     if ws.is_dir():
         ui.console.print()
-        ui.dim(f"  Durable context lives in {ws}/HEARTBEAT.md and memory/ — the agent")
+        ui.dim(f"  Durable context lives in {ws}/{_mem.HEARTBEAT_FILE} and memory/ — the agent")
         ui.dim("  resumes unchecked HEARTBEAT tasks on its next turn (durability contract).")
     ui.console.print()
     return 0

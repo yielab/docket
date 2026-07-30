@@ -1458,6 +1458,7 @@ def cmd_edit(agent_id: str | None = typer.Argument(None)) -> None:
 
     # Display name comes from docket metadata (persona → name → role → id), never
     # from a self-authored IDENTITY.md — identity of record is docket-owned.
+    from docket.core import memory as _mem
     from docket.core.models import AgentMeta
 
     meta_path = _cfg.meta_path(aid)
@@ -1466,7 +1467,7 @@ def cmd_edit(agent_id: str | None = typer.Argument(None)) -> None:
         with contextlib.suppress(Exception):
             name = AgentMeta.model_validate(store.read_json(meta_path)).display_name() or aid
 
-    _WORKSPACE_FILES = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "WORKFLOW_AUTO.md"]
+    _WORKSPACE_FILES = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "WORKFLOW_AUTO.md"]
     files = [ws / f for f in _WORKSPACE_FILES if (ws / f).is_file()]
 
     ui.header(f"Edit: {name} ({aid})")

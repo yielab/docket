@@ -51,7 +51,8 @@ def with_lock(path: Path) -> Iterator[None]:
 
     Use this to make a multi-step read-modify-write atomic against every other
     docket process/thread touching the same directory (the same lock file
-    ``write_json`` uses). Do **not** call ``write_json`` on the same path from
+    ``write_json`` uses) — ``read_modify_write`` below is built directly on
+    this primitive. Do **not** call ``write_json`` on the same path from
     inside a ``with_lock`` block — that would try to acquire the lock a second
     time and block forever; use ``read_modify_write`` (or the module-private
     ``_atomic_write``) for the write step instead.
@@ -69,26 +70,23 @@ def read_modify_write(
 ) -> dict[str, Any]:
     """Locked read-modify-write: the one safe way to do read-then-write on one file.
 
-    Holds *path*'s per-directory filelock across the whole read + *fn* + write,
-    so no concurrent ``write_json``/``read_modify_write`` call on the same path
-    can interleave (this is what closes the dispatch-queue claim race — see
-    ``core/dispatch.py``). *fn* receives the file's current contents (``{}`` if
-    it doesn't exist yet) and returns the new contents to persist, or ``None``
-    to abort without writing (e.g. "nothing eligible to claim"). Returns
-    whatever ended up in the file (the new contents, or the unmodified current
-    contents when *fn* returned ``None``).
+    Holds *path*'s per-directory filelock (via ``with_lock``) across the whole
+    read + *fn* + write, so no concurrent ``write_json``/``read_modify_write``
+    call on the same path can interleave (this is what closes the
+    dispatch-queue claim race — see ``core/dispatch.py``). *fn* receives the
+    file's current contents (``{}`` if it doesn't exist yet) and returns the
+    new contents to persist, or ``None`` to abort without writing (e.g.
+    "nothing eligible to claim"). Returns whatever ended up in the file (the
+    new contents, or the unmodified current contents when *fn* returned
+    ``None``).
     """
-    lock = _acquire(path)
-    try:
-        with lock:
-            current = read_json(path)
-            updated = fn(current)
-            if updated is None:
-                return current
-            _atomic_write(path, json.dumps(updated, indent=2) + "\n")
-            return updated
-    except Timeout:
-        raise _lock_timeout_error(path) from None
+    with with_lock(path):
+        current = read_json(path)
+        updated = fn(current)
+        if updated is None:
+            return current
+        _atomic_write(path, json.dumps(updated, indent=2) + "\n")
+        return updated
 
 
 def read_json(path: Path) -> dict[str, Any]:

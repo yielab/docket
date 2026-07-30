@@ -457,7 +457,7 @@ def _create_workspace(
         "## Traits\n"
         "- Read files before making any changes. Never assume structure.\n"
         "- Completion signal: output `<promise>DONE</promise>` when a task is complete.\n"
-        "- Proactive: check HEARTBEAT.md every session.\n"
+        f"- Proactive: check {_mem.HEARTBEAT_FILE} every session.\n"
         f"- Scope: never act outside {codebase}.\n"
         "- Context isolation: respect the session key boundary — no cross-project access.\n\n"
         "## Safety\n"
@@ -473,7 +473,7 @@ def _create_workspace(
         "_Lean — re-sent every turn._\n"
         f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
         "   path (the runtime requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+        f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
         "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
         "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
         "   specific memory/YYYY-MM-DD.md you need. Do not slurp the whole\n"
@@ -483,7 +483,7 @@ def _create_workspace(
         "## Red Lines\n"
         f"- Only act on {name}. Redirect other project questions to the correct group.\n"
         "- Never push to main/master or delete files without HITL approval.\n"
-        "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
+        f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an unwritten\n"
         "  task does not survive a context reset.\n\n"
         "## Project Path\n"
         f"{codebase}\n\n"
@@ -526,7 +526,7 @@ def _create_workspace(
         ("SOUL.md", soul),
         ("AGENTS.md", agents),
         ("TOOLS.md", tools),
-        ("HEARTBEAT.md", heartbeat),
+        (_mem.HEARTBEAT_FILE, heartbeat),
     ]:
         fpath = ws / fname
         fpath.write_text(text, encoding="utf-8")
@@ -896,7 +896,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     else:
         ui.console.print("  [yellow]⚠[/yellow] Permissions: some could not be set")
 
-    required = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", ".docket-meta.json"]
+    required = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, ".docket-meta.json"]
     missing_files = [f for f in required if not (ws / f).is_file()]
     if missing_files:
         issues.extend(missing_files)
@@ -953,7 +953,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     # Per-turn context footprint: the artifacts OpenClaw re-feeds every turn.
     # docket can't trim the live prompt, but oversized SOUL/AGENTS/MEMORY here
     # means every turn pays for it — flag it so the user can prune/rebuild.
-    per_turn_files = ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"]
+    per_turn_files = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "MEMORY.md"]
     ctx_bytes = 0
     for fname in per_turn_files:
         fp = ws / fname
@@ -964,7 +964,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     if est_tokens > _cfg.CONTEXT_TOKEN_BUDGET:
         ui.console.print(
             f"  [yellow]⚠[/yellow] Context footprint: ~{est_tokens:,} tok re-sent each turn"
-            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,}) — trim MEMORY.md/HEARTBEAT.md"
+            f" (budget {_cfg.CONTEXT_TOKEN_BUDGET:,}) — trim MEMORY.md/{_mem.HEARTBEAT_FILE}"
         )
         issues.append("oversized per-turn context")
     else:
@@ -1017,7 +1017,7 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
     ui.warn("This will:")
     ui.console.print("  - Delete all memory/*.md log files")
     ui.console.print("  - Clear MEMORY.md")
-    ui.console.print("  - Reset HEARTBEAT.md to empty template")
+    ui.console.print(f"  - Reset {_mem.HEARTBEAT_FILE} to empty template")
     ans = input("Continue? [y/N]: ").strip().lower()
     if ans != "y":
         ui.warn("Cancelled.")
@@ -1039,12 +1039,13 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
 
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
-    hb = ws / "HEARTBEAT.md"
+    hb = ws / _mem.HEARTBEAT_FILE
     hb.write_text(_mem.heartbeat_seed(name), encoding="utf-8")
     hb.chmod(0o600)
 
     ui.success(
-        f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, HEARTBEAT.md reset."
+        f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, "
+        f"{_mem.HEARTBEAT_FILE} reset."
     )
 
 
@@ -1065,7 +1066,7 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
     backup_dir = ws / f".backup-{stamp}"
     backup_dir.mkdir(exist_ok=True)
 
-    for fname in ["SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"]:
+    for fname in ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "MEMORY.md"]:
         src = ws / fname
         if src.is_file():
             _shutil.copy2(src, backup_dir / fname)
