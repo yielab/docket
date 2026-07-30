@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -42,7 +42,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | Argument | Applies to | Rules |
 |----------|------------|-------|
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
-| `codebase-path` | `add` | MUST be absolute or tilde-expanded; MUST exist and be readable |
+| `location` | `add` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable, same as the pre-W-7 `codebase-path`; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
 | `action` | `scope`, `keys`, `pod`, `workflow`, `gates` | MUST be a verb from that command's documented action set |
 
@@ -93,19 +93,30 @@ docket [global-options] <command> [command-options] [arguments]
 **Return**: 0 on success, 1-5 on various failures
 
 #### docket add
-**Purpose**: Provision a project pod (Lead + Implementer by default)
-**Syntax**: `docket add <project> [codebase-path] [options]`
+**Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
+default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7)
+**Syntax**: `docket add <project> [location] [--blueprint <name>] [options]`
 **Arguments**:
 - `project` (required): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
-- `codebase-path` (optional): Path to project directory
+- `location` (optional): Meaning depends on the selected blueprint's `workspaceKind` — a codebase
+  path for `software` (the default), or a working directory for `research`/`content`/`ops`
+  (auto-provisioned if omitted)
 **Options**:
-- `--type <repo|task>`: Agent type (auto-detected if not specified)
-- `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester
-- `--with <roles>`: Start from lean pod and add named roles (comma-separated: `reviewer`, `tester`, `implementer`)
-- `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent)
-- `--description <text>`: Agent description
+- `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops`);
+  omitted defaults to `software` — unchanged from pre-W-7 `docket add`. An unknown name fails
+  cleanly (exit 1) before any prompt is shown
+- `--codebase <path>` / `--path <path>`: Explicit location, skipping its interactive prompt
+- `--name <text>`: Explicit display name, skipping its interactive prompt
+- `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester. Applies only to
+  the `software` blueprint
+- `--with <roles>`: Start from the lean pod and add named roles (comma-separated: `reviewer`,
+  `tester`, `implementer`). Applies only to the `software` blueprint; passing it with another
+  blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
+- `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); an entry
+  carrying a `blueprint` field provisions a pod the same way `--blueprint` does interactively
 **Output**: Creation progress and confirmation with member IDs
-**Return**: 0 on success, 3 if pod already exists, 4 on invalid args
+**Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
+or provisioning registered no member — docket's flat convention, see Return Code Convention below)
 
 #### docket list
 **Purpose**: Display all agents
@@ -699,6 +710,19 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.9.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-7 (pod blueprints): rewrote the `docket add` section — replaced the stale
+  `--type <repo|task>` option (the field was removed from the schema in an earlier truth pass but
+  this section was missed) and the never-implemented `--description <text>` option with the real
+  `--blueprint <name>`/`--codebase`/`--path`/`--name` flags, documented `--pod full`/`--with`'s
+  software-blueprint-only scope, and documented the extended `--from <file>` (a `blueprint` field
+  per entry). Fixed this section's Return line to the real flat 0/1 convention (it still described
+  the fictional 3/4 codes v1.5.0 removed everywhere else in this file). Renamed the generic
+  `codebase-path` argument-table row to `location` (meaning depends on the blueprint's
+  `workspaceKind`) and updated its existence rule accordingly. See the new `pod-blueprints.spec.md`
+  for the full blueprint contract.
 
 ### Version 1.8.0 (2026-07-30)
 

@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented
 **Last Updated**: 2026-07-30
 
@@ -41,9 +41,9 @@ This specification does NOT cover:
   lean/full presets) — that remains `core/pod.py`'s `plan_pod`/`DEFAULT_POD_ROLES`/
   `FULL_POD_ROLES`, unchanged by this spec; see `workspace-structure.spec.md` and
   `docket-meta.spec.md`
-- Named pod *rosters/blueprints* (`docket add --blueprint`) that would let `docket add` compose a
-  non-default set of archetypes for a whole pod in one step — tracked as ROADMAP Phase 16 W-7,
-  not shipped
+- Named pod *rosters/blueprints* (`docket add --blueprint`) that let `docket add` compose a
+  non-default set of archetypes for a whole pod in one step — shipped as ROADMAP Phase 16 W-7;
+  see the new `pod-blueprints.spec.md`
 - Wiring `gateContract` into the dispatch executor's actual gate enforcement — `core/dispatch.py`
   still hardcodes its own Reviewer/Tester verdict parsing and Implementer `verifyCmd` gate,
   unaware of this registry; tracked as ROADMAP Phase 16 W-8. This spec's `gateContract` is
@@ -139,11 +139,12 @@ This specification does NOT cover:
    `docket roles validate` (structural validation + a dry-run template render).
 2. None of the starter archetypes carries a `policyRole` override — each resolves through its own
    name as the policy-role key (see "Role→model policy integration").
-3. The starter library demonstrates, but does not itself wire up, pod composition beyond the
-   default lean/full presets — provisioning a starter role into a live pod (e.g.
-   `docket pod <project> add researcher`) works today because `normalize_role`/`resolve_member`
-   resolve against this registry, but no *preset roster* (e.g. "research pod") ships until
-   ROADMAP Phase 16 W-7.
+3. Provisioning a starter role into a live pod (e.g. `docket pod <project> add researcher`) works
+   because `normalize_role`/`resolve_member` resolve against this registry. A *preset roster*
+   composing several starter roles into one pod shape in a single command (e.g. a `research pod`
+   of Lead + Researcher + Analyst + Writer + Critic) is a **pod blueprint** — see the separate
+   `pod-blueprints.spec.md` (ROADMAP Phase 16 W-7), which this spec's registry is a building block
+   for but does not itself define.
 
 ### Role→model policy integration
 
@@ -316,6 +317,14 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.1.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-7 (pod blueprints) shipped: cross-referenced the new `pod-blueprints.spec.md`
+  from the two places this spec previously described blueprints/preset rosters as future work
+  ("tracked as ROADMAP Phase 16 W-7, not shipped"). No change to this spec's own schema, built-in
+  archetypes, or CLI surface — blueprints compose archetype names by reference, they don't alter
+  what an archetype is.
 
 ### Version 1.0.0 (2026-07-30)
 
