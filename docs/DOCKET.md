@@ -588,7 +588,6 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Per-pod context isolation (workspace + session key)
 - [x] Security checklist (6 points)
 - [x] Behavior-only validation
-- [x] Bug-fix pipeline template (Lobster)
 - [x] HITL gate protocols
 - [x] Cost tracking & optimization
 

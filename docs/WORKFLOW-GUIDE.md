@@ -347,9 +347,8 @@ Each member is an ordinary registered agent with its **own** permission-locked w
 ├── TOOLS.md             # project-specific commands
 ├── HEARTBEAT.md         # active tasks/decisions
 ├── .docket-meta.json    # docket metadata (role, codebase, model, sessionKey, projectKey)
-├── memory/
-│   └── 2026-06-24.md    # daily log
-└── workflows/           # Lobster pipelines (optional, deterministic execution)
+└── memory/
+    └── 2026-06-24.md    # daily log
 ```
 
 ### Session keys & isolation

@@ -8,7 +8,6 @@ Complete reference for all docket commands with detailed examples and options.
 - [Lifecycle Commands](#lifecycle-commands)
 - [Session & Context Management](#session--context-management)
 - [Pod Coordination](#pod-coordination)
-- [Workflow Management](#workflow-management)
 - [Telegram Integration](#telegram-integration)
 - [Keys & Authentication](#keys--authentication)
 - [Utility Commands](#utility-commands)
@@ -620,108 +619,6 @@ machine, retry/timeout/rework semantics, and trace-event vocabulary.
 
 ---
 
-## Workflow Management
-
-### workflow
-
-Manage Lobster deterministic workflows.
-
-**Syntax:**
-```bash
-docket workflow <agent-id> list                 # List all workflows
-docket workflow <agent-id> create <name>        # Create from template
-docket workflow <agent-id> show <name>          # Display workflow
-docket workflow <agent-id> validate <name>      # Structural lint (no execution)
-docket workflow <agent-id> plan <name>          # Dry-run: render the plan, no side effects
-docket workflow <agent-id> delete <name>        # Remove workflow
-```
-
-**Subcommands:**
-
-#### list
-Show all workflows for an agent.
-
-```bash
-docket workflow myproject list
-
-# Output:
-# Workflows for 'myproject':
-#   - ci-pipeline.lobster.yml
-#   - code-review.lobster.yml
-#   - deploy.lobster.yml
-```
-
-#### create
-Generate a new workflow from template. Refuses to overwrite an existing file of the same name.
-
-```bash
-docket workflow myproject create ci-pipeline
-
-# Output:
-# → Creating workflow 'ci-pipeline'...
-# ✓ Template created: workflows/ci-pipeline.lobster.yml
-# → Edit with: docket edit myproject
-```
-
-#### show
-Display workflow contents.
-
-```bash
-docket workflow myproject show ci-pipeline
-
-# Output: (displays YAML contents)
-```
-
-#### validate
-Structural lint of a workflow's Lobster YAML — checks step types and required fields without
-running anything. Prints each problem and exits 1 if any are found, exits 0 and confirms
-otherwise.
-
-```bash
-docket workflow myproject validate deploy
-
-# ✗ Workflow 'deploy' is invalid:
-#   ✗ step 'apply-changes': unknown type 'shell2'
-```
-
-#### plan
-Dry-run: renders a human-readable description of what the workflow *would* execute (steps, order,
-approval points) without running any of it — no side effects, no LLM turns. Accepts `dry-run` as
-an alias for the subcommand word itself (`docket workflow <id> dry-run <name>`).
-
-```bash
-docket workflow myproject plan deploy
-
-# 1. check-status   (shell, no tokens)
-# 2. run-tests      (shell, no tokens)
-# 3. llm-analysis   (LLM step — requires approval)
-# 4. apply-changes  (shell, no tokens)
-# 5. verify         (shell, no tokens)
-```
-
-#### delete
-Remove a workflow.
-
-```bash
-docket workflow myproject delete ci-pipeline
-
-# Prompt:
-# ⚠ Delete workflow 'ci-pipeline'? (yes/no): yes
-# ✓ Workflow deleted
-```
-
-**Aliases:** `wf`
-
-**Notes:**
-- Workflows stored in `<workspace>/workflows/*.lobster.yml`
-- Templates include ci-pipeline and code-review
-- Saves ~90% tokens vs. ad-hoc planning
-- Supports shell steps (zero tokens) and LLM steps
-- `validate`/`plan` never execute a workflow — use `docket pod <project> dispatch` (or run the
-  workflow's own steps directly) to actually run one
-
----
-
 ## Telegram Integration
 
 ### wire
@@ -762,7 +659,6 @@ docket wire myproject
 **Notes:**
 - Updates openclaw.json bindings
 - Enables mobile approvals for dangerous operations
-- Sends notifications for workflow steps
 - Restarts gateway after wiring
 
 ---
@@ -1822,7 +1718,6 @@ source of truth. `docket <alias>` rewrites to `docket <command>` before argument
 | `remove`, `rm` | `delete` |
 | `telegram` | `wire` |
 | `key`, `secret` | `keys` |
-| `wf` | `workflow` |
 | `log` | `logs` |
 | `usage` | `cost` |
 | `check` | `doctor` |
@@ -1856,6 +1751,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `smart`, `ai` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |
+| `workflow`, `wf` | `docket pipeline validate` / `plan` / `run` — the single pipeline dialect docket actually executes (the Lobster YAML validator ignored constructs its own template emitted). Existing `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read |
 
 ---
 
