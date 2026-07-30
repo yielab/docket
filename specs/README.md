@@ -107,7 +107,7 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (wave 5 in progress: L-4, G-4b merged so far — after wave 4's
+> Last synchronized: 2026-07-30 (wave 5 in progress: L-4, G-4b, W-4 merged so far — after wave 4's
 > CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1, W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
 > (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
@@ -119,11 +119,11 @@ Each specification document must include:
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.4.0 | Complete | `docket add` blueprint selection (Phase 16 W-7) |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 2.2.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` action family (Phase 18 L-3); `models.*` now covered (Phase 15 G-4b); `runs.cancel` is the last known gap (Phase 16 W-4) |
+| Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
 | Model Profiles | 2.3.3 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6) |
-| Pipeline Format | 2.0.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2) |
+| Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
 | Pod Dispatch | 3.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8) |
 | Role Archetypes | 1.2.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7) |
@@ -131,11 +131,11 @@ Each specification document must include:
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
 | Workspace Structure | 1.3.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
-| CLI Interface | 1.9.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` added (Phase 16 W-2) |
+| CLI Interface | 1.10.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
 | MCP Server | 1.2.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.7.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
-| Serve Read API | 2.1.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier added (Phase 14 R-3); `mcp` run source added (Phase 18 L-3) |
+| Serve Read API | 2.2.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier (Phase 14 R-3); `mcp` run source (Phase 18 L-3); `POST /dispatch/<project>` variable binding + 400s (Phase 16 W-4) |
 | Input Validation | 1.2.0 | Complete | |
 | Test Framework | 2.0.0 | Active | Conventions doc (not a `.spec.md`) |
 | User Stories | 1.3.0 | Active | Acceptance criteria (not a `.spec.md`) |
