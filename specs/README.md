@@ -132,7 +132,7 @@ Each specification document must include:
 | Telegram Integration | 1.0.1 | Complete | |
 | Workspace Structure | 1.3.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
 | CLI Interface | 1.9.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` added (Phase 16 W-2) |
-| MCP Server | 1.1.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6) |
+| MCP Server | 1.2.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.7.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
 | Serve Read API | 2.1.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier added (Phase 14 R-3); `mcp` run source added (Phase 18 L-3) |
