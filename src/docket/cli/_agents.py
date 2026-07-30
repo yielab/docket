@@ -25,6 +25,7 @@ from docket import ui
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import provisioning as _prov
+from docket.core.models import AgentMeta
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
@@ -538,7 +539,7 @@ def _cmd_info_json(agent_id: str) -> None:
                 "stack": raw.get("stack", ""),
                 "model": raw.get("model", _cfg.DEFAULT_MODEL),
                 "budgetUsd": raw.get("budgetUsd", ""),
-                "paused": raw.get("paused", "") == "true",
+                "paused": AgentMeta.coerce_paused(raw.get("paused", False)),
                 "sessionKey": raw.get("sessionKey", f"agent:{agent_id}:default"),
                 "projectKey": raw.get("projectKey", "default"),
                 "registered": registered,
@@ -559,7 +560,7 @@ def _cmd_info_human(agent_id: str) -> None:
     stack = str(raw.get("stack", "—"))
     model = str(raw.get("model", _cfg.DEFAULT_MODEL))
     budget = raw.get("budgetUsd")
-    paused = raw.get("paused", "") == "true"
+    paused = AgentMeta.coerce_paused(raw.get("paused", False))
     paused_reason = str(raw.get("pausedReason", ""))
     session_key = str(raw.get("sessionKey", f"agent:{agent_id}:default"))
     project_key = str(raw.get("projectKey", "default"))

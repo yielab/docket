@@ -45,6 +45,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verification_failed",
         "tester_verdict_failed",
         "stale_claim",
+        "paused_refused",
         "error",
         "session_end",
     ]

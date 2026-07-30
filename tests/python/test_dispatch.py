@@ -722,11 +722,21 @@ class TestBlockedStaysBlocked:
         _dispatch.enqueue_task("demo", "Two")
         monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        lead_id = _pod.pod.member_id("demo", "lead")
+
         _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        # R-5: the first cap breach also pauses the Lead, so a second dispatch
+        # call is refused outright at claim time — task Two is never even
+        # attempted (still "pending"). Clear the pause (what a real
+        # `docket profile <lead> --resume`/`--budget` would do) so the second
+        # call can claim and block it too, exercising the same
+        # `unblock_pod` contract the original (pre-R-5) test covered.
+        _oc.meta_set(lead_id, "paused", False)
         _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == 2
         assert all(t["status"] == "blocked" for t in tasks)
+        assert _oc.meta_read(lead_id).is_paused()  # re-paused by the second breach
 
         assert _dispatch.unblock_pod("demo") == 2
         tasks = _dispatch.read_tasks("demo")

@@ -113,6 +113,35 @@ class AgentMeta(BaseModel):
             return self.persona.label()
         return self.name or self.role or ""
 
+    def is_paused(self) -> bool:
+        """Real ``bool`` for this agent's ``paused`` flag.
+
+        ``paused`` is already typed ``bool`` on this model, so pydantic
+        coerces a legacy ``"true"``/``"false"`` string on ``model_validate`` —
+        this accessor is the one place any caller should read the flag from,
+        rather than re-deriving it. See ``coerce_paused`` for the raw-dict
+        equivalent (display code that reads ``.docket-meta.json`` directly
+        without constructing a full ``AgentMeta``).
+        """
+        return self.paused
+
+    @staticmethod
+    def coerce_paused(value: object) -> bool:
+        """Coerce a raw (possibly legacy) ``paused`` value to a real ``bool``.
+
+        R-5 fixed a type bug: a writer stored a real JSON boolean while
+        display code (``cli/_agents.py``) compared it against the *string*
+        ``"true"`` (``raw.get("paused", "") == "true"``) — which is never
+        equal to a Python ``True``, so a paused agent silently displayed as
+        not-paused. This is the one coercion function every raw-dict read
+        site (and ``core/dispatch.py``'s claim-time refusal) should call
+        instead of re-implementing the comparison. Tolerates both a genuine
+        JSON boolean and the legacy string form (case-insensitive).
+        """
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() == "true"
+
     @model_validator(mode="before")
     @classmethod
     def _backfill_scope(cls, data: object) -> object:
