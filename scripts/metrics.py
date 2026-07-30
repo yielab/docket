@@ -136,6 +136,7 @@ CLAIMS: list[Claim] = [
         round_to=100,
     ),
     Claim("specifications", re.compile(r"\*\*([\d,]+)\s+specifications\*\*"), "specs"),
+    Claim("commands", re.compile(r"\*\*([\d,]+)\s+commands\*\*"), "commands"),
 ]
 
 

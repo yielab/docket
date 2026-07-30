@@ -329,9 +329,26 @@ enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — i
 ## Engineering
 
 docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
-coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
-**1,512 tests** in the pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
+coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`, a
+pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
+
+By the numbers:
+
+- **1,513 tests** in the pytest suite (`tests/python/`)
+- **~20,800 lines** of Python in the shipped `docket` package
+- **20 specifications** (RFC 2119), validated in CI
+- **37 commands**, each documented in [docs/commands.md](docs/commands.md)
+
+```bash
+uv run pytest                                        # 1,513-test Python suite
+bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
+uv run ruff check . && uv run ruff format --check . && uv run mypy src
+```
+
+Every figure above is drift-guarded in CI by `uv run python scripts/metrics.py --check`, which
+fails the build when this list and the tree disagree — and fails just as loudly if the prose stops
+stating them, so the guard cannot quietly end up verifying nothing.
 
 ## Security
 

@@ -303,5 +303,7 @@ From Phase 14's honest record — these are **still true** until the cards above
   this where docket itself launches the process; the daemon-side half remains backlog).
 - `maxReworkCycles` has no dedicated CLI setter (set via the internal `meta-set` path).
 - Hops still exchange **concatenated raw text**, not structured artifacts (W-5, in flight this wave).
-- `scripts/validate-specs.sh` has a **pre-existing bug**: two spec references on one line produce a false
-  broken-reference warning. Unowned — claim it with whatever card next touches the script.
+- ~~`scripts/validate-specs.sh` reports two spec references on one line as a broken reference~~ —
+  **fixed by the integrator in `771f622`**, along with a second defect found next to it: `check_todos`
+  ran its loop in a pipe subshell, so every warning increment was discarded and a spec full of TODO
+  markers still reported zero warnings. Both were reproduced before being fixed.

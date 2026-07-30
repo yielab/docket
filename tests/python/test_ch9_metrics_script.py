@@ -37,13 +37,21 @@ def _load_metrics_module() -> types.ModuleType:
 METRICS = _load_metrics_module()
 
 
-def _synthetic_readme(tests: int, loc: int, specs: int, *, tests_comment: int | None = None) -> str:
+def _synthetic_readme(
+    tests: int,
+    loc: int,
+    specs: int,
+    *,
+    tests_comment: int | None = None,
+    commands: int = 30,
+) -> str:
     """Render a minimal README fragment using the exact phrasing check_readme parses."""
     comment_tests = tests if tests_comment is None else tests_comment
     return (
         f"- **{tests} tests** in the pytest suite (`tests/python/`)\n"
         f"- **~{loc:,} lines** of Python in the shipped `docket` package\n"
         f"- **{specs} specifications** (RFC 2119), validated in CI\n"
+        f"- **{commands} commands**, each documented in docs/commands.md\n"
         f"uv run pytest                                        # {comment_tests}-test Python suite\n"
     )
 
@@ -95,6 +103,17 @@ class TestCheckReadmeUnit:
         problems = METRICS.check_readme(readme, metrics)
 
         assert any("lines of Python" in p for p in problems)
+
+    def test_fails_on_planted_command_count_drift(self, tmp_path: Path) -> None:
+        # The command count is computed by compute() but went unguarded until the
+        # README stated it -- a metric nothing quotes is a metric nothing checks.
+        metrics = {"tests": 700, "loc": 12000, "commands": 30, "specs": 15}
+        readme = tmp_path / "README.md"
+        readme.write_text(_synthetic_readme(700, 12000, 15, commands=99))
+
+        problems = METRICS.check_readme(readme, metrics)
+
+        assert any("commands" in p for p in problems)
 
     def test_one_reworded_claim_is_skipped_not_failed(self, tmp_path: Path) -> None:
         # Rewording *a* claim out of the prose is a docs concern, not drift —
@@ -216,7 +235,9 @@ def test_cli_subprocess_check_catches_planted_drift_against_live_counts(tmp_path
     live = json.loads(json_result.stdout)
 
     good = tmp_path / "GOOD.md"
-    good.write_text(_synthetic_readme(live["tests"], live["loc"], live["specs"]))
+    good.write_text(
+        _synthetic_readme(live["tests"], live["loc"], live["specs"], commands=live["commands"])
+    )
     good_result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--check", "--readme", str(good)],
         cwd=REPO_ROOT,
@@ -227,7 +248,9 @@ def test_cli_subprocess_check_catches_planted_drift_against_live_counts(tmp_path
     assert good_result.returncode == 0, good_result.stdout + good_result.stderr
 
     bad = tmp_path / "BAD.md"
-    bad.write_text(_synthetic_readme(live["tests"] + 1, live["loc"], live["specs"]))
+    bad.write_text(
+        _synthetic_readme(live["tests"] + 1, live["loc"], live["specs"], commands=live["commands"])
+    )
     bad_result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH), "--check", "--readme", str(bad)],
         cwd=REPO_ROOT,
