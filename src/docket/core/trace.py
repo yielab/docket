@@ -45,6 +45,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verification_failed",
         "tester_verdict_failed",
         "stale_claim",
+        "hop_retry",  # R-2: one retryable agent-turn retry attempt, observable history
         "error",
         "session_end",
     ]

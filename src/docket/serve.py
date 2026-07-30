@@ -233,7 +233,14 @@ def _check_schedules(now_ts: float) -> None:
 
         def _run(proj: str = project) -> None:
             with contextlib.suppress(Exception):
-                _dispatch.dispatch_pod(proj)
+                # R-2: process-wide serve config knob (unset = no override, same
+                # as before this card — each pod resolves its own Lead-meta/
+                # DEFAULT_TIMEOUT as usual).
+                _dispatch.dispatch_pod(
+                    proj,
+                    turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
+                    verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                )
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
@@ -263,7 +270,11 @@ def _run_sweeps(dispatch: bool = False) -> None:
         from docket.core import dispatch as _dispatch
 
         with contextlib.suppress(Exception):
-            _dispatch.dispatch_all_pods()
+            # R-2: process-wide serve config knob (unset = no override).
+            _dispatch.dispatch_all_pods(
+                turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
+                verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+            )
         with contextlib.suppress(Exception):
             _check_schedules(time.time())
 
@@ -373,7 +384,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
 
             def _run(proj: str = project) -> None:
                 with contextlib.suppress(Exception):
-                    _dispatch.dispatch_pod(proj)
+                    # R-2: process-wide serve config knob (unset = no override).
+                    _dispatch.dispatch_pod(
+                        proj,
+                        turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
+                        verify_timeout=cfg.DISPATCH_VERIFY_TIMEOUT_S,
+                    )
 
             threading.Thread(target=_run, daemon=True).start()
             resp_body = json.dumps(

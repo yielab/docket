@@ -14,6 +14,18 @@ claim is swept to ``failed`` (``failureKind: "stale_claim"``) and is resumable �
 resume=True)`` re-claims it and continues from the last persisted hop instead of hop 0. A
 ``blocked`` (budget) task is never silently rewritten to ``pending``; it re-enters the queue only
 via ``unblock_pod`` (pod-wide budget change) or ``retry_task`` (single task, explicit).
+
+R-2 (retries + decoupled timeouts): a hop whose agent turn fails with a *retryable*
+``AgentRunResult.failure_kind`` (``timeout``/``daemon_error`` — a daemon hiccup, not a real
+answer) is retried in place, up to a per-role budget (``config.DISPATCH_RETRIES_PER_ROLE``) with
+linear backoff, before the hop is finally marked failed. ``attempts`` is persisted per hop.
+Retrying can make a single hop take meaningfully longer than before, so every retry (and every
+completed hop) refreshes the task's ``claimedAt`` — otherwise a legitimately in-progress retry
+loop could exceed ``CLAIM_STALE_TIMEOUT`` and a *different* concurrent dispatcher's stale-claim
+sweep would wrongly steal it (see ``_touch_claim``). The agent-turn timeout and the verifyCmd
+timeout are now independent (``turnTimeoutS``/``verifyTimeoutS``), resolved per call: an explicit
+override (e.g. ``docket pod <p> dispatch --timeout``) wins, then the pod Lead's meta, then
+``DEFAULT_TIMEOUT``.
 """
 
 from __future__ import annotations
@@ -21,6 +33,7 @@ from __future__ import annotations
 import datetime as _dt
 import json as _json
 import re as _re
+import time as _time
 import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -38,10 +51,17 @@ from docket.edges.adapters import system as _sys
 # Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
 PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
-# Injectable runner for tests (matches the ACL ``agent_run`` signature).
+# Injectable runner for tests (matches the ACL ``agent_run`` signature). The 4th
+# positional arg is always the *agent-turn* timeout (never the verify timeout).
 Runner = Callable[[str, str, str, int, dict[str, str] | None], _oc.AgentRunResult]
 
 DEFAULT_TIMEOUT = 300
+
+# R-2: only these AgentRunResult.failure_kind values are worth retrying — a
+# transient daemon/CLI hiccup. A non-zero exit or an unparseable/failing
+# verdict is a real answer and must never be retried (retrying would risk
+# masking a genuine failure as a transient one, and burns budget for nothing).
+_RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"})
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
@@ -81,6 +101,10 @@ class HopResult:
     output: str = ""
     cost_usd: float = 0.0
     error: str = ""
+    # R-2: total agent-turn attempts made for this hop (1 = succeeded or failed on
+    # the first try, no retry). Only retryable failures (see
+    # ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
+    attempts: int = 1
 
 
 @dataclass
@@ -244,6 +268,44 @@ def pod_budget(project: str) -> float:
         return 0.0
 
 
+def _retries_for_role(role: str) -> int:
+    """Max retry attempts (after the first try) for one role's hop (R-2 policy)."""
+    return _cfg.DISPATCH_RETRIES_PER_ROLE.get(role, _cfg.DISPATCH_RETRIES_DEFAULT)
+
+
+def _lead_meta_timeout(project: str, field_name: str) -> int | None:
+    """Read a positive-int timeout field from the pod's Lead meta, if set validly."""
+    lead_id = _pod.member_id(project, "lead")
+    raw = _oc.meta_get(lead_id, field_name, "")
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def pod_turn_timeout(project: str) -> int | None:
+    """The pod's configured agent-turn timeout (Lead's ``turnTimeoutS``), if set."""
+    return _lead_meta_timeout(project, "turnTimeoutS")
+
+
+def pod_verify_timeout(project: str) -> int | None:
+    """The pod's configured verifyCmd timeout (Lead's ``verifyTimeoutS``), if set."""
+    return _lead_meta_timeout(project, "verifyTimeoutS")
+
+
+def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
+    """Timeout precedence: an explicit per-call override, else the pod's Lead-meta
+    config, else ``DEFAULT_TIMEOUT`` (the fallback of last resort — R-2)."""
+    if explicit is not None:
+        return explicit
+    if pod_value is not None:
+        return pod_value
+    return DEFAULT_TIMEOUT
+
+
 _TRUNCATION_MARKER = "\n[... truncated {n} bytes ...]\n"
 
 
@@ -398,6 +460,7 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "output": h.output,
         "costUsd": round(h.cost_usd, 6),
         "error": h.error,
+        "attempts": h.attempts,
     }
 
 
@@ -410,6 +473,7 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
         output=str(rec.get("output", "")),
         cost_usd=float(rec.get("costUsd", 0.0) or 0.0),
         error=str(rec.get("error", "")),
+        attempts=int(rec.get("attempts", 1) or 1),
     )
 
 
@@ -418,9 +482,12 @@ def dispatch_task(
     task: dict[str, Any],
     *,
     runner: Runner | None = None,
-    timeout: int = DEFAULT_TIMEOUT,
+    turn_timeout: int | None = None,
+    verify_timeout: int | None = None,
     resume_from: list[HopResult] | None = None,
     on_hop: Callable[[HopResult], None] | None = None,
+    on_retry: Callable[[], None] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop.
 
@@ -434,12 +501,25 @@ def dispatch_task(
     re-invoked. *on_hop* — if given — fires with each new HopResult right after
     it completes, so the caller can persist per-hop progress incrementally
     instead of only when the whole task finishes (R-1 crash-safety).
+
+    R-2: *turn_timeout*/*verify_timeout* are per-call overrides (e.g. from
+    ``docket pod <p> dispatch --timeout``); ``None`` (the default) falls back to
+    the pod Lead's meta (``turnTimeoutS``/``verifyTimeoutS``), then
+    ``DEFAULT_TIMEOUT`` (see ``_resolve_timeout``). A hop whose agent turn fails
+    with a retryable ``failure_kind`` is retried in place (linear backoff via
+    *sleep*, real ``time.sleep`` unless a test injects a fake) up to the role's
+    retry budget; *on_retry* — if given — fires before each retry sleep so the
+    caller can refresh the task's claim timestamp (see ``_touch_claim``) before
+    it goes stale.
     """
     run = runner or _oc.agent_run
+    do_sleep = sleep or _time.sleep
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
     pipeline = pod_pipeline(project)
     cap = pod_budget(project)
+    resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
+    resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
     prior: list[HopResult] = list(resume_from) if resume_from else []
     done_roles = {h.role for h in prior}
@@ -504,7 +584,42 @@ def dispatch_task(
             _json.dumps({"hop": role, "agent": member_id}),
         )
         env = _hop_env(member_id, role)
-        run_res = run(member_id, session_id, message, timeout, env)
+
+        # R-2: retry only a retryable failure (a transient daemon/CLI hiccup) —
+        # a non-zero exit or a bad verdict is a real answer and stops here, same
+        # as before this card. `attempt` ends as the total number of tries made.
+        retry_budget = _retries_for_role(role)
+        attempt = 1
+        while True:
+            run_res = run(member_id, session_id, message, resolved_turn_timeout, env)
+            if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
+                break
+            if attempt > retry_budget:
+                break
+            _trace.trace_event(
+                project,
+                session_id,
+                role,
+                "hop_retry",
+                _json.dumps(
+                    {
+                        "hop": role,
+                        "attempt": attempt,
+                        "retry_budget": retry_budget,
+                        "failure_kind": run_res.failure_kind,
+                        "error": run_res.error,
+                    }
+                ),
+            )
+            # A retry means the dispatcher is alive and making forward progress,
+            # not crashed — refresh the claim before the backoff sleep so a
+            # concurrent dispatcher's stale-claim sweep never mistakes it for one
+            # (see the module docstring / _touch_claim).
+            if on_retry is not None:
+                on_retry()
+            do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
+            attempt += 1
+
         hop = HopResult(
             role=role,
             member_id=member_id,
@@ -512,6 +627,7 @@ def dispatch_task(
             output=run_res.output,
             cost_usd=run_res.cost_usd,
             error=run_res.error,
+            attempts=attempt,
         )
         result.hops.append(hop)
         prior.append(hop)
@@ -575,7 +691,10 @@ def dispatch_task(
                 worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
                 impl_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
                 cwd = _pod.resolve_member_cwd(member_id, worktree_dir, impl_codebase)
-                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, timeout)
+                # R-2: the verify command gets its own timeout, decoupled from the
+                # agent-turn timeout above — a 20-minute test suite and a hung LLM
+                # turn are no longer forced to share one budget.
+                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, resolved_verify_timeout)
                 redacted = _trace.redact(raw_output)
                 if not passed:
                     _trace.trace_event(
@@ -694,7 +813,9 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     """Append one just-completed hop to the task's persisted record.
 
     Called after every hop, not only at task end — a crash mid-task then loses
-    at most the in-flight hop, never the ones that already finished.
+    at most the in-flight hop, never the ones that already finished. R-2: also
+    refreshes ``claimedAt`` — a completed hop is forward progress, same as a
+    retry (see ``_touch_claim``), so it resets the stale-claim clock too.
     """
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -708,8 +829,40 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
                 hops.append(_hop_record(hop))
                 t["hops"] = hops
                 t["costUsd"] = round(sum(float(h.get("costUsd", 0.0) or 0.0) for h in hops), 6)
+                t["claimedAt"] = _now()
                 return {"tasks": tasks}
         return None  # task no longer in the queue — nothing to persist
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _touch_claim(project: str, task_id: str) -> None:
+    """Refresh a ``running`` task's ``claimedAt`` without touching anything else.
+
+    R-2's subtle correctness point: retries add a backoff sleep plus another
+    agent-turn timeout to a single hop's wall-clock time, on top of whatever the
+    earlier hops already took. Before this card, ``claimedAt`` was set once at
+    claim time and never touched again until the *next* hop finished — so a long
+    enough retry run (or just a long enough pipeline) could push the elapsed time
+    since ``claimedAt`` past ``CLAIM_STALE_TIMEOUT`` even though the task is very
+    much alive. ``_sweep_stale_claims`` runs at the top of every ``dispatch_pod``
+    call, including ones from a *different* thread dispatching the same pod
+    concurrently (the whole reason R-1's claims are locked in the first place) —
+    without a refresh, that concurrent sweep would see a stale-looking
+    ``claimedAt`` and fail the task out from under the dispatcher still actively
+    retrying it, mid-hop. Called before every retry attempt (``dispatch_task``'s
+    ``on_retry``); hop completion is separately covered by ``_persist_hop`` above.
+    A no-op if the task isn't ``running`` (e.g. it raced to a terminal state).
+    """
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") == task_id and t.get("status") == "running":
+                t["claimedAt"] = _now()
+                return {"tasks": tasks}
+        return None
 
     _store.read_modify_write(pod_task_list_path(project), _fn)
 
@@ -843,9 +996,11 @@ def dispatch_pod(
     project: str,
     *,
     runner: Runner | None = None,
-    timeout: int = DEFAULT_TIMEOUT,
+    turn_timeout: int | None = None,
+    verify_timeout: int | None = None,
     max_tasks: int | None = None,
     resume: bool = False,
+    sleep: Callable[[float], None] | None = None,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first).
 
@@ -858,6 +1013,16 @@ def dispatch_pod(
     reclaim those tasks and continue them from their last persisted hop
     instead of hop 0. A ``blocked`` (budget) task is left ``blocked`` — never
     silently retried.
+
+    *turn_timeout*/*verify_timeout* (R-2) are per-call overrides; ``None`` (the
+    default) falls back to the pod Lead's meta, then ``DEFAULT_TIMEOUT`` (see
+    ``dispatch_task``/``_resolve_timeout``). A retryable hop failure is retried
+    in place (see ``dispatch_task``); every retry and every completed hop
+    refreshes the claimed task's ``claimedAt`` (``_touch_claim``/``_persist_hop``)
+    so a legitimately-still-running retry loop never looks like a stale claim to
+    a concurrent dispatcher's sweep. *sleep* — if given — replaces the real
+    ``time.sleep`` used for retry backoff (tests only; production callers never
+    need to pass this).
 
     Returns one TaskResult per task attempted. Raises DispatchError if the pod
     has no Lead.
@@ -876,13 +1041,19 @@ def dispatch_pod(
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
             _persist_hop(_project, _task_id, hop)
 
+        def _touch(_project: str = project, _task_id: str = task_id) -> None:
+            _touch_claim(_project, _task_id)
+
         res = dispatch_task(
             project,
             task,
             runner=runner,
-            timeout=timeout,
+            turn_timeout=turn_timeout,
+            verify_timeout=verify_timeout,
             resume_from=resume_hops,
             on_hop=_persist,
+            on_retry=_touch,
+            sleep=sleep,
         )
         _finalize_task(project, task_id, res)
         results.append(res)
@@ -905,18 +1076,28 @@ def dispatchable_pods() -> list[str]:
 def dispatch_all_pods(
     *,
     runner: Runner | None = None,
-    timeout: int = DEFAULT_TIMEOUT,
+    turn_timeout: int | None = None,
+    verify_timeout: int | None = None,
 ) -> dict[str, list[TaskResult]]:
     """Dispatch every pod's queue once (used by the opt-in `serve --dispatch` loop).
 
     Best-effort per pod: one pod failing to dispatch never blocks the others.
     Never auto-resumes a crashed pod's stale-claim failures — that stays an
     explicit, operator-driven action (``docket pod <p> dispatch --resume``).
+
+    *turn_timeout*/*verify_timeout* let the caller (``serve.py``) apply a
+    process-wide config knob (``config.DISPATCH_TURN_TIMEOUT_S`` /
+    ``DISPATCH_VERIFY_TIMEOUT_S``) across every pod in one sweep; ``None``
+    (the default) leaves each pod's own Lead-meta/``DEFAULT_TIMEOUT``
+    resolution unaffected — no behaviour change for callers that don't pass
+    these.
     """
     out: dict[str, list[TaskResult]] = {}
     for project in dispatchable_pods():
         try:
-            res = dispatch_pod(project, runner=runner, timeout=timeout)
+            res = dispatch_pod(
+                project, runner=runner, turn_timeout=turn_timeout, verify_timeout=verify_timeout
+            )
         except DispatchError:
             continue
         if res:
