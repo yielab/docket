@@ -279,6 +279,54 @@ class Variable(BaseModel):
         return self
 
 
+class VariableError(Exception):
+    """Raised by :func:`resolve_variables` when *provided* does not satisfy a
+    spec's declared variable contract — today, only "a required variable has
+    no value at all" (neither a caller-supplied one nor a default, since a
+    required variable is defined to have no default — see ``Variable._check``
+    above)."""
+
+
+def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Resolve *spec*'s declared variable namespace against caller-supplied values.
+
+    This is the "future W-4 webhook param" the :class:`Variable` docstring
+    above refers to: a caller (``docket serve``'s ``POST /dispatch/<project>``
+    webhook, today) supplies a plain ``{name: value}`` mapping — *provided* —
+    and this function produces the pipeline's final, resolved variable
+    namespace:
+
+    - a name in *provided* wins outright, whatever its value (an explicit
+      ``null`` counts as "the caller supplied a value", not "absent");
+    - a name declared in ``spec.variables`` but absent from *provided* falls
+      back to that variable's ``default`` (``None`` for one with no default);
+    - a ``required`` variable absent from *provided* is an error — every
+      missing required name is collected and raised together as one
+      :class:`VariableError`, not just the first, so a caller can fix its
+      whole payload in one round trip rather than one missing field at a time.
+
+    A key in *provided* that ``spec.variables`` never declared is passed
+    through unchanged. This mirrors the format's own stance: **the document**
+    shape is closed (``extra="forbid"`` everywhere, see the module docstring)
+    but a variable's *runtime value* is deliberately not — nothing here
+    interpolates a variable into a hop's prompt or environment yet (still an
+    executor concern, per the ``Variable``/module docstrings), so there is no
+    text-substitution surface an undeclared key could corrupt; rejecting it
+    would only make a pipeline author pre-declare every field a webhook sender
+    might ever include, for no safety benefit today.
+    """
+    values: dict[str, Any] = dict(provided or {})
+    missing = sorted(
+        name for name, var in spec.variables.items() if var.required and name not in values
+    )
+    if missing:
+        raise VariableError("missing required pipeline variable(s): " + ", ".join(missing))
+    for name, var in spec.variables.items():
+        if name not in values:
+            values[name] = var.default
+    return values
+
+
 # ── Pipeline ───────────────────────────────────────────────────────────────────
 
 

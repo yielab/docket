@@ -116,11 +116,19 @@ def _show(args: list[str]) -> int:
     ui.header(f"Run — {rec.get('id', run_id)}")
     ui.console.print()
     task_ids = rec.get("taskIds") or []
+    variables = rec.get("variables") or {}
     for label, val in (
         ("Source", rec.get("source", "?")),
         ("Project", rec.get("project", "?")),
         ("State", rec.get("state", "?")),
         ("Tasks", ", ".join(str(t) for t in task_ids) if task_ids else "—"),
+        # W-4: the pipeline variable namespace this run was dispatched with —
+        # today, only a webhook-triggered run ever has a non-empty one (its
+        # JSON body's params, resolved against the pod's effective pipeline).
+        (
+            "Variables",
+            ", ".join(f"{k}={v}" for k, v in variables.items()) if variables else "—",
+        ),
         ("Created", rec.get("created", "") or "—"),
         ("Started", rec.get("startedAt") or "—"),
         ("Finished", rec.get("finishedAt") or "—"),

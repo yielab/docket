@@ -1,9 +1,9 @@
 # Audit Log Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped, now including `models.*`; a future `runs.cancel` remains the one
-tracked gap — see Requirements)
+removal below are all shipped, now including both `models.*` and `runs.cancel` — the two gaps
+tracked through Version 2.1.0 are closed; see Requirement 2 for what audit still does NOT see)
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -74,12 +74,22 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      entries for one call is intentional, not a duplicate bug: the `mcp.*` line is the uniform
      "an MCP call happened" record, the domain line is the same record any other channel producing
      that same effect would write. See `specs/api/mcp-server.spec.md`.
-2. **Tracked gap (NOT recorded — out of this version's scope):** a future `docket
-   runs cancel` (Phase 16 — the run registry it would cancel does not exist yet).
-   This spec MUST NOT be cited as evidence that it records today. (Role→model
-   policy changes were the other tracked gap through Version 2.1.0 — see
-   Version 2.2.0's changelog entry; they are recorded as of this version,
-   Requirement 1's `models.*` entry above.)
+   - `runs.cancel` (`core/runs.py`'s `cancel_run`, ROADMAP Phase 16 W-4) — the one gap W-2 left
+     when it shipped `docket runs cancel`: every other privileged action already wrote an entry,
+     cancellation did not. Written only when a run is actually cancelled (i.e. `cancel_run`'s
+     `ok=True` path); an unknown run id or a run already in a terminal state changes nothing and
+     writes no entry. `detail` names the run id, its project, its state immediately before
+     cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
+     `cli-interface.spec.md`'s `docket runs` entry. This and `approval.*` are the only families
+     written from `core/` rather than `cli/`.
+2. **What the log does NOT see (scope boundary, not a backlog item).** Both gaps tracked through
+   Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version
+   2.3.0; the two cards that closed them (Phase 15 G-4b, Phase 16 W-4) landed in the same wave.
+   What remains uncovered is **structural**: the log records what *docket* does, so an action
+   taken outside docket — a raw Telegram session with an agent, direct `openclaw` CLI use, a
+   human editing `openclaw.json` by hand — leaves no entry, and this spec **MUST NOT** be cited
+   as evidence that it would. That boundary is D-9's "docket orchestrates hops" line, not a gap a
+   future card closes.
 3. `action` **MUST** be a dotted verb (e.g. `gates.enable`, `approval.grant`); `detail`
    **MUST** be a human-readable target (an id, key NAME, model id). Secret VALUES
    **MUST NOT** ever be written to the log.
@@ -252,6 +262,20 @@ redundant.
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.3.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-4 — closed the `runs.cancel` gap.** Added the `runs.cancel` action
+  family (`core/runs.py`'s `cancel_run`): the one privileged action W-2 shipped without an audit
+  entry. Written from `core/` rather than `cli/`, matching `core/approval.py`'s existing
+  `approval.grant`/`approval.deny` precedent — audit logging from `core/` is not a layering
+  violation, only UI and printing are. Written only on an actual cancellation; the no-op paths
+  (unknown run id, already-terminal run) change nothing and record nothing.
+- **Requirement 2 rewritten, because both of its tracked gaps closed in the same wave.** G-4b
+  (Version 2.2.0) recorded `models.*` and W-4 recorded `runs.cancel`; each card's own draft of
+  this spec still listed the *other* one as an open gap, since neither could see the other's
+  merge. Requirement 2 now states the boundary that actually remains — the log records what
+  docket does, and nothing about actions taken outside it.
 
 ### Version 2.2.0 (2026-07-30)
 

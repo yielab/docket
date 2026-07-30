@@ -1,11 +1,15 @@
 # Pipeline Format Specification
 
-**Version**: 2.0.0
-**Status**: Implemented — format and executor. The executor (`core/orchestrator.py`, ROADMAP
-Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch state machine, and the `docket
-pipeline validate|plan|run` CLI surface, now exist — see `pod-dispatch.spec.md` for execution
-semantics and `cli-interface.spec.md` for the CLI contract. This spec still owns only the format
-itself (the document shape and its structural validation).
+**Version**: 2.1.0
+**Status**: Implemented — format, executor, and variable resolution. The executor
+(`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch
+state machine, and the `docket pipeline validate|plan|run` CLI surface, now exist — see
+`pod-dispatch.spec.md` for execution semantics and `cli-interface.spec.md` for the CLI contract.
+`core.pipeline.resolve_variables` (W-4) closes this format's last "not yet built" gap — a
+caller-supplied `{name: value}` mapping (the serve webhook's JSON body, today) is now resolved
+against a spec's declared `variables` before dispatch. This spec still owns only the format
+itself plus that resolution function — interpolating a resolved value into a hop's prompt or
+environment remains unbuilt (see Requirement 4 below).
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -110,10 +114,26 @@ This specification does NOT cover:
    `required` (`bool`, default `False`).
 2. A variable **MUST NOT** declare both `required: true` and a non-null `default` — a required
    variable has no default by definition; a value **MUST** come from whatever invokes the
-   pipeline (e.g. a future W-4 webhook parameter).
+   pipeline (e.g. a webhook parameter — see Requirement 4).
 3. A variable's key **MUST** be a valid identifier (`^[A-Za-z_][A-Za-z0-9_]*$`). No interpolation
    syntax or engine is defined by this spec — declaring a variable does not by itself cause any
-   text substitution anywhere; that is an executor concern (W-2).
+   text substitution anywhere (e.g. into a hop's prompt or environment); that remains an executor
+   concern nothing in this codebase implements yet.
+4. **Variable resolution (ROADMAP Phase 16 W-4).** `core.pipeline.resolve_variables(spec,
+   provided)` **MUST** produce the pipeline's final `{name: value}` namespace from a caller-supplied
+   *provided* mapping (e.g. the serve webhook's JSON body — see `serve-read-api.spec.md`):
+   - a name present in *provided* **MUST** win outright, whatever its value — an explicit `null`
+     counts as "the caller supplied a value", not "absent";
+   - a name declared in `variables` but absent from *provided* **MUST** fall back to that
+     variable's `default` (`None` for one with no default);
+   - a `required` variable absent from *provided* **MUST** raise `VariableError`; every missing
+     required name **MUST** be named in one raised error, not just the first;
+   - a key present in *provided* but not declared in `variables` **MUST** pass through unchanged —
+     this function validates *presence* of required values, not a closed key set (unlike the
+     document shape itself, which is `extra="forbid"` throughout).
+   This function does not interpolate a resolved value anywhere (Requirement 3 still holds) — it
+   only produces the namespace a future interpolation engine, or a caller inspecting what a
+   dispatch ran with, would read from.
 
 ### Steps
 
@@ -261,6 +281,17 @@ errors = validate_pipeline(text)   # == load_pipeline(text).errors
 builtin = default_pipeline()       # the zero-migration PipelineSpec, unconditionally
 ```
 
+Variable resolution (Requirement 4, ROADMAP Phase 16 W-4):
+
+```python
+from docket.core.pipeline import resolve_variables, VariableError
+
+values = resolve_variables(spec, provided)   # provided: dict[str, Any] | None
+# -> dict[str, Any]: every declared variable resolved (provided value, else default),
+#    plus any undeclared key from `provided` passed through unchanged.
+# Raises VariableError naming every missing `required` variable at once.
+```
+
 ## Examples
 
 ### A minimal pipeline (lean pod: no rework, no parallel)
@@ -371,6 +402,17 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.1.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-4 (durable scheduling + event triggers).** Added
+  `core.pipeline.resolve_variables`/`VariableError` (Requirement 4): the variable resolution this
+  format's `Variable`/`PipelineSpec` always declared but never implemented. `docket serve`'s
+  `POST /dispatch/<project>` webhook (see `serve-read-api.spec.md`) is the first caller — its JSON
+  body is resolved against the pod's effective pipeline's declared `variables` before a run record
+  is even created, and a missing `required` variable is rejected with 400 before anything is
+  dispatched. This is additive (a new function, no schema change to `PipelineSpec` itself) and
+  does not implement text interpolation (Requirement 3 is unchanged and still open).
 
 ### Version 2.0.0 (2026-07-30)
 

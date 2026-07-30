@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Stable
 **Last Updated**: 2026-07-30
 
@@ -138,23 +138,28 @@ to one pod.
       "id":         "run-3f2a1c9e-...",
       "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "myapp",
-      "state":      "queued | running | succeeded | failed",
+      "state":      "queued | running | succeeded | failed | cancelled",
       "taskIds":    ["task-91a2..."],
       "error":      "",
       "created":    "2026-07-30T02:10:00.123456+00:00",
       "startedAt":  "2026-07-30T02:10:00.200000+00:00",
-      "finishedAt": "2026-07-30T02:10:04.500000+00:00"
+      "finishedAt": "2026-07-30T02:10:04.500000+00:00",
+      "variables":  {"env": "staging"}
     }
   ]
 }
 ```
+
+`variables` (added Phase 16 W-4, additive) is the pipeline variable namespace this run was
+resolved against — `{}` for every source except `webhook` (see `POST /dispatch/<project>` below);
+`cancelled` (added Phase 16 W-2, additive) is a run `docket runs cancel <id>` killed in flight.
 
 ### GET /runs/&lt;id&gt;
 
 **Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns one run
 record (the same shape as one element of `/runs`' array, unwrapped). `404` if the id is unknown.
 
-### POST /dispatch/&lt;project&gt; (response shape only)
+### POST /dispatch/&lt;project&gt;
 
 **Changed in API version 2.** The webhook now creates a run record *before* returning, and the
 response body carries its id:
@@ -167,6 +172,29 @@ The dispatch pipeline itself still runs asynchronously (this endpoint must not b
 agent turn) — poll `GET /runs/<id>` (or `docket runs show <id>`) for the outcome. Before API
 version 2 this response had no `run` field and the dispatch outcome, including any exception, was
 silently discarded.
+
+**Request body (added Phase 16 W-4, additive).** The request body — a plain `{name: value}` JSON
+object, `{}` if omitted — is the webhook's params, resolved against the pod's *effective*
+pipeline's declared `variables` (`core.pipeline.resolve_variables`; see
+`pipeline-format.spec.md`) before the run record is created:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"env": "staging"}' http://127.0.0.1:7474/dispatch/myapp
+```
+
+- A body that is not a JSON object (e.g. malformed JSON, or valid JSON that isn't an object) is
+  rejected with `400` before any pipeline is even resolved.
+- A missing `required` pipeline variable (one absent from both the body and the pipeline's own
+  declared default — a required variable never has one) is rejected with `400` naming the missing
+  variable(s), and — like the auth/malformed-project rejections above it — **no run record is
+  created** for a rejected request.
+- On success, the resolved namespace (payload values winning over any declared default; a key the
+  pipeline never declared passes through unchanged) is persisted on the created run record's new
+  `variables` field (see `GET /runs` above).
+- The effective pipeline resolved here is always the pod's own configured/default one (whatever
+  `docket pod <project> dispatch` would use) — the webhook has no way to supply a `--file` pipeline
+  of its own; only its *variable values* are payload-driven.
 
 ## Validation
 
