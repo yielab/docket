@@ -20,7 +20,9 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import sync as _sync
 from docket.core.utils import aggregate_cost, gateway_active, project_ids, restart_gateway
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
@@ -47,7 +49,7 @@ _PROVIDER_KEY: dict[str, str] = {
     "cerebras": "CEREBRAS_API_KEY",
 }
 
-_WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md")
+_WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 
 
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
@@ -297,37 +299,31 @@ def _check_legacy_model_registry() -> int:
 
 
 def _check_drift(ids: list[str], do_fix: bool) -> int:
-    """Config drift (meta ↔ openclaw.json) on model + sessionKey."""
+    """Config drift (meta ↔ openclaw.json) on model + sessionKey.
+
+    The comparison itself is `core/sync.py`'s `check_agent` (the single
+    implementation of this logic); this function only renders the result and
+    drives the `--fix` re-sync, since `core/` never prints.
+    """
     if not ids:
         return 0
     ui.console.print()
     ui.console.print("[bold]Config drift check (meta ↔ openclaw.json):[/bold]")
 
     oc = _oc.load_config()
-    oc_agents = {a.id: a for a in _oc.list_agents(oc)}
     drift_agents: list[str] = []
     issues = 0
 
     for aid in ids:
-        meta_path = _cfg.meta_path(aid)
-        if not meta_path.is_file():
+        if not _cfg.meta_path(aid).is_file():
             continue
-        meta = store.read_json(meta_path)
-        oc_a = oc_agents.get(aid)
-        agent_drift: list[str] = []
+        drifts = _sync.check_agent(aid, oc)
 
-        meta_model = str(meta.get("model", ""))
-        oc_model = oc_a.model if oc_a else ""
-        if meta_model and oc_model and meta_model != oc_model:
-            agent_drift.append(f"model meta={meta_model} openclaw={oc_model}")
-
-        meta_sk = str(meta.get("sessionKey", ""))
-        oc_sk = oc_a.metadata.session_key if oc_a else ""
-        if meta_sk and oc_sk and meta_sk != oc_sk:
-            agent_drift.append(f"sessionKey meta={meta_sk} openclaw={oc_sk}")
-
-        if agent_drift:
-            ui.console.print(f"[red]✗[/red]   {aid}: drift — {'; '.join(agent_drift)}")
+        if drifts:
+            summary = "; ".join(
+                f"{d.field} meta={d.meta_value} openclaw={d.oc_value}" for d in drifts
+            )
+            ui.console.print(f"[red]✗[/red]   {aid}: drift — {summary}")
             issues += 1
             drift_agents.append(aid)
         else:

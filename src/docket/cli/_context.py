@@ -61,7 +61,7 @@ def _context_show(agent_id: str, ws: Path) -> None:
     ui.console.print()
 
     ui.console.print("[bold]Active Tasks[/bold]")
-    hb = ws / "HEARTBEAT.md"
+    hb = ws / _mem.HEARTBEAT_FILE
     if hb.is_file():
         task_lines = [
             ln for ln in hb.read_text(encoding="utf-8").splitlines() if ln.startswith("- [")
@@ -72,7 +72,7 @@ def _context_show(agent_id: str, ws: Path) -> None:
         else:
             ui.console.print("  [dim]No active tasks.[/dim]")
     else:
-        ui.console.print("  [dim]HEARTBEAT.md not found.[/dim]")
+        ui.console.print(f"  [dim]{_mem.HEARTBEAT_FILE} not found.[/dim]")
 
     ui.console.print()
 
@@ -128,7 +128,7 @@ def _context_project(agent_id: str, ws: Path) -> None:
     ui.console.print(f"  [bold]{'Session Key:':<16}[/bold] {raw.get('sessionKey', '—')}")
     ui.console.print()
 
-    hb = ws / "HEARTBEAT.md"
+    hb = ws / _mem.HEARTBEAT_FILE
     if hb.is_file():
         task_lines = [
             ln for ln in hb.read_text(encoding="utf-8").splitlines() if ln.startswith("- [")

@@ -314,7 +314,7 @@ def _specialist_agents_md(role: str) -> str:
         "_Lean — re-sent every turn._\n"
         f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol (the runtime "
         "requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+        f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
         "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
         "3. Read history ONLY when the task needs it: open MEMORY.md, then the\n"
         "   specific memory/YYYY-MM-DD.md you need. Every byte you read is re-sent\n"
@@ -325,7 +325,7 @@ def _specialist_agents_md(role: str) -> str:
         "  never as if you were a member of just one.\n"
         "- Never edit code, run builds, or commit — that is a pod's own\n"
         "  Implementer's job.\n"
-        "- Before starting multi-step work, write it to HEARTBEAT.md — an\n"
+        f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an\n"
         "  unwritten task does not survive a context reset.\n"
     )
 
@@ -349,7 +349,7 @@ def _specialist_soul(role: str) -> str:
         "## Scope\n"
         f"{identity}\n\n"
         "## Traits\n"
-        "- Proactive: check HEARTBEAT.md every session.\n"
+        f"- Proactive: check {_mem.HEARTBEAT_FILE} every session.\n"
         "- You do not edit code, run builds, or commit — that is a pod's own "
         "Implementer's job.\n\n"
         "## Safety\n"
@@ -380,7 +380,7 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
     for fname, text in (
         ("SOUL.md", soul_text),
         ("AGENTS.md", _specialist_agents_md(role)),
-        ("HEARTBEAT.md", _mem.heartbeat_seed(role)),
+        (_mem.HEARTBEAT_FILE, _mem.heartbeat_seed(role)),
     ):
         fpath = ws / fname
         if not fpath.is_file():

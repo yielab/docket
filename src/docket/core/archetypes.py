@@ -53,6 +53,7 @@ from string import Template
 from typing import Any
 
 import docket.config as cfg
+from docket.core import memory as _mem
 from docket.edges import store as _store
 
 SCOPES: frozenset[str] = frozenset({"org", "pod"})
@@ -306,7 +307,7 @@ _LEGACY_AGENTS_TEMPLATE = (
     "_Lean — re-sent every turn._\n"
     "1. Read ${requiredStartupFile} — startup protocol + your codebase\n"
     "   path (the runtime requires this after every context reset).\n"
-    "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+    f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
     "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
     "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
     "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
@@ -315,7 +316,7 @@ _LEGACY_AGENTS_TEMPLATE = (
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never push to main/master or delete files without HITL approval.\n"
-    "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
+    f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an unwritten\n"
     "  task does not survive a context reset.\n"
 )
 
@@ -404,7 +405,7 @@ _STARTER_AGENTS_TEMPLATE = (
     "_Lean — re-sent every turn._\n"
     "1. Read ${requiredStartupFile} — startup protocol + your working directory\n"
     "   (the runtime requires this after every context reset).\n"
-    "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
+    f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
     "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
     "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
     "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
@@ -413,7 +414,7 @@ _STARTER_AGENTS_TEMPLATE = (
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never take an irreversible action outside your stated role without HITL approval.\n"
-    "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
+    f"- Before starting multi-step work, write it to {_mem.HEARTBEAT_FILE} — an unwritten\n"
     "  task does not survive a context reset.\n"
 )
 

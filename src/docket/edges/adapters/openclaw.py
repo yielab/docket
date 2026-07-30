@@ -124,12 +124,6 @@ def meta_set(agent_id: str, field: str, value: Any) -> None:
     store.write_json(path, raw)
 
 
-def meta_write(agent_id: str, meta: AgentMeta) -> None:
-    """Replace the full .docket-meta.json for an agent."""
-    path = meta_path(agent_id)
-    store.write_json(path, meta.model_dump(by_alias=True, exclude_none=False))
-
-
 def list_agents(cfg: OpenClawConfig | None = None) -> list[OcAgent]:
     """Return the full agents.list from openclaw.json."""
     return (cfg or _load_oc()).agents.items
@@ -165,17 +159,6 @@ def set_agent_session_key(agent_id: str, session_key: str) -> None:
     for agent in oc.agents.items:
         if agent.id == agent_id:
             agent.metadata.session_key = session_key
-            _save_oc(oc)
-            return
-    raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
-
-
-def set_agent_project_key(agent_id: str, project_key: str) -> None:
-    """Update metadata.projectKey for one agent."""
-    oc = _load_oc()
-    for agent in oc.agents.items:
-        if agent.id == agent_id:
-            agent.metadata.project_key = project_key
             _save_oc(oc)
             return
     raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
