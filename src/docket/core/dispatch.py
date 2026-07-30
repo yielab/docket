@@ -840,7 +840,7 @@ def dispatch_task(
     caller can refresh the task's claim timestamp (see ``_touch_claim``) before
     it goes stale.
     """
-    run = runner or _oc.agent_run
+    run = runner or _oc.default_driver().run_turn
     do_sleep = sleep or _time.sleep
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"

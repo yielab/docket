@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
-import json
-import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import docket.config as cfg
 from docket.core import models_policy as _mp
@@ -92,61 +88,25 @@ class CostTotals:
 
 
 def aggregate_cost(agent_id: str) -> CostTotals:
-    """Read session JSONL files and return aggregated token/cost totals.
+    """Return aggregated token/cost totals for *agent_id*.
 
-    Uses an incremental index (.cost-index.json) keyed by (mtime, size) so
-    unchanged files are served from cache; only new/changed files are parsed.
-    Set DOCKET_NO_COST_INDEX=1 to force a full recompute.
+    Phase 18 L-1: the session-JSONL parsing this used to do directly now lives
+    behind the RuntimeDriver port (``edges.adapters.openclaw.OpenClawDriver``'s
+    ``usage()``) — this is a pure translation from the driver's ``UsageTotals``
+    to the legacy ``CostTotals`` shape ``cli/_cost.py``, ``cli/_doctor.py``, and
+    ``core/dispatch.py`` already depend on. See core/runtime_driver.py.
     """
-    sessions_dir = cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
-    index_path = cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-index.json"
-    use_index = os.environ.get("DOCKET_NO_COST_INDEX") != "1"
+    from docket.edges.adapters import openclaw as _oc
 
-    index: dict[str, Any] = {}
-    if use_index and index_path.exists():
-        try:
-            index = json.loads(index_path.read_text(encoding="utf-8"))
-        except Exception:
-            index = {}
-
-    totals = CostTotals()
-    seen: set[str] = set()
-    changed = False
-
-    if sessions_dir.is_dir():
-        for path in sorted(sessions_dir.glob("*.jsonl")):
-            name = path.name
-            seen.add(name)
-            try:
-                st = path.stat()
-                sig: list[int] = [int(st.st_mtime), st.st_size]
-            except OSError:
-                continue
-
-            ent = index.get(name)
-            if use_index and ent and ent.get("sig") == sig:
-                t: dict[str, Any] = ent["totals"]
-            else:
-                t = _parse_session_file(path)
-                index[name] = {"sig": sig, "totals": t}
-                changed = True
-
-            totals.input_tokens += int(t.get("input", 0))
-            totals.output_tokens += int(t.get("output", 0))
-            totals.cache_read += int(t.get("cacheRead", 0))
-            totals.cache_write += int(t.get("cacheWrite", 0))
-            totals.cost_usd += float(t.get("cost", 0.0))
-            totals.turns += int(t.get("turns", 0))
-
-    if use_index:
-        for name in list(index.keys()):
-            if name not in seen:
-                del index[name]
-                changed = True
-        if changed:
-            _write_cost_index(index_path, index)
-
-    return totals
+    t = _oc.default_driver().usage(agent_id).totals
+    return CostTotals(
+        input_tokens=t.input_tokens,
+        output_tokens=t.output_tokens,
+        cache_read=t.cache_read,
+        cache_write=t.cache_write,
+        cost_usd=t.cost_usd,
+        turns=t.turns,
+    )
 
 
 def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
@@ -175,44 +135,6 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
     return round(usd, 6)
 
 
-def _parse_session_file(path: Path) -> dict[str, Any]:
-    t: dict[str, Any] = {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 0,
-        "cacheWrite": 0,
-        "cost": 0.0,
-        "turns": 0,
-    }
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                data: dict[str, Any] = json.loads(line)
-            except Exception:
-                continue
-            msg = data.get("message", {})
-            usage: dict[str, Any] = msg.get("usage", {}) if isinstance(msg, dict) else {}
-            if usage:
-                t["input"] = int(t["input"]) + int(usage.get("input", 0))
-                t["output"] = int(t["output"]) + int(usage.get("output", 0))
-                t["cacheRead"] = int(t["cacheRead"]) + int(usage.get("cacheRead", 0))
-                t["cacheWrite"] = int(t["cacheWrite"]) + int(usage.get("cacheWrite", 0))
-                cost_field = usage.get("cost", {})
-                t["cost"] = float(t["cost"]) + (
-                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
-                )
-                t["turns"] = int(t["turns"]) + 1
-    except Exception:
-        pass
-    return t
-
-
-def _write_cost_index(index_path: Path, index: dict[str, Any]) -> None:
-    index_path.parent.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(Exception):
-        store.write_json(index_path, index)
-
-
 @dataclass
 class DayRecord:
     """Cost/token totals for a single calendar day."""
@@ -225,84 +147,23 @@ class DayRecord:
 
 
 def cost_history(agent_id: str) -> list[DayRecord]:
-    """Parse session JSONL files and return per-day records for one agent.
+    """Return per-day token/cost records for *agent_id*.
 
-    Uses .cost-history.json keyed by the set of file (mtime, size) signatures.
+    Phase 18 L-1: delegates to the RuntimeDriver port's ``usage()`` (see
+    ``aggregate_cost``'s docstring) instead of parsing session JSONL directly.
     """
-    sessions_dir = cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
-    hist_path = cfg.OPENCLAW_DIR / "agents" / agent_id / ".cost-history.json"
-    use_index = os.environ.get("DOCKET_NO_COST_INDEX") != "1"
-
-    sigs: dict[str, list[int]] = {}
-    files: list[Path] = []
-    if sessions_dir.is_dir():
-        files = sorted(sessions_dir.glob("*.jsonl"))
-        for f in files:
-            try:
-                st = f.stat()
-                sigs[f.name] = [int(st.st_mtime), st.st_size]
-            except OSError:
-                pass
-
-    cached: dict[str, Any] = {}
-    if use_index and hist_path.exists():
-        try:
-            cached = json.loads(hist_path.read_text(encoding="utf-8"))
-        except Exception:
-            cached = {}
-
-    hist: dict[str, dict[str, Any]]
-    if use_index and cached.get("sigs") == sigs:
-        hist = cached.get("history", {})
-    else:
-        hist = {}
-        for f in files:
-            try:
-                lines = f.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                continue
-            for line in lines:
-                try:
-                    d: dict[str, Any] = json.loads(line)
-                except Exception:
-                    continue
-                msg = d.get("message", {})
-                usage: dict[str, Any] = msg.get("usage", {}) if isinstance(msg, dict) else {}
-                if not usage:
-                    continue
-                ts = d.get("timestamp", "")
-                day = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else "unknown"
-                b = hist.setdefault(day, {"turns": 0, "input": 0, "output": 0, "cost": 0.0})
-                b["turns"] = int(b["turns"]) + 1
-                b["input"] = int(b["input"]) + int(usage.get("input", 0))
-                b["output"] = int(b["output"]) + int(usage.get("output", 0))
-                cost_field = usage.get("cost", {})
-                b["cost"] = float(b["cost"]) + (
-                    float(cost_field.get("total", 0)) if isinstance(cost_field, dict) else 0.0
-                )
-        if use_index:
-            _write_hist_index(hist_path, sigs, hist)
+    from docket.edges.adapters import openclaw as _oc
 
     return [
         DayRecord(
-            date=day,
-            turns=int(b["turns"]),
-            input_tokens=int(b["input"]),
-            output_tokens=int(b["output"]),
-            cost_usd=round(float(b["cost"]), 6),
+            date=d.date,
+            turns=d.turns,
+            input_tokens=d.input_tokens,
+            output_tokens=d.output_tokens,
+            cost_usd=d.cost_usd,
         )
-        for day, b in sorted(hist.items())
+        for d in _oc.default_driver().usage(agent_id).by_day
     ]
-
-
-def _write_hist_index(
-    hist_path: Path,
-    sigs: dict[str, list[int]],
-    hist: dict[str, dict[str, Any]],
-) -> None:
-    hist_path.parent.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(Exception):
-        store.write_json(hist_path, {"sigs": sigs, "history": hist})
 
 
 def model_source(agent_id: str) -> str:

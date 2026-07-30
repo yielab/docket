@@ -10,9 +10,10 @@ with ``DOCKET_NO_TRACE=1``.
 Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
 line-independent, not a read-modify-write of a whole document, so this module
 writes JSONL directly rather than through ``edges/store.py``. The ingestion
-bridge reads daemon session JSONL under
-``$OPENCLAW_DIR/agents/<project>/sessions`` — opaque turn-data, not an openclaw
-config file.
+bridge (``trace_ingest``) projects daemon turns into this store, but — since
+Phase 18 L-1 — reads them only through the RuntimeDriver port
+(``edges.adapters.openclaw.OpenClawDriver``); this module itself has no
+knowledge of the daemon's on-disk session-JSONL format, only of its own.
 """
 
 from __future__ import annotations
@@ -186,15 +187,28 @@ def trace_event(
 def trace_ingest(project: str) -> None:
     """Idempotently project daemon session logs into the trace store.
 
-    Reads ``$OPENCLAW_DIR/agents/<project>/sessions/*.jsonl`` and projects each
-    turn into tool_call/tool_result events, offset-tracked (.ingest-index.json) to
-    avoid double-emit. Synthesises a session_end for timed-out open sessions.
-    No-ops when DOCKET_NO_TRACE=1 or the daemon session dir is absent.
+    Projects each daemon turn into tool_call/tool_result events, offset-tracked
+    (.ingest-index.json) to avoid double-emit. Synthesises a session_end for
+    timed-out open sessions. No-ops when DOCKET_NO_TRACE=1 or the daemon has no
+    sessions for *project*.
+
+    Phase 18 L-1: the daemon session-JSONL format knowledge this used to hold
+    directly (raw ``sessions/*.jsonl`` globbing, the ``type``/``timestamp``
+    record vocabulary) now lives behind the RuntimeDriver port
+    (``edges.adapters.openclaw.OpenClawDriver``'s ``list_sessions``/
+    ``read_new_turns``) — this function only ever sees the driver's neutral
+    ``SessionSummary``/``SessionSlice`` shapes and applies docket's own
+    trace-event policy (redaction elsewhere, timeout handling, event
+    vocabulary) on top. See core/runtime_driver.py.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return
-    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / project / "sessions"
-    if not sessions_dir.is_dir():
+
+    from docket.edges.adapters import openclaw as _oc
+
+    driver = _oc.default_driver()
+    sessions = driver.list_sessions(project)
+    if not sessions:
         return
 
     project_dir = _cfg.TRACES_DIR / project
@@ -214,29 +228,20 @@ def trace_ingest(project: str) -> None:
     now = _dt.datetime.now(_dt.UTC).timestamp()
     changed = False
 
-    for src in sorted(sessions_dir.glob("*.jsonl")):
-        session_id = src.name[: -len(".jsonl")]
+    for summary in sessions:
+        session_id = summary.session_id
         offset = int(index.get(session_id, 0))
         tracefile = project_dir / f"{session_id}.jsonl"
 
-        try:
-            all_lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
-        except OSError:
+        sl = driver.read_new_turns(project, session_id, offset)
+        if not sl.had_new_content:
             continue
-
-        new_lines = all_lines[offset:]
-        if not new_lines:
-            continue
-
-        session_start_ts = ""
-        with contextlib.suppress(Exception):
-            session_start_ts = str(json.loads(all_lines[0]).get("timestamp", ""))
 
         records: list[dict[str, Any]] = []
         if offset == 0:
             records.append(
                 {
-                    "ts": session_start_ts or _now_iso(),
+                    "ts": sl.session_start_ts or _now_iso(),
                     "project": project,
                     "session_id": session_id,
                     "agent_role": "unknown",
@@ -245,50 +250,32 @@ def trace_ingest(project: str) -> None:
                 }
             )
 
-        last_ts: str | None = None
-        for line in new_lines:
-            line = line.strip()
-            if not line:
+        for turn in sl.turns:
+            if turn.kind not in ("tool_call", "tool_result"):
                 continue
-            try:
-                rec: dict[str, Any] = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            etype = str(rec.get("type", ""))
-            ts = str(rec.get("timestamp", _now_iso()))
-            last_ts = ts
-
-            if etype in ("tool_use", "tool_result", "message"):
-                if etype == "tool_use":
-                    event_type = "tool_call"
-                elif etype == "tool_result":
-                    event_type = "tool_result"
-                else:
-                    continue
-                records.append(
-                    {
-                        "ts": ts,
-                        "project": project,
-                        "session_id": session_id,
-                        "agent_role": "unknown",
-                        "event_type": event_type,
-                        "payload": {
-                            "source": "ingested",
-                            "daemon_type": etype,
-                            "id": rec.get("id"),
-                        },
-                    }
-                )
+            records.append(
+                {
+                    "ts": turn.ts,
+                    "project": project,
+                    "session_id": session_id,
+                    "agent_role": "unknown",
+                    "event_type": turn.kind,
+                    "payload": {
+                        "source": "ingested",
+                        "daemon_type": turn.daemon_type,
+                        "id": turn.record_id,
+                    },
+                }
+            )
 
         _append(tracefile, records)
 
-        index[session_id] = offset + len(new_lines)
+        index[session_id] = sl.next_offset
         changed = True
 
         # Synthetic session_end for timed-out open traces.
-        if last_ts:
-            last_epoch = _epoch_from_iso(last_ts)
+        if sl.last_ts:
+            last_epoch = _epoch_from_iso(sl.last_ts)
             if (
                 last_epoch is not None
                 and (now - last_epoch) > timeout_s
