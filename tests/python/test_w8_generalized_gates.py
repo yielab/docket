@@ -33,6 +33,7 @@ import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import pipeline as _pipeline
+from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 
@@ -108,7 +109,7 @@ class _RoleRunner:
         tail = agent_id.rsplit("-", 1)[-1]
         role = agent_id.rsplit("-", 2)[-2] if tail.isdigit() else tail
         output = self.outputs.get(role, f"done by {agent_id}")
-        return _oc.AgentRunResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
 # ── mechanical gate, generalized beyond "implementer" ────────────────────────

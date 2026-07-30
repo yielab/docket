@@ -50,6 +50,7 @@ from docket.cli import _approve, _deny
 from docket.core import approval as _ap
 from docket.core import dispatch as _dispatch
 from docket.core import pipeline as _pipeline
+from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 from docket.serve import _DocketHandler
@@ -138,9 +139,9 @@ class _RecordingRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         self.calls.append(agent_id.rsplit("-", 1)[-1])
-        return _oc.AgentRunResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+        return _rd.TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
 
 
 class _VerdictAwareRunner:
@@ -157,7 +158,7 @@ class _VerdictAwareRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         if role == "tester":
@@ -166,7 +167,7 @@ class _VerdictAwareRunner:
             output = "APPROVE - looks good"
         else:
             output = f"done by {agent_id}"
-        return _oc.AgentRunResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
 class _OneReworkThenGateAgainRunner:
@@ -184,7 +185,7 @@ class _OneReworkThenGateAgainRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         if role == "reviewer":
@@ -196,7 +197,7 @@ class _OneReworkThenGateAgainRunner:
             output = "PASS - looks good"
         else:
             output = f"done by {agent_id}"
-        return _oc.AgentRunResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
 # ── pod-level gate source + the G-2/W-1/W-2 seams ────────────────────────────────

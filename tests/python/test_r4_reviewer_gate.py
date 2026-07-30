@@ -35,6 +35,7 @@ import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
+from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 
@@ -163,7 +164,7 @@ class TestReviewerGateBasic:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             role = _role_of(member_id)
             if role == "reviewer":
                 output = reviewer_output
@@ -171,7 +172,7 @@ class TestReviewerGateBasic:
                 output = tester_output
             else:
                 output = "ok"
-            return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         return _run
 
@@ -207,10 +208,10 @@ class TestReviewerGateBasic:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             calls.append(_role_of(member_id))
             output = "no marker here" if _role_of(member_id) == "reviewer" else "ok"
-            return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
         _dispatch.dispatch_task("myapp", task, runner=_run)
@@ -244,8 +245,8 @@ class TestReviewerGateBasic:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
-            return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
+        ) -> _rd.TurnResult:
+            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("leanapp", task, runner=_run)
@@ -281,17 +282,17 @@ class _ReworkRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         role = _role_of(member_id)
         self.calls.append((role, message))
         if role == "reviewer":
             self._reviewer_calls += 1
             if self._reviewer_calls <= self.request_changes_count:
-                return _oc.AgentRunResult(ok=True, output=self.review_text, cost_usd=0.01, raw={})
-            return _oc.AgentRunResult(ok=True, output="APPROVE - fixed", cost_usd=0.01, raw={})
+                return _rd.TurnResult(ok=True, output=self.review_text, cost_usd=0.01, raw={})
+            return _rd.TurnResult(ok=True, output="APPROVE - fixed", cost_usd=0.01, raw={})
         if role == "tester":
-            return _oc.AgentRunResult(ok=True, output="PASS - fine", cost_usd=0.01, raw={})
-        return _oc.AgentRunResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+            return _rd.TurnResult(ok=True, output="PASS - fine", cost_usd=0.01, raw={})
+        return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
 
 
 class TestReviewerReworkLoop:
@@ -436,19 +437,19 @@ class _CrashOnSecondImplementerCallRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         role = _role_of(member_id)
         self.calls.append(role)
         if role == "implementer":
             self._impl_calls += 1
             if self._impl_calls == 2:
                 raise RuntimeError("simulated crash mid-rework")
-            return _oc.AgentRunResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+            return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
         if role == "reviewer":
-            return _oc.AgentRunResult(
+            return _rd.TurnResult(
                 ok=True, output="REQUEST-CHANGES\nfix the widget", cost_usd=0.01, raw={}
             )
-        return _oc.AgentRunResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+        return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
 
 
 class TestReviewerReworkResume:

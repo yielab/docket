@@ -54,10 +54,11 @@ class TurnResult:
     """Outcome of one agent turn, however the driver executed it.
 
     Field order is load-bearing: dozens of existing tests construct this
-    positionally (``TurnResult(False, "", 0.0, {}, "boom")`` via its
-    ``edges.adapters.openclaw.AgentRunResult`` alias) — do not reorder or
-    insert a field before ``failure_kind`` without a matching sweep of those
-    call sites.
+    positionally (``TurnResult(False, "", 0.0, {}, "boom")``) — do not reorder
+    or insert a field before ``failure_kind`` without a matching sweep of
+    those call sites. (Before W-5, most of those call sites went through
+    ``edges.adapters.openclaw.AgentRunResult``, a now-deleted alias of this
+    same class — see that module's history.)
     """
 
     ok: bool
