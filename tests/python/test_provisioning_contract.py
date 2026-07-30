@@ -95,6 +95,55 @@ class TestSeedContract:
         assert "heartbeat.md" in text
 
 
+class TestSeedContractWorkdir:
+    """ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint has no codebase —
+    seed_contract's work_dir parameter must produce sensible, non-codebase
+    framing without touching the codebase-flavored text for existing callers.
+    """
+
+    def test_work_dir_default_reproduces_codebase_output_unchanged(self, tmp_path: Path) -> None:
+        # The exact same call as an existing test, just asserting the new
+        # work_dir="" default keyword doesn't change a single byte.
+        _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo", stack="Go")
+        text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
+        assert "## Your codebase" in text
+        assert "/src/demo" in text
+
+    def test_workdir_anchors_working_directory_not_codebase(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo", stack="")
+        text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
+        assert "## Your working directory" in text
+        assert "/home/user/work/demo" in text
+        assert "## Your codebase" not in text
+        assert "git-tracked codebase" in text.lower()
+
+    def test_workdir_carries_resume_and_durability_contract(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")
+        text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text().lower()
+        assert "resume" in text
+        assert "unwritten task" in text
+        assert "heartbeat.md" in text
+        assert _mem._CONTRACT_MARKER in (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
+
+    def test_workdir_memory_md_has_working_directory_not_repo(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo", stack="n/a")
+        text = (tmp_path / _mem.MEMORY_FILE).read_text()
+        assert "## Working directory" in text
+        assert "/home/user/work/demo" in text
+        assert "## Repo" not in text
+
+    def test_workdir_daily_log_mentions_working_directory(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")
+        rel = _mem.today_memory_relpath()
+        text = (tmp_path / rel).read_text()
+        assert "Working directory" in text
+        assert "/home/user/work/demo" in text
+
+    def test_contract_ok_true_for_workdir_seed(self, tmp_path: Path) -> None:
+        _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")
+        assert _mem.contract_ok(tmp_path) is True
+
+
 class TestHeartbeatSeed:
     def test_ledger_teaches_write_before_start_and_resume(self) -> None:
         body = _mem.heartbeat_seed("demo-lead")

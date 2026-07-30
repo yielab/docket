@@ -225,3 +225,16 @@ def pod_scratch_dir(project: str) -> Path:
     Injected into the Implementer's TOOLS.md as $DOCKET_SCRATCH_DIR.
     """
     return OPENCLAW_DIR / "workspaces" / "pods" / project / ".scratch"
+
+
+def pod_work_dir(project: str) -> Path:
+    """Default working directory for a `workdir`-kind pod blueprint (ROADMAP
+    Phase 16 W-7 — research/content/ops pods, which have no codebase).
+
+    Auto-provisioned (mkdir -p, 0700) at pod creation the same way
+    `pod_scratch_dir` is, unless the operator supplies an explicit path
+    (``docket add --codebase <path>`` doubles as "the working directory" for
+    a `workdir` blueprint). Shared by the whole pod, mirroring how a
+    `codebase` path is shared by every member of a `software` pod.
+    """
+    return OPENCLAW_DIR / "workspaces" / "pods" / project / "workdir"
