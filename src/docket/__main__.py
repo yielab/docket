@@ -16,7 +16,6 @@ _ALIASES = {
     "telegram": "wire",
     "key": "keys",
     "secret": "keys",
-    "wf": "workflow",
     "log": "logs",
     "usage": "cost",
     "check": "doctor",
@@ -86,7 +85,17 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "Any old queue file at ~/.openclaw/workspaces/manager/TASK_LIST.json is preserved, "
         "untouched, but no longer read by docket.",
     ),
+    "workflow": (
+        "docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML "
+        "validator ignored four constructs its own template emitted; ROADMAP D-16).",
+        "Use: docket pipeline validate   (was: workflow <id> validate <name>)",
+        "Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>)",
+        "Use: docket pipeline run        to actually execute a pipeline",
+        "Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer "
+        "read by docket.",
+    ),
 }
+_REMOVED["wf"] = _REMOVED["workflow"]
 
 
 def main() -> None:

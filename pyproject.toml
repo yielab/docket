@@ -25,7 +25,7 @@ dependencies = [
 # `pip install 'docket[mcp]'` (or `uv sync --extra mcp`); a missing SDK prints
 # an actionable hint instead of a bare ImportError traceback (see
 # `cli/_mcp.py`, following the existing PyYAML optional-dependency pattern in
-# `core/lobster.py`/`cli/_agents.py`).
+# `core/pipeline.py`/`cli/_agents.py`).
 [project.optional-dependencies]
 mcp = ["mcp>=1.2.0,<2.0.0"]
 
