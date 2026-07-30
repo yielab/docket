@@ -17,7 +17,7 @@ specs/
 ├── functional/                            # Functional specifications
 │   ├── agent-lifecycle.spec.md           # Agent CRUD and maintenance operations
 │   ├── api-keys.spec.md                  # API key management
-│   ├── audit.spec.md                     # Audit log events (partial coverage — stated inside)
+│   ├── audit.spec.md                     # Audit log events, hash-chained + verify
 │   ├── cost-tracking.spec.md             # Usage/cost reporting + budget caps (auto-pause pending)
 │   ├── eval.spec.md                      # Specialist-role eval harness
 │   ├── model-profiles.spec.md            # Role→model policy and pinning
@@ -103,23 +103,23 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30.
+> Last synchronized: 2026-07-30 (after the Phase 14/15/17/18 parallel merge wave).
 
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.3.0 | Complete | |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 1.1.0 | Partially implemented | Recorded families listed inside; coverage gap → Phase 15 G-4 |
+| Audit | 2.0.0 | Implemented | Hash-chained + `docket audit verify`; `models.*` still uncovered (Phase 15 G-4 follow-up) |
 | Cost Tracking | 1.1.0 | Partially implemented | Auto-pause unimplemented → Phase 14 R-5 |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
-| Model Profiles | 2.2.0 | Complete | |
+| Model Profiles | 2.3.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2) |
 | Pod Dispatch | 1.0.0 | Complete | Owns the dispatch state machine |
-| Security Gates | 0.4.0 | Implemented (on by default) | Approval-seam gap stated inside → Phase 15 G-1/G-5 |
+| Security Gates | 0.4.1 | Implemented (on by default) | Approval-seam gap stated inside → Phase 15 G-1/G-5 |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
 | Workflow Integration | 1.2.0 | Complete (slated for retirement) | ROADMAP D-16 / Phase 16 W-3 |
 | Workspace Structure | 1.2.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4) |
-| CLI Interface | 1.5.0 | Complete | Signatures/exit codes; semantics live in functional specs |
+| CLI Interface | 1.6.0 | Complete | Signatures/exit codes; semantics live in functional specs |
 | CLI JSON Shapes | 1.1.0 | Complete | |
 | docket-meta schema | 2.3.0 | Complete | |
 | Serve Read API | 1.0.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py` |
