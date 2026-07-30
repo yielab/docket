@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is complete ☑** (R-1…R-8, 2026-07-30 — see the Phase 14 record below), and **waves 3–4 then merged 11 more cards** (2026-07-30): **Phase 16's exit criteria are met** (W-1/W-2/W-3/W-6/W-7/W-8 — declarative pipelines, role archetypes, pod blueprints, generalized gates, working cancellation; W-4 and W-5 remain open), **Phase 18 is done but for its two daemon-gated spikes** (L-1/L-2/L-3/L-6), and **Phase 15 is 4 of 6** (G-1/G-4/G-5/G-6 — G-2 and G-3 remain). Four of those cards were pulled forward ahead of schedule, each with no Phase 14 dispatch-lane dependency: **Phase 15's G-4** (audit v2) and **G-6** (serve auth hardening), **Phase 17's C-4** (specialists join the workspace contract), and **Phase 18's L-2** (finish provider agnosticism) — see their own "DONE — pulled forward" notes in the Phase 15/17/18 sections below. **Phase 17 is the next phase to open**, once W-5 unblocks C-1. Phase 14's board is in TODO.md (kept until Phase 15's board overwrites it, per convention). Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is complete ☑** (R-1…R-8, 2026-07-30 — see the Phase 14 record below), and **waves 3–4 then merged 11 more cards** (2026-07-30): **Phase 16 is COMPLETE** (W-1…W-8 — declarative pipelines, role archetypes, pod blueprints, generalized gates, working cancellation, durable scheduling, typed handoff artifacts), **Phase 18 is done but for its two daemon-gated spikes** (L-1/L-2/L-3/L-6), and **Phase 15 is 4 of 6** (G-1/G-4/G-5/G-6 — G-2 and G-3 remain). Four of those cards were pulled forward ahead of schedule, each with no Phase 14 dispatch-lane dependency: **Phase 15's G-4** (audit v2) and **G-6** (serve auth hardening), **Phase 17's C-4** (specialists join the workspace contract), and **Phase 18's L-2** (finish provider agnosticism) — see their own "DONE — pulled forward" notes in the Phase 15/17/18 sections below. **Wave 5 then completed Phase 16** (W-4, W-5) and closed the dead-code register's non-dispatch half; **Phase 17 is now open**, because W-5's typed handoff artifact unblocked C-1. Phase 14's board is in TODO.md (kept until Phase 15's board overwrites it, per convention). Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
 **Last Updated:** 2026-07-30
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1467,7 +1467,7 @@ a real dispatched task until granted; `docket audit verify` detects a tampered l
 
 ---
 
-### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟠 7 of 8 shipped — exit criteria met; only W-5 open)*
+### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(☑ COMPLETE — all 8 cards W-1…W-8 shipped 2026-07-30)*
 
 > **Why:** the pipeline is a hardcoded constant and the role system knows exactly one objective —
 > shipping code. `POD_ROLES` is a closed 4-tuple (`core/pod.py:21`), every role identity is a
@@ -1522,6 +1522,66 @@ but gate contracts, edit rights, and scope stay closed typed sets docket can rea
 **blocks on an unverified-sources verdict exactly the way a software pod blocks on failing tests**;
 the four legacy roles produce byte-identical workspaces (goldens); `docket workflow` prints the
 removed-command notice; suite green.
+
+> **☑ Wave 5 shipped 2026-07-30 — 5 cards, and Phase 16 is COMPLETE.** `platform` green at each
+> merge: **1,600 tests**, 18/18 goldens, 20 specs, 37 commands, `ruff` + `ruff format` +
+> `mypy --strict` clean, `metrics.py --check` in sync.
+>
+> **W-5 · Structured handoff artifacts** — hops exchange a typed `HandoffArtifact`
+> (`core/handoff.py`) instead of concatenated raw text. The shape is the deliverable because Phase
+> 17's C-1 must budget tokens against it: `summary` is required and `DROP_ORDER` gives a
+> size-constrained consumer a typed shedding order, with `summary` deliberately excluded so it can
+> never be dropped. `render()` returns exactly `summary` when nothing else is set, so the common
+> case is byte-identical to the old behaviour, and `from_legacy_output()` degrades a pre-W-5 or
+> malformed hop record instead of failing a resume. **This unblocks C-1**, and with it Phase 17.
+> `pod-dispatch.spec.md` → 4.0.0: the persisted hop record format changed, with a documented
+> degrade path.
+>
+> **W-4 · Durable scheduling + event triggers** — stdlib-only cron parser, webhook payload bound
+> into pipeline variables (rejected with 400 *before* a run record exists), `pipeline run --follow`
+> tailing the durable trace, and the `runs.cancel` audit entry. Its first deliverable needed **no
+> code**: Phase 14's R-3 had already shipped and test-pinned persisted last-run, and the card
+> verified that rather than rebuilding it.
+>
+> **G-4b · `models.*` audit coverage** — closes the gap G-4 named two waves earlier. `set` writes
+> one entry; `preset`/`reset` can rewrite every role at once and each write a single entry naming
+> every role's before→after pair. Both values are read around the write, so a repeated change logs
+> the real prior value rather than a constant.
+>
+> **CL-2 · Dead-code register, non-dispatch half** — `core/sync.py` kept as the single
+> implementation with `cli/_doctor.py` pointed at it (rather than deleting a module whose logic
+> belongs in `core/`); `read_modify_write` rebuilt on `with_lock`; `HEARTBEAT_FILE` used across all
+> nine files; two zero-caller ACL functions deleted. **Three rows were deliberately kept** with
+> dated in-code reasons — notably `validate_policy()`, where wiring a command would have changed
+> the completions goldens this card had to keep byte-identical, and deleting it would have dropped
+> schema coverage two test files already get by calling it directly.
+>
+> **L-4 · Daemon MCP registry spike** — answered **yes upstream, absent here**: the `mcp.servers`
+> registry and its CLI family are real and were exercised live against `openclaw@2026.7.1`, but the
+> daemon this fleet targets (`2026.2.23`, independently confirmed) predates them. No production
+> code, per the card's own rule. Its isolated probe had a **real side effect on the host** — a
+> one-time upstream state migration escaped the scratch state dir and renamed
+> `~/.openclaw/exec-approvals.json`; restored, with the sandboxing lesson recorded in the spec.
+>
+> **Dead code cleared this wave:** the `AgentRunResult` alias and all ~76 call sites across ten
+> test families, `dispatch_all_pods` (deleted, not wired — R-3 had already replaced its only call
+> site and pins that removal), the last `print()` in `core/`, `meta_write`,
+> `set_agent_project_key`, and `core/sync.py`'s dead-module status. An AST-based test now pins that
+> **no `print(` call exists anywhere in `core/` or `edges/`**.
+>
+> **What was narrowed or deferred:** `files_changed`/`diff_ref` ship as real artifact fields with
+> **no producer** — populating them needs a git probe through `edges/adapters/system.py`, which
+> CL-2 owned this wave; declared as an explicit seam in both the module docstring and the spec, not
+> quietly claimed. `notes` likewise has no producer. G-2 and G-3 did not run (G-2 needs the
+> dispatch file W-5 owned), so the policy engine still has no live-path producer. The
+> **dependency floors in `pyproject.toml` remain unverified** — CI only ever resolves the locked
+> versions, and testing the floors needs network access this environment lacks.
+>
+> **A fourth neither-side-is-correct conflict** appeared in `audit.spec.md`: G-4b's draft said
+> `models.*` shipped and `runs.cancel` was the open gap; W-4's said the reverse. Both shipped in the
+> same wave, so neither card could see the other's merge, and either side alone would have published
+> a spec claiming a shipped feature was missing. The index cross-check separately caught **four**
+> stale rows after W-4 alone.
 
 > **☑ Waves 3–4 shipped 2026-07-30 — 11 cards across Phases 15/16/18, plus one standing cleanup
 > card. `platform` at `7fc6233`: 1,512 tests (1,509 passed / 3 skipped), 18/18 goldens, 20 specs,
@@ -1695,9 +1755,9 @@ while the two that both edited `serve.py`'s dispatch call sites produced the pha
 merge. **Wave 3 ☑** (G-1 the dispatch owner, W-1, W-6, L-1, L-3, G-5) and **wave 4 ☑** (W-2 the
 dispatch owner, CL-1, L-6, W-3, W-7 — W-8 rode with W-2) are both merged; see the `☑ Waves 3–4
 shipped` record in the Phase 16 section. Four cards were pulled forward earlier with no Phase 14
-dependency (G-4, G-6, C-4, L-2 — see each card's note). **Wave 5 (in flight):** W-5 (the wave's
-dispatch owner), CL-2, W-4, G-4b, L-4. Phase 17 stays held back one more wave — C-1 depends on W-5,
-and C-2/C-3/C-5 all want `core/dispatch.py`, which W-5 owns. The per-card boards, blockers and
+dependency (G-4, G-6, C-4, L-2 — see each card's note). **Wave 5 ☑** (W-5 the dispatch
+owner, CL-2, W-4, G-4b, L-4) completed Phase 16. **Phase 17 is now open** — W-5's handoff artifact
+unblocked C-1, and `core/dispatch.py` is free again for the next wave's single owner. The per-card boards, blockers and
 carried-forward gaps live in TODO.md.
 
 **A second scheduling rule, learned in waves 3–4 (keep it):** an index or roll-up table that several
@@ -1717,6 +1777,18 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-07-30 (wave 5)** — **PHASE 16 COMPLETE** (W-1…W-8) and 5 more cards merged, taking the
+  tree to **1,600 tests**. W-5 replaced raw-text hop concatenation with a typed `HandoffArtifact`,
+  which **unblocks Phase 17's C-1** and therefore opens Phase 17. W-4 shipped cron scheduling,
+  webhook→pipeline variables, `--follow`, and the `runs.cancel` audit entry; G-4b closed the
+  `models.*` audit gap G-4 named two waves earlier; CL-2 closed the dead-code register's
+  non-dispatch half; L-4 answered its spike with dated evidence and no code. **The register's
+  remaining rows are now closed**: the `AgentRunResult` alias and its ~76 call sites,
+  `dispatch_all_pods`, the last `print()` in `core/`, two zero-caller ACL functions, and
+  `core/sync.py`'s dead-module status — with an AST test pinning that no `print(` survives in
+  `core/` or `edges/`. Deliberately kept rows carry dated in-code reasons rather than silent
+  decisions. Full record, including what was narrowed: the `☑ Wave 5 shipped` block in the Phase 16
+  section.
 - **2026-07-30 (waves 3–4)** — **11 Platformization cards merged onto `platform`**, taking the tree
   from 1,112 → **1,512 tests**, 18 → 20 specs, 35 → 37 commands. Phase 16's exit criteria are met
   (W-1/W-2/W-3/W-6/W-7/W-8); Phase 18 is done but for its two daemon-gated spikes (L-1/L-2/L-3/L-6);

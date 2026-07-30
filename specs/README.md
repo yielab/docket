@@ -107,7 +107,7 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (wave 5 in progress: L-4, G-4b, W-4 merged so far — after wave 4's
+> Last synchronized: 2026-07-30 (wave 5 complete: L-4, G-4b, W-4, CL-2, W-5 — after wave 4's
 > CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1, W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
 > (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
@@ -125,7 +125,7 @@ Each specification document must include:
 | Model Profiles | 2.3.3 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6) |
 | Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
-| Pod Dispatch | 3.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8) |
+| Pod Dispatch | 4.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5) |
 | Role Archetypes | 1.2.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7) |
 | Security Gates | 0.5.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5) |
 | Session Scoping | 1.0.1 | Complete | |
