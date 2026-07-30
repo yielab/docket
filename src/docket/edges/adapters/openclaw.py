@@ -998,9 +998,7 @@ def agent_run(
     import subprocess as _sp
 
     if not _shutil.which("openclaw"):
-        return TurnResult(
-            False, "", 0.0, {}, "openclaw CLI not found", failure_kind="daemon_error"
-        )
+        return TurnResult(False, "", 0.0, {}, "openclaw CLI not found", failure_kind="daemon_error")
     cmd = [
         "openclaw",
         "agent",
@@ -1024,9 +1022,7 @@ def agent_run(
             env=run_env,
         )
     except _sp.TimeoutExpired:
-        return TurnResult(
-            False, "", 0.0, {}, f"timed out after {timeout}s", failure_kind="timeout"
-        )
+        return TurnResult(False, "", 0.0, {}, f"timed out after {timeout}s", failure_kind="timeout")
     except OSError as ex:
         return TurnResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
 
