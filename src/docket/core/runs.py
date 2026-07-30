@@ -93,7 +93,9 @@ def _runs_list(doc: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in raw if isinstance(r, dict)] if isinstance(raw, list) else []
 
 
-def create_run(source: RunSource, project: str) -> dict[str, Any]:
+def create_run(
+    source: RunSource, project: str, *, variables: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Persist a new run record in ``queued`` state and return it.
 
     *source* identifies what triggered the dispatch attempt
@@ -101,6 +103,16 @@ def create_run(source: RunSource, project: str) -> dict[str, Any]:
     Called **before** any dispatch work starts, so a caller like the serve
     webhook can hand the run id back to its own caller before the outcome is
     known.
+
+    *variables* (W-4) is the pipeline variable namespace this run was
+    resolved against — today, only the serve webhook populates it (a
+    payload's params, run through ``core.pipeline.resolve_variables`` against
+    the pod's effective pipeline before this run is even created); every
+    other source passes ``None`` and gets the same ``{}`` a pre-W-4 record
+    had, so this is purely additive to the schema. Recording it here — not
+    just accepting it as a dispatch argument — is what lets ``docket runs
+    show <id>``/``GET /runs/<id>`` answer "what variables did this dispatch
+    actually see", since nothing else in the run's lifecycle persists them.
     """
     if source not in _SOURCES:
         raise RunError(f"unknown run source: {source!r}")
@@ -120,6 +132,8 @@ def create_run(source: RunSource, project: str) -> dict[str, Any]:
         # W-2: pids of any hop subprocess currently in flight for this run —
         # see add_hop_pid/remove_hop_pid/cancel_run.
         "pids": [],
+        # W-4: the resolved variable namespace this run was dispatched with.
+        "variables": dict(variables) if variables else {},
     }
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:

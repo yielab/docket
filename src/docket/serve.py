@@ -33,6 +33,16 @@ dispatch) — see ``core/runs.py``'s ``execute()``.
 G-1: ``POST /approvals/<token>`` genuinely resumes or kills a pod-dispatch task the
 require_approval gate stopped, not just the approval record's own state — see
 ``core/dispatch.py``'s ``resolve_waiting_approval`` (a no-op for any other approval).
+
+W-4: ``POST /dispatch/<project>``'s JSON body — a plain ``{name: value}`` object,
+``{}`` if the body is omitted — is resolved against the pod's effective pipeline's
+declared ``variables`` (``core.pipeline.resolve_variables``) before the run record
+is even created; a missing *required* variable is rejected with 400 and never
+reaches the run registry. The resolved namespace is persisted on the run record
+itself (``variables``), so ``docket runs show <id>``/``GET /runs/<id>`` can answer
+"what params did this dispatch actually see". Due-schedule dispatch (``_check_schedules``)
+now also recognizes a standard 5-field cron expression, not just ``@every``/``HH:MM``
+— see ``core/schedule.py``.
 """
 
 from __future__ import annotations
@@ -468,14 +478,38 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error("Missing project", 400)
                 return
             from docket.core import dispatch as _dispatch
+            from docket.core import pipeline as _pipeline
             from docket.core import runs as _runs
+
+            # W-4: the request body (a plain {name: value} JSON object) is the
+            # webhook's params — bound into the pod's effective pipeline's
+            # declared `variables` namespace (core.pipeline.resolve_variables)
+            # before anything is dispatched. A missing body (no Content-Length)
+            # is the same as `{}`, matching the pre-W-4 no-params behavior
+            # exactly.
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b"{}"
+                params: Any = json.loads(raw)
+            except (ValueError, json.JSONDecodeError):
+                self._send_json_error("Invalid JSON body", 400)
+                return
+            if not isinstance(params, dict):
+                self._send_json_error("Request body must be a JSON object", 400)
+                return
+            try:
+                effective = _dispatch.effective_pipeline(project, None)
+                variables = _pipeline.resolve_variables(effective, params)
+            except _pipeline.VariableError as exc:
+                self._send_json_error(str(exc), 400)
+                return
 
             # R-3 (D-17): the run record is created — and its id handed back to
             # the caller — BEFORE any dispatch work is attempted. The actual
             # pipeline still runs async (this endpoint must not block on a real
             # agent turn), but its outcome always lands in the run registry
             # instead of vanishing behind a fire-and-forget thread.
-            record = _runs.create_run("webhook", project)
+            record = _runs.create_run("webhook", project, variables=variables)
 
             def _run(proj: str = project, run_id: str = record["id"]) -> None:
                 _runs.execute(
