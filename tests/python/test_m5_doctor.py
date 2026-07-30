@@ -249,6 +249,56 @@ class TestChecks:
         assert _doctor._check_project_agents(["myshop"]) == 0
         assert "OK  →  group -100" in capsys.readouterr().out
 
+    def test_pod_lead_missing_tools_md_not_flagged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for
+        an Implementer) — `docket doctor` must not flag that as broken.
+        """
+        oc_dir = _seed(tmp_path, monkeypatch, full_workspace=False)
+        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
+            (ws / f).write_text(f"# {f}\n")
+        meta_p = ws / ".docket-meta.json"
+        data = json.loads(meta_p.read_text())
+        data["role"] = "lead"
+        meta_p.write_text(json.dumps(data))
+        # Rename the workspace/agent so it resolves as a pod member (`pod_of`
+        # requires the `<project>-<role>` shape).
+        pod_ws = oc_dir / "workspaces" / "projects" / "demo-lead"
+        ws.rename(pod_ws)
+        cfg = json.loads((oc_dir / "openclaw.json").read_text())
+        cfg["agents"]["list"][0]["id"] = "demo-lead"
+        (oc_dir / "openclaw.json").write_text(json.dumps(cfg))
+
+        issues = _doctor._check_project_agents(["demo-lead"])
+        out = capsys.readouterr().out
+        assert issues == 0
+        assert "missing TOOLS.md" not in out
+
+    def test_pod_implementer_missing_tools_md_still_flagged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Unlike the Lead, an Implementer is still expected to have a TOOLS.md."""
+        oc_dir = _seed(tmp_path, monkeypatch, full_workspace=False)
+        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
+            (ws / f).write_text(f"# {f}\n")
+        meta_p = ws / ".docket-meta.json"
+        data = json.loads(meta_p.read_text())
+        data["role"] = "implementer"
+        meta_p.write_text(json.dumps(data))
+        pod_ws = oc_dir / "workspaces" / "projects" / "demo-implementer"
+        ws.rename(pod_ws)
+        cfg = json.loads((oc_dir / "openclaw.json").read_text())
+        cfg["agents"]["list"][0]["id"] = "demo-implementer"
+        (oc_dir / "openclaw.json").write_text(json.dumps(cfg))
+
+        issues = _doctor._check_project_agents(["demo-implementer"])
+        out = capsys.readouterr().out
+        assert issues == 1
+        assert "missing TOOLS.md" in out
+
     def test_models_stale_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
