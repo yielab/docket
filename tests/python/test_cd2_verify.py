@@ -259,8 +259,12 @@ class TestDispatchVerifyGate:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _oc.AgentRunResult:
-            ran.append(_oc.meta_get(member_id, "role", "") or member_id)
-            return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            role = _oc.meta_get(member_id, "role", "") or member_id
+            ran.append(role)
+            # R-4 parses the Reviewer's first line — a real pod-completing run
+            # needs a real APPROVE verdict, not just an ok=True subprocess call.
+            output = "APPROVE - looks good" if role == "reviewer" else "ok"
+            return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("myapp", task, runner=_runner)
@@ -303,7 +307,15 @@ class TestDispatchTesterGate:
             env: dict[str, str] | None = None,
         ) -> _oc.AgentRunResult:
             role = _oc.meta_get(member_id, "role", "") or member_id
-            output = tester_output if role == "tester" else "ok"
+            if role == "tester":
+                output = tester_output
+            elif role == "reviewer":
+                # R-4's gate needs a real APPROVE to reach the Tester hop at
+                # all — these tests exercise the Tester gate, not the
+                # Reviewer's, so the Reviewer always approves cleanly.
+                output = "APPROVE - looks good"
+            else:
+                output = "ok"
             return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         return _run

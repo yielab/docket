@@ -67,6 +67,30 @@ def _parse_tester_verdict(output: str) -> str | None:
     return None
 
 
+# R-4: the Reviewer's documented contract (see cli/_pod.py's Reviewer SOUL.md body) is
+# an APPROVE/REQUEST-CHANGES first line — the same structural convention as the
+# Tester's PASS/FAIL, matched case-insensitively; anything else is unparseable.
+_REVIEWER_VERDICT_RE = _re.compile(r"^\s*(APPROVE|REQUEST-CHANGES)\b", _re.IGNORECASE)
+
+
+def _parse_reviewer_verdict(output: str) -> str | None:
+    """Parse the Reviewer hop's first non-blank line for an APPROVE/REQUEST-CHANGES marker.
+
+    Mirrors ``_parse_tester_verdict``'s convention exactly. Returns
+    ``"approve"``/``"request-changes"`` (lowercased) on a match, or ``None`` if
+    the output doesn't start with one of those markers (unparseable — treated
+    as distinct from an explicit REQUEST-CHANGES rejection, see
+    ``dispatch_task``).
+    """
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _REVIEWER_VERDICT_RE.match(stripped)
+        return match.group(1).lower() if match else None
+    return None
+
+
 class DispatchError(Exception):
     """A pod cannot be dispatched (no pod, no lead, …)."""
 
@@ -244,6 +268,26 @@ def pod_budget(project: str) -> float:
         return 0.0
 
 
+def pod_max_rework_cycles(project: str) -> int:
+    """Bounded rework budget for a REQUEST-CHANGES review (R-4).
+
+    Configured per-pod via the Lead's ``maxReworkCycles`` meta field (same
+    convention as ``pod_budget``'s ``budgetUsd`` read — no dedicated CLI setter
+    exists yet; set it with the internal ``meta-set`` path if a pod needs a
+    non-default value). Default is ``1``: exactly one rework cycle runs before
+    a second REQUEST-CHANGES fails the task. ``0`` disables rework entirely —
+    the Reviewer becomes a hard gate with no retry.
+    """
+    lead_id = _pod.member_id(project, "lead")
+    raw = _oc.meta_get(lead_id, "maxReworkCycles", "")
+    if not raw:
+        return 1
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 1
+
+
 _TRUNCATION_MARKER = "\n[... truncated {n} bytes ...]\n"
 
 
@@ -302,7 +346,10 @@ class _HopComposition:
 
 
 def _hop_message(
-    task: dict[str, Any], role: str, prior: list[HopResult]
+    task: dict[str, Any],
+    role: str,
+    prior: list[HopResult],
+    rework_hop: HopResult | None = None,
 ) -> tuple[str, _HopComposition]:
     """Build the message handed to one role, threading prior hops' output.
 
@@ -312,6 +359,18 @@ def _hop_message(
     composed message plus a ``_HopComposition`` recording what was sent, for
     the ``context_composed`` trace event — a measured baseline for Phase 17's
     context compiler, not a compiler itself.
+
+    *rework_hop* (R-4) is the Reviewer hop whose REQUEST-CHANGES verdict is
+    driving this call — only meaningful for ``role == "implementer"``. Its
+    output is rendered as its own prominently-labeled section sized off the
+    *full* (un-derated) per-hop budget rather than the generic recency-ranked
+    share the carryover loop below gives every other prior hop, and it is
+    excluded from that loop so it is never rendered (and never budgeted)
+    twice. This is deliberate, not just relying on it already being the most
+    recent hop: recency-based ranking is an emergent property of *when* the
+    rework happens to run, not a structural guarantee, and the one thing a
+    rework implementer hop must not lose to truncation is exactly the review
+    it exists to address.
     """
     desc = str(task.get("description", "")).strip()
     if role == "lead":
@@ -327,13 +386,27 @@ def _hop_message(
     budget = _cfg.HOP_CARRYOVER_BYTES
     lines = [f"Task: {desc}", ""]
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
+
+    if role == "implementer" and rework_hop is not None and rework_hop.output:
+        note_text, note_truncated, note_sent = _truncate_carryover(rework_hop.output, budget)
+        comp.sections.append(
+            {
+                "role": "rework",
+                "original_bytes": len(rework_hop.output.encode("utf-8")),
+                "sent_bytes": note_sent,
+                "truncated": note_truncated,
+            }
+        )
+        comp.truncated = comp.truncated or note_truncated
+        lines.append(f"--- REWORK REQUIRED: reviewer requested changes ---\n{note_text}\n")
+
     last_index = len(prior) - 1
     # Iterate in the original chronological order (oldest first) — unchanged
     # from pre-cap behaviour, so message *layout* never changes, only content.
     # Only the per-hop budget is recency-aware: rank counts back from the most
     # recent hop (rank 0), so `_hop_carryover_budget` gives it the biggest share.
     for i, h in enumerate(prior):
-        if not h.output:
+        if not h.output or h is rework_hop:
             continue
         rank = last_index - i
         hop_budget = _hop_carryover_budget(rank, budget)
@@ -350,10 +423,18 @@ def _hop_message(
         comp.truncated = comp.truncated or truncated
         lines.append(f"--- {h.role} output ---\n{text}\n")
     if role == "implementer":
-        lines.append("You are the Implementer. Implement the change in the workspace.")
+        if rework_hop is not None:
+            lines.append(
+                "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
+                "above, then implement the change in the workspace."
+            )
+        else:
+            lines.append("You are the Implementer. Implement the change in the workspace.")
     elif role == "reviewer":
         lines.append(
-            "You are the Reviewer. Review the diff (read-only). Approve or request changes."
+            "You are the Reviewer. Review the diff (read-only). Your reply's first "
+            "non-blank line must be exactly APPROVE or REQUEST-CHANGES "
+            "(case-insensitive), followed by your reasons."
         )
     elif role == "tester":
         lines.append(
@@ -413,6 +494,76 @@ def _hop_from_record(rec: dict[str, Any]) -> HopResult:
     )
 
 
+@dataclass
+class _ResumePosition:
+    """Where a (possibly resumed) dispatch run should continue (R-4).
+
+    ``pipeline_index`` is the index into the pod's fixed ``pipeline`` list of
+    the next hop to run. ``rework_count`` is how many REQUEST-CHANGES rework
+    cycles have already been consumed. ``rework_hop`` — set only when
+    ``pipeline_index`` points back at the Implementer for a rework cycle — is
+    the Reviewer ``HopResult`` whose text drives that rework hop's message.
+    """
+
+    pipeline_index: int
+    rework_count: int
+    rework_hop: HopResult | None = None
+
+
+def _replay_pipeline_position(
+    pipeline: list[tuple[str, str]], prior: list[HopResult], max_rework: int
+) -> _ResumePosition:
+    """Replay a hop history to find where dispatch should continue.
+
+    Before R-4, resuming a crashed task only needed to know *which roles* had
+    already completed (a role either ran once or hadn't run at all, since the
+    pipeline was a straight line) — a simple ``{h.role for h in prior}`` set
+    was enough. Rework breaks that: a role can legitimately appear more than
+    once in ``hops[]`` (the Implementer runs again after a REQUEST-CHANGES,
+    the Reviewer re-reviews it), so "has this role's hop happened" is no
+    longer the right question — "where in the pipeline are we, and how many
+    rework cycles have we already spent" is. This replays the same decision
+    ``dispatch_task`` makes live for a fresh Reviewer hop (REQUEST-CHANGES
+    with budget left ⇒ jump back to the Implementer; anything else ⇒ advance
+    past the Reviewer) against the *persisted* hop sequence, so a crash
+    recorded mid-rework resumes into the correct next hop — the rework
+    Implementer call, carrying the same review text a live run would have
+    carried — rather than skipping straight to whatever comes after the
+    Reviewer's pipeline slot.
+
+    This is only ever asked to replay a *non-terminal* history: a hop whose
+    outcome would end the task (a plain FAIL/REQUEST-CHANGES-exhausted/
+    unparseable failure, a passed pipeline) is decided and persisted
+    synchronously within the same ``dispatch_task`` call that ran it — the
+    task reaches a terminal ``status`` before that call returns, and a
+    terminal task is never claimed for resume in the first place
+    (``_eligible_for_claim`` only resumes a ``failed`` task tagged
+    ``failureKind: "stale_claim"``, never a plain ``failed`` outcome). So
+    every hop this function ever actually sees left the pipeline *running*,
+    which is exactly the set of decisions it knows how to replay.
+    """
+    role_to_index = {role: i for i, (role, _mid) in enumerate(pipeline)}
+    impl_index = role_to_index.get("implementer")
+    reviewer_index = role_to_index.get("reviewer")
+    pi = 0
+    rework = 0
+    rework_hop: HopResult | None = None
+    for hop in prior:
+        if hop.role == "reviewer":
+            verdict = _parse_reviewer_verdict(hop.output)
+            if verdict == "request-changes" and rework < max_rework and impl_index is not None:
+                rework += 1
+                rework_hop = hop
+                pi = impl_index
+                continue
+            rework_hop = None
+            pi = (reviewer_index + 1) if reviewer_index is not None else pi + 1
+            continue
+        rework_hop = None
+        pi = role_to_index.get(hop.role, pi) + 1
+    return _ResumePosition(pipeline_index=pi, rework_count=rework, rework_hop=rework_hop)
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -426,23 +577,40 @@ def dispatch_task(
 
     Budget is checked before EACH hop (every hop is a real costed turn). A failed
     hop stops the pipeline (later roles only matter if earlier ones succeed). All
-    dispatch targets belong to this project's pod — asserted per hop.
+    dispatch targets belong to this project's pod — asserted per hop. The one
+    exception to "the pipeline only moves forward" is R-4's bounded rework loop:
+    a Reviewer hop's REQUEST-CHANGES verdict re-runs the Implementer (carrying
+    the review text) and then the Reviewer again, up to the pod's configured
+    ``maxReworkCycles`` (default 1) before it becomes a terminal failure.
 
     *resume_from* seeds hops that already completed before a crash (role +
     output preserved) so the roles still to come see the same context an
     uninterrupted run would have produced; those roles are skipped rather than
-    re-invoked. *on_hop* — if given — fires with each new HopResult right after
-    it completes, so the caller can persist per-hop progress incrementally
-    instead of only when the whole task finishes (R-1 crash-safety).
+    re-invoked (a role can legitimately have completed more than once, if the
+    crash happened mid-rework — see ``_replay_pipeline_position``). *on_hop* —
+    if given — fires with each new HopResult right after it completes, so the
+    caller can persist per-hop progress incrementally instead of only when the
+    whole task finishes (R-1 crash-safety); this includes every rework hop, so
+    the persisted ``hops[]`` history stays honest about what actually ran.
     """
     run = runner or _oc.agent_run
     task_id = str(task.get("id", "task"))
     session_id = f"agent:{project}:{task_id}"
     pipeline = pod_pipeline(project)
     cap = pod_budget(project)
+    max_rework = pod_max_rework_cycles(project)
+    impl_index = next((i for i, (r, _m) in enumerate(pipeline) if r == "implementer"), None)
 
     prior: list[HopResult] = list(resume_from) if resume_from else []
-    done_roles = {h.role for h in prior}
+    # R-4: a role can now legitimately run more than once (a rework cycle
+    # re-runs the Implementer, then re-runs the Reviewer), so "where do we
+    # continue" is a pipeline position + rework count, not a set of
+    # already-seen role names — see `_replay_pipeline_position`'s docstring
+    # for why this matters for a task resumed mid-rework.
+    resume_pos = _replay_pipeline_position(pipeline, prior, max_rework)
+    pipeline_index = resume_pos.pipeline_index
+    rework_count = resume_pos.rework_count
+    pending_rework: HopResult | None = resume_pos.rework_hop
 
     _trace.trace_event(
         project,
@@ -454,9 +622,8 @@ def dispatch_task(
 
     result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
-    for role, member_id in pipeline:
-        if role in done_roles:
-            continue  # already completed before a crash — resuming, not re-running
+    while pipeline_index < len(pipeline):
+        role, member_id = pipeline[pipeline_index]
 
         # No-cross-pod guarantee: never dispatch to an id outside this pod.
         if _pod.pod_of(member_id) != project:
@@ -480,7 +647,14 @@ def dispatch_task(
                 result.reason = f"pod budget reached (${spent:.2f} ≥ ${cap:.2f}) before {role}"
                 break
 
-        message, composition = _hop_message(task, role, prior)
+        # A rework note only ever applies to the Implementer hop it was queued
+        # for — consumed here (cleared regardless of outcome) so it can never
+        # leak into a later, unrelated Implementer hop.
+        rework_hop = pending_rework if role == "implementer" else None
+        if role == "implementer":
+            pending_rework = None
+
+        message, composition = _hop_message(task, role, prior, rework_hop)
         _trace.trace_event(
             project,
             session_id,
@@ -563,6 +737,8 @@ def dispatch_task(
                 else:
                     result.reason = "tester output unparseable (expected a PASS/FAIL first line)"
                 break
+            pipeline_index += 1
+            continue
 
         # Verification gate: run after a successful Implementer hop, before reviewer/tester.
         if role == "implementer":
@@ -598,6 +774,64 @@ def dispatch_task(
             else:
                 # Honesty rule: never silently skip — a missing verifyCmd is visible.
                 print(f"[dispatch] verification skipped — verifyCmd not set for {member_id}")
+            pipeline_index += 1
+            continue
+
+        # R-4: Reviewer verdict gate. Unlike the Tester's binary block, a
+        # REQUEST-CHANGES verdict is not necessarily terminal — it drives a
+        # bounded rework loop back to the Implementer before it becomes one.
+        if role == "reviewer":
+            verdict = _parse_reviewer_verdict(run_res.output)
+            if verdict == "approve":
+                pipeline_index += 1
+                continue
+            if verdict == "request-changes":
+                if rework_count < max_rework and impl_index is not None:
+                    rework_count += 1
+                    pending_rework = hop
+                    redacted = _trace.redact(run_res.output)
+                    _trace.trace_event(
+                        project,
+                        session_id,
+                        role,
+                        "rework_started",
+                        _json.dumps({"cycle": rework_count, "output": redacted}),
+                    )
+                    pipeline_index = impl_index
+                    continue
+                # Rework budget exhausted (or, defensively, no Implementer to
+                # rework against) — REQUEST-CHANGES is now terminal.
+                redacted = _trace.redact(run_res.output)
+                _trace.trace_event(
+                    project,
+                    session_id,
+                    role,
+                    "review_rejected",
+                    _json.dumps({"cycles": rework_count, "output": redacted}),
+                )
+                result.status = "failed"
+                result.reason = (
+                    f"reviewer rejected after {rework_count} rework cycle(s): REQUEST-CHANGES"
+                )
+                break
+            # Unparseable — distinct from an explicit REQUEST-CHANGES rejection
+            # (mirrors the Tester gate's FAIL vs. unparseable distinction).
+            redacted = _trace.redact(run_res.output)
+            _trace.trace_event(
+                project,
+                session_id,
+                role,
+                "reviewer_verdict_unparseable",
+                _json.dumps({"output": redacted}),
+            )
+            result.status = "failed"
+            result.reason = (
+                "reviewer output unparseable (expected an APPROVE/REQUEST-CHANGES first line)"
+            )
+            break
+
+        # role == "lead"
+        pipeline_index += 1
 
     _trace.trace_event(
         project,
