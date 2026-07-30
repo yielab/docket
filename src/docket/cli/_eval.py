@@ -18,15 +18,12 @@ import subprocess
 from pathlib import Path
 
 from docket import ui
+from docket.config import cli_root
 
 
 def _evals_dir() -> Path | None:
     """Locate tests/evals/ — repo root via DOCKET_CLI_ROOT or package layout."""
-    root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
-    if not root.is_dir():
-        # src/docket/cli/_eval.py → parents[3] == repo root.
-        root = Path(__file__).resolve().parents[3]
-    evals = root / "tests" / "evals"
+    evals = cli_root() / "tests" / "evals"
     return evals if evals.is_dir() else None
 
 

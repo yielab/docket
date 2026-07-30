@@ -118,8 +118,11 @@ def high_risk_bins() -> frozenset[str]:
 
     NOT used to exclude anything from the seeded exec allowlist (see
     HighRiskClass's docstring) — ``resolve_safe_bin_paths`` seeds these bins
-    normally. Exposed for ``docket gates classes`` and for any future caller
-    that wants to know which curated bins have a high-risk class attached.
+    normally. Note: ``docket gates classes`` (``cli/_gates.py``'s ``_classes``)
+    reads ``HIGH_RISK_PATTERNS``/``cls.bins`` directly today rather than calling
+    this function — it is exposed here for any future caller that wants just
+    the flattened bin set (a future daemon hook, or docket's own subprocess
+    call sites) without walking ``HIGH_RISK_PATTERNS`` itself.
     """
     out: set[str] = set()
     for cls in HIGH_RISK_PATTERNS:
