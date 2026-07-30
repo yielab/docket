@@ -14,6 +14,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli._runs import run_runs
+from docket.core import audit as _audit
 from docket.core import runs as _runs
 
 
@@ -107,6 +108,45 @@ class TestRunsCancelCli:
         _runs.mark_running(rec["id"])
         assert run_runs("cancel", [rec["id"]]) == 0
         assert _runs.get_run(rec["id"])["state"] == "cancelled"
+
+
+class TestRunsCancelAuditEntry:
+    """W-4: `docket runs cancel` was the one carried-forward gap in W-2's
+    otherwise-audited surface -- every other privileged action writes an
+    audit entry (see ``core/audit.py``); cancellation shipped without one.
+    ``_isolate_audit_log`` (conftest.py, autouse) already repoints
+    ``_cfg.AUDIT_LOG`` at a per-test tmp file, so ``_audit.read_audit()``
+    here reads exactly (and only) what this test wrote.
+    """
+
+    def test_successful_cancel_writes_a_runs_cancel_entry(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo-project")
+        _runs.mark_running(rec["id"])
+        assert run_runs("cancel", [rec["id"]]) == 0
+
+        entries = [e for e in _audit.read_audit() if e["action"] == "runs.cancel"]
+        assert len(entries) == 1
+        assert rec["id"] in entries[0]["detail"]
+        assert "demo-project" in entries[0]["detail"]
+
+    def test_unknown_id_writes_no_audit_entry(self, runs_file: Path) -> None:
+        assert run_runs("cancel", ["run-nope"]) == 1
+        assert [e for e in _audit.read_audit() if e["action"] == "runs.cancel"] == []
+
+    def test_already_terminal_run_writes_no_audit_entry(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
+        assert run_runs("cancel", [rec["id"]]) == 1
+        assert [e for e in _audit.read_audit() if e["action"] == "runs.cancel"] == []
+
+    def test_cancel_entry_is_chained_like_every_other_action(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        run_runs("cancel", [rec["id"]])
+
+        result = _audit.verify_chain()
+        assert result.break_at is None
+        assert result.chained >= 1
 
 
 class TestRunsUnknownSubcommand:

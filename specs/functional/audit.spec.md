@@ -1,9 +1,8 @@
 # Audit Log Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped; `models.*` and a future `runs.cancel` remain tracked gaps — see
-Requirements)
+removal below are all shipped; `models.*` remains a tracked gap — see Requirements)
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -64,11 +63,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      entries for one call is intentional, not a duplicate bug: the `mcp.*` line is the uniform
      "an MCP call happened" record, the domain line is the same record any other channel producing
      that same effect would write. See `specs/api/mcp-server.spec.md`.
-2. **Tracked gaps (NOT recorded — out of this version's scope):** role→model
-   policy changes (`docket models set/preset/reset`) and a future `docket runs
-   cancel` (Phase 16 — the run registry these would cancel does not exist yet).
-   Both stay tracked as ROADMAP Phase 15 G-4 follow-up; this spec MUST NOT be
-   cited as evidence that they record today.
+   - `runs.cancel` (`core/runs.py`'s `cancel_run`, ROADMAP Phase 16 W-4) — the one gap W-2 left
+     when it shipped `docket runs cancel`: every other privileged action already wrote an entry,
+     cancellation did not. Written only when a run is actually cancelled (i.e. `cancel_run`'s
+     `ok=True` path); an unknown run id or a run already in a terminal state changes nothing and
+     writes no entry. `detail` names the run id, its project, its state immediately before
+     cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
+     `cli-interface.spec.md`'s `docket runs` entry.
+2. **Tracked gap (NOT recorded — out of this version's scope):** role→model policy changes
+   (`docket models set/preset/reset`), tracked as ROADMAP Phase 15 G-4 follow-up; this spec MUST
+   NOT be cited as evidence that it records today.
 3. `action` **MUST** be a dotted verb (e.g. `gates.enable`, `approval.grant`); `detail`
    **MUST** be a human-readable target (an id, key NAME, model id). Secret VALUES
    **MUST NOT** ever be written to the log.
@@ -225,6 +229,17 @@ $ docket audit verify   # after a line was hand-edited
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.2.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-4 — closed the `runs.cancel` gap.** Added the `runs.cancel` action
+  family (`core/runs.py`'s `cancel_run`): the one privileged action W-2 shipped without an audit
+  entry, now the first entry of Requirement 1 written from `core/` rather than `cli/` (matching
+  `core/approval.py`'s existing `approval.grant`/`approval.deny` precedent — audit logging from
+  `core/` is not a layering violation, only UI/printing is). Written only on an actual
+  cancellation; the no-op paths (unknown run id, already-terminal run) change nothing and record
+  nothing. `models.*` remains the one tracked gap (Requirement 2), owned by a separate card this
+  same wave.
 
 ### Version 2.1.0 (2026-07-30)
 

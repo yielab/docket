@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.config as _cfg
+from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 
@@ -295,6 +296,16 @@ def cancel_run(run_id: str) -> CancelOutcome:
         f"cancelled run {run_id} ({len(killed)} process group(s) killed)"
         if killed
         else f"cancelled run {run_id} (nothing in flight to kill)"
+    )
+    # W-4: every other privileged action writes an audit entry; `docket runs
+    # cancel` (W-2) shipped without one. Logged only on an actual cancellation
+    # (this line), never for the unknown-id/already-terminal no-op returns
+    # above — those change nothing, so there is nothing to audit. `state` here
+    # is still the run's pre-cancel state (captured before the terminal-state
+    # check above), so the entry records exactly what changed.
+    audit_log(
+        "runs.cancel",
+        f"run={run_id} project={rec.get('project', '')} was={state} killed={len(killed)}",
     )
     return CancelOutcome(ok=True, message=message, killed_pids=killed)
 
