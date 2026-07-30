@@ -20,7 +20,9 @@ import typer
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import dispatch as _dispatch
 from docket.core import models_policy as _mp
+from docket.core import pod as _pod_core
 from docket.core.utils import (
     aggregate_cost,
     gateway_active,
@@ -756,6 +758,16 @@ def cmd_profile(
             ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
             raise typer.Exit(1) from None
         _oc.meta_set(aid, "budgetUsd", budget)
+        # R-1: a pod-wide budget change is one of the two sanctioned ways a
+        # budget-`blocked` task re-enters `pending` (the other is an explicit
+        # `docket pod <p> queue --retry <task-id>`) — a blocked task never
+        # retries on its own. Only the Lead owns the pod's cap (dispatch.pod_budget
+        # reads the Lead's budgetUsd), so only changing the Lead's budget unblocks.
+        pod_project = _pod_core.pod_of(aid)
+        if pod_project is not None and _pod_core.member_id(pod_project, "lead") == aid:
+            unblocked = _dispatch.unblock_pod(pod_project)
+            if unblocked:
+                ui.info(f"  Unblocked {unblocked} budget-blocked task(s) in pod '{pod_project}'.")
         if budget != "0":
             _oc.meta_set(aid, "paused", False)
             _oc.meta_set(aid, "pausedReason", "")

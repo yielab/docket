@@ -252,6 +252,85 @@ class TestStore:
         # Pydantic model serialises with camelCase aliases
         assert raw["role"] == "programmer"
 
+    # ── R-1: read_modify_write / with_lock (the locked-claim primitive) ──────────
+
+    def test_read_modify_write_mutates_and_persists(self, tmp_path: Path) -> None:
+        from docket.edges import store
+
+        path = tmp_path / "test.json"
+        store.write_json(path, {"count": 1})
+
+        def _bump(doc: dict) -> dict:
+            doc["count"] = doc.get("count", 0) + 1
+            return doc
+
+        result = store.read_modify_write(path, _bump)
+        assert result == {"count": 2}
+        assert json.loads(path.read_text()) == {"count": 2}
+
+    def test_read_modify_write_on_missing_file_starts_from_empty_dict(self, tmp_path: Path) -> None:
+        from docket.edges import store
+
+        path = tmp_path / "nope.json"
+        seen: dict = {}
+
+        def _fn(doc: dict) -> dict:
+            seen.update(doc)
+            return {"created": True}
+
+        result = store.read_modify_write(path, _fn)
+        assert seen == {}  # missing file reads as {}, not an error
+        assert result == {"created": True}
+        assert json.loads(path.read_text()) == {"created": True}
+
+    def test_read_modify_write_none_aborts_without_writing(self, tmp_path: Path) -> None:
+        from docket.edges import store
+
+        path = tmp_path / "test.json"
+        store.write_json(path, {"v": 1})
+        mtime_before = path.stat().st_mtime_ns
+
+        result = store.read_modify_write(path, lambda _doc: None)
+        assert result == {"v": 1}  # unmodified contents returned
+        assert path.stat().st_mtime_ns == mtime_before  # file genuinely untouched
+
+    def test_read_modify_write_sets_perms_and_bak(self, tmp_path: Path) -> None:
+        from docket.edges import store
+
+        path = tmp_path / "test.json"
+        store.write_json(path, {"v": 1})
+        store.read_modify_write(path, lambda doc: {"v": 2})
+        assert oct(path.stat().st_mode & 0o777) == oct(0o600)
+        bak = path.with_suffix(".json.bak")
+        assert json.loads(bak.read_text()) == {"v": 1}
+
+    def test_with_lock_serialises_a_concurrent_writer(self, tmp_path: Path) -> None:
+        """A write_json call made while with_lock holds the lock waits — it never
+        interleaves and corrupts the file; it just blocks until the lock is free."""
+        import threading
+        import time
+
+        from docket.edges import store
+
+        path = tmp_path / "test.json"
+        store.write_json(path, {"v": 0})
+        order: list[str] = []
+
+        def _writer() -> None:
+            order.append("writer-start")
+            store.write_json(path, {"v": 1})
+            order.append("writer-done")
+
+        with store.with_lock(path):
+            order.append("lock-held")
+            t = threading.Thread(target=_writer)
+            t.start()
+            time.sleep(0.1)  # give the writer a chance to run — it must still be blocked
+            assert order == ["lock-held", "writer-start"]
+        t.join(timeout=5)
+        assert order == ["lock-held", "writer-start", "writer-done"]
+        assert json.loads(path.read_text()) == {"v": 1}
+
 
 # ── T2.4: ACL ─────────────────────────────────────────────────────────────────
 

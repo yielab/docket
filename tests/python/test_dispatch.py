@@ -9,12 +9,21 @@ A final end-to-end test wires the driver through the REAL agent_run + fake binar
 
 CD-0 adds ``TestAgentRunRealShape`` — canned real daemon JSON confirming the
 confirmed schema (result.payloads[0].text, no USD cost field).
+
+R-1 adds the task-state-machine-v2 suites: ``TestConcurrentDispatch`` (the
+thread-race regression this whole card exists to close), ``TestCrashRecovery``
+(stale-claim sweep + resume-from-last-hop), ``TestBlockedStaysBlocked``
+(kills the old blocked→pending auto-retry), and ``TestLegacyQueueLoads``
+(a pre-R-1 TASK_LIST.json with none of the new fields still loads/dispatches).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import threading
+import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -290,8 +299,9 @@ class TestPipeline:
         res = _dispatch.dispatch_pod("demo", runner=runner)[0]
         assert res.status == "blocked"
         assert runner.calls == []  # nothing dispatched
-        # Task is left pending for a later run.
-        assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
+        # R-1: a blocked task stays blocked (it is never silently rewritten back
+        # to pending) — it only re-enters pending via unblock_pod/retry_task.
+        assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
 
     def test_no_cross_pod_dispatch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
@@ -471,3 +481,306 @@ class TestEndToEnd:
         tasks = _dispatch.read_tasks("demo")
         assert tasks[0]["status"] == "done"
         assert (oc_dir / "traces" / "demo").is_dir()
+
+
+# ── R-1: task state machine v2 — locked claims close the concurrent-dispatch race ─
+
+
+class TestConcurrentDispatch:
+    """The regression this whole card exists to close.
+
+    Before R-1, ``dispatch_pod`` read the queue unlocked, decided what to run
+    from that snapshot, and only wrote back after each task — so two
+    concurrent callers on the same pod could both see the same task
+    ``pending`` and both run it. Claiming (``_claim_next_task``) is now a
+    locked read-modify-write, so this can no longer happen: concurrent callers
+    may run *different* tasks at once, but never the *same* one twice.
+    """
+
+    def test_two_concurrent_dispatch_pod_calls_never_double_run_a_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        n_tasks = 8
+        for i in range(n_tasks):
+            _dispatch.enqueue_task("demo", f"task {i}")
+
+        calls: list[str] = []
+        calls_lock = threading.Lock()
+
+        class _SlowRunner:
+            """Sleeps on every hop so concurrent claim attempts actually overlap."""
+
+            def __call__(
+                self,
+                agent_id: str,
+                session_key: str,
+                message: str,
+                timeout: int,
+                env: dict[str, str] | None = None,
+            ) -> _oc.AgentRunResult:
+                time.sleep(0.02)
+                with calls_lock:
+                    calls.append(session_key)
+                return _oc.AgentRunResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
+
+        runner = _SlowRunner()
+        errors: list[BaseException] = []
+
+        def _run() -> None:
+            try:
+                _dispatch.dispatch_pod("demo", runner=runner)
+            except BaseException as exc:  # surfaced via `errors`, not swallowed
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_run) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        assert not errors, f"dispatch_pod raised in a worker thread: {errors}"
+        # Each task is a 2-hop pipeline (lead, implementer) on its own session id
+        # (agent:demo:<task-id>) — exactly 2 calls per task, never more (a task
+        # claimed twice would show up as 4+ calls on its session) and every task
+        # still completes (never 0, i.e. never left unclaimed).
+        counts = Counter(calls)
+        assert len(counts) == n_tasks, f"expected {n_tasks} distinct task sessions, got {counts}"
+        assert all(c == 2 for c in counts.values()), counts
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == n_tasks
+        assert all(t["status"] == "done" for t in tasks)
+        assert len({t["id"] for t in tasks}) == n_tasks  # uuid4 ids never collide
+
+
+# ── R-1: crash recovery — stale-claim sweep + resume from the last persisted hop ──
+
+
+class _CrashOnRoleRunner:
+    """Simulates a hard crash (process death) partway through a role's hop.
+
+    Records the role it was called for *before* raising, matching what really
+    happens: the request went out (recorded), but the process died before a
+    result — and therefore a persisted terminal status — ever came back.
+    """
+
+    def __init__(self, crash_role: str):
+        self.calls: list[str] = []
+        self.crash_role = crash_role
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _oc.AgentRunResult:
+        role = agent_id.rsplit("-", 1)[-1]
+        self.calls.append(role)
+        if role == self.crash_role:
+            raise RuntimeError("simulated crash")
+        return _oc.AgentRunResult(True, f"done by {agent_id}", 0.01, {"output": "x"})
+
+
+class _VerdictAwareRunner:
+    """Like _RecordingRunner, but the Tester hop gets a PASS so a full pod can finish `done`."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _oc.AgentRunResult:
+        self.calls.append((agent_id, session_key, message, timeout, env))
+        role = agent_id.rsplit("-", 1)[-1]
+        output = "PASS - looks good" if role == "tester" else f"done by {agent_id}"
+        return _oc.AgentRunResult(True, output, 0.01, {"output": output})
+
+
+class TestCrashRecovery:
+    def test_resume_skips_already_completed_hops(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
+        _dispatch.enqueue_task("demo", "Resume me")
+
+        crasher = _CrashOnRoleRunner(crash_role="reviewer")
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            _dispatch.dispatch_pod("demo", runner=crasher)
+        # lead + implementer completed (and were persisted incrementally);
+        # reviewer's request went out but the process "died" before a result.
+        assert crasher.calls == ["lead", "implementer", "reviewer"]
+
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == 1
+        assert tasks[0]["status"] == "running"  # never got to a terminal status
+        assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
+
+        # Force the claim stale — simulate enough wall-clock time having passed.
+        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+
+        resumer = _VerdictAwareRunner()
+        results = _dispatch.dispatch_pod("demo", runner=resumer, resume=True)
+        assert len(results) == 1
+        assert results[0].status == "done"
+        # Only the hops that hadn't completed before the crash run again —
+        # lead and implementer are NOT re-invoked.
+        roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
+        assert roles_called == ["reviewer", "tester"]
+
+        final = _dispatch.read_tasks("demo")[0]
+        assert final["status"] == "done"
+        assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "reviewer", "tester"]
+        assert final["claimId"] is None
+
+    def test_stale_claim_without_resume_is_not_reclaimed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The default (non-resume) dispatch never auto-retries a crashed task."""
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "Crash me")
+        crasher = _CrashOnRoleRunner(crash_role="implementer")
+        with pytest.raises(RuntimeError):
+            _dispatch.dispatch_pod("demo", runner=crasher)
+
+        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        runner = _RecordingRunner()
+        results = _dispatch.dispatch_pod("demo", runner=runner)  # resume defaults to False
+        assert results == []  # nothing eligible without --resume
+        assert runner.calls == []
+        task = _dispatch.read_tasks("demo")[0]
+        assert task["status"] == "failed"
+        assert task["failureKind"] == "stale_claim"
+
+    def test_stale_claim_sweep_emits_trace_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        oc_dir = _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "Crash me too")
+        crasher = _CrashOnRoleRunner(crash_role="implementer")
+        with pytest.raises(RuntimeError):
+            _dispatch.dispatch_pod("demo", runner=crasher)
+
+        monkeypatch.setattr(_cfg, "CLAIM_STALE_TIMEOUT", -1, raising=True)
+        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+
+        trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+        events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
+        assert any(e["event_type"] == "stale_claim" for e in events)
+
+
+# ── R-1: a budget-blocked task is never silently rewritten back to pending ────────
+
+
+class TestBlockedStaysBlocked:
+    def test_blocked_task_survives_repeated_dispatch_pod_calls(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "Too expensive")
+        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        runner = _RecordingRunner()
+
+        first = _dispatch.dispatch_pod("demo", runner=runner)
+        assert first[0].status == "blocked"
+        # Once blocked, a `blocked` task is not even eligible to claim again —
+        # repeated dispatch_pod calls find nothing to do (never re-attempted,
+        # let alone re-attempted forever, which was the R-1 bug).
+        for _ in range(3):
+            assert _dispatch.dispatch_pod("demo", runner=runner) == []
+        assert runner.calls == []  # never actually dispatched
+        assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
+
+    def test_retry_task_unblocks_a_single_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "Too expensive")
+        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
+
+        assert _dispatch.retry_task("demo", task["id"]) is True
+        assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
+        # Retrying a task that isn't blocked is a no-op.
+        assert _dispatch.retry_task("demo", task["id"]) is False
+        assert _dispatch.retry_task("demo", "no-such-task") is False
+
+    def test_unblock_pod_unblocks_every_blocked_task(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        _dispatch.enqueue_task("demo", "One")
+        _dispatch.enqueue_task("demo", "Two")
+        monkeypatch.setattr(_dispatch, "pod_budget", lambda _p: 1.0)
+        monkeypatch.setattr(_dispatch, "pod_recorded_cost", lambda _p: 5.0)
+        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == 2
+        assert all(t["status"] == "blocked" for t in tasks)
+
+        assert _dispatch.unblock_pod("demo") == 2
+        tasks = _dispatch.read_tasks("demo")
+        assert all(t["status"] == "pending" for t in tasks)
+        # Nothing left blocked — a second call is a no-op.
+        assert _dispatch.unblock_pod("demo") == 0
+
+
+# ── R-1: backward compatibility — a pre-R-1 TASK_LIST.json still loads/dispatches ─
+
+
+class TestLegacyQueueLoads:
+    def test_legacy_task_without_v2_fields_loads_and_dispatches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        legacy_path = _dispatch.pod_task_list_path("demo")
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.write_text(
+            json.dumps(
+                {
+                    "tasks": [
+                        {
+                            # Pre-R-1 shape: epoch-ms id, no claimId/claimedAt/failureKind.
+                            "id": "task-1700000000000",
+                            "description": "Old-style task",
+                            "priority": "normal",
+                            "status": "pending",
+                            "created": "2024-01-01T00:00:00+00:00",
+                            "startedAt": None,
+                            "completedAt": None,
+                            "source": "operator",
+                            "hops": [],
+                        }
+                    ]
+                }
+            )
+        )
+
+        tasks = _dispatch.read_tasks("demo")
+        assert len(tasks) == 1
+        assert tasks[0]["id"] == "task-1700000000000"  # id format is not migrated, just tolerated
+        assert tasks[0]["claimId"] is None
+        assert tasks[0]["claimedAt"] is None
+
+        results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
+        assert results[0].status == "done"
+        assert _dispatch.read_tasks("demo")[0]["status"] == "done"
+
+    def test_legacy_queue_missing_tasks_key_loads_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        legacy_path = _dispatch.pod_task_list_path("demo")
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.write_text(json.dumps({}))
+        assert _dispatch.read_tasks("demo") == []

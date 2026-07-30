@@ -3,6 +3,17 @@
 One real agent turn per present role (via the ACL's ``agent_run``), with a trace event and budget
 check per hop. Dispatch is always within a single pod — no code path sends one pod's work to
 another pod's agents. Invoked only from an explicit trigger or the opt-in ``serve --dispatch`` loop.
+
+R-1 (task state machine v2): a task is **claimed** (a locked read-modify-write flipping
+``pending`` → ``running`` and persisting ``startedAt``/``claimId``/``claimedAt`` before the first
+hop runs) rather than read unlocked and mutated in memory — this is what makes two concurrent
+``dispatch_pod`` calls on the same pod unable to double-run the same task (they may each claim and
+run *different* tasks concurrently; that is fine). Hops persist to the queue file as they complete
+(not only at task end), so a crash mid-task loses at most the in-flight hop. A stale ``running``
+claim is swept to ``failed`` (``failureKind: "stale_claim"``) and is resumable — ``dispatch_pod(...,
+resume=True)`` re-claims it and continues from the last persisted hop instead of hop 0. A
+``blocked`` (budget) task is never silently rewritten to ``pending``; it re-enters the queue only
+via ``unblock_pod`` (pod-wide budget change) or ``retry_task`` (single task, explicit).
 """
 
 from __future__ import annotations
@@ -10,6 +21,7 @@ from __future__ import annotations
 import datetime as _dt
 import json as _json
 import re as _re
+import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +42,9 @@ PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 Runner = Callable[[str, str, str, int, dict[str, str] | None], _oc.AgentRunResult]
 
 DEFAULT_TIMEOUT = 300
+
+# Priority sort key shared by task selection everywhere it matters.
+_PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 
 # FD-2: the Tester's documented contract (see cli/_pod.py's Tester SOUL.md body) is a
 # binary PASS/FAIL first line. Matched case-insensitively; anything else is unparseable.
@@ -86,6 +101,19 @@ def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
 
 
+def _parse_iso(ts: str) -> _dt.datetime | None:
+    """Parse an ISO timestamp produced by ``_now()``; None on anything else."""
+    if not ts:
+        return None
+    try:
+        dt = _dt.datetime.fromisoformat(ts)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_dt.UTC)
+    return dt
+
+
 def pod_task_list_path(project: str) -> Path:
     """The pod's task queue lives in its Lead's workspace.
 
@@ -96,28 +124,60 @@ def pod_task_list_path(project: str) -> Path:
     return _cfg.workspace_dir(lead_id) / "TASK_LIST.json"
 
 
+# Fields a v2 task record may lack when loaded from a pre-R-1 TASK_LIST.json.
+# ``hops`` is handled separately below — a shared mutable default would leak
+# the same list object across every backfilled task.
+_TASK_SCALAR_DEFAULTS: dict[str, Any] = {
+    "priority": "normal",
+    "status": "pending",
+    "startedAt": None,
+    "completedAt": None,
+    "source": "operator",
+    "reason": "",
+    "costUsd": 0.0,
+    "claimId": None,
+    "claimedAt": None,
+}
+
+
+def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
+    """Backfill v2 fields onto a task dict (mutates in place; returns it).
+
+    Every read path funnels through this so a legacy queue file — written
+    before claims/resume/uuid ids existed — loads and dispatches with no
+    separate migration step (R-1 backward-compat requirement).
+    """
+    for key, default in _TASK_SCALAR_DEFAULTS.items():
+        task.setdefault(key, default)
+    if not isinstance(task.get("hops"), list):
+        task["hops"] = []
+    task.setdefault("created", _now())
+    task.setdefault("id", f"task-{_uuid.uuid4()}")
+    return task
+
+
 def read_tasks(project: str) -> list[dict[str, Any]]:
-    """Return the pod's task list ([] if the queue file is absent)."""
+    """Return the pod's task list ([] if the queue file is absent), normalized."""
     raw = _store.read_json(pod_task_list_path(project))
     tasks = raw.get("tasks") if isinstance(raw, dict) else None
-    return tasks if isinstance(tasks, list) else []
-
-
-def write_tasks(project: str, tasks: list[dict[str, Any]]) -> None:
-    _store.write_json(pod_task_list_path(project), {"tasks": tasks})
+    if not isinstance(tasks, list):
+        return []
+    return [_normalize_task(t) for t in tasks if isinstance(t, dict)]
 
 
 def enqueue_task(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
     """Append a pending task to the pod's queue and return it.
 
-    Raises DispatchError if the project has no Lead workspace (no pod yet).
+    Raises DispatchError if the project has no Lead workspace (no pod yet). The
+    append is a locked read-modify-write (``store.read_modify_write``) so two
+    concurrent ``delegate`` calls can never clobber each other's task.
     """
-    if not pod_task_list_path(project).parent.is_dir():
+    path = pod_task_list_path(project)
+    if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run: docket add {project})")
-    import time as _time
 
     task: dict[str, Any] = {
-        "id": f"task-{int(_time.time() * 1000)}",
+        "id": f"task-{_uuid.uuid4()}",
         "description": description,
         "priority": priority if priority in ("high", "normal", "low") else "normal",
         "status": "pending",
@@ -126,10 +186,23 @@ def enqueue_task(project: str, description: str, priority: str = "normal") -> di
         "completedAt": None,
         "source": "operator",
         "hops": [],
+        "reason": "",
+        "costUsd": 0.0,
+        "claimId": None,
+        "claimedAt": None,
     }
-    tasks = read_tasks(project)
-    tasks.append(task)
-    write_tasks(project, tasks)
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
+        tasks_raw = doc.get("tasks")
+        tasks = (
+            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
+            if isinstance(tasks_raw, list)
+            else []
+        )
+        tasks.append(task)
+        return {"tasks": tasks}
+
+    _store.read_modify_write(path, _fn)
     return task
 
 
@@ -221,18 +294,51 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
     }
 
 
+def _hop_record(h: HopResult) -> dict[str, Any]:
+    """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``)."""
+    return {
+        "role": h.role,
+        "member": h.member_id,
+        "ok": h.ok,
+        "output": h.output,
+        "costUsd": round(h.cost_usd, 6),
+        "error": h.error,
+    }
+
+
+def _hop_from_record(rec: dict[str, Any]) -> HopResult:
+    """Reconstruct a HopResult from a persisted hop record (for resume)."""
+    return HopResult(
+        role=str(rec.get("role", "")),
+        member_id=str(rec.get("member", "")),
+        ok=bool(rec.get("ok", False)),
+        output=str(rec.get("output", "")),
+        cost_usd=float(rec.get("costUsd", 0.0) or 0.0),
+        error=str(rec.get("error", "")),
+    )
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
     *,
     runner: Runner | None = None,
     timeout: int = DEFAULT_TIMEOUT,
+    resume_from: list[HopResult] | None = None,
+    on_hop: Callable[[HopResult], None] | None = None,
 ) -> TaskResult:
     """Drive one task through the pod pipeline, hop by hop.
 
     Budget is checked before EACH hop (every hop is a real costed turn). A failed
     hop stops the pipeline (later roles only matter if earlier ones succeed). All
     dispatch targets belong to this project's pod — asserted per hop.
+
+    *resume_from* seeds hops that already completed before a crash (role +
+    output preserved) so the roles still to come see the same context an
+    uninterrupted run would have produced; those roles are skipped rather than
+    re-invoked. *on_hop* — if given — fires with each new HopResult right after
+    it completes, so the caller can persist per-hop progress incrementally
+    instead of only when the whole task finishes (R-1 crash-safety).
     """
     run = runner or _oc.agent_run
     task_id = str(task.get("id", "task"))
@@ -240,18 +346,23 @@ def dispatch_task(
     pipeline = pod_pipeline(project)
     cap = pod_budget(project)
 
+    prior: list[HopResult] = list(resume_from) if resume_from else []
+    done_roles = {h.role for h in prior}
+
     _trace.trace_event(
         project,
         session_id,
         "lead",
         "session_start",
-        _json.dumps({"source": "dispatch", "task": task_id}),
+        _json.dumps({"source": "dispatch", "task": task_id, "resumed": bool(prior)}),
     )
 
-    result = TaskResult(task_id=task_id, status="done")
-    prior: list[HopResult] = []
+    result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
     for role, member_id in pipeline:
+        if role in done_roles:
+            continue  # already completed before a crash — resuming, not re-running
+
         # No-cross-pod guarantee: never dispatch to an id outside this pod.
         if _pod.pod_of(member_id) != project:
             raise DispatchError(
@@ -294,6 +405,8 @@ def dispatch_task(
         )
         result.hops.append(hop)
         prior.append(hop)
+        if on_hop is not None:
+            on_hop(hop)
 
         _trace.trace_event(
             project,
@@ -382,25 +495,233 @@ def dispatch_task(
 
 
 def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
-    """Fold a TaskResult back onto the stored task dict."""
+    """Fold a TaskResult back onto the stored task dict (terminal state).
+
+    R-1: a ``blocked`` task stays ``blocked`` — it is never rewritten to
+    ``pending`` here (that rewrite was the bug letting a budget-capped task
+    retry forever on every sweep). It re-enters ``pending`` only through
+    ``unblock_pod`` (pod-wide budget change) or ``retry_task`` (single task).
+    """
     task["status"] = res.status
     task["reason"] = res.reason
-    task["hops"] = [
-        {
-            "role": h.role,
-            "member": h.member_id,
-            "ok": h.ok,
-            "costUsd": round(h.cost_usd, 6),
-            "error": h.error,
-        }
-        for h in res.hops
-    ]
+    task["hops"] = [_hop_record(h) for h in res.hops]
     task["costUsd"] = res.cost_usd
+    task["claimId"] = None
     if res.status == "blocked":
-        task["status"] = "pending"  # left queued; retried when budget allows
         task["blockedReason"] = res.reason
     else:
         task["completedAt"] = _now()
+        task.pop("failureKind", None)  # a fresh terminal result supersedes any stale-claim marker
+
+
+def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
+    """Whether *t* can be claimed by this dispatch run.
+
+    A plain ``pending`` task always is. A ``failed`` task whose failure was a
+    swept stale claim (a prior dispatcher crashed mid-task) is claimable only
+    when *resume* is set — crash recovery is opt-in, never an automatic retry.
+    """
+    status = t.get("status")
+    if status == "pending":
+        return True
+    return bool(resume and status == "failed" and t.get("failureKind") == "stale_claim")
+
+
+def _claim_next_task(
+    project: str, *, resume: bool
+) -> tuple[dict[str, Any], list[HopResult]] | None:
+    """Locked claim of the pod's next eligible task (highest priority first).
+
+    The whole read → pick → flip-to-``running`` → write happens under one
+    filelock (``store.read_modify_write``), so two concurrent callers can never
+    claim the same task — each sees the other's claim already applied and picks
+    a different one (or finds nothing left). ``startedAt``/``claimId``/
+    ``claimedAt`` are persisted before this function returns, so a crash right
+    after claiming still shows ``running`` on disk, never ``pending`` again.
+
+    Returns the claimed task (a normalized copy) and any hops already recorded
+    for it (empty for a fresh ``pending`` task, the pre-crash hops for a
+    resumed one) — or ``None`` if nothing is claimable.
+    """
+    claimed: dict[str, Any] | None = None
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal claimed
+        tasks_raw = doc.get("tasks")
+        tasks = (
+            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
+            if isinstance(tasks_raw, list)
+            else []
+        )
+        candidates = [i for i, t in enumerate(tasks) if _eligible_for_claim(t, resume=resume)]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda i: _PRIORITY_RANK.get(str(tasks[i].get("priority", "normal")), 1)
+        )
+        t = tasks[candidates[0]]
+        t["status"] = "running"
+        t["startedAt"] = _now()
+        t["claimId"] = str(_uuid.uuid4())
+        t["claimedAt"] = _now()
+        t.pop("failureKind", None)
+        claimed = dict(t)
+        return {"tasks": tasks}
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    if claimed is None:
+        return None
+    resume_hops = [_hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
+    return claimed, resume_hops
+
+
+def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
+    """Append one just-completed hop to the task's persisted record.
+
+    Called after every hop, not only at task end — a crash mid-task then loses
+    at most the in-flight hop, never the ones that already finished.
+    """
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") == task_id:
+                hops = t.get("hops")
+                if not isinstance(hops, list):
+                    hops = []
+                hops.append(_hop_record(hop))
+                t["hops"] = hops
+                t["costUsd"] = round(sum(float(h.get("costUsd", 0.0) or 0.0) for h in hops), 6)
+                return {"tasks": tasks}
+        return None  # task no longer in the queue — nothing to persist
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
+    """Persist a task's terminal outcome (status/reason/hops/cost) and clear its claim."""
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") == task_id:
+                _apply_result(t, res)
+                return {"tasks": tasks}
+        return None
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+
+
+def _sweep_stale_claims(project: str) -> None:
+    """Crash recovery: fail a ``running`` task whose claim has gone stale.
+
+    A task claimed (flipped to ``running``) longer than ``CLAIM_STALE_TIMEOUT``
+    ago without reaching a terminal status is presumed to belong to a
+    dispatcher that crashed mid-hop. Swept to ``failed`` with
+    ``failureKind: "stale_claim"`` and a ``stale_claim`` trace event; its
+    already-persisted ``hops`` are left untouched so a later
+    ``dispatch_pod(..., resume=True)`` can continue from the last one instead
+    of hop 0. Runs at the top of every ``dispatch_pod`` call.
+    """
+    now = _dt.datetime.now(_dt.UTC)
+    swept: list[dict[str, Any]] = []
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        tasks_raw = doc.get("tasks")
+        tasks = (
+            [_normalize_task(t) for t in tasks_raw if isinstance(t, dict)]
+            if isinstance(tasks_raw, list)
+            else []
+        )
+        changed = False
+        for t in tasks:
+            if t.get("status") != "running":
+                continue
+            claimed_at = _parse_iso(str(t.get("claimedAt") or ""))
+            if claimed_at is None:
+                continue
+            if (now - claimed_at).total_seconds() <= _cfg.CLAIM_STALE_TIMEOUT:
+                continue
+            t["status"] = "failed"
+            t["reason"] = "stale claim — dispatcher likely crashed mid-task"
+            t["failureKind"] = "stale_claim"
+            t["claimId"] = None
+            swept.append(dict(t))
+            changed = True
+        return {"tasks": tasks} if changed else None
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    for t in swept:
+        task_id = str(t.get("id", "task"))
+        _trace.trace_event(
+            project,
+            f"agent:{project}:{task_id}",
+            "lead",
+            "stale_claim",
+            _json.dumps({"task": task_id, "claimedAt": t.get("claimedAt")}),
+        )
+
+
+def retry_task(project: str, task_id: str) -> bool:
+    """Un-block a single ``blocked`` task: a locked ``blocked`` → ``pending`` flip.
+
+    The only other way a blocked task re-enters the queue is a pod-wide budget
+    change (see ``unblock_pod``). Returns False (no-op) if the task doesn't
+    exist or isn't currently blocked.
+    """
+    found = False
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal found
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") == task_id:
+                _normalize_task(t)
+                if t.get("status") != "blocked":
+                    return None
+                t["status"] = "pending"
+                t.pop("blockedReason", None)
+                found = True
+                return {"tasks": tasks}
+        return None
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    return found
+
+
+def unblock_pod(project: str) -> int:
+    """Un-block every ``blocked`` task in *project*'s queue.
+
+    Wired to ``docket profile <lead-id> --budget ...`` (cli/__init__.py) when
+    the changed agent is that pod's Lead — a pod-wide budget change is the
+    other sanctioned way (besides ``retry_task``) for a blocked task to become
+    pending again. Returns the number of tasks unblocked (0 if the pod has no
+    queue file yet, or nothing was blocked).
+    """
+    path = pod_task_list_path(project)
+    if not path.parent.is_dir():
+        return 0
+    count = 0
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal count
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        changed = False
+        for t in tasks:
+            _normalize_task(t)
+            if t.get("status") == "blocked":
+                t["status"] = "pending"
+                t.pop("blockedReason", None)
+                count += 1
+                changed = True
+        return {"tasks": tasks} if changed else None
+
+    _store.read_modify_write(path, _fn)
+    return count
 
 
 def dispatch_pod(
@@ -409,29 +730,47 @@ def dispatch_pod(
     runner: Runner | None = None,
     timeout: int = DEFAULT_TIMEOUT,
     max_tasks: int | None = None,
+    resume: bool = False,
 ) -> list[TaskResult]:
     """Dispatch a pod's pending tasks through the pipeline (highest priority first).
 
-    Persists each task's status + per-hop record back to the queue. A "blocked"
-    (budget) task is left pending for a later run. Returns one TaskResult per task
-    attempted. Raises DispatchError if the pod has no Lead.
+    Each task is claimed under a filelock before its first hop runs (see
+    ``_claim_next_task``) rather than read unlocked and mutated in memory, and
+    hops persist to the queue as they complete (see ``_persist_hop``) rather
+    than only when the whole task finishes — the R-1 fixes for the concurrent-
+    dispatch race and crash-mid-task re-run. A stale ``running`` claim is swept
+    to ``failed`` first (``_sweep_stale_claims``); pass *resume* to also
+    reclaim those tasks and continue them from their last persisted hop
+    instead of hop 0. A ``blocked`` (budget) task is left ``blocked`` — never
+    silently retried.
+
+    Returns one TaskResult per task attempted. Raises DispatchError if the pod
+    has no Lead.
     """
     pod_pipeline(project)  # validates pod/lead up front
-    tasks = read_tasks(project)
-    pri = {"high": 0, "normal": 1, "low": 2}
-    pending_idx = [i for i, t in enumerate(tasks) if t.get("status") == "pending"]
-    pending_idx.sort(key=lambda i: pri.get(str(tasks[i].get("priority", "normal")), 1))
-    if max_tasks is not None:
-        pending_idx = pending_idx[:max_tasks]
+    _sweep_stale_claims(project)
 
     results: list[TaskResult] = []
-    for i in pending_idx:
-        task = tasks[i]
-        task["startedAt"] = _now()
-        res = dispatch_task(project, task, runner=runner, timeout=timeout)
-        _apply_result(task, res)
+    while max_tasks is None or len(results) < max_tasks:
+        claim = _claim_next_task(project, resume=resume)
+        if claim is None:
+            break
+        task, resume_hops = claim
+        task_id = str(task.get("id", "task"))
+
+        def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
+            _persist_hop(_project, _task_id, hop)
+
+        res = dispatch_task(
+            project,
+            task,
+            runner=runner,
+            timeout=timeout,
+            resume_from=resume_hops,
+            on_hop=_persist,
+        )
+        _finalize_task(project, task_id, res)
         results.append(res)
-        write_tasks(project, tasks)  # persist after each task (crash-safe)
         if res.status == "blocked":
             break  # budget is pod-wide; no point trying further tasks this run
     return results
@@ -456,6 +795,8 @@ def dispatch_all_pods(
     """Dispatch every pod's queue once (used by the opt-in `serve --dispatch` loop).
 
     Best-effort per pod: one pod failing to dispatch never blocks the others.
+    Never auto-resumes a crashed pod's stale-claim failures — that stays an
+    explicit, operator-driven action (``docket pod <p> dispatch --resume``).
     """
     out: dict[str, list[TaskResult]] = {}
     for project in dispatchable_pods():
