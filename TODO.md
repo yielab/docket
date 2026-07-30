@@ -275,10 +275,29 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
   metering (Phase 18 L-5's problem); any savings claims.
 - **Deliverables:** pause writer + dispatch refusal + `--resume`; typed accessor; labeled estimate
   path; audit entries; tests; docs line-up (CLAUDE.md/README claim matches shipped behavior).
-- **Acceptance gate:** [ ] an over-cap agent is actually paused and refused, test-pinned · [ ]
-  legacy string flag reads correctly · [ ] estimates gate and are always labeled · [ ] suite +
+- **Acceptance gate:** [x] an over-cap agent is actually paused and refused, test-pinned · [x]
+  legacy string flag reads correctly · [x] estimates gate and are always labeled · [x] suite +
   goldens green.
-- **Size:** M · **Status:** TODO
+- **Size:** M · **Status:** DONE (pc/r-5) — `core/dispatch.py`'s budget gate now writes
+  `paused=true, pausedReason="budget"` on the pod's Lead the first time the cap is reached
+  (`_pause_lead_for_budget`); `_claim_next_task` refuses every further claim for a paused pod
+  outright at claim time (a `paused_refused` trace event), before a task is ever flipped to
+  `running` — chosen over "claim then immediately block" because it costs nothing further to
+  *not* dispatch a paused pod (no claim write, no re-aggregated cost, no wasted turn) and leaves
+  the queue's own tasks untouched (`pending`) rather than growing more `blocked` tasks for the
+  same root cause. `docket profile <id> --resume` clears both fields, writes a `profile.resume`
+  audit entry, and unblocks the pod's budget-blocked tasks when the target is a Lead.
+  `AgentMeta.coerce_paused`/`is_paused()` fix the string/bool display bug (used by both
+  `cli/_agents.py` and dispatch). `core/utils.estimate_cost_usd` + `core/dispatch.pod_gating_cost`
+  add the labelled token-based estimate fallback for gating only, used when recorded pod spend
+  reads exactly 0 (which it may forever, per daemon v2026.2.23's cost-field gap) — verified with a
+  real, unmocked `aggregate_cost` path in tests, never contaminating `docket cost`'s recorded
+  figures. Tests in `tests/python/test_r5_autopause.py` (26 cases); `test_dispatch.py`'s
+  `unblock_pod` test updated for the new claim-time-refusal behavior. Specs updated:
+  `cost-tracking.spec.md` (1.1.0 → 1.2.0, Status → Implemented), `docket-meta.spec.md` (2.3.0 →
+  2.4.0, `paused`/`pausedReason` rows' "Known gap" resolved). README's auto-pause claims corrected
+  to note the estimate-fallback nuance; one golden regenerated (`profile --help` text in zsh
+  completions, for the new `--resume` flag).
 
 ---
 
@@ -368,12 +387,11 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
   `blocked` never auto-retries.
 - [x] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
-  *(DONE, pc/r-2)*
 - [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
-  scheduler state survives restart.
+  scheduler state survives restart. *(merging)*
 - [x] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
-- [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
-- [ ] R-6 — verify runs in the worktree; setter validated + audited.
+- [x] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
+- [x] R-6 — verify runs in the worktree; setter validated + audited.
 - [x] R-7 — hop prompts capped with explicit truncation.
 - [ ] R-8 — specs/docs/guidance match everything above; drift guard green.
 - [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +

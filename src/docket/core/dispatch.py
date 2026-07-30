@@ -26,6 +26,14 @@ sweep would wrongly steal it (see ``_touch_claim``). The agent-turn timeout and 
 timeout are now independent (``turnTimeoutS``/``verifyTimeoutS``), resolved per call: an explicit
 override (e.g. ``docket pod <p> dispatch --timeout``) wins, then the pod Lead's meta, then
 ``DEFAULT_TIMEOUT``.
+R-5 (budget honesty): the per-hop budget gate now actually pauses the pod once its cap is
+reached (``_pause_lead_for_budget`` writes the Lead's ``paused``/``pausedReason`` — previously
+nothing ever set that flag, see ``core/models.py``'s ``AgentMeta.paused``), and
+``_claim_next_task`` refuses every further claim for a paused pod outright (a ``paused_refused``
+trace event, no claim write, no wasted turn) until ``docket profile <lead-id> --resume`` clears
+it. Gating also tolerates a daemon that never records a ``usage.cost.total`` at all — see
+``pod_gating_cost``'s token-based estimate fallback, used for gating/warning only and always
+labelled, never presented as recorded spend.
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.core import models as _models
 from docket.core import pod as _pod
 from docket.core import trace as _trace
 from docket.core import utils as _utils
@@ -348,6 +357,58 @@ def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
     if pod_value is not None:
         return pod_value
     return DEFAULT_TIMEOUT
+def pod_gating_cost(project: str) -> tuple[float, bool]:
+    """The pod's spend for budget-**gating** purposes: recorded, or estimated.
+
+    Prefers ``pod_recorded_cost`` (the daemon's own ``usage.cost.total``,
+    summed across the pod's members). Daemon v2026.2.23 may never write that
+    field at all (see ``edges/adapters/openclaw.py``'s ``AgentRunResult.cost_usd``
+    note) — when recorded spend reads exactly 0, a real cap could otherwise
+    never trip, so this falls back to a per-member token x ``MODEL_PRICING``
+    estimate (``core/utils.estimate_cost_usd``).
+
+    Returns ``(amount, estimated)`` — ``estimated`` is True only when
+    *amount* came from that fallback. This value is for gating/warning
+    **only**; it must never be presented as, or mixed into, recorded spend
+    (``docket cost`` stays exactly the daemon's own figure — see
+    ``cli/_cost.py`` and the no-unfalsifiable-cost-claims discipline in
+    CLAUDE.md / cost-tracking.spec.md).
+    """
+    recorded = pod_recorded_cost(project)
+    if recorded > 0.0:
+        return recorded, False
+
+    all_ids = [a.id for a in _oc.list_agents()]
+    total_est = 0.0
+    any_estimate = False
+    for mid, _role, _idx in _pod.members_of(all_ids, project):
+        totals = _utils.aggregate_cost(mid)
+        if totals.input_tokens == 0 and totals.output_tokens == 0:
+            continue
+        model = str(_oc.meta_get(mid, "model", "") or "")
+        est = _utils.estimate_cost_usd(model, totals)
+        if est is not None:
+            total_est += est
+            any_estimate = True
+    return round(total_est, 6), any_estimate
+
+
+def _pause_lead_for_budget(project: str) -> None:
+    """R-5: mark the pod's Lead paused once its budget cap is reached.
+
+    The Lead owns the pod's ``budgetUsd`` cap (``pod_budget`` reads only the
+    Lead's field), so pausing the Lead is exactly what ``_claim_next_task``
+    checks to refuse every further claim for this pod — one write here, not
+    a per-hop recheck. Writing the same values again is harmless (idempotent)
+    though it shouldn't normally recur: once paused, this pod's tasks stop
+    being claimed at all (see ``_claim_next_task``), so ``dispatch_task``'s
+    budget gate — the only caller of this function — won't run again for it
+    until an operator clears the pause (``docket profile <lead-id>
+    --resume``).
+    """
+    lead_id = _pod.member_id(project, "lead")
+    _oc.meta_set(lead_id, "paused", True)
+    _oc.meta_set(lead_id, "pausedReason", "budget")
 
 
 _TRUNCATION_MARKER = "\n[... truncated {n} bytes ...]\n"
@@ -711,20 +772,36 @@ def dispatch_task(
                 f"refusing cross-pod dispatch: '{member_id}' is not in pod '{project}'"
             )
 
-        # Budget gate BEFORE the hop — the spend is recorded by the daemon, so we
-        # check the accumulated pod cost against the cap and stop if we're over.
+        # Budget gate BEFORE the hop. Prefer the daemon's recorded pod spend;
+        # R-5: fall back to a token-based estimate when the daemon has
+        # recorded none at all (see pod_gating_cost) so a real cap can still
+        # trip, and mark the Lead paused so future dispatch attempts are
+        # refused at claim time instead of re-running this same check.
         if cap > 0.0:
-            spent = pod_recorded_cost(project)
+            spent, estimated = pod_gating_cost(project)
             if spent >= cap:
+                spent_label = (
+                    f"~${spent:.2f} (estimated — daemon recorded no cost)"
+                    if estimated
+                    else f"${spent:.2f}"
+                )
                 _trace.trace_event(
                     project,
                     session_id,
                     role,
                     "budget_exceeded",
-                    _json.dumps({"spent": round(spent, 6), "cap": round(cap, 6), "role": role}),
+                    _json.dumps(
+                        {
+                            "spent": round(spent, 6),
+                            "cap": round(cap, 6),
+                            "role": role,
+                            "estimated": estimated,
+                        }
+                    ),
                 )
                 result.status = "blocked"
-                result.reason = f"pod budget reached (${spent:.2f} ≥ ${cap:.2f}) before {role}"
+                result.reason = f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}"
+                _pause_lead_for_budget(project)
                 break
 
         # A rework note only ever applies to the Implementer hop it was queued
@@ -1010,7 +1087,28 @@ def _claim_next_task(
     Returns the claimed task (a normalized copy) and any hops already recorded
     for it (empty for a fresh ``pending`` task, the pre-crash hops for a
     resumed one) — or ``None`` if nothing is claimable.
+
+    R-5: a paused pod (its Lead's ``paused`` flag — set by
+    ``_pause_lead_for_budget`` once the budget cap is reached) refuses every
+    claim outright — no task in its queue is even flipped to ``running``, let
+    alone run. This is checked here (a plain read, outside the queue file's
+    lock — pause changes are rare, operator-driven events, not something
+    concurrent claims race over) rather than inside ``dispatch_task``'s
+    per-hop gate, so a paused pod costs nothing further to *not* dispatch: no
+    claim write, no wasted turn. A ``paused_refused`` trace event records the
+    refusal every time it happens.
     """
+    lead_id = _pod.member_id(project, "lead")
+    if _models.AgentMeta.coerce_paused(_oc.meta_get(lead_id, "paused", "")):
+        _trace.trace_event(
+            project,
+            f"agent:{project}:dispatch",
+            "lead",
+            "paused_refused",
+            _json.dumps({"reason": _oc.meta_get(lead_id, "pausedReason", "") or "budget"}),
+        )
+        return None
+
     claimed: dict[str, Any] | None = None
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:

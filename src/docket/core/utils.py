@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import docket.config as cfg
+from docket.core import models_policy as _mp
 from docket.edges import store
 
 if TYPE_CHECKING:
@@ -146,6 +147,32 @@ def aggregate_cost(agent_id: str) -> CostTotals:
             _write_cost_index(index_path, index)
 
     return totals
+
+
+def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
+    """Token-based cost estimate for *model*, priced from ``MODEL_PRICING``.
+
+    Returns ``None`` when *model* has no pricing entry — callers must not
+    silently treat unknown pricing as "$0". This exists **only** for R-5's
+    budget-gating/warning fallback, for when the daemon's own session JSONL
+    never wrote a ``usage.cost.total`` (``aggregate_cost``'s ``cost_usd``
+    then stays 0.0 forever — see ``edges/adapters/openclaw.py``'s
+    ``AgentRunResult.cost_usd`` note on daemon v2026.2.23). An estimate MUST
+    NEVER be presented as, or summed into, recorded spend — `docket cost`
+    stays exactly the daemon's own figure (see cli/_cost.py and the
+    no-unfalsifiable-cost-claims discipline in CLAUDE.md/cost-tracking.spec).
+    """
+    pricing = _mp.MODEL_PRICING.get(model)
+    if pricing is None:
+        return None
+    in_rate, out_rate, cache_read_rate, cache_write_rate = pricing
+    usd = (
+        totals.input_tokens / 1_000_000 * in_rate
+        + totals.output_tokens / 1_000_000 * out_rate
+        + totals.cache_read / 1_000_000 * cache_read_rate
+        + totals.cache_write / 1_000_000 * cache_write_rate
+    )
+    return round(usd, 6)
 
 
 def _parse_session_file(path: Path) -> dict[str, Any]:

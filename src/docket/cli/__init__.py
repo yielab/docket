@@ -739,8 +739,11 @@ def cmd_profile(
     agent_id: str | None = typer.Argument(None),
     model: str | None = typer.Argument(None),
     budget: str | None = typer.Option(None, "--budget", help="USD cap (0 = remove)"),
+    resume: bool = typer.Option(
+        False, "--resume", help="Clear an auto-pause (e.g. a reached budget cap)"
+    ),
 ) -> None:
-    """Pin or unpin an agent's model; set a budget cap."""
+    """Pin or unpin an agent's model; set a budget cap; resume from auto-pause."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -752,6 +755,24 @@ def cmd_profile(
     if not ws.is_dir():
         ui.error(f"Agent '{aid}' not found.")
         raise typer.Exit(1)
+
+    if resume:
+        # R-5: the only writer that CLEARS an auto-pause (`core/dispatch.py`'s
+        # `_pause_lead_for_budget` is the only one that SETS it). Mirrors the
+        # `--budget` branch below: if the resumed agent is a pod's Lead, also
+        # unblock its budget-blocked tasks — a pause with no way to un-stick
+        # the tasks that queued up behind it would be a no-op resume.
+        _oc.meta_set(aid, "paused", False)
+        _oc.meta_set(aid, "pausedReason", "")
+        audit_log("profile.resume", f"agent={aid}")
+        pod_project = _pod_core.pod_of(aid)
+        if pod_project is not None and _pod_core.member_id(pod_project, "lead") == aid:
+            unblocked = _dispatch.unblock_pod(pod_project)
+            if unblocked:
+                ui.info(f"  Unblocked {unblocked} budget-blocked task(s) in pod '{pod_project}'.")
+        ui.success(f"Resumed '{aid}' — auto-pause cleared.")
+        if budget is None and model is None:
+            return
 
     if budget is not None:
         try:

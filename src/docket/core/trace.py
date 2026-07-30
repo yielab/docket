@@ -55,6 +55,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "review_rejected",
         "stale_claim",
         "hop_retry",  # R-2: one retryable agent-turn retry attempt, observable history
+        "paused_refused",  # R-5: a claim refused because the pod's Lead is budget-paused
         "error",
         "session_end",
     ]

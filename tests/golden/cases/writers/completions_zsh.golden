@@ -14,7 +14,7 @@ _docket() {
     'wire:Wire or update a channel group binding'
     'unwire:Remove a channel binding'
     'scope:Manage session scope / project isolation key'
-    'profile:Pin or unpin an agent'\''s model; set a budget cap'
+    'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
     'auth:Model-provider authentication (status/login/key/setup)'
