@@ -1305,6 +1305,19 @@ def cmd_pod(
     _pod.dispatch(project, sub, list(ctx.args))
 
 
+@app.command(
+    "roles",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_roles(ctx: typer.Context) -> None:
+    """Manage declarative role archetypes: list/show/add/validate (ROADMAP Phase 16 W-6)."""
+    from docket.cli._roles import run_roles
+
+    args = list(ctx.args)
+    sub = args[0] if args else None
+    raise typer.Exit(run_roles(sub, args=args[1:]))
+
+
 @app.command("workflow")
 def cmd_workflow(
     agent_id: str | None = typer.Argument(None),

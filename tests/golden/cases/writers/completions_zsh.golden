@@ -20,6 +20,7 @@ _docket() {
     'auth:Model-provider authentication (status/login/key/setup)'
     'models:View and edit the role→model policy'
     'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
+    'roles:Manage declarative role archetypes: list/show/add/validate (ROADMAP Phase 16 W-6)'
     'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'
     'logs:View memory logs and gateway entries'
     'edit:Open workspace files in $EDITOR'
@@ -66,6 +67,7 @@ _docket() {
     auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest ;;
     policies|policy) compadd list show init test ;;
+    roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;
     info|show|delete|remove|rm|profile|wire|unwire|telegram|logs|log|edit)

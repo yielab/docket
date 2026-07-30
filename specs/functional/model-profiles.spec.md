@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.3.0
+**Version**: 2.3.1
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -28,7 +28,11 @@ This specification covers:
 - The pricing table used for cost estimation, including local-provider and marketplace-
   provider (OpenRouter) pricing honesty
 
-This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md).
+This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md),
+nor the declarative role-archetype registry itself (`name`/`scope`/`gateContract`/…, ROADMAP
+Phase 16 W-6) — see role-archetypes.spec.md. This spec covers only the one integration point
+between the two: how a role with no named row in this policy's table resolves via its
+archetype's `modelClass` instead (see "Roles and built-in policy", requirement 5).
 
 ## Requirements
 
@@ -45,7 +49,13 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only as a per-agent pin.
 4. Each role **MUST** carry a short human-readable WHY string shown by `docket models`.
-5. Resolving an unknown role **MUST** fall back to `DEFAULT_MODEL` (no error).
+5. Resolving a role not in this table **MUST NOT** always collapse straight to `DEFAULT_MODEL`:
+   if the role is a registered pod archetype (ROADMAP Phase 16 W-6; e.g. a starter-library role
+   like `researcher`) whose `modelClass` this table has no named row for, it **MUST** resolve
+   via that `modelClass` against the live rank anchors instead (`economy` for `cheap`,
+   `standard` for `strong`) — see role-archetypes.spec.md. Only a role that is neither a named
+   entry here nor a registered archetype **MUST** fall back to `DEFAULT_MODEL` (no error, either
+   way).
 
 ### User registry overlay
 
@@ -301,6 +311,17 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.3.1 (2026-07-30)
+
+- ROADMAP Phase 16 W-6 (declarative role archetypes): `resolve_role_model` now falls back to a
+  role's own archetype `modelClass` (against the live rank anchors) before giving up on
+  `DEFAULT_MODEL`, for any role that is a registered pod archetype but has no named row in this
+  policy's table (e.g. `researcher`). The four legacy pod roles (lead/implementer/reviewer/
+  tester) are unaffected — they still resolve through their existing named
+  `manager`/`programmer`/`reviewer`/`tester` rows exactly as before. No new hardcoded role name
+  was added to `ALL_ROLES`/`ROLE_CLASS` — see role-archetypes.spec.md for the archetype
+  registry this integrates with.
 
 ### Version 2.3.0 (2026-07-30)
 

@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -279,6 +279,23 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
 the project, or dispatch raised an exception — see `docket runs show <id>` for the recorded
 error)
+
+#### docket roles
+**Purpose**: Inspect and manage declarative role archetypes — built-in, starter-library, and
+user-defined (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
+**Syntax**: `docket roles <list|show|add|validate> [args]`
+**Actions**:
+- `list`: Show every registered archetype (name, scope, model class, gate contract, edit
+  rights, description)
+- `show <name>`: Print one archetype's full definition (YAML, or JSON if PyYAML is unavailable)
+- `add <file.yaml>`: Validate a standalone archetype YAML file and merge it into the user
+  overlay (`~/.openclaw/docket-roles.json`); overrides a built-in/starter archetype by reusing
+  its name
+- `validate [file.yaml]`: With no argument, validate every archetype in the live registry; with
+  a file argument, validate that candidate definition without persisting it
+**Output**: Archetype listing, one archetype's definition, or a per-archetype pass/fail report
+**Return**: `0` on success, `1` on an unknown subcommand, an unknown `show` target, or an invalid
+archetype definition
 
 #### docket runs
 **Purpose**: Inspect the persisted dispatch-run registry — one record per invocation of a pod's
@@ -668,6 +685,11 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.8.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-6 (declarative role archetypes): documented the new `docket roles
+  list/show/add/validate` command — see role-archetypes.spec.md for the registry it manages.
 
 ### Version 1.7.0 (2026-07-30)
 

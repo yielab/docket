@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Complete (task cancellation and parallel hop execution are explicitly out of
 scope — see "Does NOT cover"; tracked as Phase 16 W-2)
 **Last Updated**: 2026-07-30
@@ -61,6 +61,11 @@ This specification does NOT cover:
   does not have today
 - The retired org-wide `docket team` queue (removed-command notice only; durable record in
   ROADMAP decision D-11 — its spec was removed 2026-07-30)
+- The declarative role-archetype registry (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
+  and its per-archetype `gateContract` field — that field is currently descriptive data only;
+  this pipeline's Reviewer/Tester verdict parsing and Implementer `verifyCmd` gate remain their
+  own independent, hardcoded implementation, unaware of the registry (wiring them together is
+  ROADMAP Phase 16 W-8, not shipped)
 
 ## Requirements
 
@@ -499,6 +504,14 @@ run continues from the Reviewer.)
   verification-skipped notice).
 
 ## Changelog
+
+### Version 2.0.1 (2026-07-30)
+
+- Cross-reference only (ROADMAP Phase 16 W-6): named the new declarative role-archetype registry
+  (role-archetypes.spec.md) in "Does NOT cover" and clarified that its `gateContract` field is
+  descriptive data only today — this pipeline's own Reviewer/Tester/Implementer gate logic is
+  unchanged and still independently hardcoded (wiring the two together is Phase 16 W-8). No
+  behavior in this pipeline changed.
 
 ### Version 2.0.0 (2026-07-30)
 

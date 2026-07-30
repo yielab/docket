@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.2.0
+**Version**: 1.2.1
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -18,8 +18,11 @@ This specification covers:
 - Permission invariants and scaffolding quarantine
 
 This specification does NOT cover the `.docket-meta.json` field schema or the
-meta↔`openclaw.json` synchronization contract (both owned by ../data/docket-meta.spec.md),
-nor the pod task queue's semantics (see pod-dispatch.spec.md).
+meta↔`openclaw.json` synchronization contract (both owned by ../data/docket-meta.spec.md), the
+pod task queue's semantics (see pod-dispatch.spec.md), or *how* a pod member's SOUL.md/AGENTS.md
+prose is generated (ROADMAP Phase 16 W-6's declarative role archetypes — see
+role-archetypes.spec.md; this spec covers only which files must exist and their permissions, not
+the mechanism that fills SOUL.md/AGENTS.md in).
 
 ## Requirements
 
@@ -157,6 +160,14 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   `.docket-archive/`).
 
 ## Changelog
+
+### Version 1.2.1 (2026-07-30)
+
+- Cross-reference only (ROADMAP Phase 16 W-6): noted that a pod member's SOUL.md/AGENTS.md
+  content is now generated from a declarative role archetype (`core/archetypes.py`) rather than
+  per-role hardcoded string-building in `cli/_pod.py` — see the new role-archetypes.spec.md.
+  This file's own contract (which files must exist, permissions) is unchanged; the four legacy
+  roles' generated content remains byte-identical to before.
 
 ### Version 1.2.0 (2026-07-30)
 
