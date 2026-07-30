@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -66,8 +66,8 @@ this table fails type-checking or the test suite.
 | `sessionKey` | string | `agent:<id>:<project>` | **synced** | Yes | `add`, `scope` | Isolation key; mirrored to `openclaw.json` agent metadata |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
-| `paused` | bool | — | local | No | `profile` (clear only today) | Whether the agent is paused. **Known gap:** nothing sets this to `true` yet — the auto-pause writer is ROADMAP Phase 14 R-5; today `profile --budget` only clears it |
-| `pausedReason` | string | — | local | No | `profile` (clear only today) | Human-readable pause reason (same R-5 gap as `paused`) |
+| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when the pod's spend (recorded, or estimated when the daemon recorded none) reaches its `budgetUsd` cap (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
+| `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1). Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
@@ -164,12 +164,24 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
   "projectKey": "default",
   "budgetUsd": 5,
   "paused": true,
-  "pausedReason": "Budget cap of $5 reached",
+  "pausedReason": "budget",
   "templateVersion": "3"
 }
 ```
 
 ## Changelog
+
+### Version 2.4.0 (2026-07-30)
+
+- ROADMAP Phase 14 R-5: `paused`/`pausedReason` are no longer clear-only fields — the
+  pod-dispatch budget gate (`core/dispatch.py`'s `_pause_lead_for_budget`) now sets them for
+  real the first time a pod's Lead reaches its `budgetUsd` cap, and the new `docket profile <id>
+  --resume` flag clears them (with an audit entry). Removed the prior "Known gap: nothing sets
+  this to `true` yet" note (now resolved) and corrected the `pausedReason` example value to the
+  literal `"budget"` string the code actually writes, replacing the illustrative full-sentence
+  placeholder. Documented the typed `AgentMeta.is_paused()`/`coerce_paused()` accessor as the
+  one correct way to read `paused` (fixing a prior display-code bug where the flag was compared
+  against the string `"true"` instead of read as the `bool` it's typed and stored as).
 
 ### Version 2.3.0 (2026-07-30)
 
