@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.3.0
+**Version**: 1.3.1
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -19,7 +19,9 @@ This specification covers:
 
 This specification does NOT cover:
 - Agent communication (see telegram-integration.spec.md)
-- Agent workflows (see workflow-integration.spec.md)
+- Pipeline definitions (see pipeline-format.spec.md; `docket workflow`, the retired Lobster YAML
+  surface it replaced, is gone per ROADMAP D-16 — see cli-interface.spec.md's Pipeline Commands
+  section)
 - Pod delegation and dispatch (see pod-dispatch.spec.md)
 
 ## Requirements
@@ -231,6 +233,11 @@ After successful creation:
 - Maintain (check): < 5 seconds
 
 ## Changelog
+
+### Version 1.3.1 (2026-07-30)
+- Retargeted the "does NOT cover" workflow cross-reference at pipeline-format.spec.md — the old
+  `docket workflow` / Lobster surface it named (workflow-integration.spec.md) was retired per
+  ROADMAP D-16 (Phase 16 W-3); that spec file was deleted.
 
 ### Version 1.3.0 (2026-07-30)
 - Truth pass (Platformization baseline): removed every remnant of the deleted repo/task

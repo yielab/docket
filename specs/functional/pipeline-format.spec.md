@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: Implemented (format only — no executor; see "Does NOT cover")
 **Last Updated**: 2026-07-30
 
@@ -8,10 +8,10 @@
 
 This specification defines **the docket-native pipeline format**: a single, Pydantic-modeled,
 unknown-key-rejecting YAML dialect describing how a pod's roles are ordered, gated, and (later)
-run in parallel. It is ROADMAP decision D-16's replacement for the Lobster YAML dialect
-(`workflow-integration.spec.md`) — docket lints Lobster but cannot execute four of the constructs
-its own template emits; this format has no such gap because nothing in it is accepted that this
-spec doesn't also define. The format is implemented by `core/pipeline.py`.
+run in parallel. It is ROADMAP decision D-16's replacement for the Lobster YAML dialect — docket
+used to lint Lobster but could not execute four of the constructs its own template emitted; this
+format has no such gap because nothing in it is accepted that this spec doesn't also define. The
+format is implemented by `core/pipeline.py`.
 
 The **zero-migration contract** is this spec's central guarantee: a pod with no pipeline file
 behaves exactly as `core/dispatch.py` behaves today (`PIPELINE_ORDER`: lead → implementer →
@@ -43,17 +43,19 @@ This specification does NOT cover:
   Python objects. Running a `PipelineSpec` over the pod-dispatch state machine (`pod-dispatch.
   spec.md`), a bounded worker pool, per-step trace spans, and cancellation is ROADMAP Phase 16
   card **W-2**, tracked separately and not built by this card.
-- **A CLI surface.** No `docket pipeline ...`/`docket workflow` command reads or writes this
-  format yet; `docket workflow` still serves the Lobster dialect exactly as documented in
-  `workflow-integration.spec.md` until W-2/W-3 retire it. This spec's functions are called
-  directly by Python today, the same way `core/lobster.py`'s were before `cli/_workflow.py`
-  existed.
-- **A `plan`-style dry-render.** ROADMAP is explicit that `docket workflow plan` must eventually
+- **A CLI surface.** No `docket pipeline ...` command reads or writes this format yet — wiring one
+  up is ROADMAP Phase 16 card **W-2**'s job, tracked separately and not built by this card.
+  `docket workflow` (the old Lobster surface) was retired outright by **W-3** (D-16), not
+  migrated onto this format — it now prints a removed-command notice pointing at the eventual
+  `docket pipeline validate`/`plan`/`run` names. This spec's functions are called directly by
+  Python today, with no CLI wired to either format.
+- **A `plan`-style dry-render.** ROADMAP is explicit that a future `docket pipeline plan` must
   render from the real executor, not a second pretty-printer that can drift from it. Building one
   now — before an executor exists to drift from — would be exactly that drift-prone second
   printer, so none is built here.
-- **The Lobster dialect itself**, its validator, or its retirement — see `workflow-integration.
-  spec.md` and ROADMAP decision D-16 / Phase 16 card W-3.
+- **The Lobster dialect itself**, its validator, or the mechanics of its retirement — see ROADMAP
+  decision D-16 / Phase 16 card W-3, the durable retirement record (the former
+  `workflow-integration.spec.md` was deleted per `specs/README.md`'s retired-spec convention).
 - **Declarative role archetypes** (`archetype`'s registry: names, `modelClass`, `soulTemplate`,
   `gateContract`, …) — ROADMAP Phase 16 card **W-6**. This spec's `archetype` field validates only
   that a referenced name has archetype-slug *shape*; it never checks that the name exists in any
@@ -73,9 +75,9 @@ This specification does NOT cover:
 1. A pipeline document **MUST** be a YAML mapping with `extra="forbid"` semantics at *every*
    nesting level (the document itself, every step, every gate, every rework edge, every
    variable): an unrecognized key anywhere **MUST** be a validation error, never silently
-   ignored. This is the specific gap this format closes relative to Lobster (`workflow-
-   integration.spec.md`'s `validate` silently ignores `continueOnError`/`approval`/`outputs`/
-   `notifications`).
+   ignored. This is the specific gap this format closes relative to the retired Lobster dialect,
+   whose `validate` silently ignored `continueOnError`/`approval`/`outputs`/`notifications`
+   (ROADMAP D-16).
 2. A pipeline document **MUST** declare a non-empty `name` (`str`) and a non-empty `steps` list.
    `description` (`str`, default `""`) and `variables` (a mapping, default `{}`) are optional.
 
@@ -209,12 +211,12 @@ This specification does NOT cover:
    rework-bound violation, a duplicate id, …) **MUST** produce one error string per violation,
    each naming the offending field's dotted location.
 4. `validate_pipeline(text)` **MUST** be a thin wrapper equivalent to `load_pipeline(text).errors`
-   — structural validation only, mirroring `core/lobster.py`'s `validate_lobster` contract for
-   symmetry between the two (now sibling, soon-superseding) formats.
+   — structural validation only, kept as a separate entry point for callers that only want the
+   error list.
 5. If PyYAML is unavailable, `load_pipeline`/`validate_pipeline` **MUST** report an actionable
    error (naming `pip install pyyaml`) rather than raising an unguarded `ImportError` — the same
-   defensive-import convention `core/lobster.py` and `cli/_agents.py` already follow, even though
-   PyYAML is a declared runtime dependency (`pyproject.toml`).
+   defensive-import convention `cli/_agents.py` already follows, even though PyYAML is a declared
+   runtime dependency (`pyproject.toml`).
 
 ## Interface Contracts
 
@@ -322,8 +324,8 @@ steps:
 ### Post-conditions
 
 - A successfully loaded `PipelineSpec` satisfies every requirement in this document — there is no
-  "valid but not fully checked" state, unlike Lobster's `validate` (`workflow-integration.
-  spec.md`), which silently ignores several keys its own template emits.
+  "valid but not fully checked" state, unlike the retired Lobster dialect's `validate` (ROADMAP
+  D-16), which silently ignored several keys its own template emitted.
 - `default_pipeline()` itself satisfies every validator `PipelineSpec` enforces for a
   hand-authored file — it is not exempt from its own rules (test-pinned).
 
@@ -340,6 +342,13 @@ steps:
   one is explicitly out of scope (see "Does NOT cover").
 
 ## Changelog
+
+### Version 1.0.1 (2026-07-30)
+
+- ROADMAP Phase 16 W-3 (D-16) landed: `docket workflow`/Lobster was retired outright (a
+  removed-command notice, not a migration onto this format) and workflow-integration.spec.md was
+  deleted. Retargeted every cross-reference this spec had into that now-deleted file — no
+  functional requirement in this spec changed; W-2 (the executor/CLI surface) remains unbuilt.
 
 ### Version 1.0.0 (2026-07-30)
 

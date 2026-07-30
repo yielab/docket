@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.3.1
+**Version**: 2.3.2
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -243,7 +243,7 @@ Loading the file above migrates it once to `{"default": "...", "roles": {"manage
 
 ### Return Codes
 
-Like the workflow command (see workflow-integration.spec.md), `docket profile` and `docket
+Like every other docket command (see cli-interface.spec.md), `docket profile` and `docket
 models` use a plain success/failure contract — `0` on success, `1` on any error (agent not
 found, invalid model, unknown role). There is no distinct exit code per error kind.
 
@@ -311,6 +311,12 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.3.2 (2026-07-30)
+
+- Retargeted the Return Codes cross-reference away from workflow-integration.spec.md — `docket
+  workflow` (the Lobster surface it named) was retired per ROADMAP D-16 (Phase 16 W-3) and that
+  spec file was deleted.
 
 ### Version 2.3.1 (2026-07-30)
 

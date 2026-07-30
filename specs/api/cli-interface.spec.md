@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -44,7 +44,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
 | `codebase-path` | `add` | MUST be absolute or tilde-expanded; MUST exist and be readable |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
-| `action` | `scope`, `keys`, `pod`, `workflow`, `gates` | MUST be a verb from that command's documented action set |
+| `action` | `scope`, `keys`, `pod`, `gates` | MUST be a verb from that command's documented action set |
 
 Unrecognized or excess positional arguments MUST produce a clear error and exit 1.
 
@@ -221,20 +221,17 @@ docket [global-options] <command> [command-options] [arguments]
 **Output**: Profile status or setup confirmation
 **Return**: 0 on success, non-zero if the underlying flow fails or is cancelled
 
-### Workflow Commands
+### Pipeline Commands
 
-#### docket workflow
-**Purpose**: Manage Lobster YAML pipelines (docket authors/validates/plans; the Lobster daemon executes)
-**Syntax**: `docket workflow <agent-id> <action> [name]`
-**Actions**:
-- `create <name>`: Generate new `<name>.lobster.yml` workflow template
-- `list`: Show agent's workflows
-- `show <name>`: Display workflow content
-- `delete <name>`: Remove workflow
-- `validate <name>`: Structural/lint check; does not execute
-- `plan <name>` (alias `dry-run`): Render the resolved step plan; does not execute or consume tokens
-**Output**: Workflow content, listing, validation result, or plan
-**Return**: `0` on success (including "already exists" on `create`, which warns but doesn't fail); `1` on any error — see workflow-integration.spec.md for the full contract
+`docket workflow` (the Lobster YAML surface: author/validate/plan a `.lobster.yml` template)
+was **retired** in Phase 16 (D-16) — its validator silently ignored four constructs its own
+template emitted, so docket was linting a dialect it could not fully execute. Running
+`docket workflow <anything>` (or its former `wf` alias) prints a removed-command notice pointing
+at `docket pipeline validate` / `docket pipeline plan` / `docket pipeline run` — the single
+pipeline dialect docket actually executes (`pipeline-format.spec.md`, Phase 16 W-1/W-2). Any
+existing `<workspace>/workflows/*.lobster.yml` files are left on disk untouched, but no longer
+read by docket. (The former workflow-integration.spec.md was removed 2026-07-30; ROADMAP
+decision D-16 is the durable retirement record.)
 
 ### Pod Commands
 
@@ -682,7 +679,6 @@ Format: `"Action description. Continue? (y/N): "`
 - Max JSON parsing: 10MB
 - Max memory log: 100MB
 - Max agents: 1000
-- Max workflows per agent: 100
 
 ## Backwards Compatibility
 
@@ -699,6 +695,14 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.9.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-3 (D-16): retired `docket workflow` (the Lobster YAML surface) — replaced
+  the "Workflow Commands" / `docket workflow` section with a "Pipeline Commands" section
+  documenting the removed-command notice, the same treatment `docket team` got under D-11.
+  Removed `workflow` from the `action` argument table row and the now-meaningless "Max workflows
+  per agent: 100" resource limit.
 
 ### Version 1.8.0 (2026-07-30)
 
