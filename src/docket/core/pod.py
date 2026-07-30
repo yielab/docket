@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import docket.config as _cfg
 from docket.core import models_policy as _mp
 
 # The roles a pod member can take. Distinct from the org specialist roles.
@@ -231,3 +232,25 @@ def plan_added_member(
         project_key=project_key,
         role_models=role_models,
     )
+
+
+def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "") -> str:
+    """Resolve the real working directory for a pod member's mechanical operations.
+
+    Preference order: the member's own git **worktree** (an isolated checkout set
+    at provisioning time — see ``cli/_pod.py``'s ``_provision_worktree``, which
+    writes ``worktreeDir`` into the member's meta) → the pod's shared **codebase**
+    root → the member's own docket **workspace** dir (``config.workspace_dir``).
+
+    Both the mechanical verification gate (``core/dispatch.py``) and the TOOLS.md
+    generator (``cli/_pod.py``'s ``_regenerate_member_tools``) resolve through this
+    one helper so they can never disagree again about which tree an implementer's
+    work is actually checked against — a worktree-pod implementer's changes used
+    to be verified against the shared repo root instead of its own worktree
+    (Phase 14 R-6).
+    """
+    if worktree_dir:
+        return worktree_dir
+    if codebase:
+        return codebase
+    return str(_cfg.workspace_dir(member_id))

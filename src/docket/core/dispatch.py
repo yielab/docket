@@ -345,8 +345,13 @@ def dispatch_task(
         if role == "implementer":
             verify_cmd = str(_oc.meta_get(member_id, "verifyCmd", "") or "")
             if verify_cmd:
+                # R-6: verify in the implementer's own worktree when it has one —
+                # else the shared codebase root — else its workspace dir. Shared
+                # with cli/_pod.py's _regenerate_member_tools via core/pod.py so
+                # the two can't disagree about which tree is being checked.
+                worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
                 impl_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
-                cwd = impl_codebase or str(_cfg.PROJECTS_DIR / member_id)
+                cwd = _pod.resolve_member_cwd(member_id, worktree_dir, impl_codebase)
                 passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, timeout)
                 redacted = _trace.redact(raw_output)
                 if not passed:

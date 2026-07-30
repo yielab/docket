@@ -25,12 +25,49 @@ from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pod
 from docket.core import resources as _res
+from docket.core.audit import audit_log
 from docket.edges import store as _store
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 # Bump when the pod-member templates change (doctor flags older members).
 POD_TEMPLATE_VERSION = 2
+
+# R-6: a verify command is stored and later run with shell=True (system.py's
+# run_verify_cmd) because real verify pipelines legitimately use `&&`/pipes/
+# redirects. This cap only bounds what gets persisted to .docket-meta.json and
+# executed — it is generous for any realistic single-line pipeline, not an
+# accommodation for arbitrary scripts (write a script file and call *that*
+# instead of pasting one here).
+_MAX_VERIFY_CMD_LEN = 2000
+
+
+class VerifyCmdError(ValueError):
+    """A verify command failed validation before being stored."""
+
+
+def _validate_verify_cmd(cmd: str) -> str:
+    """Validate a verify command before it is persisted to ``.docket-meta.json``.
+
+    Trust boundary: docket keeps ``run_verify_cmd``'s ``shell=True`` (verify
+    commands need `&&`/pipes) because this string is **operator-owned** — it only
+    ever reaches docket through an interactive `set-verify`/`--verify` CLI
+    invocation the operator typed, never from agent or network input, and docket
+    executes it as the operator when the pipeline later runs it. This validation
+    only rejects control-character injection and bounds length; it does not
+    sandbox, parse, or otherwise interpret the command (that's the daemon/Docker
+    isolation lane, out of scope here).
+    """
+    if "\x00" in cmd:
+        raise VerifyCmdError("verify command must not contain a NUL byte")
+    if "\n" in cmd or "\r" in cmd:
+        raise VerifyCmdError("verify command must not contain a newline")
+    if len(cmd) > _MAX_VERIFY_CMD_LEN:
+        raise VerifyCmdError(
+            f"verify command too long ({len(cmd)} chars, limit {_MAX_VERIFY_CMD_LEN})"
+        )
+    return cmd
+
 
 # One-line purpose per pod role (shown in `docket pod <project>`).
 _ROLE_PURPOSE: dict[str, str] = {
@@ -541,6 +578,12 @@ def _pod_add(project: str, extra: list[str]) -> None:
     if role is None:
         ui.error('Usage: docket pod <project> add <role> [--count N] [--verify "<cmd>"]')
         raise typer.Exit(1)
+    if verify_cmd:
+        try:
+            verify_cmd = _validate_verify_cmd(verify_cmd)
+        except VerifyCmdError as ex:
+            ui.error(str(ex))
+            raise typer.Exit(1) from ex
 
     # Inherit codebase/stack/description from the pod's Lead (or any member).
     base_id = pod_member_ids(project)[0]
@@ -589,6 +632,8 @@ def _pod_add(project: str, extra: list[str]) -> None:
         if ok:
             ui.success(f"Added {member.member_id} [{member.role}] {member.model}")
             created.append(member.member_id)
+            if verify_cmd:
+                audit_log("pod.set-verify", f"member={member.member_id} cmd={verify_cmd!r}")
         else:
             ui.warn(f"{member.member_id}: registration failed — {msg}")
     if created:
@@ -638,7 +683,9 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     verify_cmd = _oc.meta_get(member_id, "verifyCmd", "")
     if not ((port_start_s and scratch) or verify_cmd):
         return
-    codebase = _oc.meta_get(member_id, "worktreeDir", "") or _oc.meta_get(member_id, "codebase", "")
+    worktree_dir = _oc.meta_get(member_id, "worktreeDir", "")
+    raw_codebase = _oc.meta_get(member_id, "codebase", "")
+    codebase = pod.resolve_member_cwd(member_id, worktree_dir, raw_codebase)
     content = _member_tools(
         project,
         role,
@@ -656,7 +703,9 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     """Set the verify command on an existing Implementer.
 
     Usage: ``docket pod <project> set-verify <member-id> "<cmd>"``. Rewrites
-    TOOLS.md so the Implementer sees the updated gate.
+    TOOLS.md so the Implementer sees the updated gate. The command is validated
+    (no NUL/newline, length-capped — see ``_validate_verify_cmd``) and the change
+    is audit-logged (R-6): docket still runs it with ``shell=True`` once stored.
     """
     if len(extra) < 2:
         ui.error('Usage: docket pod <project> set-verify <member-id> "<cmd>"')
@@ -672,8 +721,14 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
             f"'{member_id}' is a {role or 'unknown role'} — verifyCmd only applies to implementers."
         )
         raise typer.Exit(1)
+    try:
+        verify_cmd = _validate_verify_cmd(verify_cmd)
+    except VerifyCmdError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
     _oc.meta_set(member_id, "verifyCmd", verify_cmd)
     _regenerate_member_tools(member_id, project)
+    audit_log("pod.set-verify", f"member={member_id} cmd={verify_cmd!r}")
     ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")
 
 
