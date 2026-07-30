@@ -135,9 +135,27 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
   3. Tests: retryable vs non-retryable paths; attempts persisted; verify timeout independent.
 - **Out of scope:** model-fallback-on-failure (stays out per Phase 6b — retry same model only).
 - **Deliverables:** taxonomy, retry loop, timeout knobs, tests; golden update for new `--help` text.
-- **Acceptance gate:** [ ] a timed-out hop retries up to its budget then fails with `attempts`
-  recorded · [ ] verify and turn timeouts settable independently · [ ] suite + goldens green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] a timed-out hop retries up to its budget then fails with `attempts`
+  recorded · [x] verify and turn timeouts settable independently · [x] suite + goldens green.
+- **Size:** M · **Status:** DONE (pc/r-2) — `AgentRunResult` gains a `failure_kind`
+  (`timeout | daemon_error | nonzero_exit | invalid_output`), additive/backward-compatible; only
+  `timeout`/`daemon_error` are retryable (`core/dispatch.py`'s `_RETRYABLE_FAILURE_KINDS`). Per-role
+  retry budget + linear backoff (`config.DISPATCH_RETRIES_PER_ROLE`/`DISPATCH_RETRY_BACKOFF_S`);
+  `attempts` persisted per hop (`HopResult.attempts`, round-trips through `_hop_record`/
+  `_hop_from_record`); a `hop_retry` trace event per attempt. `turnTimeoutS`/`verifyTimeoutS` on the
+  Lead's meta (alongside `budgetUsd`), a `--timeout` override on `docket pod <p> dispatch`
+  (overrides both for that run), and a `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S` serve
+  config knob — `DEFAULT_TIMEOUT` is now the last-resort fallback only. **Stale-claim interaction**
+  (the subtle point this card called out): a retry adds backoff + another turn-timeout to a hop's
+  wall-clock time on top of whatever earlier hops already took, so a legitimately-still-running
+  retry loop could now exceed `CLAIM_STALE_TIMEOUT` and get swept as `stale_claim` by a *concurrent*
+  dispatcher's sweep (the same concurrency R-1's locked claims exist for). Fixed by refreshing
+  `claimedAt` on every retry (`dispatch_task`'s `on_retry` → `_touch_claim`) and on every completed
+  hop (`_persist_hop`, extended) — both are real forward progress, not staleness. No golden diff:
+  `docket pod` isn't part of the golden suite (its `--help` text lives in raw `ctx.args`, not a
+  Typer-documented option) and the static `docket help` blob in `cli/_help.py` was left untouched
+  (matching R-1's own `--resume`, which also isn't listed there). New tests in
+  `tests/python/test_r2_retries.py` (23 cases) rather than growing `test_dispatch.py`.
 
 ---
 
@@ -349,7 +367,8 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 
 - [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
   `blocked` never auto-retries.
-- [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
+- [x] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
+  *(DONE, pc/r-2)*
 - [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
   scheduler state survives restart.
 - [x] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.

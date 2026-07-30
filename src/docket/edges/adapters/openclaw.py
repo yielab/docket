@@ -11,7 +11,7 @@ import contextlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import subprocess
@@ -889,6 +889,16 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
     return (True, "")
 
 
+# R-2: typed classification of an ``ok=False`` AgentRunResult, so callers (the
+# retry loop in core/dispatch.py) can decide retryability from a field instead of
+# string-matching ``error``. Only ``timeout``/``daemon_error`` are retryable — a
+# transient hiccup talking to the daemon/CLI. ``nonzero_exit`` and
+# ``invalid_output`` are real answers (the turn ran and said something, or the
+# CLI is fundamentally misbehaving) and are never retried. Always ``None`` when
+# ``ok`` is True.
+FailureKind = Literal["timeout", "daemon_error", "nonzero_exit", "invalid_output"]
+
+
 @dataclass
 class AgentRunResult:
     """Outcome of one `openclaw agent` turn.
@@ -902,6 +912,10 @@ class AgentRunResult:
     cost_usd: float  # 0.0 when the daemon doesn't report a USD cost
     raw: dict[str, Any]  # full parsed JSON (empty when unparseable)
     error: str = ""
+    # R-2: populated only when ok is False (see FailureKind). Additive field with
+    # a default, appended last, so every existing positional call site
+    # (``AgentRunResult(False, "", 0.0, {}, "boom")``) keeps working unchanged.
+    failure_kind: FailureKind | None = None
 
 
 # Confirmed daemon shape (v2026.2.23): text at result.payloads[0].text.
@@ -958,7 +972,8 @@ def agent_run(
 
     Each call is a real, costed LLM turn; the caller is responsible for budget gating.
     Returns AgentRunResult(ok=False, ...) on CLI missing, timeout, non-zero exit, or
-    unparseable output — never raises for ordinary failure modes.
+    unparseable output — never raises for ordinary failure modes. ``failure_kind``
+    classifies which of those it was (see ``FailureKind``), for retry decisions.
 
     ``env``, when given, is layered on top of the current process environment for
     this subprocess only (e.g. a pod's allocated port range / scratch dir) — the
@@ -971,7 +986,9 @@ def agent_run(
     import subprocess as _sp
 
     if not _shutil.which("openclaw"):
-        return AgentRunResult(False, "", 0.0, {}, "openclaw CLI not found")
+        return AgentRunResult(
+            False, "", 0.0, {}, "openclaw CLI not found", failure_kind="daemon_error"
+        )
     cmd = [
         "openclaw",
         "agent",
@@ -995,14 +1012,16 @@ def agent_run(
             env=run_env,
         )
     except _sp.TimeoutExpired:
-        return AgentRunResult(False, "", 0.0, {}, f"timed out after {timeout}s")
+        return AgentRunResult(
+            False, "", 0.0, {}, f"timed out after {timeout}s", failure_kind="timeout"
+        )
     except OSError as ex:
-        return AgentRunResult(False, "", 0.0, {}, str(ex))
+        return AgentRunResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
 
     out = (res.stdout or "").strip()
     if res.returncode != 0:
         reason = (res.stderr or out or f"exit {res.returncode}").strip()
-        return AgentRunResult(False, "", 0.0, {}, reason)
+        return AgentRunResult(False, "", 0.0, {}, reason, failure_kind="nonzero_exit")
     try:
         data: dict[str, Any] = _json.loads(out) if out else {}
     except _json.JSONDecodeError:

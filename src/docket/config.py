@@ -62,6 +62,35 @@ SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "
 # real context compiler is Phase 17 C-1.
 HOP_CARRYOVER_BYTES = int(os.environ.get("HOP_CARRYOVER_BYTES", str(32 * 1024)))
 
+# R-2: per-role retry budget for a *retryable* AgentRunResult failure (timeout or
+# daemon_error only — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS; a non-zero
+# exit or a bad tester/reviewer verdict is a real answer and is never retried).
+# Value = retry attempts AFTER the first try, so "2" means up to 3 total tries.
+# A role not listed here falls back to DISPATCH_RETRIES_DEFAULT.
+DISPATCH_RETRIES_DEFAULT = int(os.environ.get("DISPATCH_RETRIES_DEFAULT", "2"))
+DISPATCH_RETRIES_PER_ROLE: dict[str, int] = {
+    role: int(os.environ.get(f"DISPATCH_RETRIES_{role.upper()}", str(DISPATCH_RETRIES_DEFAULT)))
+    for role in ("lead", "implementer", "reviewer", "tester")
+}
+# DISPATCH_RETRY_BACKOFF_S: linear backoff base — retry attempt N (1-indexed) waits
+# N * this many seconds before the next try.
+DISPATCH_RETRY_BACKOFF_S = float(os.environ.get("DISPATCH_RETRY_BACKOFF_S", "2"))
+
+
+def _optional_int_env(name: str) -> int | None:
+    raw = os.environ.get(name, "")
+    return int(raw) if raw else None
+
+
+# R-2: process-wide fallback timeouts for the serve dispatch loop (the "serve
+# config knob" — serve.py runs unattended, with no CLI flags to read). Precedence,
+# highest first: an explicit --timeout on `docket pod <p> dispatch` > a pod's own
+# Lead-meta turnTimeoutS/verifyTimeoutS > these > core/dispatch.py's DEFAULT_TIMEOUT.
+# None (the default) means "no serve-wide override" — unset envs change nothing
+# from pre-R-2 behaviour.
+DISPATCH_TURN_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_TURN_TIMEOUT_S")
+DISPATCH_VERIFY_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_VERIFY_TIMEOUT_S")
+
 # TEMPLATE_VERSION: workspace-prompt schema version. Bump when the generated
 # SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
 TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))

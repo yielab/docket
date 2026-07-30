@@ -817,14 +817,41 @@ def _pod_queue(project: str, extra: list[str]) -> None:
     ui.console.print(table)
 
 
+def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
+    """Parse ``[--resume] [--timeout SECONDS]`` for ``docket pod <p> dispatch``.
+
+    ``--timeout`` (R-2) overrides *both* the agent-turn and the verifyCmd
+    timeout for this one invocation — a blanket ad hoc override, independent of
+    (and taking precedence over) the pod's own persisted Lead-meta
+    ``turnTimeoutS``/``verifyTimeoutS``. Raises ValueError on a non-positive or
+    non-integer value so the caller can render one consistent error message.
+    """
+    resume = "--resume" in extra
+    timeout: int | None = None
+    if "--timeout" in extra:
+        i = extra.index("--timeout")
+        raw = extra[i + 1] if i + 1 < len(extra) else ""
+        timeout = int(raw)
+        if timeout <= 0:
+            raise ValueError(raw)
+    return resume, timeout
+
+
 def _pod_dispatch(project: str, extra: list[str]) -> None:
     """Drive the pod's pending tasks through the pipeline (one real turn per hop).
 
     ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
     stale claim (it crashed mid-task) and continues each one from its last
     persisted hop instead of restarting at hop 0 (R-1 crash recovery).
+    ``--timeout SECONDS`` (R-2) overrides both the agent-turn and verifyCmd
+    timeout for this run only; unset, each falls back to the pod's own
+    Lead-meta ``turnTimeoutS``/``verifyTimeoutS``, then ``DEFAULT_TIMEOUT``.
     """
-    resume = "--resume" in extra
+    try:
+        resume, timeout_override = _parse_dispatch_args(extra)
+    except ValueError:
+        ui.error("--timeout requires a positive integer number of seconds.")
+        raise typer.Exit(1) from None
     try:
         pipeline = _dispatch.pod_pipeline(project)
     except _dispatch.DispatchError as ex:
@@ -848,7 +875,12 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     cap = _dispatch.pod_budget(project)
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
-    results = _dispatch.dispatch_pod(project, resume=resume)
+    results = _dispatch.dispatch_pod(
+        project,
+        resume=resume,
+        turn_timeout=timeout_override,
+        verify_timeout=timeout_override,
+    )
     for res in results:
         if res.status == "done":
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")

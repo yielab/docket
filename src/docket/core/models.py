@@ -89,6 +89,13 @@ class AgentMeta(BaseModel):
     paused: bool = False
     paused_reason: str = Field("", alias="pausedReason")
 
+    # R-2: pod-wide dispatch timeout overrides, set on the Lead alongside
+    # budgetUsd (core/dispatch.py reads them the same way it reads the Lead's
+    # budgetUsd for pod_budget()). None = no pod-level override; falls back to
+    # DEFAULT_TIMEOUT (or a serve-wide config knob) at dispatch time.
+    turn_timeout_s: int | None = Field(None, alias="turnTimeoutS")
+    verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS")
+
     # Implementer-only; allocated at pod provisioning; never synced to openclaw.json.
     port_range_start: int | None = Field(None, alias="portRangeStart")
     port_range_count: int | None = Field(None, alias="portRangeCount")
