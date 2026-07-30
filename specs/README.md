@@ -118,7 +118,7 @@ Each specification document must include:
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
 | Workflow Integration | 1.2.0 | Complete (slated for retirement) | ROADMAP D-16 / Phase 16 W-3 |
-| Workspace Structure | 1.1.0 | Complete | Specialist gap stated inside → Phase 17 C-4 |
+| Workspace Structure | 1.2.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4) |
 | CLI Interface | 1.5.0 | Complete | Signatures/exit codes; semantics live in functional specs |
 | CLI JSON Shapes | 1.1.0 | Complete | |
 | docket-meta schema | 2.3.0 | Complete | |
