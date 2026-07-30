@@ -402,6 +402,59 @@ executor that hardcodes roles a second time forces a second migration").
 
 ---
 
+## Dead-code register (CL-1, 2026-07-30) — the standing "no legacy code" work list
+
+Produced by a full-tree sweep. **Two entries were fixed and merged** (`ad8e14e`): `cli/_eval.py`'s
+duplicate of `config.cli_root()`, and a stale `core/security.py` docstring. Everything below is
+**found, verified, and not yet fixed** — mostly because the file belongs to an in-flight card.
+Work these once the owning card merges.
+
+### High confidence — fix these
+
+| Finding | Location | Blocked by | Note |
+| --- | --- | --- | --- |
+| **`core/sync.py` is an entirely dead module** | whole file | W-7 owns `cli/_doctor.py` | `check_agent`/`check_all`/`Drift`/`SYNCED_FIELDS` have **zero** production callers. `cli/_doctor.py:280-334`'s `_check_drift` reimplements the identical model+sessionKey comparison inline without importing it. **Independently verified: zero `import sync` in `src/`.** Note CLAUDE.md describes this module as the thing that "keeps the two config sources in sync" — the docs and the code disagree. Prefer keeping `sync.py` as the single source and pointing doctor at it. `SYNCED_FIELDS` is dead even *within* `check_agent`, which hardcodes the field names instead of iterating it. |
+| **`HEARTBEAT_FILE` constant unused; literal hardcoded 8+ times** | `core/memory.py:57` | W-7 | The string `"HEARTBEAT.md"` is repeated across `cli/_agents.py`, `_pod.py`, `_install.py`, `_context.py`, `_doctor.py`, `cli/__init__.py`. Same shape as the `openclaw-gateway.service` duplicate fixed in L-2. |
+| **`print()` inside `core/` — a layering violation** | `core/dispatch.py:1118` | W-2 | `print(f"[dispatch] verification skipped...")` breaks the standing rule that `core/`/`edges/` never print; it should return a typed result for `cli/` to render. |
+| **Zero-caller ACL functions** | `edges/adapters/openclaw.py:~126, ~172` | W-2 | `meta_write` and `set_agent_project_key` have no callers anywhere, tests included. |
+
+### Medium confidence — verify before acting
+
+| Finding | Location | Note |
+| --- | --- | --- |
+| `with_lock()` has no production caller | `edges/store.py:49` | `read_modify_write` has its own independent `_acquire` body rather than calling it; only `test_m2_data_layer.py` exercises it. **Re-check after W-2 lands** — W-2 is reworking the claim/locking path and may add a genuine call site. |
+| `docker_ps()`, `git_current_branch()` | `edges/adapters/system.py:~166, ~223` | Zero production callers; each has a dedicated unit test. May be forward-looking scaffolding for a future doctor check rather than abandoned code. Genuinely ambiguous. |
+| `validate_policy()` never called by the CLI | `core/policy.py:44` | Implemented and tested, but `cli/_policies.py`'s `_list()` does its own generic JSON parse. Either wire a `docket policies validate` command or remove it. |
+| `VerifyResult.total_lines` written, never read | `core/audit.py:206` | Populated at 7 construction sites; no renderer or test reads it. |
+| `dispatch_all_pods` flagged uncalled | `core/dispatch.py:1684` | Not investigated (W-2's file). |
+
+### Deliberately NOT dead — do not "clean these up"
+
+- `core/security.py`'s `high_risk_bins`/`resolve_command_action`/`match_high_risk`/`is_high_risk` —
+  documented in-code **and** in CLAUDE.md as deferred infrastructure for a daemon capability that
+  does not exist yet. Intentional, not orphaned.
+- `core/pipeline.py`'s `validate_pipeline()` — its own docstring says it awaits W-2's wiring.
+- `edges/adapters/openclaw.py` importing `core/models.py`/`oc_models.py`/`runtime_driver.py` — a
+  documented schema-only exception (pure typing modules), **not** a layering violation.
+
+### Confirmed false positives (dynamic access — checked, not dead)
+
+`cli/__init__.py`'s ~35 `cmd_*` functions (Typer-registered) · `serve.py`'s
+`do_POST`/`do_HEAD`/`log_message` (`BaseHTTPRequestHandler` overrides) ·
+`ConversationStatus.waiting`/`.done` (constructed dynamically from `--status`) · every
+Pydantic `model_config` · `RuntimeDriver` Protocol members (used via runtime `isinstance`).
+
+**Swept and clean:** `scripts/` (all referenced), `templates/policies/*.json` (all seeded via the
+glob copy), no unconditional skips, no vacuous tests.
+
+### Still owed on CL-1's original card
+
+The ~76 `_oc.AgentRunResult(...)` test call sites → `TurnResult`, the ad-hoc-double → `FakeDriver`
+sweep, and the legacy `CostTotals`/`DayRecord` decision. **All blocked on W-2** releasing
+`core/dispatch.py` and the dispatch-adjacent test families.
+
+---
+
 ## Known-open gaps carried forward (do not let these get quietly re-claimed)
 
 From Phase 14's honest record — these are **still true** until the cards above close them:
