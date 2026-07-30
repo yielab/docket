@@ -69,10 +69,43 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## Wave 3 — in flight
+## ▶ NEXT SESSION STARTS HERE
 
-Six cards, chosen so each owns a distinct file footprint. `G-1` is the wave's single
-`core/dispatch.py` owner.
+**State at hand-off (2026-07-30):** `platform` is at **`8956cca`** ("Merge L-3"), working tree
+clean, everything green — **1,403 tests** (1,399 passed / 4 skipped), 18/18 goldens, 20 specs
+valid, `ruff` + `ruff format` + `mypy --strict` clean, `metrics.py --check` in sync.
+
+**Wave 3 is fully merged.** Wave 4 was in flight when the session ended; each of its five agents
+was told to commit defensively to its own `pc/*` branch. **First action next session:** run
+`git log --oneline platform..pc/<card>` for each of `pc/w-2`, `pc/w-3`, `pc/w-7`, `pc/l-6`,
+`pc/cl-1` to see what actually landed — an agent may have committed partial or gate-failing work
+on purpose, so read each branch's commit body before merging anything. Treat a wave-4 branch as
+**unverified** until you re-run the gates on it yourself.
+
+**Merge order for wave 4** (lowest contention first, the rule that worked in Phases 14 and the
+wave-3 merge): `pc/cl-1` → `pc/l-6` → `pc/w-3` → `pc/w-7` → `pc/w-2` last (it owns
+`core/dispatch.py` and is the largest). Expect conflicts in `specs/README.md`'s index table and
+`README.md`'s test count on nearly every merge — both are integrator-owned, resolve centrally.
+**Never resolve a golden conflict by picking a side** — regenerate with
+`bash tests/golden/run.sh capture <case> <shell>` and confirm the diff is only the expected
+addition. That exact trap nearly deleted a shipped command from the completion surface this
+session (W-6's `roles` vs L-3's `mcp` — neither side had both).
+
+---
+
+## Wave 3 — ☑ COMPLETE (2026-07-30, all six merged into `platform`)
+
+Six cards, chosen so each owns a distinct file footprint. `G-1` was the wave's single
+`core/dispatch.py` owner — and the rule paid off: L-1's driver swap and W-6's `cli/_pod.py`
+rewrite both auto-merged onto G-1's much larger rewrite with **zero code conflicts**. Every
+conflict in this wave was documentation.
+
+**Shipped:** G-1 (approval-gated dispatch — `approval_create` finally has a production caller) ·
+G-5 (`[GATE]` seam spike, answered **no** with a dated evidence trail against a live daemon) ·
+W-1 (pipeline format) · W-6 (role archetypes; legacy roles byte-identical) · L-1 (RuntimeDriver
+port; session-JSONL parsing out of `core/`) · L-3 (MCP server, 10 tools).
+
+**Tree grew 1,112 → 1,403 tests, 17 → 20 specs, 35 → 37 commands.**
 
 ### G-1 — Approval-gated dispatch  *(Phase 15)*
 
@@ -188,7 +221,167 @@ stays **explicitly labeled future**.
 
 ---
 
-## Wave 4 — queued (blocked on wave 3)
+## Wave 4 — IN FLIGHT when the session ended (check each branch before trusting it)
+
+Five cards were dispatched, then cut short by the session limit. Each agent was told to commit
+defensively to its own branch. **Verify each branch's real state before merging** — see the
+"NEXT SESSION STARTS HERE" block at the top.
+
+| Card | Branch | Owns | State at hand-off |
+| --- | --- | --- | --- |
+| **W-2 + W-8** · executor + generalized gates | `pc/w-2` | `core/dispatch.py`, new orchestrator, `cli/_pipeline.py` | **no commit** — research/design only; design captured below |
+| **W-3** · Lobster retirement (D-16) | `pc/w-3` | `core/lobster.py`, `cli/_workflow.py`, workflow spec | **committed WIP at `1819695`** — deletions done, gates WILL FAIL; list below |
+| **W-7** · pod blueprints + dead-shim removal | `pc/w-7` | `core/pod.py`, `cli/_pod.py`, `cli/_agents.py` | **no commit** — research only; findings below |
+| **L-6** · migrate MCP to the current SDK | `pc/l-6` | `cli/_mcp.py`, `pyproject.toml`, mcp spec | **committed WIP at `28f2e10`** — killed by the session limit mid-test-writing; substantial progress, details below |
+| **CL-1** · legacy/dead-code sweep | `pc/cl-1` | driver aliases, cost shapes, test doubles | **committed WIP at `9b741e0`** — partial; register mostly not started |
+
+Two agents correctly reported having nothing to commit rather than fabricating an empty commit.
+Their research is preserved below — it is genuinely most of the hard thinking for those cards.
+
+### W-3 (`pc/w-3` @ `1819695`) — committed but **deliberately incomplete; gates fail**
+
+Deleted: `core/lobster.py` (182 lines), `cli/_workflow.py` (235 lines),
+`tests/python/test_cd7_lobster.py`, `specs/functional/workflow-integration.spec.md`. `docket
+workflow`/`wf` now route through `__main__.py`'s `_REMOVED` map (the D-11 `team` pattern).
+Verified: no `.py` file imports the deleted modules; the only remaining `lobster` mention is a
+deliberate historical note in `core/pipeline.py:290`.
+
+**Known-failing, must finish before merge:**
+
+1. `tests/python/test_m4_wave3b.py` — delete `TestCmdWorkflow` (~lines 171-276) and the
+   `["workflow", "x"]` parametrize entry (~line 283). **pytest fails until this is done.**
+2. `tests/python/test_r3_runs_cli.py` — docstring references the deleted `test_cd7_lobster.py`.
+3. Add `tests/python/test_w3_workflow_removed.py`, mirroring `test_ch4_team_removed.py`.
+4. Specs: `specs/README.md` (tree + status table + "Removed so far" note),
+   `api/cli-interface.spec.md` (replace the `docket workflow` section using the `docket team`
+   precedent; bump to 1.9.0), `functional/pipeline-format.spec.md` (~6 dangling refs — reword as
+   retirement notes, and do **not** claim `docket pipeline` exists yet; that is W-2's),
+   `functional/agent-lifecycle.spec.md:22`, `functional/model-profiles.spec.md:246`,
+   `api/mcp-server.spec.md:~100`.
+5. Docs: `README.md` (lines ~233, ~306, ~327), `docs/commands.md` (TOC, the whole
+   `## Workflow Management` section ~623-721, the `wf` alias row ~1825, add to Removed Commands),
+   `docs/WORKFLOW-GUIDE.md:352` + workspace-tree diagram, `CHANGELOG.md` `[Unreleased] ### Removed`.
+6. **Goldens stale** — `help.golden`, `completions_bash.golden`, `completions_zsh.golden` still
+   contain `workflow`/`wf`/"Lobster". Recapture; verify the diff is only the removal.
+
+### L-6 (`pc/l-6` @ `28f2e10`) — the SDK question is **answered**, migration mostly done
+
+**The previous card's guess was wrong, and this was verified empirically against the installed
+`mcp==2.0.0`, not assumed.** `mcp.server.fastmcp` was removed outright in 2.0 and replaced by
+**`mcp.server.MCPServer`**. That is a **rename/relocation, not a redesign** — it keeps FastMCP's
+exact ergonomics (`MCPServer(name=, instructions=)`, `add_tool(fn, name=...)`,
+`server.run(transport="stdio")`), confirmed by probing the installed package directly and
+exercising `list_tools`/`call_tool`/`add_tool`, `structured_content` for dict-returning tools, and
+the `isError` path, live via `mcp.Client`'s in-memory transport.
+
+So L-3's defensive `<2.0.0` ceiling was unnecessary. **The pin is now `mcp = ["mcp>=2.0.0"]`** and
+the `pyproject.toml` comment has been rewritten to describe the real migration instead of the old
+speculation.
+
+**Remaining:** the L-6-specific test file (real 2.0 integration: `isError` path, no-ceiling pin
+check) was being written when the session limit killed the agent. Re-run the full suite in **both**
+configurations (with and without the `mcp` extra) — that dual-config guarantee is the one thing
+most at risk of having silently broken.
+
+### CL-1 (`pc/cl-1` @ `9b741e0`) — partial; read this before continuing it
+
+**Done:** `edges/adapters/openclaw.py`'s `agent_run()` now uses `TurnResult` directly; comment
+cleanup in `config.py:73`, `core/utils.py:~118`, `tests/evals/lib/eval-helpers.sh:74`; spec bump
+`pod-dispatch.spec.md` 2.1.0 → 2.1.1.
+
+**Two findings that change the card:**
+
+1. **The alias cannot be deleted yet, and the reason is structural.**
+   `AgentRunResult = TurnResult` (`edges/adapters/openclaw.py:930`) still has a real consumer:
+   `core/dispatch.py:85`'s `Runner = Callable[..., _oc.AgentRunResult]` is a **module-level
+   assignment evaluated at import time**, so removing the alias breaks importing `dispatch.py` —
+   i.e. almost the whole CLI. `dispatch.py` is W-2's file. **Sequence this after W-2 merges.**
+2. **The card's premise was partly wrong about `FailureKind`.** There is no `FailureKind = ...`
+   alias in `openclaw.py` at all — only inline string literals. Nothing to collapse. (Grepped
+   `_oc\.FailureKind` repo-wide: zero hits. Worth one confirming grep next session.)
+
+**Not started:** ~76 test call sites still construct `_oc.AgentRunResult(...)` positionally
+(`test_r2/r4/r5/r6/r7`, `test_cd2`, `test_dispatch`, `test_g1_*`, `test_l1_*`) — mechanical
+rename to import `TurnResult` from `core.runtime_driver`. The legacy `CostTotals`/`DayRecord`
+translation decision (same `dispatch.py` blocker applies). **The full-tree dead-code register —
+the card's biggest ask — is essentially not started.**
+
+**Test-double analysis worth keeping:** `FakeDriver` only does *constant per-role* behavior, so
+`test_r2_retries.py`'s `_ScriptedRunner` (needs per-call sequences) and the
+unparseable-verdict `_runner` (needs custom per-role output text) **must stay** — those are real
+reasons, not inertia. The `_always_timeout` and `test_nonzero_exit_never_retries` closures *are*
+drop-in `FakeDriver` replacements.
+
+**Gates on `9b741e0` were NOT fully run** — only `ruff check` and a single-file mypy. Re-run
+everything before trusting it.
+
+### W-2 design (no code written — this is the plan to execute)
+
+- **New `core/orchestrator.py`**: pure `resolve_plan(spec, roster) → ExecutionPlan`, used by
+  **both** the executor and `docket pipeline plan` — one code path, satisfying ROADMAP's ban on a
+  second pretty-printer. `resolve_gate(step, registry)`: the step's own `gate` wins; the
+  archetype's `gateContract` is only a fallback when a step omits one. That ordering is what keeps
+  `default_pipeline()` byte-identical — every built-in step sets an explicit gate, so the fallback
+  never fires for the four legacy roles.
+- **Avoiding an import cycle**: `orchestrator` imports `dispatch` at top level (one way);
+  `dispatch.dispatch_task`/`dispatch_pod` keep their exact public signatures and call into
+  `orchestrator` via a **deferred, in-function import** — the same trick `core/runs.py` already
+  uses against `core/trace.py`. `HopResult`/`TaskResult` stay defined in `dispatch.py` for this
+  reason; do not move them.
+- **Cancellation — the root cause is identified.** `edges/adapters/openclaw.py`'s `agent_run` uses
+  blocking `subprocess.run` and **never creates a process group**, which is exactly why
+  cancellation has never existed. Fix: `subprocess.Popen(..., start_new_session=True)` (so
+  `proc.pid` is also the pgid) plus an optional `on_spawn: Callable[[int], None] | None = None`
+  fired immediately after spawn; kill via `os.killpg` on timeout, not `proc.kill()`.
+- `core/runs.py`: a `ContextVar` for the current run id (set in `execute()`), `add_hop_pid` /
+  `remove_hop_pid` over a **`pids: list[int]`** field (a list, not a scalar — a parallel group has
+  several hops in flight), and `cancel_run(run_id)` doing SIGTERM → grace → SIGKILL per process
+  group, with a new terminal state `"cancelled"`.
+- **Only the production path passes `on_spawn`** (when `runner is None`), so no existing test
+  fake needs changing — `FakeDriver`, `_SlowRunner`, `_CrashOnRoleRunner`, `_VerdictAwareRunner`
+  all keep working untouched.
+- `dispatch_pod`/`dispatch_task` need a new optional `spec: PipelineSpec | None = None` kwarg.
+- Threads need `contextvars.copy_context()` propagated — `ThreadPoolExecutor.submit` does not do
+  it automatically, and the run-id/pid tracking depends on it.
+- **Two tests change purpose deliberately** (call it out in the diff, do not let it look
+  incidental): `test_w6_archetypes.py:~146-161` and `test_w1_pipeline_spec.py:~583-628` currently
+  assert the archetype regexes byte-match `dispatch.py`'s hardcoded patterns. Once gates unify,
+  they become cross-checks against `orchestrator`'s resolved defaults.
+
+**W-2 and W-8 ship as one card** — ROADMAP's hard sequencing rule forbids splitting them ("an
+executor that hardcodes roles a second time forces a second migration").
+
+**Integrator decisions already fixed, do not re-litigate:**
+
+- The pipeline CLI surface is **`docket pipeline validate|plan|run`**. W-2 builds it; W-3's
+  removed-command notice points at exactly these names.
+- `docket pipeline plan` **MUST** render from the real executor — a second pretty-printer is
+  explicitly forbidden by ROADMAP.
+
+### Confirmed findings from W-7's research (verified independently — act on these)
+
+1. **LIVE BUG — `docket doctor` flags every pod Lead/Reviewer/Tester as broken.**
+   `cli/_doctor.py`'s `_WORKSPACE_FILES` (line 50) requires `TOOLS.md` for *every* project agent,
+   but `cli/_pod.py` (line ~223) only writes `TOOLS.md` when
+   `member.role == "implementer"` **and** resources or a verify command are set. Verified by
+   reading both call sites; W-7 also reproduced it live (`demo-lead` → `✗ missing TOOLS.md`).
+   This is pre-existing, affects every software pod **today**, and blocks W-7 besides: the
+   `research`/`content`/`ops` blueprints have no implementer at all, so every such pod would be
+   permanently "broken" per doctor. **Fix the check to be role-aware.**
+2. **Spec drift:** `api/cli-interface.spec.md` still documents a `--type <repo|task>` flag that no
+   longer exists, and `data/docket-meta.spec.md` still carries stale `type`-field remnants in its
+   field rules and examples. Both predate this wave.
+3. The dead `POD_ROLES`/`POD_ROLE_POLICY` PEP 562 shim is at `core/pod.py:293-307`, and
+   `tests/python/test_w6_pod_registry.py::TestPodRolesAndPolicyDynamicAttributes` (lines 127-151)
+   tests the shim itself — **delete both together**, or the test will fail the removal.
+4. `docket add` has **two separate provisioning paths**: interactive `run_add` builds a real pod
+   via `_pod.build_pod`, while declarative `--from` (`_cmd_add_declarative`) provisions single
+   flat agents via `_provision_agent` and never builds a pod. W-7's card requires extending
+   `--from` to understand blueprints — budget for that asymmetry.
+
+---
+
+## Wave 5 — queued
 
 | Card | Phase | Blocked on | Note |
 | --- | --- | --- | --- |
