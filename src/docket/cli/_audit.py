@@ -63,7 +63,16 @@ def run_audit_verify() -> int:
         return 0
 
     if result.break_at is not None:
-        ui.error(f"Tamper check FAILED at line {result.break_at.line}: {result.break_at.reason}")
+        # total_lines is only informative here: counting (chained/legacy) stops
+        # at the break, so "line X of N" is the one place this field tells the
+        # operator something chained+legacy can't (how much of the file lies
+        # beyond the detected break). In the clean-chain summary below,
+        # chained+legacy always sums to total_lines, so repeating it there
+        # would be redundant — this is the field's one renderer (G-4b).
+        ui.error(
+            f"Tamper check FAILED at line {result.break_at.line} of {result.total_lines}: "
+            f"{result.break_at.reason}"
+        )
         ui.dim(f"  file: {_cfg.AUDIT_LOG}")
         return 1
 
