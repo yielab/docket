@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.3.2
+**Version**: 2.3.3
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -95,8 +95,13 @@ archetype's `modelClass` instead (see "Roles and built-in policy", requirement 5
    eight roles and persist them, plus the rank anchors and default.
 4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
    and project, registered or not) **MUST** be re-resolved to its role's new model in both
-   config sources, with one gateway restart at the end and an audit entry per change.
-   Pinned agents **MUST NOT** be touched.
+   config sources, with one gateway restart at the end. Pinned agents **MUST NOT** be touched.
+5. Each policy change (`set`/`preset`/`reset`) **MUST** write one audit-log entry (the
+   `models.*` action family — see audit.spec.md's Requirement 1) recording the role(s) affected
+   (or `default`) and the before/after model, so the audit log alone answers "which role
+   changed, from what, to what, and when" without consulting this registry file. A
+   `preset`/`reset` call, which can touch every role at once, **MUST** be recorded as one entry
+   listing every role's before/after pair, not one entry per role (ROADMAP Phase 15 G-4b).
 
 ### Pinning agents (docket profile)
 
@@ -311,6 +316,16 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.3.3 (2026-07-30)
+
+- ROADMAP Phase 15 G-4b (audit coverage for `models.*`): split the old Requirement 4 (which had
+  started conflating live re-resolution with audit recording, and claimed the latter before it
+  was actually shipped) into a re-resolution requirement (4, unchanged in substance) and a new
+  Requirement 5 naming the `models.*` audit family precisely: one entry per `set` naming the
+  role/`default` touched and its before/after model, one entry per `preset`/`reset` naming every
+  role's before/after pair rather than one entry per role. See audit.spec.md Version 2.2.0 for
+  the entry shape and shipped implementation.
 
 ### Version 2.3.2 (2026-07-30)
 

@@ -1129,12 +1129,15 @@ def _cmd_models_set(key: str, model: str) -> None:
     for w in warnings:
         ui.warn(w)
 
+    role_models, _tiers, default_model = _mp.load_registry()
     updates: dict[str, str] = {}
     touched_roles: list[str] = []
 
     if key == "default":
+        before = default_model
         updates["default"] = validated
     elif _mp.is_role(key):
+        before = role_models.get(key, _cfg.DEFAULT_MODEL)
         updates[f"role.{key}"] = validated
         touched_roles.append(key)
     else:
@@ -1143,6 +1146,7 @@ def _cmd_models_set(key: str, model: str) -> None:
         raise typer.Exit(1)
 
     _mp.write_registry(updates)
+    audit_log("models.set", f"role={key} {before}->{validated}")
     ui.success(f"{key} → {validated}")
     price = _mp.pricing_label(validated)
     if price.startswith("n/a"):
@@ -1188,6 +1192,8 @@ def _cmd_models_preset(preset: str | None) -> None:
     econ, std, prem = t["economy"], t["standard"], t["premium"]
     cost, note = t["cost"], t["note"]
 
+    before_roles, _before_tiers, before_default = _mp.load_registry()
+
     cheap_roles = [r for r in _mp.ALL_ROLES if _mp.ROLE_CLASS.get(r) == "cheap"]
     strong_roles = [r for r in _mp.ALL_ROLES if _mp.ROLE_CLASS.get(r) == "strong"]
 
@@ -1221,6 +1227,20 @@ def _cmd_models_preset(preset: str | None) -> None:
     ui.console.print()
 
     _mp.write_registry(updates)
+
+    # One entry for the whole preset application (matching agent.add's
+    # whole-pod-in-one-line style), not one per role: role_after maps every
+    # role to the model the preset just assigned it (econ for cheap-class,
+    # std for strong-class — cheap_roles union strong_roles == ALL_ROLES).
+    role_after: dict[str, str] = dict.fromkeys(cheap_roles, econ)
+    role_after.update(dict.fromkeys(strong_roles, std))
+    role_changes = ",".join(
+        f"{r}:{before_roles.get(r, _cfg.DEFAULT_MODEL)}->{role_after[r]}" for r in _mp.ALL_ROLES
+    )
+    audit_log(
+        "models.preset",
+        f"preset={preset} default:{before_default}->{std} roles:{role_changes}",
+    )
     ui.success(f"Preset '{preset}' applied.")
 
     ui.console.print()
@@ -1274,9 +1294,18 @@ def _cmd_models_reset() -> None:
         ui.info("Aborted.")
         return
 
+    before_roles, _before_tiers, before_default = _mp.load_registry()
+
     _mp.write_registry({}, reset=True)
     with contextlib.suppress(FileNotFoundError):
         _cfg.MODEL_REGISTRY_FILE.unlink()
+
+    after_roles, _after_tiers, after_default = _mp.load_registry()
+    role_changes = ",".join(
+        f"{r}:{before_roles.get(r, _cfg.DEFAULT_MODEL)}->{after_roles.get(r, _cfg.DEFAULT_MODEL)}"
+        for r in _mp.ALL_ROLES
+    )
+    audit_log("models.reset", f"default:{before_default}->{after_default} roles:{role_changes}")
     ui.success("Restored built-in model defaults.")
 
     ui.console.print()

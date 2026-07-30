@@ -1,9 +1,9 @@
 # Audit Log Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped; `models.*` and a future `runs.cancel` remain tracked gaps — see
-Requirements)
+removal below are all shipped, now including `models.*`; a future `runs.cancel` remains the one
+tracked gap — see Requirements)
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -54,6 +54,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      passed) — ROADMAP Phase 14 R-6; names the member and the (validated) command being set,
      never the raw command's stdout
    - `persona.set` / `persona.clear` (`cli/__init__.py`'s `persona` command)
+   - `models.set` / `models.preset` / `models.reset` (`cli/__init__.py`'s `models` command,
+     ROADMAP Phase 15 G-4b) — role→model policy changes. Each entry's `detail` names the role
+     (or `default`) affected and the before/after model, so the log alone answers "which role
+     changed, from what, to what, and when" without consulting `docket-models.json`. `set`
+     writes `role=programmer anthropic/claude-sonnet-4-6->openai/gpt-4.1`, one entry for the one
+     key it touched. `preset`/`reset` can touch every role at once and are each recorded as
+     **one** entry naming the preset (preset only) and every role's before/after pair
+     comma-joined after a `roles:` prefix, alongside a `default:` before/after pair — matching
+     `agent.add`'s whole-pod-in-one-line style above, not one entry per role. See the Entry
+     Schema section for a full example line.
    - `mcp.<tool>` (`cli/_mcp.py`, ROADMAP Phase 18 L-3) — **every** `docket mcp serve` tool call
      (`status`, `pods`, `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`,
      `approvals_grant`, `approvals_deny`, `cost`) writes one entry unconditionally, before the
@@ -64,11 +74,12 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      entries for one call is intentional, not a duplicate bug: the `mcp.*` line is the uniform
      "an MCP call happened" record, the domain line is the same record any other channel producing
      that same effect would write. See `specs/api/mcp-server.spec.md`.
-2. **Tracked gaps (NOT recorded — out of this version's scope):** role→model
-   policy changes (`docket models set/preset/reset`) and a future `docket runs
-   cancel` (Phase 16 — the run registry these would cancel does not exist yet).
-   Both stay tracked as ROADMAP Phase 15 G-4 follow-up; this spec MUST NOT be
-   cited as evidence that they record today.
+2. **Tracked gap (NOT recorded — out of this version's scope):** a future `docket
+   runs cancel` (Phase 16 — the run registry it would cancel does not exist yet).
+   This spec MUST NOT be cited as evidence that it records today. (Role→model
+   policy changes were the other tracked gap through Version 2.1.0 — see
+   Version 2.2.0's changelog entry; they are recorded as of this version,
+   Requirement 1's `models.*` entry above.)
 3. `action` **MUST** be a dotted verb (e.g. `gates.enable`, `approval.grant`); `detail`
    **MUST** be a human-readable target (an id, key NAME, model id). Secret VALUES
    **MUST NOT** ever be written to the log.
@@ -170,6 +181,15 @@ docket audit verify     # Walk the current file's hash chain; exit 1 on a detect
  "prev_hash": "3f9a1c…64 hex chars"}
 ```
 
+A `models.preset` entry, showing the multi-role-in-one-line shape (Requirement 1):
+
+```json
+{"seq": 43, "ts": "2026-07-30T08:00:12.500Z", "user": "alice", "pid": 12345,
+ "action": "models.preset",
+ "detail": "preset=openai default:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini roles:manager:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano,reviewer:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano,tester:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano,knowledge:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano,programmer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,security:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,repo:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini",
+ "prev_hash": "9c2e7a…64 hex chars"}
+```
+
 A line written before this version lacks `seq`/`prev_hash` entirely — readers
 and `docket audit verify` MUST treat that shape as valid legacy input, not as
 a parse error.
@@ -200,8 +220,15 @@ $ docket audit verify
 ✓ 214 chained line(s) verified clean.
 
 $ docket audit verify   # after a line was hand-edited
-✗ Error: Tamper check FAILED at line 87: prev_hash mismatch — an earlier line was altered or removed
+✗ Error: Tamper check FAILED at line 87 of 214: prev_hash mismatch — an earlier line was altered or removed
 ```
+
+The failure message's `of 214` names the current file's total line count
+(`VerifyResult.total_lines`, G-4b) — the one place this figure adds
+information `chained`/`legacy` can't, since counting stops at the break. The
+clean-chain summary above does not repeat it: there, `chained` already sums to
+the total (every line is either chained or legacy), so restating it would be
+redundant.
 
 ## Validation
 
@@ -225,6 +252,23 @@ $ docket audit verify   # after a line was hand-edited
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.2.0 (2026-07-30)
+
+- **ROADMAP Phase 15 G-4b (Audit coverage for `models.*`).** Closed the one gap G-4 (Version
+  2.0.0) named and left open: `docket models set/preset/reset` now write the `models.set` /
+  `models.preset` / `models.reset` action family, with the same `seq`/`prev_hash` chain, ms
+  timestamps, and best-effort/never-crashes contract as every other family. `set` writes one
+  entry naming the role (or `default`) it touched and its before/after model; `preset`/`reset`
+  touch every role at once and are each recorded as one entry naming every role's before/after
+  pair plus the default's, not one entry per role (see Requirement 1 and the new Entry Schema
+  example). `docket audit verify` was confirmed to still walk a log containing these entries
+  without reporting a false break. The only remaining tracked gap (Requirement 2) is a future
+  `docket runs cancel` — the run registry it would cancel does not exist yet (Phase 16).
+  Also rendered `VerifyResult.total_lines` (previously populated but read by nothing) in the
+  tamper-check failure message (`"...FAILED at line N of TOTAL: ..."`) — the one place it adds
+  information the existing `chained`/`legacy` counts can't, since counting stops at the break;
+  left out of the clean-chain summary, where it would just restate `chained + legacy`.
 
 ### Version 2.1.0 (2026-07-30)
 

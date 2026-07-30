@@ -133,6 +133,7 @@ class TestChainVerify:
         assert result.break_at is None
         assert result.chained == 5
         assert result.legacy == 0
+        assert result.total_lines == 5
 
     def test_tampered_middle_line_detected_at_right_position(self, audit_home: Path) -> None:
         for i in range(5):
@@ -155,6 +156,9 @@ class TestChainVerify:
         assert "prev_hash mismatch" in result.break_at.reason
         # Everything before the break was still counted as chained.
         assert result.chained == 3
+        # total_lines (G-4b) still reports the full file length even though
+        # counting stopped at the break.
+        assert result.total_lines == 5
 
     def test_malformed_json_line_reported_not_crashed(self, audit_home: Path) -> None:
         logf = audit_home / "audit.log"
@@ -163,6 +167,7 @@ class TestChainVerify:
         assert result.break_at is not None
         assert result.break_at.line == 1
         assert "malformed" in result.break_at.reason
+        assert result.total_lines == 1
 
     def test_legacy_unchained_line_is_not_tampering(self, audit_home: Path) -> None:
         logf = audit_home / "audit.log"
@@ -208,6 +213,7 @@ class TestChainVerify:
         assert result.rotated_backup is True
         assert result.break_at is None
         assert result.chained == 1  # only "SECOND" is in the current file
+        assert result.total_lines == 1  # rotated-away "FIRST" isn't in this count either
 
 
 class TestAuditVerifyCommand:
@@ -240,6 +246,27 @@ class TestAuditVerifyCommand:
         captured = capsys.readouterr()
         assert rc == 1
         assert "line 2" in captured.err
+
+    def test_verify_tampered_log_reports_total_lines(
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # G-4b: VerifyResult.total_lines is rendered in the one place it adds
+        # information chained+legacy can't (how much of the file lies beyond
+        # the detected break, since counting stops there).
+        _audit.audit_log("keys.add", "A")
+        _audit.audit_log("keys.add", "B")
+        _audit.audit_log("keys.add", "C")
+        logf = audit_home / "audit.log"
+        lines = logf.read_text(encoding="utf-8").splitlines()
+        e = json.loads(lines[0])
+        e["detail"] = "TAMPERED"
+        lines[0] = json.dumps(e)
+        logf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        rc = audit_cli.run_audit_verify()
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "line 2 of 3" in captured.err
 
 
 # ── new call-site coverage ───────────────────────────────────────────────────
