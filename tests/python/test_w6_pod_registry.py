@@ -1,8 +1,8 @@
 """W-6: `core/pod.py`'s role model resolves against the archetype registry
-instead of a hardcoded 4-tuple — `normalize_role`/`member_id`/`POD_ROLES`/
-`POD_ROLE_POLICY` must keep returning the exact same values for the four
-legacy roles, while also accepting a starter-library/user-defined role
-without a single new hardcoded string in `core/pod.py`.
+instead of a hardcoded 4-tuple — `normalize_role`/`member_id`/`policy_role_for`
+must keep returning the exact same values for the four legacy roles, while
+also accepting a starter-library/user-defined role without a single new
+hardcoded string in `core/pod.py`.
 
 Also covers `core/models_policy.py`'s archetype-modelClass fallback (a role
 with no named `ALL_ROLES` row resolves through its own `modelClass` against
@@ -124,31 +124,21 @@ class TestMemberIdUnaffected:
         assert pod.pod_of("demo-wizard") is None
 
 
-class TestPodRolesAndPolicyDynamicAttributes:
-    def test_pod_roles_contains_all_ten_by_default(self) -> None:
-        names = set(pod.POD_ROLES)
+class TestPolicyRoleForLegacyAndStarterRoles:
+    def test_legacy_roles_preserve_named_policy_mapping(self) -> None:
+        assert pod.policy_role_for("lead") == "manager"
+        assert pod.policy_role_for("implementer") == "programmer"
+        assert pod.policy_role_for("reviewer") == "reviewer"
+        assert pod.policy_role_for("tester") == "tester"
+
+    def test_starter_roles_identity_map(self) -> None:
+        assert pod.policy_role_for("researcher") == "researcher"
+        assert pod.policy_role_for("monitor") == "monitor"
+
+    def test_registry_role_names_include_legacy_and_starter(self) -> None:
+        names = set(_arch.load_registry().role_names())
         assert {"lead", "implementer", "reviewer", "tester"} <= names
         assert {"researcher", "analyst", "writer", "critic", "operator", "monitor"} <= names
-
-    def test_pod_role_policy_preserves_legacy_mapping(self) -> None:
-        policy = pod.POD_ROLE_POLICY
-        assert policy["lead"] == "manager"
-        assert policy["implementer"] == "programmer"
-        assert policy["reviewer"] == "reviewer"
-        assert policy["tester"] == "tester"
-
-    def test_pod_role_policy_identity_maps_starter_roles(self) -> None:
-        policy = pod.POD_ROLE_POLICY
-        assert policy["researcher"] == "researcher"
-        assert policy["monitor"] == "monitor"
-
-    def test_policy_role_for_matches_pod_role_policy(self) -> None:
-        for role in pod.POD_ROLES:
-            assert pod.policy_role_for(role) == pod.POD_ROLE_POLICY[role]
-
-    def test_unknown_attribute_still_raises(self) -> None:
-        with pytest.raises(AttributeError):
-            pod.__getattr__("NOT_A_REAL_THING")
 
 
 class TestModelClassFallback:

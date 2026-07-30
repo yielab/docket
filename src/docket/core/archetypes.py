@@ -2,7 +2,7 @@
 
 A *role archetype* is data, not code: a name, a scope, a model class, SOUL/AGENTS
 prose templates, a gate contract, edit rights, and a tool profile. `core/pod.py`'s
-`normalize_role`/`member_id`/`POD_ROLE_POLICY` resolve pod roles against the
+`normalize_role`/`member_id`/`policy_role_for` resolve pod roles against the
 registry this module builds instead of a hardcoded 4-tuple, so a fifth (sixth,
 ...) role is data, never a new hardcoded string in `core/pod.py`/`cli/_pod.py`.
 
