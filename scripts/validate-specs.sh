@@ -156,12 +156,18 @@ check_references() {
     echo ""
     echo "Checking cross-references..."
 
-    # Find all spec references
-    local refs; refs=$(grep -r "see [a-z-]*\.spec\.md" specs/ 2>/dev/null | cut -d: -f2- || true)
+    # Collect referenced filenames ONE PER LINE. The previous version matched
+    # whole lines and then ran `grep -o` on each, which emits every reference on
+    # that line as its own output line — collapsed back into a single variable,
+    # a line citing two specs produced a filename containing a newline, so
+    # `find -name` could never match it and a valid reference was reported
+    # broken. Extract first, iterate second.
+    local refs; refs=$(grep -rhoP 'see [a-z-]+\.spec\.md' specs/ 2>/dev/null \
+        | grep -oP '[a-z-]+\.spec\.md' | sort -u || true)
 
     if [[ -n "$refs" ]]; then
-        while IFS= read -r ref; do
-            local filename; filename=$(echo "$ref" | grep -oP '[a-z-]+\.spec\.md')
+        while IFS= read -r filename; do
+            [[ -z "$filename" ]] && continue
             if ! find specs -name "$filename" | grep -q .; then
                 echo -e "${YELLOW}⚠ Broken reference: $filename${NC}"
                 WARNINGS=$((WARNINGS + 1))
@@ -177,11 +183,14 @@ check_todos() {
 
     local todos; todos=$(grep -r "TODO\|FIXME\|XXX" specs/ 2>/dev/null || true)
 
+    # Here-string, not a pipe: `echo ... | while` runs the loop in a subshell,
+    # so every WARNINGS increment was discarded and a spec full of TODOs still
+    # reported zero warnings.
     if [[ -n "$todos" ]]; then
-        echo "$todos" | while IFS= read -r todo; do
+        while IFS= read -r todo; do
             echo -e "${YELLOW}⚠ Found TODO: $todo${NC}"
             WARNINGS=$((WARNINGS + 1))
-        done
+        done <<< "$todos"
     fi
 }
 
