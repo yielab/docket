@@ -10,7 +10,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is the active phase**; its board is in TODO.md. Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is complete ☑** (R-1…R-8, 2026-07-30 — see the Phase 14 record below); **Phase 15 is next**, though four cards from later phases were already pulled forward onto `platform` ahead of schedule, each with no Phase 14 dispatch-lane dependency: **Phase 15's G-4** (audit v2) and **G-6** (serve auth hardening), **Phase 17's C-4** (specialists join the workspace contract), and **Phase 18's L-2** (finish provider agnosticism) — see their own "DONE — pulled forward" notes in the Phase 15/17/18 sections below. Phase 14's board is in TODO.md (kept until Phase 15's board overwrites it, per convention). Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
 **Last Updated:** 2026-07-30
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
@@ -1314,7 +1314,7 @@ met; `docket install`'s gates default flips; full suite + goldens green througho
 
 ---
 
-### PHASE 14 — Platformization I: runtime truth & dispatch hardening  *(🚧 ACTIVE — blocking; nothing later ships first)*
+### PHASE 14 — Platformization I: runtime truth & dispatch hardening  *(☑ COMPLETE 2026-07-30)*
 
 > **Source of record:** `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, four
 > parallel code-grounded audit passes, file:line-cited; gitignored local rationale — this section is
@@ -1361,6 +1361,60 @@ budget-capped agent is actually `paused` and dispatch refuses it; REQUEST-CHANGE
 blocks (and one bounded rework cycle runs); every serve-lane dispatch has a queryable run id and no
 silenced exceptions; every spec Status line matches the code; full suite + goldens green.
 
+> **☑ Phase 14 shipped 2026-07-30 — all 8 cards R-1…R-8 DONE, full suite green (1,112 tests, 18
+> goldens).** Every exit criterion above was verified against the shipped code and its tests,
+> not just claimed:
+>
+> - Two concurrent `dispatch_pod` calls cannot double-run a task — `edges/store.py`'s new
+>   `with_lock`/`read_modify_write` makes the claim (`pending`→`running`, `startedAt`/`claimId`/
+>   `claimedAt` persisted) one locked read-modify-write; test-pinned
+>   (`TestConcurrentDispatch.test_two_concurrent_dispatch_pod_calls_never_double_run_a_task`,
+>   `tests/python/test_dispatch.py`).
+> - A killed-mid-task dispatch resumes from the last completed hop, not hop 0 — hops persist
+>   incrementally (`_persist_hop`); a stale `running` claim is swept to `failed`
+>   (`failureKind: "stale_claim"`) and only `--resume` reclaims it, replaying pipeline position
+>   (including mid-rework) via `_replay_pipeline_position`; test-pinned
+>   (`test_resume_skips_already_completed_hops`, `test_stale_claim_sweep_emits_trace_event`).
+> - A budget-capped agent is genuinely `paused` and dispatch refuses it — `_pause_lead_for_budget`
+>   writes `paused=true, pausedReason="budget"` on the pod's Lead the first time the cap is
+>   reached; `_claim_next_task` refuses every further claim for that pod outright (a
+>   `paused_refused` trace event); `docket profile <id> --resume` clears it; test-pinned
+>   (`tests/python/test_r5_autopause.py`, 26 cases).
+> - REQUEST-CHANGES from a Reviewer blocks and drives one bounded rework cycle (default
+>   `maxReworkCycles=1`) before a second rejection fails the task — test-pinned
+>   (`tests/python/test_r4_reviewer_gate.py`, 25 cases, incl. `TestReviewerReworkResume` for the
+>   resume-mid-rework case).
+> - Every serve-lane dispatch (CLI, webhook, schedule, sweep) has a queryable run id via
+>   `core/runs.py`/`docket runs`, and the four `contextlib.suppress(Exception)` sites around
+>   dispatch that used to swallow every exception are gone — grep-pinned
+>   (`tests/python/test_r3_no_suppressed_dispatch.py`).
+> - Every spec Status line matches the code: R-8's sweep rewrote `pod-dispatch.spec.md` to
+>   v2.0.0 (the full state machine) and trued up `docket-meta.spec.md`, `serve-read-api.spec.md`,
+>   `cli-json-shapes.spec.md`, `audit.spec.md`, and `cli-interface.spec.md` — see TODO.md's R-8
+>   card for the exact per-file diffs, several of which were pre-existing drift unrelated to R-1…
+>   R-7 caught along the way (a stale `apiVersion` example, a phantom `type` JSON field, two
+>   missing audit action families). `specs/README.md`'s status table now mirrors every spec's
+>   real header.
+> - Full suite + goldens green throughout: 1,112 pytest cases, 18 golden-parity cases,
+>   `scripts/validate-specs.sh`, `uv run python scripts/metrics.py --check`.
+>
+> **What was narrowed or deferred (stated here so it isn't quietly re-claimed later):**
+> cancellation of an in-flight hop and parallel hop execution are **not implemented** — both stay
+> Phase 16 W-2, same as before this phase; `maxReworkCycles` has no dedicated CLI setter yet
+> (set via the internal `meta-set` debug path), noted in R-4's own card and in
+> `docket-meta.spec.md`; the Reviewer/Tester verdict gates and the budget/pause mechanism remain
+> scoped to the pod-dispatch lane only — an agent's spend outside dispatch (a raw Telegram
+> session, direct daemon use) is still entirely unenforced, per D-9's "docket orchestrates hops"
+> boundary; the governance gaps this phase was never meant to close are unchanged and explicitly
+> still open — docket's approval store still has no production producer (Phase 15 G-1/G-5),
+> `docket models set/preset/reset` still write no audit entry (Phase 15 G-4 follow-up), and
+> enforcement outside the dispatch lane (e.g. per-argument high-risk matching for allowlisted
+> bins) still does not exist (Phase 15 G-3). One card (R-6) had shipped correctly but its own
+> TODO.md status line and acceptance boxes were left at `TODO` through an oversight in an earlier
+> merge — corrected as part of this phase's board-truth pass, not a late functional change.
+> Execution trail: TODO.md's R-1…R-8 cards (kept until the next phase overwrites them, per
+> convention).
+
 ---
 
 ### PHASE 15 — Platformization II: deterministic governance, wired  *(🟡 planned — after 14)*
@@ -1400,7 +1454,12 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
 - **G-5 · [daemon-gated spike] the `[GATE]` seam**: can the daemon's exec-approval prompt notify an
   external hook? Yes → bridge daemon prompts into docket approval tokens (the spec's example becomes
   true). No → file upstream, spec example stays labeled future.
-- **G-6 · Serve auth hardening**: `secrets.compare_digest`, token file option, documented bind rules.
+- **G-6 · Serve auth hardening** *(DONE — pulled forward on `pc/l-2`, no Phase 14 dependency)*:
+  `secrets.compare_digest` (timing-safe Bearer-token comparison, `serve.py`'s `_check_auth`),
+  a `--token-file`/`token_file=` option to write the approval/dispatch token to a 0600 file
+  instead of stdout, and documented bind rules (loopback-only by default, an explicit warning
+  printed for any non-loopback bind). Landed in the same merge as L-2 below. See
+  `tests/python/test_g6_serve_auth.py`.
 
 **Exit criteria:** every control in the audit's "enforced vs documented" table is either on a live
 path or explicitly labeled *convention* in SECURITY docs; a `require_approval` policy visibly pauses
@@ -1483,9 +1542,13 @@ distill` summarizes daily logs into MEMORY.md and archives originals; `clean/res
 driver** (D-18), docket's first self-originated LLM use, zero new SDK deps · **C-3 · one durable
 task state** — dispatch writes HEARTBEAT entries mechanically at enqueue/start/finish; doctor flags
 TASK_LIST⇄HEARTBEAT divergence; the durability contract stops being pure prose · **C-4 ·
-specialists join the contract** — full workspace set + doctor healing (close the projects-only
-healer gap) · **C-5 · conversation registry auto-population** — dispatch/serve update
-`last_message`/`task_ref` (the deferred TC item).
+specialists join the contract** *(DONE — pulled forward on `pc/c-4`, no Phase 14 dependency)* —
+org specialists (security, knowledge, manager, and the opt-in Portfolio Manager) now get the
+same full workspace contract (HEARTBEAT.md, WORKFLOW_AUTO.md, memory/) as project agents, and
+`docket doctor` heals a specialist workspace left bare by a pre-C-4 install, closing the
+projects-only healer gap; see `workspace-structure.spec.md` v1.2.0's own changelog · **C-5 ·
+conversation registry auto-population** — dispatch/serve update `last_message`/`task_ref` (the
+deferred TC item).
 
 **Exit criteria:** no dispatch prompt exceeds its configured budget (test-pinned); `maintain reset`
 on a workspace with content produces a distilled MEMORY.md + archive, not a void; a mid-task
@@ -1507,9 +1570,16 @@ workspace; suite green.
   list_sessions / usage / capabilities`. Session-JSONL/`trace_ingest` format knowledge moves
   **inside** the OpenClaw driver (closing the biggest ACL leak); the ACL guard test extends to
   session-format parsing; a fake driver replaces ad-hoc test shims. **One shipped driver.**
-- **L-2 · Finish provider agnosticism**: registry-overridable rank anchors; `--provider` on auth
-  commands; `local`/`ollama` presets; OpenRouter/local pricing rows or an explicit `n/a` row type;
-  delete the dead-end guidance strings (`models set task`, raw-openclaw instruction).
+- **L-2 · Finish provider agnosticism** *(DONE — pulled forward on `pc/l-2`, no Phase 14
+  dependency)*: registry-overridable rank anchors; `--provider` on auth commands; `local`/
+  `ollama` presets; OpenRouter/local pricing rows or an explicit `n/a` row type; deleted the
+  dead-end guidance strings (`cli/_provider.py`'s `models set task` reference and its raw-
+  openclaw instruction) and single-sourced the duplicated `openclaw-gateway.service` constant
+  (`core/utils.py` now forwards to `edges/adapters/system.py`'s `GATEWAY_UNIT`); reconciled the
+  eval harness's daemon-JSON parser (`tests/evals/lib/eval-helpers.sh`) to the ACL's real
+  `result.payloads[0].text`/`result.meta.agentMeta.usage` shape. See
+  `tests/python/test_l2_provider_agnosticism.py`; `model-profiles.spec.md` v2.3.0 and
+  `cli-interface.spec.md` v1.6.0 already carry this card's spec updates.
 - **L-3 · docket as an MCP server** *(pure docket, high leverage)*: `docket mcp serve` (stdio,
   official `mcp` SDK pinned) exposing the control plane as tools — `status, pods, queue, delegate,
   dispatch, runs, approvals list/grant/deny, cost` — every call audit-logged, approvals unchanged.
@@ -1552,7 +1622,7 @@ Backlog; every control keeps its one-word label (*docket-enforced / daemon-enfor
 
 ---
 
-## 8. How to start (current — Phase 14 active, on the `platform` branch)
+## 8. How to start (current — Phase 14 complete, Phase 15 next, on the `platform` branch)
 
 Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
 and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
@@ -1562,8 +1632,11 @@ README's warning banner; `v0.1.0` predates this convention and stays as-is.
 **The active work is the Platformization program (Phases 14–18, added 2026-07-30)** — see the
 Phase 14–18 sections above, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5.
 Rationale audit: `internal-docs/agent-platform-audit-and-build-plan.md` (gitignored, local-only;
-the phase sections are self-contained without it). **Phase 14 is active; its executable board is
-TODO.md (cards R-1…R-8).** Work R-1 first — it blocks R-2…R-5.
+the phase sections are self-contained without it). **Phase 14 is complete** (R-1…R-8, see its
+record above); its board stays in TODO.md until Phase 15's board overwrites it, per convention.
+**Phase 15 is next** — four of its (and later phases') cards were already pulled forward with no
+Phase 14 dependency (G-4, G-6, C-4, L-2 — see the Status line and each card's own note); the
+remaining Phase 15 work (G-1, G-2, G-3, G-5) is unclaimed.
 
 **Branch model for this program:** all Platformization work happens on the long-running
 **`platform`** branch, a deliberate fork-candidate line — the operator may promote it to the next
@@ -1576,6 +1649,34 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-07-30 (later same day)** — **PHASE 14 COMPLETE.** All 8 cards R-1…R-8 landed on
+  `platform` (1,112 tests, 18 goldens, full suite green). R-8 (the spec/docs truth pass) rewrote
+  `pod-dispatch.spec.md` to v2.0.0 for the full v2 state machine (locked claims, crash resume,
+  retries, independent timeouts, bounded Reviewer rework, real budget auto-pause, bounded hop
+  prompts) and trued up five more specs it touched along the way — `docket-meta.spec.md`,
+  `serve-read-api.spec.md`, `cli-json-shapes.spec.md`, `audit.spec.md`, `cli-interface.spec.md` —
+  several of which had drift unrelated to R-1…R-7 (a stale `apiVersion` example, a phantom `type`
+  JSON field, a mis-shaped `docket snapshot`/`/metrics` schema, two missing audit action
+  families) caught and fixed while reconciling `specs/README.md`'s status table against every
+  spec's real header. Also corrected TODO.md's own board: R-6 had shipped correctly (worktree cwd
+  resolution, verify-command validation, `pod.set-verify` audit logging — all test-covered) but
+  its card's status line and acceptance boxes had been left at `TODO` since an earlier merge,
+  contradicted by the roll-up checklist's own (also duplicated) entries; de-duplicated that
+  checklist and reconciled it to one honest set of DONE marks. Verified — and did **not**
+  re-touch — three guidance/docs bugs the R-8 card listed as candidates, confirmed already fixed
+  by earlier cards: `cli/_provider.py`'s two dead-end strings and the eval-harness JSON-shape
+  drift (both Phase 18 L-2), and the duplicated `openclaw-gateway.service` constant (also L-2).
+  Two issues found but explicitly **not fixed** (outside this card's docs/specs/tests-only
+  scope, reported instead): a leftover git merge-conflict marker inside `serve.py`'s module
+  docstring from the R-3 merge (cosmetic, no behavior effect), and a precedence-order mismatch in
+  `config.py`'s comment describing how the serve-wide dispatch timeout knobs interact with a
+  pod's own Lead-meta timeouts. While reconciling the Status line above, also added "DONE —
+  pulled forward" notes to three cards from later phases that had already shipped on `platform`
+  with no Phase 14 dependency (Phase 15's G-6, Phase 17's C-4, Phase 18's L-2) alongside Phase
+  15's G-4, which already carried one — none of the four are new work, only overdue
+  bookkeeping so this document stops contradicting the tree. Full record: the Phase 14 section's
+  `☑ Phase 14 shipped` block above; execution trail: TODO.md's R-1…R-8 cards (kept until Phase
+  15's board overwrites them, per convention).
 - **2026-07-30** — **Platformization program added (Phases 14–18) on the new `platform` branch.**
   Driven by the 2026-07-29 agent-platform audit (`internal-docs/agent-platform-audit-and-build-plan.md`,
   four parallel code-grounded passes): docket measured against eight agent-platform pillars scored

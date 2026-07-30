@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -34,10 +34,15 @@ owned by the daemon; docket mirrors only `synced` fields into it.
 - Org specialists: `~/.openclaw/workspaces/<role>/.docket-meta.json`.
 
 Every value is a JSON scalar (string, number, or boolean) — there are no nested objects or
-arrays. The field set is **closed**: it is the `AgentMeta` Pydantic model in
-`src/docket/core/models.py`, which validates the whole record on every write through
-`edges/store.py`. The file is docket's source of truth for an agent; the daemon's `openclaw.json`
-mirrors only the `synced` fields (see Sync contract).
+arrays (`persona` is the one structured exception; see its row). The documented field set below
+is the one every writer in `src/docket/` targets, backed by the `AgentMeta` Pydantic model in
+`src/docket/core/models.py` — but the model is **not closed**: it declares
+`extra="allow"` (deliberately, for forward-compat round-tripping — see "Validation" below), so
+`meta_set` does not reject an undeclared field name. `maxReworkCycles` (see its row) is the one
+shipped field that relies on this: it has no dedicated `AgentMeta` attribute yet and survives
+only because unknown keys are allowed through, not rejected. The file is docket's source of
+truth for an agent; the daemon's `openclaw.json` mirrors only the `synced` fields (see Sync
+contract).
 
 ## Schema
 
@@ -68,6 +73,9 @@ this table fails type-checking or the test suite.
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
 | `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when the pod's spend (recorded, or estimated when the daemon recorded none) reaches its `budgetUsd` cap (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
+| `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS` |
+| `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention and fallback chain as `turnTimeoutS` |
+| `maxReworkCycles` | number | integer ≥ 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Bounded rework budget for a Reviewer's REQUEST-CHANGES verdict (R-4), read from the Lead only (`core/dispatch.py`'s `pod_max_rework_cycles`). Default `1` when unset (exactly one rework cycle before a second REQUEST-CHANGES fails the task); `0` disables rework entirely. **Not yet a field on the `AgentMeta` Pydantic model** (unlike `turnTimeoutS`/`verifyTimeoutS`) — it round-trips only because `AgentMeta` allows extra keys (see "Validation" below); it has no dedicated CLI setter, only the internal `meta-set` debug path, matching this version's shipped scope |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1). Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
@@ -103,11 +111,20 @@ programmatically. See `pod-dispatch.spec.md` for the full per-hop behavioral con
 
 ## Validation
 
-`meta_set` validates every write against the `AgentMeta` model in `src/docket/core/models.py`:
+`meta_set` validates every write against the `AgentMeta` model in `src/docket/core/models.py`
+(`AgentMeta.model_validate(raw)`, called after the new field is merged into the record but
+before it's written):
 
-- **Unknown field** → `error` (typo guard; exits non-zero without writing).
-- **Type mismatch**: `budgetUsd` non-numeric or negative → `error`; `paused` non-boolean → `error`.
-- **Enum violation**: `kind`, `type`, `modelSource` not in their enum → `error`.
+- **Unknown field** → **accepted, not rejected.** `AgentMeta`'s `model_config` sets
+  `extra="allow"` for forward-compat round-tripping, so `model_validate` does not raise on a
+  field name it doesn't declare — a typo in a field name is silently written, not caught. (This
+  predates ROADMAP Phase 14 and is a real, standing gap — not a claim this version invented —
+  but it is corrected here because R-4's `maxReworkCycles` is the first shipped field that
+  actively depends on this permissiveness to be settable at all. There is no test pinning
+  stricter behavior.)
+- **Type mismatch on a declared field**: e.g. `budgetUsd` given a non-numeric string, or
+  `paused` given a non-boolean — → `error` for fields whose Pydantic type can't coerce the value.
+- **Enum violation**: `kind`, `modelSource` not in their enum → `error`.
 - Valid writes pass through unchanged to the existing atomic-write/lock path.
 
 On read, a missing file is treated as "agent not found" (return code 2), not an empty object.
@@ -170,6 +187,18 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```
 
 ## Changelog
+
+### Version 2.5.0 (2026-07-30)
+
+- ROADMAP Phase 14 R-2/R-4 spec truth pass: added the missing `turnTimeoutS`/`verifyTimeoutS`
+  rows (shipped `AgentMeta` fields with no schema-table entry) and the `maxReworkCycles` row
+  (shipped, but not yet a declared `AgentMeta` field — documented as relying on `extra="allow"`).
+  Corrected two pre-existing, Phase-14-unrelated inaccuracies caught while updating this table:
+  the "field set is closed" claim in Structure (the model actually accepts undeclared fields by
+  design) and the Validation section's "Unknown field → error" claim (unknown fields are
+  accepted, not rejected — `extra="allow"`, not `"forbid"`). Removed the stale `type` mention
+  from the Validation section's enum list (the field itself was already dropped from the schema
+  table in 2.3.0).
 
 ### Version 2.4.0 (2026-07-30)
 

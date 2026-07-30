@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Stable
 **Last Updated**: 2026-07-30
 
@@ -64,7 +64,7 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
 
 ```json
 {
-  "apiVersion": "1",
+  "apiVersion": "2",
   "timestamp":  "2026-06-25T10:00:00Z",
   "gateway":    "active | inactive",
   "channels":   ["telegram"],
@@ -90,7 +90,7 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
 
 | Field | Type | Notes |
 |---|---|---|
-| `apiVersion` | string | Always `"1"` in this version of the spec. |
+| `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"2"`. |
 | `gateway` | `"active" \| "inactive"` | Systemd is-active result for `openclaw-gateway.service`. |
 | `channels` | string[] | Enabled OpenClaw channel names (e.g. `["telegram"]`). |
 | `agents[*].scope` | `"project" \| "org"` | `project` for pod agents, `org` for shared specialists. |
@@ -228,6 +228,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.0.1 — 2026-07-30
+
+- Doc fix (ROADMAP Phase 14 R-8): the `GET /status.json` schema's `apiVersion` example and field
+  note were left at the stale `"1"` value when 2.0.0 bumped `SERVE_API_VERSION` to `2` — both now
+  read `"2"`, matching the field's own validation rule below (which was already correct).
 
 ### 2.0.0 — 2026-07-30
 

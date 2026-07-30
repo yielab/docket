@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -42,7 +42,6 @@ structural rules hold everywhere:
       "role":        "string (pod role / specialist role; may be empty)",
       "pod":         "string (project this member belongs to; empty for non-pod agents)",
       "name":        "string",
-      "type":        "repo | task",
       "model":       "string (provider/model-id)",
       "modelSource": "policy | pinned",
       "stack":       "string (comma-separated, may be empty)",
@@ -55,13 +54,17 @@ structural rules hold everywhere:
 }
 ```
 
+Note: there is no `type` field — every project agent has been a `repo` agent since the
+task-agent type was retired; the CLI does not emit a `type` key at all (previously documented
+here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's removal from
+`AgentMeta`).
+
 ### `docket info <id> --json`
 
 ```json
 {
   "id":          "string",
   "name":        "string",
-  "type":        "repo | task",
   "codebase":    "string (may be empty)",
   "stack":       "string (may be empty)",
   "model":       "string (provider/model-id)",
@@ -182,37 +185,43 @@ The snapshot command writes to a file (or stdout). The outer shape:
 
 ```json
 {
-  "timestamp":    "string (ISO-8601 UTC)",
-  "version":      "string (docket version)",
+  "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
+  "gateway":      "active | inactive",
+  "channels":     "array of strings (enabled OpenClaw channel names)",
   "agents":       "array of agent objects (see below)",
-  "bindings":     "array of binding objects",
   "totalCostUsd": "number"
 }
 ```
 
-Each agent object in the snapshot:
+There is no top-level `version` or `bindings` field (a prior version of this spec documented
+both; neither is emitted — bindings, when present, are nested per-agent below, and no version
+string is included).
+
+Each agent object in the snapshot (project agents, then any specialists with a workspace):
 
 ```json
 {
-  "id":        "string",
-  "kind":      "project | specialist",
-  "name":      "string",
-  "type":      "repo | task | role",
-  "model":     "string",
-  "codebase":  "string",
-  "stack":     "string",
-  "budgetUsd": "number | null",
-  "paused":    "boolean",
-  "costUsd":   "number"
+  "id":           "string",
+  "name":         "string",
+  "kind":         "project | specialist",
+  "model":        "string",
+  "registered":   "boolean",
+  "bindings":     "array of {channel, peerId}",
+  "lastActivity": "string (YYYY-MM-DD) | \"never\"",
+  "costUsd":      "number"
 }
 ```
+
+Note: the snapshot's agent object is intentionally leaner than `docket list --json`'s — it
+carries no `scope`, `role`, `pod`, `codebase`, `stack`, `budgetUsd`, or `paused`. Use `docket
+list --json` / `docket info <id> --json` for those.
 
 ### `docket serve` HTTP endpoints
 
 | Endpoint | Content-Type | Shape |
 |----------|-------------|-------|
 | `/status.json` | `application/json` | Same as `docket snapshot` output |
-| `/health` | `application/json` | `{"status": "ok", "gateway": <boolean>}` |
+| `/health` | `application/json` | `{"status": "ok", "gateway": <0 \| 1>}` |
 | `/metrics` | `text/plain` | Prometheus text format (see below) |
 | `/runs` | `application/json` | Same as `docket runs list --json` (auth required; see `specs/data/serve-read-api.spec.md`) |
 | `/runs/<id>` | `application/json` | Same as `docket runs show <id> --json` (auth required) |
@@ -221,10 +230,15 @@ Prometheus metrics emitted by `/metrics`:
 
 ```
 docket_agents_total <N>
-docket_agents_paused_total <N>
+docket_agent_cost_usd{agent="<id>",model="<model>"} <F>
+docket_agent_turns_total{agent="<id>"} <N>
 docket_cost_usd_total <F>
-docket_agent_cost_usd{id="<id>"} <F>
+docket_gateway_up <0|1>
+docket_approvals_pending_total <N>
 ```
+
+Note: there is no `docket_agents_paused_total` metric, and the per-agent cost/turns labels are
+keyed `agent="<id>"`, not `id="<id>"` (a prior version of this spec documented both incorrectly).
 
 ## Validation
 
@@ -249,14 +263,14 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
   "agents": [
     {
       "id": "myapp-lead", "kind": "project", "scope": "project", "role": "lead",
-      "pod": "myapp", "name": "myapp-lead", "type": "repo",
+      "pod": "myapp", "name": "myapp-lead",
       "model": "anthropic/claude-haiku-4-5", "modelSource": "policy",
       "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
       "telegram": null, "registered": true
     },
     {
       "id": "myapp-implementer", "kind": "project", "scope": "project", "role": "implementer",
-      "pod": "myapp", "name": "myapp-implementer", "type": "repo",
+      "pod": "myapp", "name": "myapp-implementer",
       "model": "anthropic/claude-sonnet-4-6", "modelSource": "policy",
       "stack": "", "codebase": "/code/myapp", "budgetUsd": "",
       "telegram": null, "registered": true
@@ -266,6 +280,19 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
 ```
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+
+- ROADMAP Phase 14 R-8 spec truth pass: removed the `type` field from `docket list --json` and
+  `docket info --json`'s documented shapes — no command has emitted it since the `type`
+  (`repo`|`task`) field was dropped from `AgentMeta` (see `docket-meta.spec.md` v2.3.0); it was
+  left in this spec by mistake at the time. Corrected `docket snapshot`'s outer shape (no
+  `version` or top-level `bindings` field; `gateway`/`channels` were missing) and its agent
+  object (the real, leaner field set the code emits — no `type`/`codebase`/`stack`/`budgetUsd`/
+  `paused`, `bindings` nested per-agent). Corrected the `/metrics` Prometheus list: no
+  `docket_agents_paused_total` metric exists; the per-agent labels are `agent="<id>"`, not
+  `id="<id>"`; added the metrics that were missing from this list (`docket_agent_turns_total`,
+  `docket_gateway_up`, `docket_approvals_pending_total`).
 
 ### Version 1.2.0 (2026-07-30)
 
