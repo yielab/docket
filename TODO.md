@@ -107,9 +107,12 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** parallel hop execution (Phase 16 W-2); changing the pipeline order or gates.
 - **Deliverables:** state machine v2 in `core/dispatch.py`; locked-claim helper in `edges/store.py`;
   migration shim (old TASK_LIST.json records without the new fields load fine); tests.
-- **Acceptance gate:** [ ] concurrent-dispatch race test green · [ ] resume-from-hop test green ·
-  [ ] `blocked` never auto-retries · [ ] old queue files still load · [ ] suite + goldens green.
-- **Size:** L (split: claims/states vs recovery/resume) · **Status:** TODO
+- **Acceptance gate:** [x] concurrent-dispatch race test green · [x] resume-from-hop test green ·
+  [x] `blocked` never auto-retries · [x] old queue files still load · [x] suite + goldens green.
+- **Size:** L (split: claims/states vs recovery/resume) · **Status:** DONE (pc/r-1) — claims via
+  `store.read_modify_write`; `running`/stale-claim/`--resume` land in `core/dispatch.py`; `blocked`
+  no longer auto-retries (`retry_task`/`unblock_pod`, wired to `queue --retry` and `profile
+  --budget`); task ids are `task-<uuid4>`. R-2/R-3/R-4/R-5 can now proceed.
 
 ---
 
@@ -323,7 +326,7 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 
 ## Roll-up checklist (Phase 14 definition of done — mirrors ROADMAP exit criteria)
 
-- [ ] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
+- [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
   `blocked` never auto-retries.
 - [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
 - [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;

@@ -26,6 +26,10 @@ SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-sched
 # Expired approvals are denied (fail-closed).
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
+# CLAIM_STALE_TIMEOUT: a pod task 'claimed' (status=running) longer than this
+# without finishing is presumed crashed — the dispatch sweep fails it with a
+# stale_claim trace event so it stops looking active forever (R-1).
+CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 # METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 

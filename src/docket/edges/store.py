@@ -17,6 +17,7 @@ import contextlib
 import json
 import os
 import shutil
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,64 @@ def _lock_path(target: Path) -> Path:
     # Shared lock file per directory so concurrent writes to any file in the
     # same dir are serialised without deadlock (a single lock per dir, never nested).
     return target.parent / ".docket.lock"
+
+
+def _acquire(path: Path) -> FileLock:
+    """A fresh FileLock for *path*'s per-directory lock file (never reused/shared)."""
+    return FileLock(str(_lock_path(path)), timeout=_LOCK_TIMEOUT)
+
+
+def _lock_timeout_error(path: Path) -> RuntimeError:
+    return RuntimeError(
+        f"Could not acquire lock for {path} within {_LOCK_TIMEOUT}s "
+        "(is another docket process running?)"
+    )
+
+
+@contextlib.contextmanager
+def with_lock(path: Path) -> Iterator[None]:
+    """Hold *path*'s per-directory filelock for the duration of the ``with`` block.
+
+    Use this to make a multi-step read-modify-write atomic against every other
+    docket process/thread touching the same directory (the same lock file
+    ``write_json`` uses). Do **not** call ``write_json`` on the same path from
+    inside a ``with_lock`` block — that would try to acquire the lock a second
+    time and block forever; use ``read_modify_write`` (or the module-private
+    ``_atomic_write``) for the write step instead.
+    """
+    lock = _acquire(path)
+    try:
+        with lock:
+            yield
+    except Timeout:
+        raise _lock_timeout_error(path) from None
+
+
+def read_modify_write(
+    path: Path, fn: Callable[[dict[str, Any]], dict[str, Any] | None]
+) -> dict[str, Any]:
+    """Locked read-modify-write: the one safe way to do read-then-write on one file.
+
+    Holds *path*'s per-directory filelock across the whole read + *fn* + write,
+    so no concurrent ``write_json``/``read_modify_write`` call on the same path
+    can interleave (this is what closes the dispatch-queue claim race — see
+    ``core/dispatch.py``). *fn* receives the file's current contents (``{}`` if
+    it doesn't exist yet) and returns the new contents to persist, or ``None``
+    to abort without writing (e.g. "nothing eligible to claim"). Returns
+    whatever ended up in the file (the new contents, or the unmodified current
+    contents when *fn* returned ``None``).
+    """
+    lock = _acquire(path)
+    try:
+        with lock:
+            current = read_json(path)
+            updated = fn(current)
+            if updated is None:
+                return current
+            _atomic_write(path, json.dumps(updated, indent=2) + "\n")
+            return updated
+    except Timeout:
+        raise _lock_timeout_error(path) from None
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -56,15 +115,12 @@ def write_json(path: Path, data: dict[str, Any] | BaseModel) -> None:
 
     serialised = json.dumps(payload, indent=2) + "\n"
 
-    lock = FileLock(str(_lock_path(path)), timeout=_LOCK_TIMEOUT)
+    lock = _acquire(path)
     try:
         with lock:
             _atomic_write(path, serialised)
     except Timeout:
-        raise RuntimeError(
-            f"Could not acquire lock for {path} within {_LOCK_TIMEOUT}s "
-            "(is another docket process running?)"
-        ) from None
+        raise _lock_timeout_error(path) from None
 
 
 def _atomic_write(path: Path, content: str) -> None:

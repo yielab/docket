@@ -487,9 +487,9 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
     elif action == "delegate":
         _pod_delegate(project, extra)
     elif action == "queue":
-        _pod_queue(project)
+        _pod_queue(project, extra)
     elif action == "dispatch":
-        _pod_dispatch(project)
+        _pod_dispatch(project, extra)
     else:
         ui.error(
             f"Unknown pod action {action!r}. "
@@ -708,8 +708,27 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
     ui.info(f"Run the pipeline: docket pod {project} dispatch")
 
 
-def _pod_queue(project: str) -> None:
-    """Show the pod's task queue."""
+def _pod_queue(project: str, extra: list[str]) -> None:
+    """Show the pod's task queue, or ``queue --retry <task-id>`` to un-block one task.
+
+    A ``blocked`` task (budget cap reached) never retries on its own (R-1) —
+    ``--retry`` is the explicit, single-task way back to ``pending``; a pod-wide
+    budget change (``docket profile <lead-id> --budget ...``) un-blocks the
+    whole pod's queue instead.
+    """
+    if "--retry" in extra:
+        i = extra.index("--retry")
+        task_id = extra[i + 1] if i + 1 < len(extra) else ""
+        if not task_id:
+            ui.error("Usage: docket pod <project> queue --retry <task-id>")
+            raise typer.Exit(1)
+        if _dispatch.retry_task(project, task_id):
+            ui.success(f"Requeued '{task_id}' for pod '{project}' — status set to pending.")
+        else:
+            ui.error(f"'{task_id}' is not a blocked task in pod '{project}'.")
+            raise typer.Exit(1)
+        return
+
     tasks = _dispatch.read_tasks(project)
     if not tasks:
         ui.warn(f"No tasks queued for pod '{project}'.")
@@ -732,28 +751,43 @@ def _pod_queue(project: str) -> None:
     ui.console.print(table)
 
 
-def _pod_dispatch(project: str) -> None:
-    """Drive the pod's pending tasks through the pipeline (one real turn per hop)."""
+def _pod_dispatch(project: str, extra: list[str]) -> None:
+    """Drive the pod's pending tasks through the pipeline (one real turn per hop).
+
+    ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
+    stale claim (it crashed mid-task) and continues each one from its last
+    persisted hop instead of restarting at hop 0 (R-1 crash recovery).
+    """
+    resume = "--resume" in extra
     try:
         pipeline = _dispatch.pod_pipeline(project)
     except _dispatch.DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    pending = [t for t in _dispatch.read_tasks(project) if t.get("status") == "pending"]
-    if not pending:
+    tasks = _dispatch.read_tasks(project)
+    pending = [t for t in tasks if t.get("status") == "pending"]
+    resumable = (
+        [t for t in tasks if t.get("status") == "failed" and t.get("failureKind") == "stale_claim"]
+        if resume
+        else []
+    )
+    if not pending and not resumable:
         ui.warn(f"No pending tasks for pod '{project}'. Queue one: docket pod {project} delegate")
         return
     roles = " → ".join(role for role, _mid in pipeline)
-    ui.info(f"Dispatching {len(pending)} task(s) through: {roles}")
+    count_label = f"{len(pending)} pending"
+    if resume:
+        count_label += f", {len(resumable)} resumable"
+    ui.info(f"Dispatching {count_label} task(s) through: {roles}")
     cap = _dispatch.pod_budget(project)
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
-    results = _dispatch.dispatch_pod(project)
+    results = _dispatch.dispatch_pod(project, resume=resume)
     for res in results:
         if res.status == "done":
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
         elif res.status == "blocked":
-            ui.warn(f"  [{res.task_id}] blocked — {res.reason} (left pending)")
+            ui.warn(f"  [{res.task_id}] blocked — {res.reason}")
         else:
             ui.error(f"  [{res.task_id}] {res.status} — {res.reason}")
 
