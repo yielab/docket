@@ -247,6 +247,12 @@ def _gate_label(gate: _pipeline.Gate | None) -> str:
 # ── Verdict parsing (generic — any archetype's marker vocabulary) ───────────
 
 
+def normalize_values(values: list[str], case_sensitive: bool) -> frozenset[str]:
+    """Case-normalize a verdict gate's ``pass_values``/``rework.when`` list for
+    membership testing, matching :func:`parse_verdict`'s own normalization."""
+    return frozenset(values) if case_sensitive else frozenset(v.lower() for v in values)
+
+
 def parse_verdict(gate: _pipeline.VerdictGate, output: str) -> str | None:
     """First non-blank line of *output* matched against *gate*.pattern.
 

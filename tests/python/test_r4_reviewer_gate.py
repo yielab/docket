@@ -33,6 +33,8 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
+from docket.core import orchestrator as _orch
+from docket.core import pipeline as _pipeline
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 
@@ -106,27 +108,46 @@ def _role_of(agent_id: str) -> str:
 
 
 class TestParseReviewerVerdict:
+    """W-8 purpose change: the reviewer's marker parsing is no longer a
+    dispatch-private regex/parser pair (``_parse_reviewer_verdict`` /
+    ``_REVIEWER_VERDICT_RE`` — both removed, see ``core/dispatch.py``'s
+    docstring note where they used to live). Gate execution now reads
+    ``core.orchestrator.parse_verdict`` generically against whatever
+    ``VerdictGate`` a step resolves to; these tests exercise that generic
+    parser directly against the reviewer step's own gate from the built-in
+    default pipeline (``core/pipeline.py``), which is the new single source
+    of truth for the pattern itself.
+    """
+
+    @staticmethod
+    def _reviewer_gate() -> _pipeline.VerdictGate:
+        spec = _pipeline.default_pipeline()
+        reviewer_step = next(s for s in spec.steps if s.id == "reviewer")
+        assert isinstance(reviewer_step.gate, _pipeline.VerdictGate)
+        return reviewer_step.gate
+
     def test_approve_is_parsed(self) -> None:
-        assert _dispatch._parse_reviewer_verdict("APPROVE\nlooks good") == "approve"
+        assert _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nlooks good") == "approve"
 
     def test_request_changes_is_parsed(self) -> None:
         assert (
-            _dispatch._parse_reviewer_verdict("REQUEST-CHANGES\nfix the widget")
+            _orch.parse_verdict(self._reviewer_gate(), "REQUEST-CHANGES\nfix the widget")
             == "request-changes"
         )
 
     def test_case_insensitive(self) -> None:
-        assert _dispatch._parse_reviewer_verdict("approve — fine") == "approve"
-        assert _dispatch._parse_reviewer_verdict("request-changes: nope") == "request-changes"
+        gate = self._reviewer_gate()
+        assert _orch.parse_verdict(gate, "approve — fine") == "approve"
+        assert _orch.parse_verdict(gate, "request-changes: nope") == "request-changes"
 
     def test_leading_blank_lines_skipped(self) -> None:
-        assert _dispatch._parse_reviewer_verdict("\n\nAPPROVE\nfine") == "approve"
+        assert _orch.parse_verdict(self._reviewer_gate(), "\n\nAPPROVE\nfine") == "approve"
 
     def test_unparseable_returns_none(self) -> None:
-        assert _dispatch._parse_reviewer_verdict("looks fine to me") is None
+        assert _orch.parse_verdict(self._reviewer_gate(), "looks fine to me") is None
 
     def test_empty_output_returns_none(self) -> None:
-        assert _dispatch._parse_reviewer_verdict("") is None
+        assert _orch.parse_verdict(self._reviewer_gate(), "") is None
 
 
 # ── basic gate behaviour ───────────────────────────────────────────────────────

@@ -23,7 +23,13 @@ validation, not any dispatch behavior.
   * TestStepTargeting       — role XOR agent, archetype shape, id shape.
   * TestZeroMigration       — ``load_pipeline(None)`` returns the built-in
     pipeline, drift-guarded against ``core/dispatch.py``'s own
-    ``PIPELINE_ORDER`` and verdict regexes directly.
+    ``PIPELINE_ORDER`` directly. W-2/W-8 update: the built-in Reviewer/Tester
+    verdict *patterns* no longer have a dispatch-private regex to drift-check
+    against (``core/dispatch.py`` deleted its own hardcoded copy once gate
+    execution went generic) — those two checks now cross-check against
+    ``core.orchestrator``'s resolved archetype-fallback gate instead, proving
+    the pipeline format's hardcoded default and the W-6 archetype registry's
+    ``gateContract`` describe the same role without silently diverging.
   * TestLoadPipeline        — YAML parse errors, empty/non-mapping
     documents, and the missing-PyYAML error path.
 """
@@ -33,7 +39,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from docket.core import archetypes as _archetypes
 from docket.core import dispatch as _dispatch
+from docket.core import orchestrator as _orch
 from docket.core.pipeline import (
     ApprovalGate,
     MechanicalGate,
@@ -605,11 +613,29 @@ class TestZeroMigration:
         assert isinstance(implementer.gate, MechanicalGate)
         assert implementer.gate.command is None
 
-    def test_builtin_reviewer_pattern_matches_dispatch_regex(self) -> None:
+    def test_builtin_reviewer_pattern_matches_archetype_resolved_gate(self) -> None:
+        """W-8 purpose change: this used to byte-match a dispatch-private
+        regex constant (``_REVIEWER_VERDICT_RE``, since deleted — gate
+        execution reads a step's resolved gate generically now, see
+        ``core/dispatch.py``'s docstring note). The cross-check that matters
+        post-W-8 is that the pipeline format's hardcoded default and the W-6
+        archetype registry's ``gateContract`` — two independent sources of
+        "what does a bare `role: reviewer` step's gate look like" — agree.
+        """
         spec = default_pipeline()
         reviewer = next(s for s in spec.steps if s.id == "reviewer")
         assert isinstance(reviewer.gate, VerdictGate)
-        assert reviewer.gate.pattern == _dispatch._REVIEWER_VERDICT_RE.pattern
+        registry = _archetypes.load_registry()
+        bare_step = Step(id="probe", role="reviewer")  # no gate of its own
+        resolved = _orch.resolve_gate(bare_step, registry)
+        assert isinstance(resolved, VerdictGate)
+        assert reviewer.gate.pattern == resolved.pattern
+        # Both sides are case_sensitive=False, so only case-insensitive
+        # agreement is required — the pipeline default happens to spell its
+        # passValues lowercase, the archetype's regexes upper-case.
+        assert [v.lower() for v in reviewer.gate.pass_values] == [
+            v.lower() for v in resolved.pass_values
+        ]
         assert reviewer.gate.pass_values == ["approve"]
 
     def test_builtin_reviewer_rework_targets_implementer_default_one_cycle(self) -> None:
@@ -621,11 +647,19 @@ class TestZeroMigration:
         assert reviewer.gate.rework.when == ["request-changes"]
         assert reviewer.gate.rework.max_cycles == 1
 
-    def test_builtin_tester_pattern_matches_dispatch_regex(self) -> None:
+    def test_builtin_tester_pattern_matches_archetype_resolved_gate(self) -> None:
+        """W-8 purpose change — see the reviewer test's docstring above."""
         spec = default_pipeline()
         tester = next(s for s in spec.steps if s.id == "tester")
         assert isinstance(tester.gate, VerdictGate)
-        assert tester.gate.pattern == _dispatch._TESTER_VERDICT_RE.pattern
+        registry = _archetypes.load_registry()
+        bare_step = Step(id="probe", role="tester")  # no gate of its own
+        resolved = _orch.resolve_gate(bare_step, registry)
+        assert isinstance(resolved, VerdictGate)
+        assert tester.gate.pattern == resolved.pattern
+        assert [v.lower() for v in tester.gate.pass_values] == [
+            v.lower() for v in resolved.pass_values
+        ]
         assert tester.gate.pass_values == ["pass"]
 
     def test_builtin_tester_has_no_rework(self) -> None:
