@@ -85,6 +85,30 @@ class TestRunsShowCli:
         assert rc == 0
 
 
+class TestRunsCancelCli:
+    """ROADMAP Phase 16 W-2: `docket runs cancel <id>`."""
+
+    def test_cancel_missing_arg_is_an_error(self, runs_file: Path) -> None:
+        assert run_runs("cancel", []) == 1
+
+    def test_cancel_unknown_id_is_an_error(self, runs_file: Path) -> None:
+        assert run_runs("cancel", ["run-nope"]) == 1
+
+    def test_cancel_already_terminal_run_is_an_error(self, runs_file: Path) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.finish_run(rec["id"], state="succeeded", task_ids=[])
+        assert run_runs("cancel", [rec["id"]]) == 1
+        assert _runs.get_run(rec["id"])["state"] == "succeeded"
+
+    def test_cancel_a_running_run_with_no_pids_still_marks_it_cancelled(
+        self, runs_file: Path
+    ) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        assert run_runs("cancel", [rec["id"]]) == 0
+        assert _runs.get_run(rec["id"])["state"] == "cancelled"
+
+
 class TestRunsUnknownSubcommand:
     def test_unknown_subcommand_errors(self, runs_file: Path) -> None:
         assert run_runs("bogus", []) == 1
@@ -115,6 +139,18 @@ class TestRunsCommandWiring:
         assert result.exit_code == 0
         out = json.loads(result.output)
         assert out["id"] == rec["id"]
+
+    def test_runs_cancel_wired_on_app(self, runs_file: Path) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        runner = CliRunner()
+        result = runner.invoke(app, ["runs", "cancel", rec["id"]])
+        assert result.exit_code == 0
+        assert _runs.get_run(rec["id"])["state"] == "cancelled"
 
     def test_runs_is_a_top_level_command(self) -> None:
         import typer.main

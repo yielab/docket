@@ -313,9 +313,7 @@ def pod_full_roster(project: str) -> dict[str, str]:
     return by_role
 
 
-def _effective_pipeline(
-    project: str, spec: _pipeline.PipelineSpec | None
-) -> _pipeline.PipelineSpec:
+def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pipeline.PipelineSpec:
     """The PipelineSpec this dispatch actually runs (W-2).
 
     A caller-supplied *spec* (a real pipeline file, e.g. ``docket pipeline
@@ -333,6 +331,10 @@ def _effective_pipeline(
     is dispatch's job, not the format's. ``maxReworkCycles`` stays a
     zero-migration compatibility shim; it is never applied to a real
     caller-supplied spec.
+
+    Public (not ``_``-prefixed) because ``cli/_pipeline.py``'s ``docket
+    pipeline plan`` needs this exact resolved spec too — it renders from the
+    same code path the real executor runs, never a second interpretation.
     """
     if spec is not None:
         return spec
@@ -966,7 +968,7 @@ def dispatch_task(
 
     *spec* (W-2) is the :class:`~docket.core.pipeline.PipelineSpec` to run;
     ``None`` (the default) resolves this pod's zero-migration pipeline (see
-    ``_effective_pipeline``) — behaviorally identical to the pre-W-2 hardcoded
+    ``effective_pipeline``) — behaviorally identical to the pre-W-2 hardcoded
     ``PIPELINE_ORDER`` walk for every existing caller that never passes one.
     Gate execution (W-8) reads each step's *resolved* gate — its own declared
     ``gate``, or (only when a step omits one) its archetype's ``gateContract``
@@ -1013,7 +1015,7 @@ def dispatch_task(
     resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
     resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
-    effective_spec = _effective_pipeline(project, spec)
+    effective_spec = effective_pipeline(project, spec)
     registry = _archetypes.load_registry()
     roster = pod_full_roster(project)
     plan = _orch.resolve_plan(effective_spec, roster, registry=registry)

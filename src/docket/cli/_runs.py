@@ -19,6 +19,7 @@ from docket.core import runs as _runs
 _STATE_STYLE: dict[str, str] = {
     "succeeded": "green",
     "failed": "red",
+    "cancelled": "magenta",
     "running": "yellow",
     "queued": "dim",
 }
@@ -41,7 +42,9 @@ def run_runs(sub: str | None, args: list[str]) -> int:
         return _list(args)
     if sub == "show":
         return _show(args)
-    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id>.")
+    if sub == "cancel":
+        return _cancel(args)
+    ui.error(f"Unknown subcommand '{sub}'. Use: list | show <id> | cancel <id>.")
     return 1
 
 
@@ -128,4 +131,19 @@ def _show(args: list[str]) -> int:
         ui.console.print()
         ui.error(error)
     ui.console.print()
+    return 0
+
+
+def _cancel(args: list[str]) -> int:
+    """``docket runs cancel <id>`` — kill the run's in-flight hop's process
+    group and mark it terminally ``cancelled`` (ROADMAP Phase 16 W-2)."""
+    if not args:
+        ui.error("Usage: docket runs cancel <id>")
+        return 1
+    run_id = args[0]
+    outcome = _runs.cancel_run(run_id)
+    if not outcome.ok:
+        ui.error(outcome.message)
+        return 1
+    ui.success(outcome.message)
     return 0

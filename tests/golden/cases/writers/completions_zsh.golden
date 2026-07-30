@@ -20,6 +20,7 @@ _docket() {
     'auth:Model-provider authentication (status/login/key/setup)'
     'models:View and edit the role→model policy'
     'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
+    'pipeline:Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1/W-2)'
     'roles:Manage declarative role archetypes: list/show/add/validate (ROADMAP Phase 16 W-6)'
     'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'
     'logs:View memory logs and gateway entries'
