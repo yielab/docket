@@ -17,7 +17,7 @@ _docket() {
     'profile:Pin or unpin an agent'\''s model; set a budget cap'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
-    'auth:Claude model authentication (status/login/key/setup)'
+    'auth:Model-provider authentication (status/login/key/setup)'
     'models:View and edit the role→model policy'
     'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
     'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'

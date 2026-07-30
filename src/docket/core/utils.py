@@ -32,11 +32,13 @@ def last_activity(agent_id: str) -> str:
     return memory.last_activity(cfg.workspace_dir(agent_id))
 
 
-_GATEWAY_UNIT = "openclaw-gateway.service"
-
-
 def gateway_active() -> bool:
-    """Return True if openclaw-gateway.service is active."""
+    """Return True if openclaw-gateway.service is active.
+
+    The unit name itself is single-sourced in `edges/adapters/system.py`'s
+    `GATEWAY_UNIT` (Phase 18 L-2 removed a second, unused copy that had
+    drifted in here) — this module only forwards to the adapter.
+    """
     from docket.edges.adapters import system as _system
 
     return _system.gateway_active()

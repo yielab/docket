@@ -62,6 +62,17 @@ eval_run_task() {
   fi
 
   # Parse the JSON response with Python for robustness.
+  #
+  # Shape reconciled against the ACL (edges/adapters/openclaw.py's
+  # _extract_run_output/_extract_run_cost, confirmed against a live daemon
+  # v2026.2.23 response — see tests/python/test_dispatch.py's
+  # _REAL_DAEMON_RESPONSE, CD-0): text lives at result.payloads[0].text, and
+  # token usage lives at result.meta.agentMeta.usage (this harness used to
+  # read top-level payloads/meta and a lastCallUsage key that doesn't exist
+  # in the real shape — Phase 18 L-2 fixed the drift). Note usage.total is a
+  # TOKEN count (input+output+cacheRead), not a USD figure — the daemon has
+  # no USD cost field (see the ACL's AgentRunResult docstring); it is kept
+  # here only as a relative, same-units cost-proxy across eval runs.
   local parsed
   parsed=$(python3 -c "
 import json, sys
@@ -69,11 +80,12 @@ try:
     d = json.loads(sys.stdin.read())
 except Exception as e:
     print('PARSE_ERROR|' + str(e)); sys.exit(0)
-payloads = d.get('payloads', [])
+result = d.get('result') if isinstance(d.get('result'), dict) else {}
+payloads = result.get('payloads', [])
 text = ' '.join(p.get('text','') for p in payloads if p)
-meta = d.get('meta', {})
+meta = result.get('meta', {})
 agent_meta = meta.get('agentMeta', {})
-usage = agent_meta.get('lastCallUsage', {})
+usage = agent_meta.get('usage', {})
 # Detect infrastructure-level failures (quota, auth, timeout) embedded in text.
 failure_markers = ['HTTP 401', 'HTTP 429', 'HTTP 5', 'LLM request rejected',
                    'authentication_error', 'rate_limit', 'overloaded', 'timeout']

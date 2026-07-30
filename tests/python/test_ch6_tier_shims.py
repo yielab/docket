@@ -5,7 +5,10 @@ Covers:
     model-id-based error, instead of silently resolving through the old
     TIER_ANCHORS table.
   - `docket models set <tier-name> <model>` and `docket tier` are rejected/removed.
-  - the internal rank-anchor fallback chain still resolves (unchanged output).
+  - the internal rank-anchor seed table still resolves (Phase 18 L-2 relabels
+    the display from "fallback" to "rank anchors" — see
+    tests/python/test_l2_provider_agnosticism.py for the override/no-Claude-
+    residue coverage that phase added).
   - the one-shot `profiles:` -> `roles:` registry migration: migrates once, is
     idempotent, leaves registries without the legacy key untouched, and leaves
     registries that already have `roles:` alone (flagged by `docket doctor` as
@@ -140,11 +143,16 @@ class TestTierNamesRemoved:
 
 
 class TestFallbackChainPreserved:
-    def test_models_list_shows_fallback_chain(self, tmp_path: Path) -> None:
+    def test_models_list_shows_rank_anchor_seed_table(self, tmp_path: Path) -> None:
+        """Renamed from the old 'fallback chain' framing (Phase 18 L-2): the
+        internal rank-anchor seed table still resolves and displays, but the
+        label is now honest ('rank anchors', not 'fallback' — nothing in
+        docket degrades a request to a cheaper model on failure)."""
         oc_dir = _setup_agent(tmp_path)
         rc, out, _err = _run(["models"], oc_dir)
         assert rc == 0
-        assert "fallback" in out
+        assert "rank anchors" in out
+        assert "not a runtime fallback chain" in out
         # premium -> standard -> economy anchors are still the built-in defaults.
         assert "claude-opus-4-6" in out
         assert "claude-sonnet-4-6" in out

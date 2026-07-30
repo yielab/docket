@@ -7,10 +7,17 @@ Exposes:
   /approvals           list pending approvals (auth required)
   /approvals/<token>   grant or deny a pending approval (auth required)
 
-Security model: the server binds to 127.0.0.1 by default. A randomly-generated
-Bearer token is printed at startup and required on every /approvals request
-(DOCKET_SERVE_TOKEN env var pins a fixed token). The approval endpoints reject
-all requests without a valid token before touching approval state.
+Security model: the server binds to 127.0.0.1 (loopback-only) by default —
+`run_serve`'s ``bind`` parameter can widen that, but nothing in docket
+recommends or automates doing so; treat any non-loopback bind as an explicit,
+on-you decision (there is no additional network ACL here, only the bearer
+token below). A randomly-generated Bearer token is required on every
+/approvals and /dispatch request (DOCKET_SERVE_TOKEN env var pins a fixed
+token); it is printed at startup by default, or written to a 0600 file via
+``--token-file``/``token_file=`` when stdout isn't a safe place for it (e.g. a
+systemd unit's journal). The approval endpoints reject all requests without a
+valid token — compared with `secrets.compare_digest` (Phase 18 G-6), not
+`==`, before touching approval state.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ import os
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 import docket.config as cfg
@@ -299,7 +307,11 @@ class _DocketHandler(BaseHTTPRequestHandler):
         if not self.serve_token:
             return False
         auth = self.headers.get("Authorization", "")
-        return auth == f"Bearer {self.serve_token}"
+        expected = f"Bearer {self.serve_token}"
+        # Timing-safe compare (Phase 18 G-6) — a plain `==` short-circuits on
+        # the first mismatched byte, leaking token-length/prefix information
+        # to an attacker who can measure response latency.
+        return secrets.compare_digest(auth, expected)
 
     def _send_json_error(self, msg: str, status: int = 400) -> None:
         body = json.dumps({"ok": False, "error": msg}).encode()
@@ -387,19 +399,43 @@ class _DocketHandler(BaseHTTPRequestHandler):
         self.do_GET()
 
 
+def _write_token_file(path: Path, token: str) -> None:
+    """Write *token* to *path* with 0600 perms (create or replace, owner-only).
+
+    Uses ``os.open`` with an explicit mode so the file is never briefly
+    world-/group-readable between creation and a follow-up ``chmod``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(token + "\n")
+    finally:
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
+
+
 def run_serve(
     port: int | None = None,
     *,
     bind: str = "127.0.0.1",
     interval: int = DEFAULT_INTERVAL,
     dispatch: bool = False,
+    token_file: str | None = None,
 ) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
 
-    Binds to 127.0.0.1 on the given port (default 7331) and serves
+    Binds to *bind* (default ``127.0.0.1`` — loopback-only; not reachable off
+    this host unless the caller explicitly widens it, which docket neither
+    recommends nor automates) on the given port (default 7331) and serves
     /status.json, /metrics, /health. Responses are built on each request
     (cheap, index-backed). Runs sweeps once at startup and then every
     *interval* seconds in a daemon thread. Runs until interrupted.
+
+    ``token_file``, when given, writes the bearer token required by
+    /approvals and /dispatch to that path (0600 perms) instead of printing it
+    to stdout (Phase 18 G-6) — use this when stdout may land somewhere less
+    private than a terminal, e.g. a systemd unit's journal.
     """
     actual_port = DEFAULT_PORT if port is None else port
 
@@ -420,7 +456,15 @@ def run_serve(
         f"Endpoints: /status.json  /metrics  /health  /approvals"
         f"  ->  http://localhost:{actual_port}/"
     )
-    print(f"Approval API token: {_token}  (override: DOCKET_SERVE_TOKEN)")
+    loopback = bind in ("127.0.0.1", "localhost", "::1")
+    bind_note = "loopback-only" if loopback else "WARNING: not loopback — reachable off this host"
+    print(f"Bind: {bind}  ({bind_note})")
+    if token_file:
+        token_path = Path(token_file)
+        _write_token_file(token_path, _token)
+        print(f"Approval API token written to {token_path} (0600)  (override: DOCKET_SERVE_TOKEN)")
+    else:
+        print(f"Approval API token: {_token}  (override: DOCKET_SERVE_TOKEN)")
     print("")
     try:
         server.serve_forever()

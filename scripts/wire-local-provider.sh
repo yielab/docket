@@ -74,6 +74,10 @@ cat <<EOF
 
 ✓ Local provider wired: $PROVIDER/$MODEL_ID  →  $BASE_URL
 
+NOTE: this script is superseded by the native \`docket models provider\` command
+(same ping->register logic, through the ACL) — prefer that over this script
+going forward; it is kept only as a historical/no-docket-install reference.
+
 Next — apply the smart-planner / local-executor role split:
 
   docket models set manager    anthropic/claude-sonnet-4-6   # architecture & delegation (smart)
@@ -82,13 +86,11 @@ Next — apply the smart-planner / local-executor role split:
   docket models set tester     $PROVIDER/$MODEL_ID
   docket models set knowledge  $PROVIDER/$MODEL_ID
   docket models set repo       $PROVIDER/$MODEL_ID            # project agents execute locally
-  docket models set task       $PROVIDER/$MODEL_ID
   docket models                                               # confirm the role→model table
 
 Then smoke-test the split:
 
-  docket team status
-  docket team delegate "Write hello.py with a pytest test, then run it"
-  docket team queue                                           # manager(Claude) plan → programmer(local)
-  openclaw models status --agent programmer                  # confirm it resolves to $PROVIDER/$MODEL_ID
+  docket pod <project> delegate "Write hello.py with a pytest test, then run it"
+  docket pod <project> dispatch                               # lead(Claude) plan → implementer(local)
+  docket profile programmer                                   # confirm it resolves to $PROVIDER/$MODEL_ID
 EOF

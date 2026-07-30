@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -206,13 +206,14 @@ docket [global-options] <command> [command-options] [arguments]
 **Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
 
 #### docket auth
-**Purpose**: Manage how agents authenticate to the Claude model provider (front-end over `openclaw models auth`). Distinct from `docket keys`, which manages workspace secrets, not model auth.
-**Syntax**: `docket auth [action]`
+**Purpose**: Manage how agents authenticate to a model provider (front-end over `openclaw models auth`). Distinct from `docket keys`, which manages workspace secrets, not model auth.
+**Syntax**: `docket auth [action] [--provider <name>]`
 **Actions**:
 - `status`: Show configured auth profiles and whether any is usable — default
-- `setup`: Interactive chooser — Claude subscription or API key
-- `login`: Configure a Claude subscription token (`setup-token`)
-- `key`: Configure an API key (`paste-token`)
+- `setup [--provider <name>]`: Interactive chooser — subscription token or API key
+- `login [--provider <name>]`: Configure a subscription-style token (`setup-token`)
+- `key [--provider <name>]`: Configure an API key (`paste-token`)
+**Options**: `--provider <name>` (login/key/setup only) — which provider to authenticate; defaults to `anthropic` when omitted, for backward compatibility. Threaded through to the `openclaw models auth` call the ACL builds (Phase 18 L-2 — previously hardcoded).
 **Output**: Profile status or setup confirmation
 **Return**: 0 on success, non-zero if the underlying flow fails or is cancelled
 
@@ -632,6 +633,13 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.6.0 (2026-07-30)
+
+- Phase 18 L-2: documented the new `--provider <name>` option on `docket auth
+  login/key/setup` (defaults to `anthropic`) — previously the provider was hardcoded and
+  unconfigurable; generalized the section's "Claude model provider" wording to "model
+  provider" to match.
 
 ### Version 1.5.0 (2026-07-30)
 

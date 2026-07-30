@@ -924,7 +924,11 @@ def cmd_auth(
     ctx: typer.Context,
     sub: str | None = typer.Argument(None),
 ) -> None:
-    """Claude model authentication (status/login/key/setup)."""
+    """Model-provider authentication (status/login/key/setup).
+
+    login/key/setup accept `--provider <name>` (default: anthropic) to
+    authenticate a different OpenClaw-supported provider instead.
+    """
     from docket.cli._keys import run_auth
 
     raise typer.Exit(run_auth(sub, list(ctx.args)))
@@ -1044,8 +1048,11 @@ def _cmd_models_list() -> None:
     ui.console.print()
     ui.console.print(f"  {'default':<12}  {default_model}")
     ui.console.print(
-        f"  {'fallback':<12}  "
+        f"  {'rank anchors':<12}  "
         f"{tiers.get('premium', '')} → {tiers.get('standard', '')} → {tiers.get('economy', '')}"
+    )
+    ui.dim(
+        "  (role-default seed table — not a runtime fallback chain; overridable in docket-models.json)"
     )
     ui.console.print()
     ui.console.print(f"  Registry file: {_cfg.MODEL_REGISTRY_FILE}")
@@ -1059,9 +1066,11 @@ def _cmd_models_list() -> None:
     )
     ui.console.print()
     ui.console.print("Change: docket models set <role|default> <provider/model>")
-    # markup=False: the literal [anthropic|...] must not be parsed as Rich markup.
+    # markup=False: the literal [anthropic|...] must not be parsed as Rich
+    # markup. Derived from KNOWN_PRESETS so a new preset can't silently go
+    # missing from this line the way `local` (Phase 18 L-2) used to.
     ui.console.print(
-        "Preset: docket models preset [anthropic|openai|google|openrouter-free|openrouter]",
+        f"Preset: docket models preset [{'|'.join(_mp.KNOWN_PRESETS)}]",
         markup=False,
     )
     ui.console.print(
@@ -1094,8 +1103,9 @@ def _cmd_models_set(key: str, model: str) -> None:
 
     _mp.write_registry(updates)
     ui.success(f"{key} → {validated}")
-    if validated not in _mp.MODEL_PRICING:
-        ui.info(f"No pricing data for {validated} — cost will show as n/a.")
+    price = _mp.pricing_label(validated)
+    if price.startswith("n/a"):
+        ui.info(f"No pricing data for {validated} — cost will show as {price}.")
 
     if touched_roles:
         ui.console.print()
@@ -1124,6 +1134,7 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.console.print()
         ui.console.print(
             "Free options: openrouter-free (zero per-token cost, free account at openrouter.ai)"
+            " · local (no API key, run your own OpenAI-compatible endpoint)"
         )
         return
 
@@ -1141,6 +1152,12 @@ def _cmd_models_preset(preset: str | None) -> None:
 
     updates: dict[str, str] = {
         "default": std,
+        # Persist the preset's own economy/standard/premium as the rank
+        # anchors too (Phase 18 L-2) — otherwise a non-Anthropic preset still
+        # left Claude ids in the "rank anchors" line `docket models` prints.
+        "rank.economy": econ,
+        "rank.standard": std,
+        "rank.premium": prem,
     }
     for r in cheap_roles:
         updates[f"role.{r}"] = econ
@@ -1153,7 +1170,7 @@ def _cmd_models_preset(preset: str | None) -> None:
     ui.console.print(f"    → {econ}")
     ui.console.print(f"  {' '.join(strong_roles)}")
     ui.console.print(f"    → {std}")
-    ui.console.print(f"  fallback ceiling → {prem}")
+    ui.console.print(f"  rank anchor (seed only, not a fallback) → {prem}")
     if cost == "free":
         ui.console.print("  cost → free per-token (zero cost on free-tier models)")
     else:
@@ -1189,6 +1206,10 @@ def _cmd_models_preset(preset: str | None) -> None:
             ui.console.print(f"  Add it: docket keys add {key_name} <your-key>")
             if preset in ("openrouter-free", "openrouter"):
                 ui.console.print("  Get one: https://openrouter.ai/keys (free account available)")
+    elif preset == "local":
+        ui.console.print()
+        ui.info("No API key needed. Verify your local runtime is up, then register the endpoint:")
+        ui.console.print("  docket models provider [name] [base_url]   # ping + register")
 
     ui.console.print()
     ui.info("Pinned agents kept their model. Pin or unpin one agent:")
@@ -1583,16 +1604,25 @@ def cmd_serve(
         "--dispatch",
         help="Also drive each pod's queued tasks through its pipeline (real, costed agent turns)",
     ),
+    token_file: str | None = typer.Option(
+        None,
+        "--token-file",
+        help=(
+            "Write the /approvals + /dispatch bearer token to this file (0600) instead of "
+            "printing it to stdout"
+        ),
+    ),
 ) -> None:
     """Local HTTP endpoints: /status.json /metrics /health.
 
-    With --dispatch, each refresh also runs every pod's queue through the
+    Binds to 127.0.0.1 (loopback-only) — not reachable off this host. With
+    --dispatch, each refresh also runs every pod's queue through the
     Lead→Implementer→Reviewer→Tester pipeline. Each hop is a real agent
     turn and is budget-gated; leave it off for a read-only monitor.
     """
     from docket.serve import run_serve
 
-    run_serve(port=port, interval=interval, dispatch=dispatch)
+    run_serve(port=port, interval=interval, dispatch=dispatch, token_file=token_file)
 
 
 @app.command("completions")
