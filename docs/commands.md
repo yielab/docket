@@ -474,8 +474,8 @@ docket pod <project> add <role> [--count N] [--verify "<cmd>"]  # add member(s):
 docket pod <project> remove <member-id>                # remove one member
 docket pod <project> set-verify <member-id> "<cmd>"    # set an implementer's verify command
 docket pod <project> delegate [--priority high|normal|low] "<task>"   # queue a task
-docket pod <project> queue                             # show the pod's task queue
-docket pod <project> dispatch                          # run the pending tasks through the pipeline
+docket pod <project> queue [--retry <task-id>]         # show the queue, or un-block one task
+docket pod <project> dispatch [--resume] [--timeout <seconds>]   # run pending tasks through the pipeline
 ```
 
 **Subcommands:**
@@ -519,7 +519,10 @@ docket pod myapp remove myapp-tester
 #### set-verify
 Set (or change) the verify command on an **existing** Implementer — the only public way to do
 this short of the internal `meta-set` debug command. Rewrites the member's `TOOLS.md` so the
-Implementer sees the updated gate.
+Implementer sees the updated gate. The command is validated (no NUL/newline, length-capped) and
+the change is audit-logged (`pod.set-verify`); it runs, at dispatch time, in the Implementer's
+git **worktree** when one exists, falling back to the pod's shared codebase root, then the
+member's own workspace dir.
 
 ```bash
 docket pod myapp set-verify myapp-implementer "npm test"
@@ -537,7 +540,10 @@ docket pod myapp delegate --priority high "Patch the auth bypass"
 ```
 
 #### queue
-Show the pod's task queue with per-task status and recorded cost.
+Show the pod's task queue with per-task status (`pending`/`running`/`done`/`failed`/`blocked`)
+and recorded cost. `--retry <task-id>` moves one `blocked` task back to `pending` — the explicit,
+single-task way around a reached budget cap (a pod-wide budget change, `docket profile
+<lead-id> --budget`/`--resume`, un-blocks every task in the pod at once instead).
 
 ```bash
 docket pod myapp queue
@@ -547,33 +553,61 @@ docket pod myapp queue
 # ────────────────────────────────────────
 # t-002  pending   high    Patch the auth bypass            $0.00
 # t-001  done      normal  Fix the null-token login crash   $0.42
+
+docket pod myapp queue --retry t-003
+# ✓ Requeued 't-003' for pod 'myapp' — status set to pending.
 ```
 
 #### dispatch
-Run the pod's **pending** tasks through its pipeline — **one real agent turn per hop**:
-`Lead → Implementer → Reviewer (if present) → Tester (if present)`. Only the roles the pod
-actually has take part (a lean pod runs two hops). docket invokes each hop via the OpenClaw
-daemon, captures the result, and threads it to the next role.
+Run the pod's **pending** (and, with `--resume`, crash-recoverable) tasks through its pipeline —
+**one real agent turn per hop**: `Lead → Implementer → Reviewer (if present) → Tester (if
+present)`. Only the roles the pod actually has take part (a lean pod runs two hops). docket
+invokes each hop via the OpenClaw daemon, captures the result, and threads it to the next role.
+Each task is claimed under a filelock before its first hop runs, so two dispatchers (e.g. a
+manual run and the `docket serve --dispatch` sweep) can never double-run the same task, and each
+hop is persisted to the queue as it completes so a crash loses at most the in-flight hop.
 
 ```bash
 docket pod myapp dispatch
-# → Dispatching pod 'myapp' (1 pending task)...
-#   Lead → Implementer → Reviewer
-# ✓ t-002 complete
+# → Dispatching 1 pending task(s) through: lead → implementer → reviewer
+#   [t-002] done — 3 hop(s), $0.0412
 ```
 
-Three guarantees hold on every dispatch:
+**Flags:**
+- **`--resume`**: also reclaim any task a prior dispatcher left `failed` with a stale claim (it
+  crashed mid-task) and continue each one from its last persisted hop instead of hop 0.
+- **`--timeout <seconds>`**: override both the agent-turn timeout and the `verifyCmd` timeout
+  for this run only (otherwise each falls back to the pod's own configured timeouts, then a
+  300s default).
 
-- **Budget-gated.** Before *each* hop, docket checks the pod's recorded spend against the Lead's
-  budget cap (`docket profile <project>-lead --budget N`). Over budget → the task is left
-  **pending**, not run.
-- **Traced.** Every hop emits a trace event (`docket trace`) on a per-task session
-  `agent:<project>:<task_id>`, so a run is fully auditable.
+Guarantees that hold on every dispatch:
+
+- **Budget-gated, with real auto-pause.** Before *each* hop, docket checks the pod's recorded (or,
+  when the daemon recorded none, estimated) spend against the Lead's budget cap (`docket profile
+  <project>-lead --budget N`). Over budget → the task is left **blocked** (not silently retried)
+  and the pod's Lead is marked paused — every further claim against this pod is refused outright
+  until `docket profile <project>-lead --resume` clears it.
+- **Retried on a transient hiccup.** A timed-out or daemon-error hop retries in place (linear
+  backoff, a small per-role budget) before failing; a real non-zero exit or a bad verdict is
+  never retried.
+- **Reviewed, with bounded rework.** When the pod has a Reviewer, a `REQUEST-CHANGES` verdict
+  sends the task back to the Implementer for one rework cycle (default) before a second
+  rejection fails it; `APPROVE` advances normally.
+- **Verified in the right tree.** A set `verifyCmd` runs in the Implementer's git worktree when
+  one exists, not the shared codebase root.
+- **Traced.** Every hop, retry, gate outcome, and claim/sweep event emits a trace event (`docket
+  trace`) on a per-task session `agent:<project>:<task_id>`, so a run is fully auditable.
+- **Recorded.** Every invocation — this CLI call, the serve webhook, a due schedule, or the sweep
+  loop — creates a queryable record in `docket runs`; an exception during dispatch is captured
+  there, never silently discarded.
 - **Pod-local.** Dispatch only ever targets the project's own pod members. There is **no cross-pod
   dispatch path** — one pod can never run another pod's agents.
 
 > Each hop is a real, costed LLM turn, so dispatch is explicit (`docket pod … dispatch`) or
 > opt-in (`docket serve --dispatch`) — never silent. Plain `docket serve` does not dispatch.
+
+See [pod-dispatch.spec.md](../specs/functional/pod-dispatch.spec.md) for the complete state
+machine, retry/timeout/rework semantics, and trace-event vocabulary.
 
 **Aliases:** None
 
@@ -582,6 +616,7 @@ Three guarantees hold on every dispatch:
 - Resize a pod with `add`/`remove`; provision one with [`docket add`](#add); tear it down with
   [`docket delete`](#delete)
 - Run every pod's queue continuously in the background with [`docket serve --dispatch`](#serve)
+- Inspect what a dispatch run actually did with [`docket runs`](#runs)
 
 ---
 
@@ -1023,7 +1058,8 @@ EDITOR=code docket edit myproject
 
 ### profile
 
-Pin an agent's model, or re-attach it to the role→model policy. Also sets per-agent budget caps.
+Pin an agent's model, or re-attach it to the role→model policy. Also sets per-agent budget caps
+and clears an auto-pause.
 
 Every agent follows its role's policy model by default (`modelSource: policy`). Pinning
 (`modelSource: pinned`) detaches it: policy and preset changes will no longer touch it.
@@ -1034,6 +1070,7 @@ docket profile <agent-id>                    # Show current model, role, source,
 docket profile <agent-id> <provider/model>   # Pin this agent to a model
 docket profile <agent-id> default            # Follow the role policy again
 docket profile <agent-id> --budget <USD>     # Set a per-agent spend cap (0 = none)
+docket profile <agent-id> --resume           # Clear an auto-pause (e.g. a reached budget cap)
 ```
 
 **Example:**
@@ -1050,6 +1087,11 @@ docket profile myproject anthropic/claude-opus-4-6
 
 # Back to the policy when done
 docket profile myproject default
+
+# An agent auto-paused after reaching its budget cap (e.g. a pod's Lead)
+docket profile myproject-lead --resume
+# → Unblocked 2 budget-blocked task(s) in pod 'myproject'.
+# ✓ Resumed 'myproject-lead' — auto-pause cleared.
 ```
 
 **Aliases:** None. (`tier` is a **removed** top-level command, not an alias of `profile` — see
@@ -1062,6 +1104,9 @@ docket profile myproject default
   the role policy's model classes.
 - Updates .docket-meta.json and openclaw.json
 - Restarts gateway after change
+- `--resume` clears `paused`/`pausedReason` (set by the pod-dispatch budget gate when a pod's
+  Lead reaches its cap) and writes a `profile.resume` audit entry; when the target is a pod's
+  Lead it also un-blocks that pod's `blocked` tasks so dispatch can claim them again
 
 ---
 
@@ -1546,18 +1591,25 @@ docket policies test <hook> <role> <text> # Dry-run the evaluator (no traces emi
 
 ### approve / deny
 
-Grant or deny a pending HITL approval token (from `approval_create` or a Telegram notification).
+Grant or deny a pending HITL approval token from docket's own approval store (`$APPROVALS_DIR`).
 
 **Syntax:**
 ```bash
-docket approve <token>   # Grant the pending approval
-docket deny <token>      # Deny the pending approval
+docket approve            # List pending approvals
+docket approve <token>     # Grant the pending approval
+docket deny <token>        # Deny the pending approval
 ```
 
 **Notes:**
 - Token format: `apr-*`
-- Returns exit 2 if the token is not found or already resolved
-- Telegram approval buttons call these automatically; use CLI when Telegram is unavailable
+- Returns exit 1 if the token is not found or already resolved
+- **Provenance note:** docket's approval store has no production producer yet — nothing today
+  creates an `apr-*` token from a live daemon exec-approval prompt or a Telegram notification
+  (`approval_create` has no production caller; see ROADMAP Phase 15 G-1/G-5 and
+  `security-gates.spec.md`'s "approval seam" note). These commands answer only tokens something
+  in docket's own code path has created (e.g. a future policy-gated dispatch step, Phase 15 G-1).
+  The daemon's own gate prompt is answered separately, in the agent's chat session, via its own
+  `/approve <id>` — not through this command
 
 ---
 

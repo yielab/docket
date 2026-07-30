@@ -342,9 +342,22 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** sandboxing the verify command (daemon/Docker lane); argument-level high-risk
   matching (Phase 15 G-3).
 - **Deliverables:** cwd helper + dispatch fix; setter validation + audit; tests.
-- **Acceptance gate:** [ ] verify runs in the member's worktree when one exists · [ ] set-verify is
-  validated + audited · [ ] suite green.
-- **Size:** S · **Status:** TODO
+- **Acceptance gate:** [x] verify runs in the member's worktree when one exists · [x] set-verify is
+  validated + audited · [x] suite green.
+- **Size:** S · **Status:** DONE (pc/r-6) — `core/pod.py`'s `resolve_member_cwd` (worktree →
+  codebase → workspace) is the one shared helper `core/dispatch.py`'s verify gate and
+  `cli/_pod.py`'s `_regenerate_member_tools` both resolve through, so the two can't diverge
+  again. `_validate_verify_cmd` (`cli/_pod.py`) rejects a NUL byte or embedded newline and caps
+  length at 2000 chars, applied at both `pod add --verify` and `set-verify` time; `shell=True`
+  is kept (verify commands legitimately use `&&`/pipes) since the string is operator-owned, never
+  agent/network input. `set-verify` (and `add --verify`) write an `audit_log("pod.set-verify",
+  …)` entry naming the member and the (validated) command. This card actually merged early
+  (right after R-1, before R-2/R-3/R-4/R-5) since it has no dependency on any of them (marked
+  "Depends on: —" above); the card's own status line had simply been left at `TODO` with
+  unchecked boxes despite the code, tests
+  (`tests/python/test_r6_verify_gate.py`, 18 cases: `TestResolveMemberCwd`,
+  `TestDispatchVerifyCwd`, `TestSetVerifyValidation`, `TestPodAddVerifyValidation`), and the
+  roll-up checklist below already reflecting DONE — corrected as part of R-8's board-truth pass.
 
 ---
 
@@ -395,9 +408,44 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** the broad spec restructure (done 2026-07-30 on this branch, before R-1).
 - **Deliverables:** true specs; fixed guidance; reconciled eval parser; single-sourced constant;
   green drift guard.
-- **Acceptance gate:** [ ] every Phase-14 behavior is specified with a bumped version · [ ] no spec
-  Status line contradicts the code (spot-audit) · [ ] metrics/drift guard green · [ ] suite green.
-- **Size:** M · **Status:** TODO
+- **Acceptance gate:** [x] every Phase-14 behavior is specified with a bumped version · [x] no spec
+  Status line contradicts the code (spot-audit) · [x] metrics/drift guard green · [x] suite green.
+- **Size:** M · **Status:** DONE (pc/r-8) — `pod-dispatch.spec.md` rewritten to v2.0.0 (the full
+  v2 state machine: claims, crash resume, retries, timeouts, bounded rework, auto-pause, bounded
+  hop prompts, complete trace-event vocabulary). Truth-swept `docket-meta.spec.md` (2.4.0→2.5.0:
+  added `turnTimeoutS`/`verifyTimeoutS`/`maxReworkCycles` rows; corrected a pre-existing "unknown
+  field → error" claim that predates Phase 14 — `AgentMeta`'s `extra="allow"` actually accepts
+  one, which is exactly how `maxReworkCycles` round-trips with no dedicated model field),
+  `serve-read-api.spec.md` (2.0.0→2.0.1: fixed a stale `apiVersion: "1"` example/note left behind
+  by R-3's own 2.0.0 bump), `cli-json-shapes.spec.md` (1.2.0→1.3.0: removed the phantom `type`
+  field from `list`/`info` shapes and corrected `docket snapshot`'s and `/metrics`'s shapes to
+  match the real code — both pre-existing, Phase-14-unrelated drift caught while touching this
+  file for R-3's additions), `audit.spec.md` (2.0.0→2.0.1: added the missing `pod.set-verify`
+  (R-6) and `profile.resume` (R-5) action families, both shipped but omitted from 2.0.0's
+  coverage list), `cli-interface.spec.md` (1.6.0→1.7.0: `docket runs`, `dispatch
+  --resume/--timeout`, `queue --retry`, `set-verify`'s validation/audit, `profile --resume`,
+  `audit verify`). `specs/README.md`'s status table reconciled to every spec's real header.
+  `docs/commands.md`: rewrote the `pod` section's `dispatch`/`queue`/`set-verify` prose for the
+  real state machine (auto-pause, retries, rework, worktree cwd, run recording), added `profile
+  --resume`, and fixed the `approve`/`deny` section's wrong return code (claimed exit 2; real
+  code returns 1) and provenance claim (claimed tokens come "from `approval_create` or a
+  Telegram notification"; neither exists yet — see the approval-seam note this same section now
+  cites). Fixed this board itself: R-6's own status line was still `TODO` with unchecked boxes
+  despite being fully shipped (code, tests, and this roll-up's checkbox already agreed it was
+  done) — corrected above. De-duplicated this roll-up checklist (see below), which had two
+  contradictory copies of the R-2…R-6 lines from a merge. Verified-not-re-fixed (already done by
+  other cards, confirmed against the code, not re-touched): `cli/_provider.py`'s two dead-end
+  guidance strings and the eval-harness JSON-shape drift (both L-2), the duplicated
+  `openclaw-gateway.service` constant (L-2 — `core/utils.py` now forwards to
+  `edges/adapters/system.py`'s `GATEWAY_UNIT`), `security-gates.spec.md`'s `[GATE]` example and
+  approval-seam labeling (already correct from the 2026-07-30 baseline pass). Found, reported,
+  **not fixed** (production-code changes are out of this card's docs/specs/tests-only scope): an
+  unresolved git merge-conflict marker (`=======`/`>>>>>>> pc/r-3`) left inside `serve.py`'s
+  module docstring by the R-3 merge (cosmetic — inside a docstring, no behavior effect); a
+  precedence-order mismatch in `config.py`'s comment above `DISPATCH_TURN_TIMEOUT_S` (claims
+  pod Lead-meta timeouts beat the serve-wide env knob; the actual code lets the serve knob, when
+  set, override Lead-meta for a serve-triggered dispatch). Full suite green: 1,112 tests, 18
+  goldens, `validate-specs.sh`, `metrics.py --check`.
 
 ---
 
@@ -406,18 +454,12 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - [x] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
   `blocked` never auto-retries.
 - [x] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
-- [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
-  scheduler state survives restart. *(merging)*
+- [x] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
+  scheduler state survives restart.
 - [x] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
 - [x] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
 - [x] R-6 — verify runs in the worktree; setter validated + audited.
-- [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
-- [x] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
-  scheduler state survives restart.
-- [ ] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
-- [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
-- [ ] R-6 — verify runs in the worktree; setter validated + audited.
 - [x] R-7 — hop prompts capped with explicit truncation.
-- [ ] R-8 — specs/docs/guidance match everything above; drift guard green.
-- [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +
+- [x] R-8 — specs/docs/guidance match everything above; drift guard green.
+- [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +
   `scripts/metrics.py --check`.

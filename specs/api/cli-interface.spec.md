@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -158,14 +158,18 @@ docket [global-options] <command> [command-options] [arguments]
 ### Configuration Commands
 
 #### docket profile
-**Purpose**: Pin an agent's model or set a budget cap
-**Syntax**: `docket profile <agent-id> [<provider/model> | default] [--budget <USD>]`
+**Purpose**: Pin an agent's model, set a budget cap, or resume from an auto-pause
+**Syntax**: `docket profile <agent-id> [<provider/model> | default] [--budget <USD>] [--resume]`
 **Arguments**:
 - `agent-id` (required): Target agent
 - `provider/model` (optional): Pin to a specific model (e.g. `anthropic/claude-sonnet-4-6`); shows current if omitted
 - `default` (optional): Re-attach to the role policy model (unpin)
 **Options**:
-- `--budget <USD>`: Set per-agent spend cap; `0` or `--budget 0` removes it
+- `--budget <USD>`: Set per-agent spend cap; `0` or `--budget 0` removes it and clears any
+  auto-pause; when *agent-id* is a pod's Lead, also unblocks that pod's budget-blocked tasks
+- `--resume` (ROADMAP Phase 14 R-5): Clear an auto-pause (`paused`/`pausedReason`) reached via a
+  budget cap; writes a `profile.resume` audit entry; when *agent-id* is a pod's Lead, also
+  unblocks that pod's budget-blocked tasks so dispatch can claim them again
 **Output**: Profile change confirmation or current profile
 **Return**: 0 on success, 2 if not found, 4 on invalid model
 
@@ -249,19 +253,44 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   second implementer). `--verify` is Implementer-only — it writes the new member's `verifyCmd`
   (FD-1); passing it for a non-implementer role warns and is ignored
 - `set-verify <member-id> "<cmd>"`: Set or replace an existing Implementer's `verifyCmd`
-  (FD-1); rejected with an error for a non-implementer member id
+  (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
+  length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `remove <member-id>`: Remove a pod member
 - `delegate "<task>" [--priority high|normal|low]`: Queue a task on this pod's own list
   (one queue per pod, at `~/.openclaw/workspaces/<project>-lead/TASK_LIST.json`)
-- `queue`: List the pod's pending tasks
-- `dispatch`: Run the pod's pending tasks through its real pipeline — one real, costed agent
-  turn per hop (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`. Gated by
-  the budget cap, the Implementer's `verifyCmd` (if set), and — when a Tester is present — a
-  structural PASS/FAIL parse of the Tester's reply (FD-2); see `pod-dispatch.spec.md` for the
-  full per-hop state machine
+- `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
+  `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
+  other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
+  `blocked` task is never retried automatically
+- `dispatch [--resume] [--timeout <seconds>]`: Run the pod's pending (and, with `--resume`,
+  crash-recoverable) tasks through its real pipeline — one real, costed agent turn per hop
+  (Lead → Implementer → optional Reviewer/Tester), via `core/dispatch.py`. Gated by the budget
+  cap (which now auto-pauses the pod's Lead when reached), the Implementer's `verifyCmd` (if
+  set, run in its worktree when one exists), a Reviewer verdict gate with a bounded rework loop
+  (if a Reviewer is present), and — when a Tester is present — a structural PASS/FAIL parse of
+  the Tester's reply (FD-2). `--resume` (Phase 14 R-1) also reclaims any task a prior dispatcher
+  left `failed` with a stale claim (it crashed mid-task) and continues each one from its last
+  persisted hop instead of hop 0. `--timeout <seconds>` (Phase 14 R-2) overrides both the
+  agent-turn and `verifyCmd` timeout for this run only. Every invocation (this CLI path, the
+  serve webhook, a due schedule, or the sweep loop) is recorded in the run registry (`docket
+  runs`, Phase 14 R-3) with a queryable outcome. See `pod-dispatch.spec.md` for the full state
+  machine
 **Output**: Pod roster, queue listing, or per-hop dispatch results (including cost)
 **Return**: `0` on success, `1` on error (project/member not found, malformed args, no pod for
-the project)
+the project, or dispatch raised an exception — see `docket runs show <id>` for the recorded
+error)
+
+#### docket runs
+**Purpose**: Inspect the persisted dispatch-run registry — one record per invocation of a pod's
+pipeline, whatever triggered it (ROADMAP Phase 14 R-3)
+**Syntax**: `docket runs <list|show> [args]`
+**Actions**:
+- `list [--project <project>] [--json]`: Show run records, newest first; `--project` filters to
+  one pod
+- `show <run-id> [--json]`: Show one run record (source, project, state, task ids, error,
+  timestamps)
+**Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`)
+**Return**: `0` on success, `1` if `show`'s run id is unknown or no id was given
 
 ### Memory and Context Commands
 
@@ -360,12 +389,18 @@ the project)
 **Return**: 0 on success
 
 #### docket audit
-**Purpose**: Show recent recorded operator events (gates, approvals, auth setup — see audit.spec.md for the exact recorded families and the coverage gap)
-**Syntax**: `docket audit [N]`
+**Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
+(see audit.spec.md for the exact recorded families and the coverage gap)
+**Syntax**: `docket audit [N | --json | verify]`
 **Arguments**:
 - `N` (optional): Number of recent entries to show (default: 20)
-**Output**: Timestamped log of mutating operations
-**Return**: 0 always
+**Options/Actions**:
+- `--json`: Emit the raw JSONL passthrough instead of a formatted table
+- `verify` (ROADMAP Phase 15 G-4): Walk the current log's `seq`/`prev_hash` hash chain and report
+  the first broken link, instead of listing entries
+**Output**: Timestamped log of mutating operations, or a chain-verification result
+**Return**: 0 always for the listing forms; for `verify`, 0 when the chain is clean (or no log
+exists yet), 1 when a broken link is detected
 
 #### docket eval
 **Purpose**: Run specialist-role structural checks and optional live golden tasks
@@ -633,6 +668,16 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.7.0 (2026-07-30)
+
+- ROADMAP Phase 14 R-8 spec truth pass for the R-1…R-6 CLI surface changes: added the new
+  `docket runs list/show` command; documented `docket pod <project> dispatch`'s `--resume`
+  (crash recovery) and `--timeout` (independent turn/verify override) flags and its now-real
+  budget auto-pause / Reviewer-rework / worktree-`verifyCmd` gates; documented `docket pod
+  <project> queue --retry <task-id>` (the explicit way to un-block a single `blocked` task) and
+  `set-verify`'s validation + audit logging; documented `docket profile --resume`; documented
+  `docket audit verify`.
 
 ### Version 1.6.0 (2026-07-30)
 

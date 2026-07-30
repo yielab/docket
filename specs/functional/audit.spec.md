@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
 removal below are all shipped; `models.*` and a future `runs.cancel` remain tracked gaps — see
 Requirements)
@@ -39,7 +39,8 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
    - `auth.setup` (`cli/_install.py`)
    - `keys.add` / `keys.rotate` / `keys.remove` (`cli/_keys.py`, including the
      `docket keys setup` wizard's per-key adds/rotations)
-   - `profile.model` / `profile.budget` (`cli/__init__.py`'s `profile` command)
+   - `profile.model` / `profile.budget` / `profile.resume` (`cli/__init__.py`'s `profile`
+     command; `profile.resume` is ROADMAP Phase 14 R-5's auto-pause clear)
    - `scope.set` / `scope.reset` (`cli/__init__.py`'s `scope` command)
    - `agent.add` — both the interactive pod flow (`docket add`, `cli/_agents.py`'s
      `run_add`) and the declarative flow (`docket add --from <spec>`,
@@ -49,6 +50,9 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      removed members)
    - `pod.add` / `pod.remove` (`cli/_pod.py`'s `_pod_add`/`_pod_remove`) — an
      `add --count N` call writes exactly one line naming every member created
+   - `pod.set-verify` (`cli/_pod.py`'s `_pod_set_verify`, and `_pod_add` when `--verify` is
+     passed) — ROADMAP Phase 14 R-6; names the member and the (validated) command being set,
+     never the raw command's stdout
    - `persona.set` / `persona.clear` (`cli/__init__.py`'s `persona` command)
 2. **Tracked gaps (NOT recorded — out of this version's scope):** role→model
    policy changes (`docket models set/preset/reset`) and a future `docket runs
@@ -211,6 +215,13 @@ $ docket audit verify   # after a line was hand-edited
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.0.1 (2026-07-30)
+
+- ROADMAP Phase 14 R-6/R-5 spec truth pass: added the missing `pod.set-verify` action family
+  (shipped alongside R-6's worktree-cwd fix and verify-command validation) and `profile.resume`
+  (R-5's auto-pause clear) — both were shipped before 2.0.0 but omitted from its Requirement 1
+  coverage list by mistake.
 
 ### Version 2.0.0 (2026-07-30)
 
