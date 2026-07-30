@@ -21,6 +21,7 @@ specs/
 │   ├── cost-tracking.spec.md             # Usage/cost reporting + budget caps (auto-pause pending)
 │   ├── eval.spec.md                      # Specialist-role eval harness
 │   ├── model-profiles.spec.md            # Role→model policy and pinning
+│   ├── pipeline-format.spec.md           # docket-native pipeline YAML format (no executor yet)
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── security-gates.spec.md            # Exec-approval gates (on by default; daemon-enforced)
 │   ├── session-scoping.spec.md           # Multi-project session isolation
@@ -113,6 +114,7 @@ Each specification document must include:
 | Cost Tracking | 1.2.0 | Implemented | Auto-pause is real (Phase 14 R-5); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
 | Model Profiles | 2.3.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2) |
+| Pipeline Format | 1.0.0 | Implemented (format only) | `core/pipeline.py`; no executor/CLI yet (Phase 16 W-1; executor is W-2) |
 | Pod Dispatch | 2.0.0 | Complete | v2 state machine: locked claims, crash resume, retries, bounded rework, auto-pause (Phase 14 R-1…R-7) |
 | Security Gates | 0.4.1 | Implemented (on by default) | Approval-seam gap stated inside → Phase 15 G-1/G-5 |
 | Session Scoping | 1.0.1 | Complete | |
