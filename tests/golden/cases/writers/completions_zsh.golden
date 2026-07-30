@@ -21,7 +21,6 @@ _docket() {
     'models:View and edit the role→model policy'
     'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
     'roles:Manage declarative role archetypes: list/show/add/validate (ROADMAP Phase 16 W-6)'
-    'workflow:Manage Lobster YAML pipelines (list/create/show/delete)'
     'logs:View memory logs and gateway entries'
     'edit:Open workspace files in $EDITOR'
     'cost:Token usage and cost breakdown'
@@ -60,7 +59,6 @@ _docket() {
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
-    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
     mcp)             compadd serve ;;
     gates|security)  compadd status enable disable isolate classes ;;

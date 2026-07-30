@@ -32,7 +32,7 @@ plain data; the one startup line ``serve_stdio()`` prints goes to stderr.
 dependency (kept out of the default install so ``pip install docket`` stays
 light — the SDK pulls in starlette/uvicorn/cryptography/opentelemetry and
 more). It is only imported inside ``serve_stdio()``, lazily, guarded by
-``try/except ImportError`` — the same pattern ``core/lobster.py`` and
+``try/except ImportError`` — the same pattern ``core/pipeline.py`` and
 ``cli/_agents.py`` already use for the optional PyYAML dependency. Install
 with ``pip install 'docket[mcp]'`` (or ``uv sync --extra mcp``); a missing SDK
 prints ``MISSING_SDK_HINT`` instead of a bare traceback.

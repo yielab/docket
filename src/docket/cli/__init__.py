@@ -1318,30 +1318,6 @@ def cmd_roles(ctx: typer.Context) -> None:
     raise typer.Exit(run_roles(sub, args=args[1:]))
 
 
-@app.command("workflow")
-def cmd_workflow(
-    agent_id: str | None = typer.Argument(None),
-    sub: str | None = typer.Argument(None),
-    workflow_name: str | None = typer.Argument(None),
-) -> None:
-    """Manage Lobster YAML pipelines (list/create/show/delete)."""
-    from docket.cli._workflow import run_workflow
-
-    if agent_id is None:
-        if not sys.stdin.isatty():
-            ui.error("An agent id is required.")
-            raise typer.Exit(1)
-        agent_id = _pick_agent("Manage workflows for")
-
-    aid: str = agent_id
-    ws = _cfg.workspace_dir(aid)
-    if not ws.is_dir():
-        ui.error(f"Agent '{aid}' not found.")
-        raise typer.Exit(1)
-
-    raise typer.Exit(run_workflow(aid, ws, sub, workflow_name))
-
-
 def _test_cmd_for_stack(stack: str) -> str:
     """Return a sensible default test command for a detected stack."""
     if _re.search(r"pytest|Python|FastAPI|Django|Flask", stack, _re.I):

@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.2.1
+**Version**: 1.2.2
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -41,8 +41,9 @@ the mechanism that fills SOUL.md/AGENTS.md in).
    - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning)
-2. A `workflows/` directory **MAY** exist (Lobster pipelines — surface slated for
-   retirement per ROADMAP decision D-16).
+2. A `workflows/` directory **MAY** exist as a pre-existing artifact of the now-retired
+   `docket workflow`/Lobster surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
+   creates, reads, or manages it; any `*.lobster.yml` files inside are left untouched on disk.
 3. Every project agent is provisioned from one template family; the former repo/task
    dual-type model was removed (the `type` field no longer exists — every project agent has
    a codebase path with auto-detected stack).
@@ -160,6 +161,11 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   `.docket-archive/`).
 
 ## Changelog
+
+### Version 1.2.2 (2026-07-30)
+- ROADMAP Phase 16 W-3 (D-16) landed: `workflows/` is no longer a surface "slated for
+  retirement" — `docket workflow`/Lobster is actually gone. Reworded requirement 2 to describe
+  it as a leftover artifact docket no longer touches.
 
 ### Version 1.2.1 (2026-07-30)
 

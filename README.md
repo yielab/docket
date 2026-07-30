@@ -230,7 +230,6 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; `GET/POST /approvals`, Telegram routing |
 | Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate; either failing → task stays `pending` |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
-| Workflow validate + dry-run plan | — | ✅ `docket workflow <id> validate/plan` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health` |
 
 If a row isn't true for your setup, treat it as aspirational — honesty is the point of this table.
@@ -303,7 +302,6 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
   contamination and enables parallel work. Change with `docket scope <id> set <key>`.
 - **Role→model policy** — each role maps to the cheapest adequate model; change a role once and
   every policy-following agent re-resolves. Pin one agent with `docket profile`.
-- **Lobster workflow** — deterministic YAML pipelines for repeatable, token-efficient runs.
 
 Configuration is kept in two synchronized places: `.docket-meta.json` per workspace (docket's
 view) and `~/.openclaw/openclaw.json` (the daemon's view).
@@ -324,7 +322,7 @@ docket gates status                        # Approval-gate, routing, and audit p
 docket serve [--dispatch]                  # Read-only API, optionally driving pod queues
 ```
 
-Every command, subcommand, and flag — including `context`, `workflow`, `keys`/`auth`, `gates
+Every command, subcommand, and flag — including `context`, `keys`/`auth`, `gates
 enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — is documented in
 **[docs/commands.md](docs/commands.md)**, the full reference.
 
@@ -332,7 +330,7 @@ enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — i
 
 docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
 coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
-**1,416 tests** in the pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
+**1,369 tests** in the pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security

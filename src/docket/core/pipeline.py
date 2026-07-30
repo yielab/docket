@@ -4,7 +4,7 @@ This module defines the **format**, not an executor. `core/dispatch.py`'s
 hardcoded ``PIPELINE_ORDER`` (lead -> implementer -> reviewer -> tester) keeps
 driving every pod today; nothing here is wired into it yet. That wiring —
 running a ``PipelineSpec`` over the R-1 task state machine, a bounded worker
-pool, per-step trace spans, and a real ``docket workflow plan`` renderer — is
+pool, per-step trace spans, and a real ``docket pipeline plan`` renderer — is
 ROADMAP Phase 16 card W-2, deliberately **not** built here (see that card's
 note: a second pretty-printer that drifts from the real executor is exactly
 what ROADMAP warns against).
@@ -287,8 +287,9 @@ class PipelineSpec(BaseModel):
 
     ``extra="forbid"`` at every level is the point: an unknown key anywhere
     in the document is a validation error, not a silently-ignored construct
-    (unlike ``core/lobster.py``'s Lobster validator, which is exactly the gap
-    ROADMAP decision D-16 retires this format to close).
+    (unlike the retired Lobster YAML dialect's validator, which silently
+    ignored several constructs its own template emitted — exactly the gap
+    ROADMAP decision D-16 retires that format to close).
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -366,10 +367,9 @@ class PipelineLoadResult:
 def _load_yaml_text(text: str) -> tuple[dict[str, Any] | None, str]:
     """Parse YAML text. Returns (doc, error); error is '' on success.
 
-    Mirrors ``core/lobster.py``'s ``_load`` — PyYAML is a real project
-    dependency (``pyproject.toml``), but the import stays guarded so a
-    stripped-down environment missing it fails with an actionable message
-    instead of an unguarded traceback.
+    PyYAML is a real project dependency (``pyproject.toml``), but the import
+    stays guarded so a stripped-down environment missing it fails with an
+    actionable message instead of an unguarded traceback.
     """
     try:
         import yaml as _yaml  # type: ignore[import-untyped]
@@ -421,8 +421,8 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
 def validate_pipeline(text: str) -> list[str]:
     """Structural validation only. Returns [] on success.
 
-    A thin wrapper over :func:`load_pipeline` mirroring
-    ``core/lobster.py``'s ``validate_lobster`` contract for symmetry.
+    A thin wrapper over :func:`load_pipeline`, kept as a separate entry point
+    for callers that only want the error list.
     """
     return load_pipeline(text).errors
 

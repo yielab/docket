@@ -1,6 +1,6 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Active
 **Last Updated**: 2026-07-30
 
@@ -30,8 +30,8 @@ acceptance criteria and tests.
 | POD-003 | Grow and Shrink a Pod | Pod Lifecycle |
 | TEAM-001 | (retired, see D-11) | Team Coordination (retired) |
 | TEAM-002 | (retired, see D-11) | Team Coordination (retired) |
-| WF-001 | Create Lobster Pipeline | Workflow Automation |
-| WF-002 | Execute Workflow | Workflow Automation |
+| WF-001 | (retired, see D-16) | Workflow Automation (retired) |
+| WF-002 | (retired, see D-16) | Workflow Automation (retired) |
 | SEC-001 | Project Isolation | Security and Isolation |
 | SEC-002 | Tool Approval Gates | Security and Isolation |
 | COM-001 | Telegram Integration | Communication |
@@ -129,51 +129,19 @@ Running `docket team <anything>` prints a removed-command notice mapping to the 
 equivalent. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
 retains them; the durable retirement record is ROADMAP decision D-11.
 
-## Epic: Workflow Automation
+## Epic: Workflow Automation (Retired, D-16 / W-3)
 
-### Story: WF-001 - Create Lobster Pipeline
-
-**As a** developer
-**I want** to define deterministic workflows in YAML
-**So that** complex tasks execute reliably and efficiently
-
-**Acceptance Criteria:**
-- [ ] Workflow template generated from command
-- [ ] YAML validates against schema
-- [ ] Steps execute sequentially as defined
-- [ ] Conditional branching supported
-- [ ] Variables can be passed between steps
-- [ ] Workflow can call other workflows
-- [ ] Execution logs captured for debugging
-- [ ] Failed steps can be retried
-
-**Definition of Done:**
-- Lobster YAML parser integrated
-- Workflow engine executes reliably
-- 10+ example workflows provided
-- Performance optimized for token usage
-
-### Story: WF-002 - Execute Workflow
-
-**As a** developer
-**I want** to run predefined workflows with a single command
-**So that** routine tasks are automated and consistent
-
-**Acceptance Criteria:**
-- [ ] Workflow executes all steps in order
-- [ ] Progress shown in real-time
-- [ ] Errors stop execution with clear messages
-- [ ] Partial results saved on failure
-- [ ] Can resume from failed step
-- [ ] Tokens used tracked per workflow
-- [ ] Execution time logged
-- [ ] Results summarized at completion
-
-**Definition of Done:**
-- Workflow execution reliable
-- Error recovery implemented
-- Performance metrics collected
-- Integration tests cover edge cases
+`docket workflow` — the Lobster YAML surface this epic originally described — was retired in
+Phase 16 (D-16). Its acceptance criteria were largely aspirational when written: docket's
+Lobster validator/planner authored, linted, and dry-ran a `.lobster.yml` template, but never
+executed one (conditional branching, calling other workflows, retries, and progress/token
+tracking were never implemented — a separate "Lobster daemon" was always meant to run the
+YAML, and it never existed). The single pipeline dialect docket actually executes lives in
+`pipeline-format.spec.md` (ROADMAP Phase 16 W-1) and its eventual executor (W-2); running
+`docket workflow <anything>` prints a removed-command notice pointing at the `docket pipeline
+validate`/`plan`/`run` names. The retired WF-001/WF-002 story bodies were removed when this
+epic was retired — git history retains them; the durable retirement record is ROADMAP decision
+D-16.
 
 ## Epic: Security and Isolation
 
@@ -410,6 +378,11 @@ And the total should reflect the daemon's recorded spend, not an estimate
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+- ROADMAP Phase 16 W-3 (D-16): `docket workflow`/Lobster was retired — removed the retired
+  WF-001/WF-002 historical story bodies (banner + pointer to pipeline-format.spec.md remain;
+  git history retains the text), following the same treatment TEAM-001/TEAM-002 got in v1.2.0.
 
 ### Version 1.2.0 (2026-07-30)
 - Truth pass (Platformization baseline): fixed the header version (was 1.0.0 while the

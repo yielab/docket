@@ -1,7 +1,10 @@
-"""M4 wave-3b tests: logs, workflow.
+"""M4 wave-3b tests: logs.
 
 All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
 and DOCKET_NO_RESTART=1 so no systemctl calls are made.
+
+(The `docket workflow` coverage this module used to carry was deleted when
+that command was retired — see tests/python/test_w3_workflow_removed.py.)
 """
 
 from __future__ import annotations
@@ -164,125 +167,13 @@ class TestCmdLogs:
 
 
 # ---------------------------------------------------------------------------
-# docket workflow
+# Confirm logs is not exit 127 (i.e. did not fall through to Bash)
 # ---------------------------------------------------------------------------
 
 
-class TestCmdWorkflow:
-    def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow", "ghost"], _make_env(oc_dir))
-        assert rc == 1
-        assert "ghost" in err
-
-    def test_list_no_workflows_dir(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["workflow", "myshop", "list"], _make_env(oc_dir))
-        assert rc == 0
-        combined = (out + err).lower()
-        assert "no workflows" in combined or "create one" in combined
-
-    def test_list_empty_workflows_dir(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        wf_dir = oc_dir / "workspaces" / "projects" / "myshop" / "workflows"
-        wf_dir.mkdir()
-        rc, out, _ = _run(["workflow", "myshop", "list"], _make_env(oc_dir))
-        assert rc == 0
-        assert "No workflows" in out or "no workflows" in out.lower()
-
-    def test_list_shows_workflow(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        wf_dir = oc_dir / "workspaces" / "projects" / "myshop" / "workflows"
-        wf_dir.mkdir()
-        (wf_dir / "bug-fix.lobster.yml").write_text("steps:\n  - id: a\n  - id: b\n")
-        rc, out, _ = _run(["workflow", "myshop", "list"], _make_env(oc_dir))
-        assert rc == 0
-        assert "bug-fix" in out
-
-    def test_create_generates_file(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, _ = _run(["workflow", "myshop", "create", "deploy"], _make_env(oc_dir))
-        assert rc == 0
-        wf_file = oc_dir / "workspaces" / "projects" / "myshop" / "workflows" / "deploy.lobster.yml"
-        assert wf_file.exists()
-        assert "npm test" in wf_file.read_text()  # Node.js stack
-
-    def test_create_requires_name(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow", "myshop", "create"], _make_env(oc_dir))
-        assert rc == 1
-        assert "name required" in err.lower() or "required" in err.lower()
-
-    def test_create_duplicate_warns(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        wf_dir = oc_dir / "workspaces" / "projects" / "myshop" / "workflows"
-        wf_dir.mkdir()
-        (wf_dir / "existing.lobster.yml").write_text("existing content\n")
-        rc, out, err = _run(["workflow", "myshop", "create", "existing"], _make_env(oc_dir))
-        assert rc == 0
-        assert "already exists" in (out + err).lower()
-
-    def test_show_prints_content(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        wf_dir = oc_dir / "workspaces" / "projects" / "myshop" / "workflows"
-        wf_dir.mkdir()
-        (wf_dir / "deploy.lobster.yml").write_text("name: deploy\n")
-        rc, out, _ = _run(["workflow", "myshop", "show", "deploy"], _make_env(oc_dir))
-        assert rc == 0
-        assert "name: deploy" in out
-
-    def test_show_missing_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow", "myshop", "show", "ghost"], _make_env(oc_dir))
-        assert rc == 1
-        assert "ghost" in err
-
-    def test_delete_non_tty_removes_file(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        wf_dir = oc_dir / "workspaces" / "projects" / "myshop" / "workflows"
-        wf_dir.mkdir()
-        wf_file = wf_dir / "old.lobster.yml"
-        wf_file.write_text("old\n")
-        # Non-tty: no confirmation prompt — file should be deleted
-        rc, out, _ = _run(["workflow", "myshop", "delete", "old"], _make_env(oc_dir))
-        assert rc == 0
-        assert not wf_file.exists()
-        assert "deleted" in out.lower()
-
-    def test_delete_missing_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow", "myshop", "delete", "ghost"], _make_env(oc_dir))
-        assert rc == 1
-        assert "ghost" in err
-
-    def test_unknown_subcommand_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow", "myshop", "frobnicate"], _make_env(oc_dir))
-        assert rc == 1
-        assert "unknown" in err.lower()
-
-    def test_non_tty_without_agent_id_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["workflow"], _make_env(oc_dir))
-        assert rc == 1
-        assert "required" in err.lower()
-
-    def test_default_action_is_list(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, _ = _run(["workflow", "myshop"], _make_env(oc_dir))
-        assert rc == 0
-        # "list" shows either "No workflows directory" or a list header
-        assert rc == 0
-
-
-# ---------------------------------------------------------------------------
-# Confirm logs + workflow are no longer in the 127-exit list
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("cmd", [["logs", "x"], ["workflow", "x"]])
+@pytest.mark.parametrize("cmd", [["logs", "x"]])
 def test_wave3b_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
-    """logs and workflow must NOT fall through to Bash (exit 127)."""
+    """logs must NOT fall through to Bash (exit 127)."""
     oc_dir = _setup_agent(tmp_path)
     rc, _, _ = _run(cmd, _make_env(oc_dir))
     assert rc != 127

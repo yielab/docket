@@ -89,7 +89,6 @@ _docket_complete() {
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
-    workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show validate plan delete" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
     mcp)             words="serve" ;;
     gates|security)  words="status enable disable isolate classes" ;;
@@ -138,7 +137,6 @@ __ZSH_COMMANDS__
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
-    workflow|wf)     (( CURRENT == 3 )) && _docket_ids || compadd list create show validate plan delete ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
     mcp)             compadd serve ;;
     gates|security)  compadd status enable disable isolate classes ;;

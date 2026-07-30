@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docket context` `search` / `index` / `snapshot` / `compress` subcommands and their artifacts
   (`.memory-index.json`, per-agent `SNAPSHOT.md`, `memory/archive/`). The OpenClaw runtime does
   semantic memory search itself; `context` is now just `show` / `project`.
+- `docket workflow` — the Lobster YAML surface (`core/lobster.py`, `cli/_workflow.py`) — and its
+  `wf` alias (ROADMAP D-16). docket was linting a dialect it could not fully execute: the
+  validator silently ignored four constructs its own generated template emitted. Running
+  `docket workflow`/`wf` now prints a removed-command notice pointing at the eventual `docket
+  pipeline validate`/`plan`/`run` surface (`core/pipeline.py`, Phase 16 W-1/W-2); existing
+  `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read.
 
 ## [0.2.0-beta.1] - 2026-07-03
 

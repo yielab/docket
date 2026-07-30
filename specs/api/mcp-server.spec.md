@@ -97,7 +97,7 @@ The official `mcp` Python SDK is **not** a base dependency — it is an optional
 dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema, and more).
 `docket mcp serve` imports the SDK lazily, inside its own function, guarded by
 `try`/`except ImportError` — the same pattern this project already uses for the optional PyYAML
-dependency (`core/lobster.py`/`cli/_agents.py`). When the SDK is missing, `docket mcp serve` prints
+dependency (`core/pipeline.py`/`cli/_agents.py`). When the SDK is missing, `docket mcp serve` prints
 an actionable install hint to stderr and exits `1` instead of raising a bare traceback:
 
 ```
@@ -357,6 +357,12 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
   (`.structured_content`/`.is_error`) rather than 1.x's `(content, structured_dict)` tuple — this
   affects only test code that calls the SDK's `call_tool` directly, not any tool's documented
   return shape (which was always the bare dict now found at `.structured_content`).
+
+### Version 1.0.1 (2026-07-30)
+
+- Retargeted the optional-dependency cross-reference at `core/pipeline.py` — `core/lobster.py`
+  (the module it named) was deleted when `docket workflow`/Lobster was retired (ROADMAP D-16,
+  Phase 16 W-3).
 
 ### Version 1.0.0 (2026-07-30)
 

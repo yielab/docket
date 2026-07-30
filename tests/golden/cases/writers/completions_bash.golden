@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire scope profile persona keys auth models pod roles workflow logs edit cost doctor gates conversations runs mcp audit eval snapshot serve completions trace metrics policies approve deny help"
+  local commands="install list add info delete maintain context wire unwire scope profile persona keys auth models pod roles logs edit cost doctor gates conversations runs mcp audit eval snapshot serve completions trace metrics policies approve deny help"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
@@ -33,7 +33,6 @@ _docket_complete() {
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
-    workflow|wf)     [[ $cword -eq 2 ]] && words="$_ids" || words="list create show validate plan delete" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
     mcp)             words="serve" ;;
     gates|security)  words="status enable disable isolate classes" ;;

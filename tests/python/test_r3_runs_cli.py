@@ -92,8 +92,8 @@ class TestRunsUnknownSubcommand:
 
 class TestRunsCommandWiring:
     """Smoke-test `docket runs ...` is actually registered on the Typer app
-    and delegates to cli/_runs.py (mirrors test_cd7_lobster.py's CliRunner
-    pattern for `docket workflow`)."""
+    and delegates to cli/_runs.py, using the same CliRunner-driven wiring
+    check every other Typer command in this suite uses."""
 
     def test_runs_list_wired_on_app(self, runs_file: Path) -> None:
         from typer.testing import CliRunner
