@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 3.0.0
+**Version**: 4.0.0
 **Status**: Complete. Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
 generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
 "Parallel step groups", and "Cancellation" below. The require_approval gate
@@ -9,7 +9,15 @@ sources (pod-level and pipeline-defined); the policy-driven source (Phase 15 G-2
 explicit, inert seam — see that section's "Sources" list. Hops run through the RuntimeDriver port
 (Phase 18 L-1) — a containment refactor with no behavior change. The role-archetype registry's
 `gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
-when the step declares none of its own.
+when the step declares none of its own. **Structured handoff artifacts (ROADMAP Phase 16 W-5)**
+are now implemented — see "Structured handoff artifacts" below: a hop's output is a typed
+`HandoffArtifact` (`core/handoff.py`), not a raw string; the next hop's prompt is composed from
+its rendered form, and it is persisted alongside the hop record so `--resume` recovers it exactly.
+This card gates Phase 17's C-1 (the context compiler). The `core/dispatch.py:1313` `print()` (a
+layering violation — `core/` never prints) is also gone: a mechanical gate's unset-command skip is
+now a typed `HopResult.verification_skipped` flag rendered by `cli/_pod.py`, plus a `tool_result`
+trace event carrying the same fact — see "Implementer verification gate" and "Generalized gate
+execution" below.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -71,6 +79,9 @@ This specification covers:
   list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
   (grant resumes at the exact hop, deny fails the task immediately, an expiry fail-closes to
   denied), and why a `waiting_approval` task is never claimable by a plain dispatch run
+- **Structured handoff artifacts** (W-5): the `HandoffArtifact` model's fields and field-priority
+  drop order, how a hop's artifact is built and rendered into the next hop's prompt, and its
+  persistence/backward-compatibility contract for `--resume`
 - The complete task-status and failure-kind vocabulary, and every trace event this pipeline emits
 
 This specification does NOT cover:
@@ -107,6 +118,14 @@ This specification does NOT cover:
   not the registry's own authoring/validation contract
 - Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
   workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7 (not shipped)
+- A real token-budgeting consumer of `HandoffArtifact.DROP_ORDER`/`dropped()` — ROADMAP Phase 17's
+  C-1 (the context compiler, blocked on this card landing, not yet started). This spec covers only
+  the artifact's shape and how dispatch itself builds/renders/persists one, not how a future
+  caller would budget across several
+- A real `files_changed`/`diff_ref` producer (a git-diff probe) — `HandoffArtifact` declares both
+  fields but dispatch does not populate them as of this version; see `core/handoff.py`'s own
+  module docstring for why (the git shell-out surface belongs to a different in-flight card) and
+  "Structured handoff artifacts" below
 
 ## Requirements
 
@@ -261,10 +280,11 @@ This specification does NOT cover:
 
 ### Retries and the failure-kind taxonomy
 
-1. Every agent turn's outcome (`core.runtime_driver.TurnResult`; `edges/adapters/openclaw.py`
-   still re-exports the pre-Phase-18 name `AgentRunResult` as a plain alias, kept only because
-   `core/dispatch.py`'s `Runner` type alias still spells the old name — see that module's cleanup
-   note, Phase 18 CL-1) **MUST** carry a `failure_kind` on failure: `timeout` (the turn exceeded
+1. Every agent turn's outcome (`core.runtime_driver.TurnResult` — the pre-Phase-18 alias
+   `edges/adapters/openclaw.AgentRunResult` that used to re-export this same type is gone as of
+   ROADMAP Phase 16 W-5, which finished Phase 18 CL-1's blocked sweep: `core/dispatch.py`'s
+   `Runner` type alias and every test call site now spell `TurnResult` directly, so the alias had
+   zero references left anywhere in the tree) **MUST** carry a `failure_kind` on failure: `timeout` (the turn exceeded
    its timeout), `daemon_error` (a CLI/daemon-level failure — process couldn't run, OS error,
    malformed daemon response), `nonzero_exit` (the daemon ran and returned a real non-zero
    result), or `invalid_output` (the daemon succeeded but its output couldn't be used). A
@@ -408,8 +428,13 @@ Every requirement below still holds byte-for-byte for the Implementer specifical
    command), emit a `verification_failed` trace event with the (redacted) command output, and
    **MUST NOT** advance to Reviewer/Tester.
 5. If `verifyCmd` is unset or empty, dispatch **MUST NOT** silently skip without a visible
-   trace — today this is a printed `[dispatch] verification skipped` message (honesty rule: an
-   operator can tell a gate was configured or not, never guess).
+   record (honesty rule: an operator can tell a gate was configured or not, never guess). As of
+   ROADMAP Phase 16 W-5 this is a `tool_result` trace event (`{"verification": "skipped",
+   "member": <id>}`) plus the hop's own `HopResult.verification_skipped` flag, which
+   `cli/_pod.py`'s dispatch renderer prints as `[dispatch] verification skipped — verifyCmd not
+   set for <id>` — the same visible wording a bare `print()` inside `core/dispatch.py` produced
+   before this card, now emitted by the `cli/` layer instead (`core/` never prints — see
+   CLAUDE.md's layering rule).
 6. This gate only applies to the Implementer hop; Reviewer and Tester hops are never subject to
    it.
 
@@ -485,8 +510,10 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
      resolution now applies to **any** mechanically-gated step, not only one hardcoded to
      "implementer". A nonzero exit **MUST** fail the step and emit a `verification_failed` trace
      event; a pass **MUST** emit a `tool_result` event and advance. An unset command (both
-     `gate.command` and the member's `verifyCmd`) **MUST** print the same honesty-rule notice
-     "Implementer verification gate" documents, generalized to name the actual member id.
+     `gate.command` and the member's `verifyCmd`) **MUST** produce the same honesty-rule signal
+     "Implementer verification gate" documents (a `tool_result` "skipped" trace event plus the
+     hop's own `verification_skipped` flag), generalized to name the actual member id — for any
+     mechanically-gated role, not only "implementer".
    - A `VerdictGate` **MUST** parse the hop's reply via `core.orchestrator.parse_verdict` —
      generalizing "Reviewer verdict gate"/"Tester PASS/FAIL gate"'s marker parsing to the gate's
      own `pattern`/`passValues`/`caseSensitive`/`rework` instead of two separate hardcoded
@@ -585,22 +612,59 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    `error`, `attempts`) so a caller can see exactly which hop stopped the pipeline, how many
    attempts it took, and why.
 
+### Structured handoff artifacts (ROADMAP Phase 16 W-5)
+
+1. Every hop **MUST** produce a typed `HandoffArtifact` (`core/handoff.py`) — a Pydantic model with
+   exactly five fields: `summary` (the hop's full reply text — always populated), `verdict`
+   (the parsed gate marker for a `VerdictGate`-gated hop, else `None`), `files_changed` and
+   `diff_ref` (structurally real fields; not populated by dispatch as of this version — see
+   `core/handoff.py`'s own module docstring for the honest reason and what would need to change to
+   populate them), and `notes` (free-form, reserved, no producer yet). `HopResult.artifact` **MUST**
+   always be set once a hop is constructed — a hop built without one explicitly backfills via
+   `HandoffArtifact.from_legacy_output(output)` (treating the raw text as `summary`, every other
+   field at its default) in `__post_init__`.
+2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
+   (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
+   exactly `summary` unchanged when every other field is at its default (true for every hop today
+   except a verdict-gated one) — so a hop with nothing else to report composes byte-identically to
+   the pre-W-5 raw-text behaviour; a populated `verdict` (Reviewer/Tester and any verdict-gated
+   archetype) appends a `"Verdict: <value>"` line the raw reply itself does not structurally
+   carry.
+3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the
+   persisted `hops[]` entry, dumped via `HandoffArtifact.model_dump()`) so `--resume` recovers it
+   exactly, not just the raw `output` string it was already persisting. A hop record persisted
+   before this version (or any record whose `artifact` value fails to validate) **MUST** degrade
+   via `HandoffArtifact.from_legacy_output` — the backward-compatibility requirement this card
+   added; a pre-W-5 queue file **MUST** still resume correctly with no separate migration step.
+4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
+   (`notes`, `diff_ref`, `files_changed`, `verdict` — `summary` is deliberately never included, it
+   is the artifact's minimum viable content) and a `dropped(field)` helper that returns a copy with
+   *field* reset to empty. This is the seam Phase 17's C-1 (the context compiler) is expected to
+   use to budget tokens per field; this version does not itself perform that budgeting — the
+   artifact shape is the deliverable this card was scoped to ship.
+5. This module **MUST** stay pure — no filesystem I/O, no subprocess, no import of
+   `core/dispatch.py` (the same "leaf" shape as `core/pipeline.py`).
+
 ### Bounded hop prompts
 
-1. The message composed for a hop **MUST** cap how much of each *prior* hop's raw output it
-   carries forward: a per-hop byte budget (`config.HOP_CARRYOVER_BYTES`, default 32 KiB) that
-   halves for each step further into the past (`total_budget >> (rank + 1)`, rank 0 = the most
-   recent prior hop) — a partial geometric series that never sums past the configured total no
-   matter how many prior hops exist, while the most recent (most relevant) hop is squeezed the
-   least.
-2. The task's own description **MUST NEVER** be truncated — only prior hops' output is subject
-   to the cap.
-3. When a prior hop's output does not fit its budget, it **MUST** be truncated head + tail (kept
-   in roughly equal shares of the remaining room) with an explicit `[... truncated N bytes ...]`
-   marker recording exactly how many bytes were omitted — never a silent cut.
+1. The message composed for a hop **MUST** cap how much of each *prior* hop's rendered artifact it
+   carries forward (not the raw hop output — see "Structured handoff artifacts"): a per-hop byte
+   budget (`config.HOP_CARRYOVER_BYTES`, default 32 KiB) that halves for each step further into the
+   past (`total_budget >> (rank + 1)`, rank 0 = the most recent prior hop) — a partial geometric
+   series that never sums past the configured total no matter how many prior hops exist, while the
+   most recent (most relevant) hop is squeezed the least.
+2. The task's own description **MUST NEVER** be truncated — only a prior hop's rendered artifact
+   is subject to the cap.
+3. When a prior hop's rendered artifact does not fit its budget, it **MUST** be truncated head +
+   tail (kept in roughly equal shares of the remaining room) with an explicit
+   `[... truncated N bytes ...]` marker recording exactly how many bytes were omitted — never a
+   silent cut. The byte count truncation operates on **MUST** be the rendered artifact's size (
+   `summary` plus any appended `Verdict:`/other labelled lines), not `summary` alone, so the cap
+   bounds the same structured content the next hop actually reasons about.
 4. A rework cycle's REQUEST-CHANGES note (see "Reviewer verdict gate") is exempt from the
-   generic recency-ranked loop and its budgeting — it gets the full per-hop budget on its own,
-   since it is what the rework Implementer hop exists to address.
+   generic recency-ranked loop and its budgeting — it gets the full per-hop budget on its own
+   (applied to its own rendered artifact, per the same rule), since it is what the rework
+   Implementer hop exists to address.
 5. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework
    note if present, and each prior hop carried forward): the role, original byte count, sent byte
    count, and whether it was truncated — plus the task description's byte count and the
@@ -652,7 +716,9 @@ session_start              # once, at the start of dispatch_task; carries whethe
 context_composed           # before each hop's turn — composed-prompt byte accounting
 tool_call                  # before each hop's agent_run attempt
 hop_retry                  # before each retry attempt of a retryable failure
-tool_result                 # after a successful hop
+tool_result                 # after a successful hop; also emitted (payload {"verification":
+                             #   "skipped", "member": <id>}) when a mechanical gate's command was
+                             #   unset — W-5, parity with the "passed" case, replacing a print()
 error                       # after a failed hop (in place of tool_result)
 cost_charged                # after any hop with nonzero cost
 budget_exceeded             # the budget gate blocked a hop (task -> blocked)
@@ -811,6 +877,68 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   an orphaned child process running after the run is marked `"cancelled"`.
 
 ## Changelog
+
+### Version 4.0.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-5 (structured handoff artifacts) — gates Phase 17's C-1.** Hops used
+  to exchange concatenated raw text (`HopResult.output`, threaded straight into the next hop's
+  message by `_hop_message`). This card replaces that with a typed record:
+  - New module `core/handoff.py`: `HandoffArtifact` (Pydantic, `extra="forbid"`, frozen) —
+    `summary` (required), `files_changed`, `diff_ref`, `verdict`, `notes`. `DROP_ORDER` declares a
+    least-valuable-first field-shedding order (`notes`, `diff_ref`, `files_changed`, `verdict` —
+    `summary` is never in it) and `dropped(field)` returns a copy with that field reset to empty —
+    the seam Phase 17's C-1 is expected to use to budget tokens per field. `render()` returns
+    exactly `summary` when every other field is at its default (true for every hop today except a
+    verdict-gated one), so a hop with nothing else to report composes byte-identically to the
+    pre-W-5 raw-text behaviour. `from_legacy_output(output)` degrades a bare string to
+    `summary`-only — the backward-compatibility path.
+  - `HopResult` gains an `artifact: HandoffArtifact | None = None` field, backfilled in
+    `__post_init__` via `from_legacy_output(output)` when unset — every `HopResult` therefore
+    always carries a real artifact, whether built explicitly (`_execute_unit`, verdict pre-parsed
+    and embedded before the hop is persisted) or hand-built by an existing test that only ever
+    passed `output=`. `rendered_artifact()` is the one accessor `_hop_message` uses.
+  - `_hop_message` now composes both the rework-note section and the generic prior-hop carryover
+    loop from `h.rendered_artifact()`, never `h.output` directly — see "Bounded hop prompts" for
+    how R-7's byte-budget cap now applies to that rendered text (unchanged cap mechanics, a
+    different, structurally richer input).
+  - `_hop_record`/`_hop_from_record` persist/restore the artifact (`artifact` key, a
+    `model_dump()`/`model_validate()` round trip) alongside the pre-existing `output` field
+    (never replacing it). A record with no `artifact` key (every task queued before this version)
+    or a malformed one degrades via `from_legacy_output` — verified end to end, including a
+    simulated crash-and-`--resume` round trip through the exact persisted-record shape.
+  - `files_changed`/`diff_ref` are real fields but **not populated by dispatch** as of this
+    version — an honest, documented seam (`core/handoff.py`'s own docstring explains why: doing so
+    needs a real git-diff probe, and the git shell-out surface belongs to a different in-flight
+    card this wave). `verdict` **is** populated: parsed once (reusing the existing
+    `core.orchestrator.parse_verdict` call `_execute_unit`'s `VerdictGate` branch already made,
+    now computed before the hop is constructed so it lands in the same artifact that gets
+    persisted) for any `VerdictGate`-gated hop (Reviewer/Tester, or a W-8 non-built-in verdict
+    gate); `None` for every other hop.
+- **Dead-code register, three items this card's owner (`core/dispatch.py`) closed:**
+  1. The `print(f"[dispatch] verification skipped...")` at the old line 1313 — a layering
+     violation (`core/` never prints). Replaced with a `tool_result` trace event
+     (`{"verification": "skipped", "member": <id>}`, parity with the existing "passed" case) plus
+     a new `HopResult.verification_skipped` flag; `cli/_pod.py`'s dispatch renderer prints the
+     exact same wording the old `print()` produced, in the same position (before the task's own
+     summary line). See "Implementer verification gate" and "Generalized gate execution".
+  2. `dispatch_all_pods` (flagged uncalled) — **deleted, not wired**. Investigated: it has zero
+     production callers for a real reason, not an oversight — R-3 replaced its one former call
+     site (`serve.py`'s sweep loop) with a per-pod loop over `dispatchable_pods()` +
+     `dispatch_pod()` through `core.runs.execute`, specifically for the per-pod run-registry
+     granularity `dispatch_all_pods`'s coarse "one sweep, swallow `DispatchError`" shape did not
+     have (`tests/python/test_r3_no_suppressed_dispatch.py` pins both halves of this fact). Wiring
+     it back would reintroduce the exact behaviour R-3 deliberately replaced.
+  3. Finished Phase 18 CL-1's blocked sweep: the ~76 `edges.adapters.openclaw.AgentRunResult(...)`
+     call sites across `test_r2/r4/r5/r6/r7`, `test_cd2`, `test_dispatch`, `test_g1_*`, `test_l1_*`
+     now spell `core.runtime_driver.TurnResult` directly (`core/dispatch.py`'s own `Runner` type
+     alias too). With zero references left anywhere in the tree, the `AgentRunResult` alias itself
+     (kept alive by exactly this file's `Runner` alias, per CL-1's own note) was deleted from
+     `edges/adapters/openclaw.py` — not left as a compatibility shim nobody uses.
+- No CLI surface added; `bash tests/golden/run.sh verify-all` stays byte-identical (none of the 18
+  cases exercise the pod-dispatch runtime pipeline). One existing test's trace-event count
+  (`test_dispatch.py::TestPipeline::test_traces_written_per_hop`) updated to account for the new
+  "skipped" `tool_result` event on a lean pod's un-configured Implementer verify gate — a real,
+  intentional, additive observability improvement, not a bug.
 
 ### Version 3.0.0 (2026-07-30)
 

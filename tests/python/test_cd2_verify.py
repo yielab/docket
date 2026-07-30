@@ -4,7 +4,9 @@ Three layers:
   * TestRunVerifyCmd      — system adapter: pass/fail/timeout/error cases.
   * TestDispatchVerifyGate — dispatch integration: verifyCmd wired into the
     pipeline (pass→done, fail→verification_failed trace + task failed,
-    unset→skip log, output redacted in trace).
+    unset→a traced skip plus the hop's own ``verification_skipped`` flag
+    (W-5: no longer a bare ``print()`` — see ``core/dispatch.py``'s dead-code
+    register fix), output redacted in trace).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
+from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
@@ -131,8 +134,8 @@ class TestDispatchVerifyGate:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
-            return _oc.AgentRunResult(ok=ok, output=output, cost_usd=0.0, raw={})
+        ) -> _rd.TurnResult:
+            return _rd.TurnResult(ok=ok, output=output, cost_usd=0.0, raw={})
 
         return _run
 
@@ -200,10 +203,11 @@ class TestDispatchVerifyGate:
         assert secret_output not in vf["payload"].get("output", "")
         assert "[REDACTED]" in vf["payload"].get("output", "")
 
-    def test_verify_unset_skips_with_log(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        # No verifyCmd set — skip should print a visible log line.
+    def test_verify_unset_skips_with_log(self, tmp_path: Path) -> None:
+        # No verifyCmd set — the skip must be visible, but W-5 moved that
+        # signal out of a bare print() (core/ never prints): it is now the
+        # hop's own `verification_skipped` flag (rendered by `cli/_pod.py`)
+        # plus a `tool_result` trace event carrying the same fact.
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")  # no verifyCmd
 
@@ -212,9 +216,17 @@ class TestDispatchVerifyGate:
 
         # Task still completes (unset is not a failure).
         assert res.status == "done"
-        out = capsys.readouterr().out
-        assert "verification skipped" in out
-        assert "verifyCmd not set" in out
+        impl_hop = next(h for h in res.hops if h.role == "implementer")
+        assert impl_hop.verification_skipped is True
+
+        events = _trace_events("myapp")
+        skipped = [
+            e
+            for e in events
+            if e["event_type"] == "tool_result" and e["payload"].get("verification") == "skipped"
+        ]
+        assert len(skipped) == 1
+        assert skipped[0]["payload"]["member"] == "myapp-implementer"
 
     def test_verify_fail_stops_pipeline_before_reviewer(self, tmp_path: Path) -> None:
         # Full pod: lead + implementer + reviewer + tester. Verify fails after
@@ -232,9 +244,9 @@ class TestDispatchVerifyGate:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             ran.append(_oc.meta_get(member_id, "role", "") or member_id)
-            return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t7", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("myapp", task, runner=_runner)
@@ -258,13 +270,13 @@ class TestDispatchVerifyGate:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             role = _oc.meta_get(member_id, "role", "") or member_id
             ran.append(role)
             # R-4 parses the Reviewer's first line — a real pod-completing run
             # needs a real APPROVE verdict, not just an ok=True subprocess call.
             output = "APPROVE - looks good" if role == "reviewer" else "ok"
-            return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("myapp", task, runner=_runner)
@@ -305,7 +317,7 @@ class TestDispatchTesterGate:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             role = _oc.meta_get(member_id, "role", "") or member_id
             if role == "tester":
                 output = tester_output
@@ -316,7 +328,7 @@ class TestDispatchTesterGate:
                 output = "APPROVE - looks good"
             else:
                 output = "ok"
-            return _oc.AgentRunResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         return _run
 
@@ -327,8 +339,8 @@ class TestDispatchTesterGate:
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
-        ) -> _oc.AgentRunResult:
-            return _oc.AgentRunResult(ok=ok, output=output, cost_usd=0.0, raw={})
+        ) -> _rd.TurnResult:
+            return _rd.TurnResult(ok=ok, output=output, cost_usd=0.0, raw={})
 
         return _run
 

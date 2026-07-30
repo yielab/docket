@@ -34,6 +34,7 @@ from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import pod as _pod_core
+from docket.core import runtime_driver as _rd
 from docket.edges.adapters import openclaw as _oc
 
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
@@ -106,8 +107,8 @@ def _fake_runner() -> _dispatch.Runner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
-        return _oc.AgentRunResult(ok=True, output="ok", cost_usd=0.0, raw={})
+    ) -> _rd.TurnResult:
+        return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
     return _run
 

@@ -1012,6 +1012,15 @@ def _pod_dispatch(
         ui.dim(f"  Details: docket runs show {record['id']}")
         raise typer.Exit(1)
     for res in results:
+        # W-5 (dead-code register): `core/dispatch.py` used to `print()` this
+        # notice directly — a layering violation (`core/` never prints). It
+        # now returns the same information as a typed `HopResult.
+        # verification_skipped` flag; this is the one place that renders it,
+        # in the same "before the task's own summary line" order the old
+        # print produced.
+        for hop in res.hops:
+            if hop.verification_skipped:
+                ui.dim(f"[dispatch] verification skipped — verifyCmd not set for {hop.member_id}")
         if res.status == "done":
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
         elif res.status == "blocked":

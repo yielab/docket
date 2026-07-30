@@ -25,6 +25,7 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
+from docket.core import runtime_driver as _rd
 from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic environment (mirrors test_dispatch.py / test_cd2_verify.py) ─────────
@@ -273,8 +274,8 @@ class _BigOutputRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
-        return _oc.AgentRunResult(True, "Z" * self.size, 0.0, {"output": "x"})
+    ) -> _rd.TurnResult:
+        return _rd.TurnResult(True, "Z" * self.size, 0.0, {"output": "x"})
 
 
 class TestContextComposedTrace:
@@ -322,8 +323,8 @@ class TestContextComposedTrace:
                 message: str,
                 timeout: int,
                 env: dict[str, str] | None = None,
-            ) -> _oc.AgentRunResult:
-                return _oc.AgentRunResult(True, "tiny output", 0.0, {})
+            ) -> _rd.TurnResult:
+                return _rd.TurnResult(True, "tiny output", 0.0, {})
 
         _dispatch.dispatch_pod("demo", runner=_SmallRunner())
         trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))

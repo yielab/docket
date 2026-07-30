@@ -89,9 +89,9 @@ class TestDelegation:
             env: dict[str, str] | None = None,
             *,
             on_spawn: object = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             calls.append((agent_id, session_key, message, timeout, env, on_spawn))
-            return _oc.AgentRunResult(True, "hi", 0.01, {"output": "hi"})
+            return _rd.TurnResult(True, "hi", 0.01, {"output": "hi"})
 
         monkeypatch.setattr(_oc, "agent_run", fake_agent_run)
         driver = _oc.OpenClawDriver()
@@ -100,7 +100,7 @@ class TestDelegation:
         # (None when the caller doesn't supply one) — cancellation support,
         # see core/runs.py / core/dispatch.py's production-driver call site.
         assert calls == [("demo-lead", "agent:demo:t1", "plan it", 30, {"X": "1"}, None)]
-        assert result == _oc.AgentRunResult(True, "hi", 0.01, {"output": "hi"})
+        assert result == _rd.TurnResult(True, "hi", 0.01, {"output": "hi"})
 
     def test_run_turn_forwards_on_spawn_hook(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
@@ -115,10 +115,10 @@ class TestDelegation:
             env: dict[str, str] | None = None,
             *,
             on_spawn: Any = None,
-        ) -> _oc.AgentRunResult:
+        ) -> _rd.TurnResult:
             if on_spawn is not None:
                 on_spawn(4242)
-            return _oc.AgentRunResult(True, "hi", 0.0, {"output": "hi"})
+            return _rd.TurnResult(True, "hi", 0.0, {"output": "hi"})
 
         monkeypatch.setattr(_oc, "agent_run", fake_agent_run)
         driver = _oc.OpenClawDriver()

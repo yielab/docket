@@ -33,6 +33,7 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import resources as _res
+from docket.core import runtime_driver as _rd
 from docket.edges.adapters import openclaw as _oc
 
 from .fakes import FakeDriver
@@ -258,7 +259,12 @@ class TestPipeline:
         types = [e["event_type"] for e in events]
         assert "session_start" in types
         assert types.count("tool_call") == 2
-        assert types.count("tool_result") == 2
+        # W-5: 3, not 2 — lead's turn, implementer's turn, plus a third
+        # `tool_result` for the implementer's mechanical gate itself (no
+        # `verifyCmd` set on this seeded pod, so it is the "skipped" outcome,
+        # traced for parity with the "passed" case — see
+        # test_cd2_verify.py's TestDispatchVerifyGate for both outcomes).
+        assert types.count("tool_result") == 3
         assert "session_end" in types
 
     def test_failed_hop_stops_pipeline(
@@ -503,11 +509,11 @@ class TestConcurrentDispatch:
                 message: str,
                 timeout: int,
                 env: dict[str, str] | None = None,
-            ) -> _oc.AgentRunResult:
+            ) -> _rd.TurnResult:
                 time.sleep(0.02)
                 with calls_lock:
                     calls.append(session_key)
-                return _oc.AgentRunResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
+                return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
 
         runner = _SlowRunner()
         errors: list[BaseException] = []
@@ -560,12 +566,12 @@ class _CrashOnRoleRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         if role == self.crash_role:
             raise RuntimeError("simulated crash")
-        return _oc.AgentRunResult(True, f"done by {agent_id}", 0.01, {"output": "x"})
+        return _rd.TurnResult(True, f"done by {agent_id}", 0.01, {"output": "x"})
 
 
 class _VerdictAwareRunner:
@@ -583,7 +589,7 @@ class _VerdictAwareRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
         if role == "tester":
@@ -592,7 +598,7 @@ class _VerdictAwareRunner:
             output = "APPROVE - looks good"
         else:
             output = f"done by {agent_id}"
-        return _oc.AgentRunResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
 class TestCrashRecovery:

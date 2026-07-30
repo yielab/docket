@@ -16,7 +16,7 @@ resume=True)`` re-claims it and continues from the last persisted hop instead of
 via ``unblock_pod`` (pod-wide budget change) or ``retry_task`` (single task, explicit).
 
 R-2 (retries + decoupled timeouts): a hop whose agent turn fails with a *retryable*
-``AgentRunResult.failure_kind`` (``timeout``/``daemon_error`` — a daemon hiccup, not a real
+``TurnResult.failure_kind`` (``timeout``/``daemon_error`` — a daemon hiccup, not a real
 answer) is retried in place, up to a per-role budget (``config.DISPATCH_RETRIES_PER_ROLE``) with
 linear backoff, before the hop is finally marked failed. ``attempts`` is persisted per hop.
 Retrying can make a single hop take meaningfully longer than before, so every retry (and every
@@ -69,11 +69,13 @@ from typing import Any
 import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
+from docket.core import handoff as _handoff
 from docket.core import models as _models
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
 from docket.core import runs as _runs
+from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
@@ -85,11 +87,15 @@ PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
 # Injectable runner for tests (matches the ACL ``agent_run`` signature). The 4th
 # positional arg is always the *agent-turn* timeout (never the verify timeout).
-Runner = Callable[[str, str, str, int, dict[str, str] | None], _oc.AgentRunResult]
+# W-5/Phase 18 CL-1: spells the canonical ``core.runtime_driver.TurnResult`` name
+# directly — ``edges.adapters.openclaw.AgentRunResult`` (the alias this used to
+# read, kept only because this exact line bound it at import time) has been
+# retired now that every call site across the test suite has been swept too.
+Runner = Callable[[str, str, str, int, dict[str, str] | None], _rd.TurnResult]
 
 DEFAULT_TIMEOUT = 300
 
-# R-2: only these AgentRunResult.failure_kind values are worth retrying — a
+# R-2: only these TurnResult.failure_kind values are worth retrying — a
 # transient daemon/CLI hiccup. A non-zero exit or an unparseable/failing
 # verdict is a real answer and must never be retried (retrying would risk
 # masking a genuine failure as a transient one, and burns budget for nothing).
@@ -137,6 +143,31 @@ class HopResult:
     # built-in roles, only a real distinction for a custom pipeline whose
     # step id differs from its target role (see ``_replay_pipeline_position``).
     step_id: str = ""
+    # W-5: this hop's structured handoff artifact. ``None`` at construction
+    # time backfills in ``__post_init__`` to
+    # ``HandoffArtifact.from_legacy_output(output)`` — every ``HopResult``
+    # therefore always carries a real artifact once constructed, whether built
+    # explicitly with one (a live hop — see ``_execute_unit``) or reconstructed
+    # from a pre-W-5 persisted record with no ``artifact`` key at all
+    # (``_hop_from_record``'s backward-compatibility path), or simply
+    # hand-built by an existing test that only ever passed ``output=``.
+    artifact: _handoff.HandoffArtifact | None = None
+    # CL-1 (Phase 18 dead-code register, W-5 owns it): a mechanical gate whose
+    # command was unset — a real, intentional "no check configured" state, not
+    # a failure. ``core/`` never prints (the layering rule this replaces a
+    # violation of); this flag is this run's own in-memory signal only (not
+    # persisted — see ``_hop_record``) for ``cli/``'s dispatch renderer to
+    # print the same notice this used to ``print()`` directly.
+    verification_skipped: bool = False
+
+    def __post_init__(self) -> None:
+        if self.artifact is None:
+            self.artifact = _handoff.HandoffArtifact.from_legacy_output(self.output)
+
+    def rendered_artifact(self) -> str:
+        """This hop's artifact rendered to text — never ``None`` after construction."""
+        assert self.artifact is not None
+        return self.artifact.render()
 
 
 @dataclass
@@ -439,7 +470,7 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
 
     Prefers ``pod_recorded_cost`` (the daemon's own ``usage.cost.total``,
     summed across the pod's members). Daemon v2026.2.23 may never write that
-    field at all (see ``edges/adapters/openclaw.py``'s ``AgentRunResult.cost_usd``
+    field at all (see ``core/runtime_driver.py``'s ``TurnResult.cost_usd``
     note) — when recorded spend reads exactly 0, a real cap could otherwise
     never trip, so this falls back to a per-member token x ``MODEL_PRICING``
     estimate (``core/utils.estimate_cost_usd``).
@@ -588,16 +619,22 @@ def _hop_message(
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
     if rework_hop is not None and rework_hop.output:
+        # W-5: rendered from the hop's *artifact*, not its raw output — when
+        # the artifact carries nothing beyond `summary` (true for every
+        # rework-driving hop today; a rework target is always a role with a
+        # VerdictGate whose own `render()` may add a "Verdict: ..." line, see
+        # below) this is byte-identical to the pre-W-5 raw-text behaviour.
         # W-8: attributed to whichever step actually drove the rework — for
         # the built-in pipeline this is always the reviewer, so the rendered
         # text is byte-identical to the pre-W-8 hardcoded "reviewer requested
         # changes" wording; a custom pipeline's rework source (any role with
         # a verdict gate's `rework` edge) is named correctly too.
-        note_text, note_truncated, note_sent = _truncate_carryover(rework_hop.output, budget)
+        rework_text = rework_hop.rendered_artifact()
+        note_text, note_truncated, note_sent = _truncate_carryover(rework_text, budget)
         comp.sections.append(
             {
                 "role": "rework",
-                "original_bytes": len(rework_hop.output.encode("utf-8")),
+                "original_bytes": len(rework_text.encode("utf-8")),
                 "sent_bytes": note_sent,
                 "truncated": note_truncated,
             }
@@ -615,8 +652,12 @@ def _hop_message(
             continue
         rank = last_index - i
         hop_budget = _hop_carryover_budget(rank, budget)
-        original_bytes = len(h.output.encode("utf-8"))
-        text, truncated, sent_bytes = _truncate_carryover(h.output, hop_budget)
+        # W-5: the *artifact's* rendered text is what gets carried forward and
+        # budgeted — not the hop's raw output — so R-7's cap now bounds the
+        # same structured content the next hop actually reasons about.
+        rendered_text = h.rendered_artifact()
+        original_bytes = len(rendered_text.encode("utf-8"))
+        text, truncated, sent_bytes = _truncate_carryover(rendered_text, hop_budget)
         comp.sections.append(
             {
                 "role": h.role,
@@ -676,7 +717,16 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
 
 
 def _hop_record(h: HopResult) -> dict[str, Any]:
-    """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``)."""
+    """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``).
+
+    W-5: ``artifact`` is the hop's ``HandoffArtifact`` dumped to a plain dict
+    so ``--resume`` recovers the exact same structured record, not just its
+    raw text — persisted alongside the legacy ``output`` field (never
+    replacing it) so a pre-W-5 reader of this same JSON still finds what it
+    always found. ``verification_skipped`` is deliberately **not** persisted
+    — it is this run's own in-memory signal for ``cli/``'s renderer, not part
+    of the durable record (see ``HopResult``'s own docstring).
+    """
     return {
         "role": h.role,
         "member": h.member_id,
@@ -687,20 +737,41 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
         "attempts": h.attempts,
         # W-2: falls back to `role` when unset — see HopResult.step_id.
         "stepId": h.step_id or h.role,
+        "artifact": h.artifact.model_dump() if h.artifact is not None else None,
     }
 
 
 def _hop_from_record(rec: dict[str, Any]) -> HopResult:
-    """Reconstruct a HopResult from a persisted hop record (for resume)."""
+    """Reconstruct a HopResult from a persisted hop record (for resume).
+
+    W-5 backward compatibility: a record persisted before this card has no
+    ``artifact`` key at all — that (and any record whose ``artifact`` value
+    fails to validate, e.g. hand-edited JSON) degrades via
+    ``HandoffArtifact.from_legacy_output``, treating the persisted raw
+    ``output`` text as the artifact's ``summary``, exactly as the card
+    requires. A record written by this version of dispatch round-trips its
+    artifact exactly (every field, not just ``summary``).
+    """
+    output = str(rec.get("output", ""))
+    artifact_raw = rec.get("artifact")
+    artifact: _handoff.HandoffArtifact | None = None
+    if isinstance(artifact_raw, dict):
+        try:
+            artifact = _handoff.HandoffArtifact.model_validate(artifact_raw)
+        except Exception:
+            artifact = None
+    if artifact is None:
+        artifact = _handoff.HandoffArtifact.from_legacy_output(output)
     return HopResult(
         role=str(rec.get("role", "")),
         member_id=str(rec.get("member", "")),
         ok=bool(rec.get("ok", False)),
-        output=str(rec.get("output", "")),
+        output=output,
         cost_usd=float(rec.get("costUsd", 0.0) or 0.0),
         error=str(rec.get("error", "")),
         attempts=int(rec.get("attempts", 1) or 1),
         step_id=str(rec.get("stepId", "") or rec.get("role", "")),
+        artifact=artifact,
     )
 
 
@@ -1226,6 +1297,18 @@ def dispatch_task(
             do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
             attempt += 1
 
+        # W-5: the verdict is parsed up front (rather than inside the
+        # VerdictGate branch below, as it was pre-W-5) so it can be embedded
+        # in the hop's own artifact *before* `on_hop` persists it — one
+        # source of truth, computed once. Guarded on `run_res.ok`: a failed
+        # subprocess call never reaches gate evaluation either (see the
+        # early return just below), so there is no meaningful verdict to
+        # report for it.
+        verdict: str | None = None
+        if run_res.ok and isinstance(node.gate, _pipeline.VerdictGate):
+            verdict = _orch.parse_verdict(node.gate, run_res.output)
+        artifact = _handoff.HandoffArtifact(summary=run_res.output, verdict=verdict)
+
         hop = HopResult(
             role=role,
             member_id=member_id,
@@ -1235,6 +1318,7 @@ def dispatch_task(
             error=run_res.error,
             attempts=attempt,
             step_id=node.step_id,
+            artifact=artifact,
         )
         # Persisted immediately (not deferred to a parallel group's join) so a
         # crash in a *sibling* child never loses a hop that already completed —
@@ -1309,12 +1393,27 @@ def dispatch_task(
                     _json.dumps({"verification": "passed", "cmd": verify_cmd}),
                 )
             else:
-                # Honesty rule: never silently skip — a missing verifyCmd is visible.
-                print(f"[dispatch] verification skipped — verifyCmd not set for {member_id}")
+                # Honesty rule: never silently skip — a missing verifyCmd is
+                # visible via a trace event (parity with the "passed" case
+                # above) and the hop's own `verification_skipped` flag, which
+                # `cli/`'s dispatch renderer prints. CL-1 (Phase 18 dead-code
+                # register): `core/` never prints directly — that was a
+                # layering violation this replaces.
+                _trace_locked(
+                    project,
+                    session_id,
+                    role,
+                    "tool_result",
+                    _json.dumps({"verification": "skipped", "member": member_id}),
+                )
+                hop.verification_skipped = True
             return _UnitOutcome(kind="advance", hops=[hop])
 
         if isinstance(gate, _pipeline.VerdictGate):
-            verdict = _orch.parse_verdict(gate, run_res.output)
+            # W-5: reuse the verdict already parsed above (and carried on the
+            # hop's own artifact) rather than parsing `run_res.output` a
+            # second time — single source of truth.
+            verdict = artifact.verdict
             pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
             if verdict is not None and verdict in pass_set:
                 return _UnitOutcome(kind="advance", hops=[hop])
@@ -1989,33 +2088,17 @@ def pod_roster() -> list[dict[str, Any]]:
     return out
 
 
-def dispatch_all_pods(
-    *,
-    runner: Runner | None = None,
-    turn_timeout: int | None = None,
-    verify_timeout: int | None = None,
-) -> dict[str, list[TaskResult]]:
-    """Dispatch every pod's queue once (used by the opt-in `serve --dispatch` loop).
-
-    Best-effort per pod: one pod failing to dispatch never blocks the others.
-    Never auto-resumes a crashed pod's stale-claim failures — that stays an
-    explicit, operator-driven action (``docket pod <p> dispatch --resume``).
-
-    *turn_timeout*/*verify_timeout* let the caller (``serve.py``) apply a
-    process-wide config knob (``config.DISPATCH_TURN_TIMEOUT_S`` /
-    ``DISPATCH_VERIFY_TIMEOUT_S``) across every pod in one sweep; ``None``
-    (the default) leaves each pod's own Lead-meta/``DEFAULT_TIMEOUT``
-    resolution unaffected — no behaviour change for callers that don't pass
-    these.
-    """
-    out: dict[str, list[TaskResult]] = {}
-    for project in dispatchable_pods():
-        try:
-            res = dispatch_pod(
-                project, runner=runner, turn_timeout=turn_timeout, verify_timeout=verify_timeout
-            )
-        except DispatchError:
-            continue
-        if res:
-            out[project] = res
-    return out
+# W-5 (dead-code register): `dispatch_all_pods` — a "dispatch every pod in one
+# sweep" helper — was flagged as having zero production callers. Investigated:
+# it genuinely has none, and for a real reason, not an oversight. R-3 replaced
+# its former one call site (`serve.py`'s sweep loop, which used to call this
+# inside a bare `contextlib.suppress(Exception)`) with a loop over
+# `dispatchable_pods()` calling `dispatch_pod()` per pod through
+# `core.runs.execute` — see `tests/python/test_r3_no_suppressed_dispatch.py`'s
+# `test_dispatch_all_pods_no_longer_called_unguarded_in_serve`, which pins
+# both halves of that fact (this name gone from serve.py, `dispatchable_pods`
+# present). The reason: this function's one-record-per-sweep, "best-effort,
+# swallow DispatchError" shape loses exactly the per-pod granularity R-3 was
+# about (an id in the run registry per pod, a real error surfaced instead of
+# silently skipped). Re-wiring it would reintroduce the coarse-grained
+# behaviour R-3 deliberately replaced, so it is deleted rather than wired.

@@ -31,6 +31,7 @@ from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
 from docket.core import models_policy as _mp
 from docket.core import pod as _podcore
+from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
 from docket.edges.adapters import openclaw as _oc
@@ -103,9 +104,9 @@ class _RecordingRunner:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
-    ) -> _oc.AgentRunResult:
+    ) -> _rd.TurnResult:
         self.calls.append((agent_id, session_key, message, timeout, env))
-        return _oc.AgentRunResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+        return _rd.TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
 
 
 def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int) -> None:

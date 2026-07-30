@@ -920,15 +920,14 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
 # ``ok`` is True. See ``core.runtime_driver.FailureKind``/``TurnResult`` (the
 # RuntimeDriver port) for the canonical definitions.
 #
-# CL-1 (Phase 18 cleanup): this module's own code now uses ``TurnResult``
-# directly (the ``AgentRunResult`` name from Phase 18 L-1 was a pure alias with
-# no distinct meaning). ``AgentRunResult`` stays exported here — unused by
-# anything in this module — solely because ``core/dispatch.py``'s ``Runner``
-# type alias (``Runner = Callable[..., _oc.AgentRunResult]``) still spells the
-# old name; that file is owned by a different in-flight card (W-2) and out of
-# this card's file scope, so it could not be renamed in the same pass. Delete
-# this line once ``core/dispatch.py`` is updated to reference ``TurnResult``.
-AgentRunResult = TurnResult
+# W-5 (Phase 16, finishing Phase 18 CL-1's blocked sweep): the ``AgentRunResult``
+# alias that used to live here is gone. It existed only because
+# ``core/dispatch.py``'s ``Runner`` type alias and roughly 76 test call sites
+# across test_r2/r4/r5/r6/r7/cd2/dispatch/g1/l1 still spelled the pre-Phase-18-L-1
+# name; CL-1 could not rename that file (a different in-flight card owned it at
+# the time). W-5 owns ``core/dispatch.py`` this wave and swept every remaining
+# call site to ``TurnResult`` directly, so the alias had zero references left
+# anywhere in the tree and was deleted rather than kept as a compatibility shim.
 
 
 # Confirmed daemon shape (v2026.2.23): text at result.payloads[0].text.
