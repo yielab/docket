@@ -1,13 +1,15 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 2.1.0
-**Status**: Complete for what it documents (task cancellation and parallel hop execution are
-explicitly out of scope — see "Does NOT cover"; tracked as Phase 16 W-2). The require_approval
-gate itself (Requirements → "require_approval gate and waiting_approval") ships with exactly one
-wired source (pod-level); its two other documented sources are explicit, inert seams — see that
-section's "Sources" list. Hops run through the RuntimeDriver port (Phase 18 L-1) — a containment
-refactor with no behavior change. The role-archetype registry's `gateContract` (Phase 16 W-6) is
-descriptive data only; this pipeline's own gates remain independent of it until W-8.
+**Version**: 3.0.0
+**Status**: Complete. Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
+generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
+"Parallel step groups", and "Cancellation" below. The require_approval gate
+(Requirements → "require_approval gate and waiting_approval") now ships with **two** wired
+sources (pod-level and pipeline-defined); the policy-driven source (Phase 15 G-2) remains an
+explicit, inert seam — see that section's "Sources" list. Hops run through the RuntimeDriver port
+(Phase 18 L-1) — a containment refactor with no behavior change. The role-archetype registry's
+`gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
+when the step declares none of its own.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -26,7 +28,16 @@ with a failure taxonomy, independent timeouts, a real Reviewer gate with bounded
 budget auto-pause, and a bounded hop prompt. **ROADMAP Phase 15 G-1** ("approval-gated dispatch")
 added a sixth task status, `waiting_approval`, and the require_approval gate that produces it —
 `core/approval.py`'s pending-approval store previously had no production producer at all; this is
-that missing producer. This version documents that machine as it actually ships.
+that missing producer. **ROADMAP Phase 16 W-2 (executor) / W-8 (generalized gates)** — shipped
+together per ROADMAP's explicit sequencing rule ("W-6/7/8 land with the executor, not after") —
+is this version's own major change: `core/orchestrator.py` resolves a
+`~docket.core.pipeline.PipelineSpec` (W-1) against a pod's live roster into a deterministic
+`ExecutionPlan` and runs it over this exact state machine (claiming, budget/approval gates,
+retries, crash resume all unchanged); gate execution reads each step's *resolved* gate — its own
+declared `gate`, or (only when a step omits one) its archetype's `gateContract` (W-6) — instead of
+branching on a hardcoded role name; a `parallel` step's children run concurrently via a bounded
+worker pool and join before the pipeline advances; and `docket runs cancel <id>` kills an
+in-flight hop's process group. This version documents that machine as it actually ships.
 
 ## Scope
 
@@ -35,22 +46,31 @@ This specification covers:
 - The task record's full lifecycle: creation, locked claiming, persisted `running` state,
   per-hop incremental persistence, terminal states, and how a task moves between them
 - Crash recovery: the stale-claim sweep and `--resume`-driven continuation from the last
-  persisted hop (including mid-rework)
+  persisted hop (including mid-rework, and — best-effort — mid-parallel-group)
 - Concurrency: why two dispatchers can never double-run one task
-- Pipeline hop order and which roles participate for a given pod, including the Reviewer's
-  bounded rework loop (a role may run more than once within one dispatch attempt)
+- Pipeline step order and which roles/agents participate for a given pod and spec, including a
+  verdict gate's bounded rework loop (a step may run more than once within one dispatch attempt)
+  and a `parallel` group's concurrent children
 - Per-hop execution: message construction (with a bounded-size carryover cap), environment
   injection, the real agent turn, and retries of a transient failure
 - Timeout configuration: independent agent-turn vs. `verifyCmd` timeouts and their resolution
-  order
+  order, including a step's own `retries`/`timeout` override
 - The gates that can block pipeline advancement mid-run: budget (with auto-pause), the
-  require_approval gate (waits on a human decision, resumable), Implementer verification
-  (`verifyCmd`, run in the correct working tree), Reviewer verdict (with bounded rework), and
-  Tester PASS/FAIL
-- The require_approval gate's single wired source for this version (a pod-level Lead-meta role
-  list), how a fired gate is resolved (grant resumes at the exact hop, deny fails the task
-  immediately, an expiry fail-closes to denied), and why a `waiting_approval` task is never
-  claimable by a plain dispatch run
+  require_approval gate (waits on a human decision, resumable — now with two wired sources),
+  a `mechanical` gate (`verifyCmd`-equivalent, worktree-aware cwd resolution for any role), and a
+  `verdict` gate (generalizing the pre-W-8 hardcoded Reviewer APPROVE/REQUEST-CHANGES and Tester
+  PASS/FAIL gates to any archetype's marker vocabulary)
+- **Generalized gate execution** (W-8): how a step's gate is resolved (its own, or its
+  archetype's fallback), how a `VerdictGate`/`MechanicalGate`/`ApprovalGate` is evaluated
+  generically, and the byte-identical-behavior guarantee for the four built-in roles
+- **Parallel step groups** (W-2): bounded concurrent execution of a group's children, join
+  semantics, and per-hop persistence ordering
+- **Cancellation** (W-2): how an in-flight hop's process group is tracked and killed by
+  `docket runs cancel <id>`
+- The require_approval gate's two wired sources for this version (a pod-level Lead-meta role
+  list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
+  (grant resumes at the exact hop, deny fails the task immediately, an expiry fail-closes to
+  denied), and why a `waiting_approval` task is never claimable by a plain dispatch run
 - The complete task-status and failure-kind vocabulary, and every trace event this pipeline emits
 
 This specification does NOT cover:
@@ -58,34 +78,35 @@ This specification does NOT cover:
 - The `.docket-meta.json` fields that configure a pod member (`portRangeStart`,
   `portRangeCount`, `scratchDir`, `verifyCmd`, `turnTimeoutS`, `verifyTimeoutS`,
   `maxReworkCycles`, `requireApprovalRoles`, `paused`/`pausedReason`) — see `docket-meta.spec.md`
-- A policy-driven require_approval match (ROADMAP Phase 15 G-2) and a pipeline-defined `approval`
-  step (ROADMAP Phase 16 W-1/W-2) — both are explicit, documented seams in `core/dispatch.py`
-  (`_policy_requires_approval`, `_pipeline_step_requires_approval`) that always return `False`
-  today; neither is wired to any real source yet, and this spec does not invent one
+- A policy-driven require_approval match (ROADMAP Phase 15 G-2) — an explicit, documented seam
+  in `core/dispatch.py` (`_policy_requires_approval`) that always returns `False` today; not wired
+  to any real source yet, and this spec does not invent one. (The pipeline-defined `approval` step
+  source, ROADMAP Phase 16 W-1/W-2, **is** wired now — see "Generalized gate execution" below.)
 - `core/approval.py`'s own approval-record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
   channels, audit-log parity) — see `security-gates.spec.md`. This spec covers only how
   *dispatch* creates and reacts to a record, not the record's own store contract
 - The CLI surface for queuing/inspecting/dispatching tasks (`docket pod <project>
-  delegate/queue/add/set-verify/dispatch`, including their flags) — see `cli-interface.spec.md`
+  delegate/queue/add/set-verify/dispatch`, `docket pipeline validate/plan/run`, `docket runs
+  cancel`, including their flags) — see `cli-interface.spec.md`
 - Budget-cap accounting in general, and the `docket profile <id> --budget`/`--resume` CLI
   contract — see `cost-tracking.spec.md`. This spec covers only the pre-hop budget check and the
   auto-pause/claim-refusal mechanics it drives
 - The persisted dispatch-run registry (`core/runs.py`, `docket runs`, `GET /runs`) that records
-  *invocations* of this pipeline (one record per `dispatch_pod` call, whatever triggered it) — see
-  `serve-read-api.spec.md` and `cli-json-shapes.spec.md`. This spec is scoped to what happens
-  *inside* one such invocation
+  *invocations* of this pipeline (one record per `dispatch_pod` call, whatever triggered it),
+  including its `pids`/cancellation-outcome fields — see `serve-read-api.spec.md` and
+  `cli-json-shapes.spec.md`. This spec is scoped to what happens *inside* one such invocation and
+  to how a hop's pid is reported into that registry (`core.runs.add_hop_pid`/`current_run_id`),
+  not the registry's own record shape
 - `edges/store.py`'s `with_lock`/`read_modify_write` locking primitive itself (this spec only
   relies on its atomicity guarantee) — see the module's own docstring
-- Task **cancellation** (killing an in-flight hop's process) and **parallel** hop execution —
-  neither exists; both are tracked as ROADMAP Phase 16 W-2 and require an executor this pipeline
-  does not have today
 - The retired org-wide `docket team` queue (removed-command notice only; durable record in
   ROADMAP decision D-11 — its spec was removed 2026-07-30)
-- The declarative role-archetype registry (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
-  and its per-archetype `gateContract` field — that field is currently descriptive data only;
-  this pipeline's Reviewer/Tester verdict parsing and Implementer `verifyCmd` gate remain their
-  own independent, hardcoded implementation, unaware of the registry (wiring them together is
-  ROADMAP Phase 16 W-8, not shipped)
+- The declarative role-archetype registry's schema itself (`gateContract`'s closed kinds, the
+  built-in/starter-library archetypes, the user overlay) — see `role-archetypes.spec.md`. This
+  spec covers only how the executor *consumes* an archetype's `gateContract` as a gate fallback,
+  not the registry's own authoring/validation contract
+- Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
+  workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7 (not shipped)
 
 ## Requirements
 
@@ -185,20 +206,34 @@ This specification does NOT cover:
 
 ### Pipeline order and participation
 
-1. A dispatch run **MUST** drive hops in the fixed order Lead → Implementer → Reviewer → Tester
-   (`PIPELINE_ORDER`), skipping any role the pod does not have. A lean pod (Lead + Implementer
-   only) runs exactly two hops per pass; a full pod runs up to four, plus any rework cycles (see
-   below).
+1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` (W-1) —
+   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, and `docket pod <project>
+   dispatch` today) resolves `effective_pipeline(project, None)`, which is `core/pipeline.py`'s
+   `default_pipeline()` — Lead → Implementer → Reviewer → Tester, byte-identical to the pre-W-2
+   hardcoded `PIPELINE_ORDER` walk — patched only so its Reviewer step's rework budget reflects
+   this pod's own `maxReworkCycles` (see "Reviewer verdict gate and bounded rework"). A
+   role-targeted step whose role the pod does not have is skipped and consumes no pipeline
+   position (`core.orchestrator.resolve_plan`'s `skipped` flag), the same behavior
+   `PIPELINE_ORDER`-filtering always had. A lean pod (Lead + Implementer only) running the default
+   pipeline still runs exactly two hops per pass; a full pod runs up to four, plus any rework
+   cycles (see below).
 2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a
    pod with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
 3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod — each
    hop's member id is asserted against the pod before its turn runs, raising `DispatchError` on a
-   mismatch.
-4. Unlike the pre-Phase-14 pipeline, a role **MAY** legitimately run more than once within one
-   dispatch attempt: a Reviewer REQUEST-CHANGES verdict re-runs the Implementer and then the
-   Reviewer again (bounded — see "Reviewer verdict gate and bounded rework"). The pipeline
-   position is tracked as an index that can move backward for a rework cycle, not a per-role
-   "has this run yet" set.
+   mismatch. This applies identically to a `parallel` group's children (see "Parallel step
+   groups").
+4. A step **MAY** legitimately run more than once within one dispatch attempt: a verdict-gated
+   step's rework-triggering marker re-runs its gate's declared `rework.to` target and then the
+   gating step again (bounded — see "Reviewer verdict gate and bounded rework" and "Generalized
+   gate execution"). The pipeline position is tracked as an index that can move backward for a
+   rework cycle, not a per-role "has this run yet" set; rework-cycle counts are tracked per
+   *gated step id*, not one pod-wide counter, since a custom pipeline may declare more than one
+   independent rework-capable gate (the built-in pipeline only ever has one — the Reviewer's).
+5. A custom `PipelineSpec` **MAY** target a role `docket pod`'s legacy four-role
+   `PIPELINE_ORDER` doesn't know about (e.g. a starter-library `researcher`/`critic`) —
+   `pod_full_roster` resolves *every* role the pod's members actually carry (first member per
+   role), not just the four legacy ones `pod_pipeline` considers.
 
 ### Per-hop execution
 
@@ -292,22 +327,25 @@ This specification does NOT cover:
    outright at claim time (see "Claiming", item 6), not merely re-blocked hop by hop, until an
    operator clears the pause (`docket profile <lead-id> --resume`; see `cost-tracking.spec.md`).
 
-### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1)
+### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1 / Phase 16 W-2)
 
 1. Immediately after the budget gate (affordability) and before a hop's message is composed or
    its agent turn runs (permission), dispatch **MUST** evaluate whether that hop requires a human
    decision (`_hop_requires_approval`). This is an **OR** of independent sources — any one of them
    firing is enough to gate:
-   - **Pod-level (wired this version):** the pod Lead's `requireApprovalRoles` meta field, a
-     comma-separated, case-insensitive role list (e.g. `"implementer,reviewer"`) — see
-     `docket-meta.spec.md`. Read the same way `maxReworkCycles`/`budgetUsd` are: only the Lead's
-     value is consulted, and it has no dedicated CLI setter yet (`meta-set` only).
+   - **Pod-level (wired):** the pod Lead's `requireApprovalRoles` meta field, a comma-separated,
+     case-insensitive role list (e.g. `"implementer,reviewer"`) — see `docket-meta.spec.md`. Read
+     the same way `maxReworkCycles`/`budgetUsd` are: only the Lead's value is consulted, and it
+     has no dedicated CLI setter yet (`meta-set` only).
    - **Policy-driven (seam only — ROADMAP Phase 15 G-2, not wired):** `_policy_requires_approval`
      always returns `False` today. No policy source (e.g. a high-risk action-class match) is
      consulted. This is an explicit, documented gap, not a claim of coverage.
-   - **Pipeline-defined (seam only — ROADMAP Phase 16 W-1/W-2, not wired):** `_pipeline_step_requires_approval`
-     always returns `False` today — no task record has an explicit per-step `approval` format;
-     this spec does not invent one.
+   - **Pipeline-defined (wired — ROADMAP Phase 16 W-2):** `_pipeline_step_requires_approval(gate)`
+     returns `True` exactly when the current pipeline position's *resolved* gate (its own declared
+     `gate`, or its archetype's `gateContract` fallback — see "Generalized gate execution") is an
+     `ApprovalGate`. This applies to any role/archetype, not just a hardcoded one, and composes
+     with the pod-level source (either firing is enough). Only meaningful for a top-level step —
+     see "Parallel step groups" for why a group's children never check this source at all.
 2. A fired gate **MUST**: create a real, persisted approval record via `core/approval.py`'s
    `approval_create` (project, role, a human-readable action string, and a `context` of
    `{"taskId", "pipelineIndex"}` so the record can be traced back to the exact task and hop it
@@ -351,6 +389,10 @@ This specification does NOT cover:
 
 ### Implementer verification gate (`verifyCmd`)
 
+*(This is a `mechanical` gate — see "Generalized gate execution" for how W-8 generalizes the
+mechanics below to any role's mechanically-gated step, not just one hardcoded to "implementer".
+Every requirement below still holds byte-for-byte for the Implementer specifically.)*
+
 1. After a **successful** Implementer hop, if the Implementer's `verifyCmd` is set, dispatch
    **MUST** run it via `run_verify_cmd` and treat a nonzero exit as a gate failure.
 2. The command **MUST** run in the Implementer's **worktree** directory if one is allocated
@@ -371,6 +413,11 @@ This specification does NOT cover:
    it.
 
 ### Reviewer verdict gate and bounded rework
+
+*(This is a `verdict` gate — see "Generalized gate execution" for how W-8 generalizes the marker
+parsing below to any role's verdict-gated step via `core.orchestrator.parse_verdict`, instead of
+a Reviewer-specific hardcoded parser. Every requirement below still holds byte-for-byte for the
+Reviewer specifically — this is what "byte-identical built-in behavior" means in practice.)*
 
 1. After a **successful** Reviewer hop, dispatch **MUST** parse the Reviewer's reply for a
    verdict marker: the first non-blank line of the output, matched case-insensitively against
@@ -420,6 +467,113 @@ This specification does NOT cover:
 5. This gate is structural, not textual advice: a successful subprocess call alone (`ok=True`) is
    insufficient for the pipeline to advance past a Tester hop — the reply content itself is
    inspected.
+
+### Generalized gate execution (ROADMAP Phase 16 W-8)
+
+1. Before a hop's agent turn runs, dispatch **MUST** resolve the current pipeline position's gate
+   (`core.orchestrator.resolve_gate`): the step's own declared `gate` (W-1) if present, else —
+   only when the step omits one — its resolved archetype's `gateContract` (W-6), looked up by the
+   step's `archetype` field if set, else its `role`. A step with neither an explicit `gate` nor a
+   resolvable archetype **MUST** have no gate at all — the step always advances once its turn
+   completes, the same as today's Lead hop.
+2. Gate *evaluation* **MUST** be driven by the resolved gate's own type
+   (`MechanicalGate`/`VerdictGate`/`ApprovalGate`/none), never by a hardcoded role-name check:
+   - A `MechanicalGate` **MUST** run `gate.command` if set, else the target member's own
+     `verifyCmd` meta (the same "defer to the member's own check" convention "Implementer
+     verification gate" documents) via `core/pod.py`'s `resolve_member_cwd` — worktree-aware cwd
+     resolution now applies to **any** mechanically-gated step, not only one hardcoded to
+     "implementer". A nonzero exit **MUST** fail the step and emit a `verification_failed` trace
+     event; a pass **MUST** emit a `tool_result` event and advance. An unset command (both
+     `gate.command` and the member's `verifyCmd`) **MUST** print the same honesty-rule notice
+     "Implementer verification gate" documents, generalized to name the actual member id.
+   - A `VerdictGate` **MUST** parse the hop's reply via `core.orchestrator.parse_verdict` —
+     generalizing "Reviewer verdict gate"/"Tester PASS/FAIL gate"'s marker parsing to the gate's
+     own `pattern`/`passValues`/`caseSensitive`/`rework` instead of two separate hardcoded
+     Reviewer/Tester regexes and parsers (both removed from `core/dispatch.py` once this shipped).
+     A matched value in `passValues` **MUST** advance the pipeline; a matched value in a
+     configured `rework.when` **MUST** trigger a bounded rework cycle to `rework.to` (any earlier
+     top-level step id, not hardcoded to "implementer") while that gate's own rework-cycle count
+     (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework configured,
+     the value matches neither list, or no match at all) **MUST** fail the step.
+   - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
+     waiting_approval") — by the time a hop's turn has actually run, an `ApprovalGate` gate simply
+     advances (the gate already did its job before the turn, or a granted single-use override
+     already let it through).
+3. **Byte-identical behavior for the four built-in roles is a hard requirement, not a best
+   effort.** For the built-in `default_pipeline()`, every step already declares its own explicit
+   gate (Lead: none; Implementer: `MechanicalGate(command=None)`; Reviewer/Tester:
+   `VerdictGate(...)`), so the archetype-fallback path in requirement 1 above never fires for any
+   of them — their gate behavior, reasons, and trace event *payloads* are unchanged from the
+   pre-W-8 hardcoded implementation. Trace event *names* for a verdict outcome are preserved via a
+   lookup (`_verdict_event_names`), not a decision branch: `reviewer`/`tester` keep emitting
+   exactly the event names they always have
+   (`rework_started`/`review_rejected`/`reviewer_verdict_unparseable` for reviewer,
+   `tester_verdict_failed` for tester, both slots for tester since it has no rework); any other
+   role/archetype emits the new generic names `verdict_rework_started`/`verdict_rejected`/
+   `verdict_unparseable` instead.
+4. A step **MAY** declare its own `retries`/`timeout`, overriding the pod's role-based retry
+   budget / resolved agent-turn timeout for that step only; a `MechanicalGate`'s own `timeout`
+   (if set) overrides the resolved `verifyCmd` timeout for that step's mechanical check only.
+   Omitting either **MUST** fall back to the pre-W-8 pod-wide resolution ("Timeout configuration",
+   "Retries and the failure-kind taxonomy") — the built-in pipeline's steps never set either, so
+   this is never a behavior change for it.
+
+### Parallel step groups (ROADMAP Phase 16 W-2)
+
+1. A `parallel` step's children (W-1's shape) **MUST** run concurrently via a bounded thread pool
+   (`core.orchestrator.run_group`; hops are subprocess-bound, so this is a real resource bound,
+   not a code-tidiness knob) and **MUST** all be observed (joined) before the pipeline advances
+   past that position — a group is one pipeline position, not one per child.
+2. Every child **MUST** independently go through the same budget gate, hop execution, and gate
+   evaluation a top-level step does — each child is a real, costed agent turn. A child's resolved
+   gate being an `ApprovalGate` **MUST** fail that child clearly (an explicit configuration error,
+   e.g. "an 'approval' gate is not supported inside a parallel group") rather than attempting
+   fragile mid-group human-approval semantics — approval gating applies only to top-level steps
+   (see "require_approval gate and waiting_approval").
+3. The group's outcome **MUST** merge its children's outcomes by priority: `blocked` (any child)
+   > `failed` (any child) > `advance` (all children). A rework outcome is impossible inside a
+   group — the pipeline format's own validator forbids a `rework` edge on a step nested inside a
+   `parallel` group.
+4. Each child's hop **MUST** be persisted (`on_hop`) the moment that child's turn completes — not
+   deferred until the whole group joins — so a crash in one sibling **MUST NOT** lose a hop that
+   already finished in another (R-1's crash-safety guarantee, generalized to a concurrent
+   fan-out). The task's in-memory `hops[]`/persisted queue record **MUST** reflect children in
+   their **declaration** order regardless of completion order.
+5. Trace writes from concurrent children **MUST** be serialized against each other (a shared lock)
+   since they append to the same task session's tracefile — `core/trace.py`'s append is not
+   itself filelocked (the documented D-12 exemption for an append-only log), which is safe across
+   *different* sessions but not within one.
+6. **Known, documented limitation:** resuming a task that crashed mid-group re-runs the **entire**
+   group from scratch on `--resume`, including any child that had already completed — there is no
+   child-by-child resume granularity. (This does not affect the rework-replay path at all, per
+   requirement 3.)
+
+### Cancellation (ROADMAP Phase 16 W-2)
+
+1. `docket runs cancel <id>` **MUST** kill every hop subprocess currently recorded as in-flight
+   for that run's id, and **MUST** mark the run a new terminal state, `"cancelled"` — see
+   `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
+   fields; this spec covers only how a hop's pid gets into that list and what killing it does to
+   the task it belongs to.
+2. Each hop subprocess (`edges.adapters.openclaw.agent_run`) **MUST** run in its own session
+   (`start_new_session=True`), so its pid doubles as its process group id. Cancelling **MUST**
+   kill the whole group (`edges.adapters.system.kill_process_group`: SIGTERM, a bounded grace
+   period, then SIGKILL if still alive), not just the immediate `openclaw` process — it may have
+   shelled out further, and an orphaned process group is exactly the failure mode this guards
+   against. The same mechanism **MUST** apply when a hop's own turn timeout expires (not only an
+   explicit operator cancel).
+3. A hop's pid **MUST** be tracked only while its production driver's subprocess is actually
+   running (added right before the blocking call, removed right after it returns) — never for an
+   injected test runner/fake, which has no real OS process to report. A long multi-hop task
+   **MUST NOT** accumulate stale pids from hops that already finished.
+4. Killing a hop's process group **MUST NOT** invent a new task-status vocabulary: the killed
+   subprocess surfaces as an ordinary hop failure (a nonzero/negative exit code) through the
+   existing state machine ("Hop-failure semantics"), transitioning the task to `failed` exactly as
+   any other hop failure would.
+5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`) **MUST** be a no-op,
+   reported as such, never re-signalled or double-finished. A run's own normal completion
+   (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
+   wrote back to `"succeeded"`/`"failed"`.
 
 ### Hop-failure semantics (general)
 
@@ -484,8 +638,10 @@ This specification does NOT cover:
 
 This spec defines behavior only; the CLI surface that triggers it (`docket pod <project>
 dispatch [--resume] [--timeout <seconds>]`, `docket pod <project> queue --retry <task-id>`,
-`docket serve --dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry
-record each invocation of this pipeline creates (`docket runs`, `GET /runs`) is documented in
+`docket pipeline run <project> [--file <path>] [--resume] [--timeout <seconds>]`, `docket serve
+--dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry record each
+invocation of this pipeline creates (`docket runs`, `GET /runs`), including its `pids` field and
+the `"cancelled"` state `docket runs cancel <id>` produces, is documented in
 `serve-read-api.spec.md`/`cli-json-shapes.spec.md`.
 
 ### Trace events this pipeline emits
@@ -499,11 +655,14 @@ tool_result                 # after a successful hop
 error                       # after a failed hop (in place of tool_result)
 cost_charged                # after any hop with nonzero cost
 budget_exceeded             # the budget gate blocked a hop (task -> blocked)
-verification_failed         # the Implementer's verifyCmd exited nonzero
-tester_verdict_failed       # the Tester's reply was FAIL or unparseable
-rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
-review_rejected              # a second REQUEST-CHANGES exhausted the rework budget (task -> failed)
-reviewer_verdict_unparseable # the Reviewer's reply had no APPROVE/REQUEST-CHANGES first line
+verification_failed         # a mechanical gate's command exited nonzero (any role, not just implementer)
+tester_verdict_failed       # the Tester's reply was FAIL or unparseable (legacy name, preserved)
+rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle (legacy name, preserved)
+review_rejected              # a second REQUEST-CHANGES exhausted the rework budget (legacy name, preserved)
+reviewer_verdict_unparseable # the Reviewer's reply had no APPROVE/REQUEST-CHANGES first line (legacy name, preserved)
+verdict_rework_started       # W-8: a non-built-in verdict gate's rework-triggering marker fired
+verdict_rejected              # W-8: a non-built-in verdict gate's reply matched but wasn't pass/rework
+verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
 stale_claim                  # the crash sweep failed a running task whose claim went stale
 paused_refused                # a claim attempt was refused because the pod's Lead is paused
 approval_required              # a require_approval gate fired (task -> waiting_approval)
@@ -622,26 +781,81 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 ### Invariants
 
 - Dispatch **MUST NOT** cross pods: every hop's member id belongs to the dispatched project's own
-  pod.
+  pod — including every child of a `parallel` group.
 - Two concurrent `dispatch_pod` calls against the same pod **MUST NOT** both claim (flip to
   `running`) the same task.
-- A gate (budget, require_approval, `verifyCmd`, Reviewer verdict, Tester verdict) **MUST NOT** be
-  bypassed by an otherwise-`ok` subprocess call — `ok=True` is necessary but not sufficient for
-  pipeline advancement past the Implementer, Reviewer, or Tester hops.
+- A gate (budget, require_approval, `mechanical`, `verdict`) **MUST NOT** be bypassed by an
+  otherwise-`ok` subprocess call — `ok=True` is necessary but not sufficient for pipeline
+  advancement past a mechanically- or verdict-gated hop, for any role/archetype, not only the
+  four built-in ones.
 - A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or
-  `daemon_error`.
+  `daemon_error` — including a hop killed by `docket runs cancel`, which always surfaces as a
+  non-retryable `nonzero_exit`/negative-signal exit, never masked as transient.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.
 - A `waiting_approval` task **MUST NOT** be claimable by any `dispatch_pod` call, with or without
   `--resume`, until its approval resolves (grant or deny).
 - The gate-override handoff (`gateOverridePipelineIndex`) **MUST** be consumed at most once per
   grant: captured and cleared from storage atomically at claim time, and consumed in memory the
   first time the resumed run reaches that pipeline position — a later occurrence of the same
-  position within the same run (a Reviewer rework cycle) **MUST** gate again, not skip silently.
+  position within the same run (a rework cycle) **MUST** gate again, not skip silently.
+- `core.orchestrator.resolve_plan` **MUST** be deterministic: the same `PipelineSpec` + the same
+  roster + the same archetype registry **MUST** always resolve to a byte-identical
+  `ExecutionPlan`, independent of wall-clock time, dict-construction order, or which thread calls
+  it — the property `docket pipeline plan` and the real executor both rely on to never drift from
+  each other.
 - Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
   trace tail <project>` — nothing in the pipeline is silent (including the printed
-  verification-skipped notice).
+  verification-skipped notice), for any role/archetype, not only the built-in four.
+- Cancelling a run (`docket runs cancel`) **MUST** kill a hop's entire process group, never leave
+  an orphaned child process running after the run is marked `"cancelled"`.
 
 ## Changelog
+
+### Version 3.0.0 (2026-07-30)
+
+- **ROADMAP Phase 16, card W-2 (executor) / W-8 (generalized gates), shipped together** per
+  ROADMAP's explicit sequencing rule ("W-6/7/8 land with the executor, not after — an executor
+  that hardcodes roles a second time forces a second migration"). This is a generalization, not a
+  behavior change: the built-in lead/implementer/reviewer/tester pipeline's observable behavior
+  (task status, hop sequence, trace event names/payloads, reasons, retries, budget/approval
+  gating, crash resume, rework bounds) is byte-identical to 2.1.0, verified by the full pre-
+  existing test suite passing unchanged.
+  - `dispatch_task`/`dispatch_pod` gain an optional `spec: PipelineSpec | None` parameter — `None`
+    (every pre-W-2 caller) resolves `effective_pipeline(project, None)`, the pod's zero-migration
+    pipeline (`core/pipeline.py`'s `default_pipeline()`, patched only so its Reviewer rework
+    budget reflects this pod's `maxReworkCycles`, since the pipeline format necessarily hardcodes
+    a fixed default and there is no "pod" concept at that layer).
+  - Gate execution reads each step's *resolved* gate (`core.orchestrator.resolve_gate`) instead of
+    branching on a hardcoded role name — see "Generalized gate execution". `_parse_reviewer_
+    verdict`/`_parse_tester_verdict`/`_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE` (dispatch's own
+    private, independent copy of what the pipeline format already declared) are deleted; the
+    single source of truth for those patterns is now `core/pipeline.py`'s `default_pipeline()`,
+    cross-checked against the W-6 archetype registry by test.
+  - `_pipeline_step_requires_approval` — G-1's deliberately inert seam ("W-1/W-2 fills this"),
+    previously a permanently-`False` stub — is now real: a step whose resolved gate is
+    `ApprovalGate` genuinely gates pre-hop, composing with the pod-level source.
+  - A `parallel` step's children now actually execute — see "Parallel step groups": a bounded
+    thread pool, join semantics, per-child persistence as each completes (not deferred to the
+    group's join, preserving R-1's crash-safety guarantee for a concurrent fan-out), and a
+    documented limitation that a mid-group crash resumes by re-running the whole group.
+  - `docket runs cancel <id>` — see "Cancellation": kills every pid recorded in-flight for a run
+    (its whole process group, not just the immediate child — every hop subprocess now starts its
+    own session), and marks the run a new terminal state, `"cancelled"`.
+  - `_replay_pipeline_position` (crash resume) generalizes from a role-keyed set to a step-id-
+    keyed replay driven by each position's own resolved gate, with per-gate rework-cycle counters
+    (a pipeline may declare more than one independent rework-capable gate) instead of one pod-wide
+    counter. Persisted hop records gain a `stepId` field (defaulting to `role` for a legacy
+    record — no behavior change for the built-in pipeline, whose step ids equal their role names).
+  - `pod_full_roster` resolves every role a pod's members actually carry (not just the four legacy
+    ones `pod_pipeline` considers), so a custom pipeline can target a non-legacy (e.g.
+    starter-library) role.
+  - New trace event types: `verdict_rework_started`/`verdict_rejected`/`verdict_unparseable` (any
+    non-built-in verdict-gated role/archetype); the two built-in verdict roles keep their exact
+    legacy event names.
+  - `docket pipeline validate|plan|run` (see `cli-interface.spec.md`) is the new CLI surface that
+    drives a custom `PipelineSpec` through this machine; `plan` renders directly from
+    `core.orchestrator.resolve_plan`/`render_plan` — the same function the real executor calls,
+    never a second, drift-prone pretty-printer.
 
 ### Version 2.1.0 (2026-07-30)
 

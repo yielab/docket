@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -236,6 +236,31 @@ docket [global-options] <command> [command-options] [arguments]
 **Output**: Workflow content, listing, validation result, or plan
 **Return**: `0` on success (including "already exists" on `create`, which warns but doesn't fail); `1` on any error — see workflow-integration.spec.md for the full contract
 
+#### docket pipeline
+**Purpose**: Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1 format / W-2
+executor). See pipeline-format.spec.md for the file format.
+See pod-dispatch.spec.md for how it actually runs.
+Not the Lobster dialect — `docket workflow` continues to serve that unchanged until ROADMAP
+Phase 16 W-3 retires it in favor of this command.
+**Syntax**: `docket pipeline <action> ...`
+**Actions**:
+- `validate <file>`: Structural validation of a pipeline YAML file; does not execute; no project
+  involved
+- `plan <project> [--file <path>]`: Render the resolved step plan for *project*'s pod, from the
+  real executor (`core.orchestrator.resolve_plan`/`render_plan`) — never a second, drift-prone
+  pretty-printer; does not execute or consume tokens. `--file` omitted resolves the pod's
+  zero-migration default pipeline (identical to what `run`/`docket pod <project> dispatch` would
+  actually execute)
+- `run <project> [--file <path>] [--resume] [--timeout <seconds>]`: Dispatch *project*'s pending
+  (and, with `--resume`, crash-recoverable) tasks through the given (or default) pipeline — the
+  same real, costed pipeline `docket pod <project> dispatch` drives (identical run-registry
+  recording, budget/approval gating, retries, crash resume); `--file` selects a custom
+  `PipelineSpec` instead of the pod's zero-migration default. See pod-dispatch.spec.md for the
+  full state machine and pipeline-format.spec.md for the file format
+**Output**: Validation result, rendered plan, or per-task dispatch results (including cost)
+**Return**: `0` on success; `1` on an invalid/missing file, an unknown project/pod, or a dispatch
+error (see `docket runs show <id>` for the recorded error)
+
 ### Pod Commands
 
 `docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
@@ -299,15 +324,21 @@ archetype definition
 
 #### docket runs
 **Purpose**: Inspect the persisted dispatch-run registry — one record per invocation of a pod's
-pipeline, whatever triggered it (ROADMAP Phase 14 R-3)
-**Syntax**: `docket runs <list|show> [args]`
+pipeline, whatever triggered it (ROADMAP Phase 14 R-3); cancel one in flight (ROADMAP Phase 16 W-2)
+**Syntax**: `docket runs <list|show|cancel> [args]`
 **Actions**:
 - `list [--project <project>] [--json]`: Show run records, newest first; `--project` filters to
   one pod
 - `show <run-id> [--json]`: Show one run record (source, project, state, task ids, error,
   timestamps)
-**Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`)
-**Return**: `0` on success, `1` if `show`'s run id is unknown or no id was given
+- `cancel <run-id>`: Kill every hop subprocess currently recorded as in-flight for that run — its
+  whole process group, not just the immediate child (see pod-dispatch.spec.md's "Cancellation")
+  — and mark the run terminally `cancelled`. A no-op (reported, not an error-free success) against
+  a run that's already terminal
+**Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`); a
+confirmation message for `cancel`
+**Return**: `0` on success; `1` if `show`'s run id is unknown or no id was given, or if `cancel`'s
+run id is unknown or already terminal
 
 #### docket mcp
 
@@ -699,6 +730,15 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.9.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-2 (executor) / W-8 (generalized gates): documented the new `docket pipeline
+  validate|plan|run` command (the docket-native pipeline format's first CLI surface — see
+  pipeline-format.spec.md/pod-dispatch.spec.md) and the new `docket runs cancel <id>` action
+  (kills an in-flight hop's process group; see pod-dispatch.spec.md's "Cancellation"). `docket
+  workflow` is unchanged and continues to serve the Lobster dialect until ROADMAP Phase 16 W-3
+  retires it in favor of `docket pipeline`.
 
 ### Version 1.8.0 (2026-07-30)
 
