@@ -43,6 +43,16 @@ SESSION_WARN_BYTES = int(os.environ.get("SESSION_WARN_BYTES", str(256 * 1024)))
 # SESSION_TRIM_KEEP_TURNS: recent message lines kept when trimming a transcript.
 SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "40")))
 
+# HOP_CARRYOVER_BYTES: R-7 safety cap on the prior-hop output threaded into a pod
+# dispatch hop's prompt (core/dispatch.py's `_hop_message`). This is a byte cap
+# using the same bytes/CONTEXT_BYTES_PER_TOKEN estimator as the rest of this
+# file — docket cannot trim a *live* prompt once it's on its way to the daemon,
+# but it composes that prompt itself, so it can bound what it puts in before
+# sending. The task description is never truncated; only prior hops' raw
+# output is. This is a stopgap safety net, not token-accurate budgeting — the
+# real context compiler is Phase 17 C-1.
+HOP_CARRYOVER_BYTES = int(os.environ.get("HOP_CARRYOVER_BYTES", str(32 * 1024)))
+
 # TEMPLATE_VERSION: workspace-prompt schema version. Bump when the generated
 # SOUL/AGENTS/TOOLS prose changes so `doctor` flags older agents for rebuild.
 TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))

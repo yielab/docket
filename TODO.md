@@ -286,9 +286,9 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - **Out of scope:** token-accurate budgeting, priority ordering, artifact rendering (all Phase 17
   C-1 — this card is the safety cap, not the compiler).
 - **Deliverables:** capped `_hop_message` + config knob + trace event; tests.
-- **Acceptance gate:** [ ] no hop message exceeds the configured cap (test-pinned) · [ ]
-  truncation is explicit in the prompt and the trace · [ ] suite green.
-- **Size:** S · **Status:** TODO
+- **Acceptance gate:** [x] no hop message exceeds the configured cap (test-pinned) · [x]
+  truncation is explicit in the prompt and the trace · [x] suite green.
+- **Size:** S · **Status:** DONE
 
 ---
 
@@ -331,7 +331,7 @@ R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually 
 - [ ] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
 - [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
 - [ ] R-6 — verify runs in the worktree; setter validated + audited.
-- [ ] R-7 — hop prompts capped with explicit truncation.
+- [x] R-7 — hop prompts capped with explicit truncation.
 - [ ] R-8 — specs/docs/guidance match everything above; drift guard green.
 - [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +
   `scripts/metrics.py --check`.
