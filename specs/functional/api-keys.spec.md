@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Complete
-**Last Updated**: 2026-06-09
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -38,8 +38,8 @@ This specification does NOT cover provider key *format* rules (see input-validat
 
 ### Propagation
 
-1. After `setup` or `add`, keys **MUST** be synced automatically to all agents.
-2. An unknown key name **MUST** fail with return code 4.
+1. After `setup`, `add`, or `rotate`, keys **MUST** be synced automatically to all agents.
+2. An unknown key name **MUST** fail with a clear error (exit 1).
 
 ## Interface Contracts
 
@@ -49,6 +49,7 @@ This specification does NOT cover provider key *format* rules (see input-validat
 docket keys                       # List (masked) — default
 docket keys setup                 # Interactive wizard
 docket keys add <KEY_NAME>        # Add or update one key
+docket keys rotate <KEY_NAME>     # Replace a key's value and re-sync it everywhere
 docket keys validate [KEY_NAME]   # Test keys
 docket keys remove <KEY_NAME>     # Remove a key
 docket keys export                # Print as env vars
@@ -57,7 +58,7 @@ docket keys export                # Print as env vars
 ### Return Codes
 
 - `0`: Success
-- `4`: Unknown key name
+- `1`: Any error (unknown key name — CLI-wide convention, see ../api/cli-interface.spec.md)
 
 ## Examples
 
@@ -90,6 +91,12 @@ $ docket keys list
 - The central store **MUST** be the single source of truth for provider keys.
 
 ## Changelog
+
+### Version 1.1.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): documented the shipped `docket keys rotate`
+  subcommand (previously implemented but unspecified); return codes corrected to the
+  real 0/1 convention (the spec'd code 4 never existed).
 
 ### Version 1.0.0 (2026-06-09)
 

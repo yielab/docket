@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Complete
-**Last Updated**: 2026-07-02
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -44,9 +44,9 @@ Positional arguments are command-specific; the following conventions apply acros
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
 | `codebase-path` | `add` | MUST be absolute or tilde-expanded; MUST exist and be readable |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
-| `action` | `scope`, `keys`, `team`, `workflow` | MUST be a verb from that command's documented action set |
+| `action` | `scope`, `keys`, `pod`, `workflow`, `gates` | MUST be a verb from that command's documented action set |
 
-Unrecognized or excess positional arguments MUST produce return code 4 (invalid arguments).
+Unrecognized or excess positional arguments MUST produce a clear error and exit 1.
 
 ## Options
 
@@ -55,9 +55,9 @@ accepted by every command; command-specific options are listed per command in th
 Registry. Conventions:
 
 - Boolean flags default to `false` and take no value (e.g. `--force`, `--debug`).
-- Value options take exactly one argument (e.g. `--model <tier>`, `--period <days>`).
+- Value options take exactly one argument (e.g. `--model <provider/model>`, `--days <N>`).
 - `--help`/`-h` MUST be honored before any other parsing and exit 0.
-- Unknown options MUST produce return code 4 (invalid arguments).
+- Unknown options MUST produce a clear error and exit non-zero (Typer's usage error).
 
 ## Global Command Structure
 
@@ -234,9 +234,10 @@ docket [global-options] <command> [command-options] [arguments]
 ### Pod Commands
 
 `docket team` (the old org-wide manual task queue) was **retired** in 0.2.0 (D-11) — it had no
-dispatcher and never executed anything. Delegation now belongs to each project's pod. See
-team-coordination.spec.md's "Retired" section for the mapping from the old `team` subcommands
-to their pod equivalents below.
+dispatcher and never executed anything. Delegation now belongs to each project's pod
+(pod-dispatch.spec.md). Running `docket team <anything>` prints a removed-command notice that
+maps each old subcommand to its pod equivalent below. (The former team-coordination.spec.md
+was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
 
 #### docket pod
 **Purpose**: Manage a project's pod (list/add/remove members; delegate, queue, and dispatch real work)
@@ -343,7 +344,7 @@ the project)
 ### Security and Gates
 
 #### docket gates
-**Purpose**: Manage enforced exec-approval gates (opt-in; off by default)
+**Purpose**: Manage enforced exec-approval gates (on by default for new installs; `docket install --no-gates` opts out)
 **Syntax**: `docket gates <action>`
 **Actions**:
 - `status`: Show current gates configuration
@@ -351,13 +352,14 @@ the project)
 - `disable`: Disable exec-approval gates
 - `isolate <on|off>`: Toggle Docker workspace isolation
 - `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
-  secret-access) that always route to approval regardless of allowlist status (FD-3); read-only,
-  makes no config changes
+  secret-access); read-only, makes no config changes. Enforcement is honest-but-uneven:
+  money-movement/secret-access always ask today (their bins were never allowlisted);
+  prod-deploy's `git`/`npm` overlap is documented policy only — see security-gates.spec.md
 **Output**: Gates status or update confirmation
 **Return**: 0 on success
 
 #### docket audit
-**Purpose**: Show recent operator-mutation events (keys, gates, profile, agents)
+**Purpose**: Show recent recorded operator events (gates, approvals, auth setup — see audit.spec.md for the exact recorded families and the coverage gap)
 **Syntax**: `docket audit [N]`
 **Arguments**:
 - `N` (optional): Number of recent entries to show (default: 20)
@@ -383,7 +385,7 @@ the project)
 - `export <project> [--since YYYY-MM-DD]`: Print raw JSONL to stdout
 - `ingest <project>`: Pull daemon session logs into the trace store
 **Output**: Human-readable event log or raw JSONL
-**Return**: 0 on success, 2 if session not found
+**Return**: 0 on success, 1 if session not found
 
 #### docket metrics
 **Purpose**: Compute success rate, latency, cost, and guardrail trip counts
@@ -404,33 +406,54 @@ the project)
 - `init`: Copy baseline policies (block-destructive, prompt-injection, secret-pii-redact)
 - `test <hook> <role> <text>`: Dry-run the evaluator (no traces emitted)
 **Output**: Policy listing, JSON, or evaluation result
-**Return**: 0 on success, 4 on invalid subcommand
+**Return**: 0 on success, 1 on invalid subcommand
 
 #### docket approve
 **Purpose**: Grant a pending HITL approval token
 **Syntax**: `docket approve <token>`
 **Arguments**:
-- `token` (required): The `apr-*` token from `approval_create` or Telegram notification
+- `token` (required): An `apr-*` token from docket's approval store (list pending with
+  `docket approve` and no arguments). Note: the store has no production producer yet — the
+  daemon's gate prompts do not mint these tokens (Phase 15 G-1/G-5; security-gates.spec.md)
 **Output**: Approval confirmation
-**Return**: 0 on success, 2 if token not found or already resolved
+**Return**: 0 on success, 1 if token not found or already resolved
 
 #### docket deny
 **Purpose**: Deny a pending HITL approval token
 **Syntax**: `docket deny <token>`
 **Arguments**:
-- `token` (required): The `apr-*` token from `approval_create` or Telegram notification
+- `token` (required): An `apr-*` token from docket's approval store (same provenance note
+  as `docket approve`)
 **Output**: Denial confirmation
-**Return**: 0 on success, 2 if token not found or already resolved
+**Return**: 0 on success, 1 if token not found or already resolved
+
+### Identity & Conversations
+
+#### docket persona
+**Purpose**: Manage an agent's docket-owned cosmetic persona (display name/emoji rendered into SOUL.md)
+**Syntax**: `docket persona <agent-id> <show|set "<label>"|clear>`
+**Actions**:
+- `show`: Print the current persona (if any)
+- `set "<Name emoji>"`: Set/replace the persona (survives `maintain rebuild`)
+- `clear`: Remove the persona (agent displays by role/id again)
+**Output**: Persona confirmation or display
+**Return**: 0 on success, 1 on error
+
+#### docket conversations
+**Purpose**: Inspect docket's durable conversation registry (pointers to channel threads; the daemon keeps no durable transcript)
+**Syntax**: `docket conversations <list|show <id>|resume <id>|set <id> [fields]>`
+**Actions**:
+- `list`: Table of registered conversations (agent, channel, peer, status, topic)
+- `show <id>`: Print one conversation's fields
+- `resume <id>`: Mark in-progress and point at the agent's durable HEARTBEAT.md/memory
+- `set <id> [fields]`: Upsert registry fields (topic, status, task ref, last message)
+**Output**: Registry table or confirmation
+**Return**: 0 on success, 1 on error
 
 ### Telegram Commands
 
-#### docket telegram
-**Purpose**: Alias for `docket wire` — bind a Telegram group to an agent
-**Syntax**: `docket telegram [agent-id]`
-**Arguments**:
-- `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Same as `docket wire`
-**Return**: Same as `docket wire`
+`docket telegram` is accepted as a silent argv alias for `docket wire` (it is not a separate
+command and does not appear in `docket --help`).
 
 #### docket wire
 **Purpose**: Bind a Telegram group to an agent (see telegram-integration.spec.md)
@@ -509,19 +532,17 @@ Default table uses column alignment:
 
 ## Return Code Convention
 
+docket uses a deliberately flat convention — the printed message, not the exit code,
+distinguishes error kinds:
+
 | Code | Meaning | Used By |
 |------|---------|---------|
 | 0 | Success | All commands |
-| 1 | General failure | All commands |
-| 2 | Not found | info, delete, maintain |
-| 3 | Already exists | add |
-| 4 | Invalid arguments | All commands |
-| 5 | Permission denied | add, delete, maintain |
-| 6 | Corruption detected | maintain, doctor |
-| 7 | Daemon error | All commands |
-| 8 | Network error | keys, workflow |
-| 9 | Timeout | All commands |
-| 127 | Command not found | doctor |
+| 1 | Any failure (not found, invalid arguments, permission, daemon error, …) | All commands |
+| 2 | SKIP (role not installed / live mode off — non-blocking for CI) | `eval` only |
+
+No other exit codes are produced. (Earlier revisions of this spec described codes 2–9 and
+127 per failure kind; those were never implemented — removed in v1.5.0.)
 
 ## Validation
 
@@ -545,8 +566,8 @@ the contract-level summary follows.
 - Tier names (`economy`, `standard`, `premium`) are **not accepted** — removed in 0.2.0 (D-2 exit); they hard-error like any other malformed input (see input-validation.spec.md)
 
 ### Numeric Validation
-- Reset level: 1-3
-- Cost period: 1-365
+- Budget values: non-negative USD (`profile --budget`)
+- History window: positive days (`cost --history --days N`)
 - Timeout values: 1-3600
 
 ## Interactive Features
@@ -611,6 +632,21 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.5.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): replaced the fictional per-kind return codes (2–9,
+  127) with the real flat 0/1 convention (+ `eval`'s documented SKIP=2) and fixed every
+  per-command return line that cited them; corrected `docket gates` to on-by-default and
+  aligned `gates classes` wording with security-gates.spec.md's honest enforcement scope;
+  scoped `docket audit`'s purpose to the actually-recorded families; corrected
+  `docket approve`/`deny` token provenance (docket's approval store — which has no production
+  producer until Phase 15 — not "from approval_create or Telegram"); removed the phantom
+  `docket telegram` command section (it is a silent argv alias of `wire`); added the missing
+  `docket persona` and `docket conversations` sections (shipped commands with zero spec
+  coverage); removed `team` from the live argument table and retargeted the retirement note
+  at ROADMAP D-11 / pod-dispatch.spec.md; fixed stale numeric-validation rows (reset level,
+  cost period) and the `--model <tier>` option example.
 
 ### Version 1.4.0 (2026-07-02)
 - FD-6 spec truth pass for Phase 13's FD-1/FD-2/FD-3 cards: added the public `--verify "<cmd>"`

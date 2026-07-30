@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.0.0
+**Version**: 1.3.0
 **Status**: Complete
-**Last Updated**: 2026-07-02
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -20,14 +20,14 @@ This specification covers:
 This specification does NOT cover:
 - Agent communication (see telegram-integration.spec.md)
 - Agent workflows (see workflow-integration.spec.md)
-- Team coordination (see team-coordination.spec.md)
+- Pod delegation and dispatch (see pod-dispatch.spec.md)
 
 ## Requirements
 
 ### Agent Creation (docket add)
 
 1. **MUST** create a unique agent identifier
-2. **MUST** validate codebase path exists (for repo agents)
+2. **MUST** validate the codebase path exists
 3. **MUST** create isolated workspace directory
 4. **MUST** generate session key for project isolation
 5. **MUST** initialize configuration files (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md)
@@ -43,58 +43,39 @@ This specification does NOT cover:
 
 1. **MUST** accept a JSON spec; **SHOULD** accept YAML when a YAML parser is available
 2. **MUST** support a list of agents, a `{agents: [...]}` mapping, or a single agent mapping
-3. **MUST** apply the same defaults as interactive creation (id slugified from name, `task`
-   type, default model, stack auto-detection for repo agents) and require only a `name`
+3. **MUST** apply the same defaults as interactive creation (id slugified from name,
+   default model, stack auto-detection) and require only a `name`
 4. **MUST** be idempotent: an agent whose workspace already exists is skipped, not recreated
-5. **MUST** validate the `type` field (`repo`|`task`) and skip invalid records without aborting
+5. **MUST** skip invalid records without aborting the rest of the spec file
 6. **SHOULD** restart the gateway at most once per invocation, after all agents are provisioned
 
 ### Agent States
 
-An agent **MUST** be in exactly one of these states:
-
-```
-┌─────────┐
-│ Created │──────┐
-└────┬────┘      │
-     │           ▼
-     ▼      ┌─────────┐
-┌────────┐  │ Deleted │
-│ Active │  └─────────┘
-└────┬───┘       ▲
-     │           │
-     ▼           │
-┌─────────┐      │
-│ Stopped │──────┘
-└─────────┘
-```
+An agent is either **registered** (workspace + metadata + openclaw.json entry all present)
+or **deleted**. There is no separate stopped state; the docket-local `paused` flag
+(cost-tracking.spec.md) marks an agent that dispatch must refuse, without unregistering it.
 
 ### Agent Listing (docket list)
 
 Output **MUST** include:
 - Agent ID (slugified, unique)
-- Agent type (repo/task/specialist)
+- Kind/scope (project agent vs org specialist; pod role where applicable)
 - Codebase path (if applicable)
 - Current model and source (policy or pinned)
 - Telegram binding status
 - Session key / project scope
 
-Format:
-```
-ID                   Type   Model                        Telegram      Session
-myproject-lead       repo   claude-sonnet-4-6 (policy)  ✓ Wired       default
-myproject-impl       repo   claude-sonnet-4-6 (policy)  ✓ Wired       default
-manager              spec   claude-haiku-4-5 (policy)   ✓ Wired       -
-```
+The exact table rendering is pinned by the golden suite; the machine-readable shape by
+../data/cli-json-shapes.spec.md.
 
 ### Agent Information (docket info)
 
 **MUST** display:
 1. Agent identifier
-2. Agent type
+2. Kind/scope (and pod role where applicable)
 3. Workspace path
-4. Codebase path (if repo agent)
-5. Detected stack (if repo agent)
+4. Codebase path (if set)
+5. Detected stack (if set)
 6. Current model and profile
 7. Session key
 8. Project key
@@ -106,12 +87,13 @@ manager              spec   claude-haiku-4-5 (policy)   ✓ Wired       -
 
 ### Agent Deletion (docket delete)
 
-1. **MUST** prompt for confirmation unless --force flag
+1. **MUST** prompt for confirmation (interactive; there is no `--force` bypass flag)
 2. **MUST** remove workspace directory completely
 3. **MUST** unregister from openclaw.json
-4. **MUST** remove any Telegram bindings
+4. **MUST** remove any Telegram bindings and conversation-registry entries
 5. **SHOULD** display deletion summary
-6. **MUST NOT** delete if agent has active tasks (unless --force)
+6. Deleting a pod project **MUST** tear down every pod member and free the pod's
+   allocated resources (port range, scratch dir)
 
 ### Agent Maintenance (docket maintain)
 
@@ -157,20 +139,20 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 ### CLI Command Signatures
 
 ```bash
-# Create agent (interactive or with args)
-docket add <project> [codebase-path] [--type repo|task] [--pod full | --with reviewer,tester] [--description "text"]
+# Create a project pod (interactive or with args)
+docket add <project> [codebase-path] [--pod full | --with reviewer,tester] [--model <id>] [--count N]
 
 # Create one or more agents declaratively from a spec file (JSON, or YAML when PyYAML is present)
 docket add --from <agents.yaml|agents.json>
 
 # List agents
-docket list [--format table|json|csv] [--filter active|stopped|all]
+docket list [--json]
 
 # Show agent info
-docket info <agent-id> [--format detailed|summary|json]
+docket info <agent-id> [--json]
 
-# Delete agent
-docket delete <agent-id> [--force] [--keep-logs]
+# Delete agent (or a whole pod, by project name)
+docket delete <agent-id>
 
 # Maintain agent (replaces reset/repair/cleanup)
 docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
@@ -179,22 +161,16 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
 ### Return Codes
 
 - `0`: Success
-- `1`: General error
-- `2`: Agent not found
-- `3`: Agent already exists
-- `4`: Invalid arguments
-- `5`: Permission denied
-- `6`: Workspace corruption
-- `7`: OpenClaw daemon error
+- `1`: Any error (unknown agent, invalid arguments, permission problems, daemon failures —
+  docket's CLI-wide convention; see ../api/cli-interface.spec.md)
 
 ## Examples
 
-### Creating a Repository Agent
+### Creating a Project Agent
 
 ```bash
 $ docket add mywebsite ~/projects/website
 [INFO] Creating agent: mywebsite
-[INFO] Type: repo (detected)
 [INFO] Stack: node (detected: package.json)
 [INFO] Workspace: ~/.openclaw/workspaces/projects/mywebsite
 [INFO] Session key: agent:mywebsite:default
@@ -255,6 +231,16 @@ After successful creation:
 - Maintain (check): < 5 seconds
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+- Truth pass (Platformization baseline): removed every remnant of the deleted repo/task
+  dual-type model (`--type` flag, `type` field validation, per-type template MUSTs — the
+  `type` field no longer exists); fixed the header version (was 1.0.0 while the changelog
+  said 1.2.0); replaced the fictional return codes 2–7 with the real 0/1 convention;
+  corrected `list`/`info`/`delete` signatures to the shipped flags (`--json` only; no
+  `--format/--filter/--force/--keep-logs`); replaced the Created/Active/Stopped state
+  diagram with the real registered/deleted + docket-local `paused` model; retargeted the
+  team-coordination cross-reference at pod-dispatch.spec.md.
 
 ### Version 1.2.0 (2026-06-11)
 - Added template-version stamping requirement (drift surfaced in `docket doctor`)

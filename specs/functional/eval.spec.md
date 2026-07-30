@@ -1,8 +1,8 @@
 # Eval Harness Specification
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: Complete
-**Last Updated**: 2026-06-13
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -39,7 +39,9 @@ model-profiles.spec.md) or the unit/integration test suites.
    the list of available roles when no such eval exists.
 5. `--tier <economy|standard|premium>` **MUST** set the model-class label recorded with
    results (the internal rank classes; default `standard`). It labels which class the
-   eval ran under; it does not change any agent's model.
+   eval ran under; it does not change any agent's model. This is the one deliberately
+   surviving user-facing use of the tier words — it is a results label, not a model or
+   role value, and is explicitly carved out by model-profiles.spec.md's tier-removal rule.
 6. Evals **MUST** be non-blocking for CI: a SKIP outcome (role not installed, live mode
    off) **MUST NOT** fail the run.
 
@@ -121,6 +123,12 @@ $ docket eval --recommend
 - Hints reference roles and models, never instruct per-agent tier changes.
 
 ## Changelog
+
+### Version 1.0.1 (2026-07-30)
+
+- Truth pass (Platformization baseline): cross-referenced model-profiles.spec.md's
+  tier-removal rule — `--tier` is a results label, explicitly carved out, resolving the
+  apparent contradiction between the two specs.
 
 ### Version 1.0.0 (2026-06-13)
 

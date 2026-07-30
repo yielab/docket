@@ -1,8 +1,8 @@
 # Security Gates Specification
 
-**Version**: 0.3.0
-**Status**: Implemented (on by default for new installs)
-**Last Updated**: 2026-07-02
+**Version**: 0.4.0
+**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below)
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -35,13 +35,24 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 >   (`{"action": "grant"|"deny"}`, bearer-token authenticated) let CI jobs, cron, or any
 >   automation vote on a pending approval without a human at a keyboard.
 >
-> Both channels operate identically to the Telegram `/approve` flow and existed before this
-> flip (shipped earlier in Phase 13); this version of the spec is the first to describe them as
-> real, supported approval surfaces rather than treating Telegram as the only intended one.
-> Pending approvals still expire to **denied** after `APPROVAL_TIMEOUT` regardless of channel
-> (see `approval_sweep_expired`), so an unattended agent with no approver at all fails closed,
-> not open — the scenario the original deferral worried about is handled by the timeout, not by
-> withholding the default.
+> Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
+>
+> **The approval seam (honesty note, 2026-07-30).** There are two approval systems in play and
+> they are **not yet bridged**: (a) the **daemon's** exec-approval prompt — the thing that
+> actually fires when a gated binary is invoked — which is delivered to the agent's chat
+> session and answered with the daemon's own `/approve <id>` mechanism; and (b) **docket's**
+> approval store (`apr-*` tokens under `$APPROVALS_DIR`), which the CLI/HTTP channels above
+> read and write. Today **no production code creates records in docket's store** (`approval_create`
+> has no production caller): the daemon's gate prompt does not mint an `apr-*` token, so
+> `docket approve` cannot answer a live daemon gate. Bridging the two is tracked as ROADMAP
+> Phase 15 G-5 (daemon-gated spike); docket's store gains its first production producer in
+> Phase 15 G-1 (approval-gated dispatch).
+>
+> **Why on-by-default is still safe:** the fail-closed property for an unattended agent is the
+> daemon's own `askFallback: deny` — a prompt nobody answers is denied by the daemon, full
+> stop. docket's `approval_sweep_expired` additionally expires stale store records after
+> `APPROVAL_TIMEOUT`, but that sweep runs only while `docket serve` is up and marks records
+> `expired`; it is bookkeeping on docket's store, not the enforcement mechanism.
 
 ## Scope
 
@@ -65,13 +76,19 @@ are owned here, not there.
    new installs). Note: `git`/`npm` ARE on the curated allowlist (they're used constantly for
    benign work) and so do NOT prompt by default even for a high-risk invocation like
    `git push origin main` — see "High-risk action classes" below for that specific, narrower gap.
-2. Approval requests **MUST** be answerable via at least one headless channel (CLI
-   `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`) in addition to Telegram.
-3. Pending approvals **MUST** time out after a bounded interval (`APPROVAL_TIMEOUT`) and default
-   to denied (`approval_sweep_expired`).
-4. Every approval grant and denial **MUST** be recorded in the audit log
-   (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`cli`, `http`, `telegram`, ...), regardless of which channel it came through.
+2. Approvals in **docket's approval store MUST** be answerable via at least one headless
+   channel (CLI `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`). The
+   daemon's own gate prompt is answered in the agent's session via the daemon's `/approve`;
+   it is **not** answerable through docket's channels until the Phase 15 G-5 bridge lands
+   (see the approval-seam note above).
+3. A gate prompt with no approver **MUST** fail closed. This is enforced by the daemon's
+   `askFallback: deny`. Additionally, stale records in docket's store expire (state
+   `expired`) after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while
+   `docket serve` is up and is bookkeeping, not enforcement.
+4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
+   log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
+   through (`cli`, `http`). The `telegram` tag is reserved for the G-5 bridge: today a
+   daemon-side `/approve` writes **no** docket audit entry.
 
 ### Workspace isolation (implemented, opt-in)
 
@@ -139,20 +156,31 @@ docket install --no-gates      # MUST skip gate application (explicit opt-out)
 docket doctor                  # MUST report whether security gates are configured
 ```
 
-### Approval channels (implemented)
+### Approval channels
 
 ```bash
-docket approve                 # List pending approvals (any channel)
+# docket's approval store (no production producer yet — first producer: Phase 15 G-1)
+docket approve                 # List pending approvals in docket's store
 docket approve <token>         # Grant a pending approval — headless, no chat session needed
 docket deny <token>            # Deny a pending approval — headless, no chat session needed
 GET  /approvals                # docket serve: list pending approvals (bearer auth)
 POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (bearer auth)
-/approve <id> allow-once|deny  # Telegram, when the agent has a chat binding
+
+# the daemon's own gate prompt (what actually fires on a gated binary today)
+/approve <id> allow-once|deny  # answered in the agent's chat session, daemon-side
 ```
 
 ## Examples
 
-### Approval flow (implemented, any channel)
+### Gate flow today (daemon-enforced)
+
+An agent invoking a non-allowlisted binary (e.g. `docker stop mywebsite-db`) is stopped by
+the daemon's exec-approval gate; the prompt is delivered to the agent's session and answered
+with the daemon's `/approve <id>` (or denied by `askFallback: deny` when nobody answers).
+`git push origin main` does *not* trigger this prompt by default — see "High-risk action
+classes" above for why.
+
+### Approval flow — target state (daemon-gated, NOT implemented; ROADMAP Phase 15 G-5)
 
 ```text
 [GATE] Agent 'mywebsite' requested: docker stop mywebsite-db
@@ -161,9 +189,9 @@ POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (beare
        Times out in APPROVAL_TIMEOUT → denied.
 ```
 
-Note: `docker` is not on the curated allowlist, so this example is gated today by the base
-exec-approval policy alone. `git push origin main` would *not* trigger this prompt by default —
-see "High-risk action classes" above for why.
+This worked example requires the G-5 bridge (daemon gate prompt → docket `apr-*` token).
+No docket code emits a `[GATE]` line today; the example is retained as the target contract
+only. **Do not cite it as shipped behavior.**
 
 ### High-risk action classes (implemented)
 
@@ -196,15 +224,20 @@ secret-access — Secret/credential writes and key generation
 
 ### Post-conditions
 
-- After a default install (no `--no-gates`), dangerous operations **MUST** be gated.
-- Approvals and denials **MUST** appear in the audit log, on every channel.
-- A pending approval past `APPROVAL_TIMEOUT` **MUST** resolve to denied even with no approver
-  reachable on any channel.
+- After a default install (no `--no-gates`), dangerous operations **MUST** be gated
+  (daemon-enforced).
+- Grants and denials through docket's approval store **MUST** appear in the audit log
+  (`cli`/`http` channels). Daemon-side `/approve` responses write no docket audit entry
+  until the G-5 bridge lands.
+- A gate prompt with no approver **MUST** resolve to denied (daemon `askFallback: deny`).
+  Stale docket-store records additionally expire while `docket serve` runs.
 
 ### Invariants
 
-- A denied or timed-out request **MUST NOT** execute.
-- Audit log entries **MUST NOT** be silently editable by the agent.
+- A denied or timed-out request **MUST NOT** execute (enforced by the daemon).
+- Audit log entries **SHOULD NOT** be silently editable by the agent. **Known gap:** the log
+  currently has no tamper evidence (no hash chain/sequence numbers) and `DOCKET_NO_AUDIT=1`
+  disables it — hardening is tracked as ROADMAP Phase 15 G-4 (see audit.spec.md).
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status in
   `resolve_command_action` for classes with no allowlist overlap (money-movement,
   secret-access) — those are fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST
@@ -212,6 +245,21 @@ secret-access — Secret/credential writes and key generation
   documented policy only.
 
 ## Changelog
+
+### Version 0.4.0 (2026-07-30)
+
+- **Approval-seam truth pass (Platformization baseline).** Documented that the daemon's
+  exec-approval prompt and docket's `apr-*` approval store are two disconnected systems
+  today: no production code creates docket-store records (`approval_create` has no
+  production caller), so the CLI/HTTP channels cannot answer a live daemon gate. The
+  `[GATE]` worked example is re-labeled **target state (Phase 15 G-5, daemon-gated)** —
+  it was previously presented as implemented, which was wrong. Fail-closed is correctly
+  attributed to the daemon's `askFallback: deny` (docket's expiry sweep is bookkeeping that
+  runs only under `docket serve` and resolves to `expired`). Audit parity is scoped to the
+  channels that reach docket's store (`cli`/`http`); the `telegram` tag is reserved for the
+  G-5 bridge. The tamper-evidence invariant is downgraded to SHOULD with the known gap named
+  (Phase 15 G-4). Gates themselves (exec-approval on by default, high-risk classes,
+  isolation) are unchanged and remain accurate.
 
 ### Version 0.3.0 (2026-07-02)
 

@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Complete
-**Last Updated**: 2026-07-02
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -100,6 +100,10 @@ This specification does NOT cover cost accumulation or budget caps (see cost-tra
    (b) reconstruct per-role overrides when migrating a legacy `profiles:` registry key (see
    Legacy registry migration below). This table is **not** surfaced by any command and is not
    a live runtime fallback chain.
+3. **Scope note:** the eval harness's `docket eval --tier <economy|standard|premium>` flag
+   (eval.spec.md) is a live-eval matrix selector for spot-checks, not a model value or role
+   key — it is the one deliberately surviving user-facing use of the tier words and does not
+   contradict rule 1 (which governs model/role value positions only).
 
 ### Legacy registry migration
 
@@ -142,18 +146,27 @@ docket profile <agent-id> --budget <USD>   # Spend cap (see cost-tracking)
 | reviewer | cheap | claude-haiku-4-5 | triage and review, low reasoning density |
 | tester | cheap | claude-haiku-4-5 | run tests and report |
 | knowledge | cheap | claude-haiku-4-5 | retrieval and summarization |
-| task | cheap | claude-haiku-4-5 | project default for task agents |
 | programmer | strong | claude-sonnet-4-6 | code generation |
 | security | strong | claude-sonnet-4-6 | audit depth |
-| repo | strong | claude-sonnet-4-6 | project default for repo agents |
+| repo | strong | claude-sonnet-4-6 | project default for project agents |
+
+The role set above is `ALL_ROLES` (`core/models_policy.py`) — there is **no** `task` role
+(it left with the repo/task dual-type model). `portfolio-manager` is additionally accepted by
+`docket models set` (it is in `ROLE_CLASS`, cheap) but is not displayed in the `docket models`
+table unless set — a known display quirk.
 
 ### Pricing Table (USD per MTok, Anthropic defaults)
 
-| Anchor | Model | Input | Output |
-| ------ | ----- | ----- | ------ |
-| economy | claude-haiku-4-5 | 0.80 | 4.00 |
-| standard | claude-sonnet-4-6 | 3.00 | 15.00 |
-| premium | claude-opus-4-6 | 15.00 | 75.00 |
+| Class | Model | Input | Output |
+| ----- | ----- | ----- | ------ |
+| cheap | claude-haiku-4-5 | 0.80 | 4.00 |
+| strong | claude-sonnet-4-6 | 3.00 | 15.00 |
+| (premium anchor) | claude-opus-4-6 | 15.00 | 75.00 |
+
+Pricing is a manual snapshot (`MODEL_PRICING`, dated by `MODEL_PRICING_AS_OF`) used for
+display and comparative estimates only — recorded spend comes from the daemon
+(cost-tracking.spec.md). Known gap: the table has no OpenRouter/local rows, so applying the
+`openrouter`/`openrouter-free` presets yields `n/a` pricing warnings (Phase 18 L-2).
 
 ### Registry file shape (current)
 
@@ -228,6 +241,16 @@ $ docket profile mywebsite default
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.2.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): removed the phantom `task` role from the built-in
+  policy table (`ALL_ROLES` has no such role — this row was the source of the broken
+  `docket models set task` guidance in `cli/_provider.py`); noted the settable-but-hidden
+  `portfolio-manager` role; re-keyed the pricing table by class instead of the removed tier
+  vocabulary and named the missing-OpenRouter/local-rows gap (Phase 18 L-2); scoped the
+  tier-removal rule against `docket eval --tier` (a live-eval matrix selector, not a model
+  value) so the two specs no longer contradict each other.
 
 ### Version 2.1.0 (2026-07-02)
 

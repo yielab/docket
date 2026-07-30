@@ -12,7 +12,7 @@ through a pod's roles hop by hop, what blocks advancement at each hop, and what 
 observe (task status, per-hop record, trace events) after a run. The pipeline itself lives in
 `src/docket/core/dispatch.py`; this document is its behavioral contract, filling the gap Phase
 12's audit (CH-10) found — no spec previously owned this state machine directly (the closest
-prior document, `team-coordination.spec.md`, covers the retired manager queue only).
+prior document was the retired manager queue's spec, removed 2026-07-30; see ROADMAP D-11).
 
 ## Scope
 
@@ -34,7 +34,8 @@ This specification does NOT cover:
   delegate/queue/add/set-verify`) — see `cli-interface.spec.md`
 - Budget-cap accounting and pause behavior in general (see `cost-tracking.spec.md`) — this
   spec covers only the pre-hop budget check that blocks a dispatch run
-- The retired org-wide `docket team` queue (see `team-coordination.spec.md`'s "Retired" section)
+- The retired org-wide `docket team` queue (removed-command notice only; durable record in
+  ROADMAP decision D-11 — its spec was removed 2026-07-30)
 
 ## Requirements
 

@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Complete
-**Last Updated**: 2026-07-02
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -52,12 +52,12 @@ this table fails type-checking or the test suite.
 
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
+| `schemaVersion` | number | integer ≥ 1 | local | Yes (defaulted) | `add`, `install` | Meta schema version stamp; lets future migrations detect old records |
 | `kind` | enum | `project` or `specialist` | local | Yes | `add`, `install` | Whether this is a project or specialist agent |
 | `scope` | enum | `org` or `project` | local | No (backfilled) | `add`, `install`, `doctor` | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent on legacy records → derived from `kind`+`role` on read |
-| `role` | string | — | local | specialist only | `install` | Specialist role name (e.g. `programmer`) |
-| `type` | enum | `repo` or `task` | local | Yes | `add` | Agent sub-type: codebase-bound or free-roaming |
+| `role` | string | — | local | specialists + pod members | `install`, `add`, `pod add` | Role name: org-specialist role (e.g. `security`) or pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
-| `codebase` | string | absolute path | local | repo only | `add` | Absolute path to the project; empty for `task` agents |
+| `codebase` | string | absolute path | local | project agents | `add` | Absolute path to the project (specialists have none) |
 | `stack` | string | — | local | No | `add` | Comma-separated detected stack (e.g. `Docker,git`) |
 | `model` | string | `provider/model-id` | **synced** | Yes | `add`, `profile` | Provider-qualified model id mirrored to `openclaw.json` |
 | `modelSource` | enum | `policy` or `pinned` | local | Yes | `add`, `profile` | Whether the model follows the role policy or is pinned |
@@ -66,13 +66,14 @@ this table fails type-checking or the test suite.
 | `sessionKey` | string | `agent:<id>:<project>` | **synced** | Yes | `add`, `scope` | Isolation key; mirrored to `openclaw.json` agent metadata |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
-| `paused` | bool | — | local | No | `doctor`, `profile` | Whether the agent is paused (e.g. budget exceeded) |
-| `pausedReason` | string | — | local | No | `doctor`, `profile` | Human-readable pause reason |
+| `paused` | bool | — | local | No | `profile` (clear only today) | Whether the agent is paused. **Known gap:** nothing sets this to `true` yet — the auto-pause writer is ROADMAP Phase 14 R-5; today `profile --budget` only clears it |
+| `pausedReason` | string | — | local | No | `profile` (clear only today) | Human-readable pause reason (same R-5 gap as `paused`) |
 | `portRangeStart` | number | integer ≥ 0 | local | No (implementer only) | `add`, `pod add` | First port of the pod's reserved range (CD-1). Absent on non-implementers. When set, injected into the Implementer's real dispatch subprocess environment as `DOCKET_PORT_BASE` (FD-0) — not only documented as TOOLS.md prose |
 | `portRangeCount` | number | integer > 0 | local | No (implementer only) | `add`, `pod add` | Number of ports in the pod's reserved range (CD-1). Injected as `DOCKET_PORT_COUNT` alongside `portRangeStart` (FD-0) |
 | `scratchDir` | string | absolute path | local | No (implementer only) | `add`, `pod add` | Pod-isolated scratch data directory path (CD-1). Absent on non-implementers. Injected as `DOCKET_SCRATCH_DIR` alongside the port-range vars (FD-0) |
 | `verifyCmd` | string | shell command | local | No (implementer only) | `pod add --verify`, `pod set-verify`, `meta_set` | Shell command run mechanically after each Implementer hop (CD-2). Non-zero exit blocks done and emits a `verification_failed` trace event. Absent/empty = skip (logged). Settable via the public `docket pod <project> add --verify "<cmd>"` flag or `docket pod <project> set-verify <member-id> "<cmd>"` for an existing member (FD-1) — `meta_set` remains the internal fallback |
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
+| `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
 
 ## Sync contract
 
@@ -127,7 +128,7 @@ calls `sync_session_key()` to mirror the value into `openclaw.json`.
 
 ## Examples
 
-A repo agent created by `docket add myshop ~/Sites/myshop`:
+A project agent created by `docket add myshop ~/Sites/myshop`:
 
 ```json
 {
@@ -169,6 +170,15 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```
 
 ## Changelog
+
+### Version 2.3.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): removed the `type` (`repo`|`task`) row — the field
+  was deleted from `AgentMeta` when the dual-type model was retired ("every project agent is
+  a repo agent"); added the missing `schemaVersion` and `persona` rows (both shipped fields
+  absent from the closed set); corrected `role` (pod members carry it too, not only
+  specialists) and `codebase` (no more task agents); flagged the `paused`/`pausedReason`
+  writer gap (auto-pause is Phase 14 R-5 — today only a clearing write exists).
 
 ### Version 2.2.0 (2026-07-02)
 

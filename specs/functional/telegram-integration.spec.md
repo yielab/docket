@@ -1,8 +1,8 @@
 # Telegram Integration Specification
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: Complete
-**Last Updated**: 2026-06-09
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -66,8 +66,8 @@ docket unwire [agent-id]
 ### Return Codes
 
 - `0`: Success (bound / unbound / nothing to do)
-- `2`: Agent not found
-- `7`: OpenClaw daemon error (gateway restart failed)
+- `1`: Any error (unknown agent, gateway restart failure — CLI-wide convention,
+  see ../api/cli-interface.spec.md)
 
 ## Examples
 
@@ -110,6 +110,11 @@ $ docket unwire mywebsite
 - Binding changes **MUST** be followed by a gateway restart so daemon and config agree.
 
 ## Changelog
+
+### Version 1.0.1 (2026-07-30)
+
+- Truth pass (Platformization baseline): return codes corrected to the real 0/1
+  convention (the spec'd codes 2/7 never existed).
 
 ### Version 1.0.0 (2026-06-09)
 

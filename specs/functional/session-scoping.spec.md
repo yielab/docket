@@ -1,8 +1,8 @@
 # Session Scoping Specification
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Status**: Complete
-**Last Updated**: 2026-06-09
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -56,8 +56,8 @@ docket scope <agent-id> reset          # Return to the default context
 ### Return Codes
 
 - `0`: Success
-- `2`: Agent not found
-- `4`: Invalid action or project key
+- `1`: Any error (unknown agent, invalid action or project key — CLI-wide convention,
+  see ../api/cli-interface.spec.md)
 
 ## Examples
 
@@ -92,6 +92,11 @@ $ docket scope mywebsite reset
 - A scope change **MUST** be followed by a gateway restart.
 
 ## Changelog
+
+### Version 1.0.1 (2026-07-30)
+
+- Truth pass (Platformization baseline): return codes corrected to the real 0/1
+  convention (the spec'd codes 2/4 never existed).
 
 ### Version 1.0.0 (2026-06-09)
 

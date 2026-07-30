@@ -1,69 +1,85 @@
 # Workspace Structure Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Complete
-**Last Updated**: 2026-06-09
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
 This specification defines the on-disk layout of an agent workspace: the files docket creates,
-their roles, and the permission and synchronization rules that keep a workspace valid.
+their roles, and the permission rules that keep a workspace valid.
 
 ## Scope
 
 This specification covers:
 
-- The directory and files that make up a project-agent workspace
-- The special manager-agent layout
-- Permission and metadata-sync invariants
+- The directory and files that make up a project-agent (and pod-member) workspace
+- The org-specialist layout and its known provisioning gap
+- Permission invariants and scaffolding quarantine
 
-This specification does NOT cover the `.docket-meta.json` field schema in detail
-(see ../data/docket-meta.spec.md).
+This specification does NOT cover the `.docket-meta.json` field schema or the
+meta↔`openclaw.json` synchronization contract (both owned by ../data/docket-meta.spec.md),
+nor the pod task queue's semantics (see pod-dispatch.spec.md).
 
 ## Requirements
 
 ### Project-agent workspace
 
-1. Each agent **MUST** have a workspace at
+1. Each project agent **MUST** have a workspace at
    `~/.openclaw/workspaces/projects/<agent-id>/` containing:
-   - `SOUL.md` — agent identity, scope, and session key
+   - `SOUL.md` — agent identity, scope, session key, and (optional) docket-owned persona block
    - `AGENTS.md` — session protocol and delegation rules
-   - `TOOLS.md` — project-specific commands
-   - `HEARTBEAT.md` — active tasks/decisions for proactive monitoring
+   - `TOOLS.md` — project-specific commands (for pod implementers: allocated ports/scratch
+     dir and the verify command, when set)
+   - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;
+     resumed after a context reset)
+   - `WORKFLOW_AUTO.md` — the runtime-forced startup file carrying the versioned
+     resume/durability contract (`docket-contract` marker; regenerated, never hand-edited)
+   - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
-   - `memory/` — daily logs named `YYYY-MM-DD.md`
-2. A `workflows/` directory **MAY** exist for Lobster pipelines.
-3. Repo agents and task agents **MUST** use different templates: repo agents have a codebase
-   path and auto-detected stack; task agents have a work directory and no fixed codebase.
+   - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning)
+2. A `workflows/` directory **MAY** exist (Lobster pipelines — surface slated for
+   retirement per ROADMAP decision D-16).
+3. Every project agent is provisioned from one template family; the former repo/task
+   dual-type model was removed (the `type` field no longer exists — every project agent has
+   a codebase path with auto-detected stack).
+4. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
+   workspace under `projects/`; the pod **Lead's** workspace additionally holds
+   `TASK_LIST.json`, the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md).
+5. OpenClaw self-authoring scaffolding (`IDENTITY.md`, `BOOTSTRAP.md`) **MUST NOT** remain
+   live in a managed workspace: provisioning and `docket doctor` quarantine it to
+   `.docket-archive/` (identity is docket-owned — role + optional persona from metadata).
+
+### Org specialists
+
+1. Org specialists (security, knowledge, manager) live at
+   `~/.openclaw/workspaces/<role>/` with a `.docket-meta.json` (`kind: specialist`).
+2. **Known gap (tracked as ROADMAP Phase 17 C-4):** specialist provisioning currently
+   writes only the metadata — not the SOUL/AGENTS/HEARTBEAT/WORKFLOW_AUTO/MEMORY set — and
+   `docket doctor`'s contract healer covers project workspaces only. Until C-4 lands,
+   requirement 1 of the project-agent section **MUST NOT** be assumed for specialists.
+3. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json`) is
+   retired; if present from a pre-Phase-10 install it is left on disk untouched and is read
+   by nothing.
 
 ### Permissions
 
 1. Workspace directories **MUST** be `700`.
 2. Workspace files **MUST** be `600`.
 
-### Manager agent
-
-1. The manager workspace at `~/.openclaw/workspaces/manager/` **MUST** contain
-   `TASK_LIST.json` (the shared task queue).
-2. The manager **MUST** operate in delegation mode and **MUST NOT** be able to edit code.
-
-### Synchronization
-
-1. `.docket-meta.json` and `openclaw.json` **MUST** stay synchronized for each agent.
-
 ## Interface Contracts
 
 Workspaces are created and repaired through commands, not edited by hand:
 
 ```bash
-docket add <agent-id> [codebase-path]     # Provision a workspace
+docket add <agent-id> [codebase-path]     # Provision a workspace (pods: docket add <project>)
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 ```
 
 ## Examples
 
-### A provisioned repo-agent workspace
+### A provisioned project-agent workspace
 
 ```text
 ~/.openclaw/workspaces/projects/mywebsite/
@@ -71,9 +87,11 @@ docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 ├── AGENTS.md
 ├── TOOLS.md
 ├── HEARTBEAT.md
+├── WORKFLOW_AUTO.md
+├── MEMORY.md
 ├── .docket-meta.json
 ├── memory/
-│   └── 2026-06-09.md
+│   └── 2026-07-30.md
 └── workflows/
 ```
 
@@ -85,15 +103,28 @@ docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 
 ### Post-conditions
 
-- After `docket add`, all required core files **MUST** exist with `700`/`600` permissions.
-- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata.
+- After `docket add`, all required core files **MUST** exist with `700`/`600` permissions and
+  a current-version contract marker in `WORKFLOW_AUTO.md`.
+- After `docket maintain rebuild`, core files **MUST** be regenerated from metadata (persona
+  reapplied from `.docket-meta.json`).
 
 ### Invariants
 
 - Directory permissions **MUST** be `700` and file permissions `600`.
-- The manager agent **MUST** never hold code-edit tools.
+- No live `IDENTITY.md`/`BOOTSTRAP.md` in a managed workspace (quarantined to
+  `.docket-archive/`).
 
 ## Changelog
+
+### Version 1.1.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): file set updated to the real contract
+  (`WORKFLOW_AUTO.md` + `MEMORY.md` added — both required and doctor-healed). Removed the
+  repo/task dual-template MUST (the `type` field was deleted; one template family). Replaced
+  the retired manager-queue section with the pod model (per-Lead `TASK_LIST.json`; legacy
+  manager queue left untouched, read by nothing) and an org-specialists section that names
+  the real provisioning gap (Phase 17 C-4). Sync contract ownership moved wholly to
+  docket-meta.spec.md. Added the scaffolding-quarantine invariant (docket-owned identity).
 
 ### Version 1.0.0 (2026-06-09)
 

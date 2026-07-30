@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.0.0
+**Version**: 1.2.0
 **Status**: Active
-**Last Updated**: 2026-06-26
+**Last Updated**: 2026-07-30
 
 ## Overview
 
@@ -28,8 +28,8 @@ acceptance criteria and tests.
 | POD-001 | Provision a Project Pod | Pod Lifecycle |
 | POD-002 | Run the Pod Dispatch Pipeline | Pod Lifecycle |
 | POD-003 | Grow and Shrink a Pod | Pod Lifecycle |
-| TEAM-001 | Initialize Org Manager | Team Coordination |
-| TEAM-002 | Delegate Tasks | Team Coordination |
+| TEAM-001 | (retired, see D-11) | Team Coordination (retired) |
+| TEAM-002 | (retired, see D-11) | Team Coordination (retired) |
 | WF-001 | Create Lobster Pipeline | Workflow Automation |
 | WF-002 | Execute Workflow | Workflow Automation |
 | SEC-001 | Project Isolation | Security and Isolation |
@@ -64,7 +64,7 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 - [ ] Agent is created with unique ID in under 2 seconds
 - [ ] Workspace directory is created with correct permissions (700/600)
 - [ ] Stack is auto-detected from project files
-- [ ] Appropriate model tier is suggested based on project size
+- [ ] The role→model policy assigns the agent's model (visible in `docket list`)
 - [ ] Agent appears in `docket list` immediately after creation
 - [ ] Session key is generated for project isolation
 - [ ] Creation fails gracefully if agent ID already exists
@@ -105,75 +105,29 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 **So that** I can manage AI spend effectively
 
 **Acceptance Criteria:**
-- [ ] Cost command shows tokens used (input/output)
-- [ ] Costs calculated using current model pricing
-- [ ] Can filter by time period (days)
-- [ ] Can aggregate across all agents
-- [ ] CSV export available for reporting
-- [ ] Costs broken down by model tier
-- [ ] Historical data preserved for 90 days
-- [ ] Real-time updates after each session
+- [ ] Cost command shows tokens used (input/output/cache)
+- [ ] Dollar figures are the daemon's recorded spend, with provenance stated
+- [ ] `--history [--days N]` shows daily recorded-cost history
+- [ ] Aggregates across all agents when no id is given
+- [ ] `--json` output available for scripting (cli-json-shapes.spec.md)
+- [ ] Budget warnings render at ≥80% and ≥100% of a configured cap
 
 **Definition of Done:**
-- Cost tracking accurate to 0.01 USD
-- Performance handles 1000+ sessions
-- Export formats validated
-- Budget alert thresholds implemented
+- Cost figures match the session JSONL totals exactly
+- Performance handles 1000+ sessions (incremental cost index)
+- Budget warning thresholds implemented (display; enforcement per cost-tracking.spec.md)
 
 ## Epic: Team Coordination (Retired, D-11 / CH-4)
 
 `docket team` — the org-wide manual task queue this epic originally described — was retired in
 0.2.0. It was never dispatched (no code ever executed a queued task), and several of its
-`TEAM-002` acceptance criteria below (load balancing, a monitoring dashboard, 100+ concurrent
-tasks) were never implemented under `team` either — they were aspirational when written. Real,
-working delegation with actual execution now lives in **Epic: Pod Lifecycle (Phase 10)** below,
-specifically **Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes both stories
-here. Running `docket team <anything>` now prints a removed-command notice mapping to the pod
-equivalent. The original stories are kept below for historical reference only.
-
-### Story: TEAM-001 - Initialize Org Manager (historical)
-
-**As a** team lead
-**I want** to run `docket install` to create the shared org Manager specialist
-**So that** cross-cutting coordination tasks have a dedicated, shared agent
-
-**Acceptance Criteria:**
-- [ ] Manager agent created at `~/.openclaw/workspaces/manager/` with org-specialist template
-- [ ] Task queue (TASK_LIST.json) initialized in the manager's workspace
-- [ ] Manager cannot directly edit code files (delegation mode only)
-- [ ] `docket team delegate "<task>"` queues work on the Manager's queue
-- [ ] `docket team queue` shows pending tasks with state and priority
-- [ ] Tasks have states: pending, in-progress, complete, cancelled
-- [ ] Manager is distinct from per-pod Leads — it handles cross-pod coordination only
-- [ ] Manager runs on the cheap model class (role policy: `manager`)
-
-**Definition of Done:**
-- Manager agent created and registered by `docket install`
-- Task state machine implemented via `docket team` subcommands
-- Pod Leads confirmed as the per-project orchestrators (not the Manager)
-- Team workflow documented in AGENT-TEAMS.md
-
-### Story: TEAM-002 - Delegate Tasks (historical, never fully implemented under `team`)
-
-**As a** manager agent
-**I want** to assign tasks to appropriate specialist agents
-**So that** work is completed by the right expertise
-
-**Acceptance Criteria:**
-- [ ] Tasks can be assigned based on type (code/review/test)
-- [ ] Agents receive task context and requirements
-- [ ] Progress tracked in real-time
-- [ ] Blocked tasks escalated to manager
-- [ ] Completed tasks verified before closing
-- [ ] Task history maintained for reporting
-- [ ] Multiple tasks can be in progress simultaneously
-- [ ] Load balancing across available agents
-
-**Definition of Done:**
-- Task routing logic implemented
-- State synchronization reliable
-- Performance handles 100+ concurrent tasks
-- Monitoring dashboard available
+original acceptance criteria (load balancing, a monitoring dashboard, 100+ concurrent tasks)
+were never implemented either — they were aspirational when written. Real, working delegation
+with actual execution lives in **Epic: Pod Lifecycle (Phase 10)** below, specifically
+**Story: POD-002 - Run the Pod Dispatch Pipeline**, which supersedes this epic entirely.
+Running `docket team <anything>` prints a removed-command notice mapping to the pod
+equivalent. The retired TEAM-001/TEAM-002 story bodies were removed in v1.2.0 — git history
+retains them; the durable retirement record is ROADMAP decision D-11.
 
 ## Epic: Workflow Automation
 
@@ -456,6 +410,14 @@ And the total should reflect the daemon's recorded spend, not an estimate
 - Developer productivity increased by 40%
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-30)
+- Truth pass (Platformization baseline): fixed the header version (was 1.0.0 while the
+  changelog said 1.1.0); removed the retired TEAM-001/TEAM-002 historical story bodies
+  (banner + pointer to POD-002 remain; git history retains the text); replaced AGT-003's
+  fictional cost criteria (CSV export, per-tier breakdown, 90-day retention — none exist)
+  with the real `docket cost` surface; removed the remaining model-tier phrasing from
+  AGT-001.
 
 ### Version 1.1.0 (2026-06-26)
 - Updated TEAM-001 to reflect pod model: Manager is an org specialist, not a router to programmer/reviewer/tester

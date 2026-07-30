@@ -1,8 +1,8 @@
 # Workflow Integration Specification
 
-**Version**: 1.1.0
-**Status**: Complete
-**Last Updated**: 2026-07-02
+**Version**: 1.2.0
+**Status**: Complete (surface slated for retirement — ROADMAP decision D-16 / Phase 16 W-3)
+**Last Updated**: 2026-07-30
 
 ## Purpose
 
@@ -24,7 +24,7 @@ This specification covers:
 This specification does NOT cover:
 
 - The Lobster execution engine itself (owned by OpenClaw)
-- Cross-agent orchestration (see team-coordination.spec.md)
+- Cross-agent orchestration (see pod-dispatch.spec.md)
 
 ## Requirements
 
@@ -66,10 +66,17 @@ This specification does NOT cover:
 1. `validate` **MUST** parse the workflow YAML and report any structural errors.
 2. **MUST** check that required top-level Lobster fields (`name`, `steps`) are present.
 3. **MUST** check that every step has an `id` and a `type`, that step ids are unique, that
-   each step's `type` is a known Lobster step type, and that each type's required fields are
-   present.
-4. **MUST NOT** execute any workflow steps.
-5. **SHOULD** report a success message on a valid workflow (no fixed literal wording required).
+   each step's `type` is one of the six known Lobster step types — `shell`, `llm`, `message`,
+   `poll`, `conditional`, `goto` — and that each type's required field is present
+   (`shell: command`, `llm: prompt`, `message: channel`+`message`, `conditional:
+   condition`+`steps`, `goto: target`, `poll: file`|`files`).
+4. **Validation is not exhaustive**: keys outside the checks above — including
+   `continueOnError`, `approval`, `outputs`, and `notifications`, all of which the shipped
+   `create` template emits — are **silently ignored** by `validate` (no unknown-key
+   rejection). Whether the Lobster daemon honors them is outside docket's contract. Do not
+   read a passing `validate` as proof those constructs are wired to anything.
+5. **MUST NOT** execute any workflow steps.
+6. **SHOULD** report a success message on a valid workflow (no fixed literal wording required).
 
 ### Plan (docket workflow plan, alias `dry-run`)
 
@@ -140,9 +147,9 @@ Workflow 'deploy' is valid
 $ docket workflow mywebsite plan deploy
 Workflow: deploy
 Steps (3):
-    1  build                       shell        run: npm run build
-    2  test                        shell        run: npm test
-    3  deploy                      shell        run: ./deploy.sh
+    1  build                       shell        command: npm run build
+    2  test                        shell        command: npm test
+    3  deploy                      shell        command: ./deploy.sh
 
 ────────────────────────────────────────────────────────────────────
 NOTE: docket does not execute this workflow — the Lobster daemon does.
@@ -158,7 +165,7 @@ name: deploy
 steps:
   - id: build
     type: shell
-    run: npm run build
+    command: npm run build
 ```
 
 ## Validation
@@ -179,6 +186,17 @@ steps:
 - A workflow name **MUST** be unique within a single agent.
 
 ## Changelog
+
+### Version 1.2.0 (2026-07-30)
+
+- Truth pass (Platformization baseline): enumerated the closed set of six step types and
+  their required fields; documented that validation silently ignores every other key —
+  including `continueOnError`/`approval`/`outputs`/`notifications`, which the shipped
+  template itself emits; fixed the examples' `run:` key to the real `command:` (the old
+  examples would have failed `docket workflow validate`); retargeted the retired
+  team-coordination cross-reference at pod-dispatch.spec.md; marked the whole surface as
+  slated for retirement into the docket-native pipeline spec per ROADMAP decision D-16
+  (Phase 16 W-3).
 
 ### Version 1.1.0 (2026-07-02)
 
