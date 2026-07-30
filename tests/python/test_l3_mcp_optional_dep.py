@@ -60,8 +60,12 @@ class TestMissingSdkSimulated:
     ) -> None:
         real_import = builtins.__import__
 
+        # `_build_server()` does `from mcp.server import MCPServer` (the mcp>=2.0
+        # SDK's server, see test_l6_mcp_sdk_v2.py) — block that exact import
+        # target, simulating the SDK being absent regardless of what's actually
+        # installed in this test environment.
         def _blocked_import(name: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
-            if name == "mcp.server.fastmcp" or name.startswith("mcp.server.fastmcp."):
+            if name == "mcp.server" or name.startswith("mcp.server."):
                 raise ImportError("simulated: mcp SDK not installed")
             return real_import(name, *args, **kwargs)
 
@@ -69,7 +73,7 @@ class TestMissingSdkSimulated:
         # Also evict any already-imported submodule so the blocked `__import__`
         # is actually exercised rather than served from sys.modules' cache.
         for name in list(sys.modules):
-            if name == "mcp.server.fastmcp" or name.startswith("mcp.server.fastmcp."):
+            if name == "mcp.server" or name.startswith("mcp.server."):
                 monkeypatch.delitem(sys.modules, name, raising=False)
 
         rc = _mcp.serve_stdio()
