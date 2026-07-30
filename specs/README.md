@@ -107,8 +107,8 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (after wave 4: CL-1, L-6, W-3, W-7, W-2+W-8 — following wave 3's
-> G-1, G-5, W-1, W-6, L-1, L-3).
+> Last synchronized: 2026-07-30 (wave 5 in progress: L-4, G-4b merged so far — after wave 4's
+> CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1, W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
 > (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
 > `.spec.md` files on disk.
@@ -119,10 +119,10 @@ Each specification document must include:
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.4.0 | Complete | `docket add` blueprint selection (Phase 16 W-7) |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 2.1.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` action family added (Phase 18 L-3); `models.*`/`runs.cancel` still uncovered (Phase 15 G-4 follow-up) |
+| Audit | 2.2.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` action family (Phase 18 L-3); `models.*` now covered (Phase 15 G-4b); `runs.cancel` is the last known gap (Phase 16 W-4) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
-| Model Profiles | 2.3.2 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6) |
+| Model Profiles | 2.3.3 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6) |
 | Pipeline Format | 2.0.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2) |
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
 | Pod Dispatch | 3.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8) |
