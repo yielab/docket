@@ -1467,7 +1467,7 @@ a real dispatched task until granted; `docket audit verify` detects a tampered l
 
 ---
 
-### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟠 6 of 8 shipped — exit criteria met; W-4, W-5 open)*
+### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟠 7 of 8 shipped — exit criteria met; only W-5 open)*
 
 > **Why:** the pipeline is a hardcoded constant and the role system knows exactly one objective —
 > shipping code. `POD_ROLES` is a closed 4-tuple (`core/pod.py:21`), every role identity is a
@@ -1608,7 +1608,7 @@ workspace; suite green.
 
 ---
 
-### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟠 4 of 6 shipped — L-1/L-2/L-3/L-6 done; only the two daemon-gated spikes L-4, L-5 remain)*
+### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟠 5 of 6 shipped — L-1/L-2/L-3/L-6 done, L-4 answered as a spike; only L-5 remains)*
 
 > **Why:** provider-agnosticism was declared complete (Phase 6) but the audit found Anthropic
 > hardcoded in the rank anchors (non-overridable), the auth commands, and the preset/pricing gaps —
