@@ -27,6 +27,7 @@ from __future__ import annotations
 import builtins
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -159,10 +160,15 @@ class TestRealSdkIntegration:
 
         server = _mcp._build_server()
 
-        async def _call() -> tuple[object, dict[str, object]]:
+        # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
+        # (`.structured_content`/`.is_error`), not the 1.x line's
+        # `(content, structured_dict)` tuple — see test_l6_mcp_sdk_v2.py for
+        # the full migration write-up.
+        async def _call() -> Any:
             return await server.call_tool("status", {})
 
-        _content, structured = asyncio.run(_call())
+        result = asyncio.run(_call())
+        structured = result.structured_content
         assert isinstance(structured, dict)
         assert structured["apiVersion"] == "2"
         # Round-trips through the SDK's own JSON serialization too.

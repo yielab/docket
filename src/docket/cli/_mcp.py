@@ -36,6 +36,15 @@ more). It is only imported inside ``serve_stdio()``, lazily, guarded by
 ``cli/_agents.py`` already use for the optional PyYAML dependency. Install
 with ``pip install 'docket[mcp]'`` (or ``uv sync --extra mcp``); a missing SDK
 prints ``MISSING_SDK_HINT`` instead of a bare traceback.
+
+**SDK version (Phase 18 L-6).** Targets the SDK's 2.x line (``mcp>=2.0.0``,
+no ceiling) via ``mcp.server.MCPServer`` — the 2.0 rework's direct successor
+to the 1.x line's ``mcp.server.fastmcp.FastMCP`` (``mcp.server.fastmcp`` was
+removed outright in 2.0, not deprecated in place). The migration was a rename,
+not a redesign: ``MCPServer`` keeps the same ergonomics this module already
+used — ``MCPServer(name=..., instructions=...)``, ``add_tool(fn, name=...)``,
+and ``server.run(transport="stdio")`` — confirmed by reading the installed
+2.0.0 package directly (``mcp/server/mcpserver/server.py``), not assumed.
 """
 
 from __future__ import annotations
@@ -50,10 +59,10 @@ from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 from docket.core.audit import audit_log
 
-# mcp>=1.2.0,<2.0.0 (see pyproject.toml's [project.optional-dependencies]) —
-# pinned to the 1.x line's `mcp.server.fastmcp.FastMCP` decorator-based API,
-# which this module is written against; `mcp` 2.0 replaced it with a
-# lower-level, callback-based `Server` API this integration does not use.
+# mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
+# the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
+# that replaced `mcp.server.fastmcp.FastMCP` (renamed/relocated, not
+# redesigned) when the SDK's 2.0 rework removed the `fastmcp` module outright.
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed — `docket mcp serve` needs the optional MCP extra.\n"
     "Install it with:  pip install 'docket[mcp]'\n"
@@ -260,15 +269,15 @@ def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
 
 
 def _build_server() -> Any:
-    """Construct the FastMCP server instance with every tool registered.
+    """Construct the MCPServer instance with every tool registered.
 
     Only called from ``serve_stdio()`` — importing ``mcp`` at module level
     would make the optional dependency mandatory just to import
     ``docket.cli``.
     """
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server import MCPServer
 
-    server = FastMCP(
+    server = MCPServer(
         name="docket",
         instructions=(
             "docket's control plane: pods, dispatch, runs, approvals, and cost. "
