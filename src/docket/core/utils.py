@@ -116,8 +116,8 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
     silently treat unknown pricing as "$0". This exists **only** for R-5's
     budget-gating/warning fallback, for when the daemon's own session JSONL
     never wrote a ``usage.cost.total`` (``aggregate_cost``'s ``cost_usd``
-    then stays 0.0 forever — see ``edges/adapters/openclaw.py``'s
-    ``AgentRunResult.cost_usd`` note on daemon v2026.2.23). An estimate MUST
+    then stays 0.0 forever — see ``core/runtime_driver.py``'s
+    ``TurnResult.cost_usd`` note on daemon v2026.2.23). An estimate MUST
     NEVER be presented as, or summed into, recorded spend — `docket cost`
     stays exactly the daemon's own figure (see cli/_cost.py and the
     no-unfalsifiable-cost-claims discipline in CLAUDE.md/cost-tracking.spec).

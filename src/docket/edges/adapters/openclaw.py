@@ -910,19 +910,23 @@ def unregister_agent_cli(agent_id: str) -> tuple[bool, str]:
     return (True, "")
 
 
-# R-2: typed classification of an ``ok=False`` AgentRunResult, so callers (the
-# retry loop in core/dispatch.py) can decide retryability from a field instead of
+# R-2: typed classification of an ``ok=False`` turn, so callers (the retry loop
+# in core/dispatch.py) can decide retryability from a field instead of
 # string-matching ``error``. Only ``timeout``/``daemon_error`` are retryable — a
 # transient hiccup talking to the daemon/CLI. ``nonzero_exit`` and
 # ``invalid_output`` are real answers (the turn ran and said something, or the
 # CLI is fundamentally misbehaving) and are never retried. Always ``None`` when
-# ``ok`` is True.
+# ``ok`` is True. See ``core.runtime_driver.FailureKind``/``TurnResult`` (the
+# RuntimeDriver port) for the canonical definitions.
 #
-# Phase 18 L-1: ``FailureKind``/``AgentRunResult`` now live as
-# ``core.runtime_driver.FailureKind``/``TurnResult`` (the RuntimeDriver port) —
-# aliased back to these names here so every existing call site (positional
-# construction included, e.g. ``AgentRunResult(False, "", 0.0, {}, "boom")``)
-# keeps working unchanged.
+# CL-1 (Phase 18 cleanup): this module's own code now uses ``TurnResult``
+# directly (the ``AgentRunResult`` name from Phase 18 L-1 was a pure alias with
+# no distinct meaning). ``AgentRunResult`` stays exported here — unused by
+# anything in this module — solely because ``core/dispatch.py``'s ``Runner``
+# type alias (``Runner = Callable[..., _oc.AgentRunResult]``) still spells the
+# old name; that file is owned by a different in-flight card (W-2) and out of
+# this card's file scope, so it could not be renamed in the same pass. Delete
+# this line once ``core/dispatch.py`` is updated to reference ``TurnResult``.
 AgentRunResult = TurnResult
 
 
@@ -975,11 +979,11 @@ def agent_run(
     message: str,
     timeout: int = 300,
     env: dict[str, str] | None = None,
-) -> AgentRunResult:
+) -> TurnResult:
     """Run one real agent turn via the openclaw CLI (the ONLY place docket does this).
 
     Each call is a real, costed LLM turn; the caller is responsible for budget gating.
-    Returns AgentRunResult(ok=False, ...) on CLI missing, timeout, non-zero exit, or
+    Returns TurnResult(ok=False, ...) on CLI missing, timeout, non-zero exit, or
     unparseable output — never raises for ordinary failure modes. ``failure_kind``
     classifies which of those it was (see ``FailureKind``), for retry decisions.
 
@@ -994,7 +998,7 @@ def agent_run(
     import subprocess as _sp
 
     if not _shutil.which("openclaw"):
-        return AgentRunResult(
+        return TurnResult(
             False, "", 0.0, {}, "openclaw CLI not found", failure_kind="daemon_error"
         )
     cmd = [
@@ -1020,24 +1024,24 @@ def agent_run(
             env=run_env,
         )
     except _sp.TimeoutExpired:
-        return AgentRunResult(
+        return TurnResult(
             False, "", 0.0, {}, f"timed out after {timeout}s", failure_kind="timeout"
         )
     except OSError as ex:
-        return AgentRunResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
+        return TurnResult(False, "", 0.0, {}, str(ex), failure_kind="daemon_error")
 
     out = (res.stdout or "").strip()
     if res.returncode != 0:
         reason = (res.stderr or out or f"exit {res.returncode}").strip()
-        return AgentRunResult(False, "", 0.0, {}, reason, failure_kind="nonzero_exit")
+        return TurnResult(False, "", 0.0, {}, reason, failure_kind="nonzero_exit")
     try:
         data: dict[str, Any] = _json.loads(out) if out else {}
     except _json.JSONDecodeError:
         # Non-JSON stdout still carries the reply text — surface it rather than fail.
-        return AgentRunResult(True, out, 0.0, {}, "")
+        return TurnResult(True, out, 0.0, {}, "")
     if not isinstance(data, dict):
-        return AgentRunResult(True, str(data), 0.0, {}, "")
-    return AgentRunResult(
+        return TurnResult(True, str(data), 0.0, {}, "")
+    return TurnResult(
         ok=True,
         output=_extract_run_output(data),
         cost_usd=_extract_run_cost(data),
