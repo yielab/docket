@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -62,8 +62,11 @@ this table fails type-checking or the test suite.
 | `scope` | enum | `org` or `project` | local | No (backfilled) | `add`, `install`, `doctor` | Whose data the agent may see (Phase 10): `org` = shared/cross-cutting; `project` = pod-scoped, never shared across projects. Orthogonal to `kind`/`role`. Absent on legacy records → derived from `kind`+`role` on read |
 | `role` | string | — | local | specialists + pod members | `install`, `add`, `pod add` | Role name: org-specialist role (e.g. `security`) or pod-member role (`lead`/`implementer`/`reviewer`/`tester`) |
 | `name` | string | — | local | Yes | `add` | Human-readable display name |
-| `codebase` | string | absolute path | local | project agents | `add` | Absolute path to the project (specialists have none) |
-| `stack` | string | — | local | No | `add` | Comma-separated detected stack (e.g. `Docker,git`) |
+| `codebase` | string | absolute path | local | `codebase`-kind project agents | `add` | Absolute path to the project (specialists, and `workdir`-kind pod members, have none) |
+| `workspaceKind` | enum | `codebase` or `workdir` | local | No (defaulted) | `add` (pod blueprints only, ROADMAP Phase 16 W-7) | Whether this agent's workspace is anchored to a codebase or a plain working directory. Absent on every record written before W-7 (and every `codebase`-kind pod member since — see pod-blueprints.spec.md) → implicitly `codebase`, which is what it already is; only ever written as the literal `workdir` |
+| `workDir` | string | absolute path | local | `workdir`-kind pod members | `add` (pod blueprints only) | The pod's shared working directory (ROADMAP Phase 16 W-7). Mutually exclusive with `codebase` — present only when `workspaceKind: workdir` |
+| `blueprint` | string | — | local | No | `add` (pod blueprints only) | Name of the pod blueprint that provisioned this agent (`software`, `research`, `content`, `ops`, …) — see pod-blueprints.spec.md. Absent for any agent not provisioned through a blueprint |
+| `stack` | string | — | local | No | `add` | Comma-separated detected stack (e.g. `Docker,git`); not auto-detected for a `workdir`-kind agent (no codebase to inspect) |
 | `model` | string | `provider/model-id` | **synced** | Yes | `add`, `profile` | Provider-qualified model id mirrored to `openclaw.json` |
 | `modelSource` | enum | `policy` or `pinned` | local | Yes | `add`, `profile` | Whether the model follows the role policy or is pinned |
 | `description` | string | — | local | No | `add` | Free-text purpose |
@@ -136,8 +139,11 @@ calls `sync_session_key()` to mirror the value into `openclaw.json`.
 ## Field rules
 
 - `kind` MUST be `project` (for `docket add` agents) or `specialist` (for `docket install` agents).
-- `type` MUST be `repo` or `task` for project agents.
-- `codebase` MUST be a readable absolute path when `type` is `repo`; MAY be empty for `task`.
+- `workspaceKind`, when present, MUST be `codebase` or `workdir` (ROADMAP Phase 16 W-7); absent
+  means `codebase` (every record written before W-7, and every `codebase`-kind pod member since).
+- `codebase` MUST be a readable absolute path for a `codebase`-kind agent; MUST be empty for a
+  `workdir`-kind agent (its location lives in `workDir` instead).
+- `workDir`, when present, MUST be an absolute path and implies `workspaceKind: workdir`.
 - `model` MUST be a provider-qualified id (e.g. `anthropic/claude-sonnet-4-6`).
 - `modelSource` MUST be `policy` (follows the role→model table) or `pinned` (explicit choice).
 - `sessionKey` MUST match the pattern `agent:<id>:<project>` and its `<project>` component MUST
@@ -146,12 +152,12 @@ calls `sync_session_key()` to mirror the value into `openclaw.json`.
 
 ## Examples
 
-A project agent created by `docket add myshop ~/Sites/myshop`:
+A project agent created by `docket add myshop ~/Sites/myshop` (the `software` blueprint, the
+default — `codebase`-kind, so `workspaceKind`/`workDir` are absent):
 
 ```json
 {
   "kind": "project",
-  "type": "repo",
   "name": "My Shop",
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
@@ -161,6 +167,7 @@ A project agent created by `docket add myshop ~/Sites/myshop`:
   "created": "2026-03-05T12:08:17-03:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
+  "blueprint": "software",
   "templateVersion": "3"
 }
 ```
@@ -170,7 +177,6 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
 ```json
 {
   "kind": "project",
-  "type": "repo",
   "name": "My Shop",
   "codebase": "/home/user/Sites/myshop",
   "stack": "Docker,git",
@@ -183,11 +189,50 @@ The same agent after `docket profile myshop anthropic/claude-haiku-4-5 --budget 
   "budgetUsd": 5,
   "paused": true,
   "pausedReason": "budget",
+  "blueprint": "software",
   "templateVersion": "3"
 }
 ```
 
+A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md) created by
+`docket add my-market-scan --blueprint research`:
+
+```json
+{
+  "kind": "project",
+  "scope": "project",
+  "role": "researcher",
+  "pod": "my-market-scan",
+  "name": "my-market-scan researcher",
+  "codebase": "",
+  "workspaceKind": "workdir",
+  "workDir": "/home/user/.openclaw/workspaces/pods/my-market-scan/workdir",
+  "stack": "",
+  "model": "anthropic/claude-sonnet-4-6",
+  "modelSource": "policy",
+  "description": "quarterly competitive landscape scan",
+  "created": "2026-07-30T12:08:17-03:00",
+  "sessionKey": "agent:my-market-scan:default",
+  "projectKey": "default",
+  "blueprint": "research",
+  "templateVersion": "2"
+}
+```
+
 ## Changelog
+
+### Version 2.7.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-7 (pod blueprints): added `workspaceKind`, `workDir`, and `blueprint` rows —
+  a pod blueprint's workspace kind (`codebase` | `workdir`), its shared working directory when
+  `workdir`-kind, and which blueprint provisioned the agent. All three are additive and default
+  such that every pre-W-7 record (and every `codebase`-kind pod member since) is unaffected: no
+  `workspaceKind` present means `codebase`, exactly what it already implicitly was. See the new
+  `pod-blueprints.spec.md` for the full contract.
+- Removed the stale `type` (`repo`|`task`) "Field rules" entry and the two examples' `"type":
+  "repo"` line — the `type` field itself was dropped from the schema table in v2.3.0, but this
+  section and both worked examples were missed in that pass. Replaced with the real
+  `workspaceKind`/`workDir` rules and a third example showing a `workdir`-kind pod member.
 
 ### Version 2.6.0 (2026-07-30)
 

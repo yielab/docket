@@ -32,6 +32,22 @@ class AgentScope(StrEnum):
     project = "project"
 
 
+class WorkspaceKind(StrEnum):
+    """Whether a project agent's workspace is anchored to a codebase or a
+    plain working directory (ROADMAP Phase 16 W-7's pod blueprints).
+
+    ``codebase`` — a git-tracked project directory (``codebase`` field);
+    every project agent before W-7 is implicitly this. ``workdir`` — a plain
+    working directory with no codebase assumption (``workDir`` field
+    instead), for objectives that aren't "build a web site" (research,
+    content, ops blueprints). Mutually exclusive with ``codebase``: an agent
+    has one or the other, never both.
+    """
+
+    codebase = "codebase"
+    workdir = "workdir"
+
+
 # Backfill inference for legacy metas written before ``scope`` existed.
 # The authoritative split lives in config.py; this inline set exists only so a
 # pre-Phase-10 record can resolve its scope on read without importing config.
@@ -80,6 +96,14 @@ class AgentMeta(BaseModel):
     stack: str = ""
     description: str = ""
     role: str = ""
+    # ROADMAP Phase 16 W-7: which pod blueprint provisioned this agent (e.g.
+    # "software", "research") and whether its workspace is anchored to a
+    # codebase or a plain working directory. Absent/default on every record
+    # written before W-7 — a legacy agent is implicitly `workspace_kind:
+    # codebase`, exactly what it already is.
+    blueprint: str = ""
+    workspace_kind: WorkspaceKind = Field(WorkspaceKind.codebase, alias="workspaceKind")
+    work_dir: str = Field("", alias="workDir")
     model: str = ""
     model_source: ModelSource = Field(ModelSource.policy, alias="modelSource")
     created: str = ""

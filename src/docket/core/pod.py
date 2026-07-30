@@ -14,16 +14,14 @@ ROADMAP Phase 16 W-6: the set of valid pod roles is no longer a hardcoded
 4-tuple — ``normalize_role``/``member_id``/``pod_of``/``members_of`` all
 resolve against ``core/archetypes.py``'s registry (built-in four roles +
 starter library + any user-defined archetype), so a fifth role is data, never
-a new hardcoded string here. ``POD_ROLES``/``POD_ROLE_POLICY`` are kept as
-module attributes for backward compatibility (via ``__getattr__`` below) but
-are now *computed* from the live registry on every access rather than
-literal dict/tuple constants — see that function's docstring.
+a new hardcoded string here. ``_role_names()`` reads that registry fresh on
+every call; ``policy_role_for()`` is the typed lookup for a role's
+role→model policy key (see its own docstring).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
@@ -259,10 +257,9 @@ def plan_added_member(
 def policy_role_for(role: str) -> str:
     """The role→model policy key ``role``'s archetype resolves through.
 
-    A typed counterpart to ``POD_ROLE_POLICY.get(role, role)`` (see that
-    dict's ``__getattr__`` docstring) that ``models_policy.agent_role()``
-    calls directly — avoids round-tripping through the dynamically-typed
-    module attribute at a call site that needs a concrete ``str`` back.
+    ``models_policy.agent_role()`` calls this directly to get a concrete
+    ``str`` back — the archetype's ``policyRole`` override if set (the four
+    legacy roles), else its own name (every starter-library/user role).
     """
     arch = _archetypes.load_registry().get(role)
     return arch.resolved_policy_role if arch is not None else role
@@ -288,20 +285,3 @@ def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "
     if codebase:
         return codebase
     return str(_cfg.workspace_dir(member_id))
-
-
-def __getattr__(name: str) -> Any:
-    """Backward-compatible ``POD_ROLES``/``POD_ROLE_POLICY`` module attributes (PEP 562).
-
-    Both used to be literal module-level constants; W-6 replaced their source
-    of truth with the archetype registry, so any external code (or a future
-    caller) that still does ``pod.POD_ROLES`` / ``pod.POD_ROLE_POLICY`` keeps
-    working, now backed by a live registry read instead of a hardcoded 4-tuple
-    (this also fires for ``from docket.core.pod import POD_ROLES`` — PEP 562
-    module ``__getattr__`` covers both attribute-access forms).
-    """
-    if name == "POD_ROLES":
-        return _role_names()
-    if name == "POD_ROLE_POLICY":
-        return {n: a.resolved_policy_role for n, a in _archetypes.load_registry().items()}
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

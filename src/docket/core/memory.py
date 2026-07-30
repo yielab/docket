@@ -101,7 +101,17 @@ def last_activity(ws: Path) -> str:
 # --- contract file bodies -----------------------------------------------------
 
 
-def _workflow_auto_text(*, project: str, codebase: str, stack: str, origin: str) -> str:
+def _workflow_auto_text(
+    *, project: str, codebase: str, stack: str, origin: str, work_dir: str = ""
+) -> str:
+    # ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint (research/content/ops)
+    # has no codebase at all — routing to a dedicated sibling function (rather
+    # than branching mid-string here) keeps the pre-W-7 codebase-flavored text
+    # below byte-for-byte untouched for every existing caller (work_dir="").
+    if work_dir.strip():
+        return _workflow_auto_text_workdir(
+            project=project, work_dir=work_dir, stack=stack, origin=origin
+        )
     cb = codebase.strip() or "(none configured yet — ask the human for the repo path)"
     origin_line = f"- origin: `{origin}`\n" if origin.strip() else ""
     stack_line = f"- stack: {stack}\n" if stack.strip() else ""
@@ -159,6 +169,68 @@ def _workflow_auto_text(*, project: str, codebase: str, stack: str, origin: str)
     )
 
 
+def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, origin: str) -> str:
+    """The `workdir`-flavored WORKFLOW_AUTO.md body (ROADMAP Phase 16 W-7).
+
+    Mirrors ``_workflow_auto_text`` section-for-section (same contract
+    marker, same resume/durability rules, same read order) but never implies
+    a git-tracked codebase — a `workdir`-kind pod blueprint (research,
+    content, ops) has none.
+    """
+    wd = work_dir.strip() or "(none configured yet — ask the human for a working directory)"
+    origin_line = f"- origin: `{origin}`\n" if origin.strip() else ""
+    stack_line = f"- stack: {stack}\n" if stack.strip() else ""
+    return (
+        f"{_CONTRACT_MARKER}\n"
+        f"# WORKFLOW_AUTO.md — {project} startup protocol\n\n"
+        "_The runtime makes you re-read this file after every context reset. "
+        "Read it top to bottom before doing anything else._\n\n"
+        "## Your working directory\n"
+        f"`{wd}`\n\n"
+        "All real work happens **here** — a plain working directory, not a "
+        "git-tracked codebase. Before any file operation, `cd` into it (or use "
+        "absolute paths under it). Treat relative paths as relative to this root.\n\n"
+        "## Resume before you greet\n"
+        "A context reset wiped your working memory — not your job. **Before** you "
+        "reply, greet, or say there is nothing to do, open `HEARTBEAT.md`:\n"
+        "- If `## Active Tasks` has any unchecked `- [ ]` step, you were interrupted "
+        "**mid-task**. Pick up the next unchecked step and keep going — do not "
+        "restart from scratch and do not announce you are idle.\n"
+        "- Only when every task is checked off or removed are you actually idle.\n\n"
+        "## Durability rule — how a task survives a reset\n"
+        "The moment you accept work you can't finish in one reply (anything "
+        "multi-step, multi-file, or long-running), **write it to `HEARTBEAT.md` "
+        "under `## Active Tasks` as a checklist _before you start_**, then tick "
+        "steps off as you go. In-context plans and mental notes do **not** survive "
+        "a context reset — only what is on disk does. An unwritten task is a task "
+        "you will silently lose.\n\n"
+        "## Read these, in order\n"
+        "1. `HEARTBEAT.md` — active tasks / pending decisions (always; obey the "
+        "resume rule above before doing anything else).\n"
+        "2. `SOUL.md` — who you are, your scope, and your safety rules.\n"
+        "3. `MEMORY.md` — what this project **is** and durable facts about it "
+        "(objective summary, current state).\n"
+        "4. `memory/YYYY-MM-DD.md` — today's log (create it if missing, one file "
+        "per day); read yesterday's only if the task needs prior context. Don't "
+        "slurp the whole `memory/` dir.\n\n"
+        '## Answering "what is this project about"\n'
+        "Answer from **MEMORY.md → What this project is**: describe what the "
+        "objective is and who it's for. Do **not** answer with your pod role, "
+        "agent id, session key, or workspace paths — that is *your* scaffolding, "
+        "not the project. If that section is still a placeholder, read any notes "
+        "in the working directory first and fill it in before answering.\n\n"
+        "## Working directory\n"
+        f"{origin_line}"
+        f"- path: `{wd}`\n"
+        f"{stack_line}\n"
+        "## If a file 'isn't found'\n"
+        "You are almost certainly in the wrong directory — the agent workspace, "
+        "not the working directory above. Re-check that you are under the "
+        "working directory root **before** concluding the file does not exist or "
+        "offering to create it.\n"
+    )
+
+
 def heartbeat_seed(name: str) -> str:
     """The durable task-ledger body for a fresh (or reset) ``HEARTBEAT.md``.
 
@@ -192,8 +264,9 @@ def heartbeat_seed(name: str) -> str:
     )
 
 
-def _memory_md_seed(*, project: str, codebase: str, stack: str) -> str:
+def _memory_md_seed(*, project: str, codebase: str, stack: str, work_dir: str = "") -> str:
     cb = codebase.strip()
+    wd = work_dir.strip()
     lines = [
         f"# MEMORY.md — {project}",
         "",
@@ -206,10 +279,16 @@ def _memory_md_seed(*, project: str, codebase: str, stack: str) -> str:
         "not this agent's pod role. Fill from the codebase README on first run; "
         'this is the answer to "what is this project about"._',
         "",
-        "## Repo",
     ]
-    if cb:
-        lines.append(f"- codebase: `{cb}`")
+    # ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint has no codebase —
+    # this branch never fires for an existing (codebase or none) caller.
+    if wd:
+        lines.append("## Working directory")
+        lines.append(f"- path: `{wd}`")
+    else:
+        lines.append("## Repo")
+        if cb:
+            lines.append(f"- codebase: `{cb}`")
     if stack.strip():
         lines.append(f"- stack: {stack.strip()}")
     lines += [
@@ -223,7 +302,9 @@ def _memory_md_seed(*, project: str, codebase: str, stack: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _daily_seed(*, project: str, codebase: str, stack: str, day: _dt.date) -> str:
+def _daily_seed(
+    *, project: str, codebase: str, stack: str, day: _dt.date, work_dir: str = ""
+) -> str:
     lines = [
         f"# {day.isoformat()} — {project}",
         "",
@@ -231,7 +312,11 @@ def _daily_seed(*, project: str, codebase: str, stack: str, day: _dt.date) -> st
         "passes on turn one. Append real session outcomes below._",
         "",
     ]
-    if codebase.strip():
+    # See _memory_md_seed's note: work_dir is the W-7 workdir-blueprint case;
+    # an existing (codebase or neither) caller takes the unchanged elif/nothing path.
+    if work_dir.strip():
+        lines.append(f"- Working directory: `{work_dir.strip()}`")
+    elif codebase.strip():
         lines.append(f"- Codebase: `{codebase.strip()}`")
     if stack.strip():
         lines.append(f"- Stack: {stack.strip()}")
@@ -265,6 +350,7 @@ def seed_contract(
     stack: str = "",
     origin: str = "",
     day: _dt.date | None = None,
+    work_dir: str = "",
 ) -> None:
     """Create/refresh the files the openclaw post-compaction audit requires.
 
@@ -274,13 +360,20 @@ def seed_contract(
     Every file this function touches is normalized to ``0600`` (workspace files
     are owner-only, per the permissions invariant) whether freshly written or
     already present — so a doctor-driven heal also fixes stale permissions.
+
+    ``work_dir`` (ROADMAP Phase 16 W-7): set for a `workdir`-kind pod
+    blueprint (research/content/ops) instead of ``codebase`` — mutually
+    exclusive with it. Leaving it unset (the default) reproduces every
+    pre-W-7 caller's exact output.
     """
     d = day or today()
     memory_dir(ws).mkdir(parents=True, exist_ok=True)
 
     workflow_auto = ws / REQUIRED_STARTUP_FILE
     workflow_auto.write_text(
-        _workflow_auto_text(project=project, codebase=codebase, stack=stack, origin=origin),
+        _workflow_auto_text(
+            project=project, codebase=codebase, stack=stack, origin=origin, work_dir=work_dir
+        ),
         encoding="utf-8",
     )
     with contextlib.suppress(OSError):
@@ -289,7 +382,8 @@ def seed_contract(
     mem_md = memory_md_path(ws)
     if not mem_md.exists():
         mem_md.write_text(
-            _memory_md_seed(project=project, codebase=codebase, stack=stack), encoding="utf-8"
+            _memory_md_seed(project=project, codebase=codebase, stack=stack, work_dir=work_dir),
+            encoding="utf-8",
         )
     with contextlib.suppress(OSError):
         mem_md.chmod(0o600)
@@ -297,7 +391,8 @@ def seed_contract(
     daily = daily_log_path(ws, d)
     if not daily.exists():
         daily.write_text(
-            _daily_seed(project=project, codebase=codebase, stack=stack, day=d), encoding="utf-8"
+            _daily_seed(project=project, codebase=codebase, stack=stack, day=d, work_dir=work_dir),
+            encoding="utf-8",
         )
     with contextlib.suppress(OSError):
         daily.chmod(0o600)

@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.2.2
+**Version**: 1.3.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -19,10 +19,12 @@ This specification covers:
 
 This specification does NOT cover the `.docket-meta.json` field schema or the
 meta↔`openclaw.json` synchronization contract (both owned by ../data/docket-meta.spec.md), the
-pod task queue's semantics (see pod-dispatch.spec.md), or *how* a pod member's SOUL.md/AGENTS.md
+pod task queue's semantics (see pod-dispatch.spec.md), *how* a pod member's SOUL.md/AGENTS.md
 prose is generated (ROADMAP Phase 16 W-6's declarative role archetypes — see
 role-archetypes.spec.md; this spec covers only which files must exist and their permissions, not
-the mechanism that fills SOUL.md/AGENTS.md in).
+the mechanism that fills SOUL.md/AGENTS.md in), or *which roster/workspace-kind a pod is
+provisioned with* (ROADMAP Phase 16 W-7's pod blueprints — see pod-blueprints.spec.md; this spec
+covers the resulting file set for either workspace kind, not blueprint selection/composition).
 
 ## Requirements
 
@@ -32,12 +34,18 @@ the mechanism that fills SOUL.md/AGENTS.md in).
    `~/.openclaw/workspaces/projects/<agent-id>/` containing:
    - `SOUL.md` — agent identity, scope, session key, and (optional) docket-owned persona block
    - `AGENTS.md` — session protocol and delegation rules
-   - `TOOLS.md` — project-specific commands (for pod implementers: allocated ports/scratch
-     dir and the verify command, when set)
+   - `TOOLS.md` — project-specific commands. For a standalone (non-pod) project agent this is
+     always present; for a **pod member**, only an Implementer with allocated runtime resources
+     or a `verifyCmd` gets one (allocated ports/scratch dir and the verify command, when set) —
+     a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
+     **MUST NOT** be flagged missing one by `docket doctor`
    - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;
      resumed after a context reset)
    - `WORKFLOW_AUTO.md` — the runtime-forced startup file carrying the versioned
-     resume/durability contract (`docket-contract` marker; regenerated, never hand-edited)
+     resume/durability contract (`docket-contract` marker; regenerated, never hand-edited).
+     Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
+     (ROADMAP Phase 16 W-7 — see pod-blueprints.spec.md), the shared **working directory**
+     (`## Your working directory`) — never both
    - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
    - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning)
@@ -45,8 +53,11 @@ the mechanism that fills SOUL.md/AGENTS.md in).
    `docket workflow`/Lobster surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
    creates, reads, or manages it; any `*.lobster.yml` files inside are left untouched on disk.
 3. Every project agent is provisioned from one template family; the former repo/task
-   dual-type model was removed (the `type` field no longer exists — every project agent has
-   a codebase path with auto-detected stack).
+   dual-type model was removed (the `type` field no longer exists). Every project agent has
+   **either** a codebase path with auto-detected stack (`workspaceKind: codebase` — every project
+   agent before W-7, and every `software`-blueprint pod today) **or** a plain working directory
+   with no codebase assumption (`workspaceKind: workdir` — a `research`/`content`/`ops`-blueprint
+   pod; see pod-blueprints.spec.md), never both.
 4. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
    workspace under `projects/`; the pod **Lead's** workspace additionally holds
    `TASK_LIST.json`, the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md).
@@ -99,7 +110,7 @@ the mechanism that fills SOUL.md/AGENTS.md in).
 Workspaces are created and repaired through commands, not edited by hand:
 
 ```bash
-docket add <agent-id> [codebase-path]     # Provision a workspace (pods: docket add <project>)
+docket add <agent-id> [location] [--blueprint <name>]  # Provision a pod (see pod-blueprints.spec.md)
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
 docket install                            # Provision (or backfill) org specialist workspaces
@@ -108,7 +119,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ## Examples
 
-### A provisioned project-agent workspace
+### A provisioned project-agent workspace (`codebase`-kind)
 
 ```text
 ~/.openclaw/workspaces/projects/mywebsite/
@@ -122,6 +133,20 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ├── memory/
 │   └── 2026-07-30.md
 └── workflows/
+```
+
+### A provisioned pod member with no TOOLS.md (`workdir`-kind, non-Implementer)
+
+```text
+~/.openclaw/workspaces/projects/my-market-scan-researcher/
+├── SOUL.md
+├── AGENTS.md
+├── HEARTBEAT.md
+├── WORKFLOW_AUTO.md          # anchors "## Your working directory", not a codebase
+├── MEMORY.md
+├── .docket-meta.json         # workspaceKind: "workdir", workDir: <path>
+└── memory/
+    └── 2026-07-30.md
 ```
 
 ### A provisioned org-specialist workspace
@@ -159,8 +184,20 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 - Directory permissions **MUST** be `700` and file permissions `600`.
 - No live `IDENTITY.md`/`BOOTSTRAP.md` in a managed workspace (quarantined to
   `.docket-archive/`).
+- A project agent is `workspaceKind: codebase` or `workspaceKind: workdir`, never both — a
+  `workdir`-kind member's contract files never reference a codebase.
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-7 (pod blueprints): documented the `workdir` workspace kind (a plain working
+  directory, no codebase assumption — see the new pod-blueprints.spec.md) alongside the existing
+  `codebase` kind, and the corresponding `WORKFLOW_AUTO.md`/`MEMORY.md` anchoring difference.
+  Corrected the `TOOLS.md` requirement: it was never actually written for a non-Implementer pod
+  member (Lead/Reviewer/Tester/other role) — a gap `docket doctor` incorrectly flagged as broken
+  until this same wave's fix — this spec now states the real, role-aware contract instead of the
+  "every project agent has TOOLS.md" claim that was already false for those members.
 
 ### Version 1.2.2 (2026-07-30)
 - ROADMAP Phase 16 W-3 (D-16) landed: `workflows/` is no longer a surface "slated for

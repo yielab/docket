@@ -50,6 +50,25 @@ _PROVIDER_KEY: dict[str, str] = {
 _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md")
 
 
+def _required_workspace_files(aid: str) -> tuple[str, ...]:
+    """Workspace files ``aid`` must have — role-aware for pod members.
+
+    ``cli/_pod.py``'s ``_write_member_workspace`` only ever writes ``TOOLS.md``
+    for an Implementer (and only when it has allocated resources or a verify
+    command) — a pod's Lead/Reviewer/Tester/other role never gets one, by
+    design: there is nothing role-specific to document for them (no allocated
+    ports/scratch dir/verify command). A standalone (non-pod) project agent
+    always gets a TOOLS.md (``cli/_agents.py``'s ``_create_workspace``), so the
+    full set still applies there. Without this, every pod's non-Implementer
+    member is permanently flagged "missing TOOLS.md" by `docket doctor`.
+    """
+    from docket.core import pod as _pod
+
+    if _pod.pod_of(aid) is not None and _oc.meta_get(aid, "role", "") != "implementer":
+        return tuple(f for f in _WORKSPACE_FILES if f != "TOOLS.md")
+    return _WORKSPACE_FILES
+
+
 def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
     """Return {agent_id: (budgetUsd_str, cost_float, turns_int)} for all agents.
 
@@ -148,7 +167,7 @@ def _check_project_agents(ids: list[str]) -> int:
         ws = _cfg.PROJECTS_DIR / aid
         tg = _oc.get_binding(aid, cfg=oc)
         proj_issues: list[str] = []
-        for f in _WORKSPACE_FILES:
+        for f in _required_workspace_files(aid):
             if not (ws / f).is_file():
                 proj_issues.append(f"missing {f}")
         if not (ws / _cfg.META_FILE).is_file():
@@ -868,7 +887,7 @@ def _doctor_json() -> dict[str, Any]:
     for aid in ids:
         a_issues: list[str] = []
         ws = _cfg.PROJECTS_DIR / aid
-        for f in _WORKSPACE_FILES:
+        for f in _required_workspace_files(aid):
             if not (ws / f).exists():
                 a_issues.append(f"missing {f}")
         if not (ws / _cfg.META_FILE).exists():

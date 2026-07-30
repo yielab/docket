@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.3.1
+**Version**: 1.4.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -23,23 +23,35 @@ This specification does NOT cover:
   surface it replaced, is gone per ROADMAP D-16 — see cli-interface.spec.md's Pipeline Commands
   section)
 - Pod delegation and dispatch (see pod-dispatch.spec.md)
+- Blueprint selection/composition (which roster, workspace kind, default pipeline, and default
+  budget a pod is provisioned with) — see the new pod-blueprints.spec.md (ROADMAP Phase 16 W-7).
+  This spec covers the creation/listing/info/deletion/maintenance lifecycle common to every pod
+  member regardless of which blueprint provisioned it.
 
 ## Requirements
 
 ### Agent Creation (docket add)
 
 1. **MUST** create a unique agent identifier
-2. **MUST** validate the codebase path exists
+2. **MUST** validate the codebase path exists, for a `codebase`-kind blueprint (`software`, the
+   default). A `workdir`-kind blueprint (`research`/`content`/`ops`) has no codebase to validate
+   and instead auto-provisions its shared working directory when none is given (see
+   pod-blueprints.spec.md)
 3. **MUST** create isolated workspace directory
 4. **MUST** generate session key for project isolation
-5. **MUST** initialize configuration files (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md)
+5. **MUST** initialize configuration files (SOUL.md, AGENTS.md, HEARTBEAT.md, and — for a
+   standalone agent or a pod Implementer with allocated resources/a verify command — TOOLS.md;
+   see workspace-structure.spec.md for the exact per-role file set)
 6. **MUST** register agent in openclaw.json
 7. **MUST** set appropriate file permissions (700 for dirs, 600 for files)
-8. **SHOULD** auto-detect project stack
+8. **SHOULD** auto-detect project stack (`codebase`-kind blueprints only)
 9. **SHOULD** suggest appropriate model profile based on project type
 10. **MAY** initialize with custom description
 11. **MUST** stamp the active template version into agent metadata so prompt drift is detectable
 12. **MAY** provision one or more agents declaratively from a spec file (`docket add --from <file>`)
+13. **MUST** select a pod blueprint (`--blueprint <name>`, default `software`) before provisioning
+    and **MUST** fail cleanly, before any interactive prompt, if the name is not registered (see
+    pod-blueprints.spec.md)
 
 #### Declarative Provisioning (docket add --from)
 
@@ -50,6 +62,9 @@ This specification does NOT cover:
 4. **MUST** be idempotent: an agent whose workspace already exists is skipped, not recreated
 5. **MUST** skip invalid records without aborting the rest of the spec file
 6. **SHOULD** restart the gateway at most once per invocation, after all agents are provisioned
+7. **MAY** carry a `blueprint` field on any entry, provisioning a pod (see pod-blueprints.spec.md)
+   instead of the single flat agent described by requirements 1–6 above; an entry with no
+   `blueprint` field is entirely unaffected by this option's existence
 
 ### Agent States
 
@@ -141,10 +156,12 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 ### CLI Command Signatures
 
 ```bash
-# Create a project pod (interactive or with args)
-docket add <project> [codebase-path] [--pod full | --with reviewer,tester] [--model <id>] [--count N]
+# Create a project pod from a blueprint (interactive or with args); --blueprint
+# defaults to `software`. --pod full/--with apply only to the software blueprint.
+docket add <project> [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
 
-# Create one or more agents declaratively from a spec file (JSON, or YAML when PyYAML is present)
+# Create one or more agents (or, with a `blueprint` field, pods) declaratively
+# from a spec file (JSON, or YAML when PyYAML is present)
 docket add --from <agents.yaml|agents.json>
 
 # List agents
@@ -233,6 +250,21 @@ After successful creation:
 - Maintain (check): < 5 seconds
 
 ## Changelog
+
+### Version 1.4.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-7 (pod blueprints): `docket add` now selects a blueprint (`--blueprint
+  <name>`, default `software`) before provisioning; the codebase-path validation and stack
+  auto-detection requirements are now scoped to `codebase`-kind blueprints (a `workdir`-kind
+  blueprint has no codebase and auto-provisions its shared working directory instead — see the
+  new pod-blueprints.spec.md). `docket add --from`'s declarative contract gained a `blueprint`
+  field that provisions a pod instead of a single flat agent for the entry that carries it,
+  leaving every entry without one unaffected. Also fixed two stale CLI-signature claims this
+  section had drifted on: `TOOLS.md` was never actually required-initialize-for every pod member
+  (only a standalone agent or an Implementer with allocated resources/a verify command — see
+  workspace-structure.spec.md), and the `--model <id>`/`--count N` options shown on `docket add`
+  were never implemented (they exist only in the arg parser's "don't leak into positionals"
+  skip-list) — removed from the documented signature.
 
 ### Version 1.3.1 (2026-07-30)
 - Retargeted the "does NOT cover" workflow cross-reference at pipeline-format.spec.md — the old

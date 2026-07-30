@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 from datetime import UTC, datetime
+from pathlib import Path
 
 import typer
 from rich.table import Table
@@ -21,6 +22,7 @@ from rich.table import Table
 import docket.config as _cfg
 from docket import ui
 from docket.core import archetypes as _arch
+from docket.core import blueprints as _bp
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
@@ -82,7 +84,13 @@ def _role_purpose(role: str) -> str:
 
 
 def _render_context(
-    member: pod.PodMember, project: str, codebase: str, stack: str, description: str
+    member: pod.PodMember,
+    project: str,
+    codebase: str,
+    stack: str,
+    description: str,
+    *,
+    work_dir: str = "",
 ) -> dict[str, str]:
     """Template variables for a pod member's SOUL.md/AGENTS.md (W-6 archetypes).
 
@@ -92,6 +100,11 @@ def _render_context(
     (``memberId``/``sessionKey``/``role``/``stack``/``codebaseOrConfigured``/
     ``codebaseOrIt``/``requiredStartupFile``) are additional context docket's
     own built-in/starter archetypes rely on for exact legacy prose parity.
+
+    ``work_dir`` (ROADMAP Phase 16 W-7): the shared working directory for a
+    `workdir`-kind pod blueprint (research/content/ops) — mutually exclusive
+    with ``codebase``. Empty for every `codebase`-kind (including `software`)
+    pod, which keeps ``workDir`` resolving exactly as it did pre-W-7.
     """
     return {
         "project": project,
@@ -103,13 +116,19 @@ def _render_context(
         "codebaseOrConfigured": codebase or "(no codebase configured)",
         "codebaseOrIt": codebase or "it",
         "stack": stack,
-        "workDir": codebase or str(_cfg.workspace_dir(member.member_id)),
+        "workDir": work_dir or codebase or str(_cfg.workspace_dir(member.member_id)),
         "requiredStartupFile": _mem.REQUIRED_STARTUP_FILE,
     }
 
 
 def _member_soul(
-    member: pod.PodMember, project: str, codebase: str, stack: str, description: str
+    member: pod.PodMember,
+    project: str,
+    codebase: str,
+    stack: str,
+    description: str,
+    *,
+    work_dir: str = "",
 ) -> str:
     """Render a pod member's SOUL.md from its archetype's `soulTemplate` (W-6).
 
@@ -121,7 +140,7 @@ def _member_soul(
     arch = _arch.load_registry().get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
-    variables = _render_context(member, project, codebase, stack, description)
+    variables = _render_context(member, project, codebase, stack, description, work_dir=work_dir)
     return _arch.render(arch.soul_template, variables)
 
 
@@ -211,12 +230,16 @@ def _write_member_workspace(
     scratch_dir: str = "",
     worktree_dir: str = "",
     verify_cmd: str = "",
+    work_dir: str = "",
+    blueprint_name: str = "",
+    budget_usd: float | None = None,
 ) -> None:
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
     (ws / "SOUL.md").write_text(
-        _member_soul(member, project, codebase, stack, description), encoding="utf-8"
+        _member_soul(member, project, codebase, stack, description, work_dir=work_dir),
+        encoding="utf-8",
     )
     (ws / "AGENTS.md").write_text(_member_agents(member, project), encoding="utf-8")
     (ws / "HEARTBEAT.md").write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
@@ -234,8 +257,9 @@ def _write_member_workspace(
             encoding="utf-8",
         )
     # Seed the files the openclaw post-compaction audit re-reads every reset,
-    # anchoring the codebase path where a just-reset agent will actually see it.
-    _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack)
+    # anchoring the codebase (or, for a `workdir`-kind pod, the working
+    # directory) path where a just-reset agent will actually see it.
+    _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack, work_dir=work_dir)
 
     # Keep pod-member identity docket-owned: quarantine OpenClaw's self-authoring
     # scaffolding (IDENTITY.md/BOOTSTRAP.md) so it can't split the member's identity.
@@ -272,6 +296,16 @@ def _write_member_workspace(
     if worktree_dir:
         meta["worktreeDir"] = worktree_dir
         meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
+    # ROADMAP Phase 16 W-7: only stamped when this member was provisioned
+    # through a blueprint — a bare `_pod.build_pod(...)` call (every existing
+    # test, and any future non-blueprint caller) leaves meta exactly as before.
+    if blueprint_name:
+        meta["blueprint"] = blueprint_name
+    if work_dir:
+        meta["workspaceKind"] = "workdir"
+        meta["workDir"] = work_dir
+    if budget_usd is not None and member.role == "lead":
+        meta["budgetUsd"] = str(budget_usd)
     meta_file = ws / _cfg.META_FILE
     _store.write_json(meta_file, meta)
 
@@ -311,6 +345,9 @@ def provision_member(
     port_range_count: int = 0,
     scratch_dir: str = "",
     verify_cmd: str = "",
+    work_dir: str = "",
+    blueprint_name: str = "",
+    budget_usd: float | None = None,
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it with the daemon.
 
@@ -319,6 +356,12 @@ def provision_member(
     Falls back to the flat docket workspace if git is unavailable or the
     codebase is not a git repo. ``verify_cmd`` (Implementer only) is the
     mechanical gate `dispatch.py` runs after this member's hop (CD-2/FD-1).
+
+    ``work_dir``/``blueprint_name``/``budget_usd`` (ROADMAP Phase 16 W-7):
+    a `workdir`-kind pod blueprint's shared working directory, the name of
+    the blueprint that provisioned this member, and a default per-pod budget
+    cap applied to the Lead only — all no-ops (and no new meta keys) when
+    unset, which is every pre-W-7 caller.
     """
     worktree_dir, fallback_reason = _provision_worktree(member, project, codebase)
     if fallback_reason:
@@ -335,6 +378,9 @@ def provision_member(
         scratch_dir=scratch_dir,
         worktree_dir=worktree_dir,
         verify_cmd=verify_cmd,
+        work_dir=work_dir,
+        blueprint_name=blueprint_name,
+        budget_usd=budget_usd,
     )
     ws_path = str(_cfg.PROJECTS_DIR / member.member_id)
 
@@ -458,17 +504,29 @@ def build_pod(
     stack: str = "",
     description: str = "",
     project_key: str = "default",
+    work_dir: str = "",
+    blueprint_name: str = "",
+    budget_usd: float | None = None,
 ) -> list[str]:
     """Provision a fresh pod's members. Returns the created member ids.
 
     One gateway restart at the end. Used by `docket add` and `docket pod add full`.
     Allocates pod-level runtime resources (port range + scratch dir) once for the
-    whole pod and injects them into each Implementer's workspace.
+    whole pod and injects them into each Implementer's workspace — skipped
+    entirely when the roster has no Implementer (e.g. a research/content/ops
+    blueprint pod), since nothing would ever consume a reserved port range or
+    scratch dir in that case.
+
+    ``work_dir``/``blueprint_name``/``budget_usd`` (ROADMAP Phase 16 W-7) are
+    passed straight through to every member — see ``provision_member``.
     """
     role_models, _, _ = _mp.load_registry()
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
 
-    port_start, port_count, scratch = _allocate_pod_resources(project)
+    if "implementer" in roles:
+        port_start, port_count, scratch = _allocate_pod_resources(project)
+    else:
+        port_start, port_count, scratch = 0, 0, ""
 
     created: list[str] = []
     for m in members:
@@ -482,6 +540,9 @@ def build_pod(
             port_range_start=port_start if m.role == "implementer" else 0,
             port_range_count=port_count if m.role == "implementer" else 0,
             scratch_dir=scratch if m.role == "implementer" else "",
+            work_dir=work_dir,
+            blueprint_name=blueprint_name,
+            budget_usd=budget_usd,
         )
         if ok:
             ui.success(f"  {m.member_id}  [{m.role}]  {m.model}")
@@ -492,6 +553,61 @@ def build_pod(
 
     _render_restart_result(_sys.restart_gateway())
     return created
+
+
+def build_pod_from_blueprint(
+    project: str,
+    blueprint_name: str,
+    *,
+    location: str = "",
+    stack: str = "",
+    description: str = "",
+    project_key: str = "default",
+    roles: tuple[str, ...] | None = None,
+) -> list[str]:
+    """Provision a fresh pod from a named blueprint (ROADMAP Phase 16 W-7).
+
+    ``location`` is interpreted per the blueprint's ``workspace_kind``: a
+    `codebase` blueprint (e.g. `software`) treats it as the pod's codebase
+    path — this is the path ``docket add`` with no ``--blueprint`` has always
+    passed, so `software` provisions byte-identically to the pre-W-7 default.
+    A `workdir` blueprint treats it as the pod's shared working directory,
+    auto-provisioning one under ``config.pod_work_dir(project)`` (0700) when
+    ``location`` is left empty.
+
+    ``roles``, when given, overrides the blueprint's own roster (e.g.
+    `docket add`'s ``--pod full``/``--with`` flags extending `software`'s
+    lean default) while still applying the blueprint's workspace kind,
+    default budget, and name stamp — the blueprint is a starting roster, not
+    a hard ceiling.
+
+    Raises ``core.blueprints.BlueprintError`` for an unknown blueprint name —
+    the caller renders that as a clean CLI error, not a traceback.
+    """
+    blueprint = _bp.get_blueprint(blueprint_name)
+    roster = roles if roles is not None else blueprint.roles
+
+    codebase = ""
+    work_dir = ""
+    if blueprint.workspace_kind == "codebase":
+        codebase = location
+    else:
+        work_dir = location or str(_cfg.pod_work_dir(project))
+        Path(work_dir).mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            Path(work_dir).chmod(0o700)
+
+    return build_pod(
+        project,
+        roster,
+        codebase=codebase,
+        stack=stack,
+        description=description,
+        project_key=project_key,
+        work_dir=work_dir,
+        blueprint_name=blueprint.name,
+        budget_usd=blueprint.default_budget_usd,
+    )
 
 
 def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
@@ -569,12 +685,17 @@ def _pod_add(project: str, extra: list[str]) -> None:
             ui.error(str(ex))
             raise typer.Exit(1) from ex
 
-    # Inherit codebase/stack/description from the pod's Lead (or any member).
+    # Inherit codebase/stack/description (and, for a `workdir`-kind pod, the
+    # shared working directory + blueprint name) from the pod's Lead (or any
+    # member) — a new member of a workdir pod must not fall back to being a
+    # codebase-kind member.
     base_id = pod_member_ids(project)[0]
     codebase = _oc.meta_get(base_id, "codebase", "")
     stack = _oc.meta_get(base_id, "stack", "")
     description = _oc.meta_get(base_id, "description", "")
     project_key = _oc.meta_get(base_id, "projectKey", "default") or "default"
+    work_dir = _oc.meta_get(base_id, "workDir", "")
+    blueprint_name = _oc.meta_get(base_id, "blueprint", "")
     role_models, _, _ = _mp.load_registry()
 
     canon_role = pod.normalize_role(role)
@@ -612,6 +733,8 @@ def _pod_add(project: str, extra: list[str]) -> None:
             port_range_count=port_count,
             scratch_dir=scratch,
             verify_cmd=verify_cmd,
+            work_dir=work_dir,
+            blueprint_name=blueprint_name,
         )
         if ok:
             ui.success(f"Added {member.member_id} [{member.role}] {member.model}")
