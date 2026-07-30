@@ -13,6 +13,10 @@ OPENCLAW_DIR = Path(os.environ.get("OPENCLAW_DIR", Path.home() / ".openclaw"))
 
 CONFIG_FILE = OPENCLAW_DIR / "openclaw.json"
 MODEL_REGISTRY_FILE = OPENCLAW_DIR / "docket-models.json"
+# ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes (ROADMAP Phase 16 W-6) —
+# the same overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
+# overlaid by a user `roles:` map). See core/archetypes.py.
+ARCHETYPE_REGISTRY_FILE = OPENCLAW_DIR / "docket-roles.json"
 PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
 SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
 LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))

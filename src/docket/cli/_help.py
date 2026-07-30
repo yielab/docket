@@ -101,6 +101,8 @@ def run_help() -> int:
   {G}pod{R} <project> delegate Queue a task for the pod
   {G}pod{R} <project> queue    Show the pod's task queue
   {G}pod{R} <project> dispatch Run queued tasks through the pod pipeline
+  {G}roles{R} list/show        Declarative role archetypes (lead/implementer/…
+                        + starter library); {G}roles add/validate{R} for custom ones
   {G}workflow{R} [id]          Manage Lobster YAML pipelines
 
 {B}UTILITIES{R}

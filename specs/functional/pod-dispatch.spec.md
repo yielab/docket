@@ -6,7 +6,8 @@ explicitly out of scope — see "Does NOT cover"; tracked as Phase 16 W-2). The 
 gate itself (Requirements → "require_approval gate and waiting_approval") ships with exactly one
 wired source (pod-level); its two other documented sources are explicit, inert seams — see that
 section's "Sources" list. Hops run through the RuntimeDriver port (Phase 18 L-1) — a containment
-refactor with no behavior change.
+refactor with no behavior change. The role-archetype registry's `gateContract` (Phase 16 W-6) is
+descriptive data only; this pipeline's own gates remain independent of it until W-8.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -80,6 +81,11 @@ This specification does NOT cover:
   does not have today
 - The retired org-wide `docket team` queue (removed-command notice only; durable record in
   ROADMAP decision D-11 — its spec was removed 2026-07-30)
+- The declarative role-archetype registry (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
+  and its per-archetype `gateContract` field — that field is currently descriptive data only;
+  this pipeline's Reviewer/Tester verdict parsing and Implementer `verifyCmd` gate remain their
+  own independent, hardcoded implementation, unaware of the registry (wiring them together is
+  ROADMAP Phase 16 W-8, not shipped)
 
 ## Requirements
 
@@ -680,6 +686,11 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   gained a shared `FakeDriver` test double (`tests/python/fakes.py`) implementing the full
   `RuntimeDriver` protocol, adopted by `test_dispatch.py` in place of its former ad-hoc
   `_RecordingRunner` shim.
+- Cross-reference only (ROADMAP Phase 16 W-6): named the new declarative role-archetype registry
+  (role-archetypes.spec.md) in "Does NOT cover" and clarified that its `gateContract` field is
+  descriptive data only today — this pipeline's own Reviewer/Tester/Implementer gate logic is
+  unchanged and still independently hardcoded (wiring the two together is Phase 16 W-8). No
+  behavior in this pipeline changed.
 
 ### Version 2.0.0 (2026-07-30)
 

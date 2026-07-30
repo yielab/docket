@@ -20,6 +20,7 @@ from rich.table import Table
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import archetypes as _arch
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
@@ -69,77 +70,59 @@ def _validate_verify_cmd(cmd: str) -> str:
     return cmd
 
 
-# One-line purpose per pod role (shown in `docket pod <project>`).
-_ROLE_PURPOSE: dict[str, str] = {
-    "lead": "orchestrates the pod; never edits code",
-    "implementer": "writes code in the project workspace",
-    "reviewer": "read-only veto on diffs",
-    "tester": "behaviour-only PASS/FAIL",
-}
+def _role_purpose(role: str) -> str:
+    """One-line purpose for a pod role (shown in `docket pod <project>`).
+
+    Sourced from the role's archetype (`RoleArchetype.description`) — built-in,
+    starter-library, or user-defined — rather than a second hardcoded map that
+    would drift from `core/archetypes.py`'s own descriptions.
+    """
+    arch = _arch.load_registry().get(role)
+    return arch.description if arch is not None else ""
+
+
+def _render_context(
+    member: pod.PodMember, project: str, codebase: str, stack: str, description: str
+) -> dict[str, str]:
+    """Template variables for a pod member's SOUL.md/AGENTS.md (W-6 archetypes).
+
+    Guaranteed, cross-archetype variables: ``project``, ``objective``,
+    ``codebase``, ``workDir`` (the card's documented set — always populated,
+    safe for a user-authored archetype to reference). The rest
+    (``memberId``/``sessionKey``/``role``/``stack``/``codebaseOrConfigured``/
+    ``codebaseOrIt``/``requiredStartupFile``) are additional context docket's
+    own built-in/starter archetypes rely on for exact legacy prose parity.
+    """
+    return {
+        "project": project,
+        "role": member.role,
+        "memberId": member.member_id,
+        "sessionKey": member.session_key,
+        "objective": description or project,
+        "codebase": codebase,
+        "codebaseOrConfigured": codebase or "(no codebase configured)",
+        "codebaseOrIt": codebase or "it",
+        "stack": stack,
+        "workDir": codebase or str(_cfg.workspace_dir(member.member_id)),
+        "requiredStartupFile": _mem.REQUIRED_STARTUP_FILE,
+    }
 
 
 def _member_soul(
     member: pod.PodMember, project: str, codebase: str, stack: str, description: str
 ) -> str:
-    head = (
-        f"# SOUL.md — {project} · {member.role}\n\n"
-        "## Identity\n"
-        f"You are the **{member.role}** of the **{project}** pod (agent id "
-        f"`{member.member_id}`).\n\n"
-        f"**Session Key:** `{member.session_key}`\n\n"
-        "You belong to one project only. Respect the pod session-key boundary — "
-        "no cross-project access.\n\n"
-        f"## Project\n{description or project}\n\n"
-        f"## Codebase\n{codebase or '(no codebase configured)'}\n\n"
-        f"## Stack\n{stack}\n\n"
-    )
-    if member.role == "lead":
-        body = (
-            "## Role — Lead / Orchestrator\n"
-            "- You own the pod's context, memory, and human communication.\n"
-            "- Decompose work and dispatch it to the pod's workers "
-            "(implementer → reviewer → tester).\n"
-            "- **You NEVER edit code, run git, or execute the build.** If you are "
-            "about to, STOP and delegate to the implementer.\n"
-            "- Surface architectural decisions and risky actions to the human (HITL).\n"
-        )
-    elif member.role == "implementer":
-        body = (
-            "## Role — Implementer\n"
-            f"- You run **inside** this project's workspace and know {codebase or 'it'} "
-            "deeply. Read files before changing them.\n"
-            "- You implement the tasks the Lead assigns: read/write/edit the codebase.\n"
-            "- Signal completion with `<promise>DONE</promise>`.\n"
-            "- Never push to main/master without HITL approval; never delete files "
-            "without explicit instruction.\n"
-        )
-    elif member.role == "reviewer":
-        body = (
-            "## Role — Reviewer (veto power)\n"
-            "- You review diffs for correctness, security, and requirement fit.\n"
-            "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
-            "- **Marker convention:** the first non-blank line of your reply must be "
-            "exactly `APPROVE` or `REQUEST-CHANGES` (case-insensitive) — dispatch "
-            "parses this line to gate the pipeline. Reasons go on the lines after "
-            "it. Anything else on that first line is treated as unparseable and "
-            "blocks the pipeline the same as a rejection.\n"
-            "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
-            "for a bounded rework cycle (once, by default) before it becomes a "
-            "hard failure — your review text is what the Implementer sees, so "
-            "make it actionable.\n"
-        )
-    else:  # tester
-        body = (
-            "## Role — Tester\n"
-            "- You run the test suite and reproduction steps and report a binary "
-            "**PASS/FAIL** with evidence.\n"
-            "- Observe behaviour only — do not read or critique the implementation.\n"
-            "- **Marker convention:** the first non-blank line of your reply must be "
-            "exactly `PASS` or `FAIL` (case-insensitive) — dispatch parses this line "
-            "to gate the pipeline. Evidence goes on the lines after it. Anything else "
-            "on that first line blocks the pipeline the same as a FAIL.\n"
-        )
-    return head + body
+    """Render a pod member's SOUL.md from its archetype's `soulTemplate` (W-6).
+
+    Byte-identical to the pre-W-6 hand-written per-role generator for the four
+    legacy roles (lead/implementer/reviewer/tester) — see
+    `tests/python/test_w6_archetypes.py`. No role-specific branching lives
+    here any more; the prose is data in `core/archetypes.py`.
+    """
+    arch = _arch.load_registry().get(member.role)
+    if arch is None:
+        raise pod.PodError(f"no archetype registered for role {member.role!r}")
+    variables = _render_context(member, project, codebase, stack, description)
+    return _arch.render(arch.soul_template, variables)
 
 
 def _member_tools(
@@ -194,27 +177,20 @@ def _member_tools(
 
 
 def _member_agents(member: pod.PodMember, project: str) -> str:
-    # Section names matter: the openclaw runtime re-injects the "Session Startup"
-    # and "Red Lines" H2 blocks after every compaction (readPostCompactionContext).
-    # Keep these headings verbatim or the injection silently stops firing.
-    return (
-        f"# AGENTS.md — {project} · {member.role}\n\n"
-        "## Session Startup\n"
-        "_Lean — re-sent every turn._\n"
-        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol + your codebase\n"
-        "   path (the runtime requires this after every context reset).\n"
-        "2. Read HEARTBEAT.md — active tasks/decisions (small; always). Unchecked\n"
-        "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
-        "3. Read memory/YYYY-MM-DD.md only when the task needs prior context;\n"
-        "   don't slurp the whole memory/ dir — what you read is re-sent every\n"
-        "   later turn.\n\n"
-        "## Red Lines\n"
-        f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"
-        "  routes work between members). No cross-project access.\n"
-        "- Never push to main/master or delete files without HITL approval.\n"
-        "- Before starting multi-step work, write it to HEARTBEAT.md — an unwritten\n"
-        "  task does not survive a context reset.\n"
-    )
+    """Render a pod member's AGENTS.md from its archetype's `agentsTemplate` (W-6).
+
+    Byte-identical to the pre-W-6 hand-written generator for the four legacy
+    roles. Section names matter: the openclaw runtime re-injects the "Session
+    Startup" and "Red Lines" H2 blocks after every compaction
+    (readPostCompactionContext) — a custom archetype must keep those headings
+    verbatim or the injection silently stops firing (see
+    `core/archetypes.py`'s built-in/starter `agentsTemplate` strings).
+    """
+    arch = _arch.load_registry().get(member.role)
+    if arch is None:
+        raise pod.PodError(f"no archetype registered for role {member.role!r}")
+    variables = _render_context(member, project, "", "", "")
+    return _arch.render(arch.agents_template, variables)
 
 
 def _worktree_branch(project: str, member_id: str) -> str:
@@ -572,9 +548,9 @@ def _pod_list(project: str) -> None:
                     ports_str = port_start_s
             else:
                 ports_str = "—"
-            table.add_row(mid, role, model, _ROLE_PURPOSE.get(role, ""), ports_str, scratch or "—")
+            table.add_row(mid, role, model, _role_purpose(role), ports_str, scratch or "—")
         else:
-            table.add_row(mid, role, model, _ROLE_PURPOSE.get(role, ""))
+            table.add_row(mid, role, model, _role_purpose(role))
     ui.console.print(table)
 
 

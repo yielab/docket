@@ -9,33 +9,46 @@ Default pod is **lean**: a Lead + an Implementer (2 agents).
 Reviewer, Tester, or **additional Implementers** are added later.
 A role may be **duplicated** (e.g. two Implementers); duplicates get an
 indexed member id (``<project>-implementer``, ``<project>-implementer-2``).
+
+ROADMAP Phase 16 W-6: the set of valid pod roles is no longer a hardcoded
+4-tuple — ``normalize_role``/``member_id``/``pod_of``/``members_of`` all
+resolve against ``core/archetypes.py``'s registry (built-in four roles +
+starter library + any user-defined archetype), so a fifth role is data, never
+a new hardcoded string here. ``POD_ROLES``/``POD_ROLE_POLICY`` are kept as
+module attributes for backward compatibility (via ``__getattr__`` below) but
+are now *computed* from the live registry on every access rather than
+literal dict/tuple constants — see that function's docstring.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import docket.config as _cfg
+from docket.core import archetypes as _archetypes
 from docket.core import models_policy as _mp
-
-# The roles a pod member can take. Distinct from the org specialist roles.
-POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
-# Pod role → role→model policy key. Lead coordinates (cheap), Implementer writes
-# code (strong); reviewer/tester map to their own policy entries. This is why a
-# Lead lands on the cheap coordination model and an Implementer on the strong one.
-POD_ROLE_POLICY: dict[str, str] = {
-    "lead": "manager",
-    "implementer": "programmer",
-    "reviewer": "reviewer",
-    "tester": "tester",
-}
-
-# At most one Lead per pod — a pod has a single orchestrator.
+# At most one Lead per pod — a pod has a single orchestrator. Not part of the
+# archetype schema (W-6's field list has no "singleton" concept) — this is a
+# pod-composition rule specific to the Lead role, unaffected by which roles
+# the archetype registry knows about.
 _SINGLETON_POD_ROLES: frozenset[str] = frozenset({"lead"})
+
+
+def _role_names() -> tuple[str, ...]:
+    """Live set of valid pod role names: built-ins + starter library + user overlay.
+
+    Not cached — re-reads the archetype registry every call (mirrors
+    ``models_policy.load_registry``'s own no-caching pattern), so a freshly
+    added user archetype (or a test that monkeypatches
+    ``cfg.ARCHETYPE_REGISTRY_FILE``) is always picked up without needing to
+    reload this module.
+    """
+    return _archetypes.load_registry().role_names()
 
 
 class PodError(ValueError):
@@ -55,12 +68,18 @@ class PodMember:
 
 
 def normalize_role(role: str) -> str:
-    """Map user input to a canonical pod role (accepts the ``programmer`` alias)."""
+    """Map user input to a canonical pod role (accepts the ``programmer`` alias).
+
+    Validates against the live archetype registry (``core/archetypes.py``),
+    not a hardcoded list — any built-in, starter-library, or user-defined
+    archetype name is accepted.
+    """
     r = role.strip().lower()
     if r == "programmer":
         r = "implementer"
-    if r not in POD_ROLES:
-        raise PodError(f"unknown pod role {role!r}; valid roles: {', '.join(POD_ROLES)}")
+    valid = _role_names()
+    if r not in valid:
+        raise PodError(f"unknown pod role {role!r}; valid roles: {', '.join(valid)}")
     return r
 
 
@@ -87,13 +106,14 @@ def pod_of(member_id: str) -> str | None:
     ``demo``; ``my-shop-reviewer`` → ``my-shop``. A plain id with no pod-role
     suffix (e.g. a legacy single agent ``myshop`` or ``my-api``) → ``None``.
     """
+    roles = _role_names()
     head, sep, tail = member_id.rpartition("-")
     if sep and tail.isdigit():  # …-<role>-<index>
         proj, sep2, role = head.rpartition("-")
-        if sep2 and role in POD_ROLES:
+        if sep2 and role in roles:
             return proj
         return None
-    if sep and tail in POD_ROLES:  # …-<role>
+    if sep and tail in roles:  # …-<role>
         return head
     return None
 
@@ -109,8 +129,9 @@ def members_of(all_agent_ids: list[str], project: str) -> list[tuple[str, str, i
         parsed = parse_member_id(mid, project)
         if parsed is not None:
             found.append((mid, parsed[0], parsed[1]))
-    role_rank = {role: i for i, role in enumerate(POD_ROLES)}
-    found.sort(key=lambda t: (role_rank.get(t[1], len(POD_ROLES)), t[2]))
+    roles = _role_names()
+    role_rank = {role: i for i, role in enumerate(roles)}
+    found.sort(key=lambda t: (role_rank.get(t[1], len(roles)), t[2]))
     return found
 
 
@@ -146,7 +167,7 @@ def parse_member_id(member_id_str: str, project: str) -> tuple[str, int] | None:
         role, index = head, int(tail)
     else:
         role, index = rest, 1
-    if role not in POD_ROLES or index < 1:
+    if role not in _role_names() or index < 1:
         return None
     return role, index
 
@@ -161,8 +182,9 @@ def resolve_member(
 ) -> PodMember:
     """Resolve one pod member: canonical role, id, policy model, session key."""
     canon = normalize_role(role)
-    policy_role = POD_ROLE_POLICY[canon]
-    model = _mp.resolve_role_model(policy_role, role_models)
+    arch = _archetypes.load_registry().get(canon)
+    assert arch is not None  # normalize_role() already validated membership
+    model = _mp.resolve_role_model(arch.resolved_policy_role, role_models)
     return PodMember(
         project=project,
         role=canon,
@@ -234,6 +256,18 @@ def plan_added_member(
     )
 
 
+def policy_role_for(role: str) -> str:
+    """The role→model policy key ``role``'s archetype resolves through.
+
+    A typed counterpart to ``POD_ROLE_POLICY.get(role, role)`` (see that
+    dict's ``__getattr__`` docstring) that ``models_policy.agent_role()``
+    calls directly — avoids round-tripping through the dynamically-typed
+    module attribute at a call site that needs a concrete ``str`` back.
+    """
+    arch = _archetypes.load_registry().get(role)
+    return arch.resolved_policy_role if arch is not None else role
+
+
 def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "") -> str:
     """Resolve the real working directory for a pod member's mechanical operations.
 
@@ -254,3 +288,20 @@ def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "
     if codebase:
         return codebase
     return str(_cfg.workspace_dir(member_id))
+
+
+def __getattr__(name: str) -> Any:
+    """Backward-compatible ``POD_ROLES``/``POD_ROLE_POLICY`` module attributes (PEP 562).
+
+    Both used to be literal module-level constants; W-6 replaced their source
+    of truth with the archetype registry, so any external code (or a future
+    caller) that still does ``pod.POD_ROLES`` / ``pod.POD_ROLE_POLICY`` keeps
+    working, now backed by a live registry read instead of a hardcoded 4-tuple
+    (this also fires for ``from docket.core.pod import POD_ROLES`` — PEP 562
+    module ``__getattr__`` covers both attribute-access forms).
+    """
+    if name == "POD_ROLES":
+        return _role_names()
+    if name == "POD_ROLE_POLICY":
+        return {n: a.resolved_policy_role for n, a in _archetypes.load_registry().items()}
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

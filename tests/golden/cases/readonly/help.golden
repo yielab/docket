@@ -75,6 +75,8 @@ PODS, QUEUE & WORKFLOWS
   pod <project> delegate Queue a task for the pod
   pod <project> queue    Show the pod's task queue
   pod <project> dispatch Run queued tasks through the pod pipeline
+  roles list/show        Declarative role archetypes (lead/implementer/…
+                        + starter library); roles add/validate for custom ones
   workflow [id]          Manage Lobster YAML pipelines
 
 UTILITIES

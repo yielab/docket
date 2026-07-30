@@ -299,10 +299,37 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
 
 
 def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> str:
-    """Return the effective model for a role (loads registry if not supplied)."""
+    """Return the effective model for a role (loads registry if not supplied).
+
+    ``role`` is usually a named policy role (``ALL_ROLES``), but MAY also be a
+    pod *archetype* name that has no row of its own there (ROADMAP Phase 16
+    W-6 — a starter-library or user-defined role like ``researcher``, whose
+    ``policy_role`` was left unset). Those fall through to
+    ``_resolve_via_archetype_class``, which resolves the model via the
+    archetype's own declared ``modelClass`` (cheap|strong) against the live
+    rank anchors — this is what lets `modelClass` genuinely *slot into* this
+    policy instead of every unlisted role silently collapsing to
+    ``cfg.DEFAULT_MODEL``. The four legacy pod roles are unaffected: their
+    archetypes carry a ``policy_role`` override (``manager``/``programmer``/
+    ``reviewer``/``tester``) that already has a row in ``role_models``, so
+    they never reach this fallback.
+    """
     if role_models is None:
         role_models, _, _ = load_registry()
-    return role_models.get(role, cfg.DEFAULT_MODEL)
+    if role in role_models:
+        return role_models[role]
+    return _resolve_via_archetype_class(role)
+
+
+def _resolve_via_archetype_class(role: str) -> str:
+    """Resolve a model for a role unknown to ``ALL_ROLES`` via its archetype's modelClass."""
+    from docket.core import archetypes as _arch
+
+    arch = _arch.load_registry().get(role)
+    if arch is None:
+        return cfg.DEFAULT_MODEL
+    _, tiers, _ = load_registry()
+    return tiers["economy"] if arch.model_class == "cheap" else tiers["standard"]
 
 
 def is_role(role: str) -> bool:
@@ -325,7 +352,7 @@ def agent_role(agent_id: str) -> str:
     if pod_role:
         from docket.core import pod
 
-        return pod.POD_ROLE_POLICY.get(pod_role, pod_role)
+        return pod.policy_role_for(pod_role)
     return "repo"
 
 
