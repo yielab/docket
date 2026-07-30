@@ -96,14 +96,72 @@ class TestCheckReadmeUnit:
 
         assert any("lines of Python" in p for p in problems)
 
-    def test_missing_claim_pattern_is_skipped_not_failed(self, tmp_path: Path) -> None:
-        # A README with no matching prose at all shouldn't be treated as drift
-        # — there's nothing to gate on, that's a docs-wording concern.
+    def test_one_reworded_claim_is_skipped_not_failed(self, tmp_path: Path) -> None:
+        # Rewording *a* claim out of the prose is a docs concern, not drift —
+        # the remaining claims still gate. This is the original, correct half of
+        # the skip rule.
+        metrics = {"tests": 700, "loc": 12000, "commands": 30, "specs": 15}
+        readme = tmp_path / "README.md"
+        full = _synthetic_readme(700, 12000, 15)
+        without_specs = "\n".join(
+            line for line in full.splitlines() if "specifications" not in line
+        )
+        readme.write_text(without_specs + "\n")
+
+        assert METRICS.check_readme(readme, metrics) == []
+
+    def test_readme_stating_no_claims_at_all_is_a_hard_failure(self, tmp_path: Path) -> None:
+        """A guard that verified nothing must not report success.
+
+        Regression test for the fail-open hole: `check_readme` used to skip every
+        unmatched claim silently, so a README stating none of them returned "in
+        sync" while checking zero numbers. Combined with the comma bug below,
+        the real gate went fully vacuous.
+        """
         metrics = {"tests": 700, "loc": 12000, "commands": 30, "specs": 15}
         readme = tmp_path / "README.md"
         readme.write_text("Just some unrelated prose with no quoted numbers.\n")
 
+        problems = METRICS.check_readme(readme, metrics)
+
+        assert problems, "a README with zero recognizable claims must not pass"
+        assert any("UNGUARDED" in p for p in problems)
+
+    def test_thousands_separator_in_a_claim_is_still_checked(self, tmp_path: Path) -> None:
+        """Regression: `**1,188 tests**` must be parsed, not silently skipped.
+
+        The claim patterns used `(\\d+)`, which cannot match a comma-formatted
+        number, so the tests guard silently disarmed itself the moment the suite
+        crossed 1,000 cases — while still printing "in sync".
+        """
+        metrics = {"tests": 1188, "loc": 12000, "commands": 30, "specs": 15}
+        readme = tmp_path / "README.md"
+        readme.write_text(
+            "- **1,188 tests** in the pytest suite (`tests/python/`)\n"
+            "- **~12,000 lines** of Python in the shipped `docket` package\n"
+            "- **15 specifications** (RFC 2119), validated in CI\n"
+        )
+
         assert METRICS.check_readme(readme, metrics) == []
+
+    def test_thousands_separator_drift_is_caught(self, tmp_path: Path) -> None:
+        metrics = {"tests": 1188, "loc": 12000, "commands": 30, "specs": 15}
+        readme = tmp_path / "README.md"
+        readme.write_text("- **1,042 tests** in the pytest suite (`tests/python/`)\n")
+
+        problems = METRICS.check_readme(readme, metrics)
+
+        assert any("1042" in p and "1188" in p for p in problems)
+
+    def test_claims_found_reports_live_and_disarmed_guards(self, tmp_path: Path) -> None:
+        readme = tmp_path / "README.md"
+        readme.write_text("- **700 tests** in the pytest suite (`tests/python/`)\n")
+
+        stated, missing = METRICS.claims_found(readme)
+
+        assert "tests (by-the-numbers bullet)" in stated
+        assert "specifications" in missing
+        assert "lines of Python" in missing
 
 
 class TestMainCheckExitCodes:
