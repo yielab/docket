@@ -1,7 +1,7 @@
 # Security Gates Specification
 
 **Version**: 0.5.0
-**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below)
+**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store now has a real production producer (ROADMAP Phase 15 G-1); the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section).
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -37,31 +37,44 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 >
 > Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
 >
-> **The approval seam (honesty note, 2026-07-30; G-5 spike concluded 2026-07-30).** There are
-> two approval systems in play and they remain **not bridged**: (a) the **daemon's**
-> exec-approval prompt — the thing that actually fires when a gated binary is invoked — which is
-> delivered to the agent's chat session and answered with the daemon's own `/approve <id>`
-> mechanism; and (b) **docket's** approval store (`apr-*` tokens under `$APPROVALS_DIR`), which
-> the CLI/HTTP channels above read and write. Today **no production code creates records in
-> docket's store** (`approval_create` has no production caller): the daemon's gate prompt does
-> not mint an `apr-*` token, so `docket approve` cannot answer a live daemon gate. docket's store
-> gains its first production producer in Phase 15 G-1 (approval-gated dispatch) — an unrelated,
-> purely-internal gate, not this bridge.
+> **The approval seam (updated 2026-07-30 — G-1 shipped, G-5 concluded "no bridge").** There are
+> two approval systems in play, and **the daemon-facing half of the seam is still not bridged**:
+> (a) the **daemon's** exec-approval prompt — the thing that actually fires when a gated binary
+> is invoked — which is delivered to the agent's chat session and answered with the daemon's own
+> `/approve <id>` mechanism; and (b) **docket's** approval store (`apr-*` tokens under
+> `$APPROVALS_DIR`), which the CLI/HTTP channels above read and write. The daemon's gate prompt
+> still does not mint an `apr-*` token, so `docket approve` still cannot answer a *live daemon*
+> gate.
 >
 > **G-5 spike verdict: No — a practical bridge does not exist today.** ROADMAP Phase 15 G-5 asked
 > whether the daemon's exec-approval prompt can notify an external hook. It was investigated
 > against a locally installed `openclaw 2026.2.23` daemon (live gateway, real registered agents)
 > plus its published documentation. Short answer: half of a bridge is real and reachable
-> (resolving a *known* prompt), the other, load-bearing half (learning that a prompt exists) is
-> not reachable from anywhere in docket's current toolbox. See "The `[GATE]` seam — G-5 spike
-> findings" below for the full evidence trail. No code was shipped; this remains a documentation
-> update, per the spike's own evidence standard.
+> (resolving a *known* prompt), while the other, load-bearing half (learning that a prompt exists
+> at all) is not reachable from anywhere in docket's current toolbox. See "The `[GATE]` seam —
+> G-5 spike findings" below for the full evidence trail. That card shipped no code, per its own
+> evidence standard — so this remains a documented, evidenced upstream limitation rather than an
+> open question.
 >
-> **Why on-by-default is still safe:** the fail-closed property for an unattended agent is the
-> daemon's own `askFallback: deny` — a prompt nobody answers is denied by the daemon, full
-> stop. docket's `approval_sweep_expired` additionally expires stale store records after
-> `APPROVAL_TIMEOUT`, but that sweep runs only while `docket serve` is up and marks records
-> `expired`; it is bookkeeping on docket's store, not the enforcement mechanism.
+> What changed: docket's store previously had **zero** production producers (`approval_create`
+> was called only by tests). ROADMAP Phase 15 G-1 ("approval-gated dispatch") gave it its first
+> one — `core/dispatch.py`'s require_approval gate, evaluated pre-hop in the pod dispatch
+> pipeline (see `pod-dispatch.spec.md` v2.1.0). A gated hop now genuinely creates a real approval
+> record, and `docket approve`/`docket deny` (and the HTTP endpoint below) genuinely resume or
+> kill the *dispatch task* that gate stopped — this is real, shipped behavior, not a future
+> contract. It is still scoped narrowly: it gates a pod dispatch hop, not the daemon's own
+> exec-approval prompt for an arbitrary tool call, and its only wired trigger source this version
+> is a pod-level Lead-meta role list (two more sources — a policy match, a pipeline step — are
+> documented, inert seams for later cards; see `pod-dispatch.spec.md`).
+>
+> **Why on-by-default is still safe:** the fail-closed property for an unattended agent's
+> *daemon-side* gate is the daemon's own `askFallback: deny` — a prompt nobody answers is denied
+> by the daemon, full stop; that is unchanged by G-1. Separately, `approval_sweep_expired` now
+> resolves a stale pending record in docket's own store to **denied** (fail-closed) after
+> `APPROVAL_TIMEOUT`, not the prior, read-by-nobody `"expired"` state — and, for a G-1-originated
+> record specifically, that resolution also fails the waiting dispatch task, so an unanswered
+> gate on a pod dispatch hop now genuinely fail-closes end to end, not just on paper. This sweep
+> still runs only while `docket serve` is up.
 
 ## Scope
 
@@ -89,16 +102,23 @@ are owned here, not there.
    channel (CLI `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`). The
    daemon's own gate prompt is answered in the agent's session via the daemon's `/approve`;
    it is **not** answerable through docket's channels until the Phase 15 G-5 bridge lands
-   (see the approval-seam note above).
-3. A gate prompt with no approver **MUST** fail closed. This is enforced by the daemon's
-   `askFallback: deny`. Additionally, stale records in docket's store expire (state
-   `expired`) after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while
-   `docket serve` is up and is bookkeeping, not enforcement.
+   (see the approval-seam note above). Since ROADMAP Phase 15 G-1, one real producer exists for
+   this store — `core/dispatch.py`'s require_approval gate — and both headless channels
+   **MUST** genuinely resume or kill the dispatch task a gate stopped, not merely flip the
+   approval record's own state; see `pod-dispatch.spec.md`'s `resolve_waiting_approval`.
+3. A gate prompt with no approver **MUST** fail closed. For the daemon's own exec-approval
+   prompt this is enforced by `askFallback: deny`. Separately, a stale **pending** record in
+   docket's own store **MUST** resolve to **denied** (not the pre-G-1 `"expired"` state) after
+   `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket serve` is up.
+   For a G-1-originated record (one gating a dispatch task), that resolution **MUST** also fail
+   the waiting task terminally (`failureKind: "approval_denied"`) — this sweep is bookkeeping
+   for the daemon's own gate, but real enforcement for docket's own require_approval gate.
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
    log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`cli`, `http`). The `telegram` tag is reserved for a future daemon bridge, which
-   the G-5 spike (below) concluded is not currently practical to build: today a daemon-side
-   `/approve` writes **no** docket audit entry.
+   through (`cli`, `http`, or `timeout` for the expiry sweep's own fail-closed denial). The
+   `telegram` tag is reserved for a future daemon bridge, which the G-5 spike (below) concluded
+   is not currently practical to build: today a daemon-side `/approve` writes **no** docket
+   audit entry.
 
 ### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged)
 
@@ -244,15 +264,20 @@ docket doctor                  # MUST report whether security gates are configur
 ### Approval channels
 
 ```bash
-# docket's approval store (no production producer yet — first producer: Phase 15 G-1)
+# docket's approval store (production producer since Phase 15 G-1: core/dispatch.py's
+# require_approval gate — see pod-dispatch.spec.md)
 docket approve                 # List pending approvals in docket's store
 docket approve <token>         # Grant a pending approval — headless, no chat session needed
+                                #   (G-1: also resumes any dispatch task it gated)
 docket deny <token>            # Deny a pending approval — headless, no chat session needed
+                                #   (G-1: also fails any dispatch task it gated, terminally)
 GET  /approvals                # docket serve: list pending approvals (bearer auth)
 POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (bearer auth)
+                                #   (G-1: same resume/kill behavior as the CLI channel)
 
 # the daemon's own gate prompt (what actually fires on a gated binary today)
 /approve <id> allow-once|deny  # answered in the agent's chat session, daemon-side
+                                #   — NOT bridged to docket's store yet (G-5, not implemented)
 ```
 
 ## Examples
@@ -279,6 +304,28 @@ found **not practically buildable today** — see "The `[GATE]` seam — G-5 spi
 for the evidence. No docket code emits a `[GATE]` line, and none is planned until OpenClaw
 exposes a Python-reachable way to learn that a live exec-approval prompt exists. The example is
 retained as the target contract only. **Do not cite it as shipped behavior.**
+
+### Approval flow — shipped state (dispatch-gated, ROADMAP Phase 15 G-1)
+
+This one *is* real today — narrower than the target state above (it gates a pod dispatch hop,
+not an arbitrary daemon exec prompt), but genuinely end to end, store to task:
+
+```text
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-1234)
+
+$ docket approve apr-1234
+✓ Approval granted: apr-1234
+  The waiting action may now proceed.
+
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0091
+```
+
+An unanswered token fail-closes the same way: `approval_sweep_expired` (running only under
+`docket serve`) resolves it to `denied` after `APPROVAL_TIMEOUT`, and the dispatch task fails
+terminally (`failureKind: "approval_denied"`) without anyone calling `docket deny` at all. See
+`pod-dispatch.spec.md` v2.1.0 for the full state-machine contract this flow is built on.
 
 ### High-risk action classes (implemented)
 
@@ -314,14 +361,18 @@ secret-access — Secret/credential writes and key generation
 - After a default install (no `--no-gates`), dangerous operations **MUST** be gated
   (daemon-enforced).
 - Grants and denials through docket's approval store **MUST** appear in the audit log
-  (`cli`/`http` channels). Daemon-side `/approve` responses write no docket audit entry
-  until the G-5 bridge lands.
+  (`cli`/`http`/`timeout` channels). Daemon-side `/approve` responses write no docket audit
+  entry until the G-5 bridge lands.
 - A gate prompt with no approver **MUST** resolve to denied (daemon `askFallback: deny`).
-  Stale docket-store records additionally expire while `docket serve` runs.
+  Stale docket-store records additionally resolve to **denied** (fail-closed, not merely
+  "expire") while `docket serve` runs, and — since G-1 — a dispatch task waiting on such a
+  record is failed terminally as part of that same resolution.
 
 ### Invariants
 
-- A denied or timed-out request **MUST NOT** execute (enforced by the daemon).
+- A denied or timed-out request **MUST NOT** execute (enforced by the daemon for its own
+  exec-approval prompt; enforced by `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
+  require_approval gate on a pod dispatch hop).
 - Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
   G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket audit verify` detects
   an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
@@ -331,6 +382,9 @@ secret-access — Secret/credential writes and key generation
   secret-access) — those are fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST
   NOT** be claimed as enforced until per-argument daemon support exists; it remains a
   documented policy only.
+- A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
+  resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
+  spec does not duplicate that state machine, only the approval-store side of it.
 
 ## Changelog
 
@@ -355,6 +409,27 @@ secret-access — Secret/credential writes and key generation
   label so it reflects an actual investigation rather than an open question. No code shipped;
   this is a documentation-only update per the spike's own evidence standard (see ROADMAP Phase
   15 G-5).
+- **ROADMAP Phase 15 G-1 — approval-gated dispatch: docket's approval store gets a real
+  production producer.** Previously `approval_create` had zero production callers anywhere in
+  the codebase; `core/dispatch.py`'s new require_approval gate (pre-hop in the pod dispatch
+  pipeline — see `pod-dispatch.spec.md` v2.1.0) is that first producer. Updated to reflect what
+  is now genuinely true, not just a future contract:
+  - `docket approve`/`docket deny` and `POST /approvals/<token>` now genuinely resume or kill
+    the dispatch task a gate stopped (`resolve_waiting_approval`), not merely flip the approval
+    record's own state.
+  - `approval_sweep_expired` resolves a stale pending record to **denied** (not the prior
+    `"expired"` state) and, for a G-1-originated record, also fails the waiting dispatch task —
+    so the sweep is no longer *purely* bookkeeping; it is real enforcement for docket's own
+    require_approval gate specifically (the daemon's own exec-approval prompt still fail-closes
+    entirely on its own `askFallback: deny`, unaffected by this change).
+  - Added the `timeout` audit-log channel tag for the expiry sweep's own fail-closed denial.
+  - Added a shipped "Approval flow" example (dispatch-gated) alongside the still-not-implemented
+    daemon-gated target-state example, clearly distinguishing the two.
+  - **What is still not true:** the G-5 daemon-gate bridge (the daemon's own exec-approval
+    prompt minting an `apr-*` token) remains unimplemented — `docket approve` still cannot
+    answer a *live daemon* gate. G-1's producer is scoped to pod dispatch hops only. Its only
+    wired trigger source is a pod-level Lead-meta role list; a policy-match source (G-2) and a
+    pipeline-step source (W-1/W-2) are documented, inert seams, not shipped.
 
 ### Version 0.4.1 (2026-07-30)
 

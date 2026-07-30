@@ -903,6 +903,10 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")
         elif res.status == "blocked":
             ui.warn(f"  [{res.task_id}] blocked — {res.reason}")
+        elif res.status == "waiting_approval":
+            # G-1: waiting on a human decision is an expected pause, not a
+            # failure — same warn-not-error treatment as a budget block.
+            ui.warn(f"  [{res.task_id}] waiting_approval — {res.reason}")
         else:
             ui.error(f"  [{res.task_id}] {res.status} — {res.reason}")
 

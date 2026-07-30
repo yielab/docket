@@ -4,6 +4,11 @@
   docket approve            List pending approvals
 
 ``run_approve(token)`` returns the process exit code.
+
+G-1: a grant is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
+if *token* gated a dispatch task (``waiting_approval``, this exact token), that
+task moves back to ``pending`` with the exact hop it stopped on handed to the
+next dispatch run. A no-op for any other approval (or an already-resolved one).
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from __future__ import annotations
 import docket.config as _cfg
 from docket import ui
 from docket.core import approval as _ap
+from docket.core import dispatch as _dispatch
 
 
 def _help() -> int:
@@ -63,11 +69,13 @@ def run_approve(token: str | None = None) -> int:
         _ap.approval_grant(token, channel="cli")
     except _ap.ApprovalNoop as noop:
         ui.warn(noop.message)
+        _dispatch.resolve_waiting_approval(token, "granted")
         return 0
     except _ap.ApprovalError as err:
         ui.error(str(err))
         return 1
 
+    _dispatch.resolve_waiting_approval(token, "granted")
     ui.success(f"Approval granted: {token}")
     ui.dim("  The waiting action may now proceed.")
     return 0

@@ -1,8 +1,12 @@
 """Durable pending-approval store for HITL gating.
 
 Records persist to ``$APPROVALS_DIR/<token>.json`` (atomic, 0600) with the
-shape ``{token, project, role, action, state, created}``. The CLI ``approve`` /
-``deny`` commands transition pending → granted / denied.
+shape ``{token, project, role, action, state, created, context}``. The CLI
+``approve`` / ``deny`` commands transition pending → granted / denied.
+``context`` (ROADMAP Phase 15 G-1) is an optional, caller-supplied dict stored
+verbatim (``{}`` when omitted) — the seam that lets a consumer created
+elsewhere (today: ``core/dispatch.py``'s require_approval gate) find what a
+token gated once it's resolved; see ``approval_create``.
 
 Approval records are docket-owned artefacts (not openclaw config), so writes
 go through the ``edges/store.py`` single-writer chokepoint (D-12) rather than
@@ -10,12 +14,20 @@ the ACL.
 Trace emission and secret redaction are best-effort and isolated behind the thin
 ``_emit_trace`` / ``_redact`` hooks so tests can stub them. Grant/deny also write
 an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``) tagged
-with the calling channel (``cli``, ``http``, ``telegram``, ...) so ``docket
-audit`` has a record of who approved what and through which surface.
+with the calling channel (``cli``, ``http``, ``telegram``, ``timeout``, ...) so
+``docket audit`` has a record of who approved what and through which surface.
+
+G-1: this module now has its first production producer (``core/dispatch.py``'s
+require_approval gate) — previously ``approval_create`` had none. The expiry
+sweep (``approval_sweep_expired``) resolves a stale pending record to
+**denied** (fail-closed), not the prior, read-by-nobody ``"expired"`` state,
+and best-effort notifies ``core/dispatch.py`` so a task waiting on that token
+is actually failed, not left stranded in ``waiting_approval`` forever.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import json
 import os
@@ -98,8 +110,19 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
     return data
 
 
-def approval_create(project: str, role: str, action: str) -> str:
-    """Persist a pending approval and return its token."""
+def approval_create(
+    project: str, role: str, action: str, *, context: dict[str, Any] | None = None
+) -> str:
+    """Persist a pending approval and return its token.
+
+    *context* (G-1) is optional, caller-supplied structured data stored on the
+    record verbatim (never redacted — callers must not put secrets in it), so
+    whatever eventually resolves the grant/deny can find what it gated. The
+    only documented consumer today is ``core/dispatch.py``'s require_approval
+    gate, which stores ``{"taskId": ..., "pipelineIndex": ...}`` — see
+    ``core/dispatch.py``'s ``resolve_waiting_approval``. Always persisted
+    (``{}`` when omitted) so every record has the same shape.
+    """
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -117,6 +140,7 @@ def approval_create(project: str, role: str, action: str) -> str:
         "action": redacted_action,
         "state": "pending",
         "created": created,
+        "context": context or {},
     }
     _store.write_json(_approval_path(token), data)
 
@@ -203,9 +227,17 @@ def list_pending() -> list[dict[str, Any]]:
 
 
 def approval_sweep_expired() -> int:
-    """Expire pending approvals older than APPROVAL_TIMEOUT (treated as denied).
+    """Expire pending approvals older than APPROVAL_TIMEOUT — resolved as
+    **denied** (fail-closed), not the prior, read-by-nobody ``"expired"``
+    state (ROADMAP Phase 15 G-1). Returns the number of records swept. Called
+    by the serve loop.
 
-    Returns the number of records flipped to "expired". Called by the serve loop.
+    Each swept record is treated exactly like an explicit ``docket deny``: an
+    ``approval.deny`` audit entry is written (channel ``"timeout"`` — no human
+    answered it), and ``core/dispatch.py``'s ``resolve_waiting_approval`` is
+    given a chance to fail any dispatch task that was waiting on this exact
+    token — best-effort (a local import, guarded), so a problem on the
+    dispatch side can never break this sweep.
     """
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
@@ -230,7 +262,14 @@ def approval_sweep_expired() -> int:
         except ValueError:
             continue
         if (now - dt.timestamp()) > timeout:
-            data["state"] = "expired"
+            data["state"] = "denied"
             _store.write_json(path, data)
             swept += 1
+            token = str(data.get("token", ""))
+            project = str(data.get("project", "")) or "operator"
+            audit_log("approval.deny", f"token={token} project={project} channel=timeout")
+            with contextlib.suppress(Exception):
+                from docket.core import dispatch as _dispatch
+
+                _dispatch.resolve_waiting_approval(token, "denied")
     return swept

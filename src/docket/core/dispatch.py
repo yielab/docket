@@ -34,6 +34,25 @@ trace event, no claim write, no wasted turn) until ``docket profile <lead-id> --
 it. Gating also tolerates a daemon that never records a ``usage.cost.total`` at all — see
 ``pod_gating_cost``'s token-based estimate fallback, used for gating/warning only and always
 labelled, never presented as recorded spend.
+
+G-1 (approval-gated dispatch): a sixth task status, ``waiting_approval``, sits between a
+gated hop and the rest of the pipeline. Pre-hop (after the budget gate, before the hop's
+message is composed), ``_hop_requires_approval`` checks whether this role's turn needs a
+human decision — today, only the pod Lead's ``requireApprovalRoles`` meta list (a policy-match
+source is a seam for G-2; a pipeline-step source is a seam for W-1/W-2, see
+``_policy_requires_approval``/``_pipeline_step_requires_approval``). A fired gate creates a
+real ``core/approval.py`` record (previously ``approval_create`` had no production caller at
+all — this is that missing producer), persists the task as ``waiting_approval`` with the
+token and the exact pipeline position it stopped at, and stops the hop — never claimable again
+by a plain dispatch run (``_eligible_for_claim`` only recognizes ``pending`` and a
+``stale_claim``-tagged ``failed``). ``docket approve``/``docket deny`` and the HTTP
+``POST /approvals/<token>`` endpoint call ``resolve_waiting_approval`` right after the
+underlying grant/deny (and the expiry sweep does the same on a fail-closed timeout): a grant
+flips the task back to ``pending`` and hands the exact stopped-at position back to the *next*
+claim as a single-use gate override (so a resumed run continues past that one hop without
+re-prompting, while a later hop at the same role — e.g. a Reviewer rework cycle — still gates
+normally); a deny fails the task immediately and terminally (``failureKind:
+"approval_denied"``) — no agent turn is needed to kill a task that never ran its gated hop.
 """
 
 from __future__ import annotations
@@ -49,6 +68,7 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
+from docket.core import approval as _ap
 from docket.core import models as _models
 from docket.core import pod as _pod
 from docket.core import trace as _trace
@@ -145,9 +165,14 @@ class TaskResult:
     """Outcome of driving one task through the whole pipeline."""
 
     task_id: str
-    status: str  # "done" | "failed" | "blocked"
+    status: str  # "done" | "failed" | "blocked" | "waiting_approval"
     reason: str = ""
     hops: list[HopResult] = field(default_factory=list)
+    # G-1: only meaningful when status == "waiting_approval" — the token the
+    # gate created and the pipeline position it stopped at, so the caller
+    # (``_apply_result``) can persist enough to resume correctly on a grant.
+    approval_token: str = ""
+    pending_approval_index: int | None = None
 
     @property
     def cost_usd(self) -> float:
@@ -194,6 +219,15 @@ _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
     "costUsd": 0.0,
     "claimId": None,
     "claimedAt": None,
+    # G-1: set together when a require_approval gate fires (status ->
+    # "waiting_approval"); cleared on resolution (grant or deny) — see
+    # `_apply_result`/`resolve_waiting_approval`.
+    "approvalToken": None,
+    "pendingApprovalIndex": None,
+    # G-1: single-use gate-override handoff from a grant to the *next* claim
+    # of this task — captured then cleared from storage atomically inside
+    # `_claim_next_task` so it can never leak into an unrelated later claim.
+    "gateOverridePipelineIndex": None,
 }
 
 
@@ -691,6 +725,79 @@ def _replay_pipeline_position(
     return _ResumePosition(pipeline_index=pi, rework_count=rework, rework_hop=rework_hop)
 
 
+def _pod_requires_approval(project: str, role: str) -> bool:
+    """G-1's pod-level require_approval source: the Lead's ``requireApprovalRoles`` meta.
+
+    A comma-separated, case-insensitive role list (e.g. ``"implementer,reviewer"``)
+    read the same way ``pod_max_rework_cycles`` reads ``maxReworkCycles`` — only the
+    Lead's value is consulted, and there is no dedicated CLI setter yet (set it via
+    the internal ``meta-set <lead-id> requireApprovalRoles "<roles>"`` path). Blank
+    or missing → no pod-level gate for any role.
+    """
+    lead_id = _pod.member_id(project, "lead")
+    raw = _oc.meta_get(lead_id, "requireApprovalRoles", "")
+    if not raw:
+        return False
+    roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
+    return role.lower() in roles
+
+
+def _policy_requires_approval(project: str, role: str, task: dict[str, Any]) -> bool:
+    """Seam for a policy-driven require_approval match (ROADMAP Phase 15 G-2) — NOT wired.
+
+    G-1 ships only the pod-level gate (see ``_pod_requires_approval``); wiring the
+    role→model policy engine (or a high-risk action-class match — see
+    ``core/security.py``'s ``HIGH_RISK_PATTERNS``) into the live dispatch path is
+    explicitly out of scope for this card. This stub is the one place G-2 needs to
+    change: it MUST return ``True`` when a policy source requires approval for this
+    hop and ``False`` (never raise) otherwise, so an unwired or misconfigured policy
+    source can never block dispatch. Always returns ``False`` today.
+    """
+    return False
+
+
+def _pipeline_step_requires_approval(task: dict[str, Any], pipeline_index: int) -> bool:
+    """Seam for a pipeline-defined ``approval`` step (ROADMAP Phase 16 W-1/W-2) — NOT wired.
+
+    No task record has an explicit per-step pipeline format today — a task's
+    pipeline is always the pod's fixed role order (see ``pod_pipeline``); this
+    stub exists only so W-1/W-2 has one clear place to plug in an explicit
+    per-task ``approval`` step once that format is designed, without touching
+    ``_hop_requires_approval``'s call sites. Always returns ``False`` today — this
+    intentionally does not invent a pipeline-step schema.
+    """
+    return False
+
+
+def _hop_requires_approval(
+    project: str, role: str, task: dict[str, Any], pipeline_index: int
+) -> bool:
+    """Whether the require_approval gate fires before this hop (G-1).
+
+    Three independent sources may demand a human decision; **any** one firing is
+    enough to gate (a veto, not unanimous consent):
+      1. the pod-level ``requireApprovalRoles`` Lead-meta list (G-1, wired today)
+      2. a policy match (G-2 — seam only, always False today)
+      3. a pipeline ``approval`` step (W-1/W-2 — seam only, always False today)
+    """
+    return (
+        _pod_requires_approval(project, role)
+        or _policy_requires_approval(project, role, task)
+        or _pipeline_step_requires_approval(task, pipeline_index)
+    )
+
+
+def _approval_action_text(role: str, task: dict[str, Any]) -> str:
+    """Human-readable description recorded on the approval record (G-1).
+
+    Redacted by ``core/approval.py``'s own ``_redact`` before it's persisted —
+    this just composes the text, it doesn't need to scrub secrets itself.
+    """
+    desc = str(task.get("description", "")).strip()
+    task_id = str(task.get("id", "task"))
+    return f"pod dispatch — {role} hop for task {task_id}: {desc}"[:1000]
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -755,6 +862,16 @@ def dispatch_task(
     rework_count = resume_pos.rework_count
     pending_rework: HopResult | None = resume_pos.rework_hop
 
+    # G-1: a granted approval hands the exact pipeline position it stopped at
+    # back to this one claim as a single-use override (see
+    # `_claim_next_task`'s claim-time handoff) — consumed the first time this
+    # run reaches that position, so a later hop at the same role (a Reviewer
+    # rework cycle sending the task back to the Implementer) still gates
+    # normally.
+    override_index = task.get("gateOverridePipelineIndex")
+    if not isinstance(override_index, int):
+        override_index = None
+
     _trace.trace_event(
         project,
         session_id,
@@ -805,6 +922,33 @@ def dispatch_task(
                 result.reason = f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}"
                 _pause_lead_for_budget(project)
                 break
+
+        # G-1: require_approval gate — pre-hop, after budget (affordability)
+        # and before the hop actually runs (permission). See the override
+        # comment above `override_index`'s assignment for why a matching
+        # position is consumed rather than re-gated.
+        if pipeline_index == override_index:
+            override_index = None
+        elif _hop_requires_approval(project, role, task, pipeline_index):
+            action = _approval_action_text(role, task)
+            token = _ap.approval_create(
+                project,
+                role,
+                action,
+                context={"taskId": task_id, "pipelineIndex": pipeline_index},
+            )
+            _trace.trace_event(
+                project,
+                session_id,
+                role,
+                "approval_required",
+                _json.dumps({"role": role, "token": token, "pipelineIndex": pipeline_index}),
+            )
+            result.status = "waiting_approval"
+            result.reason = f"approval required before {role} hop (token={token})"
+            result.approval_token = token
+            result.pending_approval_index = pipeline_index
+            break
 
         # A rework note only ever applies to the Implementer hop it was queued
         # for — consumed here (cleared regardless of outcome) so it can never
@@ -1048,6 +1192,11 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     ``pending`` here (that rewrite was the bug letting a budget-capped task
     retry forever on every sweep). It re-enters ``pending`` only through
     ``unblock_pod`` (pod-wide budget change) or ``retry_task`` (single task).
+
+    G-1: a ``waiting_approval`` task is likewise left exactly there — it
+    re-enters ``pending`` only through ``resolve_waiting_approval`` (a grant),
+    never automatically. Its ``approvalToken``/``pendingApprovalIndex`` are
+    persisted so a grant/deny later in time can find and resolve it.
     """
     task["status"] = res.status
     task["reason"] = res.reason
@@ -1056,6 +1205,9 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     task["claimId"] = None
     if res.status == "blocked":
         task["blockedReason"] = res.reason
+    elif res.status == "waiting_approval":
+        task["approvalToken"] = res.approval_token
+        task["pendingApprovalIndex"] = res.pending_approval_index
     else:
         task["completedAt"] = _now()
         task.pop("failureKind", None)  # a fresh terminal result supersedes any stale-claim marker
@@ -1067,6 +1219,9 @@ def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
     A plain ``pending`` task always is. A ``failed`` task whose failure was a
     swept stale claim (a prior dispatcher crashed mid-task) is claimable only
     when *resume* is set — crash recovery is opt-in, never an automatic retry.
+    A ``waiting_approval`` task is never claimable here at all (G-1) — it
+    re-enters ``pending`` only via a granted approval's ``resolve_waiting_approval``
+    call, never a plain dispatch run.
     """
     status = t.get("status")
     if status == "pending":
@@ -1134,6 +1289,12 @@ def _claim_next_task(
         t["claimedAt"] = _now()
         t.pop("failureKind", None)
         claimed = dict(t)
+        # G-1: a granted approval's gate-override is single-use — captured
+        # into the claimed copy above, then cleared from the *stored* record
+        # right here, atomically, so it can never leak into a later, unrelated
+        # claim of this same task (e.g. a crash-and-`--resume`, or the task
+        # revisiting the same pipeline position on a rework cycle).
+        t.pop("gateOverridePipelineIndex", None)
         return {"tasks": tasks}
 
     _store.read_modify_write(pod_task_list_path(project), _fn)
@@ -1324,6 +1485,90 @@ def unblock_pod(project: str) -> int:
 
     _store.read_modify_write(path, _fn)
     return count
+
+
+def resolve_waiting_approval(token: str, decision: str) -> bool:
+    """React to a just-applied approval decision by mutating the dispatch task
+    it gated, if any (G-1 — the other half of the approval store's missing
+    producer: making a grant/deny actually move a task, not just the approval
+    record).
+
+    *decision* is ``"granted"`` or ``"denied"`` — the state ``core/approval.py``'s
+    own ``approval_grant``/``approval_deny`` (or its expiry sweep) already
+    transitioned the approval record *to*; this function only reacts to that,
+    it never mutates the approval record itself. Called from every surface
+    that can resolve an approval: ``cli/_approve.py``, ``cli/_deny.py``,
+    ``serve.py``'s ``POST /approvals/<token>``, and ``core/approval.py``'s own
+    ``approval_sweep_expired`` (the fail-closed timeout path).
+
+    Returns ``False`` (a harmless no-op) when *token* was never created by
+    this module's require_approval gate (no ``context.taskId``/``project`` on
+    the approval record — e.g. some other, non-dispatch approval), when the
+    approval record itself no longer exists, or when the named task is no
+    longer ``waiting_approval`` on this exact token (already resolved by a
+    concurrent caller, or the queue no longer has it). Returns ``True`` when a
+    task was found and updated.
+
+    Granted: the task moves ``waiting_approval`` -> ``pending``, its persisted
+    ``hops[]`` untouched, and the exact pipeline position it stopped at is
+    handed to the *next* claim as a single-use gate override (see
+    ``_claim_next_task``) — "the next dispatch continues from that hop." No
+    agent turn runs here; resuming genuinely requires a real dispatch
+    invocation later.
+
+    Denied: the task moves ``waiting_approval`` -> ``failed`` immediately —
+    ``failureKind: "approval_denied"``, terminal, never auto-retried by a
+    later ``dispatch_pod`` call (``--resume`` only ever reclaims a
+    ``stale_claim`` failure). No agent turn is needed to fail a task that
+    never ran its gated hop, so — unlike a grant — this happens synchronously.
+    """
+    try:
+        rec = _ap.approval_get(token)
+    except _ap.ApprovalError:
+        return False
+    context = rec.get("context")
+    task_id = str(context.get("taskId", "")) if isinstance(context, dict) else ""
+    project = str(rec.get("project", ""))
+    if not task_id or not project:
+        return False
+
+    updated = False
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal updated
+        tasks_raw = doc.get("tasks")
+        tasks = tasks_raw if isinstance(tasks_raw, list) else []
+        for t in tasks:
+            if t.get("id") != task_id:
+                continue
+            if t.get("status") != "waiting_approval" or t.get("approvalToken") != token:
+                return None
+            pending_index = t.get("pendingApprovalIndex")
+            t.pop("approvalToken", None)
+            t.pop("pendingApprovalIndex", None)
+            if decision == "granted":
+                t["status"] = "pending"
+                t["gateOverridePipelineIndex"] = pending_index
+            else:
+                t["status"] = "failed"
+                t["reason"] = "approval denied"
+                t["failureKind"] = "approval_denied"
+                t["completedAt"] = _now()
+                t["claimId"] = None
+            updated = True
+            return {"tasks": tasks}
+        return None
+
+    _store.read_modify_write(pod_task_list_path(project), _fn)
+    if updated:
+        _trace.trace_event(
+            project,
+            f"agent:{project}:{task_id}",
+            "lead",
+            "approval_resumed" if decision == "granted" else "approval_task_denied",
+            _json.dumps({"task": task_id, "token": token}),
+        )
+    return updated
 
 
 def dispatch_pod(

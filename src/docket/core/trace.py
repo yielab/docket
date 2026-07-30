@@ -56,6 +56,9 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "stale_claim",
         "hop_retry",  # R-2: one retryable agent-turn retry attempt, observable history
         "paused_refused",  # R-5: a claim refused because the pod's Lead is budget-paused
+        "approval_required",  # G-1: a require_approval gate fired pre-hop (task -> waiting_approval)
+        "approval_resumed",  # G-1: a granted approval flipped a waiting task back to pending
+        "approval_task_denied",  # G-1: a denied approval failed a waiting task terminally
         "error",
         "session_end",
     ]
