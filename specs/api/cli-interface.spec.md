@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -259,13 +259,18 @@ Phase 16 W-3 retires it in favor of this command.
   pretty-printer; does not execute or consume tokens. `--file` omitted resolves the pod's
   zero-migration default pipeline (identical to what `run`/`docket pod <project> dispatch` would
   actually execute)
-- `run <project> [--file <path>] [--resume] [--timeout <seconds>]`: Dispatch *project*'s pending
-  (and, with `--resume`, crash-recoverable) tasks through the given (or default) pipeline — the
-  same real, costed pipeline `docket pod <project> dispatch` drives (identical run-registry
-  recording, budget/approval gating, retries, crash resume); `--file` selects a custom
-  `PipelineSpec` instead of the pod's zero-migration default. See pod-dispatch.spec.md for the
+- `run <project> [--file <path>] [--resume] [--timeout <seconds>] [--follow]`: Dispatch
+  *project*'s pending (and, with `--resume`, crash-recoverable) tasks through the given (or
+  default) pipeline — the same real, costed pipeline `docket pod <project> dispatch` drives
+  (identical run-registry recording, budget/approval gating, retries, crash resume); `--file`
+  selects a custom `PipelineSpec` instead of the pod's zero-migration default. `--follow`
+  (ROADMAP Phase 16 W-4) runs that same dispatch on a background thread while the foreground
+  thread tails new trace events for *project* to stdout as they're written — an operator sees
+  hop-by-hop progress rather than only the final summary; Ctrl-C stops *watching* only; the
+  dispatch keeps running and recording in the background. See pod-dispatch.spec.md for the
   full state machine and pipeline-format.spec.md for the file format
-**Output**: Validation result, rendered plan, or per-task dispatch results (including cost)
+**Output**: Validation result, rendered plan, or per-task dispatch results (including cost);
+with `--follow`, also every new trace event observed while the dispatch is in flight
 **Return**: `0` on success; `1` on an invalid/missing file, an unknown project/pod, or a dispatch
 error (see `docket runs show <id>` for the recorded error)
 
@@ -338,11 +343,14 @@ pipeline, whatever triggered it (ROADMAP Phase 14 R-3); cancel one in flight (RO
 - `list [--project <project>] [--json]`: Show run records, newest first; `--project` filters to
   one pod
 - `show <run-id> [--json]`: Show one run record (source, project, state, task ids, error,
-  timestamps)
+  timestamps, and — for a `webhook` source, ROADMAP Phase 16 W-4 — the resolved pipeline
+  `variables` its payload was dispatched with)
 - `cancel <run-id>`: Kill every hop subprocess currently recorded as in-flight for that run — its
   whole process group, not just the immediate child (see pod-dispatch.spec.md's "Cancellation")
   — and mark the run terminally `cancelled`. A no-op (reported, not an error-free success) against
-  a run that's already terminal
+  a run that's already terminal. A genuine cancellation writes a `runs.cancel` audit entry
+  (ROADMAP Phase 16 W-4; see audit.spec.md) naming the run, its project, its pre-cancel state,
+  and how many process groups were killed — the no-op paths write nothing
 **Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`); a
 confirmation message for `cancel`
 **Return**: `0` on success; `1` if `show`'s run id is unknown or no id was given, or if `cancel`'s
@@ -737,6 +745,16 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.10.0 (2026-07-30)
+
+- ROADMAP Phase 16 W-4 (durable scheduling + event triggers): documented `docket pipeline run`'s
+  new `--follow` flag — streams new trace events for the dispatched project to stdout while it
+  runs on a background thread, rather than only the final summary (see pipeline-format.spec.md /
+  serve-read-api.spec.md for the webhook/schedule side of this card). Documented that `docket
+  runs show` also surfaces a webhook-triggered run's resolved pipeline `variables`, and that a
+  genuine `docket runs cancel` now writes a `runs.cancel` audit entry (audit.spec.md) — the one
+  gap left when W-2 shipped cancellation.
 
 ### Version 1.9.0 (2026-07-30)
 
