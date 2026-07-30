@@ -332,7 +332,11 @@ enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — i
 
 docket practices spec-driven development (specs before implementation, RFC 2119 keywords, real
 coverage — see [specs/README.md](specs/README.md)) and is checked by `ruff`, `mypy --strict`,
+<<<<<<< HEAD
 **1,007 tests** in the pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
+=======
+**952 tests** in the pytest suite, a 17-case golden-parity suite, and specialist-role evals — see
+>>>>>>> pc/r-3
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to run them and add a command.
 
 ## Security

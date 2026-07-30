@@ -28,6 +28,10 @@ AUDIT_LOG_MAX_BYTES = int(os.environ.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1
 POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
+# RUNS_FILE: the persisted dispatch-run registry (R-3 / D-17) — one record per
+# `dispatch_pod` invocation, whatever triggered it (cli|webhook|schedule|sweep).
+# Docket-owned JSON, so all reads/writes go through edges/store.py.
+RUNS_FILE = Path(os.environ.get("RUNS_FILE", DOCKET_HOME / "docket-runs.json"))
 # Expired approvals are denied (fail-closed).
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))

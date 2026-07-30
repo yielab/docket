@@ -846,7 +846,13 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     ``--timeout SECONDS`` (R-2) overrides both the agent-turn and verifyCmd
     timeout for this run only; unset, each falls back to the pod's own
     Lead-meta ``turnTimeoutS``/``verifyTimeoutS``, then ``DEFAULT_TIMEOUT``.
+
+    R-3: this invocation is recorded in the run registry (source ``"cli"``)
+    like every other dispatch path — an exception here is no longer just a
+    traceback, it is also visible afterwards via ``docket runs show``.
     """
+    from docket.core import runs as _runs
+
     try:
         resume, timeout_override = _parse_dispatch_args(extra)
     except ValueError:
@@ -875,12 +881,23 @@ def _pod_dispatch(project: str, extra: list[str]) -> None:
     cap = _dispatch.pod_budget(project)
     if cap:
         ui.dim(f"  Pod budget cap: ${cap:.2f} (spent ${_dispatch.pod_recorded_cost(project):.2f})")
-    results = _dispatch.dispatch_pod(
-        project,
-        resume=resume,
-        turn_timeout=timeout_override,
-        verify_timeout=timeout_override,
+
+    record = _runs.create_run("cli", project)
+    results = _runs.execute(
+        record["id"],
+        lambda: _dispatch.dispatch_pod(
+            project,
+            resume=resume,
+            turn_timeout=timeout_override,
+            verify_timeout=timeout_override,
+        ),
     )
+    if results is None:
+        rec = _runs.get_run(record["id"])
+        error = str(rec.get("error", "")) if rec else ""
+        ui.error(f"Dispatch failed: {error}")
+        ui.dim(f"  Details: docket runs show {record['id']}")
+        raise typer.Exit(1)
     for res in results:
         if res.status == "done":
             ui.success(f"  [{res.task_id}] done — {len(res.hops)} hop(s), ${res.cost_usd:.4f}")

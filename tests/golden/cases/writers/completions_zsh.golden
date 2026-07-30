@@ -27,6 +27,7 @@ _docket() {
     'doctor:System-wide health check with auto-fix'
     'gates:Manage tool-approval security gates'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set)'
+    'runs:Inspect the dispatch run registry (list/show) — one record per dispatch invocation'
     'audit:Show the audit log, or verify its tamper-evidence chain'
     'eval:Run non-blocking specialist-role evals'
     'snapshot:Export system state snapshot as JSON'
