@@ -4,257 +4,334 @@
 > currently active in [ROADMAP.md](ROADMAP.md). Do **not** create per-phase task files — when a phase
 > finishes, clear its cards (the phase record stays in ROADMAP) and append the next phase's cards here.
 >
-> *Phase 11 (Competitive differentiation, CD-0…CD-9) and Phase 12 (Consolidation & hardening,
-> CH-0…CH-13) are both **COMPLETE** — their durable records live in ROADMAP.md's Phase 11/12
-> sections and the roadmap Changelog. Their boards were cleared per the convention above.*
+> *Phase 13 (Close the differentiation gaps, FD-0…FD-7) is **COMPLETE** (2026-07-02) — its durable
+> record lives in ROADMAP.md's Phase 13 section. Its board was cleared per the convention above.*
 >
 > ---
 >
-> ## Active: PHASE 13 — Close the differentiation gaps
+> ## Active: PHASE 14 — Platformization I: runtime truth & dispatch hardening
 >
-> Executable board for **PHASE 13** in [ROADMAP.md](ROADMAP.md) (read that section first — the
-> rationale, explicit **keeps**, and exit criteria). Source of record: the operator chose
-> "Tier-1 competitive bets" from `internal-docs/competitive-analysis.md`'s **P1** (pod-level
-> runtime-resource isolation), **O2** (deterministic pre-merge verification gate), and **S1**
-> (high-risk action classes + a headless approval channel). A 2026-07-02 grounding pass (three
-> parallel code investigations, file:line-cited) found Phase 11's own CD-1/CD-2/CD-3/CD-4 cards
-> already built most of this the same week the analysis was written. **This phase closes the
-> five real residual gaps, it does not rebuild the three features from scratch.** Each card below
-> names the exact gap and cites the code that already exists around it.
+> Executable board for **PHASE 14** in [ROADMAP.md](ROADMAP.md) (read that section first — the
+> defect rationale, explicit **keeps**, and exit criteria; also decisions **D-15/D-17** in §6 and
+> the 2026-07-30 Platformization amendment in §4.5). Source of record:
+> `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29 four-pass platform audit,
+> gitignored local rationale — every defect below was code-verified with file:line evidence and is
+> restated self-containedly here). This phase is the **foundation** of the Platformization program
+> (Phases 14–18): Phases 15–18 (wired governance, declarative orchestration + role archetypes,
+> context/memory, driver port + MCP) all execute through this dispatch lane, so it hardens first
+> and **nothing from a later phase ships before this board is green**.
 >
-> **What we're doing (one paragraph):** P1 has the data model and allocation logic
-> (`core/resources.py`, `AgentMeta` fields) but never reaches the implementer's actual process
-> environment (FD-0). O2 already gates the implementer hop on `verifyCmd` (that's CD-2) but has no
-> public way to *set* `verifyCmd` (FD-1) and never structurally parses the Tester hop's PASS/FAIL
-> (FD-2). S1's CLI/HTTP approval channels already work (`docket approve`, `serve.py`'s webhook) but
-> have no high-risk action-class policy (FD-3) and no audit-log trail (FD-4) — closing both is what
-> lets the gates-default-on flip actually happen honestly (FD-5), followed by a truth pass on the
-> specs/docs that describe all of the above (FD-6, FD-7).
+> **What we're doing (one paragraph):** make the dispatch lane crash-safe, race-free, observable,
+> and honest. Today the pod queue has an unlocked read-modify-write (concurrent serve threads can
+> double-run a task), no persisted `running` state (a crash re-pays every hop), no retries, no
+> cancellation, one hardcoded 300s timeout, budget-`blocked` tasks that silently retry forever, a
+> Reviewer role whose verdict is never parsed, an auto-pause that was never ported from Bash, a
+> verifyCmd that runs in the wrong tree, unbounded hop prompts, and a serve lane that swallows every
+> exception behind fire-and-forget threads. R-1…R-7 fix the mechanics; R-8 makes the specs/docs stop
+> overclaiming what the code does.
 
 ## How to use this board (read before claiming a task)
 
 1. **Claim:** set Status → `IN-PROGRESS (@you)`. One agent per task.
-2. **Read first (always):** ROADMAP.md's Phase 13 section (the "why this phase" gap analysis),
-   §2 (Python ground truth), §4.5 (architectural principles), [CLAUDE.md](CLAUDE.md), and the
-   task's own "Read" list.
+2. **Read first (always):** ROADMAP.md's Phase 14 section, §2 (Python ground truth), §4.5
+   (architectural principles, incl. the 2026-07-30 Platformization amendment), [CLAUDE.md](CLAUDE.md),
+   and the task's own "Read" list.
 3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. OpenClaw formats live **only**
    in `edges/adapters/openclaw.py` (the ACL). docket-owned JSON goes **only** through `edges/store.py`
    (JSONL append logs are the one D-12 exemption). Every shell-out goes through `edges/adapters/`.
    `core/`/`edges/` never import `ui.py` or print (D-3 from Phase 12).
 4. **No-behavior-change rule, except where a card says otherwise:** the golden suite
    (`bash tests/golden/run.sh verify-all`) must stay byte-identical unless a card explicitly adds
-   new CLI surface (FD-1's `--verify` flag, FD-3's gates visibility command) — those cards say so
-   and require regenerated goldens with the diff explained in the PR.
+   new CLI surface (R-2's `--timeout` flags, R-3's `docket runs`, R-5's `--resume`) — those cards
+   say so and require regenerated goldens with the diff explained in the PR.
 5. **Definition of done (per task):** acceptance criteria pass · a pytest covers it (add/refresh a
    golden case if output changes) · `uv run ruff check . && uv run ruff format --check . && uv run
-   mypy src && uv run pytest` green · `bash tests/golden/run.sh verify-all` green · committed
-   `Type: description` (no Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the
-   diff for real names / `/home/<user>` paths before committing).
+   mypy src && uv run pytest` green · `bash tests/golden/run.sh verify-all` green ·
+   `uv run python scripts/metrics.py --check` green · committed `Type: description` (no
+   Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the diff for real names /
+   `/home/<user>` paths before committing).
 
-**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs FD-x)` · `DONE`
+**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs R-x)` · `DONE`
 **Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model:** one short-lived `pc/fd-<id>` branch per task → PR into the working branch (`develop`).
+**Branch model:** this phase lives on the long-running **`platform`** branch (a deliberate
+fork-candidate line — see ROADMAP §8). One short-lived `pc/r-<id>` branch per task → PR into
+`platform`, never directly into `main`.
 
 ---
 
 ## Dependency map (what unblocks what)
 
 ```text
-FD-0, FD-1, FD-2, FD-3, FD-4, FD-5, FD-6 — DONE, all merged into develop 2026-07-02.
-  (FD-3 was narrowed before merge — git/npm stay allowlisted, per-argument
-  enforcement deferred to backlog. FD-5/FD-6 had one real conflict in
-  security-gates.spec.md, resolved by hand.)
-
-FD-7 (docs/positioning pass) ── depends on FD-0..FD-5 — UNBLOCKED, last card in Phase 13
+R-1 (state machine v2) ──┬── R-2 (retries/timeouts — extends R-1's task record)
+                         ├── R-3 (run registry — persists R-1's states)
+                         ├── R-4 (reviewer gate + rework loop — new hop edges need R-1's attempts)
+                         └── R-5 (auto-pause — dispatch refusal reads R-1's claim path)
+R-6 (verifyCmd fixes) ── independent, parallel-safe with everything
+R-7 (bounded hop prompts) ── independent, parallel-safe with everything
+R-8 (spec/docs truth pass) ── LAST — documents whatever R-1..R-7 actually shipped
 ```
 
 ---
 
-### FD-0 — Inject pod resources into the implementer's process environment (completes P1)
+### R-1 — Task state machine v2: persisted `running`, locked claims, crash recovery
 
-- **Depends on:** — · **Parallel-safe with:** FD-1, FD-3, FD-4 · **Shares a file with FD-2** (`core/dispatch.py`) — sequence the two merges, don't leave both branches open indefinitely.
-- **Read:** `core/models.py:75-80` (`AgentMeta.port_range_start/count`, `scratch_dir`); `core/resources.py` (full — `allocate_pod_ports`/`free_pod_ports`); `core/dispatch.py` (`dispatch_task`, how it calls `_oc.agent_run` — currently `(agent_id, session_key, message, timeout)` with no resource params); `edges/adapters/openclaw.py`'s `agent_run` (~L939-999, the `_sp.run(cmd, capture_output=True, text=True, timeout=...)` call has **no `env=` kwarg today**); `cli/_pod.py:95-125` (`_member_tools`, where port/scratch values are currently only written as TOOLS.md prose); `tests/python/test_cd1_resources.py`.
-- **Why:** the allocation and persistence half of pod-level resource isolation (CD-1) is real — each pod really does get disjoint ports and a scratch dir. But nothing makes that binding *enforceable*: an implementer subprocess only ever sees its assigned port range/scratch dir as text in TOOLS.md, which it can ignore, misread, or the agent can simply not follow. Isolation that depends on the agent reading and obeying prose isn't isolation.
+- **Depends on:** — · **Blocks:** R-2, R-3, R-4, R-5.
+- **Read:** `core/dispatch.py` in full (`enqueue_task` ~L110-129, `dispatch_pod` ~L406-436 — the
+  unlocked read at ~L420 vs write at ~L434, `_apply_result` ~L384-403 and its `blocked→pending`
+  rewrite at ~L399-401, `startedAt` set in memory only at ~L430); `edges/store.py` (`read_json`
+  takes no lock ~L35-40; `write_json`'s per-directory filelock ~L43-83); `serve.py` ~L214-268 +
+  ~L364-382 (the three thread sources that can dispatch one pod concurrently);
+  `tests/python/test_dispatch.py`.
+- **Why:** the queue is the substrate for every later phase. Today two concurrent dispatchers can
+  both select the same `pending` task (read is unlocked, there is no claim state) and clobber each
+  other's results; a crash mid-task leaves `pending` and re-runs — re-paying — every hop; a
+  budget-`blocked` task is rewritten to `pending` and retries on every sweep forever.
 - **Do:**
-  1. Add an optional `env: dict[str, str] | None` param to `agent_run` in `edges/adapters/openclaw.py`; when set, pass `env={**os.environ, **env}` to the `_sp.run` call instead of inheriting the parent env unmodified.
-  2. In `core/dispatch.py`, when a hop targets an implementer with allocated resources (`AgentMeta.port_range_start` is not `None`), build `{"DOCKET_PORT_BASE": str(port_range_start), "DOCKET_PORT_COUNT": str(port_range_count), "DOCKET_SCRATCH_DIR": scratch_dir}` and pass it through to `agent_run`. Leave non-implementer hops and implementers without allocated resources unaffected (no `env` override — today's behavior).
-  3. Keep the existing TOOLS.md prose (`_pod.py:95-125`) — reword it to state these are also real environment variables the process can rely on, not just documentation.
-  4. Tests: assert the subprocess-invocation call captures the expected env vars with correct values when resources are allocated; assert no override happens for a task-type agent or an implementer with no allocation.
-- **Out of scope:** a real disposable DB/cache namespace (stays a naming convention — no docket-owned DB engine to provision against, per the Phase 13 explicit keeps); giving reviewer/tester roles pod resources.
-- **Deliverables:** `agent_run` env-injection support; dispatch wiring for implementer hops; tests.
-- **Acceptance gate:** [ ] an implementer subprocess's real environment contains `DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR` when resources are allocated · [ ] no env override for agents without allocated resources · [ ] suite + goldens green.
-- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `2253b46`). Auto-merged cleanly against FD-2 (merged first) at the file level; the two cards' shared `Runner` type-alias widening left FD-2's local test fixtures on the old 4-arg signature, fixed in a small follow-up commit right after the merge.
+  1. Add task states `running` and `waiting` (persisted immediately, not post-hoc): claim =
+     locked read-modify-write that flips `pending→running` and writes `startedAt`+`claimId` to disk
+     **before** the first hop. Extend `store.py` with a `with_lock(path)` context (or a
+     `read_modify_write` helper) so the claim is atomic under the existing per-directory filelock.
+  2. Persist per-hop progress as it happens (the `hops[]` array already exists — write it after
+     each hop, not only at task end) so recovery can resume from the last completed hop.
+  3. Crash sweep: a `running` task whose `claimId` is stale past its timeout is swept to `failed`
+     with a `stale_claim` trace event and is resumable (`--resume` re-claims and continues from the
+     last persisted hop instead of hop 0).
+  4. `blocked` stays `blocked` (kill the `→pending` rewrite); it re-enters `pending` only when the
+     pod budget changes (`docket profile --budget`) or via an explicit `docket pod <p> queue
+     --retry <task-id>`.
+  5. Task ids: `task-<uuid4>` (keep a `created` timestamp field; epoch-ms ids collide under
+     concurrent enqueue and leak ordering assumptions).
+  6. Tests: thread-race test proving two concurrent `dispatch_pod` calls cannot double-run one
+     task; kill-mid-task resume test (fake runner, assert earlier hops not re-invoked); blocked
+     stays blocked across sweeps.
+- **Out of scope:** parallel hop execution (Phase 16 W-2); changing the pipeline order or gates.
+- **Deliverables:** state machine v2 in `core/dispatch.py`; locked-claim helper in `edges/store.py`;
+  migration shim (old TASK_LIST.json records without the new fields load fine); tests.
+- **Acceptance gate:** [ ] concurrent-dispatch race test green · [ ] resume-from-hop test green ·
+  [ ] `blocked` never auto-retries · [ ] old queue files still load · [ ] suite + goldens green.
+- **Size:** L (split: claims/states vs recovery/resume) · **Status:** TODO
 
 ---
 
-### FD-1 — TOOLS.md verify-command field + public `--verify` flag (completes O2a)
+### R-2 — Retries + configurable timeouts (turn vs verify decoupled)
+
+- **Depends on:** R-1 (task record gains `attempts`) · **Parallel-safe with:** R-3, R-4, R-5, R-6, R-7.
+- **Read:** `core/dispatch.py` `DEFAULT_TIMEOUT = 300` (~L32) and its two consumers (agent turn
+  ~L286, verify ~L350); `edges/adapters/openclaw.py` `agent_run` failure modes (~L979-999 —
+  `TimeoutExpired`, `OSError`, non-zero exit, non-JSON-stdout-treated-as-success); `cli/_pod.py`
+  `_pod_dispatch` (~L735-758, passes no timeout today); `serve.py` dispatch call sites.
+- **Why:** one attempt per hop and one hardcoded constant for two unrelated operations. A transient
+  daemon hiccup kills a whole task; a 20-minute test suite can't be verified; a hung turn and a hung
+  verify are indistinguishable.
+- **Do:**
+  1. Failure taxonomy on `AgentRunResult` (`timeout | daemon_error | nonzero_exit | invalid_output`)
+     — retries apply only to retryable kinds (timeout, daemon_error), with per-role `retries` +
+     linear backoff, `attempts` persisted per hop (R-1's record).
+  2. Config: `turnTimeoutS` / `verifyTimeoutS` per pod (Lead meta), `--timeout` on
+     `docket pod <p> dispatch`, serve config knob; `DEFAULT_TIMEOUT` becomes the fallback only.
+  3. Tests: retryable vs non-retryable paths; attempts persisted; verify timeout independent.
+- **Out of scope:** model-fallback-on-failure (stays out per Phase 6b — retry same model only).
+- **Deliverables:** taxonomy, retry loop, timeout knobs, tests; golden update for new `--help` text.
+- **Acceptance gate:** [ ] a timed-out hop retries up to its budget then fails with `attempts`
+  recorded · [ ] verify and turn timeouts settable independently · [ ] suite + goldens green.
+- **Size:** M · **Status:** TODO
+
+---
+
+### R-3 — Run registry + job API; ban suppressed exceptions in the dispatch lane (D-17)
+
+- **Depends on:** R-1 · **Parallel-safe with:** R-2, R-4, R-5, R-6, R-7.
+- **Read:** `serve.py` in full — the four `contextlib.suppress(Exception)` sites around dispatch
+  (~L235, ~L258-268, ~L375), the fire-and-forget webhook (~L364-382, returns 200 with no id), the
+  in-memory `_schedule_state` (~L214); `cli/__init__.py` serve wiring (~L1575-1595);
+  `specs/data/serve-read-api.spec.md` (the versioned read-API contract to extend, pinned by test).
+- **Why:** D-17. Background dispatch is unobservable: no run id, no status query, and every
+  exception is silently discarded — an operator cannot distinguish "done", "failed", and "never
+  ran".
+- **Do:**
+  1. `core/runs.py`: a persisted run registry (docket-owned JSON via `store.py`) — one record per
+     dispatch invocation (`run-<uuid>`, source: cli|webhook|schedule|sweep, project, task ids,
+     state, error, timestamps). CLI: `docket runs [list|show <id>]`.
+  2. `POST /dispatch/<project>` returns `{"run": "<id>"}` **after** enqueueing the run record;
+     work still executes async, but its outcome lands in the registry. New `GET /runs/<id>` +
+     `GET /runs?project=` (Bearer-authed, added to the read-API spec with a version bump).
+  3. Remove every `contextlib.suppress(Exception)` around dispatch: exceptions are caught, written
+     to the run record + an `error` trace event, and (for the sweep loop) logged without killing
+     the sweeper. Persist scheduler last-run into the schedules file (kills the restart-refire bug).
+  4. Tests: webhook returns a queryable id; an induced dispatch exception is visible in
+     `docket runs show`; scheduler survives restart without re-firing.
+- **Out of scope:** cancellation (Phase 16 W-2 — needs process-group plumbing); a web UI.
+- **Deliverables:** `core/runs.py`, `docket runs`, extended serve endpoints + spec bump, durable
+  scheduler state, zero suppressed dispatch exceptions; tests; goldens for new CLI surface.
+- **Acceptance gate:** [ ] every dispatch path yields a queryable run record · [ ] induced failure
+  visible with its error · [ ] no `suppress(Exception)` remains around dispatch (grep-pinned test) ·
+  [ ] scheduler state survives restart · [ ] suite + goldens green.
+- **Size:** L (split: registry/CLI vs serve wiring) · **Status:** TODO
+
+---
+
+### R-4 — Reviewer verdict gate + bounded rework loop
+
+- **Depends on:** R-1 (persisted per-hop progress; rework consumes `attempts`) · **Parallel-safe
+  with:** R-2, R-3, R-5, R-6, R-7.
+- **Read:** `core/dispatch.py` tester gate (~L326-342, `_parse_tester_verdict` ~L39-52 — the
+  structural pattern to mirror) and the straight-line hop loop (~L254); `cli/_pod.py` reviewer SOUL
+  body (~L79-85: "APPROVE or REQUEST-CHANGES", veto prose the pipeline never reads);
+  `tests/python/test_fd2_tester_gate.py` (fixture pattern).
+- **Why:** the Reviewer's documented contract is a veto, but dispatch never parses its output — a
+  REQUEST-CHANGES review advances to the tester and the task completes `done`. The role is
+  mechanically decorative; separation-of-duties is prose.
+- **Do:**
+  1. Parse the reviewer hop's first non-blank line for `APPROVE|REQUEST-CHANGES` (case-insensitive,
+     same regex style as the tester gate). Unparseable ⇒ fail with a distinct reason
+     (`reviewer_verdict_unparseable`), mirroring FD-2's convention.
+  2. REQUEST-CHANGES ⇒ loop back to the implementer **once** (config `maxReworkCycles`, default 1):
+     re-run the implementer hop with the review text appended, then reviewer again; a second
+     REQUEST-CHANGES fails the task (`review_rejected` trace event). Rework cycles are recorded in
+     the persisted `hops[]`.
+  3. Update the reviewer SOUL text to state the parsed marker convention (as FD-2 did for tester).
+  4. Tests: APPROVE advances; REQUEST-CHANGES triggers exactly one rework then re-review; second
+     rejection fails; unparseable fails distinctly; pods without a reviewer unaffected.
+- **Out of scope:** parsing anything beyond the first-line marker (no diff-level review semantics);
+  reviewer gating for non-code pods (Phase 16 W-8 generalizes gates).
+- **Deliverables:** reviewer parser + rework edge in dispatch; SOUL wording; trace events; tests.
+- **Acceptance gate:** [ ] REQUEST-CHANGES blocks and triggers a bounded rework cycle · [ ]
+  unparseable output blocks distinctly · [ ] APPROVE/no-reviewer behavior unchanged · [ ] suite green.
+- **Size:** M · **Status:** TODO
+
+---
+
+### R-5 — Budget honesty: implement auto-pause, fix the paused-flag bug, labeled estimates
+
+- **Depends on:** R-1 (dispatch refusal integrates with the claim path) · **Parallel-safe with:**
+  R-2, R-3, R-4, R-6, R-7.
+- **Read:** `core/models.py` ~L88-90 (`budget_usd`, `paused`, `paused_reason` — declared, never set
+  true anywhere); `cli/__init__.py` ~L757-766 (`--budget` — the only writer, and it *clears* the
+  flags); `cli/_agents.py` ~L541,562-584 (reads `paused` with a **string** compare `== "true"`
+  while the writer stores a bool); `core/dispatch.py` budget gate (~L263-275, pre-hop, pod-wide via
+  the Lead's cap) and `pod_recorded_cost` (~L155-161); `core/utils.py` `aggregate_cost`
+  (~L91-176 — dollars come only from the daemon's `usage.cost.total`, which daemon v2026.2.23 may
+  never write); `edges/adapters/openclaw.py` ~L881-891 (`cost_usd` always 0.0 note);
+  `core/models_policy.py` `MODEL_PRICING` (~L63-77); ROADMAP D-9 (budget fields are docket-local).
+- **Why:** "per-agent USD budget caps with auto-pause" is a headline claim (CLAUDE.md, README) and
+  the pause half **does not exist** — it was Phase 1 Bash-era behavior the Python port dropped. And
+  when the daemon writes no `usage.cost.total`, recorded spend is 0 and the cap never trips at all.
+- **Do:**
+  1. Implement the pause writer: after each hop and in the serve sweep, if an agent/pod is at ≥100%
+     of cap ⇒ `meta.paused=true, pausedReason="budget"` (through `store.py`); dispatch refuses
+     paused members at claim time with a `paused_refused` trace event; `docket profile <id>
+     --resume` clears with an audit entry. Warn path at ≥80% (display only) stays.
+  2. Fix the read bug: one typed accessor on `AgentMeta` (bool), used by `_agents.py` display and
+     dispatch alike; migration-tolerant of legacy `"true"` strings.
+  3. Estimation fallback for gating: when session JSONL carries tokens but no `cost.total`, compute
+     `estimatedUsd` from token counts × `MODEL_PRICING` **for gating and warning only**, always
+     rendered as `~$X.XX (estimated — daemon recorded no cost)`; never mixed into "recorded" totals
+     (`docket cost` provenance line stays truthful; no-dollar-savings discipline intact).
+  4. Tests: cap breach pauses + dispatch refuses + resume clears; string/bool legacy meta reads
+     correctly; estimate path gates when recorded cost is absent and labels itself.
+- **Out of scope:** daemon-side pause (D-9: budget state is docket-local); per-turn in-flight
+  metering (Phase 18 L-5's problem); any savings claims.
+- **Deliverables:** pause writer + dispatch refusal + `--resume`; typed accessor; labeled estimate
+  path; audit entries; tests; docs line-up (CLAUDE.md/README claim matches shipped behavior).
+- **Acceptance gate:** [ ] an over-cap agent is actually paused and refused, test-pinned · [ ]
+  legacy string flag reads correctly · [ ] estimates gate and are always labeled · [ ] suite +
+  goldens green.
+- **Size:** M · **Status:** TODO
+
+---
+
+### R-6 — verifyCmd correctness: worktree cwd, bounded shell surface, audited setter
 
 - **Depends on:** — · **Parallel-safe with:** everything.
-- **Read:** `cli/_pod.py:95-125` (`_member_tools`, the TOOLS.md generator — currently has no verify-command line); `cli/_pod.py:649-661` (`_parse_add_args`, where a new flag would be parsed); `core/models.py:80` (`AgentMeta.verify_cmd`, alias `verifyCmd`); `specs/data/docket-meta.spec.md:74` (**already documents** a `--verify` flag / `meta_set` path that doesn't actually exist as public CLI today — this card must make that claim true); `cli/__init__.py:1600-1602` (the internal `meta-set` debug command — today's only real setter).
-- **Why:** CD-2's mechanical gate (`dispatch.py` running `verifyCmd` via `run_verify_cmd` and hard-failing on non-zero) is real and already shipped — but nothing public lets an operator *set* the one field that triggers it. The spec already promises a flag; today only an internal debug command can set it.
+- **Read:** `core/dispatch.py` verify gate (~L345-372 — cwd = `meta["codebase"]` at ~L348-349);
+  `cli/_pod.py` worktree provisioning (~L251-253 writes `worktreeDir`) and
+  `_regenerate_member_tools` (~L641 — already prefers `worktreeDir`, the precedent);
+  `edges/adapters/system.py` `run_verify_cmd` (~L191-215, `shell=True`, 4096-char cap);
+  `cli/_pod.py` `set-verify` (~L655-677).
+- **Why:** a worktree-pod implementer's work is verified against the **shared repo root**, not the
+  worktree it actually changed — the gate can pass on stale code or fail on someone else's; and the
+  command is `shell=True` on a meta value with no independent audit trail of who set it.
 - **Do:**
-  1. Add a `--verify "<cmd>"` option to `docket pod <project> add` (implementer member creation) that writes `verify_cmd` into the new member's `.docket-meta.json`.
-  2. Add a small setter for existing members — keep it in the pod command group (e.g. `docket pod <project> set-verify <member-id> "<cmd>"`), not a new top-level command.
-  3. Extend `_member_tools()` to include the configured verify command in TOOLS.md prose when set, so the implementer can see what gate its work must pass.
-  4. Verify `specs/data/docket-meta.spec.md:74`'s existing claim is now accurate; fix wording only if still off after the flag lands.
-  5. Tests: CLI arg parsing for `--verify` and `set-verify`, meta written correctly, TOOLS.md content includes the command when set and omits it when not.
-- **Out of scope:** changing what `run_verify_cmd` itself does (CD-2's mechanics are correct as-is); gating reviewer/tester hops (that's FD-2).
-- **Deliverables:** `--verify` flag on pod add; `set-verify` subcommand; updated TOOLS.md generator; tests; spec fix if needed.
-- **Acceptance gate:** [ ] `docket pod <p> add --verify "<cmd>"` sets `verifyCmd` on the new member · [ ] `set-verify` updates it on an existing member · [ ] TOOLS.md reflects the configured command · [ ] suite + goldens green (new golden case if `pod add --help`/TOOLS.md output changes).
-- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `45db2b9`). Conflicted with the README test-count line only (both branches bumped it independently); resolved to the actual merged tree's count. `_pod.py` TOOLS.md changes auto-merged cleanly against FD-0.
+  1. cwd resolution: `worktreeDir` if present → else `codebase` → else workspace (one helper,
+     shared with `_regenerate_member_tools` so the two can't diverge again).
+  2. Bound the shell surface: keep `shell=True` (verify commands legitimately use `&&`/pipes) but
+     length-cap the stored command, reject NUL/newline injection at `set-verify` time, and write an
+     `audit_log("pod.set-verify", …)` entry naming member + command (governance for the one
+     process docket itself launches — Phase 15 G-3 extends this).
+  3. Tests: worktree cwd used when present; fallback order; set-verify validation + audit entry.
+- **Out of scope:** sandboxing the verify command (daemon/Docker lane); argument-level high-risk
+  matching (Phase 15 G-3).
+- **Deliverables:** cwd helper + dispatch fix; setter validation + audit; tests.
+- **Acceptance gate:** [ ] verify runs in the member's worktree when one exists · [ ] set-verify is
+  validated + audited · [ ] suite green.
+- **Size:** S · **Status:** TODO
 
 ---
 
-### FD-2 — Structural Tester PASS/FAIL gate in dispatch (completes O2b)
-
-- **Depends on:** — · **Parallel-safe with:** FD-1, FD-3, FD-4 · **Shares a file with FD-0** (`core/dispatch.py`) — sequence merges.
-- **Read:** `core/dispatch.py` in full (`PIPELINE_ORDER`, the per-hop execution loop, `_apply_result`, the existing `verifyCmd` gate at ~L272-300 as the pattern to mirror); `cli/_pod.py:39` (`_ROLE_PURPOSE["tester"]`); `cli/_pod.py:85-91` (Tester SOUL.md body: "report a binary PASS/FAIL with evidence... do not read or critique the implementation"); `tests/python/test_dispatch.py`; `tests/python/test_cd2_verify.py` (the fixture pattern — `TestDispatchVerifyGate` — to extend for tester parsing).
-- **Why:** the Tester role's entire documented contract is a binary PASS/FAIL report, but dispatch never reads hop content — only the adapter-level `run_res.ok` (did the subprocess call succeed) gates pipeline advancement. A Tester agent that writes "FAIL" in its response today still lets the pipeline proceed to `done`, because nothing parses what it said.
-- **Do:**
-  1. After a tester hop's `run_res.ok` is true, parse the returned message text for a PASS/FAIL marker using a simple, documented convention (e.g. first line matching `^(PASS|FAIL)\b`, case-insensitive).
-  2. If the marker is `FAIL` or absent/unparseable, set `result.status="failed"` with a distinct reason string (mirror the `verification_failed` trace-event naming CD-2 already established) instead of letting the pipeline advance to `done`.
-  3. Pods with no tester member are unaffected — this only gates pipelines that actually include a tester hop.
-  4. Tests: PASS advances normally; FAIL blocks with the correct status + trace event; unparseable tester output blocks with a distinct reason (don't conflate with FAIL); pods without a tester keep today's behavior exactly.
-- **Out of scope:** reviewer-hop gating (the reviewer's signal is already a real adapter-level `ok`, not a text convention needing parsing — no gap found there); redefining the Tester's SOUL.md prose beyond stating the marker convention it must follow.
-- **Deliverables:** tester-output parser; dispatch gate wiring; new trace event; tests.
-- **Acceptance gate:** [ ] a tester hop reporting FAIL blocks pipeline advancement with a distinct status/trace reason · [ ] unparseable tester output also blocks, distinguishably from FAIL · [ ] PASS and no-tester-in-pod cases unaffected · [ ] suite green.
-- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `1312ca0`), first of the wave to merge, clean (no conflicts against the then-empty develop delta).
-
----
-
-### FD-3 — High-risk action-class always-approve policy (completes S1a)
+### R-7 — Bounded hop prompts (stopgap until Phase 17's context compiler)
 
 - **Depends on:** — · **Parallel-safe with:** everything.
-- **Read:** `core/security.py` in full (`SAFE_BINS`, `resolve_safe_bin_paths`, `build_exec_approvals`, `apply_approval_routing`); `specs/functional/security-gates.spec.md`; `core/approval.py` (`approval_create`, the shape a routed-to-approval action produces); `cli/_gates.py` (the `enable` flow, where a new policy layer would be applied).
-- **Why:** today's gating is a flat binary allowlist — a command either matches `SAFE_BINS` or it doesn't. There is no concept of an *action class* above that: a `git push --force` or `docker stop` on a prod-tagged container is exactly the kind of consequential action that should never be silently auto-approved just because the binary itself is generally allowlisted.
+- **Read:** `core/dispatch.py` `_hop_message` (~L174-198 — concatenates the **full raw output of
+  every prior hop**, no cap); `config.py` context knobs (~L32-39, the honest bytes/4 comment — the
+  estimator to reuse).
+- **Why:** a 4-hop task's tester prompt carries three complete prior outputs verbatim; long tasks
+  grow context (and cost) unboundedly, and there is no record of what was sent.
 - **Do:**
-  1. Define a small, explicit, documented `HIGH_RISK_PATTERNS` list in `core/security.py` — glob/regex command patterns for money-movement, prod-deploy, and secret-access action classes. Keep the seed list intentionally small and named — this is a policy foundation, not exhaustive coverage.
-  2. Wire it into `build_exec_approvals` (or a sibling function) so any command matching a high-risk pattern is always routed to `ask` (approval-required), **regardless of `SAFE_BINS` membership** — allowlist status must never bypass a high-risk match.
-  3. Add read-only visibility — a way to list the currently-enforced high-risk patterns (e.g. `docket gates` output, or a `docket gates classes` subcommand). Configurability (user-editable pattern list) is explicitly deferred, not required here.
-  4. Tests: a high-risk pattern match forces `ask` even when the binary is separately allowlisted; a non-matching allowlisted command is unaffected; `gates enable`/`isolate` still function.
-- **Out of scope:** making the pattern list user-configurable via a config file (ship a sane built-in default; a config override is a natural follow-up card, not required here); changing the allowlist mechanism itself.
-- **Deliverables:** `HIGH_RISK_PATTERNS` + always-ask wiring; visibility command/output; tests.
-- **Acceptance gate:** [ ] a high-risk-matching command always routes to approval even if its binary is allowlisted · [ ] non-matching allowlisted commands unaffected · [ ] the enforced pattern list is visible via the CLI · [ ] suite green.
-- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `4a47c44`, amended from the original `0ddee9b`). **Narrowed before merge:** the subagent's original implementation excluded `git`/`npm` entirely from the seeded allowlist to force high-risk invocations to always ask; caught via user review that the daemon's binary-only gating means this also blocks every benign invocation (`git status`, `npm test`). Re-scoped in-place: `HIGH_RISK_PATTERNS`/`docket gates classes` ship as documented policy, but `git`/`npm` stay allowlisted — per-argument enforcement for allowlisted bins is now an explicit deferred backlog item, not silently claimed as enforced. money-movement/secret-access classes (no allowlist overlap) are fully enforced today.
+  1. Per-hop carryover cap (config `hopCarryoverBytes`, default ~32KB): keep the task description
+     whole; truncate each prior hop's output head+tail with an explicit
+     `[... truncated N bytes ...]` marker, newest hop least-truncated.
+  2. Log composition per hop (a `context_composed` trace event: per-section byte counts,
+     truncated-or-not) so Phase 17's compiler has a measured baseline.
+  3. Tests: cap enforced; marker present; task description never truncated; small tasks unchanged.
+- **Out of scope:** token-accurate budgeting, priority ordering, artifact rendering (all Phase 17
+  C-1 — this card is the safety cap, not the compiler).
+- **Deliverables:** capped `_hop_message` + config knob + trace event; tests.
+- **Acceptance gate:** [ ] no hop message exceeds the configured cap (test-pinned) · [ ]
+  truncation is explicit in the prompt and the trace · [ ] suite green.
+- **Size:** S · **Status:** TODO
 
 ---
 
-### FD-4 — Audit-log parity for approval grant/deny across all channels (completes S1b)
+### R-8 — Spec & docs truth pass (LAST — documents what R-1..R-7 actually shipped)
 
-- **Depends on:** — · **Parallel-safe with:** everything.
-- **Read:** `core/approval.py` (`approval_grant`/`approval_deny`, ~L136-169, the existing `_emit_trace` calls); `core/audit.py` in full (`audit_log` shape: `{ts, user, pid, action, detail}`); `_gates.py:153` (an existing `audit_log("gates.enable", ...)` call — the pattern to match); `cli/_approve.py`, `cli/_deny.py`, `serve.py`'s `POST /approvals/<token>` handler (~L332-368), and wherever a Telegram-triggered grant/deny path calls into `approval_grant`/`approval_deny` — locate and thread a channel tag through all three.
-- **Why:** `docket approve`/`docket deny` (CLI), the HTTP webhook (`serve.py`), and Telegram all already work end-to-end — but `approval_grant`/`approval_deny` only emit trace events, never call `audit_log()`. `docket audit` has zero record of who approved what, through which channel, unlike `gates enable/disable` which already does this correctly.
-- **Do:**
-  1. Add `audit_log("approval.grant", f"token={token} project={project} channel={channel}")` / the `deny` equivalent inside `approval_grant`/`approval_deny`.
-  2. Thread a `channel` argument through every call site: `cli/_approve.py`/`cli/_deny.py` pass `"cli"`, `serve.py`'s handler passes `"http"`, the Telegram path passes `"telegram"`.
-  3. Tests: grant/deny via each of the three call sites produces both the existing trace event (unchanged) and a new audit-log line carrying the correct channel tag.
-- **Out of scope:** redesigning the trace mechanism itself; changing `approval_create`'s record shape.
-- **Deliverables:** `audit_log` calls in `approval_grant`/`approval_deny`; channel threading through CLI/HTTP/Telegram call sites; tests.
-- **Acceptance gate:** [ ] every grant/deny, from any channel, produces an audit-log entry with a correct channel tag · [ ] existing trace-event behavior unchanged · [ ] suite green.
-- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `0894a4f`), clean. No production Telegram call site for `approval_grant`/`approval_deny` was found to exist yet (confirmed: `approval_create` has zero production callers today) — `channel="telegram"` is ready for whenever that path is wired up.
-
----
-
-### FD-5 — `security-gates.spec.md` truth pass + gates-default-on flip
-
-- **Depends on:** FD-3, FD-4 landed (the spec's own stated blocking condition — headless routing + an audit trail — must actually be true before the spec can say so) · **Do after FD-3/FD-4 merge.**
-- **Read:** `specs/functional/security-gates.spec.md` in full, especially its "Implementation status" callout deferring on-by-default pending "per-agent headless approval routing"; `cli/_install.py` (the current `--gates` opt-in flag and its default); `CLAUDE.md`'s security bullet; `docs/SECURITY-SIMPLE.md`.
-- **Why:** the spec explicitly defers gates-default-on because session-mode (Telegram) delivery "only answers prompts during an interactive session" and default-on "could deny an unattended agent with no approver." But the CLI (`docket approve`/`deny`, list-pending) and HTTP (`serve.py`'s webhook) channels already work headlessly today, and after FD-3/FD-4 land, every approval decision is audit-logged and money-movement/secret-access actions always route to approval. The spec's own blocking condition (headless routing) is met — leaving it un-flipped is exactly the kind of doc/code drift Phase 12 fixed once already. **Note on FD-3's actual scope (narrowed during review):** don't claim high-risk enforcement is complete for `git`/`npm` — those stay allowlisted because the daemon's exec-gate can't tell `git push origin main` apart from `git status` at the binary-path level; only money-movement/secret-access (no allowlist overlap) are fully enforced today. State this honestly rather than overclaiming — it doesn't block the flip, since gates-default-on was never conditioned on prod-deploy git/npm enforcement specifically, only on headless routing existing.
-- **Do:**
-  1. Update `security-gates.spec.md`: document the CLI/HTTP approval channels as real and headless-capable (not "Telegram is the intended channel"); document the high-risk action-class policy (FD-3) accurately (money-movement/secret-access fully enforced; prod-deploy's git/npm overlap is policy-documented but not daemon-enforced, a deferred backlog item) and audit-log parity (FD-4); change the on-by-default status line from deferred to current, with the reasoning above.
-  2. Flip `docket install`'s gates flag default from opt-in to on; keep an explicit `--no-gates` escape hatch.
-  3. Update `docs/SECURITY-SIMPLE.md`, `CLAUDE.md`'s security bullet, and README (if it states gates are opt-in) to match.
-  4. Tests: `docket install` with no flags produces a gates-enabled state; `--no-gates` still opts out; update any existing gates tests that assumed opt-in-by-default.
-- **Out of scope:** retroactively enabling gates on already-installed fleets (this only changes the default for new installs); any change to the gates mechanism itself beyond the default.
-- **Deliverables:** updated spec; flipped install default; updated docs; tests.
-- **Acceptance gate:** [ ] spec accurately describes all real approval channels and states the on-by-default condition is met · [ ] `docket install` defaults to gates-on · [ ] `--no-gates` still works · [ ] suite + goldens green (new golden case for changed `install --help`/output if any).
-- **Size:** M · **Status:** DONE — merged into develop 2026-07-02 (branch commit `4996595`). Real conflict with FD-6 in `security-gates.spec.md` (both branches independently wrote a "High-risk action classes" requirements section) — resolved by hand: kept FD-6's more detailed section, removed the duplicate, combined both branches' Changelog entries into one, merged the Examples section to keep both the docker-stop note and the `gates classes` output example.
+- **Depends on:** R-1…R-7 landed.
+- **Read:** the Phase-14 spec refactor commit on this branch (specs were re-statused 2026-07-30 —
+  keep them true); `specs/functional/pod-dispatch.spec.md` (must gain the v2 state machine, retry,
+  rework-loop, run-registry, pause semantics); `specs/data/serve-read-api.spec.md` (R-3's version
+  bump); `specs/functional/cost-tracking.spec.md` (auto-pause becomes real — flip its gap note);
+  `specs/functional/audit.spec.md` (new entries from R-5/R-6); `cli/_provider.py` ~L84 (nonexistent
+  `docket models set task` guidance) and ~L100 (raw-openclaw instruction — contradicts the product
+  proposition); `tests/evals/lib/eval-helpers.sh` ~L56-80 (parses a different daemon JSON shape
+  than the ACL — reconcile to the ACL's `result.payloads[0].text`); the duplicated
+  `openclaw-gateway.service` constant (`edges/adapters/system.py` ~L21 vs `core/utils.py` ~L35 —
+  single-source it).
+- **Why:** honesty is the product's stated trust edge and Phase 14 changes real behavior; specs and
+  guidance strings must land in the same phase, not drift behind (the exact failure mode Phases 12
+  and 13 each had to clean up once already).
+- **Do:** update every spec touched by R-1..R-7 with version bumps; fix the two `_provider.py`
+  guidance bugs; reconcile the eval harness parser; de-duplicate the unit-name constant; run the
+  full doc drift guard (`scripts/metrics.py --check`) and `docs/commands.md` additions for `docket
+  runs`, `--resume`, `--retry`, timeout flags.
+- **Out of scope:** the broad spec restructure (done 2026-07-30 on this branch, before R-1).
+- **Deliverables:** true specs; fixed guidance; reconciled eval parser; single-sourced constant;
+  green drift guard.
+- **Acceptance gate:** [ ] every Phase-14 behavior is specified with a bumped version · [ ] no spec
+  Status line contradicts the code (spot-audit) · [ ] metrics/drift guard green · [ ] suite green.
+- **Size:** M · **Status:** TODO
 
 ---
 
-### FD-6 — Spec/data truth pass for fields touched this phase
+## Roll-up checklist (Phase 14 definition of done — mirrors ROADMAP exit criteria)
 
-- **Depends on:** FD-0, FD-1, FD-2, FD-3, FD-4 landed · **Parallel-safe with:** FD-7.
-- **Read:** `specs/data/docket-meta.spec.md` (`verifyCmd`, `portRangeStart/Count`, `scratchDir` fields); any `specs/functional/*.spec.md` covering dispatch/pod pipeline behavior; `specs/acceptance/user-stories.md`.
-- **Why:** CH-10 (Phase 12) made every spec a current-state contract as of 2026-07-02. This phase changes real, user-visible behavior (env injection, a new `--verify` flag, a tester enforcement gate, a high-risk approval policy) — specs need to reflect it immediately, not drift again the way `security-gates.spec.md` itself did.
-- **Do:**
-  1. Update `docket-meta.spec.md` for the now-real `--verify` flag and env-injection behavior (FD-0/FD-1).
-  2. Add or update a dispatch-behavior spec section documenting the tester PASS/FAIL gate and hop-failure semantics (FD-2) — CH-10's research found no spec currently owns the dispatch state machine directly; add one if still true.
-  3. Document the high-risk action-class policy (FD-3) in the appropriate functional spec — accurately: money-movement/secret-access classes are fully enforced (no allowlist overlap); prod-deploy's `git`/`npm` overlap is documented policy but not daemon-enforced (deferred, tracked as backlog), since the daemon's allowlist can't gate by argument text. Don't overclaim this as "always blocks."
-  4. Bump each touched spec's version header per the existing convention.
-- **Out of scope:** a full spec audit (CH-10 already did that broadly; this is targeted to what FD-0…FD-4 changed).
-- **Deliverables:** updated specs with correct version headers.
-- **Acceptance gate:** [ ] every field/flag/behavior FD-0..FD-4 added is documented in the relevant spec · [ ] version headers bumped · [ ] `validate-specs.sh` (or equivalent) passes.
-- **Size:** S · **Status:** DONE — merged into develop 2026-07-02 (branch commit `0838522`). Added `specs/functional/pod-dispatch.spec.md` (new — no prior spec owned the dispatch state machine, confirmed still true from Phase 12's research). Updated `docket-meta.spec.md` and `cli-interface.spec.md`. Its `security-gates.spec.md` edit was later reconciled with FD-5's during that merge (see FD-5's note).
-
----
-
-### FD-7 — Docs/positioning pass — claim the closed gaps
-
-- **Depends on:** FD-0 through FD-5 landed · **Parallel-safe with:** FD-6.
-- **Read:** README.md's positioning section; `docs/SECURITY-SIMPLE.md`; `internal-docs/competitive-analysis.md` (the source doc whose Tier-1 framing went stale this phase — correct it so a future session doesn't re-discover this same substrate as "missing").
-- **Why:** docket now has env-level pod resource isolation, a verification gate that actually enforces tester PASS/FAIL, and secure-by-default governance — the P1/O2/S1 differentiation claims are true now, not aspirational. The analysis doc itself should record that its Tier-1 recommendations are closed, so it doesn't mislead a future planning pass the way it partially did this one (see Phase 13's ROADMAP section).
-- **Do:**
-  1. Update `internal-docs/competitive-analysis.md`'s Tier-1 section with a "Status: closed 2026-07-02, see ROADMAP Phase 13" note per bet — don't rewrite the historical research itself.
-  2. Update README.md/docs positioning to claim env-level pod isolation, tester-enforced verification, and secure-by-default governance, where each is now accurate.
-  3. Run `scripts/metrics.py --check` to confirm no README numbers drifted from the added tests/files.
-- **Out of scope:** a full docs sweep (CH-11 already did that broadly in Phase 12); new marketing copy beyond factual claims already true in the tree.
-- **Deliverables:** corrected competitive-analysis.md; updated positioning copy; drift guard green.
-- **Acceptance gate:** [ ] competitive-analysis.md records the Tier-1 bets as closed · [ ] positioning copy matches shipped behavior · [ ] `scripts/metrics.py --check` green.
-- **Size:** S · **Status:** DONE — done directly (solo, no subagent — small docs-only card) 2026-07-02. `internal-docs/competitive-analysis.md`'s Tier-1 section got a status note per bet (P1/O2/S1); README's positioning, feature-matrix, and status tables updated to claim env-level pod isolation, the Tester PASS/FAIL gate, and the high-risk action-class policy with its honest partial scope.
-
----
-
-## Roll-up checklist (Phase 13 definition of done — mirrors ROADMAP exit criteria)
-
-- [x] FD-0 — implementer subprocess env contains its real allocated port range + scratch dir. *(DONE 2026-07-02)*
-- [x] FD-1 — `verifyCmd` settable via a public CLI flag, documented in TOOLS.md. *(DONE 2026-07-02)*
-- [x] FD-2 — a tester hop reporting FAIL (or unparseable) blocks pipeline advancement. *(DONE 2026-07-02)*
-- [~] FD-3 — a defined high-risk action-class list always routes to approval regardless of allowlist. *(DONE 2026-07-02 — narrowed: fully true for money-movement/secret-access; prod-deploy's git/npm overlap stays allowlisted, deferred to backlog per the daemon's binary-only gating limit)*
-- [x] FD-4 — every approval grant/deny, any channel, writes an audit-log entry. *(DONE 2026-07-02)*
-- [x] FD-5 — `security-gates.spec.md` reflects the real channel set; `docket install` gates default flips to on. *(DONE 2026-07-02)*
-- [x] FD-6 — specs/data truth pass for every field/behavior this phase touched. *(DONE 2026-07-02)*
-- [x] FD-7 — docs/positioning claim the closed gaps; competitive-analysis.md corrected. *(DONE 2026-07-02)*
-- [x] Full suite green throughout: ruff + format + mypy strict + pytest + goldens. *(confirmed green after every merge, incl. `scripts/validate-specs.sh` and the README drift guard)*
-
-## Phase 13 — COMPLETE (2026-07-02)
-
-All 8 cards landed and merged into `develop`. FD-0 through FD-4 ran as a first parallel wave of
-5 worktree-isolated agents; FD-5 and FD-6 ran as a second wave of 2 (both depended on the first
-wave landing); FD-7 was done directly (solo). Two real merge conflicts were resolved by hand:
-`core/dispatch.py`'s test fixtures needed widening to FD-0's 5-arg `Runner` signature after FD-2
-merged first (a small follow-up commit, not a true git conflict — the auto-merge succeeded but
-left FD-2's local fake runners on the old signature); and `security-gates.spec.md` had a genuine
-content conflict between FD-5 and FD-6 (both independently wrote a "High-risk action classes"
-requirements section) — resolved by keeping FD-6's more detailed version and combining both
-branches' Changelog entries.
-
-**One design correction made mid-phase, before merging:** FD-3's first implementation excluded
-`git`/`npm` entirely from the seeded exec-allowlist to force high-risk invocations (prod
-git-push, npm publish) to always require approval. Caught during review: since the OpenClaw
-daemon's exec-allowlist gates by binary path only (no argument-aware matching), this would have
-also forced every benign invocation (`git status`, `npm test`) to require approval — a bigger
-usability regression than the card scoped, and one that would have made the very next card
-(FD-5, gates-default-on) a rough experience for anyone using git or npm under gates. Presented
-to the operator as a real tradeoff; the operator chose to narrow it rather than accept the full
-exclusion. Re-scoped in place: `HIGH_RISK_PATTERNS`/`docket gates classes` ship as documented
-policy; `git`/`npm` stay allowlisted; per-argument enforcement for allowlisted bins is now an
-explicit, tracked backlog item instead of a silently-overclaimed feature.
-
-**Grounding-pass correction that shaped the whole phase:** the phase was originally scoped
-around `internal-docs/competitive-analysis.md`'s three "Tier 1 — Now" bets (P1/O2/S1) as if they
-were unbuilt. A pre-work grounding pass (three parallel code investigations) found Phase 11's
-own CD-1/CD-2/CD-3/CD-4 cards had already built most of the substrate the same week the analysis
-was written — the phase was rescoped around the five real residual gaps instead of rebuilding
-three features from scratch. `internal-docs/competitive-analysis.md` (gitignored, local-only)
-was corrected with per-bet status notes so a future planning pass doesn't repeat the mistake.
-
-**Explicitly NOT in this phase (deferred, tracked as backlog):** a real disposable DB/cache
-namespace for pods (stays a naming convention — no docket-owned DB engine to provision
-against); per-argument enforcement of the prod-deploy high-risk class for `git`/`npm`
-(needs a daemon-side capability that doesn't exist today); retroactively enabling gates on
-already-installed fleets (the default flip only applies to new installs).
-
-**Next:** this board is now spent. Per the standing convention (top of this file), a future
-session should clear these cards (the phase record stays in ROADMAP.md's Phase 13 section) and
-append whatever phase comes next.
+- [ ] R-1 — two concurrent dispatchers cannot double-run a task; crash resumes from last hop;
+  `blocked` never auto-retries.
+- [ ] R-2 — retryable failures retry with persisted `attempts`; turn/verify timeouts independent.
+- [ ] R-3 — every dispatch has a queryable run id; zero suppressed exceptions in the lane;
+  scheduler state survives restart.
+- [ ] R-4 — REQUEST-CHANGES blocks and drives one bounded rework cycle.
+- [ ] R-5 — an over-cap agent is genuinely paused and refused; estimates always labeled.
+- [ ] R-6 — verify runs in the worktree; setter validated + audited.
+- [ ] R-7 — hop prompts capped with explicit truncation.
+- [ ] R-8 — specs/docs/guidance match everything above; drift guard green.
+- [ ] Full suite green throughout: ruff + format + mypy strict + pytest + goldens +
+  `scripts/metrics.py --check`.

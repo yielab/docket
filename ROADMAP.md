@@ -10,8 +10,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. No phase is currently active — the next phase's scope has not been chosen; see TODO.md's closing note. Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
-**Last Updated:** 2026-07-02
+**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **Phase 14 is the active phase**; its board is in TODO.md. Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
+**Last Updated:** 2026-07-30
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -174,11 +174,23 @@ committed with a conventional message. Tick the box in §5 and move on.
   compatibility / changes license or direction; the roadmap needs runtime-level capabilities upstream
   consistently refuses; or the ACL ends up working *around* OpenClaw more than *with* it. Even then,
   prefer absorbing a thin slice behind the existing ACL port over a full rebuild.
-- **Critical consequence for every phase:** docket is **not in the agent execution path**. The daemon
-  executes every tool call. So any feature with a runtime aspect splits into *pure-docket* (config,
-  provisioning, metadata, templates, policy authoring — ships first, fully testable) vs
-  *daemon-gated* (anything that intercepts or spawns at runtime — isolated behind a spike, never
-  overclaimed). Phases 8 and 10 are both shaped by this split.
+- **Critical consequence for every phase** *(revised 2026-07-30 per D-15)*: **docket orchestrates
+  hops; the daemon executes every tool call inside a turn.** Since AA-7's real dispatch, docket *is*
+  in the execution path for the dispatch lane and is accountable for its queue/state/retry
+  correctness — the old "docket is not in the agent execution path" phrasing is retired. What
+  survives unchanged is the split every feature must still declare: *pure-docket* (config,
+  provisioning, metadata, templates, policy authoring, hop orchestration — ships first, fully
+  testable) vs *daemon-gated* (anything that intercepts **inside** a turn — isolated behind a spike,
+  never overclaimed). Phases 8, 10, and 14–18 are all shaped by this split.
+
+> **Platformization amendment (2026-07-30, decisions D-14…D-18):** the Phases 14–18 program revises
+> two lines above, deliberately and narrowly. (1) The `AbstractBackend` ban becomes "one typed
+> **RuntimeDriver port**, one shipped driver" — formalizing the execution slice the ACL already
+> half-owns, because the 2026-07-29 audit found that coupling leaking around it (session-JSONL cost
+> parsing in `core/`, 11 argv shapes) rather than contained by it. A *second* driver still needs a
+> trigger from the list above. (2) "Not in the execution path" is rewritten per D-15. Everything
+> else in this section — wrap-don't-rebuild, no DI/ORM/event-bus, boring typed Python — stands and
+> governs Phases 14–18 too.
 
 ### Anti-overengineering guardrails (the "we will NOT" list)
 
@@ -392,6 +404,11 @@ address exactly those.
 | D-11 | `docket team` (legacy manager queue): retire into pods, or give it real dispatch? | CH-4 | **Retire** — it is a second, manual task queue (`workspaces/manager/TASK_LIST.json`) with **no dispatcher**; pods own delegation (`docket pod <p> delegate/queue/dispatch`, real execution via `core/dispatch.py`) and the opt-in Portfolio Manager owns the cross-pod view. Replace with a removed-command notice mapping each subcommand to its pod equivalent. |
 | D-12 | Docket-owned JSON writes: single `store.py` chokepoint, or per-module writers? | CH-1 | **Single chokepoint** — every docket-owned JSON write goes through `edges/store.py` (append-only JSONL logs in `trace.py`/`audit.py` are the one documented exemption, named in the store.py docstring). Removes 8+ hand-rolled atomic-write copies with inconsistent locking. |
 | D-13 | The audit also flagged non-`openclaw` shell-outs (`_eval.py` bash, `_trace.py` tail, `$EDITOR`, `_install.py` python-version): fold them behind `edges/adapters/system.py` too, or scope the shell-out invariant narrower? | CH-2 | **Scope narrower** — the ACL/`system.py` invariant covers `openclaw`/`git`/`docker`/`systemctl` only (§3). The remaining four are CLI-only, one-off, and not OpenClaw/daemon coupling; wrapping them would add indirection with no coupling to remove. Revisit only if one of them grows a second call site. |
+| D-14 | §4.5 bans an `AbstractBackend`, but the 2026-07-29 platform audit found the execution slice already leaks past the ACL (session-JSONL cost parsing in `core/utils.py`, 11 argv shapes, duplicated unit name). Formalize a **RuntimeDriver port**, or keep the ban? | Phase 18 L-1 | **One typed port, ONE shipped driver (OpenClaw).** This *revises* §4.5's ban: the port is containment of coupling that already exists, not speculative generality. A second driver still requires a §4.5 trigger (upstream stall/breakage) or a paying user — the "no plugin framework" spirit stands. |
+| D-15 | §4.5 says "docket is not in the agent execution path" — false since AA-7's real dispatch. Rewrite the principle or keep pretending? | Phase 14 | **Rewrite** — the principle becomes: *docket orchestrates hops (and is accountable for queue/state/retry correctness); the daemon executes every tool call inside a turn.* The pure-docket vs daemon-gated split stays; the denial goes. |
+| D-16 | Lobster workflow surface: docket lints YAML it cannot run (validator ignores 4 constructs its own template emits). Retire into the docket-native pipeline spec, or keep as a second dialect? | Phase 16 W-3 | **Retire (A)** — one workflow dialect docket actually executes (W-1/W-2). `docket workflow` becomes a removed-command notice mapping to the pipeline commands, same pattern as `docket team` (D-11). Keeping two dialects repeats the dual-queue mistake. |
+| D-17 | `serve` job model: bare fire-and-forget daemon threads (no ids, errors suppressed) vs a persistent run registry + bounded worker pool? | Phase 14 R-3 | **Run registry + worker pool, stdlib only** — keep §4.5's no-FastAPI/no-async stance; drop the fire-and-forget. Every dispatch gets a run id, persisted state, and queryable outcome; `contextlib.suppress(Exception)` around dispatch is banned. |
+| D-18 | Where do docket's own LLM calls (memory distillation C-2, judge steps) come from: provider SDKs, a wrapped gateway, or the driver? | Phase 17 C-2 | **Through the driver** (`agent_run` on a pod Lead / utility agent) — zero new SDK deps. A LiteLLM-class sidecar gateway is a Phase 18 L-5 *spike*, opt-in, and only if the daemon tolerates a base-url swap; hand-rolled per-vendor clients are banned permanently. |
 
 ---
 
@@ -1297,6 +1314,221 @@ met; `docket install`'s gates default flips; full suite + goldens green througho
 
 ---
 
+### PHASE 14 — Platformization I: runtime truth & dispatch hardening  *(🚧 ACTIVE — blocking; nothing later ships first)*
+
+> **Source of record:** `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, four
+> parallel code-grounded audit passes, file:line-cited; gitignored local rationale — this section is
+> self-contained). The audit measured docket against eight agent-platform pillars (runtime driver,
+> workflow engine, MCP, gateway, context/memory, governance, orchestration, role diversity) and found
+> a disciplined config layer over a dispatch lane that is **not crash-safe, not race-free, and not
+> honest about three of its own specs**. Phases 15–18 all execute through this lane — it hardens
+> first. Executable board: [TODO.md](TODO.md).
+
+**Why this phase (code-verified defects, the audit's §8 register):** the pod task queue has an
+unlocked read-modify-write — the serve webhook, scheduler, and sweeper threads can all dispatch the
+same pod concurrently and double-run a task (`dispatch.py` read→write vs `store.py`'s write-only
+lock). There is no persisted `running` state, so a crash mid-task re-runs every hop from the lead.
+A budget-`blocked` task is rewritten to `pending` and retries forever. No retries, no cancellation,
+no per-task timeout (one hardcoded 300s constant shared with verify commands). The serve dispatch
+lane swallows every exception (`contextlib.suppress`) and the webhook returns 200 before any work,
+with no run id. The Reviewer role is mechanically decorative (its APPROVE/REQUEST-CHANGES is never
+parsed; only the Tester gate is real). Auto-pause at budget cap **does not exist** — no code writes
+`paused=True` (the Phase 1 claim was Bash-era; the port dropped it), and display code compares the
+flag as a string while writers use a bool. `verifyCmd` runs in `codebase` instead of the member's
+`worktreeDir`, `shell=True`, with no independent timeout. `_hop_message` concatenates every prior
+hop's full output unbounded. And the spec surface overclaims: `audit.spec.md` is "Complete" at ~1/6
+coverage; `security-gates.spec.md`'s `[GATE] → docket approve` worked example cannot happen today.
+
+**Cards (detail + acceptance in [TODO.md](TODO.md)):** R-1 task state machine v2 — persisted
+`running`, locked claims, retries with `attempts`, per-task timeout, uuid task ids, crash sweep +
+resume-from-hop; kill the `blocked→pending` rewrite · R-2 retries + configurable timeouts (turn vs
+verify decoupled) · R-3 run registry + job API (`docket runs`, `GET /runs/<id>`), ban
+`suppress(Exception)` in the dispatch lane (D-17) · R-4 Reviewer verdict gate + bounded rework loop
+back to the implementer · R-5 budget honesty — implement auto-pause for real, fix the string/bool
+bug, token-based *estimate* (clearly labeled, never "recorded spend") when the daemon writes no cost
+· R-6 verifyCmd correctness (worktree cwd, bounded shell surface, audit on set-verify) · R-7 bounded
+hop prompts (cap + truncation marker — stopgap until Phase 17's compiler) · R-8 spec/docs truth pass
+(audit.spec.md re-status, security-gates `[GATE]` example marked daemon-gated, `_provider.py`
+guidance bugs, eval-harness schema drift, durable scheduler last-run state).
+
+**Explicit keeps (do NOT build here):** no asyncio rewrite, no FastAPI, no message bus (threads +
+filelock + persisted claims only, per §4.5); no new pillars (workflow spec, archetypes, MCP, driver
+port all wait for 15–18); no daemon changes.
+
+**Phase 14 exit criteria:** two concurrent dispatchers cannot double-run a task (thread-race test);
+a killed-mid-task dispatch resumes from the last completed hop without re-paying earlier hops; a
+budget-capped agent is actually `paused` and dispatch refuses it; REQUEST-CHANGES from a Reviewer
+blocks (and one bounded rework cycle runs); every serve-lane dispatch has a queryable run id and no
+silenced exceptions; every spec Status line matches the code; full suite + goldens green.
+
+---
+
+### PHASE 15 — Platformization II: deterministic governance, wired  *(🟡 planned — after 14)*
+
+> **The audit's single most damning pattern:** three governance organs are fully built, tested, and
+> documented — and connected to nothing. `approval_create` has **zero** production callers (the
+> daemon's exec prompt and docket's `apr-*` store are disconnected systems); the policy engine's
+> only caller is its own dry-run printer (`docket policies test`), and `docket install` never even
+> installs the six shipped policy templates; `resolve_command_action` — the one function implementing
+> "high-risk always asks" — has no caller. Meanwhile the audit log covers ~1/6 of its spec (keys/
+> profile/scope/agent-lifecycle mutations write nothing), has no tamper evidence, and
+> `DOCKET_NO_AUDIT=1` is an unauthenticated kill switch whose suppression looks identical to success.
+
+**Cards:**
+
+- **G-1 · Approval-gated dispatch** *(the approval store's missing producer — pure docket)*: a
+  `require_approval` gate evaluated pre-hop (from policy match, pod `requireApprovalRoles`, or a
+  pipeline `approval` step). Task enters persisted `waiting_approval`; `docket approve/deny` and the
+  HTTP endpoint genuinely resume/kill the run; the timeout sweep resolves to **denied** (matching the
+  spec's fail-closed language, not today's read-by-nobody `expired`).
+- **G-2 · Policy engine on the live path**: `install` runs `policies init`; `pre_input` evaluated at
+  enqueue, `pre_output` (redact/warn/block) on every hop output before carry-forward/storage;
+  `require_approval` action feeds G-1; emit `guardrail_check`/`guardrail_block` trace events (giving
+  `_metrics.py`'s existing reader a producer). In-turn `pre_tool_call` stays **daemon-gated** —
+  documented, never claimed.
+- **G-3 · High-risk classes enforced where docket can**: wire `resolve_command_action` into every
+  process docket itself launches (verifyCmd, future pipeline `shell` steps) and G-2's pre-output
+  scan. Per-argument daemon enforcement stays the tracked backlog item (Phase 13's honest narrowing).
+- **G-4 · Audit v2**: coverage to spec (`keys.* profile.* scope.* agent.add/delete pod.* persona.*
+  runs.cancel`); per-line `seq` + `prev_hash` chain + `docket audit verify`; ms timestamps;
+  rotation and retention; env kill-switches removed or TTY-confirmed; suppressed trace writes
+  return a distinct status (never a fake `True`).
+- **G-5 · [daemon-gated spike] the `[GATE]` seam**: can the daemon's exec-approval prompt notify an
+  external hook? Yes → bridge daemon prompts into docket approval tokens (the spec's example becomes
+  true). No → file upstream, spec example stays labeled future.
+- **G-6 · Serve auth hardening**: `secrets.compare_digest`, token file option, documented bind rules.
+
+**Exit criteria:** every control in the audit's "enforced vs documented" table is either on a live
+path or explicitly labeled *convention* in SECURITY docs; a `require_approval` policy visibly pauses
+a real dispatched task until granted; `docket audit verify` detects a tampered line; suite green.
+
+---
+
+### PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(🟡 planned — after 14; G-1 for approval steps)*
+
+> **Why:** the pipeline is a hardcoded constant and the role system knows exactly one objective —
+> shipping code. `POD_ROLES` is a closed 4-tuple (`core/pod.py:21`), every role identity is a
+> hardcoded Python string (`_pod.py:44-97`), gates are code-shaped (verify-cmd → implementer only,
+> PASS/FAIL → tester only), and since the task-agent type was deleted, every agent is assumed to
+> have a codebase. A research pod, a content pod, an ops pod are **inexpressible**. The operator's
+> explicit requirement: pods must orchestrate *diverse objectives, not just build a web site* —
+> with roles and scope declared as data. Scope itself (org vs project, per-pod isolation substrate:
+> session keys, port ranges, scratch dirs, worktrees) already generalizes and is reused untouched.
+
+**Cards:**
+
+- **W-1 · docket-native pipeline spec**: one Pydantic-modeled, unknown-key-rejecting YAML — ordered
+  steps (`role|agent`), per-step `retries/timeout/gate` (mechanical-check | verdict | approval),
+  bounded rework edges, `parallel` groups (finally using `--count N` members), variables. Steps
+  reference W-6 archetypes. No pipeline file ⇒ today's built-in order (zero migration).
+- **W-2 · Executor**: `core/orchestrator` runs W-1 specs over R-1's state machine — bounded worker
+  pool (threads; hops are subprocess-bound), join semantics, per-step trace spans, `docket runs
+  cancel` kills the in-flight hop's process group. `docket workflow plan` renders the plan **from
+  the real executor** (no drift-prone second pretty-printer). Determinism contract: same spec +
+  same queue ⇒ same step DAG.
+- **W-3 · Lobster retirement (D-16)**: `docket workflow` → removed-command notice mapping to the
+  pipeline commands (the D-11 `docket team` pattern); `core/lobster.py` + templates deleted.
+- **W-4 · Durable scheduling + event triggers**: persisted last-run (no restart re-fires), cron
+  specs, webhook params → pipeline variables, `dispatch --follow` streaming from the trace.
+- **W-5 · Structured handoff artifacts**: steps exchange a typed record (`{summary, files_changed,
+  diff_ref, verdict, notes}`) persisted per hop — replaces raw-text concatenation between hops.
+- **W-6 · Declarative role archetypes**: a role becomes a versioned YAML definition — `name`,
+  `scope` (org|pod), `modelClass` (cheap|strong, slotting into the existing role→model policy),
+  `soulTemplate`/`agentsTemplate` (variables: project, objective, codebase?, workDir),
+  `gateContract` (`none|verdict(regexes)|mechanical(cmd)|approval`), `editRights`, `toolProfile`.
+  Today's four roles ship as built-in archetypes with **byte-identical output** (golden-tested);
+  starter library: `researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`. `docket
+  roles list/show/add/validate`; user archetypes overlay built-ins (the `docket-models.json`
+  registry pattern). `normalize_role`/`member_id`/`POD_ROLE_POLICY` rewritten against the registry —
+  the closed set opens without changing a single existing id.
+- **W-7 · Pod blueprints — objective-scoped provisioning**: blueprint = archetype roster + default
+  pipeline + workspace kind (`codebase|workdir`) + org-vs-pod scope per role + default gates/
+  budgets. Built-ins: `software` (today's pod, unchanged default), `research`, `content`, `ops`.
+  `docket add <p> --blueprint <name>` + extended `--from spec.yaml`; restores a non-codebase
+  workspace path for `workdir` blueprints.
+- **W-8 · Generalized gates**: verdict parsing and mechanical checks detach from tester/implementer
+  and become gate types any step declares (per-archetype verdict regex sets — PASS/FAIL,
+  APPROVE/REQUEST-CHANGES, SOURCES-VERIFIED/UNVERIFIED…); cwd resolves from workspace kind.
+
+**Hard sequencing rule:** W-6/7/8 land **with** the executor, not after — an executor that hardcodes
+roles a second time forces a second migration. **Anti-overengineering rule (new "we will NOT" row):**
+no fifth role ever lands as a hardcoded string; archetype *prose and rosters* are user-extensible,
+but gate contracts, edit rights, and scope stay closed typed sets docket can reason about.
+
+**Exit criteria:** a `research` blueprint pod provisions, dispatches through a custom pipeline, and
+**blocks on an unverified-sources verdict exactly the way a software pod blocks on failing tests**;
+the four legacy roles produce byte-identical workspaces (goldens); `docket workflow` prints the
+removed-command notice; suite green.
+
+---
+
+### PHASE 17 — Platformization IV: context engineering & memory management  *(🟡 planned — after 16's W-5)*
+
+> **Why:** the audit found no tokenizer, no retrieval, no summarization anywhere — context is
+> markdown written once plus prose contracts the *daemon's* forced-read enforces, and the only
+> prompt docket composes grows unbounded. Memory lifecycle ops are destructive deletes. Durable task
+> state is split-brained: `TASK_LIST.json` (machine-read) vs `HEARTBEAT.md` (what the reset contract
+> points the model at) — disjoint, never reconciled. Org specialists get no contract files at all
+> and doctor never heals them.
+
+**Cards:** **C-1 · context compiler** — pure function (task, role, artifacts, workspace) → hop
+message under a per-role token budget; priority order, deterministic truncation, chars/4 estimator
+(tokenizer optional extra); composition logged per hop · **C-2 · memory distillation** — `maintain
+distill` summarizes daily logs into MEMORY.md and archives originals; `clean/reset` gain
+`--distill-first` (default on) — never bare-delete; the summarization turn runs **through the
+driver** (D-18), docket's first self-originated LLM use, zero new SDK deps · **C-3 · one durable
+task state** — dispatch writes HEARTBEAT entries mechanically at enqueue/start/finish; doctor flags
+TASK_LIST⇄HEARTBEAT divergence; the durability contract stops being pure prose · **C-4 ·
+specialists join the contract** — full workspace set + doctor healing (close the projects-only
+healer gap) · **C-5 · conversation registry auto-population** — dispatch/serve update
+`last_message`/`task_ref` (the deferred TC item).
+
+**Exit criteria:** no dispatch prompt exceeds its configured budget (test-pinned); `maintain reset`
+on a workspace with content produces a distilled MEMORY.md + archive, not a void; a mid-task
+context reset finds the task in HEARTBEAT because docket wrote it there; doctor heals a specialist
+workspace; suite green.
+
+---
+
+### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟡 planned — after 14; independent of 15–17 except L-5)*
+
+> **Why:** provider-agnosticism was declared complete (Phase 6) but the audit found Anthropic
+> hardcoded in the rank anchors (non-overridable), the auth commands, and the preset/pricing gaps —
+> and the runtime coupling half-escapes the ACL. MCP is entirely absent while it has become the
+> ecosystem's tool-interop standard. Decisions D-14/D-18 govern this phase.
+
+**Cards:**
+
+- **L-1 · RuntimeDriver port (D-14)**: typed protocol — `run_turn / provision / teardown /
+  list_sessions / usage / capabilities`. Session-JSONL/`trace_ingest` format knowledge moves
+  **inside** the OpenClaw driver (closing the biggest ACL leak); the ACL guard test extends to
+  session-format parsing; a fake driver replaces ad-hoc test shims. **One shipped driver.**
+- **L-2 · Finish provider agnosticism**: registry-overridable rank anchors; `--provider` on auth
+  commands; `local`/`ollama` presets; OpenRouter/local pricing rows or an explicit `n/a` row type;
+  delete the dead-end guidance strings (`models set task`, raw-openclaw instruction).
+- **L-3 · docket as an MCP server** *(pure docket, high leverage)*: `docket mcp serve` (stdio,
+  official `mcp` SDK pinned) exposing the control plane as tools — `status, pods, queue, delegate,
+  dispatch, runs, approvals list/grant/deny, cost` — every call audit-logged, approvals unchanged.
+  Claude Code/Codex/any MCP client can drive docket *through* its governance spine, not around it.
+- **L-4 · [daemon-gated spike] MCP config plumbing for agents**: if the daemon consumes MCP server
+  config, `docket mcp add <agent> <server>` writes it via the driver + doctor checks it; if not,
+  file upstream (L-3 ships regardless).
+- **L-5 · [spike] wrapped gateway (D-18)**: evaluate a LiteLLM-class sidecar the daemon's provider
+  config points at — central keys (ending plaintext `.env` fan-out), per-call metering (fixing cost
+  observability at the root), failover, caching. Ship only if the daemon tolerates a base-url swap
+  cleanly; otherwise metering stays L-1 `usage()` + R-5 estimates. Hand-rolled provider clients:
+  banned (D-18).
+
+**Exit criteria:** `core/` contains zero OpenClaw on-disk-format knowledge (guard-tested); an MCP
+client can list pods, delegate a task, and approve a gated action end-to-end with audit entries for
+each; `docket models` shows no hardcoded-Anthropic residue for a non-Anthropic fleet; suite green.
+
+**Full-program scope guard (all five phases):** a full MCP *host* (docket executing MCP tools inside
+agent turns) is the standalone-runtime trap — refuse it; microVM/multi-host/dashboards stay §7
+Backlog; every control keeps its one-word label (*docket-enforced / daemon-enforced / convention*).
+
+---
+
 ## 7. Backlog (deferred indefinitely)
 
 - New channel auth flows (Discord OAuth, Slack app install) — OpenClaw owns this entirely; docket just writes bindings.
@@ -1316,23 +1548,43 @@ met; `docket install`'s gates default flips; full suite + goldens green througho
 
 ---
 
-## 8. How to start (current — no active phase)
+## 8. How to start (current — Phase 14 active, on the `platform` branch)
 
 Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
 and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
 pre-release suffix (not a bare version) for as long as the project stays beta/early-stage per
-README's warning banner; `v0.1.0` predates this convention and stays as-is. **No phase is
-currently active.** TODO.md's board is spent and awaiting the next phase per the standing
-convention (clear the old cards, keep the phase record here, append the new board). Before
-starting new work: decide what Phase 14 is — the deferred prod-deploy per-argument enforcement
-(needs a daemon capability that doesn't exist today), a fresh audit, or a product-plan-driven
-feature phase — and write its ROADMAP section + TODO.md board following the pattern established
-by Phases 10–13.
+README's warning banner; `v0.1.0` predates this convention and stays as-is.
+
+**The active work is the Platformization program (Phases 14–18, added 2026-07-30)** — see the
+Phase 14–18 sections above, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5.
+Rationale audit: `internal-docs/agent-platform-audit-and-build-plan.md` (gitignored, local-only;
+the phase sections are self-contained without it). **Phase 14 is active; its executable board is
+TODO.md (cards R-1…R-8).** Work R-1 first — it blocks R-2…R-5.
+
+**Branch model for this program:** all Platformization work happens on the long-running
+**`platform`** branch, a deliberate fork-candidate line — the operator may promote it to the next
+major version (or a fork) rather than merging phase-by-phase into `main`. `main` stays the stable
+0.2.x beta line. Per-card branches are `pc/r-<id>` → PR into `platform`. The 2026-07-30 spec
+restructure (statuses trued to code, legacy specs retired) is the branch's baseline commit —
+specs on `platform` describe the code, not aspirations, and R-8 keeps them that way.
 
 ---
 
 ### Changelog
 
+- **2026-07-30** — **Platformization program added (Phases 14–18) on the new `platform` branch.**
+  Driven by the 2026-07-29 agent-platform audit (`internal-docs/agent-platform-audit-and-build-plan.md`,
+  four parallel code-grounded passes): docket measured against eight agent-platform pillars scored
+  0–2/5 each — no MCP, no gateway, lint-only workflows, a dispatch lane with a queue race / no
+  `running` state / no retries, three governance organs built but unwired (approval store, policy
+  engine, `resolve_command_action`), auto-pause never ported from Bash, and a closed 4-role
+  software-only pod archetype. Added: Phase 14 (dispatch hardening, ACTIVE, board in TODO.md),
+  Phase 15 (governance wired), Phase 16 (declarative orchestration + role archetypes/blueprints for
+  diverse objectives), Phase 17 (context compiler + memory distillation), Phase 18 (RuntimeDriver
+  port + MCP + wrapped-gateway spike); decisions D-14…D-18; §4.5 amended per D-14/D-15 (RuntimeDriver
+  port supersedes the AbstractBackend ban's letter, "not in the execution path" retired). Specs
+  restructured the same day: statuses trued to code, retired/legacy content cleaned (see the spec
+  refactor commit on `platform`).
 - **2026-07-03** — **Cut and tagged `v0.2.0-beta.1`** — folded Phase 13 (FD-0…FD-7) into
   CHANGELOG's previously-blank-since-drafting 0.2.0 entry; trimmed README.md (492→361 lines:
   cut the redundant Command Reference and Engineering sections down to short pointers at
