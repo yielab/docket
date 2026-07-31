@@ -1,11 +1,12 @@
 # Role Archetypes Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
-pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). This spec's own scope (the archetype
-schema/registry/CLI) is unchanged by either.
+pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). ROADMAP Phase 17's C-1 (the context
+compiler) added a `tokenBudget` field — see "Archetype schema" and "Context-compiler token
+budget" below. This spec's own scope (the archetype schema/registry/CLI) is otherwise unchanged.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -66,8 +67,11 @@ This specification does NOT cover:
 
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
-   `editRights`, and `toolProfile` (string). `policyRole` and `description` **MAY** be present
-   (empty/absent is valid for both).
+   `editRights`, `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
+   C-1; see "Context-compiler token budget" below). `policyRole` and `description` **MAY** be
+   present (empty/absent is valid for both); `tokenBudget` **MAY** be absent from a wire document
+   (a pre-C-1 user overlay entry, or a hand-authored YAML file that predates this field) and
+   defaults to `6000` when omitted — never a parse error.
 2. `scope` **MUST** be one of exactly `"org"` | `"pod"` — a closed enum. Every built-in and
    starter-library archetype shipped today is `"pod"`-scoped (org-scoped archetypes are a valid,
    validated value in the type system, reserved for a future card; none ship yet).
@@ -174,6 +178,30 @@ This specification does NOT cover:
 3. A totally unknown role name (present in neither the named policy table nor the archetype
    registry) **MUST** fall back to `cfg.DEFAULT_MODEL`, unchanged from pre-W-6 behavior.
 
+### Context-compiler token budget (ROADMAP Phase 17 C-1)
+
+1. Every archetype **MUST** carry a `tokenBudget` (positive integer) — the (approximate) number
+   of tokens of prior-hop carryover `core/context.py`'s compiler (`compile_artifact`/
+   `hop_share`) may thread into that role's hop prompt when the role is dispatched via
+   `core/dispatch.py`'s `_hop_message`. This lives on the archetype rather than in a second,
+   parallel registry: a role's resource budget is part of its declarative definition, the same as
+   its gate contract or edit rights.
+2. `core/context.py`'s `budget_for_role(role)` **MUST** resolve *role* against the live archetype
+   registry (`core/archetypes.py.load_registry()`) and return its `tokenBudget`; a role absent
+   from the registry, or one whose `tokenBudget` is non-positive, **MUST** fall back to a fixed
+   default (`context.DEFAULT_TOKEN_BUDGET`, `6000`) rather than raise or silently return zero.
+3. A `tokenBudget` of zero or a negative value **MUST** be rejected by `RoleArchetype.__post_init__`
+   (`ArchetypeError`) for any archetype built through the normal constructor path or `from_wire` —
+   the same closed-validation treatment `version` already gets. This is orthogonal to the
+   scope/modelClass/gateContract/editRights closed *enums* (`tokenBudget` is an open positive
+   integer, not a member of a fixed value set) but follows the same "reject, never coerce" rule.
+4. `tokenBudget` **MUST NOT** be validated or interpreted as an exact token count from any real
+   model tokenizer — `core/context.py`'s own approximation (bytes ÷ `config.
+   CONTEXT_BYTES_PER_TOKEN`, default 4) is what actually consumes this value. See
+   `pod-dispatch.spec.md`'s "Bounded hop prompts" for how the budget is spent once resolved (the
+   task description and the role's own instruction footer are reserved first; what's left funds
+   the recency-weighted prior-hop carryover).
+
 ### User registry overlay
 
 1. User archetypes **MUST** overlay built-ins and the starter library via
@@ -232,6 +260,7 @@ modelClass: cheap
 editRights: write
 toolProfile: content-ops
 description: coordinates content production across writer/critic
+tokenBudget: 6000
 gateContract:
   kind: none
 soulTemplate: |
@@ -254,23 +283,23 @@ agentsTemplate: |
 
 ### Built-in archetypes (byte-identical to pre-W-6)
 
-| Name | Scope | modelClass | policyRole | gateContract | editRights |
-| --- | --- | --- | --- | --- | --- |
-| `lead` | pod | cheap | manager | none | none |
-| `implementer` | pod | strong | programmer | mechanical | write |
-| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | read-only |
-| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | read-only |
+| Name | Scope | modelClass | policyRole | gateContract | editRights | tokenBudget |
+| --- | --- | --- | --- | --- | --- | --- |
+| `lead` | pod | cheap | manager | none | none | 2000 |
+| `implementer` | pod | strong | programmer | mechanical | write | 8000 |
+| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | read-only | 6000 |
+| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | read-only | 4000 |
 
 ### Starter library
 
-| Name | Scope | modelClass | gateContract | editRights |
-| --- | --- | --- | --- | --- |
-| `researcher` | pod | strong | none | write |
-| `analyst` | pod | strong | none | write |
-| `writer` | pod | cheap | none | write |
-| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | read-only |
-| `operator` | pod | strong | mechanical | write |
-| `monitor` | pod | cheap | approval | read-only |
+| Name | Scope | modelClass | gateContract | editRights | tokenBudget |
+| --- | --- | --- | --- | --- | --- |
+| `researcher` | pod | strong | none | write | 8000 |
+| `analyst` | pod | strong | none | write | 8000 |
+| `writer` | pod | cheap | none | write | 6000 |
+| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | read-only | 6000 |
+| `operator` | pod | strong | mechanical | write | 8000 |
+| `monitor` | pod | cheap | approval | read-only | 4000 |
 
 ### User overlay file
 
@@ -329,6 +358,23 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-30)
+
+- **ROADMAP Phase 17, card C-1 (context compiler).** Added `tokenBudget` (positive integer) to
+  the archetype schema — see "Archetype schema" requirement 1 and the new "Context-compiler token
+  budget" section. Every built-in and starter-library archetype now declares one (`lead`: 2000,
+  `implementer`: 8000, `reviewer`: 6000, `tester`: 4000, `researcher`/`analyst`/`operator`: 8000,
+  `writer`/`critic`: 6000, `monitor`: 4000) — see the updated "Built-in archetypes"/"Starter
+  library" tables. `from_wire` defaults a missing `tokenBudget` to `6000` rather than erroring, so
+  a pre-C-1 `docket-roles.json` overlay entry keeps loading unchanged.
+  `RoleArchetype.__post_init__` rejects a non-positive value the same way it already rejects a
+  non-positive `version`. `core/context.py`'s `budget_for_role` is the one consumer today
+  (`core/dispatch.py`'s `_hop_message`, via ROADMAP Phase 14 R-7's now-retired byte cap — see
+  `pod-dispatch.spec.md`'s "Bounded hop prompts", rewritten by this same card). No change to the
+  four legacy archetypes' rendered SOUL.md/AGENTS.md (`tokenBudget` doesn't participate in
+  template rendering), no change to the CLI surface (`docket roles show` renders it as one more
+  field in the existing YAML/JSON dump, not a new command or flag), no golden impact.
 
 ### Version 1.2.0 (2026-07-30)
 

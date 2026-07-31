@@ -31,6 +31,16 @@ no override (every starter-library/user role) resolves through its own
 (`models_policy.resolve_role_model`'s archetype fallback) — no new hardcoded
 `ALL_ROLES` entry is needed per role.
 
+`token_budget` (ROADMAP Phase 17 C-1) is the role's context-compiler budget —
+how many (approximate) tokens of prior-hop carryover `core/context.py`'s
+`compile_artifact`/`hop_share` may thread into that role's hop prompt. It
+lives here, on the archetype, rather than in a second parallel registry: a
+role's identity (prose, gates, edit rights) and its resource budget are one
+declarative fact, not two things that can drift out of sync. A positive
+integer, defaulting to 6000 for any archetype that doesn't set one
+(hand-built in a test, or parsed from a pre-C-1 user overlay file with no
+`tokenBudget` key) — see `core/context.py` for how it's actually spent.
+
 User archetypes overlay built-ins via `~/.openclaw/docket-roles.json` (the
 same overlay pattern as `docket-models.json`; see `core/models_policy.py`) —
 tolerant on load (a malformed entry is skipped, never crashes a live fleet;
@@ -127,6 +137,9 @@ class RoleArchetype:
     # named row in core/models_policy.py's ALL_ROLES/ROLE_CLASS untouched.
     policy_role: str = ""
     description: str = ""  # open one-line prose, shown by `docket roles list/show`
+    # ROADMAP Phase 17 C-1: this role's context-compiler token budget — see
+    # the module docstring's "token_budget" paragraph and `core/context.py`.
+    token_budget: int = 6000
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -154,6 +167,12 @@ class RoleArchetype:
             raise ArchetypeError(f"archetype {self.name!r}: soulTemplate must not be blank")
         if not self.agents_template.strip():
             raise ArchetypeError(f"archetype {self.name!r}: agentsTemplate must not be blank")
+        if (
+            not isinstance(self.token_budget, int)
+            or isinstance(self.token_budget, bool)
+            or self.token_budget <= 0
+        ):
+            raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
 
     @property
     def resolved_policy_role(self) -> str:
@@ -172,6 +191,7 @@ class RoleArchetype:
             "gateContract": self.gate_contract.to_wire(),
             "editRights": self.edit_rights,
             "toolProfile": self.tool_profile,
+            "tokenBudget": self.token_budget,
         }
         if self.policy_role:
             doc["policyRole"] = self.policy_role
@@ -210,6 +230,14 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     except (TypeError, ValueError) as exc:
         raise ArchetypeError(f"archetype {name!r}: version must be an integer") from exc
 
+    try:
+        # 6000 = RoleArchetype.token_budget's own default — a pre-C-1 overlay
+        # entry (or any doc that never set one) still parses instead of
+        # crashing (see the module docstring's "token_budget" paragraph).
+        token_budget = int(doc.get("tokenBudget", 6000))
+    except (TypeError, ValueError) as exc:
+        raise ArchetypeError(f"archetype {name!r}: tokenBudget must be an integer") from exc
+
     return RoleArchetype(
         name=name,
         version=version,
@@ -222,6 +250,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         tool_profile=str(doc.get("toolProfile", "")),
         policy_role=str(doc.get("policyRole", "")),
         description=str(doc.get("description", "")),
+        token_budget=token_budget,
     )
 
 
@@ -333,6 +362,10 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="coordination",
         policy_role="manager",
         description="orchestrates the pod; never edits code",
+        # Lead never receives prior-hop carryover (`_hop_message` returns
+        # before any budgeting for this role) — a modest budget is declared
+        # for completeness/forward-compat, not exercised today.
+        token_budget=2000,
     ),
     "implementer": RoleArchetype(
         name="implementer",
@@ -346,6 +379,9 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="full-repo",
         policy_role="programmer",
         description="writes code in the project workspace",
+        # The biggest consumer: needs the Lead's plan and (on rework) the
+        # Reviewer's full REQUEST-CHANGES note to act on.
+        token_budget=8000,
     ),
     "reviewer": RoleArchetype(
         name="reviewer",
@@ -359,6 +395,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="read-only",
         policy_role="reviewer",
         description="read-only veto on diffs",
+        token_budget=6000,
     ),
     "tester": RoleArchetype(
         name="tester",
@@ -372,6 +409,9 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="read-only-exec",
         policy_role="tester",
         description="behaviour-only PASS/FAIL",
+        # Only needs the Implementer's summary to validate behaviour, not a
+        # full review history.
+        token_budget=4000,
     ),
 }
 
@@ -482,6 +522,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="write",
         tool_profile="research-read-write",
         description="gathers and synthesizes source material",
+        token_budget=8000,
     ),
     "analyst": RoleArchetype(
         name="analyst",
@@ -494,6 +535,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="write",
         tool_profile="data-analysis",
         description="analyzes data/evidence and draws conclusions",
+        token_budget=8000,
     ),
     "writer": RoleArchetype(
         name="writer",
@@ -506,6 +548,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="write",
         tool_profile="content-authoring",
         description="drafts the pod's content deliverable",
+        token_budget=6000,
     ),
     "critic": RoleArchetype(
         name="critic",
@@ -518,6 +561,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="read-only",
         tool_profile="read-only",
         description="vets the pod's output; veto power",
+        token_budget=6000,
     ),
     "operator": RoleArchetype(
         name="operator",
@@ -530,6 +574,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="write",
         tool_profile="ops-exec",
         description="executes real operational actions",
+        token_budget=8000,
     ),
     "monitor": RoleArchetype(
         name="monitor",
@@ -542,6 +587,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         edit_rights="read-only",
         tool_profile="read-only-observability",
         description="observes signals and reports status; no unilateral action",
+        token_budget=4000,
     ),
 }
 

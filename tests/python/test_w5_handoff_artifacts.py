@@ -19,8 +19,9 @@ covers the typed replacement:
   * TestDispatchBuildsTypedArtifacts — end to end through a real
     ``dispatch_task`` call: a verdict-gated hop's artifact carries a real
     ``verdict`` (not just raw text), the next hop's composed message is built
-    from the *rendered* artifact, and R-7's byte-budget cap still applies to
-    that rendered text.
+    from the *rendered* artifact, and (ROADMAP Phase 17 C-1) the token-budget
+    compiler that replaced R-7's blind byte cap still checks that rendered
+    text, not the summary alone.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from pydantic import ValidationError
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import handoff as _handoff
 from docket.edges.adapters import openclaw as _oc
@@ -364,16 +366,27 @@ class TestDispatchBuildsTypedArtifacts:
         assert "APPROVE - looks solid" in tester_message
         assert "Verdict: approve" in tester_message
 
-    def test_r7_byte_cap_applies_to_the_rendered_artifact_not_just_summary(
+    def test_budget_checks_the_rendered_artifact_and_sheds_verdict_before_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A verdict-bearing artifact's *rendered* text (summary + the
-        appended Verdict line) is what R-7's cap budgets and truncates --
-        not the summary alone."""
+        appended ``Verdict:`` line) is what ROADMAP Phase 17 C-1's compiler
+        checks against budget -- not the summary alone. Unlike the R-7 blind
+        byte cap this replaced, the compiler sheds the less-valuable
+        ``verdict`` field first (``HandoffArtifact.DROP_ORDER``) rather than
+        truncating ``summary`` -- so the reviewer's actual review text
+        reaches the tester intact even though the artifact didn't fit as-is.
+        """
         _seed_pod(tmp_path, monkeypatch, full=True)
-        monkeypatch.setattr(_cfg, "HOP_CARRYOVER_BYTES", 40)
+        # Force every prior hop's carryover share down to just enough room
+        # for the reviewer's raw summary (208 bytes -> 52 tokens) but not its
+        # full rendered artifact (summary + "\nVerdict: approve" -> 225 bytes
+        # -> 56 tokens).
+        monkeypatch.setattr(_context, "hop_share", lambda rank, total: 53)
 
         from docket.core.runtime_driver import TurnResult
+
+        calls: list[tuple[str, str]] = []
 
         class _Runner:
             def __call__(
@@ -385,6 +398,7 @@ class TestDispatchBuildsTypedArtifacts:
                 env: dict[str, str] | None = None,
             ) -> Any:
                 role = agent_id.rsplit("-", 1)[-1]
+                calls.append((role, message))
                 text = {
                     "lead": "plan",
                     "implementer": "did it",
@@ -397,10 +411,16 @@ class TestDispatchBuildsTypedArtifacts:
         res = _dispatch.dispatch_task("demo", task, runner=_Runner())
         assert res.status == "done"
         reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
+        assert reviewer_hop.artifact is not None
+        assert reviewer_hop.artifact.verdict == "approve"
         # The full rendered text (summary + "\nVerdict: approve") is longer
-        # than the raw summary alone -- the cap must have bounded *that*.
+        # than the raw summary alone -- the budget check must see *that*.
         rendered_len = len(reviewer_hop.rendered_artifact().encode("utf-8"))
-        assert rendered_len > 40
+        assert rendered_len > len(reviewer_hop.artifact.summary.encode("utf-8"))
+
+        tester_message = next(msg for role, msg in calls if role == "tester")
+        assert "APPROVE " + ("x" * 200) in tester_message
+        assert "Verdict: approve" not in tester_message
 
     def test_resume_recovers_persisted_artifact_after_a_crash(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

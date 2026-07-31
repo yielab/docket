@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 4.0.0
+**Version**: 5.0.0
 **Status**: Complete. Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
 generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
 "Parallel step groups", and "Cancellation" below. The require_approval gate
@@ -10,14 +10,21 @@ explicit, inert seam — see that section's "Sources" list. Hops run through the
 (Phase 18 L-1) — a containment refactor with no behavior change. The role-archetype registry's
 `gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
 when the step declares none of its own. **Structured handoff artifacts (ROADMAP Phase 16 W-5)**
-are now implemented — see "Structured handoff artifacts" below: a hop's output is a typed
+are implemented — see "Structured handoff artifacts" below: a hop's output is a typed
 `HandoffArtifact` (`core/handoff.py`), not a raw string; the next hop's prompt is composed from
 its rendered form, and it is persisted alongside the hop record so `--resume` recovers it exactly.
-This card gates Phase 17's C-1 (the context compiler). The `core/dispatch.py:1313` `print()` (a
-layering violation — `core/` never prints) is also gone: a mechanical gate's unset-command skip is
-now a typed `HopResult.verification_skipped` flag rendered by `cli/_pod.py`, plus a `tool_result`
-trace event carrying the same fact — see "Implementer verification gate" and "Generalized gate
-execution" below.
+The `core/dispatch.py:1313` `print()` (a layering violation — `core/` never prints) is also gone:
+a mechanical gate's unset-command skip is now a typed `HopResult.verification_skipped` flag
+rendered by `cli/_pod.py`, plus a `tool_result` trace event carrying the same fact — see
+"Implementer verification gate" and "Generalized gate execution" below. **ROADMAP Phase 17's C-1
+(the context compiler) is now implemented** — see "Bounded hop prompts" below, rewritten: R-7's
+process-wide byte cap and its blind head+tail truncation are retired (`_hop_carryover_budget`/
+`_truncate_carryover` are no longer called by `_hop_message`, though — per this card's declared
+file-ownership carve-out, which permitted editing only that one function — they remain defined,
+unused, in `core/dispatch.py` for a future cleanup to remove); every prior hop's rendered artifact
+is now fit to a **per-role token budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, see
+`role-archetypes.spec.md` v1.3.0) via `core/context.py`'s `compile_artifact`, which sheds
+`HandoffArtifact.DROP_ORDER` fields before ever truncating `summary` itself.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -118,10 +125,11 @@ This specification does NOT cover:
   not the registry's own authoring/validation contract
 - Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
   workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7 (not shipped)
-- A real token-budgeting consumer of `HandoffArtifact.DROP_ORDER`/`dropped()` — ROADMAP Phase 17's
-  C-1 (the context compiler, blocked on this card landing, not yet started). This spec covers only
-  the artifact's shape and how dispatch itself builds/renders/persists one, not how a future
-  caller would budget across several
+- `core/context.py`'s own internals (the chars-per-token approximation, `compile_artifact`'s
+  field-shedding/summary-truncation mechanics, `RoleArchetype.token_budget`'s schema) — see
+  `role-archetypes.spec.md` for the archetype-side schema and `core/context.py`'s own module
+  docstring for the compiler itself. This spec covers only how `_hop_message` *consumes* that
+  compiler to build one hop's message — see "Bounded hop prompts" below
 - A real `files_changed`/`diff_ref` producer (a git-diff probe) — `HandoffArtifact` declares both
   fields but dispatch does not populate them as of this version; see `core/handoff.py`'s own
   module docstring for why (the git shell-out surface belongs to a different in-flight card) and
@@ -639,37 +647,65 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
    (`notes`, `diff_ref`, `files_changed`, `verdict` — `summary` is deliberately never included, it
    is the artifact's minimum viable content) and a `dropped(field)` helper that returns a copy with
-   *field* reset to empty. This is the seam Phase 17's C-1 (the context compiler) is expected to
-   use to budget tokens per field; this version does not itself perform that budgeting — the
-   artifact shape is the deliverable this card was scoped to ship.
+   *field* reset to empty. **ROADMAP Phase 17's C-1 (the context compiler) is this seam's real
+   consumer** — see "Bounded hop prompts" below for how `core/context.py`'s `compile_artifact`
+   walks `DROP_ORDER` to budget one hop's carryover against its role's token budget.
 5. This module **MUST** stay pure — no filesystem I/O, no subprocess, no import of
    `core/dispatch.py` (the same "leaf" shape as `core/pipeline.py`).
 
-### Bounded hop prompts
+### Bounded hop prompts (ROADMAP Phase 17 C-1 — the context compiler)
+
+*(Before this version, ROADMAP Phase 14 R-7 bounded this same message with one process-wide byte
+constant and truncated whatever didn't fit blindly — head and tail kept, the middle cut with no
+regard for what was actually in it. This section documents the compiler that replaced that
+mechanism; R-7's own helpers, `core/dispatch.py`'s `_hop_carryover_budget`/`_truncate_carryover`,
+are no longer called by `_hop_message` — the two mechanisms are never layered — though they remain
+defined, unused, in that module: this card's file-ownership carve-out permitted editing only
+`_hop_message` itself, so their removal is left for a follow-up. See `role-archetypes.spec.md`
+v1.3.0 for the archetype-side `tokenBudget` schema this section consumes.)*
 
 1. The message composed for a hop **MUST** cap how much of each *prior* hop's rendered artifact it
-   carries forward (not the raw hop output — see "Structured handoff artifacts"): a per-hop byte
-   budget (`config.HOP_CARRYOVER_BYTES`, default 32 KiB) that halves for each step further into the
-   past (`total_budget >> (rank + 1)`, rank 0 = the most recent prior hop) — a partial geometric
-   series that never sums past the configured total no matter how many prior hops exist, while the
-   most recent (most relevant) hop is squeezed the least.
-2. The task's own description **MUST NEVER** be truncated — only a prior hop's rendered artifact
-   is subject to the cap.
-3. When a prior hop's rendered artifact does not fit its budget, it **MUST** be truncated head +
-   tail (kept in roughly equal shares of the remaining room) with an explicit
-   `[... truncated N bytes ...]` marker recording exactly how many bytes were omitted — never a
-   silent cut. The byte count truncation operates on **MUST** be the rendered artifact's size (
-   `summary` plus any appended `Verdict:`/other labelled lines), not `summary` alone, so the cap
-   bounds the same structured content the next hop actually reasons about.
-4. A rework cycle's REQUEST-CHANGES note (see "Reviewer verdict gate") is exempt from the
-   generic recency-ranked loop and its budgeting — it gets the full per-hop budget on its own
-   (applied to its own rendered artifact, per the same rule), since it is what the rework
+   carries forward (not the raw hop output — see "Structured handoff artifacts"): a **per-role
+   token budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, resolved via
+   `core/context.py`'s `budget_for_role`) that halves for each step further into the past
+   (`core.context.hop_share`: `total_budget >> (rank + 1)`, rank 0 = the most recent prior hop) —
+   the same partial-geometric-series allocation R-7 used, now denominated in tokens, that never
+   sums past the configured total no matter how many prior hops exist, while the most recent
+   (most relevant) hop is squeezed the least.
+2. The role's total token budget **MUST** first be reduced by the (approximate) token cost of the
+   task's own description and that role's fixed instruction footer (the trailing "You are the
+   Implementer/Reviewer/Tester..." text) — what remains funds the carryover budget requirement 1
+   describes. The task's own description **MUST NEVER** itself be truncated or shed — only a
+   prior hop's rendered artifact is subject to budgeting.
+3. When a prior hop's rendered artifact does not fit its share, `core.context.compile_artifact`
+   **MUST** shed `HandoffArtifact.DROP_ORDER`'s fields one at a time, least-valuable-first
+   (`notes`, then `diff_ref`, then `files_changed`, then `verdict`), re-measuring the rendered
+   text against the budget after each drop and stopping the moment it fits. A field that is
+   already empty **MUST NOT** be reported as dropped — only a field whose removal actually changed
+   the rendered text counts. The token estimate this checks **MUST** be the rendered artifact's
+   size (`summary` plus any appended `Verdict:`/other labelled lines), not `summary` alone, so the
+   budget bounds the same structured content the next hop actually reasons about.
+4. `summary` **MUST NEVER** be shed outright (it is deliberately absent from `DROP_ORDER` — see
+   "Structured handoff artifacts"). If the rendered text still does not fit its share once every
+   droppable field is gone, `summary` **MUST** be truncated head + tail (kept in roughly equal
+   shares of the remaining room) with an explicit `[... summary truncated: N bytes omitted ...]`
+   marker recording exactly how many bytes were omitted — never a silent cut, and never an empty
+   section. A share too small to fit even the marker itself (a degenerate, near-zero budget)
+   **MUST** still emit the marker in full rather than silently produce nothing.
+5. A rework cycle's REQUEST-CHANGES note (see "Reviewer verdict gate") is exempt from the
+   generic recency-ranked loop and its budgeting — it gets the full carryover budget on its own
+   (fit via the same `compile_artifact` rule as any other section), since it is what the rework
    Implementer hop exists to address.
-5. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework
+6. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework
    note if present, and each prior hop carried forward): the role, original byte count, sent byte
-   count, and whether it was truncated — plus the task description's byte count and the
-   composed message's total size. This is a measured baseline for Phase 17's context compiler,
-   not a compiler itself; it does not change what gets sent, only records it.
+   count, whether it was truncated, and which fields (if any) were dropped — plus the task
+   description's byte count and the composed message's total size.
+7. No tokenizer dependency **MUST** be introduced for any of the above (ROADMAP §4.5's
+   no-new-heavyweight-deps rule) — `core/context.py`'s `estimate_tokens` reuses the project's
+   existing, already-documented `config.CONTEXT_BYTES_PER_TOKEN` bytes-per-token approximation
+   (default 4, the same ratio `cli/_agents.py`'s `maintain check`/`maintain sessions` already use),
+   not a second, independently-tunable one. This is an honest approximation, not an exact count
+   from any real model tokenizer, and is never used to bill against.
 
 ### Task status vocabulary
 
@@ -877,6 +913,41 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   an orphaned child process running after the run is marked `"cancelled"`.
 
 ## Changelog
+
+### Version 5.0.0 (2026-07-30)
+
+- **ROADMAP Phase 17, card C-1 (context compiler) — supersedes ROADMAP Phase 14 R-7's stopgap.**
+  See the rewritten "Bounded hop prompts" above for the full requirements; summary of what
+  changed:
+  - New module `core/context.py` (pure, no filesystem I/O beyond the archetype registry read, no
+    subprocess, no import of `core/dispatch.py` — the same "leaf" shape as `core/handoff.py`):
+    `estimate_tokens` (the bytes/`config.CONTEXT_BYTES_PER_TOKEN` approximation), `budget_for_role`
+    (resolves a role against the live archetype registry), `hop_share` (R-7's recency-halving
+    series, now in tokens), and `compile_artifact` (the field-shedding + marked-summary-truncation
+    compiler). See `tests/python/test_c1_context_compiler.py` for its own unit coverage.
+  - `core/archetypes.py`'s `RoleArchetype` gains `token_budget` (positive integer, default 6000;
+    `tokenBudget` on the wire) — every built-in and starter-library archetype now declares one.
+    See `role-archetypes.spec.md` v1.3.0.
+  - `core/dispatch.py`'s `_hop_message` is rewritten to compose via `core/context.py` instead of
+    R-7's byte cap: the role's token budget is reduced by the task description's and the role's
+    instruction footer's estimated cost, and what remains funds the recency-weighted carryover
+    loop and any rework note, each fit via `compile_artifact`. `_hop_carryover_budget`/
+    `_truncate_carryover`/`config.HOP_CARRYOVER_BYTES` are no longer called from here — the two
+    truncation mechanisms are never layered — but the first two remain defined, unused, in
+    `core/dispatch.py` (this card's file-ownership carve-out permitted editing only
+    `_hop_message`; their removal is left for a follow-up card, per the project's dead-code
+    register convention).
+  - The `context_composed` trace event's per-section payload gains a `dropped_fields` list (which
+    `HandoffArtifact.DROP_ORDER` fields, if any, were shed for that section) alongside its
+    pre-existing `original_bytes`/`sent_bytes`/`truncated` keys.
+  - `HandoffArtifact.DROP_ORDER`/`dropped()` (ROADMAP Phase 16 W-5) now has its intended real
+    consumer — see "Structured handoff artifacts" requirement 4, reworded to point here instead of
+    describing this as future work.
+  - No CLI surface added; `bash tests/golden/run.sh verify-all` stays byte-identical (none of the
+    18 cases exercise the pod-dispatch runtime pipeline). Message *layout* is unchanged for the
+    common (small-output) case — a hop whose carryover already fits its budget composes
+    byte-identically to before this card; only the behavior once a budget is actually exceeded
+    changes (structured field-shedding instead of a blind byte-halving truncation).
 
 ### Version 4.0.0 (2026-07-30)
 

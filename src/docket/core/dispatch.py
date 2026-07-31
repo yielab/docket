@@ -584,25 +584,35 @@ def _hop_message(
 ) -> tuple[str, _HopComposition]:
     """Build the message handed to one role, threading prior hops' output.
 
-    The task description is never truncated. Each prior hop's output is capped
-    per ``_hop_carryover_budget`` (newest hop least-truncated) and truncated
-    head+tail via ``_truncate_carryover`` when it doesn't fit. Returns the
-    composed message plus a ``_HopComposition`` recording what was sent, for
-    the ``context_composed`` trace event — a measured baseline for Phase 17's
-    context compiler, not a compiler itself.
+    ROADMAP Phase 17 C-1: composed via ``core/context.py``'s token-budget
+    compiler, which supersedes Phase 14 R-7's blind byte cap
+    (``_hop_carryover_budget``/``_truncate_carryover`` above are no longer
+    called from here — the two mechanisms are never layered). The task
+    description is still never truncated — there is nothing sensible to shed
+    from the actual task. Each prior hop's rendered ``HandoffArtifact`` is fit
+    to a share of the role's own token budget
+    (``core/archetypes.py``'s ``RoleArchetype.token_budget``) via
+    ``core.context.compile_artifact``: less-valuable fields
+    (``HandoffArtifact.DROP_ORDER`` — ``notes``, ``diff_ref``,
+    ``files_changed``, ``verdict``) are shed first, one at a time, and only
+    ``summary`` itself is truncated (with a visible marker) once nothing else
+    is left to shed — never silently dropped. Returns the composed message
+    plus a ``_HopComposition`` recording what was sent, for the
+    ``context_composed`` trace event.
 
     *rework_hop* (R-4) is the Reviewer hop whose REQUEST-CHANGES verdict is
     driving this call — only meaningful for ``role == "implementer"``. Its
-    output is rendered as its own prominently-labeled section sized off the
-    *full* (un-derated) per-hop budget rather than the generic recency-ranked
-    share the carryover loop below gives every other prior hop, and it is
-    excluded from that loop so it is never rendered (and never budgeted)
-    twice. This is deliberate, not just relying on it already being the most
-    recent hop: recency-based ranking is an emergent property of *when* the
-    rework happens to run, not a structural guarantee, and the one thing a
-    rework implementer hop must not lose to truncation is exactly the review
-    it exists to address.
+    artifact is rendered as its own prominently-labeled section sized off the
+    role's *full* carryover budget rather than the generic recency-ranked
+    share the loop below gives every other prior hop, and it is excluded from
+    that loop so it is never rendered (and never budgeted) twice. This is
+    deliberate, not just relying on it already being the most recent hop:
+    recency-based ranking is an emergent property of *when* the rework
+    happens to run, not a structural guarantee, and the one thing a rework
+    implementer hop must not lose is exactly the review it exists to address.
     """
+    from docket.core import context as _ctx
+
     desc = str(task.get("description", "")).strip()
     if role == "lead":
         message = (
@@ -614,7 +624,39 @@ def _hop_message(
         )
         return message, comp
 
-    budget = _cfg.HOP_CARRYOVER_BYTES
+    if role == "implementer":
+        instructions = (
+            "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
+            "above, then implement the change in the workspace."
+            if rework_hop is not None
+            else "You are the Implementer. Implement the change in the workspace."
+        )
+    elif role == "reviewer":
+        instructions = (
+            "You are the Reviewer. Review the diff (read-only). Your reply's first "
+            "non-blank line must be exactly APPROVE or REQUEST-CHANGES "
+            "(case-insensitive), followed by your reasons."
+        )
+    elif role == "tester":
+        instructions = (
+            "You are the Tester. Validate behaviour only. Your reply's first "
+            "non-blank line must be exactly PASS or FAIL (case-insensitive), "
+            "followed by evidence."
+        )
+    else:
+        instructions = ""
+
+    # The role's total token budget, minus what the immutable task
+    # description and this role's own fixed instruction footer already cost
+    # — what's left is what the carryover (rework note + prior hops) may
+    # spend. This is what makes "the composed message fits its role's
+    # budget" a real, checkable property rather than an aspiration: the two
+    # pieces that are never shed are accounted for before anything
+    # sheddable is given a share.
+    total_budget = _ctx.budget_for_role(role)
+    reserved_tokens = _ctx.estimate_tokens(desc) + _ctx.estimate_tokens(instructions)
+    carryover_budget = max(total_budget - reserved_tokens, 0)
+
     lines = [f"Task: {desc}", ""]
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
@@ -629,65 +671,51 @@ def _hop_message(
         # text is byte-identical to the pre-W-8 hardcoded "reviewer requested
         # changes" wording; a custom pipeline's rework source (any role with
         # a verdict gate's `rework` edge) is named correctly too.
-        rework_text = rework_hop.rendered_artifact()
-        note_text, note_truncated, note_sent = _truncate_carryover(rework_text, budget)
+        assert rework_hop.artifact is not None
+        compiled = _ctx.compile_artifact(rework_hop.artifact, carryover_budget)
         comp.sections.append(
             {
                 "role": "rework",
-                "original_bytes": len(rework_text.encode("utf-8")),
-                "sent_bytes": note_sent,
-                "truncated": note_truncated,
+                "original_bytes": len(rework_hop.artifact.render().encode("utf-8")),
+                "sent_bytes": len(compiled.text.encode("utf-8")),
+                "truncated": compiled.truncated,
+                "dropped_fields": list(compiled.dropped_fields),
             }
         )
-        comp.truncated = comp.truncated or note_truncated
-        lines.append(f"--- REWORK REQUIRED: {rework_hop.role} requested changes ---\n{note_text}\n")
+        comp.truncated = comp.truncated or compiled.truncated
+        lines.append(
+            f"--- REWORK REQUIRED: {rework_hop.role} requested changes ---\n{compiled.text}\n"
+        )
 
     last_index = len(prior) - 1
     # Iterate in the original chronological order (oldest first) — unchanged
-    # from pre-cap behaviour, so message *layout* never changes, only content.
-    # Only the per-hop budget is recency-aware: rank counts back from the most
-    # recent hop (rank 0), so `_hop_carryover_budget` gives it the biggest share.
+    # from pre-C-1 behaviour, so message *layout* never changes, only
+    # content. Only the per-hop budget is recency-aware: rank counts back
+    # from the most recent hop (rank 0), so `context.hop_share` gives it the
+    # biggest share.
     for i, h in enumerate(prior):
         if not h.output or h is rework_hop:
             continue
         rank = last_index - i
-        hop_budget = _hop_carryover_budget(rank, budget)
-        # W-5: the *artifact's* rendered text is what gets carried forward and
-        # budgeted — not the hop's raw output — so R-7's cap now bounds the
-        # same structured content the next hop actually reasons about.
-        rendered_text = h.rendered_artifact()
-        original_bytes = len(rendered_text.encode("utf-8"))
-        text, truncated, sent_bytes = _truncate_carryover(rendered_text, hop_budget)
+        hop_budget = _ctx.hop_share(rank, carryover_budget)
+        # W-5: the *artifact* is what gets carried forward and budgeted — not
+        # the hop's raw output — so the budget bounds the same structured
+        # content the next hop actually reasons about.
+        assert h.artifact is not None
+        compiled = _ctx.compile_artifact(h.artifact, hop_budget)
         comp.sections.append(
             {
                 "role": h.role,
-                "original_bytes": original_bytes,
-                "sent_bytes": sent_bytes,
-                "truncated": truncated,
+                "original_bytes": len(h.artifact.render().encode("utf-8")),
+                "sent_bytes": len(compiled.text.encode("utf-8")),
+                "truncated": compiled.truncated,
+                "dropped_fields": list(compiled.dropped_fields),
             }
         )
-        comp.truncated = comp.truncated or truncated
-        lines.append(f"--- {h.role} output ---\n{text}\n")
-    if role == "implementer":
-        if rework_hop is not None:
-            lines.append(
-                "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
-                "above, then implement the change in the workspace."
-            )
-        else:
-            lines.append("You are the Implementer. Implement the change in the workspace.")
-    elif role == "reviewer":
-        lines.append(
-            "You are the Reviewer. Review the diff (read-only). Your reply's first "
-            "non-blank line must be exactly APPROVE or REQUEST-CHANGES "
-            "(case-insensitive), followed by your reasons."
-        )
-    elif role == "tester":
-        lines.append(
-            "You are the Tester. Validate behaviour only. Your reply's first "
-            "non-blank line must be exactly PASS or FAIL (case-insensitive), "
-            "followed by evidence."
-        )
+        comp.truncated = comp.truncated or compiled.truncated
+        lines.append(f"--- {h.role} output ---\n{compiled.text}\n")
+    if instructions:
+        lines.append(instructions)
     message = "\n".join(lines)
     comp.total_bytes = len(message.encode("utf-8"))
     return message, comp
