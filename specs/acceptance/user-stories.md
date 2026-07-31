@@ -333,7 +333,7 @@ And the total should reflect the daemon's recorded spend, not an estimate
 - [ ] `docket pod myapp delegate "<task>"` queues a task on the Lead's TASK_LIST.json
 - [ ] `docket pod myapp queue` shows the task with status `pending` and recorded cost `$0.00`
 - [ ] `docket pod myapp dispatch` runs Lead → Implementer → (Reviewer) → (Tester), one real LLM turn per hop
-- [ ] Each hop is budget-gated: if Lead's spend cap is exceeded, task stays `pending`
+- [ ] Each hop is budget-gated: if the Lead's spend cap is exceeded the task is set to `blocked` (never rewritten to `pending`) and the Lead is paused; it re-enters the queue only via `docket profile <lead-id> --resume` or `docket pod <project> queue --retry <task-id>`
 - [ ] Each hop emits a trace event visible in `docket trace tail myapp`
 - [ ] After completion, `docket pod myapp queue` shows the task as `done` with recorded cost
 

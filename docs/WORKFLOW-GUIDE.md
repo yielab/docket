@@ -269,7 +269,12 @@ docket serve               # READ-ONLY monitor — health checks only, never dis
 > Because every hop is a real, costed LLM turn, dispatch is **never silent**: it is either
 > explicit (`docket pod … dispatch`) or opt-in (`docket serve --dispatch`). Plain `docket serve`
 > only watches health. Budget caps gate the autonomous loop exactly as they gate a manual
-> dispatch — an over-budget pod's tasks stay pending until you raise the cap.
+> dispatch — an over-budget pod's tasks are set to `blocked` (not `pending`) and the pod's Lead
+> is paused. A blocked task does **not** resume on its own when the cap changes: clear it with
+> `docket profile <lead-id> --resume`, which unpauses the Lead and unblocks the pod's
+> budget-blocked tasks, or requeue one with `docket pod <project> queue --retry <task-id>`.
+> Leaving them blocked is deliberate — rewriting them straight back to `pending` was the bug that
+> let a budget-capped task retry forever on every sweep.
 
 ---
 

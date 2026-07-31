@@ -49,7 +49,7 @@ docket install                 # Install OpenClaw + specialist agents
 docket add                     # Create a project agent
 docket list                    # Show all agents
 docket info <id>               # Agent details
-docket context <id> snapshot   # Create fast-access context
+docket context <id> show       # Recent activity and context stats
 
 # Pod teams (see Agent Teams guide)
 docket add <project>                       # Provision a pod (Lead + Implementer)

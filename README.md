@@ -295,9 +295,10 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
   continuously from the background.
 - **Pre-merge verification** — set `verifyCmd` with `docket pod <project> add --verify "<cmd>"`
   (or `set-verify` on an existing member); the dispatch pipeline runs it in the Implementer's
-  workspace after each Implementer hop and leaves the task `pending` (with a `verification_failed`
+  workspace after each Implementer hop and **fails** the task (with a `verification_failed`
   trace event) on non-zero exit. If a pod has a Tester, its hop is gated too: the Tester's first
-  line must read `PASS`/`FAIL` — a `FAIL` or unparseable report blocks the pipeline the same way,
+  line must read `PASS`/`FAIL` — a `FAIL` or unparseable report ends the task the same way
+  (a rework-eligible verdict is retried first, bounded by `maxReworkCycles`),
   instead of "the Tester agent said it was fine" being taken on faith.
 - **Org specialists** — `security`, `knowledge`, and `manager` are created once by `docket install`
   and shared across the fleet (`scope: org`). An optional org **Portfolio Manager**
