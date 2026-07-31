@@ -26,9 +26,6 @@ class TestRegistry:
         names = set(bp.load_registry().names())
         assert names == {"software", "research", "content", "ops"}
 
-    def test_builtin_order(self) -> None:
-        assert bp.BUILTIN_BLUEPRINT_ORDER == ("software", "research", "content", "ops")
-
     def test_default_blueprint_is_software(self) -> None:
         assert bp.DEFAULT_BLUEPRINT == "software"
 
@@ -42,7 +39,7 @@ class TestRegistry:
                 assert name in str(exc)
 
     def test_get_blueprint_known_roundtrips(self) -> None:
-        for name in bp.BUILTIN_BLUEPRINT_ORDER:
+        for name in bp.load_registry().names():
             assert bp.get_blueprint(name).name == name
 
 

@@ -78,11 +78,6 @@ class PlannedGroup:
 PlannedNode = PlannedUnit | PlannedGroup
 
 
-def step_id_of(node: PlannedNode) -> str:
-    """The step id of either node kind — the common key both share."""
-    return node.step_id
-
-
 @dataclass(frozen=True)
 class ExecutionPlan:
     """The fully resolved, ready-to-run shape of a pipeline against one pod.
