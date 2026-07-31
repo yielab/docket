@@ -16,6 +16,7 @@ specs/
 ├── test-framework.md                      # Test conventions and coverage methodology
 ├── functional/                            # Functional specifications
 │   ├── agent-lifecycle.spec.md           # Agent CRUD and maintenance operations
+│   ├── agent-loop.spec.md                # The turn loop + daemon-free RuntimeDriver (Phase 19 P19-5)
 │   ├── api-keys.spec.md                  # API key management
 │   ├── audit.spec.md                     # Audit log events, hash-chained + verify
 │   ├── cost-tracking.spec.md             # Usage/cost reporting + budget caps (auto-pause shipped)
@@ -108,7 +109,8 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-31 (Phase 19 P19-4 added Session History — see its row below).
+> Last synchronized: 2026-07-31 (Phase 19 P19-5 added Agent Loop — see its row below).
+> Previously synchronized 2026-07-31 (Phase 19 P19-4 added Session History — see its row below).
 > Previously synchronized 2026-07-30 (wave 6 complete: L-5, W-5b, C-1, C-2, G-2 — after wave 5's
 > L-4, G-4b, W-4, CL-2, W-5 and wave 4's CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1,
 > W-6, L-1, L-3).
@@ -121,6 +123,7 @@ Each specification document must include:
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.5.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
+| Agent Loop | 1.0.0 | Implemented | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver` (Phase 19 P19-5): the turn loop docket now owns, dispatching every tool call through `core.tools.dispatch_tool`; not yet wired as any caller's default driver (Wave B / P19-6 / P19-7) |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
@@ -131,7 +134,7 @@ Each specification document must include:
 | Pod Dispatch | 5.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5), with a real `files_changed`/`diff_ref` producer (W-5b); token-budgeted hop prompts via the context compiler, retiring R-7's byte cap (Phase 17 C-1) |
 | Role Archetypes | 1.3.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7); per-role `tokenBudget` for the context compiler (Phase 17 C-1) |
 | Security Gates | 0.6.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5); the policy engine is on the live dispatch path — `pre_input` at enqueue, `pre_output` per hop (Phase 15 G-2) |
-| Session History | 1.0.0 | Implemented, not yet on a live path | `core/session.py` (Phase 19 P19-4): durable per-session turn history, lossless message round-trip, atomic tool-call/tool-result compaction, fail-closed summarisation; first caller is `core/agent_loop.py` (P19-5, not yet built) |
+| Session History | 1.0.0 | Implemented | `core/session.py` (Phase 19 P19-4): durable per-session turn history, lossless message round-trip, atomic tool-call/tool-result compaction, fail-closed summarisation; first caller is `core/agent_loop.py` (Phase 19 P19-5, see Agent Loop row) |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
 | Workspace Structure | 1.4.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
