@@ -2,7 +2,11 @@
 
 **Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
 
-> **Status / honesty note.** docket layers two things: instruction-level agent constraints (SOUL.md, a reviewer role, human git review) plus **enforced tool-approval gates, which are ON by default for new installs** (`docket install`, unless you pass `--no-gates`). Gates require explicit approval — via `docket approve`/`docket deny` (headless, any shell), `docket serve`'s `POST /approvals/<token>` (headless HTTP, for CI/automation), or Telegram — before dangerous operations not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, ...) run, and fail closed (deny) on timeout. `git`/`npm` stay on the allowlist for usability, so a `git push` isn't gated by this layer alone — see the spec's high-risk-class section. Docker **workspace isolation** (`docket gates isolate on`) is a separate, still-**opt-in** layer on top. See [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, on by default). If you ran `docket install --no-gates`, treat the constraints below as strong defaults, not guarantees — re-enable anytime with `docket gates enable`.
+> **Status / honesty note.** docket layers two things: instruction-level agent constraints (SOUL.md, a reviewer role, human git review) plus **enforced tool-approval gates, which are ON by default for new installs** (`docket install`, unless you pass `--no-gates`). When gates are on, a dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, ...) is stopped by the **OpenClaw daemon's own** exec-approval prompt, delivered to the agent's chat session and answered there with the daemon's own `/approve <id>`; if nobody answers, the daemon denies it by itself (`askFallback: deny`). `git`/`npm` stay on the allowlist for usability, so a `git push` isn't gated by this layer alone — see "High-Risk Actions" below.
+>
+> Separately, **docket keeps its own approval store** for things docket itself gates — a pod-dispatch hop held on a `requireApprovalRoles`/pipeline `approval` step, or a task a guardrail policy flagged at enqueue (see "Guardrail Policies" below). That one *is* answerable headlessly, from any shell or CI job: `docket approve`/`docket deny`, or `docket serve`'s `POST /approvals/<token>`. Both genuinely resume or kill the task they gated, both write an audit-log entry, and an unanswered one fail-closes to denied after a timeout (while `docket serve` is running to sweep it).
+>
+> **These two approval systems are not connected.** `docket approve`/`docket deny` cannot answer a live daemon exec-approval prompt — there's no bridge today (investigated and found not practically buildable against the current OpenClaw daemon; see the spec). Answering the daemon's own prompt in Telegram works, but writes nothing to docket's audit log, because docket never sees it happen. Docker **workspace isolation** (`docket gates isolate on`) is a separate, still-**opt-in** layer on top. See [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, on by default). If you ran `docket install --no-gates`, treat the constraints below as strong defaults, not guarantees — re-enable anytime with `docket gates enable`.
 
 ---
 
@@ -20,7 +24,7 @@
 5. NEVER store secrets
 ```
 
-These are **prompt-level constraints**: agents are instructed to follow them. On top of that, a fresh `docket install` also turns on the enforced tool-approval gates layer by default, so non-allowlisted dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require a human (or CI) approval regardless of what the prompt says — see the status note above for the `git`/`npm` carve-out. If you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
+These are **prompt-level constraints**: agents are instructed to follow them. On top of that, a fresh `docket install` also turns on the enforced tool-approval gates layer by default, so non-allowlisted dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require the daemon's own approval prompt regardless of what the prompt says — see the status note above for exactly who answers that prompt, and for the `git`/`npm` carve-out. If you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -85,6 +89,30 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - Final human check
 - **Simple git diff, that's it**
 
+### Layer 4: Guardrail Policies (Automatic, on real dispatch tasks)
+- A small set of installed policies (`docket policies`) scan text at two points in docket's own
+  pod-dispatch pipeline — not a raw Telegram chat, only work that goes through
+  `docket pod <p> delegate`/`dispatch`:
+  - **Once**, when a task is delegated — before it's even added to the queue.
+  - **On every hop's real reply**, as the pipeline runs.
+- A match can `allow`/`warn` (just logged), `redact` (scrub it before it's stored), `block`
+  (reject the task, or stop the pipeline where it tripped), or — enqueue-time only —
+  `require_approval` (routes into the approval store above).
+- `docket policies list` to see what's installed, `docket policies test <hook> <role> "<text>"`
+  to dry-run one without touching anything real.
+
+### Layer 5: High-Risk Action Classes (Automatic, narrow, and honestly incomplete)
+- A small, built-in list of especially consequential command patterns: money-movement,
+  prod-deploy, secret-access (`docket gates classes` prints all of them).
+- Wired onto exactly two things docket itself runs: a pod's `verifyCmd` refuses outright if it
+  matches (the command never even starts), and a hop's real reply is scanned for one on the way
+  through the pipeline (flagged, not blocked, by itself).
+- **What this does NOT do:** stop a live agent's own tool call. The daemon's own exec-approval
+  gate (top of this doc) only ever looks at the *binary path* — `git`, `npm`, ... — never its
+  arguments, so it cannot tell `git push origin production` apart from `git status`. A live agent
+  can still run either. Per-argument enforcement isn't available from the daemon today; this is a
+  documented gap, not a bug docket is hiding.
+
 ---
 
 ## Testing Security (Simple)
@@ -143,6 +171,29 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 ---
 
+## The Audit Log (`docket audit`)
+
+Every gate flip, approval grant/deny, key/model/profile/pod change docket makes writes one line
+to `~/.openclaw/audit.log` — who, what, when. Secret **values** are never written, only names
+(a key's NAME, a model id, an agent id).
+
+```bash
+docket audit          # last 20 changes
+docket audit 50       # last 50
+docket audit verify   # walk the tamper-evidence chain
+```
+
+The log is hash-chained: each line records a hash of the one before it, so `docket audit verify`
+can tell you the exact line where something stopped matching — i.e., where a line was edited or
+removed after the fact. There's no environment switch to turn recording off.
+
+**What it can't see.** The log only records what **docket** does. A raw Telegram conversation
+with an agent, a human editing `openclaw.json` by hand, or the `openclaw` CLI used directly —
+none of that goes through docket, so none of it is in this log. That's a structural boundary of
+what docket can observe, not a gap a future version quietly closes.
+
+---
+
 ## Summary
 
 **Security = 3 things:**
@@ -151,7 +202,21 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 2. **Reviewer checklist** (specialist agent) → Flags injection/secrets
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (tool-approval gates) is on by default for new installs.** Opted out with `--no-gates`? Turn it on with `docket gates enable`. Docker workspace isolation stays opt-in: `docket gates isolate on`.
+**Hard enforcement (tool-approval gates) is on by default for new installs.** Opted out with `--no-gates`? Turn it on with `docket gates enable`. Docker workspace isolation stays opt-in: `docket gates isolate on`. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log.
+
+---
+
+## Inspecting the Automatic Layers
+
+None of this needs a human to run day to day — it's here for when you want to check it yourself:
+
+```bash
+docket gates status       # is exec-approval on, is isolation on, what's the routing
+docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
+docket policies list      # installed guardrail policies
+docket approve            # list pending approvals in docket's own store
+docket audit verify       # confirm the audit log hasn't been tampered with
+```
 
 ---
 
