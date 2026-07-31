@@ -91,6 +91,11 @@ _docket_complete() {
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
     mcp)             words="serve" ;;
+    pipeline)        words="validate plan run" ;;
+    runs|run)        words="list show cancel" ;;
+    conversations|conv) words="list show resume set" ;;
+    persona)         [[ $cword -eq 2 ]] && words="$_ids" || words="show set clear" ;;
+    audit)           words="verify --json" ;;
     gates|security)  words="status enable disable isolate classes" ;;
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
@@ -139,6 +144,11 @@ __ZSH_COMMANDS__
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
     mcp)             compadd serve ;;
+    pipeline)        compadd validate plan run ;;
+    runs|run)        compadd list show cancel ;;
+    conversations|conv) compadd list show resume set ;;
+    persona)         (( CURRENT == 3 )) && _docket_ids || compadd show set clear ;;
+    audit)           compadd verify --json ;;
     gates|security)  compadd status enable disable isolate classes ;;
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
