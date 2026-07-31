@@ -154,24 +154,69 @@ sibling cards concurrently, not bad luck. Budget merge time for it.
 
 ---
 
-## Wave 7 — queued (the last four cards of the Platformization program)
+## Wave 7 — IN FLIGHT (the last four cards of the Platformization program)
 
-| Card | Phase | Blocked on | Note |
+Dispatched 2026-07-31 as **three** branches, not four. Base branch for all three: `platform` at
+`910a557`.
+
+| Branch | Cards | Phase | Closes |
 | --- | --- | --- | --- |
-| **G-3 · High-risk classes enforced** | 15 | ready (G-2 landed) | Wire `resolve_command_action` — still **zero callers** — into every process docket itself launches, and into G-2's `pre_output` scan. Closes Phase 15. |
-| **C-3 · One durable task state** | 17 | dispatch owner | Dispatch writes HEARTBEAT entries mechanically; `doctor` flags TASK_LIST⇄HEARTBEAT divergence. |
-| **C-5 · Conversation registry auto-population** | 17 | dispatch owner | Dispatch/serve update `last_message`/`task_ref`. Closes Phase 17. |
-| **CL-3 · Post-program dead-code sweep** | standing | after the above | Re-run CL-1's full-tree sweep against the ~5,000 lines waves 3–6 added. The register below is closed for its original scope; a program this size will have produced new orphans. |
+| `pc/g-3` | **G-3 · High-risk classes enforced** | 15 | Wire `resolve_command_action` — verified **zero production callers**, only 3 test call sites and spec prose — into the processes docket launches and into G-2's `pre_output` scan. **Closes Phase 15.** |
+| `pc/c-3-c-5` | **C-3 · One durable task state** + **C-5 · Conversation registry auto-population** | 17 | Dispatch writes HEARTBEAT entries mechanically and keeps `last_message`/`task_ref` current; `doctor` flags TASK_LIST⇄HEARTBEAT divergence. **Closes Phase 17.** |
+| `pc/cl-3` | **CL-3 · Post-program dead-code sweep** | standing | Re-run CL-1's full-tree sweep against the ~5,000 lines waves 3–6 added. |
 
-**Scheduling:** C-3 and C-5 both write from the dispatch path. Either make **one** of them the
-dispatch owner and defer the other, or repeat wave 6's function-level carve-out — it worked, but
-only because every card reported its exact footprint. G-3's footprint (`core/security.py`,
-process-launch sites) is disjoint from both.
+### Scheduling decision: C-3 and C-5 are one card
 
-**Deferred, not forgotten:** the **dependency floors** (`pyproject.toml` advertises `typer>=0.12`,
-`rich>=13`, `pydantic>=2` while CI only ever resolves the locked current versions). Needs a
-`--resolution lowest-direct` CI job; blocked on network access, not on effort. Do not raise the
-floors blind.
+The queued board offered two options — one dispatch owner, or a repeat of wave 6's function-level
+carve-out. **Neither applies to this pair.** C-3 (HEARTBEAT ledger) and C-5 (registry
+`last_message`/`task_ref`) do not merely share a *file*; they write from the **same lifecycle
+points** — task claim, hop persist, task finalize. A carve-out only works when the regions are
+disjoint, and these are the same five functions. Split, they would have produced a guaranteed
+hand-resolved conflict in the one file that has cost the most to merge all program. They ship on
+one branch.
+
+**The carve-out that does apply** — G-3 vs C-3/C-5 in `core/dispatch.py`, genuinely disjoint
+regions, stated up front so the merge is predictable:
+
+| Branch | Owns in `core/dispatch.py` | Owns elsewhere |
+| --- | --- | --- |
+| `pc/g-3` | the `pre_output` guardrail block inside `_execute_unit` **only** | `core/security.py`, `edges/adapters/system.py`, `cli/_gates.py` |
+| `pc/c-3-c-5` | `_claim_next_task`, `_persist_hop`, `_finalize_task`, `_touch_claim`, `_apply_result` **only** | `core/memory.py`, `core/conversations.py`, `serve.py`, `cli/_doctor.py` |
+| `pc/cl-3` | **nothing — the file is off-limits**; findings inside it are *deferred to the register*, not edited | everything neither sibling owns |
+
+CL-3 sweeps the whole tree but may only **delete** in unowned files; anything dead inside a
+sibling's file is recorded in the register with file/symbol/evidence for the integrator to apply
+after that sibling merges. This is the wave-6 lesson generalized: C-1 could not delete R-7's dead
+helpers because they sat outside its carve-out, and the integrator removed 56 lines by hand on
+merge. A precise deferred finding is worth as much as a deletion, and it is the only shape of this
+card that does not conflict with both siblings.
+
+### ☑ Dependency floors — CLOSED 2026-07-31 (integrator, off-card)
+
+Deferred since Phase 14 because measuring it needed network access. Network came back; measured.
+**Two of the six advertised floors were false**, and the guard note's "do not raise the floors
+blind" turned out to be the right instinct for the opposite reason — they needed *raising*, and
+only measurement could say by how much.
+
+| Bound | Was | Now | Evidence |
+| --- | --- | --- | --- |
+| `typer` | `>=0.12` ✗ | `>=0.13` | typer 0.12.x + modern click (8.4.2) raises `TypeError: Secondary flag is not valid for non-boolean flag` on this CLI's `--flag/--no-flag` options. **216 tests failed.** Bisected: 0.12.0 → exit 2, 0.12.5 → exit 1, 0.13.0 → clean. |
+| `pydantic` | `>=2` ✗ | `>=2.1` | pydantic 2.0 raises `NameError` on the `model_source` field (protected `model_` namespace) and rejects `Field(discriminator="type")` on the pipeline union. **56 test modules failed to import.** 2.1.0 collects and passes. |
+| `rich` | `>=13` ✓ | unchanged | 13.0.0 verified green. |
+| `pydantic-settings` | `>=2` ✓ | unchanged | 2.0.0 verified green. |
+| `filelock` | `>=3.13` ✓ | unchanged | 3.13.0 verified green. |
+| `pyyaml` | `>=6` ✓ | unchanged | 6.0 verified green. |
+
+Verified set — `typer 0.13.0 · rich 13.0.0 · pydantic 2.1.0 · pydantic-settings 2.0.0 ·
+filelock 3.13.0 · pyyaml 6.0 · click 8.4.2` — installed into a clean 3.11 venv from
+`uv pip compile --resolution lowest-direct`, then run against the **full suite: exit 0, zero
+FAILED, zero ERROR**. The corrected bounds re-resolve to exactly that set.
+
+**The fix is the CI job, not the numbers.** `.github/workflows/ci.yml` gains a `floors` job that
+repeats the resolve-and-test on every push. Without it these bounds rot again the moment a
+dependency ships a breaking release — which is precisely how they got a year out of date. This is
+the same lesson as the `metrics.py --check` guard: *a bound nothing tests is a wish, not a
+constraint.*
 
 ---
 
