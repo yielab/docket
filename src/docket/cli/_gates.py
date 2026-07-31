@@ -116,6 +116,9 @@ def _classes() -> int:
             ui.dim("  none of this class's bins are in the curated allowlist — always asks today")
         ui.console.print()
     ui.dim("  This seed list is intentionally small and built-in (not yet user-configurable).")
+    ui.dim("  Wired (G-3): docket's own run_verify_cmd refuses a matching verify command outright")
+    ui.dim("  (fails closed, never runs it); a hop's real output is also scanned for a match on")
+    ui.dim("  every pipeline step (pre_output) — a hit is logged, not blocked/redacted by itself.")
     return 0
 
 

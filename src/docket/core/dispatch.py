@@ -98,6 +98,7 @@ from docket.core import pod as _pod
 from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
+from docket.core import security as _sec
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
@@ -1444,6 +1445,31 @@ def dispatch_task(
         hop_error = run_res.error
         if hop_output:
             hit = _policy.policy_eval_detail(role, "pre_output", hop_output)
+            # G-3: also classify the hop's real output against the built-in
+            # high-risk action classes (core/security.py's HIGH_RISK_PATTERNS),
+            # independently of the JSON policy engine above. The shipped
+            # high-risk-*.json templates are hooked on pre_tool_call, which
+            # docket never evaluates (D-15 — it is not inside a running turn to
+            # intercept a tool call), so without this, a hop that reports
+            # having run a money-movement or secret-access command trips
+            # nothing at all on this path. A match never downgrades an
+            # already-stronger policy_eval_detail verdict — redact/block/
+            # require_approval all outrank a bare "allow" — it only raises a
+            # plain "allow" to "warn". It cannot go further than "warn": there
+            # is no live approver to "ask" post-hoc (the hop already ran, the
+            # same reasoning behind pre_output's require_approval-behaves-
+            # like-warn rule), and HIGH_RISK_PATTERNS is a built-in Python
+            # list, not an installed, operator-authored JSON policy (FD-3 —
+            # not yet user-configurable) — so this only ever adds visibility,
+            # it never redacts or blocks on the operator's behalf the way a
+            # real installed policy can.
+            risk_cls = _sec.match_high_risk(hop_output)
+            if risk_cls is not None and hit.action == "allow":
+                hit = _policy.PolicyHit(
+                    action="warn",
+                    policy_id=f"high-risk:{risk_cls.name}",
+                    message=risk_cls.description,
+                )
             if hit.action != "allow":
                 _trace_locked(
                     project,

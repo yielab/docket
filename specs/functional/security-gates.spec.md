@@ -1,8 +1,8 @@
 # Security Gates Specification
 
-**Version**: 0.6.0
-**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design.
-**Last Updated**: 2026-07-30
+**Version**: 0.7.0
+**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design. G-3 also gave `resolve_command_action`'s underlying classifier its first real, non-test callers — see "High-risk action classes" below.
+**Last Updated**: 2026-07-31
 
 ## Purpose
 
@@ -248,6 +248,60 @@ are owned here, not there.
    allowlisted bins it overlaps and therefore does not yet fully gate — **MUST** be visible,
    read-only, via `docket gates classes`. This command **MUST NOT** change any configuration.
 
+### Docket-launched process classification (implemented, ROADMAP Phase 15 G-3)
+
+Before this card, `resolve_command_action` (and the `HIGH_RISK_PATTERNS`/`match_high_risk`/
+`is_high_risk` classifier it composes) had exactly three callers anywhere in the codebase, all
+of them tests. A classifier nothing calls is documentation, not enforcement — the same defect
+shape G-1 fixed for the approval store and G-2 fixed for the policy engine. This section is
+what closes that gap for the classifier itself, on the two paths docket actually controls.
+
+1. **Scope decision — which of docket's own subprocess calls are classification targets.**
+   `edges/adapters/system.py` is the shell-out chokepoint (~11 `subprocess.run` call sites,
+   plus `cli/_eval.py`'s `bash <script>`, `cli/_trace.py`'s `tail -f <file>`, and
+   `cli/_install.py`'s `[python, --version]` probe). Of all of these, exactly **one** —
+   `system.py`'s `run_verify_cmd` — launches a fully free-form, operator-composed command
+   string through a real shell (`shell=True`); every other call site in this list builds a
+   fixed argv list itself (a systemd unit name, `docker ps --format ...`, a `git -C <dir>
+   rev-parse ...` plumbing call, a literal `[python, "--version"]` probe, a repo-relative
+   `.eval.sh` path chosen from a fixed on-disk set, a `tail -f` on a trace file docket itself
+   computed). None of those fixed-argv calls carry an arbitrary, classifiable command string —
+   there is nothing there for `HIGH_RISK_PATTERNS` to match against that isn't already fully
+   determined by docket's own code, and a `--version` probe is not a comparable risk surface to
+   a shell-interpreted, operator-typed verify pipeline. `run_verify_cmd` **MUST** therefore be
+   the only classification point in `edges/adapters/system.py`; the rest of the module's
+   subprocess calls are explicitly out of scope for this requirement, not overlooked.
+2. `edges/adapters/system.py`'s `run_verify_cmd` **MUST** classify its `cmd` argument against
+   `core.security.match_high_risk` before starting the subprocess. A match **MUST** fail
+   closed — the shell command **MUST NOT** be started at all — and the returned failure message
+   **MUST** name the matched class and point at `docket gates classes`. This is a stronger
+   posture than `resolve_command_action`'s "ask": `run_verify_cmd` runs synchronously inside a
+   dispatch hop with no interactive approver reachable to answer a prompt, so refusing outright
+   is the only honest fail-closed behavior available here — the same posture the daemon's own
+   `askFallback: deny` takes when nobody answers a live prompt.
+3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
+   **MUST** also classify each hop's real output against `core.security.match_high_risk`,
+   independently of the JSON policy engine — the shipped `high-risk-*.json` templates are
+   hooked on `pre_tool_call`, which docket never evaluates (D-15: it is not inside a running
+   turn to intercept a tool call), so without this, a hop that reports having run a
+   money-movement or secret-access command trips nothing on the `pre_output` path at all.
+4. A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** downgrade an already-stronger
+   `policy_eval_detail` verdict (`redact`/`block`/`require_approval` all outrank a bare
+   `allow`) — it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
+   `warn`: there is no live approver to `ask` post-hoc (the hop has already run, the same
+   reasoning behind `pre_output`'s require_approval-behaves-like-warn rule below), and
+   `HIGH_RISK_PATTERNS` is a built-in Python list, not an installed, operator-authored JSON
+   policy (FD-3 — not yet user-configurable) — so a match here **MUST NOT** be described as
+   redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check`
+   trace event tagged `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
+   claimed as one in user-facing material.
+5. **What remains advisory.** `pre_tool_call` interception (the daemon's own live tool-call
+   gate) is unchanged by this card and remains out of scope per D-15 — G-3 does not make docket
+   a per-argument enforcement daemon on the daemon's own exec path. The daemon's exec-allowlist
+   itself still gates by binary path only (see "High-risk action classes" above); G-3 adds two
+   new, real classification points under docket's *own* control, it does not change what the
+   daemon enforces.
+
 ### Policy engine on the live path (implemented, ROADMAP Phase 15 G-2)
 
 Before this card, `core/policy.py` was fully built and unit-tested (`policy_eval`, hooks,
@@ -294,6 +348,10 @@ nothing" shape G-1 fixed for the approval store one card earlier.
      human in the loop before a role runs uses the pod-level `requireApprovalRoles` gate or the
      `pre_input` enqueue gate instead. A `pre_output` policy declaring `require_approval` **MUST**
      behave exactly like `warn` (logged, not gated) rather than raise or silently do nothing.
+   - Since ROADMAP Phase 15 G-3, this same evaluation **MUST** also classify the hop's output
+     against `core.security.match_high_risk` (see "Docket-launched process classification"
+     above) — a match raises a bare `allow` to `warn` but **MUST NOT** downgrade or override an
+     already-stronger `policy_eval_detail` verdict.
 4. Every non-`allow` verdict on either hook **MUST** emit a `guardrail_check` trace event
    (`payload: {hook, policy, action}`) — a pure audit trail, visible via `docket trace`. A `block`
    verdict **MUST** additionally emit `guardrail_block`, with `payload.action` set to the
@@ -471,6 +529,35 @@ prod-deploy — Production deploys and release pushes
 secret-access — Secret/credential writes and key generation
   pattern: vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa|...
   none of this class's bins are in the curated allowlist — always asks today
+
+  This seed list is intentionally small and built-in (not yet user-configurable).
+  Wired (G-3): docket's own run_verify_cmd refuses a matching verify command outright
+  (fails closed, never runs it); a hop's real output is also scanned for a match on
+  every pipeline step (pre_output) — a hit is logged, not blocked/redacted by itself.
+```
+
+### Docket-launched process classification — examples (implemented, ROADMAP Phase 15 G-3)
+
+A verify command matching a high-risk class is refused before the shell ever starts:
+
+```text
+$ docket pod myapp add --verify "stripe charge customer --amount 500 && uv run pytest"
+$ docket pod myapp dispatch
+  [task-...] failed — verifyCmd failed: 'stripe charge customer --amount 500 && uv run pytest'
+```
+
+The task's trace records a `verification_failed` event whose `output` names the matched class:
+`[verify command refused: matches high-risk class 'money-movement' (Payment/financial
+operations: charges, refunds, payouts, transfers) -- see \`docket gates classes\`]` — the
+subprocess is never started, not merely reported as failing.
+
+A hop that reports having run a high-risk command is flagged, not blocked, on the `pre_output`
+path (no installed JSON policy also matched here, so the built-in classifier's `warn` floor is
+what fires):
+
+```text
+$ docket trace myapp <session-id>
+  ... guardrail_check  {"hook": "pre_output", "policy": "high-risk:secret-access", "action": "warn"}
 ```
 
 ## Validation
@@ -515,8 +602,48 @@ secret-access — Secret/credential writes and key generation
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
   resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
   spec does not duplicate that state machine, only the approval-store side of it.
+- A verify command matching a `HIGH_RISK_PATTERNS` class **MUST NOT** be started as a subprocess
+  at all (`edges/adapters/system.py`'s `run_verify_cmd` fails closed before calling
+  `subprocess.run`) — this is a real behavior change, not documentation, and **MUST** be
+  provable by a test that asserts `subprocess.run` is never invoked for a high-risk `cmd`.
+- A `HIGH_RISK_PATTERNS` match on a hop's real output **MUST NOT** be described as blocking or
+  redacting anything by itself — it is a `guardrail_check`-visible classification signal only
+  (ROADMAP Phase 15 G-3), layered underneath whatever the installed JSON policy engine already
+  decided, never on top of it.
 
 ## Changelog
+
+### Version 0.7.0 (2026-07-31)
+
+- **ROADMAP Phase 15 G-3 — high-risk classes enforced on docket-launched processes.** Before
+  this card, `core/security.py`'s `HIGH_RISK_PATTERNS`/`resolve_command_action`/
+  `match_high_risk`/`is_high_risk` had exactly three callers anywhere in the codebase — all of
+  them tests (`test_m5_gates_policy.py`) — plus prose in this spec. A classifier nothing calls is
+  documentation, not enforcement, the same defect shape G-1 fixed for the approval store and G-2
+  fixed for the policy engine. Closed on two real paths:
+  - `edges/adapters/system.py`'s `run_verify_cmd` — the one docket-launched subprocess built
+    from a fully free-form, operator-composed command string run through a real shell — now
+    classifies `cmd` against `match_high_risk` before ever calling `subprocess.run`. A match
+    fails closed: the shell command is never started, and the returned failure message names the
+    matched class. Every other subprocess call site audited for this card (`system.py`'s
+    remaining ~10 `subprocess.run` calls, plus `cli/_eval.py`'s `bash <script>`, `cli/_trace.py`'s
+    `tail -f`, `cli/_install.py`'s `[python, --version]`) builds a fixed argv list itself with no
+    arbitrary command string to classify, and is explicitly out of scope — see "Docket-launched
+    process classification" for the full per-site reasoning.
+  - `core/dispatch.py`'s `pre_output` guardrail scan (G-2) now also classifies each hop's real
+    output against the same built-in list, independently of the JSON policy engine (whose shipped
+    `high-risk-*.json` templates are hooked on `pre_tool_call`, which docket never evaluates —
+    D-15). A match raises a bare `allow` to `warn` and is visible via the existing
+    `guardrail_check` trace event (`policy: "high-risk:<class-name>"`); it never downgrades an
+    already-stronger policy verdict and never redacts or blocks by itself.
+  - **What remains advisory, unchanged by this card.** The daemon's own exec-allowlist still
+    gates by binary path only — a live agent's `git push origin production` is still not
+    daemon-blocked, exactly as documented under "High-risk action classes" above. `pre_tool_call`
+    interception is still out of scope (D-15). This card wires the classifier onto two paths
+    docket itself controls; it does not make docket a per-argument enforcement daemon over the
+    OpenClaw exec gate.
+  - `docket gates classes` now also prints where the classifier is actually wired (no
+    configuration surface added, read-only command unchanged in shape).
 
 ### Version 0.6.0 (2026-07-30)
 
