@@ -339,7 +339,7 @@ And the total should reflect the daemon's recorded spend, not an estimate
 
 **Definition of Done:**
 - Dispatch pipeline covered by integration tests with a real openclaw shim
-- Budget-gating tested (over-budget task stays pending)
+- Budget-gating tested (over-budget task is set to `blocked`, never rewritten to `pending`)
 - Trace events verified per-hop
 
 ### Story: POD-003 - Grow and Shrink a Pod
