@@ -255,6 +255,43 @@ class TestCmdMaintain:
         combined = out + err
         assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
 
+    def test_distill_hermetic_no_daemon_fails_closed(self, tmp_path: Path) -> None:
+        """No `openclaw` on PATH -> the driver call fails -> nothing is deleted.
+
+        ROADMAP Phase 17 C-2's fail-closed contract, exercised against the
+        real `OpenClawDriver` (no `FakeDriver` injection anywhere in this
+        test) -- proof the guarantee holds on a machine with no daemon at
+        all, not just against a mocked stand-in. The fake-driven success/
+        failure matrix lives in test_c2_memory_distillation.py and
+        test_c2_maintain_distill_cli.py.
+        """
+        import datetime
+
+        oc_dir = _setup_agent(tmp_path, with_memory=True)
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        ws = oc_dir / "workspaces" / "projects" / "test-agent"
+        log_path = ws / "memory" / f"{today}.md"
+        assert log_path.is_file()
+
+        env = {**_make_env(oc_dir), "PATH": "/nonexistent"}
+        rc, out, err = _run(["maintain", "test-agent", "distill"], env)
+
+        assert rc == 1
+        combined = (out + err).lower()
+        assert "fail" in combined
+        # Fail closed: the log is neither deleted nor archived, and
+        # MEMORY.md was never touched.
+        assert log_path.is_file()
+        assert not (ws / "memory" / ".distilled").exists()
+        assert "distilled" not in (ws / "MEMORY.md").read_text(encoding="utf-8").lower()
+
+    def test_distill_subcommand_listed_in_unknown_mode_message(self, tmp_path: Path) -> None:
+        oc_dir = _setup_agent(tmp_path)
+        rc, out, err = _run(["maintain", "test-agent", "bogus"], _make_env(oc_dir))
+        assert rc == 1
+        combined = out + err
+        assert "distill" in combined.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestCmdKeys

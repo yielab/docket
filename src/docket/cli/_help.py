@@ -56,10 +56,11 @@ def run_help() -> int:
 
 {B}MAINTENANCE  (docket maintain [id] <subcommand>){R}
   {G}check{R}              Health check + auto-fix (default)
-  {G}clean{R}              Clear memory logs only
-  {G}reset{R}              Clear memory + heartbeat
+  {G}clean{R}              Clear memory logs only (distills first; --no-distill-first skips)
+  {G}reset{R}              Clear memory + heartbeat (distills first; --no-distill-first skips)
   {G}rebuild{R}            Deep rebuild from .docket-meta.json
   {G}sessions{R}           Archive large/old sessions (>5 MB or >30 days)
+  {G}distill{R}            Summarize memory logs into MEMORY.md; archive originals
 
 {B}TELEGRAM{R}
   {G}wire{R}   [id]        Wire or update a Telegram group binding

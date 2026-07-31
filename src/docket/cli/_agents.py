@@ -836,8 +836,15 @@ def run_delete(agent_id: str | None) -> int:
     return 0
 
 
-def run_maintain(agent_id: str | None, mode: str | None) -> int:
-    """Dispatch `docket maintain`. Returns the process exit code."""
+def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None = None) -> int:
+    """Dispatch `docket maintain`. Returns the process exit code.
+
+    ``extra`` carries flags that follow ``mode`` (currently only
+    ``--no-distill-first``, ROADMAP Phase 17 C-2) — ``cmd_maintain``'s Typer
+    registration allows/ignores unknown options so they land here rather
+    than erroring, the same pattern every other ``ctx.args``-based
+    subcommand in this package uses.
+    """
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -854,20 +861,30 @@ def run_maintain(agent_id: str | None, mode: str | None) -> int:
         return 1
 
     action = mode or "check"
+    args = extra or []
+    # Distillation defaults ON (ROADMAP Phase 17 C-2 / D-18): `clean`/`reset`
+    # must not bare-delete undistilled memory without an explicit opt-out.
+    # `--distill-first` is accepted too, as a no-op affirmation of the
+    # default, so the flag documented in the card's acceptance criteria is a
+    # real, recognized token either way.
+    distill_first = "--no-distill-first" not in args
 
     if action == "check":
         _maintain_check(aid, ws)
     elif action == "clean":
-        _maintain_clean(aid, ws)
+        return _maintain_clean(aid, ws, distill_first=distill_first)
     elif action == "reset":
-        _maintain_reset(aid, ws)
+        return _maintain_reset(aid, ws, distill_first=distill_first)
     elif action == "rebuild":
         _maintain_rebuild(aid, ws)
     elif action == "sessions":
         _maintain_sessions(aid)
+    elif action == "distill":
+        return _maintain_distill(aid, ws)
     else:
         ui.error(
-            f"Unknown maintain subcommand '{action}'. Use: check, clean, reset, rebuild, sessions"
+            f"Unknown maintain subcommand '{action}'. "
+            "Use: check, clean, reset, rebuild, sessions, distill"
         )
         return 1
     return 0
@@ -981,38 +998,107 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
         ui.console.print("  Run 'docket maintain <id> rebuild' to fully regenerate.")
 
 
-def _maintain_clean(agent_id: str, ws: Path) -> None:
-    """clean: delete memory/*.md log files."""
+def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
+    """Run `distill_memory` for *agent_id*, rendering progress/errors via ui.
+
+    The one call site every distillation-driven `maintain` action shares
+    (`distill`, and `clean`/`reset` when `--distill-first` is on). Never
+    deletes or archives anything itself beyond what `distill_memory` already
+    did — callers gate their own destructive step on `.ok` (ROADMAP Phase 17
+    C-2's fail-closed contract: a failed driver turn must block, not warn
+    and proceed).
+    """
+    raw = store.read_json(_cfg.meta_path(agent_id))
+    name = str(raw.get("name", agent_id))
+    session_key = str(raw.get("sessionKey", ""))
+    ui.info("Distilling memory before proceeding (one driver-backed turn)...")
+    result = _mem.distill_memory(
+        ws,
+        label=name,
+        agent_id=agent_id,
+        session_key=session_key,
+        driver=_oc.default_driver().run_turn,
+    )
+    if not result.ok:
+        ui.error(f"Distillation failed: {result.error or 'unknown error'} -- nothing deleted.")
+    elif result.skipped:
+        ui.info("No memory logs to distill.")
+    else:
+        ui.success(
+            f"Distilled {result.logs_distilled} log(s) into MEMORY.md; "
+            f"original(s) archived under memory/{_mem.DISTILLED_ARCHIVE_DIRNAME}/."
+        )
+    return result
+
+
+def _maintain_distill(agent_id: str, ws: Path) -> int:
+    """distill: summarize memory/*.md into MEMORY.md via one driver turn; archive originals."""
+    result = _run_distillation(agent_id, ws)
+    return 0 if result.ok else 1
+
+
+def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
+    """clean: delete memory/*.md log files.
+
+    `--distill-first` (default on, ROADMAP Phase 17 C-2): distill pending
+    logs into MEMORY.md and archive the originals before this ever deletes
+    anything. A failed distillation aborts here with no file touched — see
+    `_run_distillation`/`distill_memory`'s fail-closed contract.
+    """
     if not sys.stdin.isatty():
         ui.console.print("Cancelled (non-interactive).")
-        return
+        return 0
 
     mem_dir = ws / "memory"
     if not mem_dir.is_dir():
         ui.warn("No memory directory found.")
-        return
+        return 0
 
-    logs = sorted(mem_dir.glob("*.md"))
+    logs = _mem.pending_daily_logs(ws)
     if not logs:
         ui.info("No memory logs to clean.")
-        return
+        return 0
 
     ui.warn(f"This will delete {len(logs)} memory log file(s).")
     ans = input("Continue? [y/N]: ").strip().lower()
     if ans != "y":
         ui.warn("Cancelled.")
-        return
+        return 0
 
-    for f in logs:
+    if distill_first:
+        result = _run_distillation(agent_id, ws)
+        if not result.ok:
+            return 1
+    else:
+        ui.warn("Skipping distillation (--no-distill-first) -- logs will be deleted undistilled.")
+
+    # Re-glob: a successful distillation already archived pending logs out of
+    # memory/*.md, so this only ever finds something left to unlink when
+    # distillation was skipped entirely (disabled, or found nothing pending).
+    remaining = sorted(mem_dir.glob("*.md"))
+    for f in remaining:
         f.unlink()
-    ui.success(f"Deleted {len(logs)} memory log file(s).")
+    if remaining:
+        ui.success(f"Deleted {len(remaining)} memory log file(s).")
+    else:
+        ui.success("No memory log files left to delete (already archived).")
+    return 0
 
 
-def _maintain_reset(agent_id: str, ws: Path) -> None:
-    """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md."""
+def _maintain_reset(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
+    """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md.
+
+    `--distill-first` (default on, ROADMAP Phase 17 C-2): distill pending
+    logs into MEMORY.md and archive the originals first. A failed
+    distillation aborts before any deletion (fail closed). When a real
+    distillation just ran (there was something pending and it succeeded),
+    the "clear MEMORY.md" step below is skipped -- MEMORY.md was *just*
+    refreshed with the distilled summary, so wiping it in the same breath
+    would throw away the exact thing `--distill-first` exists to preserve.
+    """
     if not sys.stdin.isatty():
         ui.console.print("Cancelled (non-interactive).")
-        return
+        return 0
 
     ui.warn("This will:")
     ui.console.print("  - Delete all memory/*.md log files")
@@ -1021,7 +1107,18 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
     ans = input("Continue? [y/N]: ").strip().lower()
     if ans != "y":
         ui.warn("Cancelled.")
-        return
+        return 0
+
+    logs_distilled = 0
+    memory_preserved = False
+    if distill_first:
+        result = _run_distillation(agent_id, ws)
+        if not result.ok:
+            return 1
+        logs_distilled = result.logs_distilled
+        memory_preserved = not result.skipped
+    else:
+        ui.warn("Skipping distillation (--no-distill-first) -- memory will be cleared undistilled.")
 
     mem_dir = ws / "memory"
     removed = 0
@@ -1031,7 +1128,9 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
             removed += 1
 
     memory_md = ws / "MEMORY.md"
-    if memory_md.is_file():
+    if memory_preserved:
+        ui.info("MEMORY.md left as-is (just refreshed by distillation).")
+    elif memory_md.is_file():
         memory_md.write_text(
             "# MEMORY.md\n\n_Cleared by docket maintain reset._\n", encoding="utf-8"
         )
@@ -1043,10 +1142,13 @@ def _maintain_reset(agent_id: str, ws: Path) -> None:
     hb.write_text(_mem.heartbeat_seed(name), encoding="utf-8")
     hb.chmod(0o600)
 
+    distilled_note = f", {logs_distilled} distilled+archived first" if logs_distilled else ""
     ui.success(
-        f"Reset complete: {removed} memory log(s) deleted, MEMORY.md cleared, "
+        f"Reset complete: {removed} memory log(s) deleted{distilled_note}, MEMORY.md "
+        f"{'preserved (freshly distilled)' if memory_preserved else 'cleared'}, "
         f"{_mem.HEARTBEAT_FILE} reset."
     )
+    return 0
 
 
 def _maintain_rebuild(agent_id: str, ws: Path) -> None:

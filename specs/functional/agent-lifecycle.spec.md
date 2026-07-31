@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -115,7 +115,7 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
 ### Agent Maintenance (docket maintain)
 
 `docket maintain [agent-id] [mode]` consolidates the retired `reset`, `repair`, and `cleanup`
-commands. Five modes **MUST** be supported, in increasing order of impact.
+commands. Six modes **MUST** be supported.
 
 #### check (Default) - Health and Auto-fix
 - Verify and fix missing workspace directory → recreate
@@ -126,14 +126,23 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 - Clean up orphaned Telegram bindings
 
 #### clean - Memory Logs
-- Clear `memory/*.md` daily logs
+- Distill pending `memory/*.md` daily logs into MEMORY.md and archive the originals under
+  `memory/.distilled/<day>/` **before** deleting anything (ROADMAP Phase 17 C-2) — **MUST** be the
+  default behaviour; `--no-distill-first` is the explicit opt-out that restores the pre-C-2
+  behaviour of deleting `memory/*.md` outright with no distillation step
+- A failed distillation (driver/daemon error, timeout, or an empty reply) **MUST** abort the whole
+  `clean` operation before any file is deleted — never partially apply
 - Preserve SOUL.md, AGENTS.md, TOOLS.md
 - Preserve session and project keys
 - Preserve .docket-meta.json
 
 #### reset - Deep Memory
-- Everything from `clean`
-- Clear MEMORY.md summary
+- Everything from `clean`, including the same `--distill-first` default/`--no-distill-first`
+  opt-out and fail-closed abort behaviour
+- Clear MEMORY.md summary — **unless** a distillation actually ran this invocation (there were
+  pending logs and it succeeded), in which case MEMORY.md was *just* refreshed with the distilled
+  summary and this step is skipped, so `--distill-first` never immediately erases the summary it
+  exists to preserve
 - Clear HEARTBEAT.md tasks
 - Reset conversation context
 
@@ -149,7 +158,23 @@ commands. Five modes **MUST** be supported, in increasing order of impact.
 - Archive large or old session data
 - Preserve all configuration and identity files
 
-`reset` and `rebuild` are destructive and **MUST** prompt for confirmation unless forced.
+#### distill - Memory Distillation (ROADMAP Phase 17 C-2)
+- Summarize pending `memory/*.md` daily logs into a dated `MEMORY.md` section via **one
+  driver-backed agent turn** (decision D-18 — docket's first self-originated LLM call; see
+  ../../ROADMAP.md §6). No provider SDK or HTTP client is used; the call goes through the same
+  `RuntimeDriver` port every pod dispatch hop already uses
+- Archive the original daily logs to `memory/.distilled/<day>/` (moved, not deleted) once the
+  summary is durably written
+- **MUST** fail closed: a driver failure (timeout, daemon error, non-zero exit) or an empty reply
+  leaves every file on disk untouched and returns a non-zero exit code — no partial archive, no
+  partial MEMORY.md write
+- No pending logs is a no-op success (there is nothing undistilled to lose)
+- **MUST NOT** require interactive confirmation — it is additive/non-destructive to the daily logs
+  (they are archived, not deleted), unlike `reset`/`rebuild`
+
+`reset` and `rebuild` are destructive and **MUST** prompt for confirmation unless forced. `distill`
+is not destructive to the daily logs it processes (they are archived, not deleted) and runs without
+a confirmation prompt.
 
 ## Interface Contracts
 
@@ -239,17 +264,34 @@ After successful creation:
 | Permission denied | Insufficient rights | Check ~/.openclaw permissions |
 | Workspace corrupted | Missing files | Run `docket maintain check` |
 | Daemon not running | OpenClaw down | Start with `systemctl --user start openclaw-gateway` |
+| Distillation turn failed (no daemon, model error, timeout) | `docket maintain distill`, or `clean`/`reset` with `--distill-first` (the default) | Nothing was deleted (fail-closed); retry once the daemon/model is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
 
 ## Performance Criteria
 
 - Agent creation: < 2 seconds
 - Agent listing: < 500ms for 100 agents
 - Agent deletion: < 1 second
-- Maintain (clean): < 500ms
+- Maintain (clean, `--no-distill-first`): < 500ms
 - Maintain (rebuild): < 3 seconds
 - Maintain (check): < 5 seconds
+- Maintain (distill, or clean/reset with `--distill-first`): bounded by one driver turn
+  (`config.DISTILL_TIMEOUT_S`, default 120s) rather than a fixed local-operation budget — it is a
+  real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.5.0 (2026-07-30)
+
+- ROADMAP Phase 17 C-2 (memory distillation, decision D-18): added the `distill` mode and gave
+  `clean`/`reset` a `--distill-first` default (with `--no-distill-first` as the explicit opt-out)
+  so neither command bare-deletes undistilled `memory/*.md` logs — they are summarized into
+  MEMORY.md and archived instead. The summarization turn is docket's first self-originated LLM
+  call, routed entirely through the `RuntimeDriver` port (no new SDK dependency). A failed
+  distillation aborts the whole operation before any file is touched (fail-closed); `reset`
+  additionally skips its own "clear MEMORY.md" step when a real distillation just ran, so
+  `--distill-first` never immediately erases the summary it exists to preserve. Added a
+  corresponding error-recovery row and a performance-criteria note (a driver turn, not a
+  file-system operation, so the old fixed-latency targets do not apply to it).
 
 ### Version 1.4.0 (2026-07-30)
 

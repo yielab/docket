@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -153,18 +153,30 @@ or provisioning registered no member — docket's flat convention, see Return Co
 
 #### docket maintain
 **Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
-**Syntax**: `docket maintain [agent-id] [mode]`
+**Syntax**: `docket maintain [agent-id] [mode] [--no-distill-first | --distill-first]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 - `mode` (optional): Maintenance level (default: `check`)
 **Modes**:
 - `check`: Health check and auto-fix (was `docket repair`)
-- `clean`: Clear memory day-logs (was `docket reset 1`)
-- `reset`: Clean + clear MEMORY.md and HEARTBEAT.md (was `docket reset 2`)
+- `clean`: Distill pending `memory/*.md` day-logs into MEMORY.md and archive the originals, then
+  delete anything left in `memory/*.md` (was `docket reset 1`)
+- `reset`: Clean + clear MEMORY.md (unless a distillation just refreshed it) and HEARTBEAT.md
+  (was `docket reset 2`)
 - `rebuild`: Deep rebuild — regenerate all files from metadata (was `docket reset 3`)
 - `sessions`: Archive large/old session data (was `docket cleanup safe`)
+- `distill` (ROADMAP Phase 17 C-2): summarize pending `memory/*.md` day-logs into a dated
+  `MEMORY.md` section via one driver-backed agent turn (decision D-18 — no provider SDK, routed
+  through the same `RuntimeDriver` port every pod dispatch hop uses), then archive the originals
+  to `memory/.distilled/<day>/`. Runs without a confirmation prompt (non-destructive to the logs
+  it processes); a driver failure or an empty reply leaves every file untouched and exits 1
+**Options** (`clean`/`reset` only):
+- `--distill-first` (default): run `distill`'s summarize-then-archive step before the command's
+  own destructive step; a failed distillation aborts the whole command before anything is deleted
+- `--no-distill-first`: skip distillation and delete/clear immediately — the pre-C-2 behavior
 **Output**: Maintenance progress and confirmation
-**Return**: 0 on success, 2 if not found, 4 on invalid mode
+**Return**: 0 on success (including a cancelled confirmation); 1 if the agent is not found, the
+mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 
 ### Configuration Commands
 
@@ -745,6 +757,15 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.11.0 (2026-07-30)
+
+- ROADMAP Phase 17 C-2 (memory distillation, decision D-18): documented the new `docket maintain
+  distill` mode and the `--distill-first` (default)/`--no-distill-first` option pair on
+  `clean`/`reset`. Corrected `maintain`'s stale `Return` line (`2 if not found, 4 on invalid mode`)
+  to the real 0/1 convention every other command in this spec already uses, and noted the new
+  fail-closed exit-1 case: a distillation turn that fails (no daemon, model error, timeout) aborts
+  the whole `clean`/`reset`/`distill` invocation before any file is touched.
 
 ### Version 1.10.0 (2026-07-30)
 

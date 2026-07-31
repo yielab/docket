@@ -61,6 +61,15 @@ SESSION_WARN_BYTES = int(os.environ.get("SESSION_WARN_BYTES", str(256 * 1024)))
 SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "40")))
 
 
+# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: ROADMAP Phase 17 C-2 — `docket
+# maintain distill`'s one driver-backed turn (D-18, docket's first
+# self-originated LLM call). DISTILL_MAX_INPUT_BYTES bounds how much daily-log
+# content goes into that turn's prompt, using the same bytes estimator as the
+# rest of this file's context guards; it is a safety cap on the prompt docket
+# composes, not token-accurate budgeting (Phase 17 C-1 owns real budgeting).
+DISTILL_TIMEOUT_S = int(os.environ.get("DISTILL_TIMEOUT_S", "120"))
+DISTILL_MAX_INPUT_BYTES = int(os.environ.get("DISTILL_MAX_INPUT_BYTES", str(48 * 1024)))
+
 # R-2: per-role retry budget for a *retryable* TurnResult failure (timeout or
 # daemon_error only — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS; a non-zero
 # exit or a bad tester/reviewer verdict is a real answer and is never retried).
