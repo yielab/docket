@@ -20,6 +20,7 @@ specs/
 │   ├── audit.spec.md                     # Audit log events, hash-chained + verify
 │   ├── cost-tracking.spec.md             # Usage/cost reporting + budget caps (auto-pause shipped)
 │   ├── eval.spec.md                      # Specialist-role eval harness
+│   ├── mcp-client.spec.md                # MCP client: pluggable tool servers (Phase 19 P19-10)
 │   ├── model-profiles.spec.md            # Role→model policy and pinning
 │   ├── pipeline-format.spec.md           # docket-native pipeline YAML format + executor (W-1/W-2)
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates

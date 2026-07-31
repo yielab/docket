@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-07-31
 
 ## Purpose
 
@@ -31,11 +31,15 @@ It does NOT cover:
 - The approval token lifecycle itself (`pending → granted/denied/expired`) — see
   `security-gates.spec.md`
 - The audit log's format and tamper-evidence chain — see `audit.spec.md`
-- Agent-side MCP *client* configuration (docket's daemon consuming other MCP servers' tools
-  inside an agent turn) — that is a deliberately separate, unbuilt card (ROADMAP Phase 18 L-4,
-  daemon-gated) and is explicitly out of scope for this server. **L-4 spike concluded
-  2026-07-30: the capability is real upstream but is not present in the daemon version this
-  fleet actually targets** — see "L-4 spike findings" below for the full evidence trail.
+- Agent-side MCP *client* configuration (docket consuming other MCP servers' tools inside an
+  agent turn) — this is explicitly out of scope for this server; see `mcp-client.spec.md`
+  (ROADMAP Phase 19 P19-10). **This supersedes the L-4 framing below**: L-4 asked whether the
+  *OpenClaw daemon's own* MCP client config could be managed through the ACL, which presumed the
+  daemon stayed the thing that owned an agent turn. Decision D-19 has docket own the loop
+  directly instead, so P19-10 builds docket's own MCP client straight into `core/tools.py`'s
+  gated registry — no daemon, and no ACL involvement at all. The L-4 spike findings below remain
+  an accurate historical record of what the (now bypassed) daemon-side registry would have
+  offered; they are not a description of how MCP client configuration actually works today.
 
 ## L-4 spike findings (investigated 2026-07-30, capability real, not yet usable by this fleet)
 
@@ -430,6 +434,16 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
 ```
 
 ## Changelog
+
+### Version 1.3.0 (2026-07-31)
+
+- Corrected the "Scope" section's agent-side MCP client cross-reference. It previously pointed at
+  L-4 (a daemon-gated, unbuilt card) as the place agent-side MCP consumption would eventually
+  live; decision D-19 has since had docket own the turn loop directly, and ROADMAP Phase 19
+  P19-10 built docket's own MCP client straight into `core/tools.py`'s gated registry — no daemon
+  involved at all. The scope note now points at the real spec, `mcp-client.spec.md`, and states
+  plainly that it supersedes the L-4 framing. No change to this server's own contract (tools,
+  transport, audit/no-bypass guarantees) — documentation accuracy only.
 
 ### Version 1.2.0 (2026-07-30)
 

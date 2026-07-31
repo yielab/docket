@@ -361,7 +361,24 @@ class TestSinglePathToExecution:
     asserted in prose: if a second module can call a handler directly, the gate
     is optional, and an optional gate is not a gate."""
 
-    ALLOWED_IMPORTERS: ClassVar[set[str]] = {"core/tools.py", "edges/adapters/toolbox.py"}
+    # core/mcp_tools.py / edges/adapters/mcp_client.py (ROADMAP Phase 19 P19-10):
+    # both reference toolbox.py's `ToolOutcome` -- the inert "what happened"
+    # result dataclass every Tool.handler must return -- so an MCP-adapted
+    # tool's handler can construct one, exactly as core/tools.py's own
+    # built-in handlers do. Neither file imports, or ever calls, an actual
+    # handler *function* (read_file/write_file/edit_file/glob_files/
+    # grep_files/run_bash); dispatch_tool remains the only thing that ever
+    # invokes a Tool's handler. Confirmed by this file's own
+    # `test_the_gate_is_consulted_by_dispatch_itself`-style reasoning, and by
+    # `tests/python/test_p19_10_mcp_client.py`'s `TestGatedExactlyLikeABuiltin`,
+    # which dispatches an MCP-adapted tool through the real, unmodified
+    # `dispatch_tool` and proves a `pre_tool_call` policy gates it.
+    ALLOWED_IMPORTERS: ClassVar[set[str]] = {
+        "core/tools.py",
+        "edges/adapters/toolbox.py",
+        "core/mcp_tools.py",
+        "edges/adapters/mcp_client.py",
+    }
 
     @staticmethod
     def _imports_toolbox(tree: ast.AST) -> bool:
