@@ -13,26 +13,20 @@
 >
 > ---
 >
-> ## Active: PHASES 15 · 16 · 18 — Platformization II/III/V, executed in waves
+> ## Active: PHASE 19 — docket takes the runtime (D-19). Phases 20/21 planned.
 >
-> Executable board for **Phases 15, 16 and 18** in [ROADMAP.md](ROADMAP.md) (read those sections
-> first — the defect rationale, the anti-overengineering rules, and each phase's exit criteria; also
-> decisions **D-14/D-16/D-18** in §6 and the 2026-07-30 Platformization amendment in §4.5). Source of
-> record: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29 four-pass platform audit,
-> gitignored local rationale — every defect below was code-verified with file:line evidence and is
-> restated self-containedly here).
+> Executable board for **Phase 19** in [ROADMAP.md](ROADMAP.md) — read that section first, plus
+> decisions **D-19** (own the loop, rent the protocols; clean break, no migration) and the newly
+> opened **D-20/D-21/D-22/D-23** in §6. Phases 14–18 are all **COMPLETE**; their durable per-card
+> record lives in ROADMAP, not here.
 >
-> **Why three phases at once.** ROADMAP marks Phase 18 *"independent of 15–17 except L-5"* and Phase 16
-> *"after 14; G-1 for approval steps"*. With Phase 14 green, the genuine blockers are narrow, so cards
-> are scheduled by **file contention** rather than by phase number. Phase 17 stays out of this wave:
-> C-1 depends on Phase 16's W-5, and C-2/C-3/C-5 all want `core/dispatch.py`, which is spoken for.
->
-> **Scheduling rule learned in Phase 14 (keep it):** `core/dispatch.py` is the contention hotspot —
-> nine remaining cards touch it. **At most one in-flight card may own `core/dispatch.py` per wave.**
-> Phase 14 proved the payoff: cards with disjoint file footprints (R-6, R-7) auto-merged onto the big
-> R-1 rewrite with zero code conflicts, while the two cards that both edited `serve.py`'s dispatch
-> call sites (R-2, R-3) produced the only genuinely dangerous merge of the phase — each had to be
-> hand-reconciled or one card's feature would have been silently dropped.
+> **Scheduling rule, carried from Phase 14 and re-earned in wave 9:** schedule by **file contention**,
+> not phase number, and state ownership at **function** level when a file is hot. `core/dispatch.py`
+> was Phase 14's hotspot; `core/tools.py` is Phase 19's — wave 9 ran three cards against it by giving
+> P19-9 only `ToolContext` + the `bash` registration, forbidding P19-10 the file entirely, and letting
+> P19-5 import it unchanged. Zero code conflicts; the one real conflict (`config.py`, two cards
+> appending constants) was resolved by keeping **both** blocks and then *importing the module* to
+> assert nothing was lost — not by reading the diff and assuming.
 
 ## How to use this board (read before claiming a task)
 
@@ -69,18 +63,29 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ CURRENT STATE — ☑ THE PLATFORMIZATION PROGRAM IS COMPLETE (2026-07-31)
+## ▶ CURRENT STATE — Phase 19 waves 8-9 shipped; the daemon is unused
 
-**Phases 14, 15, 16, 17 and 18 are all closed.** 38 cards across 7 waves. `platform` green at
-close: **1,745 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical,
-**21 specs** valid / 0 warnings, 37 commands, ~22,890 lines, `ruff` + `ruff format` +
-`mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims.
+**Platformization (Phases 14-18) is COMPLETE** — 38 cards, 7 waves; durable per-card records are the
+`☑ Waves 3-4 / 5 / 6 / 7 shipped` blocks in ROADMAP.md's Phase 16 section.
 
-Durable per-card records: the `☑ Waves 3–4 / 5 / 6 / 7 shipped` blocks in ROADMAP.md's Phase 16
-section.
+**Phase 19 is ACTIVE.** Waves 8-9 shipped six cards: P19-1 (chat port) · P19-2 (gated tool registry)
+· **P19-3 (`pre_tool_call` is live — the milestone)** · P19-4 (session history) · **P19-5 (the turn
+loop + `DocketDriver`)** · P19-9 (sandboxed exec) · P19-10 (MCP client).
 
-**Opened since:** **Phase 19 — reducing the OpenClaw daemon dependency** (below), from a
-user request on 2026-07-31. It is scoped from measurement, not ambition: see decision **D-19**.
+**Where that leaves the daemon: unused, not yet uninstalled.** docket can now run a fully gated agent
+turn end to end — and does not yet, because `core/dispatch.py` still resolves `OpenClawDriver`. The
+cutover is wave 11 (P19-6 -> P19-7), which is also where the ACL and `openclaw.json` are deleted.
+
+`platform` green at wave 9 close: **2,026 tests** (`pytest` exit 0), 18/18 goldens byte-identical,
+**24 specs** valid / 0 warnings, 37 commands, ~27,100 lines, `ruff` + `ruff format` + `mypy --strict`
+(71 files) clean, `metrics.py --check` in sync across all five claims.
+
+**Newly opened decisions (2026-07-31), from the stated company objective — agentic products, docket
+as main orchestrator:** **D-20** (is docket the *factory* that builds products, the *runtime* they
+ship on, or both — these have opposite requirements and conflating them is the main risk),
+**D-21** (split into an embeddable `docket-runtime` library + control plane), **D-22** (project-scoped
+vs tenant-scoped multi-tenancy — cheap now, expensive after the first product embeds), **D-23**
+(network egress default). Waves 10 and 11 are correct under either reading of D-20 and proceed now.
 
 **Phase status:** Phase 14 **COMPLETE** (R-1…R-8) · Phase 15 **COMPLETE** (G-1…G-6, closed by G-3)
 · Phase 16 **COMPLETE** (W-1…W-8) · Phase 17 **COMPLETE** (C-1…C-5, closed by C-3/C-5) ·
@@ -701,9 +706,55 @@ edited by several branches at once holds no single correct side.
 reference only the inert `ToolOutcome` type, and added a narrower guard in its place. The integrator
 re-verified that replacement by planting a real handler-function import — it fired.
 
+### Wave 10 — finish the runtime's capabilities (added 2026-07-31)
+
+Three cards closing gaps found by auditing what an agent can actually *do* once the loop runs. All
+three are runtime-side and disjoint from the registry refactor, so they are safe to run before the
+removal wave.
+
+**P19-11 · `fetch` tool + network egress policy** — *TODO · M · decision D-23*
+**The gap, measured not assumed:** `curl`/`wget` correctly ask, but `python3 -c "import urllib..."`,
+`node` and `git clone <url>` are **allowed unattended** — both interpreters are on the curated
+allowlist because agents need them constantly, and both are universal escape hatches. **Network
+egress is therefore effectively ungated**, and P19-9's sandbox does not close it (both backends
+leave the network reachable). The gate currently *reads* as if network were controlled, which is
+worse than an honestly open one. Ship: a first-class `fetch` tool (domain allowlist, size cap,
+timeout, gated like every other tool) so there is an inspectable path, plus the opt-in egress
+lockdown mechanism (`--network none` / `--unshare-net` in P19-9's backends). **Default stays open**
+per D-23 — closing it breaks `npm install`, `pip` and `git clone`.
+
+**P19-12 · Per-role tool sets + identity composition** — *TODO · M*
+Two omissions P19-5 recorded honestly rather than papering over. (1) `ToolRegistry.without()` exists
+and is tested but **nothing composes it per role** — a Reviewer is told not to edit code instead of
+being unable to, which is a strictly weaker guarantee and the exact distinction docket sells.
+(2) The loop **composes no system prompt at all**: `SOUL.md`, the docket-owned persona
+(`core/identity.py`) and `WORKFLOW_AUTO.md`'s resume contract never reach the model. Wire both;
+role -> toolset belongs in `core/archetypes.py` as data, not a branch.
+
+**P19-13 · `docket mcp servers` CLI + browser recipe** — *TODO · S*
+P19-10 shipped `add_mcp_server`/`load_mcp_tools` as tested, uncalled library functions. Give them a
+CLI (`docket mcp servers add/list/remove`) and document the payoff: **browser support is
+configuration, not code** — point it at the Playwright MCP server and P19-10's client gates those
+tools exactly like a built-in (namespaced `mcp__<server>__<tool>`, so a remote server cannot shadow
+`bash`). Same for web search. This is what "rent the protocol" buys.
+
+**Not in this wave, deliberately:** streaming (D-20(b) only), a tenant axis (D-22), and anything
+observability-shaped (Phase 20, after the removal wave — instrumenting code P19-7 deletes is waste).
+
 ### Sequencing
 
-P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-6 -> P19-7 -> P19-8 -> P19-9/P19-10.
+**Waves 8-9 (done):** P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10.
+
+**Wave 10 (next):** P19-11 / P19-12 / P19-13 in parallel — runtime capabilities, disjoint from the
+registry refactor.
+
+**Wave 11 (the removal):** P19-6 -> P19-7, **sequential** — P19-7 cannot start until the fleet
+registry P19-6 creates exists. Then P19-8 (channels).
+
+**Wave 12+:** Phase 20 (observability), then Phase 21 (packaging) once **D-20** is answered.
+
+Waves 10 and 11 are correct under either reading of D-20, which is why they proceed while that
+decision is still open.
 
 Wave A is additive — every card lands on a green tree with the existing suite passing. The daemon
 stops being *used* at P19-5 and stops being *present* at P19-7. Wave C is optional depth once the

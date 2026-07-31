@@ -410,6 +410,10 @@ address exactly those.
 | D-17 | `serve` job model: bare fire-and-forget daemon threads (no ids, errors suppressed) vs a persistent run registry + bounded worker pool? | Phase 14 R-3 | **Run registry + worker pool, stdlib only** — keep §4.5's no-FastAPI/no-async stance; drop the fire-and-forget. Every dispatch gets a run id, persisted state, and queryable outcome; `contextlib.suppress(Exception)` around dispatch is banned. |
 | D-18 | Where do docket's own LLM calls (memory distillation C-2, judge steps) come from: provider SDKs, a wrapped gateway, or the driver? | Phase 17 C-2 | **Through the driver** (`agent_run` on a pod Lead / utility agent) — zero new SDK deps. A LiteLLM-class sidecar gateway is a Phase 18 L-5 *spike*, opt-in, and only if the daemon tolerates a base-url swap; hand-rolled per-vendor clients are banned permanently. |
 | D-19 | Drop the OpenClaw daemon so docket owns every layer, reusing libraries only where they do not take control? | Phase 19, 2026-07-31 | **Yes — own the loop, rent the protocols.** Superseded an earlier same-day reading that recommended keeping the daemon for tool-using hops; the deciding evidence is that docket ships **four** policy templates hooked on `pre_tool_call` (`block-destructive`, `high-risk-credentials`, `high-risk-deploy`, `high-risk-payment`) and **none has ever been evaluated**, because the daemon owns the turn. The governance stack docket already built — policy engine, approval store with three channels, high-risk classifier, hash-chained audit, traces, worktree/port isolation — is enforceable only at the boundary of a turn it does not control. Owning the loop is what makes the guardrails real; it is not scope creep, it is the missing half of work already done. **The line:** docket owns the loop, the tool registry, tool dispatch and every gate; libraries are reused strictly at **protocol** level (OpenAI-compatible chat completions for inference, MCP for pluggable tool servers, containers for exec isolation). **Agent frameworks (LangGraph/CrewAI/AutoGen) are rejected** — they own the loop and therefore the interception points, which would relocate docket's guardrails into a third party's callback API: the same dependency being escaped, with a new vendor. **Amended same day, by the user: clean break, no compatibility layer.** docket is pre-1.0 with no external installs to protect, so the phase adds no second runtime beside the daemon and ships no migration path — the driver, the ACL (82 functions), `openclaw.json` and every shell-out to the `openclaw` binary are deleted, `docket install` is reimplemented to provision a docket-native home, and local installs are re-created rather than upgraded. This also unblocks channels: with no daemon to fall back on, docket owns the Telegram bot, which is what finally makes Telegram a real docket approval channel instead of the caveat it has been since G-5. |
+| D-20 | **The company will ship agentic products, and wants docket as its main orchestrator. Is docket (a) the factory that builds those products, (b) the runtime the products themselves ship on, or both?** | Phase 20 (blocks its scope) | **OPEN — do not assume.** The two readings have opposite requirements and conflating them is the main risk to the plan. **(a) Factory:** what docket already is. A pod per product repo, isolated workspace/session/ports/worktree/budget. Fits today. **(b) Product runtime:** does *not* fit — multi-tenancy is per-*project* not per-*end-user*, there is no authn/authz for external callers, storage is single-host filelock+JSON with no queue or workers, approval waits **block up to 120s** (correct for ops, fatal in a product), there is no streaming, and no per-customer quota or data-isolation story. **Recommended answer: both, via a package split — see D-21.** Measured fact that makes this cheap: the whole runtime slice (`core/llm`, `core/tools`, `core/session`, `core/agent_loop`, `core/policy`, `core/approval`, `core/security`, `core/audit`, `core/trace`, their adapters and `edges/store`) imports exactly **two** third-party packages, `pydantic` and `filelock` — no typer, no rich, no `ui`. The layering discipline already paid for the extraction. |
+| D-21 | Split the package into an embeddable `docket-runtime` library plus the `docket` control plane built on it? | Phase 21 (and D-20 first) | **Proposed yes, pending D-20.** Every agentic product the company ships would then inherit the same gated tool chokepoint, policy engine, approval store and hash-chained audit, instead of each product team reinventing guardrails badly. That is the company-level asset neither LangGraph nor CrewAI offers, because their guardrails are opt-in callbacks rather than the only execution path. Cost is packaging + a public API contract, **not** a rewrite: `core/`/`edges/` are already CLI-free (verified). Do **not** do this before Phase 19's removal wave — extracting a library that still reaches for `openclaw.json` would freeze the coupling into a published contract. |
+| D-22 | Multi-tenancy model: stay project-scoped (`agent:<id>:<project>`), or add an end-user/tenant axis? | Phase 21, before any product embeds the runtime | **OPEN.** Only matters under D-20(b). Session keys, workspaces and budgets are all keyed on *project* today; a customer-facing product needs a *tenant* key with its own isolation, quota and data boundary. **Retrofitting this after products embed the runtime is expensive** — the key appears in session storage, traces, audit entries, approval records and budget accounting. Decide before the first embed, not after. |
+| D-23 | Network egress for agent tool calls: open by default, or closed with an allowlisted `fetch` tool? | Phase 19 P19-11 | **Open by default, lockdown opt-in** (integrator's call, reversible config; say so if you disagree). Measured 2026-07-31: `curl`/`wget` correctly ask, but `python3 -c "import urllib..."`, `node`, and `git clone <url>` are all **allowed unattended** — `python3` and `node` are universal escape hatches on the curated allowlist, so **network egress is effectively ungated today**, and P19-9's sandbox does not close it either (both backends leave the network reachable). Closing egress by default breaks `npm install`, `pip` and `git clone`, which is why the default stays open; P19-11 ships the mechanism plus an always-available, domain-allowlisted `fetch` tool so there is an inspectable path that does not require the escape hatch. |
 
 ---
 
@@ -1830,6 +1834,115 @@ each; `docket models` shows no hardcoded-Anthropic residue for a non-Anthropic f
 **Full-program scope guard (all five phases):** a full MCP *host* (docket executing MCP tools inside
 agent turns) is the standalone-runtime trap — refuse it; microVM/multi-host/dashboards stay §7
 Backlog; every control keeps its one-word label (*docket-enforced / daemon-enforced / convention*).
+
+---
+
+---
+
+## PHASE 20 — Fleet observability (planned; after Phase 19's removal wave)
+
+**Why after, not before.** Instrumenting code that P19-7 is about to delete is waste. Phase 20
+starts once the daemon is gone and the shapes are final.
+
+**What already exists** (do not rebuild it): per-project/session JSONL traces with hop *and*
+per-tool-call events (`docket trace`), a hash-chained tamper-evident audit log (`docket audit
+verify`), a dispatch run registry with cancellation (`docket runs`), six Prometheus metrics and a
+versioned read API (`/status.json`, `/health`, `/runs`, `/runs/<id>`, `/approvals`), token/cost
+reporting (`docket cost`), session success-rate metrics (`docket metrics`), and fleet diagnostics
+(`docket doctor`). That is a stronger base than either LangGraph or CrewAI ships by default, because
+it was built for unattended operation.
+
+**The measured gaps:**
+
+1. **No fleet-wide view.** Traces are per-project files; there is no "every denied tool call across
+   all pods this week".
+2. **No OpenTelemetry.** The industry standard is absent, so nothing feeds Grafana/Jaeger/Honeycomb
+   without docket building a UI it would then have to maintain.
+3. **The P19-5 loop is not in the metrics.** Tool-call rate, denial rate, approval wait time and
+   policy-hit counts are exactly the security-relevant signals, and none are exported.
+4. **No latency anywhere.** No p50/p95 per role — a slow model and a stuck agent look identical.
+5. `docket runs cancel` still writes **no audit entry** (carried since W-4).
+6. **No trace retention policy.** JSONL grows without bound.
+7. **No agent-quality regression detection** — the eval harness is non-blocking spot checks.
+
+**The design rule for this phase: emit spans, do not build a dashboard.** Model one turn as
+`turn -> iteration -> tool_call` with the gate decision as a span attribute, export OTLP, and every
+existing observability tool works. **Keep telemetry and the audit log separate** — telemetry is
+sampled and lossy by design, an audit log must be neither. Conflating them is a common and serious
+mistake.
+
+**Golden signals for an agent fleet** (what the metrics cards must cover): turn latency, tool-call
+rate, **denial rate**, **approval wait time**, token burn rate, and **cost per completed task** —
+per *task*, not per agent, because that is the number that means something.
+
+### Cards
+
+**P20-1 · OpenTelemetry spans + OTLP export** — *TODO · M*
+`turn -> iteration -> tool_call` span tree, gate decision as an attribute. Optional extra, same
+discipline as `[mcp]`: absent SDK degrades to a friendly message, never a traceback.
+
+**P20-2 · Guardrail + loop metrics** — *TODO · S*
+Denial rate, approvals granted/denied/timed-out **by channel**, policy-hit counts by policy id,
+tool-call rate, turn latency. Extends the existing Prometheus surface; no new endpoint.
+
+**P20-3 · Fleet trace query + retention** — *TODO · M*
+Cross-project query (`docket trace --fleet --json`) and a documented retention/rotation policy, the
+way `AUDIT_LOG_MAX_BYTES` already handles the audit log.
+
+**P20-4 · `runs cancel` audit entry** — *TODO · S*
+Closes the W-4 gap. A cancellation is a human decision that killed running work; it belongs in the
+audit log.
+
+---
+
+## PHASE 21 — Runtime packaging and the product substrate (planned; blocked on D-20)
+
+**Do not start any card here before D-20 is answered.** Its whole scope depends on whether docket is
+the factory, the product runtime, or both.
+
+**The thesis, if D-20 says "both":** split into an embeddable `docket-runtime` library plus the
+`docket` control plane built on top of it. Every agentic product the company ships then inherits one
+gated tool chokepoint, one policy engine, one approval store and one audit chain — rather than each
+product team reinventing guardrails badly. Verified 2026-07-31: the runtime slice imports only
+`pydantic` and `filelock`, and `core/`/`edges/` contain no CLI dependency at all, so this is
+packaging and a public API contract, not a rewrite.
+
+**Sequencing constraint:** after Phase 19's removal wave, never before. Publishing a library that
+still reaches for `openclaw.json` would freeze that coupling into a public contract.
+
+### Candidate cards (shape only — do not treat as committed)
+
+**P21-1 · Package split** — *BLOCKED (D-20/D-21)* · M
+`docket-runtime` (library) + `docket` (control plane). Public API contract, versioning policy, and a
+test proving the library imports nothing from `cli/`.
+
+**P21-2 · Streaming** — *BLOCKED (D-20)* · M
+Required for any user-facing agent UX; pure overhead for the factory. Earns its place only under
+D-20(b). `ChatBackend.complete` is deliberately non-streaming today (P19-1).
+
+**P21-3 · Tenant axis** — *BLOCKED (D-22)* · L
+An end-user/tenant key alongside `project`, threaded through session storage, traces, audit entries,
+approval records and budget accounting. **Cheap now, expensive after the first product embeds.**
+
+**P21-4 · Build-agent profile** — *TODO · M (independent of D-20)*
+Needed the moment an Android or Unity product is real, and useful for the factory regardless.
+Today's tools are tuned for editing text: `read`/`write`/`edit` are **text-only** so binary assets
+are invisible, `bash` defaults to a 120s timeout that a Gradle or Unity build blows straight
+through, and tool output caps at 30k characters. A build agent is a different animal from a
+code-editing agent — long timeouts, artifact handling, binary-safe file ops, no browser.
+
+### Honest input on product mix (record it; it affects planning, not code)
+
+Agent leverage is **not** uniform across the product types named:
+
+| Product type | Agent leverage | Why |
+| --- | --- | --- |
+| B2B SaaS backends, APIs, integrations | **High** | Text in, text out, verifiable by tests |
+| Web frontends | Medium | Verifiable, but visual judgment is weak |
+| **Android / video games** | **Low** | Game feel, art and device QA are not text problems; no emulator or visual QA exists |
+
+Plan capacity accordingly. Expecting the same leverage on a game as on an API backend is the kind of
+assumption that quietly wrecks a roadmap.
 
 ---
 
