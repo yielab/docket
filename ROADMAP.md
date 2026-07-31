@@ -1668,7 +1668,7 @@ workspace; suite green.
 
 ---
 
-### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(🟠 5 of 6 shipped — L-1/L-2/L-3/L-6 done, L-4 answered as a spike; only L-5 remains)*
+### PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(☑ COMPLETE — L-1/L-2/L-3/L-6 shipped; L-4 and L-5 both answered as spikes, 2026-07-30)*
 
 > **Why:** provider-agnosticism was declared complete (Phase 6) but the audit found Anthropic
 > hardcoded in the rank anchors (non-overridable), the auth commands, and the preset/pricing gaps —

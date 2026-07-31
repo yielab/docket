@@ -122,7 +122,7 @@ Each specification document must include:
 | Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
-| Model Profiles | 2.3.3 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6) |
+| Model Profiles | 2.4.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6); `models.*` audit coverage (Phase 15 G-4b); carries the L-5 spike's evidence that a sidecar gateway needs no new capability (Phase 18 L-5) |
 | Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
 | Pod Dispatch | 4.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5) |
