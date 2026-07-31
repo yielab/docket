@@ -1,8 +1,8 @@
 # Workspace Structure Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-07-31
 
 ## Purpose
 
@@ -40,7 +40,13 @@ covers the resulting file set for either workspace kind, not blueprint selection
      a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
      **MUST NOT** be flagged missing one by `docket doctor`
    - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;
-     resumed after a context reset)
+     resumed after a context reset). For a pod **Lead**, this file additionally carries a
+     delimited, docket-owned dispatch region inside `## Active Tasks`
+     (`core/memory.py`'s `DISPATCH_BLOCK_BEGIN`/`_END`) that pod dispatch mechanically
+     keeps in sync with `TASK_LIST.json`'s `running` tasks (ROADMAP Phase 17 C-3 — see
+     pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"); everything outside that
+     region, including any hand-written entries elsewhere in the same file, is never
+     touched by that sync
    - `WORKFLOW_AUTO.md` — the runtime-forced startup file carrying the versioned
      resume/durability contract (`docket-contract` marker; regenerated, never hand-edited).
      Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
@@ -192,8 +198,19 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   `.docket-archive/`).
 - A project agent is `workspaceKind: codebase` or `workspaceKind: workdir`, never both — a
   `workdir`-kind member's contract files never reference a codebase.
+- A pod Lead's `HEARTBEAT.md` dispatch region (see requirement 1) **MUST NOT** be the only thing
+  a mechanical sync ever rewrites in that file — every other byte, including an agent's own
+  entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.5.0 (2026-07-31)
+
+- ROADMAP Phase 17 C-3 (one durable task state): documented the pod Lead's docket-owned
+  dispatch region inside `HEARTBEAT.md`'s `## Active Tasks` (requirement 1), mechanically
+  synced from `TASK_LIST.json` by `core/dispatch.py` — full behavior lives in
+  pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"; this spec only states that the file
+  now carries it and that everything else in the file is unaffected.
 
 ### Version 1.4.0 (2026-07-30)
 

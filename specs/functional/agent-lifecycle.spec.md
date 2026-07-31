@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-07-31
 
 ## Purpose
 
@@ -143,7 +143,13 @@ commands. Six modes **MUST** be supported.
   pending logs and it succeeded), in which case MEMORY.md was *just* refreshed with the distilled
   summary and this step is skipped, so `--distill-first` never immediately erases the summary it
   exists to preserve
-- Clear HEARTBEAT.md tasks
+- Clear HEARTBEAT.md tasks — for a pod **Lead**, this also clears the docket-owned dispatch
+  ledger region dispatch mechanically maintains (ROADMAP Phase 17 C-3; see
+  pod-dispatch.spec.md's "Mechanical HEARTBEAT ledger"). If a task is genuinely `running` in
+  `TASK_LIST.json` at reset time, the ledger and the queue now disagree until the next dispatch
+  lifecycle event (claim/hop/retry/finalize) or `docket doctor --fix` re-syncs it — `reset` is an
+  operator action on a workspace file, not a dispatch-aware operation, so it does not special-case
+  a Lead mid-task
 - Reset conversation context
 
 #### rebuild - Complete Rebuild
@@ -279,6 +285,14 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.6.0 (2026-07-31)
+
+- ROADMAP Phase 17 C-3 (one durable task state): noted that `maintain reset`'s "Clear HEARTBEAT.md
+  tasks" step also clears a pod Lead's docket-owned dispatch ledger region, and that this can
+  transiently disagree with a genuinely `running` task in `TASK_LIST.json` until the next dispatch
+  lifecycle event or a `docket doctor --fix` re-sync — full behavior in pod-dispatch.spec.md's
+  "Mechanical HEARTBEAT ledger".
 
 ### Version 1.5.0 (2026-07-30)
 

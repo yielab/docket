@@ -137,6 +137,46 @@ def resume(
     return resumed, upsert(reg, resumed)
 
 
+def touch_for_hop(
+    reg: ConversationRegistry, *, agent_id: str, task_ref: str, last_message: str, now: str
+) -> ConversationRegistry:
+    """Refresh every tracked conversation for *agent_id* with real dispatch activity.
+
+    ROADMAP Phase 17 C-5: a pod dispatch hop is real, observable work — a human
+    watching a wired channel thread should see the task it's actually on and a
+    preview of what it last said, not just whatever ``docket wire`` seeded once
+    at binding time. Pure: the caller (``core/dispatch.py``'s ``_persist_hop``)
+    owns the load/save round-trip via ``load``/``save``, same convention as
+    every other registry mutator here.
+
+    A no-op — returns *reg* unchanged — when *agent_id* has no tracked
+    conversation at all, so a hop for an unwired pod member never fabricates
+    one out of thin air; topic/status are left exactly as they were (only
+    ``last_message``/``task_ref``/``updated`` move). *last_message* is
+    collapsed to a single line and trimmed to a short preview — the full text
+    already lives in the trace log and the task's own persisted hop record, so
+    the registry only ever needs to answer "what is this thread on right now".
+    """
+    matches = by_agent(reg, agent_id)
+    if not matches:
+        return reg
+    preview = " ".join(last_message.split())
+    if len(preview) > 300:
+        preview = preview[:299] + "…"
+    for conv in matches:
+        _, reg = record(
+            reg,
+            agent_id=conv.agent_id,
+            peer_id=conv.peer_id,
+            now=now,
+            channel=conv.channel,
+            peer_kind=conv.peer_kind,
+            last_message=preview,
+            task_ref=task_ref,
+        )
+    return reg
+
+
 def remove_agent(reg: ConversationRegistry, agent_id: str) -> ConversationRegistry:
     """Drop all conversations for *agent_id* (used on agent/pod teardown)."""
     return ConversationRegistry(
