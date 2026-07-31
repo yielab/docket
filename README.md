@@ -85,9 +85,12 @@ Three isolation layers, each independent:
 
 docket's security model is **layered**: instruction-level constraints, plus enforced
 tool-approval gates that are **on by default** for new installs (`docket install`, opt out with
-`--no-gates`). Three approval channels work today — a CLI channel (`docket approve`/`docket
-deny`), a headless HTTP channel, and Telegram (see [Mobile control via Telegram](#mobile-control-via-telegram)
-below) — with a full audit log recording every grant/deny on every channel. Docker workspace
+`--no-gates`). docket's own approval store is answerable through three channels — a CLI channel
+(`docket approve`/`docket deny`), a headless HTTP endpoint, and MCP — and every grant, deny, or
+timeout on them writes an audit entry tagged with the channel it came from. (The daemon *also*
+has its own native exec-approval prompt, which is what you answer in a Telegram chat. That is a
+separate system docket does not sit in front of, so those approvals are not in docket's audit
+log — see [SECURITY-SIMPLE.md](docs/SECURITY-SIMPLE.md).) Docker workspace
 isolation stays opt-in (`docket gates isolate on`). Risky operations not on the curated allowlist
 require human sign-off before they execute; the headless channels mean CI jobs and automation can
 vote without a Telegram account. Approvals fail closed on timeout.
@@ -123,9 +126,10 @@ surface, not just a notification feed:
 - **Conversational dispatch** — message the Lead directly ("Fix the login bug," "what's the
   status?") and it runs through the same pipeline `docket pod <id> dispatch` runs from a shell.
   No laptop required to queue or check on work.
-- **Approve from your phone** — gates are on by default, so a risky action pings the wired group;
-  reply to grant or deny it. Telegram is one of three approval channels, not the only one — a CLI
-  channel and a headless HTTP endpoint work too, so automation isn't locked to a chat app.
+- **Approve from your phone** — gates are on by default, so a risky action pings the wired group
+  and you reply to grant or deny it. That prompt is the daemon's own; docket's separate approval
+  store is answered by `docket approve`/`docket deny`, a headless HTTP endpoint, or MCP, so
+  automation is never locked to a chat app.
 - **Status without a shell** — ask a Lead what's active, or check in on a fleet, from wherever you
   are.
 
@@ -227,8 +231,8 @@ wraps OpenClaw to add the operational layer a fleet needs:
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Cost reporting (recorded spend + spike detection) | — | ✅ `docket cost [--history]` |
-| Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; `GET/POST /approvals`, Telegram routing |
-| Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate; either failing → task stays `pending` |
+| Approval gates + headless channel + audit log (HITL) | — | ✅ on by default; CLI / `GET/POST /approvals` / MCP, each audit-logged |
+| Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate; either failing → task `failed` (verdict gates rework first, bounded) |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health` |
 
@@ -405,9 +409,10 @@ turned out to be unusable when first measured.
 docket manages autonomous agents that can execute commands. Its safety model is **layered**:
 agent-level constraints are instruction-based, and enforced tool-approval gates are **on by
 default** for new installs (opt out with `docket install --no-gates`; re-apply or reverse later
-with `docket gates enable` / `docket gates disable`). Approvals are answerable via a CLI channel
-(`docket approve`/`docket deny`), a headless HTTP channel, or Telegram, and every grant/deny is
-audit-logged. Docker workspace isolation (`docket gates isolate on`) stays **opt-in**.
+with `docket gates enable` / `docket gates disable`). docket's approval store is answerable via a CLI channel
+(`docket approve`/`docket deny`), a headless HTTP channel, or MCP, and every grant, deny or
+timeout on it is audit-logged with its channel. The daemon's own exec-approval prompt — the one
+you answer in Telegram — is a separate mechanism docket does not intermediate or audit. Docker workspace isolation (`docket gates isolate on`) stays **opt-in**.
 
 A built-in high-risk action-class policy (`docket gates classes`) always routes money-movement
 and secret-access commands to approval. Being honest about its limit: prod-deploy actions that

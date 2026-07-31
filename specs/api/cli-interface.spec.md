@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.11.0
+**Version**: 1.12.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -138,7 +138,7 @@ or provisioning registered no member — docket's flat convention, see Return Co
 - `--format <detailed|summary|json>`: Output detail level
 - `--costs`: Include detailed cost breakdown
 **Output**: Agent details in requested format
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket delete
 **Purpose**: Remove agent completely
@@ -149,7 +149,7 @@ or provisioning registered no member — docket's flat convention, see Return Co
 - `--force`: Skip confirmation prompt
 - `--keep-logs`: Preserve memory logs before deletion
 **Output**: Deletion confirmation
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket maintain
 **Purpose**: Clear memory, repair, or rebuild an agent (replaces the retired `reset`/`repair`/`cleanup`)
@@ -194,7 +194,7 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
   budget cap; writes a `profile.resume` audit entry; when *agent-id* is a pod's Lead, also
   unblocks that pod's budget-blocked tasks so dispatch can claim them again
 **Output**: Profile change confirmation or current profile
-**Return**: 0 on success, 2 if not found, 4 on invalid model
+**Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket models
 **Purpose**: View and update the role→model policy; switch provider presets
@@ -205,7 +205,7 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 - `preset <name>`: Switch all roles to a provider preset (`anthropic`, `openai`, `google`, `openrouter`, `openrouter-free`)
 - `reset`: Restore built-in defaults
 **Output**: Role→model table or update confirmation
-**Return**: 0 on success, 4 on invalid role or preset
+**Return**: 0 on success, 1 on invalid role or preset
 
 #### docket scope
 **Purpose**: Manage session keys for project isolation
@@ -215,7 +215,7 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 - `action` (required): show/set/reset
 - `value` (conditional): Required for 'set' action
 **Output**: Current or updated session key
-**Return**: 0 on success, 2 if not found, 4 on invalid action
+**Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket keys
 **Purpose**: Manage API keys centrally; keys auto-sync to all agents
@@ -229,7 +229,7 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 - `export`: Print keys as shell environment variables
 **Key names**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`
 **Output**: Key status or update confirmation
-**Return**: 0 on success, 4 on invalid key name
+**Return**: 0 on success, 1 on invalid key name
 **Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
 
 #### docket auth
@@ -388,14 +388,15 @@ an unrecognized subcommand was given
 **Purpose**: Inspect and manage an agent's memory/context
 **Syntax**: `docket context [agent-id] [action]`
 **Actions**:
-- `show`: Recent activity overview (default)
-- `search <query>`: Search indexed memory
-- `snapshot`: Create SNAPSHOT.md for fast agent context
-- `index`: Rebuild the memory index
-- `compress`: Archive logs older than 30 days
+- `show`: Recent activity overview (default; any unrecognized action falls through to this)
 - `project`: Show project-level context
+
+`search`/`snapshot`/`index`/`compress` and the `SNAPSHOT.md` artifact were **removed** — see the
+CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory is the openclaw
+runtime's job (`memory_search`/`memory_get`); docket does not maintain a rival keyword index.
+Folding logs into `MEMORY.md` is `docket maintain <id> distill`.
 **Output**: Context view or action confirmation
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket edit
 **Purpose**: Open an agent's workspace files in `$EDITOR`
@@ -403,7 +404,7 @@ an unrecognized subcommand was given
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Opens SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md in the editor
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket logs
 **Purpose**: Show an agent's latest memory log and today's gateway entries
@@ -411,7 +412,7 @@ an unrecognized subcommand was given
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Latest memory day-log plus today's gateway log lines for the agent's group
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 ### Maintenance Commands
 
@@ -539,8 +540,10 @@ exists yet), 1 when a broken link is detected
 **Syntax**: `docket approve <token>`
 **Arguments**:
 - `token` (required): An `apr-*` token from docket's approval store (list pending with
-  `docket approve` and no arguments). Note: the store has no production producer yet — the
-  daemon's gate prompts do not mint these tokens (Phase 15 G-1/G-5; security-gates.spec.md)
+  `docket approve` and no arguments). The store has **two** production producers since Phase 15:
+  G-1's pod-level and pipeline-step `require_approval` gates, and G-2's `pre_input` policy match
+  at enqueue. The daemon's own gate prompts still do **not** mint these tokens and are a separate
+  mechanism — G-5's spike found no practical bridge (security-gates.spec.md)
 **Output**: Approval confirmation
 **Return**: 0 on success, 1 if token not found or already resolved
 
@@ -587,7 +590,7 @@ command and does not appear in `docket --help`).
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Binding confirmation; restarts gateway
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket unwire
 **Purpose**: Remove an agent's Telegram binding
@@ -595,7 +598,7 @@ command and does not appear in `docket --help`).
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Unbind confirmation; restarts gateway
-**Return**: 0 on success, 2 if not found
+**Return**: 0 on success, 1 if not found
 
 #### docket completions
 **Purpose**: Emit a shell completion script for bash or zsh
@@ -603,7 +606,7 @@ command and does not appear in `docket --help`).
 **Arguments**:
 - `bash` or `zsh` (required): Target shell
 **Output**: Shell script — source with `eval "$(docket completions bash)"`
-**Return**: 0 on success, 4 on invalid shell
+**Return**: 0 on success, 1 on invalid shell
 
 ### Help
 
@@ -757,6 +760,28 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.12.0 (2026-07-31)
+
+- **Removed `docket context` actions that no longer exist.** `search`, `snapshot`, `index` and
+  `compress` were documented here as live surface; `cli/_context.py` implements only `show` and
+  `project` (any unrecognized action falls through to `show`), and the CHANGELOG's Unreleased
+  "Removed" entry records their deletion along with the `SNAPSHOT.md` artifact. Noted that
+  semantic memory search is the openclaw runtime's job and that folding logs into `MEMORY.md` is
+  `docket maintain <id> distill`.
+- **Corrected nine fictional exit codes.** Eight commands (`info`, `delete`, `scope`, `context`,
+  `edit`, `logs`, `wire`, `unwire`) documented `2 if not found`, and four documented a `4 on
+  invalid ...` case. Neither code is reachable: every not-found path in `cli/__init__.py` raises
+  `typer.Exit(1)` (verified live for `info`/`context`/`scope`/`logs`/`edit`), and the only two
+  `typer.Exit(2)` sites in the tree are inside the hidden internal `_json` bridge. There is no
+  `typer.Exit(4)` anywhere. Version 1.11.0 corrected exactly this defect for `maintain` and
+  described the result as "the real 0/1 convention every other command in this spec already
+  uses" -- that was not true when written, which is precisely how the remaining nine survived.
+- **Corrected the `docket approve` note.** It still said docket's approval store "has no
+  production producer yet". It has had two since Phase 15: G-1's pod-level and pipeline-step
+  `require_approval` gates, and G-2's `pre_input` policy match at enqueue. The separate point --
+  that the daemon's own gate prompts do not mint these tokens, and that G-5 found no practical
+  bridge -- is still true and is kept.
 
 ### Version 1.11.0 (2026-07-30)
 
