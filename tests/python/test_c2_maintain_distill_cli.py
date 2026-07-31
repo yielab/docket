@@ -98,6 +98,32 @@ class TestMaintainDistillCommand:
         assert log.exists()
         assert not (ws / "MEMORY.md").exists()
 
+    def test_failure_reports_the_failure_kind_to_the_operator(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A blocked delete has to say *why* it was blocked.
+
+        C-2's fail-closed contract turns a failed distillation into a refused
+        deletion, so the operator's next move depends on the kind: `timeout`
+        and `daemon_error` mean retry, `invalid_output` means the model
+        returned something unusable and a retry will probably repeat it.
+        `DistillResult.failure_kind` carried that classification from the
+        driver since C-2 shipped, but nothing rendered it (CL-3 flagged it as
+        populated-but-unread) -- so the operator saw only the raw error string.
+        """
+        ws = _make_ws(tmp_path, monkeypatch)
+        (ws / "memory" / "2026-07-01.md").write_text("notes\n", encoding="utf-8")
+        fake = FakeDriver(fail_role="demo", error="model returned prose", failure_kind="timeout")
+        _use_fake_driver(monkeypatch, fake)
+
+        rc = _agents.run_maintain("demo", "distill")
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        shown = captured.out + captured.err
+        assert "timeout" in shown, "the failure kind must reach the operator"
+        assert "nothing deleted" in shown
+
     def test_nothing_pending_is_a_clean_success(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

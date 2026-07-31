@@ -1020,7 +1020,21 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
         driver=_oc.default_driver().run_turn,
     )
     if not result.ok:
-        ui.error(f"Distillation failed: {result.error or 'unknown error'} -- nothing deleted.")
+        # `failure_kind` is what makes this actionable rather than just alarming:
+        # C-2's fail-closed contract turns a failed distillation into a *blocked
+        # delete*, so the operator's next move depends entirely on why it failed
+        # -- `timeout`/`daemon_error` say retry, `invalid_output` says the model
+        # returned something unusable and retrying will likely repeat it. The
+        # field was populated from the driver's TurnResult since C-2 shipped but
+        # nothing read it (CL-3 flagged it); this is its consumer.
+        # Parentheses, not brackets: `ui.error` renders through Rich, which
+        # parses `[timeout]` as a style tag and silently swallows it -- the
+        # message came out as "Distillation failed : ..." until this was caught
+        # by the test below.
+        kind = f" ({result.failure_kind})" if result.failure_kind else ""
+        ui.error(
+            f"Distillation failed{kind}: {result.error or 'unknown error'} -- nothing deleted."
+        )
     elif result.skipped:
         ui.info("No memory logs to distill.")
     else:
