@@ -90,7 +90,9 @@ from typing import Any
 import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
+from docket.core import conversations as _conv
 from docket.core import handoff as _handoff
+from docket.core import memory as _mem
 from docket.core import models as _models
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
@@ -1793,6 +1795,11 @@ def _apply_result(task: dict[str, Any], res: TaskResult) -> None:
     re-enters ``pending`` only through ``resolve_waiting_approval`` (a grant),
     never automatically. Its ``approvalToken``/``pendingApprovalIndex`` are
     persisted so a grant/deny later in time can find and resolve it.
+
+    C-3: this function is pure (no *project*, no workspace access) and stays
+    that way — the HEARTBEAT.md dispatch-ledger sync this terminal state
+    triggers lives in the caller (``_finalize_task``), which is the one that
+    has *project* and can resolve the pod Lead's workspace.
     """
     task["status"] = res.status
     task["reason"] = res.reason
@@ -1850,6 +1857,12 @@ def _claim_next_task(
     per-hop gate, so a paused pod costs nothing further to *not* dispatch: no
     claim write, no wasted turn. A ``paused_refused`` trace event records the
     refusal every time it happens.
+
+    C-3: a successful claim also mechanically syncs the pod Lead's
+    HEARTBEAT.md dispatch ledger (``core/memory.py``'s ``sync_dispatch_tasks``)
+    from the just-written queue state — so the durable ledger shows this task
+    as in flight *before* its first hop ever runs, whether or not the agent
+    would have written that down itself.
     """
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_oc.meta_get(lead_id, "paused", "")):
@@ -1893,10 +1906,14 @@ def _claim_next_task(
         t.pop("gateOverridePipelineIndex", None)
         return {"tasks": tasks}
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
     if claimed is None:
         return None
     resume_hops = [_hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
+    tasks_after = doc.get("tasks")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+    )
     return claimed, resume_hops
 
 
@@ -1907,6 +1924,15 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     at most the in-flight hop, never the ones that already finished. R-2: also
     refreshes ``claimedAt`` — a completed hop is forward progress, same as a
     retry (see ``_touch_claim``), so it resets the stale-claim clock too.
+
+    C-3: re-syncs the pod Lead's HEARTBEAT.md dispatch ledger — this hop just
+    changed the task's persisted hop count, and the ledger's entry for it
+    should show that. C-5: if *hop*'s own agent (``hop.member_id``) has a
+    tracked conversation (``core/conversations.py``), refreshes its
+    ``last_message``/``task_ref`` from this hop — real dispatch activity a
+    human watching that channel thread should see, not just whatever
+    ``docket wire`` seeded once at binding time. A no-op for an unwired
+    member (``touch_for_hop`` never fabricates a conversation).
     """
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -1924,7 +1950,19 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
                 return {"tasks": tasks}
         return None  # task no longer in the queue — nothing to persist
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    tasks_after = doc.get("tasks")
+    lead_id = _pod.member_id(project, "lead")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+    )
+
+    reg = _conv.load()
+    updated_reg = _conv.touch_for_hop(
+        reg, agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_now()
+    )
+    if updated_reg is not reg:  # touch_for_hop is a no-op (same object) for an unwired agent
+        _conv.save(updated_reg)
 
 
 def _touch_claim(project: str, task_id: str) -> None:
@@ -1944,6 +1982,12 @@ def _touch_claim(project: str, task_id: str) -> None:
     retrying it, mid-hop. Called before every retry attempt (``dispatch_task``'s
     ``on_retry``); hop completion is separately covered by ``_persist_hop`` above.
     A no-op if the task isn't ``running`` (e.g. it raced to a terminal state).
+
+    C-3: also re-syncs the pod Lead's HEARTBEAT.md dispatch ledger so its
+    entry's displayed claim time doesn't go stale across a long retry loop —
+    a no-op write when the task wasn't ``running`` (``_fn`` returns ``None``,
+    so ``doc`` below is just the unmodified current queue, same tasks the
+    ledger already reflects).
     """
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
@@ -1955,11 +1999,24 @@ def _touch_claim(project: str, task_id: str) -> None:
                 return {"tasks": tasks}
         return None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    tasks_after = doc.get("tasks")
+    lead_id = _pod.member_id(project, "lead")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+    )
 
 
 def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
-    """Persist a task's terminal outcome (status/reason/hops/cost) and clear its claim."""
+    """Persist a task's terminal outcome (status/reason/hops/cost) and clear its claim.
+
+    C-3: also re-syncs the pod Lead's HEARTBEAT.md dispatch ledger —
+    ``_apply_result`` just moved this task out of ``running`` (to ``done``,
+    ``failed``, ``blocked``, or ``waiting_approval``), so no hop is in flight
+    for it any more and its ledger entry is cleared. This is the only trigger
+    that ever *removes* an entry (``_claim_next_task``/``_persist_hop``/
+    ``_touch_claim`` only ever add one or keep it current).
+    """
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
@@ -1970,7 +2027,12 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
                 return {"tasks": tasks}
         return None
 
-    _store.read_modify_write(pod_task_list_path(project), _fn)
+    doc = _store.read_modify_write(pod_task_list_path(project), _fn)
+    tasks_after = doc.get("tasks")
+    lead_id = _pod.member_id(project, "lead")
+    _mem.sync_dispatch_tasks(
+        _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
+    )
 
 
 def _sweep_stale_claims(project: str) -> None:

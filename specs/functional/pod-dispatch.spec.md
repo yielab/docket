@@ -1,7 +1,12 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 5.0.0
-**Status**: Complete. Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
+**Version**: 5.1.0
+**Status**: Complete. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
+registry auto-population) are now implemented — see "Mechanical HEARTBEAT ledger" and
+"Conversation registry auto-population" below: the pod Lead's `HEARTBEAT.md` dispatch ledger and
+a wired agent's conversation `last_message`/`task_ref` are now kept current mechanically, at the
+same claim/persist/retry/finalize points the task state machine itself uses, closing Phase 17.
+Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
 generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
 "Parallel step groups", and "Cancellation" below. The require_approval gate
 (Requirements → "require_approval gate and waiting_approval") now ships with **two** wired
@@ -25,7 +30,7 @@ truncation are retired, and every prior hop's rendered artifact is fit to a **pe
 budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, see `role-archetypes.spec.md`
 v1.3.0) via `core/context.py`'s `compile_artifact`, which sheds `HandoffArtifact.DROP_ORDER` fields
 before ever truncating `summary` itself.
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-07-31
 
 ## Purpose
 
@@ -214,6 +219,70 @@ This specification does NOT cover:
    pipeline position, rework-cycle count, and (if resuming mid-rework) which Reviewer hop's text
    still needs to reach the Implementer — the same decision a live run makes — so a task resumed
    mid-rework re-enters the rework Implementer hop, never a stale position past the Reviewer.
+
+### Mechanical HEARTBEAT ledger (ROADMAP Phase 17 C-3)
+
+*(Before this version, `TASK_LIST.json` — this pipeline's own machine-read/written queue — and
+`HEARTBEAT.md`'s `## Active Tasks` section — the durable ledger the resume/durability contract in
+`WORKFLOW_AUTO.md` tells the agent to hand-maintain — were never reconciled: the ledger was only
+ever as honest as an LLM's compliance. This section makes dispatch write its own record of
+in-flight work mechanically, closing that gap. See `workspace-structure.spec.md` for HEARTBEAT.md's
+file-level contract and `core/memory.py`'s "The dispatch task ledger" module-doc section for the
+implementation notes this section summarizes.)*
+
+1. A successful claim (see "Claiming") **MUST** mechanically sync the pod Lead's `HEARTBEAT.md`
+   dispatch ledger — a delimited, docket-owned region inside `## Active Tasks`
+   (`core.memory.sync_dispatch_tasks`, called from `_claim_next_task`) — from the queue's own
+   `running` tasks, before the function returns and before any hop is attempted. The ledger entry
+   for a task therefore exists *before* its first hop ever runs, mechanically, whether or not the
+   agent would have written it down itself.
+2. Every hop-completion persist (`_persist_hop`) and every retry-attempt claim refresh
+   (`_touch_claim`) **MUST** re-sync the same ledger from the queue's current `running` tasks —
+   so a task's entry reflects its current hop count and refreshes its shown claim time across a
+   long retry loop.
+3. Once a task leaves `running` (to `done`, `failed`, `blocked`, or `waiting_approval` —
+   `_finalize_task`, after `_apply_result`), the ledger **MUST** be re-synced so that task's entry
+   is removed: the ledger reflects exactly the set of tasks currently `running` in
+   `TASK_LIST.json`, for this pod, at all times — never a task that has left that state, and
+   never one that hasn't been claimed yet.
+4. The ledger sync **MUST NOT** clobber anything outside its own delimited region
+   (`DISPATCH_BLOCK_BEGIN`/`_END`, two HTML-comment markers inside `## Active Tasks`) — an agent's
+   own hand-written entries under the same heading, and every other section of `HEARTBEAT.md`
+   (`## Pending Decisions`, `## Notes`, anything else), **MUST** survive every dispatch-driven
+   rewrite byte-for-byte. The first sync against a file with no such region yet **MUST** insert
+   one immediately after the `## Active Tasks` heading (or, if that heading is missing entirely,
+   append a fresh one at end-of-file) rather than require the region to pre-exist.
+5. Two tasks concurrently `running` in the same pod (see "Claiming" — two concurrent
+   `dispatch_pod` calls may each claim a different task) **MUST** both appear in the ledger; a
+   sync triggered by either task's lifecycle **MUST** regenerate the *whole* region from the
+   queue's current state, never just the one task that triggered it, so neither dispatcher's sync
+   can silently erase the other's entry.
+6. `docket doctor` **MUST** flag a divergence between `TASK_LIST.json`'s `running` tasks and the
+   Lead's ledger — a task `running` with no matching ledger entry, or a ledger entry naming a
+   task that is not (or is no longer) `running` — and **MUST**, under `--fix`, resolve it by
+   re-syncing the ledger from `TASK_LIST.json` (the same `sync_dispatch_tasks` dispatch itself
+   calls) — always safe, since `TASK_LIST.json` is this pipeline's own source of truth and the
+   ledger's dispatch region is entirely docket-owned.
+
+### Conversation registry auto-population (ROADMAP Phase 17 C-5)
+
+*(`core/conversations.py`'s registry was previously populated only at bind time — `docket wire`
+— and by hand (`docket conversations set`). This section closes the deferred TC item: dispatch
+keeps a wired agent's conversation current with the real task it is working, not just whatever
+was seeded once at binding time.)*
+
+1. After each hop persists (`_persist_hop`), every tracked conversation belonging to that hop's
+   agent (`hop.member_id`) — there **MAY** be more than one, across different channels/peers —
+   **MUST** have its `last_message` (a short preview of the hop's output) and `task_ref` (the
+   dispatched task's id) refreshed (`core.conversations.touch_for_hop`), and its `updated`
+   timestamp bumped. A pod member with no tracked conversation at all **MUST NOT** have one
+   fabricated by this path — it is a no-op for an unwired member.
+2. This path **MUST NOT** alter a conversation's `topic`, `status`, `channel`, `peer_id`, or
+   `peer_kind` — only `last_message`/`task_ref`/`updated` move; an operator's own classification
+   of a thread (via `docket conversations set`) is never overwritten by dispatch activity.
+3. A hop for one pod member (e.g. the Implementer) **MUST NOT** touch a different member's
+   (e.g. the Lead's) conversation — each hop only ever refreshes the conversation(s) keyed to its
+   own `member_id`.
 
 ### blocked and terminal-failure re-entry
 
@@ -913,6 +982,12 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   `dispatch_pod` returns, and **MUST** create the approval record before the task is persisted as
   `waiting_approval` (never the reverse — a persisted `waiting_approval` task **MUST NOT** exist
   without a corresponding approval record for its `approvalToken`).
+- After a claim, and after every hop-completion persist and retry-attempt claim refresh, the pod
+  Lead's `HEARTBEAT.md` dispatch ledger **MUST** be re-synced from `TASK_LIST.json`'s `running`
+  tasks (see "Mechanical HEARTBEAT ledger"); after a run reaches a terminal state, that same sync
+  **MUST** leave the finished task's entry removed.
+- After each hop, any conversation tracked for that hop's agent **MUST** have its
+  `last_message`/`task_ref` refreshed (see "Conversation registry auto-population").
 
 ### Invariants
 
@@ -944,8 +1019,32 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   verification-skipped notice), for any role/archetype, not only the built-in four.
 - Cancelling a run (`docket runs cancel`) **MUST** kill a hop's entire process group, never leave
   an orphaned child process running after the run is marked `"cancelled"`.
+- The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region
+  — an agent's own prose anywhere else in `HEARTBEAT.md` survives every dispatch-driven rewrite.
+- The ledger **MUST** always equal the pod's current `running` task ids — never a superset (a
+  stale entry for a finished task) or a subset (a running task missing its entry) once a sync has
+  run against current state.
 
 ## Changelog
+
+### Version 5.1.0 (2026-07-31)
+
+- **ROADMAP Phase 17, cards C-3 (one durable task state) and C-5 (conversation registry
+  auto-population).** Both write from the same dispatch lifecycle points
+  (`_claim_next_task`/`_persist_hop`/`_touch_claim`/`_finalize_task`), so they shipped together.
+  See "Mechanical HEARTBEAT ledger" and "Conversation registry auto-population" above for the
+  full requirements; summary:
+  - C-3: dispatch now mechanically writes/updates/clears a docket-owned entry in the pod Lead's
+    `HEARTBEAT.md` (`core.memory.sync_dispatch_tasks`/`write_dispatch_tasks`) at claim, every hop
+    persist, every retry-claim refresh, and finalize — the durable ledger the resume/durability
+    contract points the model at is no longer pure prose. `docket doctor` gained a check
+    (`_check_dispatch_ledger`) that flags `TASK_LIST.json` <-> ledger divergence in either
+    direction and re-syncs it under `--fix`.
+  - C-5: `_persist_hop` now calls `core.conversations.touch_for_hop` after every hop, keeping a
+    wired agent's `last_message`/`task_ref` current with the real task dispatch is working — no
+    new registry API; `record()` (already shipped) is the write path.
+  - No new trace event types, no new CLI flags, no change to the task status vocabulary or the
+    claim/retry/finalize state machine itself — this is additive bookkeeping alongside it.
 
 ### Version 5.0.0 (2026-07-30)
 

@@ -18,6 +18,11 @@ callers over this module — none of them re-derive paths or dates.
                              ``heartbeat_seed`` here; rendered by _pod.py /
                              _agents.py). Written before starting multi-step work
                              and resumed on reset, per the WORKFLOW_AUTO contract.
+                             Its ``## Active Tasks`` section also carries a
+                             delimited, docket-owned region a pod dispatch
+                             mechanically keeps in sync with the pod's
+                             ``TASK_LIST.json`` — see "The dispatch task
+                             ledger" below.
 - ``memory/.distilled/``    — archive of daily logs a ``distill_memory`` call
                              has already summarized into ``MEMORY.md``, one
                              dated subdirectory per run. Never read by the
@@ -25,6 +30,26 @@ callers over this module — none of them re-derive paths or dates.
                              clean``/``reset --distill-first`` can *move* a
                              log out of the way instead of deleting it
                              outright (see "Memory distillation" below).
+
+## The dispatch task ledger (ROADMAP Phase 17 C-3)
+
+The resume/durability contract above tells the agent to hand-maintain
+``HEARTBEAT.md``'s ``## Active Tasks`` list — which means, before this card, the
+ledger was only ever as honest as an LLM's compliance, while ``TASK_LIST.json``
+(``core/dispatch.py``) is the *actual* machine-read/written queue. The two were
+never reconciled. C-3 makes dispatch write its own record of in-flight work
+mechanically: ``write_dispatch_tasks``/``sync_dispatch_tasks`` upsert a
+delimited region (``DISPATCH_BLOCK_BEGIN``/``_END``) inside ``## Active
+Tasks``, containing exactly the tasks ``TASK_LIST.json`` currently has
+``status: "running"`` — true whether or not the agent ever wrote anything
+there itself. Everything outside those two HTML-comment delimiters (an
+agent's own prose anywhere in the file, including its own entries under the
+same heading) is preserved byte-for-byte — see ``write_dispatch_tasks``'s own
+docstring for the co-authorship mechanics. ``core/dispatch.py``'s
+``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
+call ``sync_dispatch_tasks`` at each of those lifecycle points; ``docket
+doctor`` calls ``read_dispatch_task_ids`` to detect drift against
+``TASK_LIST.json`` and the same ``sync_dispatch_tasks`` to fix it.
 
 ## Memory distillation (ROADMAP Phase 17 C-2, decision D-18)
 
@@ -62,9 +87,10 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import docket.config as _cfg
 from docket.core.runtime_driver import FailureKind, TurnResult
@@ -623,3 +649,159 @@ def distill_memory(
     _append_distilled_summary(ws, summary, d)
     archived = _archive_daily_logs(ws, logs, d)
     return DistillResult(ok=True, logs_distilled=len(logs), archived=archived, summary=summary)
+
+
+# --- dispatch task ledger (ROADMAP Phase 17 C-3) ------------------------------
+#
+# See the module docstring's "The dispatch task ledger" section for the design
+# rationale. Everything below is pure text/file manipulation over one
+# workspace's HEARTBEAT.md -- no OpenClaw format knowledge (this is
+# docket-owned workspace state, not an ACL-guarded file), no ui/print (core/
+# never prints), no knowledge of dispatch.py's TASK_LIST.json schema beyond
+# the handful of plain dict keys `sync_dispatch_tasks` reads.
+
+#: Delimiters bracketing the docket-owned dispatch region inside HEARTBEAT.md's
+#: ``## Active Tasks`` section. Never rendered outside these two lines' worth
+#: of markers, so a plain text search for either one is always safe.
+DISPATCH_BLOCK_BEGIN = "<!-- docket:dispatch-tasks:start -->"
+DISPATCH_BLOCK_END = "<!-- docket:dispatch-tasks:end -->"
+
+_ACTIVE_TASKS_HEADING = "## Active Tasks"
+
+#: Longest inline description in one mechanical ledger entry. Long enough to
+#: be useful, short enough that a wall of task text never crowds out an
+#: agent's own hand-written notes sharing the same file.
+_DISPATCH_DESC_MAX = 200
+
+
+@dataclass(frozen=True)
+class DispatchHeartbeatTask:
+    """One in-flight (``TASK_LIST.json`` ``status: "running"``) task, as rendered
+    into HEARTBEAT.md's docket-owned dispatch region."""
+
+    task_id: str
+    description: str
+    claimed_at: str
+    hops: int = 0
+
+
+def _dispatch_task_line(t: DispatchHeartbeatTask) -> str:
+    desc = " ".join(t.description.split())  # collapse newlines/whitespace to one line
+    if len(desc) > _DISPATCH_DESC_MAX:
+        desc = desc[: _DISPATCH_DESC_MAX - 1] + "…"
+    hop_word = "hop" if t.hops == 1 else "hops"
+    claimed = t.claimed_at or "unknown time"
+    return f"- [ ] {t.task_id} — {desc}  _(claimed {claimed}, {t.hops} {hop_word} run)_"
+
+
+def render_dispatch_block(tasks: Sequence[DispatchHeartbeatTask]) -> str:
+    """The exact text of the docket-owned dispatch region, delimiters included."""
+    body = "\n".join(_dispatch_task_line(t) for t in tasks)
+    middle = f"\n{body}\n" if body else "\n"
+    return f"{DISPATCH_BLOCK_BEGIN}{middle}{DISPATCH_BLOCK_END}"
+
+
+def write_dispatch_tasks(ws: Path, tasks: Sequence[DispatchHeartbeatTask]) -> None:
+    """Mechanically upsert dispatch's docket-owned block into *ws*'s HEARTBEAT.md.
+
+    Co-authorship contract: only the text between ``DISPATCH_BLOCK_BEGIN`` and
+    ``DISPATCH_BLOCK_END`` is ever replaced. The first time this runs against a
+    file with no such block yet, one is inserted immediately after the
+    ``## Active Tasks`` heading (falling back to appending a fresh heading +
+    block at end-of-file if that heading is missing entirely — a heavily
+    hand-edited HEARTBEAT.md). Every other byte — an agent's own entries under
+    that same heading, ``## Pending Decisions``, ``## Notes``, anything else in
+    the file — is preserved exactly. Creates HEARTBEAT.md from
+    :func:`heartbeat_seed` first if the workspace doesn't have one yet (e.g. a
+    task claimed before provisioning finished writing it). Idempotent: calling
+    twice with the same *tasks* leaves the file byte-identical the second
+    time. Normalized to 0600, matching every other workspace file this module
+    writes.
+    """
+    ws.mkdir(parents=True, exist_ok=True)
+    path = ws / HEARTBEAT_FILE
+    text = path.read_text(encoding="utf-8") if path.is_file() else heartbeat_seed(ws.name)
+    block = render_dispatch_block(tasks)
+
+    if DISPATCH_BLOCK_BEGIN in text and DISPATCH_BLOCK_END in text:
+        start = text.index(DISPATCH_BLOCK_BEGIN)
+        end = text.index(DISPATCH_BLOCK_END) + len(DISPATCH_BLOCK_END)
+        new_text = text[:start] + block + text[end:]
+    else:
+        idx = text.find(_ACTIVE_TASKS_HEADING)
+        if idx != -1:
+            insert_at = idx + len(_ACTIVE_TASKS_HEADING)
+            nl = text.find("\n", insert_at)
+            insert_at = nl + 1 if nl != -1 else len(text)
+            new_text = f"{text[:insert_at]}\n{block}\n{text[insert_at:]}"
+        else:
+            sep = "" if text.endswith("\n") else "\n"
+            new_text = f"{text}{sep}\n{_ACTIVE_TASKS_HEADING}\n\n{block}\n"
+
+    if path.is_file() and new_text == text:
+        return  # already exactly this state -- skip the needless write/mtime bump
+    path.write_text(new_text, encoding="utf-8")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def read_dispatch_task_ids(ws: Path) -> list[str]:
+    """Task ids currently recorded in *ws*'s HEARTBEAT.md dispatch region.
+
+    ``[]`` when the file is absent, unreadable, or has no dispatch region yet
+    (a pre-C-3 workspace, or one dispatch has never claimed a task in) — the
+    shape ``docket doctor`` diffs against ``TASK_LIST.json``'s own ``running``
+    task ids to detect ledger drift (see ``cli/_doctor.py``'s
+    ``_check_dispatch_ledger``).
+    """
+    path = ws / HEARTBEAT_FILE
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    if DISPATCH_BLOCK_BEGIN not in text or DISPATCH_BLOCK_END not in text:
+        return []
+    start = text.index(DISPATCH_BLOCK_BEGIN) + len(DISPATCH_BLOCK_BEGIN)
+    end = text.index(DISPATCH_BLOCK_END)
+    ids: list[str] = []
+    for line in text[start:end].splitlines():
+        line = line.strip()
+        if not line.startswith("- [ ]"):
+            continue
+        rest = line[len("- [ ]") :].strip()
+        task_id = rest.split(" ", 1)[0]
+        if task_id:
+            ids.append(task_id)
+    return ids
+
+
+def sync_dispatch_tasks(ws: Path, task_records: Iterable[Mapping[str, Any]]) -> None:
+    """Regenerate *ws*'s dispatch ledger from a pod's TASK_LIST.json task dicts.
+
+    Filters to ``status == "running"`` — the only state where a hop is
+    genuinely in flight; every other status (``pending``/``done``/``failed``/
+    ``blocked``/``waiting_approval``) means no hop is currently executing for
+    that task, so there is nothing to hold open in the ledger for it. This is
+    the one function both sides of C-3 call: ``core/dispatch.py``'s
+    ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
+    call it at each task-state-persistence point, and ``docket doctor``'s
+    ``--fix`` calls it to re-sync a workspace whose ledger has drifted —
+    always safe, since ``TASK_LIST.json`` is dispatch's own source of truth
+    and the ledger's dispatch region is entirely docket-owned.
+    """
+    tasks = sorted(
+        (
+            DispatchHeartbeatTask(
+                task_id=str(t["id"]),
+                description=str(t.get("description", "")),
+                claimed_at=str(t.get("claimedAt", "") or ""),
+                hops=len(t.get("hops") or []),
+            )
+            for t in task_records
+            if isinstance(t, Mapping) and t.get("status") == "running" and t.get("id")
+        ),
+        key=lambda t: t.task_id,
+    )
+    write_dispatch_tasks(ws, tasks)

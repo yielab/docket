@@ -298,6 +298,63 @@ def _check_legacy_model_registry() -> int:
     return 0
 
 
+def _check_dispatch_ledger(do_fix: bool) -> int:
+    """C-3: TASK_LIST.json (``status: "running"``) vs. the pod Lead's
+    HEARTBEAT.md dispatch ledger (``core/memory.py``'s docket-owned region)
+    must agree.
+
+    ``core/dispatch.py`` keeps the ledger honest mechanically as it
+    claims/persists/finalizes each task (ROADMAP Phase 17 C-3); this check
+    catches whatever slips through anyway — an older docket version that
+    predates C-3, a hand-edited HEARTBEAT.md, a crash between the queue write
+    and the ledger sync. A task ``running`` in the queue with no matching
+    ledger entry, or a ledger entry for a task that isn't (or is no longer)
+    ``running``, is drift either way.
+
+    ``--fix`` re-syncs the ledger to exactly what TASK_LIST.json says right
+    now (``core.memory.sync_dispatch_tasks``) — always safe, since
+    TASK_LIST.json is dispatch's own source of truth and the ledger's
+    dispatch region is entirely docket-owned (an agent's own prose elsewhere
+    in HEARTBEAT.md is untouched by that resync).
+    """
+    from docket.core import dispatch as _dispatch
+    from docket.core import pod as _pod
+
+    pods = _dispatch.dispatchable_pods()
+    if not pods:
+        return 0
+
+    ui.console.print()
+    ui.console.print("[bold]Dispatch task ledger (TASK_LIST.json <-> HEARTBEAT.md):[/bold]")
+    issues = 0
+    for project in pods:
+        lead_id = _pod.member_id(project, "lead")
+        ws = _cfg.workspace_dir(lead_id)
+        tasks = _dispatch.read_tasks(project)
+        running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
+        ledger_ids = set(_mem.read_dispatch_task_ids(ws))
+        missing = running_ids - ledger_ids
+        stale = ledger_ids - running_ids
+        if not missing and not stale:
+            ui.success(f"  {project}: in sync ({len(running_ids)} running)")
+            continue
+
+        detail = []
+        if missing:
+            detail.append(f"missing from ledger: {', '.join(sorted(missing))}")
+        if stale:
+            detail.append(f"stale in ledger: {', '.join(sorted(stale))}")
+        ui.console.print(f"[red]✗[/red]   {project}: " + "; ".join(detail))
+        issues += 1
+        if do_fix:
+            _mem.sync_dispatch_tasks(ws, tasks)
+            ui.success(f"  {project}: ledger re-synced from TASK_LIST.json")
+            issues -= 1
+        else:
+            ui.console.print("    Fix with: docket doctor --fix")
+    return issues
+
+
 def _check_drift(ids: list[str], do_fix: bool) -> int:
     """Config drift (meta ↔ openclaw.json) on model + sessionKey.
 
@@ -908,6 +965,25 @@ def _doctor_json() -> dict[str, Any]:
         "residualProfilesKey": _mp.has_residual_profiles_key(),
     }
 
+    from docket.core import dispatch as _dispatch_mod
+    from docket.core import pod as _pod_ledger_mod
+
+    dispatch_ledger_results: list[dict[str, Any]] = []
+    for project in _dispatch_mod.dispatchable_pods():
+        lead_id = _pod_ledger_mod.member_id(project, "lead")
+        ws = _cfg.workspace_dir(lead_id)
+        tasks = _dispatch_mod.read_tasks(project)
+        running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
+        ledger_ids = set(_mem.read_dispatch_task_ids(ws))
+        missing = sorted(running_ids - ledger_ids)
+        stale = sorted(ledger_ids - running_ids)
+        ok = not missing and not stale
+        if not ok:
+            issues += 1
+        dispatch_ledger_results.append(
+            {"project": project, "ok": ok, "missingFromLedger": missing, "staleInLedger": stale}
+        )
+
     drift_results: list[dict[str, Any]] = []
     for aid in ids:
         meta = store.read_json(_cfg.meta_path(aid))
@@ -1013,6 +1089,7 @@ def _doctor_json() -> dict[str, Any]:
             "agents": agents_json,
             "modelConfig": {"ok": not invalid_models, "invalid": invalid_models},
             "modelRegistry": model_registry,
+            "dispatchLedger": dispatch_ledger_results,
             "drift": drift_results,
             "budget": budget_results,
             "runaway": runaway_results,
@@ -1050,6 +1127,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_today_log()
     issues += _check_models()
     _check_legacy_model_registry()
+    issues += _check_dispatch_ledger(do_fix)
     issues += _check_drift(ids, do_fix)
     issues += _check_budget(ids, cost)
     issues += _check_runaway(ids, cost)
