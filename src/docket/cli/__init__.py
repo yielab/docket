@@ -424,10 +424,10 @@ def cmd_maintain(
     agent_id: str | None = typer.Argument(None),
     mode: str | None = typer.Argument(None),
 ) -> None:
-    """Maintain an agent workspace (check/clean/reset/rebuild/sessions)."""
+    """Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)."""
     from docket.cli._agents import run_maintain
 
-    raise typer.Exit(run_maintain(agent_id, mode))
+    raise typer.Exit(run_maintain(agent_id, mode, list(ctx.args)))
 
 
 @app.command(

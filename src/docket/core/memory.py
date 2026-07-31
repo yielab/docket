@@ -18,6 +18,29 @@ callers over this module — none of them re-derive paths or dates.
                              ``heartbeat_seed`` here; rendered by _pod.py /
                              _agents.py). Written before starting multi-step work
                              and resumed on reset, per the WORKFLOW_AUTO contract.
+- ``memory/.distilled/``    — archive of daily logs a ``distill_memory`` call
+                             has already summarized into ``MEMORY.md``, one
+                             dated subdirectory per run. Never read by the
+                             runtime contract; exists purely so ``maintain
+                             clean``/``reset --distill-first`` can *move* a
+                             log out of the way instead of deleting it
+                             outright (see "Memory distillation" below).
+
+## Memory distillation (ROADMAP Phase 17 C-2, decision D-18)
+
+``distill_memory`` is docket's first *self-originated* LLM call: docket asks
+an agent to summarize its own daily logs into ``MEMORY.md`` before
+``maintain clean``/``reset`` would otherwise delete them outright. Per D-18
+the call goes **through the driver** (``RuntimeDriver.run_turn``, the same
+port every pod dispatch hop already uses) — never a hand-rolled provider
+SDK/HTTP client. The driver is injected as a plain callable (mirroring
+``core/dispatch.py``'s own ``Runner`` alias, for the same reason:
+``tests/python/fakes.py``'s ``FakeDriver`` is directly callable with that
+signature, so this module is fully unit-testable with no live daemon).
+``distill_memory`` fails **closed**: any driver failure or empty reply leaves
+every file on disk untouched, so a caller gating a delete on
+``DistillResult.ok`` never bare-deletes memory it could not verify was
+captured somewhere durable first.
 
 ## The runtime contract
 
@@ -39,7 +62,12 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
+
+import docket.config as _cfg
+from docket.core.runtime_driver import FailureKind, TurnResult
 
 # --- openclaw runtime contract (keep in sync with DEFAULT_REQUIRED_READS) -----
 
@@ -396,3 +424,202 @@ def seed_contract(
         )
     with contextlib.suppress(OSError):
         daily.chmod(0o600)
+
+
+# --- distillation (ROADMAP Phase 17 C-2, decision D-18) -----------------------
+#
+# See the module docstring's "Memory distillation" section for the design
+# rationale. Everything below is pure I/O over one workspace plus one
+# injected driver call — no OpenClaw format knowledge, no ui/print (this is
+# core/, per the standing layer rule), no import of edges/adapters/openclaw.
+
+#: Subdirectory (under ``memory/``) that archived, already-distilled daily
+#: logs are moved into. A dated subdirectory per ``distill_memory`` call. A
+#: plain non-recursive ``memory/*.md`` glob (what ``maintain clean``/``reset``
+#: used to delete outright) never descends into it, so an already-distilled
+#: log can never be "found" and re-distilled or re-deleted by mistake.
+DISTILLED_ARCHIVE_DIRNAME = ".distilled"
+
+#: The shape `distill_memory` needs from a driver: `run_turn`'s core 5-arg
+#: call, nothing more. Mirrors ``core/dispatch.py``'s own ``Runner`` alias
+#: (a plain ``Callable``, not the full ``RuntimeDriver`` Protocol) for the
+#: identical reason: there is no OS process here for a caller to track or
+#: cancel, so the Protocol's ``on_spawn`` keyword has nothing to attach to,
+#: and dropping it is what lets both ``OpenClawDriver.run_turn`` (a bound
+#: method) and ``tests/python/fakes.py``'s ``FakeDriver`` (directly, as a
+#: callable instance) satisfy this type with zero adapter code.
+DistillRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
+
+
+@dataclass
+class DistillResult:
+    """Outcome of one ``distill_memory`` call.
+
+    ``ok=False`` means memory was left **completely untouched** — no archive
+    directory created, no ``MEMORY.md`` write, no daily log moved. That is
+    the fail-closed contract ``maintain clean``/``reset --distill-first``
+    depends on: a caller MUST NOT proceed to its own destructive step unless
+    ``ok`` is True. ``skipped`` (only ever True alongside ``ok=True``) means
+    there was nothing to distill — no pending daily logs — which is also a
+    green light to proceed, since there is no undistilled memory to lose.
+    """
+
+    ok: bool
+    skipped: bool = False
+    logs_distilled: int = 0
+    archived: list[str] = field(default_factory=list)
+    summary: str = ""
+    error: str = ""
+    failure_kind: FailureKind | None = None
+
+
+def pending_daily_logs(ws: Path) -> list[Path]:
+    """Daily ``memory/*.md`` logs not yet archived, oldest filename first.
+
+    A plain (non-recursive) glob already excludes anything under
+    ``memory/.distilled/`` — worth stating explicitly: a second ``distill``
+    call the same day only ever sees genuinely new logs.
+    """
+    mem = memory_dir(ws)
+    if not mem.is_dir():
+        return []
+    return sorted(p for p in mem.glob("*.md") if p.is_file())
+
+
+def _distillation_message(label: str, logs: list[Path]) -> str:
+    """Build the one-turn distillation prompt from *logs*' own content.
+
+    Each log's text is inlined directly into the prompt (rather than relying
+    on the target agent to re-read files from its own workspace), so the
+    driver call is self-contained and deterministic — a fake driver in a
+    test can assert on exactly what was asked without touching a filesystem
+    itself. Bounded by ``config.DISTILL_MAX_INPUT_BYTES``: logs are added
+    oldest-first until the budget is spent, then truncated with an explicit
+    marker rather than silently cut off.
+    """
+    header = (
+        f"You are distilling durable memory for '{label}'. Below are daily "
+        "working logs (memory/YYYY-MM-DD.md), oldest first. Read them and "
+        "write a concise, durable summary suitable for appending to "
+        "MEMORY.md: keep facts that matter long-term (decisions, "
+        "architecture, open issues, durable state); drop day-to-day "
+        "narration and anything already captured elsewhere. Reply with the "
+        "summary text only -- no preamble, no repeating the raw logs "
+        "verbatim.\n"
+    )
+    budget = _cfg.DISTILL_MAX_INPUT_BYTES
+    parts = [header]
+    used = len(header.encode("utf-8"))
+    for p in logs:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        chunk = f"\n--- {p.name} ---\n{text}"
+        chunk_bytes = chunk.encode("utf-8")
+        if used + len(chunk_bytes) > budget:
+            remaining = max(0, budget - used)
+            parts.append(chunk_bytes[:remaining].decode("utf-8", errors="ignore"))
+            parts.append(
+                "\n\n[... truncated: remaining logs exceeded the distillation byte budget ...]\n"
+            )
+            break
+        parts.append(chunk)
+        used += len(chunk_bytes)
+    return "".join(parts)
+
+
+def _append_distilled_summary(ws: Path, summary: str, day: _dt.date) -> None:
+    """Append *summary* to ``MEMORY.md`` under a dated heading; create if absent."""
+    mem_md = memory_md_path(ws)
+    existing = ""
+    if mem_md.is_file():
+        with contextlib.suppress(OSError):
+            existing = mem_md.read_text(encoding="utf-8")
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    section = f"\n## Distilled {day.isoformat()}\n\n{summary}\n"
+    mem_md.write_text(
+        existing + section if existing else f"# MEMORY.md\n{section}", encoding="utf-8"
+    )
+    with contextlib.suppress(OSError):
+        mem_md.chmod(0o600)
+
+
+def _archive_daily_logs(ws: Path, logs: list[Path], day: _dt.date) -> list[str]:
+    """Move *logs* into ``memory/.distilled/<day>/``; return workspace-relative paths."""
+    archive_dir = memory_dir(ws) / DISTILLED_ARCHIVE_DIRNAME / day.isoformat()
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        archive_dir.chmod(0o700)
+    moved: list[str] = []
+    for log in logs:
+        dest = archive_dir / log.name
+        if dest.exists():
+            stamp = _dt.datetime.now(_dt.UTC).strftime("%H%M%S%f")
+            dest = archive_dir / f"{log.stem}-{stamp}{log.suffix}"
+        log.rename(dest)
+        with contextlib.suppress(OSError):
+            dest.chmod(0o600)
+        moved.append(str(dest.relative_to(ws)))
+    return moved
+
+
+def distill_memory(
+    ws: Path,
+    *,
+    label: str,
+    agent_id: str,
+    session_key: str,
+    driver: DistillRunner,
+    timeout: int | None = None,
+    day: _dt.date | None = None,
+) -> DistillResult:
+    """Summarize pending ``memory/*.md`` logs into ``MEMORY.md`` via one driver turn.
+
+    This is docket's first self-originated LLM call (ROADMAP Phase 17 C-2,
+    decision D-18): the summarization turn runs through the injected driver
+    exactly like a pod dispatch hop, never a hand-rolled provider client.
+    *agent_id*/*session_key* identify whose daemon session runs the turn —
+    in practice the workspace's own agent, already either a pod's Lead or an
+    org-specialist utility agent, both of which already own their own
+    memory (see the module docstring).
+
+    Fails closed: any driver failure (timeout, daemon error, non-zero exit)
+    or an empty/unusable reply leaves **every file on disk untouched** — no
+    archive directory, no ``MEMORY.md`` write — and returns ``ok=False``.
+    This is the whole point of ``--distill-first``: a caller must never
+    delete the daily logs this call was supposed to capture if the capture
+    itself failed.
+
+    Nothing to distill (no pending daily logs) short-circuits to
+    ``ok=True, skipped=True`` *before* any driver call is made — there is
+    nothing undistilled to lose, so a caller may proceed with whatever
+    destructive step it was about to take.
+    """
+    logs = pending_daily_logs(ws)
+    if not logs:
+        return DistillResult(ok=True, skipped=True)
+
+    message = _distillation_message(label, logs)
+    turn_timeout = timeout if timeout is not None else _cfg.DISTILL_TIMEOUT_S
+    result = driver(agent_id, session_key, message, turn_timeout, None)
+    if not result.ok:
+        return DistillResult(
+            ok=False,
+            error=result.error or "distillation turn failed",
+            failure_kind=result.failure_kind,
+        )
+
+    summary = result.output.strip()
+    if not summary:
+        return DistillResult(
+            ok=False,
+            error="distillation turn returned an empty summary",
+            failure_kind="invalid_output",
+        )
+
+    d = day or today()
+    _append_distilled_summary(ws, summary, d)
+    archived = _archive_daily_logs(ws, logs, d)
+    return DistillResult(ok=True, logs_distilled=len(logs), archived=archived, summary=summary)

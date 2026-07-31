@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Complete
 **Last Updated**: 2026-07-30
 
@@ -48,7 +48,13 @@ covers the resulting file set for either workspace kind, not blueprint selection
      (`## Your working directory`) — never both
    - `MEMORY.md` — long-lived memory rollup (seeded; thereafter agent-written)
    - `.docket-meta.json` — docket metadata (see data spec)
-   - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning)
+   - `memory/` — daily logs named `YYYY-MM-DD.md` (today's log seeded at provisioning);
+     `memory/.distilled/<YYYY-MM-DD>/` **MAY** additionally exist — an archive `docket maintain
+     distill` (and `clean`/`reset` when `--distill-first` is on, the default; ROADMAP Phase 17
+     C-2) writes daily logs into instead of deleting them, one dated subdirectory per distillation
+     run. Never created at provisioning, never read by the runtime contract (a plain
+     `memory/*.md` glob does not descend into it), and never counted as a "missing" file by
+     `docket doctor`
 2. A `workflows/` directory **MAY** exist as a pre-existing artifact of the now-retired
    `docket workflow`/Lobster surface (ROADMAP decision D-16, Phase 16 W-3) — docket no longer
    creates, reads, or manages it; any `*.lobster.yml` files inside are left untouched on disk.
@@ -188,6 +194,13 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   `workdir`-kind member's contract files never reference a codebase.
 
 ## Changelog
+
+### Version 1.4.0 (2026-07-30)
+
+- ROADMAP Phase 17 C-2 (memory distillation): documented `memory/.distilled/<YYYY-MM-DD>/`, the
+  archive `docket maintain distill` (and `clean`/`reset` with `--distill-first`, the default)
+  moves daily logs into instead of deleting them. `MAY` exist, never created at provisioning,
+  never read by the runtime contract, never flagged missing by `docket doctor`.
 
 ### Version 1.3.0 (2026-07-30)
 

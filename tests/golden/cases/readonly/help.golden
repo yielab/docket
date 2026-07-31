@@ -30,10 +30,11 @@ LIFECYCLE
 
 MAINTENANCE  (docket maintain [id] <subcommand>)
   check              Health check + auto-fix (default)
-  clean              Clear memory logs only
-  reset              Clear memory + heartbeat
+  clean              Clear memory logs only (distills first; --no-distill-first skips)
+  reset              Clear memory + heartbeat (distills first; --no-distill-first skips)
   rebuild            Deep rebuild from .docket-meta.json
   sessions           Archive large/old sessions (>5 MB or >30 days)
+  distill            Summarize memory logs into MEMORY.md; archive originals
 
 TELEGRAM
   wire   [id]        Wire or update a Telegram group binding

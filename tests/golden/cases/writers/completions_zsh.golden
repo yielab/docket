@@ -9,7 +9,7 @@ _docket() {
     'add:Add a new project agent (interactive or --from <spec-file>)'
     'info:Detailed status of one agent'
     'delete:Remove a project agent or a whole pod, and optionally its workspace'
-    'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions)'
+    'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)'
     'context:Agent context views (show/project)'
     'wire:Wire or update a channel group binding'
     'unwire:Remove a channel binding'
@@ -57,7 +57,7 @@ _docket() {
   fi
 
   case "${words[2]}" in
-    maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions ;;
+    maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
