@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import uuid
 from dataclasses import dataclass, field
@@ -135,6 +136,164 @@ def match_high_risk(command: str) -> HighRiskClass | None:
         if re.search(cls.pattern, command, re.IGNORECASE):
             return cls
     return None
+
+
+# ── argument-aware command classification (Phase 19 P19-2) ───────────────────
+#
+# Read `match_high_risk`'s docstring above first: three sibling helpers were
+# deleted in G-3 because they modelled an ask/allow decision docket structurally
+# could not make. That was true while the daemon owned the turn — its exec gate
+# keys on binary path and has no hook to consult docket.
+#
+# D-19 removes that constraint by removing the daemon. `core/tools.py` now runs
+# every tool call itself, so a classifier here finally has a real enforcement
+# point downstream. What follows is deliberately NOT a restoration of the
+# deleted `resolve_command_action`: that one classified a bare binary name,
+# which is exactly the granularity that made `git push origin production`
+# indistinguishable from `git status`. This one reads the whole command line,
+# including every segment behind a `;`, `&&` or pipe.
+
+# Shell operators that start a new command. Anything after one of these is a
+# separate binary invocation and must be classified on its own — `ls && rm -rf
+# /` is not an `ls`.
+_COMMAND_SEPARATORS: frozenset[str] = frozenset({";", "&&", "||", "|", "&", "(", ")", "\n"})
+
+# Substrings that make a command line impossible to classify statically: the
+# real binary is produced at runtime. Their presence forces an approval rather
+# than a guess.
+_OPAQUE_MARKERS: tuple[str, ...] = ("$(", "`", "${", "eval ", "exec ")
+
+
+@dataclass(frozen=True)
+class CommandVerdict:
+    """What docket decided about one shell command, and why.
+
+    ``action`` is ``allow`` | ``ask`` | ``deny``. ``ask`` routes to
+    ``core/approval.py``, which fails closed on timeout — so an unclassifiable
+    command never silently runs.
+
+    ``reason`` is written for a human approver reading a Telegram/CLI prompt,
+    not for a log grep: it names the specific binary or risk class that caused
+    the verdict.
+    """
+
+    action: str
+    reason: str
+    bin_name: str = ""
+    risk_class: str = ""
+
+    @property
+    def blocked(self) -> bool:
+        """True when the command may not run as-is (denied, or awaiting a human)."""
+        return self.action != "allow"
+
+
+def split_command_segments(command: str) -> list[list[str]]:
+    """Split a shell command into per-invocation token lists.
+
+    ``ls -la && git push origin main`` becomes ``[["ls", "-la"], ["git",
+    "push", "origin", "main"]]``. Leading ``VAR=value`` assignments are dropped
+    so the binary is always the first token of a segment.
+
+    Raises ``ValueError`` for input shlex cannot tokenize (unbalanced quotes) —
+    the caller treats that as unclassifiable, never as safe.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    tokens = list(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
+
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in _COMMAND_SEPARATORS:
+            if current:
+                segments.append(current)
+            current = []
+            continue
+        # Redirections attach to the current invocation rather than starting a
+        # new one, but the target is not a binary — drop the operator and let
+        # the path stay as an argument.
+        if token in (">", ">>", "<", "2>", "&>"):
+            continue
+        current.append(token)
+    if current:
+        segments.append(current)
+
+    cleaned: list[list[str]] = []
+    for segment in segments:
+        idx = 0
+        while idx < len(segment) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", segment[idx]):
+            idx += 1
+        if idx < len(segment):
+            cleaned.append(segment[idx:])
+    return cleaned
+
+
+def classify_command(command: str) -> CommandVerdict:
+    """Decide whether *command* may run unattended.
+
+    The rules, in order — first match wins:
+
+    1. **Empty** -> deny. Nothing to run.
+    2. **Opaque** (command substitution, ``eval``, ``exec``) -> ask. The binary
+       that will actually run is not knowable from the text.
+    3. **Untokenizable** -> ask. Same reasoning: an unparseable command is not
+       a safe command.
+    4. **A high-risk action class matches the full line** -> ask, naming the
+       class. This is the check the daemon's allowlist could never perform,
+       because it needs the *arguments*: ``git`` is allowlisted, ``git push
+       origin production`` is a production deploy.
+    5. **Any segment's binary is off ``SAFE_BINS``** -> ask, naming it. Every
+       segment is checked, so a safe binary cannot smuggle an unsafe one in
+       behind ``;`` or ``&&``.
+    6. Otherwise -> allow.
+
+    **What this does not catch, stated plainly:** a safe binary used
+    destructively within its own remit (``git reset --hard``), writes through a
+    redirect to a path outside the workspace (path containment in
+    ``core/tools.py`` covers the file tools, not shell redirects), and anything
+    a script on the allowlist does once started. It is a gate, not a sandbox —
+    P19-9 adds the jail.
+    """
+    text = command.strip()
+    if not text:
+        return CommandVerdict("deny", "empty command")
+
+    lowered = text.lower()
+    for marker in _OPAQUE_MARKERS:
+        if marker in lowered:
+            return CommandVerdict(
+                "ask", f"command is not statically analysable (contains {marker.strip()!r})"
+            )
+
+    try:
+        segments = split_command_segments(text)
+    except ValueError as ex:
+        return CommandVerdict("ask", f"command could not be parsed ({ex})")
+    if not segments:
+        return CommandVerdict("deny", "no binary found in command")
+
+    risk = match_high_risk(text)
+    if risk is not None:
+        return CommandVerdict(
+            "ask",
+            f"matches high-risk action class {risk.name!r}: {risk.description}",
+            bin_name=os.path.basename(segments[0][0]),
+            risk_class=risk.name,
+        )
+
+    for segment in segments:
+        bin_name = os.path.basename(segment[0])
+        if bin_name not in SAFE_BINS:
+            return CommandVerdict(
+                "ask", f"{bin_name!r} is not on the curated allowlist", bin_name=bin_name
+            )
+
+    return CommandVerdict(
+        "allow",
+        "all binaries allowlisted, no high-risk class matched",
+        bin_name=os.path.basename(segments[0][0]),
+    )
 
 
 @dataclass
