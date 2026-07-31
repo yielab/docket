@@ -123,7 +123,7 @@ Each specification document must include:
 
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
-| Agent Lifecycle | 1.5.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
+| Agent Lifecycle | 1.6.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
 | Agent Loop | 1.0.0 | Implemented | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver` (Phase 19 P19-5): the turn loop docket now owns, dispatching every tool call through `core.tools.dispatch_tool`; not yet wired as any caller's default driver (Wave B / P19-6 / P19-7) |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
@@ -132,15 +132,16 @@ Each specification document must include:
 | Model Profiles | 2.4.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6); `models.*` audit coverage (Phase 15 G-4b); carries the L-5 spike's evidence that a sidecar gateway needs no new capability (Phase 18 L-5) |
 | Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
-| Pod Dispatch | 5.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5), with a real `files_changed`/`diff_ref` producer (W-5b); token-budgeted hop prompts via the context compiler, retiring R-7's byte cap (Phase 17 C-1) |
+| Pod Dispatch | 5.1.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5), with a real `files_changed`/`diff_ref` producer (W-5b); token-budgeted hop prompts via the context compiler, retiring R-7's byte cap (Phase 17 C-1) |
 | Role Archetypes | 1.3.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7); per-role `tokenBudget` for the context compiler (Phase 17 C-1) |
-| Security Gates | 0.6.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5); the policy engine is on the live dispatch path — `pre_input` at enqueue, `pre_output` per hop (Phase 15 G-2) |
+| Security Gates | 0.9.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5); the policy engine is on the live dispatch path (Phase 15 G-2); **`pre_tool_call` is live** for calls docket dispatches itself, with argument-aware command classification (Phase 19 P19-2/P19-3); opt-in container/bwrap jail for the bash tool (Phase 19 P19-9) |
 | Session History | 1.0.0 | Implemented | `core/session.py` (Phase 19 P19-4): durable per-session turn history, lossless message round-trip, atomic tool-call/tool-result compaction, fail-closed summarisation; first caller is `core/agent_loop.py` (Phase 19 P19-5, see Agent Loop row) |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
-| Workspace Structure | 1.4.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
-| CLI Interface | 1.11.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
-| MCP Server | 1.2.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
+| Workspace Structure | 1.5.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
+| CLI Interface | 1.12.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
+| MCP Client | 1.0.0 | Implemented, not yet on a live path | `core/mcp_tools.py` + `edges/adapters/mcp_client.py` (Phase 19 P19-10): external MCP tool servers adapted into docket's registry, namespaced `mcp__<server>__<tool>` so a remote tool can never shadow a built-in, and dispatched through the same gated chokepoint |
+| MCP Server | 1.3.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.7.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
 | Serve Read API | 2.2.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier (Phase 14 R-3); `mcp` run source (Phase 18 L-3); `POST /dispatch/<project>` variable binding + 400s (Phase 16 W-4) |

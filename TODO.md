@@ -547,7 +547,7 @@ message history the loop needs. Durable per `agent:<id>:<project>` session key, 
 `edges/store.py`. Compaction reuses C-1's budget compiler and C-2's distillation. Retires the
 daemon's session JSONL as the source of usage data.
 
-**P19-5 · `core/agent_loop.py` + `DocketDriver`** — *IN-PROGRESS (wave 9) · L*
+**P19-5 · `core/agent_loop.py` + `DocketDriver`** — *DONE (`71b792f`) · L*
 The loop: compose context -> call model -> receive `tool_calls` -> **gate** -> execute -> feed
 results back -> repeat until a stop condition (final message, tool-call cap, token budget, timeout).
 `edges/adapters/docket_runtime.py::DocketDriver` implements `RuntimeDriver` on top of it, so
@@ -578,11 +578,11 @@ Phase 15, and G-5's unbridgeable gap closed by removing the other side of it.
 
 ### Wave C — hardening
 
-**P19-9 · Sandboxed exec** — *IN-PROGRESS (wave 9) · M*
+**P19-9 · Sandboxed exec** — *DONE (`fe0d7b0`) · M*
 Container/bwrap jail for bash-class tools, reusing `edges/adapters/system.py`'s docker wrappers and
 the existing worktree/port/scratch isolation.
 
-**P19-10 · MCP client: pluggable tool servers** — *IN-PROGRESS (wave 9) · M*
+**P19-10 · MCP client: pluggable tool servers** — *DONE (`3d3e3ed`) · M*
 Consume external MCP tool servers through P19-2's dispatcher. Never a second, ungated path. docket
 already ships an MCP *server*; this is the client half.
 
@@ -662,6 +662,44 @@ Each appends to `config.py` in one contiguous commented block; that file auto-me
 MCP tool does not have, and would classify every such call as an empty command. `"write"` is not
 "ungated": the `pre_tool_call` hook fires for every tool kind, which is exactly why renting MCP as a
 transport does not cost docket its guardrails.
+
+
+**Wave 9 outcome.** All three merged. **The daemon is now unused, not yet uninstalled** — that was
+P19-5's job and it is done. Findings worth keeping:
+
+- **Truncation and compaction interact.** P19-5 found that persisting a length-truncated assistant
+  message which requested tool calls would create exactly the orphaned-tool-call state P19-4's
+  compaction post-conditions exist to forbid. A truncated response is therefore neither dispatched
+  **nor persisted**. Neither card could have found this alone.
+- **`cost_usd` stays 0.0 in `DocketDriver`, deliberately.** Real token counts are recorded; turning
+  them into dollars where `docket cost` reports *recorded spend* would convert an estimate into a
+  billing claim. Pinned by a test that goes red if a future card fabricates one.
+- **`provision`/`teardown` are honest no-ops** with `supports_provisioning=False`, rather than
+  returning `ok=True` for work that does not exist. `teardown` deliberately does not guess at deleting
+  sessions from a bare `agent_id` — a session is keyed by the full `agent:<id>:<project>`.
+- **Docker needs an explicit container kill on timeout.** P19-9 verified empirically that killing
+  `docker run`'s process group leaves the container alive under `dockerd` — it is a thin client. bwrap
+  needs nothing extra (its pid namespace tears down with its first process).
+- **A sandbox that silently degrades is worse than none.** `run_bash` reports the backend that actually
+  ran (`[sandbox: none (docker unavailable, bwrap unavailable)]`), kept distinct from "a jail is
+  possible on this host". Opt-in, default off — a filesystem jail can break a call the gate would allow.
+- **MCP tools are namespaced `mcp__<server>__<tool>`,** so a remote server naming its tool `bash` lands
+  at `mcp__evil__bash` and cannot shadow the gated built-in. Proven with a hostile fake server.
+- **Server-supplied tool descriptions are screened** through the existing `prompt-injection` policy on
+  `pre_input` before registration — that text is attacker-controlled and ends up in a model's prompt.
+  `block`/`require_approval` both refuse registration, since there is no human-approval channel for
+  static catalog text.
+
+**Integration findings (the merge itself).** `config.py` conflicted — both P19-5 and P19-10 appended a
+constants block — and was resolved by keeping **both**, then verified by importing the module and
+asserting all eleven constants from waves 8-9 exist. **`specs/README.md`'s status table had six stale
+version cells**, some drifting since wave 7, plus a missing row; it was regenerated from the spec
+headers rather than hand-patched. That is integrator check #1 paying for itself again: a roll-up table
+edited by several branches at once holds no single correct side.
+
+**P19-10 widened one of P19-2's guards** (the toolbox-import allowlist) to admit two files that
+reference only the inert `ToolOutcome` type, and added a narrower guard in its place. The integrator
+re-verified that replacement by planting a real handler-function import — it fired.
 
 ### Sequencing
 
