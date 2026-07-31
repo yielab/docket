@@ -107,7 +107,7 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (wave 5 complete: L-4, G-4b, W-4, CL-2, W-5 — after wave 4's
+> Last synchronized: 2026-07-30 (wave 6 complete: L-5, W-5b, C-1, C-2, G-2 — after wave 5's L-4, G-4b, W-4, CL-2, W-5 and wave 4's
 > CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1, W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
 > (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
@@ -117,7 +117,7 @@ Each specification document must include:
 
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
-| Agent Lifecycle | 1.4.0 | Complete | `docket add` blueprint selection (Phase 16 W-7) |
+| Agent Lifecycle | 1.5.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
@@ -127,11 +127,11 @@ Each specification document must include:
 | Pod Blueprints | 1.0.0 | Implemented | Four built-ins (software/research/content/ops); `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
 | Pod Dispatch | 5.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5), with a real `files_changed`/`diff_ref` producer (W-5b); token-budgeted hop prompts via the context compiler, retiring R-7's byte cap (Phase 17 C-1) |
 | Role Archetypes | 1.3.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7); per-role `tokenBudget` for the context compiler (Phase 17 C-1) |
-| Security Gates | 0.5.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5) |
+| Security Gates | 0.6.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5); the policy engine is on the live dispatch path — `pre_input` at enqueue, `pre_output` per hop (Phase 15 G-2) |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
-| Workspace Structure | 1.3.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
-| CLI Interface | 1.10.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
+| Workspace Structure | 1.4.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
+| CLI Interface | 1.11.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
 | MCP Server | 1.2.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.7.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |

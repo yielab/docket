@@ -1417,7 +1417,7 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
 
 ---
 
-### PHASE 15 — Platformization II: deterministic governance, wired  *(🟠 4 of 6 shipped — G-1/G-4/G-5/G-6 done; G-2, G-3 open)*
+### PHASE 15 — Platformization II: deterministic governance, wired  *(🟠 5 of 6 shipped — G-1/G-2/G-4/G-5/G-6 done; only G-3 open)*
 
 > **The audit's single most damning pattern:** three governance organs are fully built, tested, and
 > documented — and connected to nothing. `approval_create` has **zero** production callers (the
@@ -1522,6 +1522,72 @@ but gate contracts, edit rights, and scope stay closed typed sets docket can rea
 **blocks on an unverified-sources verdict exactly the way a software pod blocks on failing tests**;
 the four legacy roles produce byte-identical workspaces (goldens); `docket workflow` prints the
 removed-command notice; suite green.
+
+> **☑ Wave 6 shipped 2026-07-30 — 5 cards. Phase 18 closed, Phase 17 opened and is 3 of 5,
+> Phase 15 down to one open card.** `platform` green: **1,684 tests** (`pytest` exit 0, zero
+> FAILED/ERROR), 18/18 goldens, 20 specs, 37 commands, `ruff` + `mypy --strict` clean,
+> `metrics.py --check` in sync.
+>
+> **G-2 · Policy engine on the live path** — closes the audit's built-but-disconnected defect,
+> the same shape G-1 fixed for the approval store. `install` seeds the baseline policies,
+> `pre_input` evaluates once at enqueue, `pre_output` on every hop output, and a hit can route to
+> G-1's real `approval_create`. **The existing `cli/_metrics.py` reader needed no changes** — the
+> producer was built to fit it rather than orphaning it. G-2 also *declined a stale instruction*:
+> `_policy_requires_approval`'s docstring claimed it was the place to change, which would have
+> re-tripped a `"*"`-scoped policy once per role instead of once per task.
+>
+> **C-1 · Context compiler** — per-role token budgets (`RoleArchetype.token_budget`) via
+> `core/context.py`, retiring R-7's blind head+tail byte cap rather than layering on it. Reused
+> the existing `config.CONTEXT_BYTES_PER_TOKEN` instead of introducing a second tunable ratio for
+> the same quantity; the approximation is documented as an approximation.
+>
+> **C-2 · Memory distillation** — `maintain distill`, and `clean`/`reset` distill first by
+> default so memory is never bare-deleted. docket's **first self-originated LLM call**, through
+> the driver per D-18 with **zero new dependencies** (verified: the branch's `pyproject.toml`/
+> `uv.lock` diff is empty). **Fails closed** — a driver timeout, daemon error or empty reply
+> aborts before anything is unlinked, proven by a hermetic test running the real driver with
+> `PATH=/nonexistent`, not a mock.
+>
+> **W-5b · Artifact diff producer** — closes the seam W-5 declared honestly. `git_current_branch`,
+> which CL-2 kept a wave earlier with a dated "the primitive a near-term feature will need" note,
+> turned out to be exactly that caller. All four degrade paths (non-Implementer, `workdir` pod,
+> non-repo codebase, missing `git`) are pinned end-to-end through real `dispatch_task` calls.
+>
+> **L-5 · Wrapped gateway spike** — answered **yes**, and better: docket already ships the
+> mechanism. `docket models provider add` writes an arbitrary `models.providers.<name>` block, and
+> the "local" framing is cosmetic (`127.0.0.1:8080` is only `DEFAULT_BASE_URL`). No code needed.
+> Recorded honestly alongside it: per-call USD metering does **not** come free — this daemon
+> reports token counts only, so a sidecar's spend API is a separate integration.
+>
+> **Integrator cleanup done on merge, not deferred:** C-1's carve-out forbade it from deleting
+> R-7's now-dead `_hop_carryover_budget`/`_truncate_carryover` helpers, so it correctly left them
+> and flagged them. Since that dead code existed only as an artifact of the rule, the integrator
+> removed them, `HOP_CARRYOVER_BYTES`, and the two test classes pinning them, on merge. One
+> truncation mechanism now exists in the tree.
+>
+> **The carve-out worked, and the one conflict it did produce was the dangerous kind.**
+> `core/dispatch.py` took edits from three branches; C-1 (`_hop_message` only) and W-5b (one new
+> function plus one call site) auto-merged with zero conflicts. G-2 conflicted at the artifact
+> construction site, and **neither side was correct**: G-2 introduced `hop_ok`/`hop_output` (the
+> post-policy values) while W-5b's side still read `run_res.ok`/`run_res.output`. Taking W-5b's
+> side verbatim would have sourced the artifact summary from raw subprocess output and **silently
+> undone `pre_output`'s redaction** — a leak, not a style difference. Resolved to `hop_output` for
+> the summary and `hop_ok` for both the verdict and the diff probe, with the reasoning left as
+> comments at the call site.
+>
+> **The completions goldens were the exact case the standing rule exists for:** C-2 added
+> `distill`, G-2 added `validate`, and no side held both. Git auto-merged them — which is not
+> evidence of correctness — so `verify-all` was re-run against the real CLI and both additions
+> confirmed present.
+>
+> **What was narrowed or deferred:** `pre_tool_call` (in-turn interception) stays daemon-gated —
+> docket orchestrates *between* hops and is not inside a turn to intercept a tool call; G-3 (the
+> high-risk action classes wired into docket-launched processes) is still open and is Phase 15's
+> last card; `HandoffArtifact.notes` still has no producer and is now documented as reserved;
+> the **dependency floors remain unverified** for lack of network access. G-2 also found real
+> test-hygiene damage: two install fixtures left `DOCKET_HOME`/`POLICIES_DIR` at their real
+> unpatched defaults — harmless until something in `run_install` touched them, at which point a
+> test run would have written into the real environment.
 
 > **☑ Wave 5 shipped 2026-07-30 — 5 cards, and Phase 16 is COMPLETE.** `platform` green at each
 > merge: **1,600 tests**, 18/18 goldens, 20 specs, 37 commands, `ruff` + `ruff format` +
@@ -1636,7 +1702,7 @@ removed-command notice; suite green.
 
 ---
 
-### PHASE 17 — Platformization IV: context engineering & memory management  *(🟡 planned — after 16's W-5)*
+### PHASE 17 — Platformization IV: context engineering & memory management  *(🟠 3 of 5 shipped — C-1/C-2/C-4 done; C-3, C-5 open)*
 
 > **Why:** the audit found no tokenizer, no retrieval, no summarization anywhere — context is
 > markdown written once plus prose contracts the *daemon's* forced-read enforces, and the only

@@ -71,20 +71,22 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ## ▶ CURRENT STATE
 
-**Wave 5 is COMPLETE, and Phase 16 with it.** `platform` green: **1,600 tests**, 18/18 goldens,
-20 specs valid, 37 commands, `ruff` + `ruff format` + `mypy --strict` clean, `metrics.py --check`
-in sync (and the guard itself is now repaired — see below).
+**Waves 5 and 6 are both COMPLETE.** `platform` green: **1,684 tests** (`pytest` exit 0, zero
+FAILED/ERROR), 18/18 goldens, 20 specs valid, 37 commands, `ruff` + `ruff format` + `mypy --strict`
+clean, `metrics.py --check` in sync (and the guard itself is repaired — see below).
 
-**Phase 17 is open**: W-5's typed handoff artifact was C-1's stated blocker, and `core/dispatch.py`
-is free again. **Wave 6 is queued below.**
+**Phases 16 and 18 are COMPLETE.** Phase 15 is down to its last card (G-3); Phase 17 is 3 of 5
+(C-3, C-5 open). Durable per-card records: the `☑ Wave 5 shipped` and `☑ Wave 6 shipped` blocks in
+ROADMAP.md's Phase 16 section. **Wave 7 is queued below.**
 
 **Waves 3 and 4 are fully merged (11 cards).** Their durable record — what shipped, what was
 narrowed, and the two integration defects that the gates did *not* catch — is the
 `☑ Waves 3–4 shipped` block in ROADMAP.md's Phase 16 section. Per the board convention their
 per-card entries were cleared from here; ROADMAP holds the history.
 
-**Phase status:** Phase 16 **COMPLETE** (W-1…W-8) · Phase 18 at 5 of 6 (only the L-5 spike
-remains) · Phase 15 at 4 of 6 (G-2/G-3, both queued for wave 6) · Phase 17 **open**, C-1 unblocked.
+**Phase status:** Phase 16 **COMPLETE** (W-1…W-8) · Phase 18 **COMPLETE** (L-4/L-5 answered as
+spikes) · Phase 15 at 5 of 6 (only **G-3**) · Phase 17 at 3 of 5 (**C-3**, **C-5**).
+**Four cards remain in the entire Platformization program.**
 
 ### Two standing integrator checks (both earned the hard way)
 
@@ -128,126 +130,48 @@ non-dispatch half · ☑ **L-4** (`312787e`) daemon-MCP-registry spike, answered
 
 ---
 
-## Wave 6 — queued (Phase 17 opens; Phase 15's governance pair finally runs)
+## Wave 6 — ☑ COMPLETE (2026-07-30, all five merged)
 
-Five cards. **G-2 is the wave's `core/dispatch.py` owner** — with **one declared, function-scoped
-exception**, because the alternative is deferring one of these two a third time.
+Merge order `l-5 → w-5b → c-1 → c-2 → g-2`. Durable record: the `☑ Wave 6 shipped` block in
+ROADMAP.md's Phase 16 section. **Tree: 1,600 → 1,684 tests.**
 
-> **The carve-out, stated so the merge is predictable:** G-2 owns `core/dispatch.py` broadly. C-1
-> may touch **exactly one function in it** — `_hop_message`, the prompt builder W-5 just rewrote —
-> and nothing else in the file. This is a deliberate narrowing of the one-owner rule, not a
-> repeal: the rule was learned from R-2/R-3, which both edited *the same call sites*. Different
-> functions in one file is the tolerable case. If either card finds itself needing the other's
-> region, **stop and report** rather than editing across the line.
+☑ **G-2** policy engine on the live dispatch path · ☑ **C-1** context compiler (per-role token
+budgets; R-7's byte cap retired **and its dead helpers deleted on merge**) · ☑ **C-2** memory
+distillation, fail-closed, zero new deps · ☑ **W-5b** artifact diff producer · ☑ **L-5** gateway
+spike, answered yes with no code needed.
 
-| Card | Phase | Owns |
-| --- | --- | --- |
-| **G-2** | 15 | `core/dispatch.py` (broadly), `core/policy.py`, `cli/_install.py`, `cli/_policies.py` |
-| **C-1** | 17 | `core/context.py` (new), `core/handoff.py`, `core/dispatch.py`'s `_hop_message` **only** |
-| **C-2** | 17 | `core/memory.py`, the `maintain` commands, `core/runtime_driver.py` (read) |
-| **W-5b** | 16 | `edges/adapters/system.py`, `core/handoff.py`'s producer side |
-| **L-5** | 18 | spike — research + a spec note only |
+**The carve-out experiment worked, and is worth repeating.** Three branches edited
+`core/dispatch.py`. C-1 (`_hop_message` only) and W-5b (one function + one call site) auto-merged
+with **zero** conflicts. G-2 conflicted once — at the artifact construction site — and it was the
+dangerous kind: **neither side was correct**, and taking W-5b's verbatim would have silently undone
+`pre_output`'s redaction by sourcing the artifact summary from raw subprocess output. **Function-level
+ownership is a workable narrowing of the one-owner rule, provided every card reports exactly which
+functions it touched** — which is what made this reconcilable.
 
-### G-2 — Policy engine on the live path  *(Phase 15 · the wave's dispatch owner)*
+**Fifth neither-side-is-correct conflict** (after `audit.spec.md`, `role-archetypes.spec.md`,
+`specs/README.md`, `pod-dispatch.spec.md`). This is now a *predictable* consequence of running
+sibling cards concurrently, not bad luck. Budget merge time for it.
 
-**Status:** TODO · **Size:** M · **Branch:** `pc/g-2`
+---
 
-**Deferred twice already — this is the same defect shape G-1 fixed.** `core/policy.py` is built and
-tested, `cli/_metrics.py` already has a *reader* for its output, and nothing produces that output:
-the policy engine is not on any live path. A policy engine that never runs is indistinguishable
-from no policy engine.
+## Wave 7 — queued (the last four cards of the Platformization program)
 
-- `docket install` runs `policies init`; `pre_input` evaluates at enqueue; `pre_output` evaluates on
-  every hop output; results feed G-1's `require_approval` so a policy hit can route to approval.
-- **Read:** `core/policy.py`, `core/dispatch.py` (W-5's artifact-based `_hop_message`, G-1's
-  approval gating), `cli/_metrics.py` (the existing reader — match what it already expects rather
-  than inventing a second shape), `cli/_install.py`, `specs/functional/security-gates.spec.md`.
-- CL-2 left `validate_policy()` unwired with a dated reason: wiring `docket policies validate` would
-  have changed the completions goldens. **You are allowed to change goldens** if you add CLI
-  surface — regenerate and explain the diff — so reconsider that decision on its merits.
-- **Acceptance:** a policy hit at enqueue blocks or routes to approval, test-pinned · `pre_output`
-  fires on every hop · `docket metrics` reports real counts from a real producer · spec bumped.
+| Card | Phase | Blocked on | Note |
+| --- | --- | --- | --- |
+| **G-3 · High-risk classes enforced** | 15 | ready (G-2 landed) | Wire `resolve_command_action` — still **zero callers** — into every process docket itself launches, and into G-2's `pre_output` scan. Closes Phase 15. |
+| **C-3 · One durable task state** | 17 | dispatch owner | Dispatch writes HEARTBEAT entries mechanically; `doctor` flags TASK_LIST⇄HEARTBEAT divergence. |
+| **C-5 · Conversation registry auto-population** | 17 | dispatch owner | Dispatch/serve update `last_message`/`task_ref`. Closes Phase 17. |
+| **CL-3 · Post-program dead-code sweep** | standing | after the above | Re-run CL-1's full-tree sweep against the ~5,000 lines waves 3–6 added. The register below is closed for its original scope; a program this size will have produced new orphans. |
 
-### C-1 — Context compiler  *(Phase 17 · function-scoped in dispatch)*
+**Scheduling:** C-3 and C-5 both write from the dispatch path. Either make **one** of them the
+dispatch owner and defer the other, or repeat wave 6's function-level carve-out — it worked, but
+only because every card reported its exact footprint. G-3's footprint (`core/security.py`,
+process-launch sites) is disjoint from both.
 
-**Status:** TODO · **Size:** M · **Branch:** `pc/c-1`
-
-(task, role, artifacts, workspace) → a hop message under a **per-role token budget**. Supersedes
-R-7's stopgap byte cap, which truncates blindly.
-
-- W-5 built the input for you: `core/handoff.py`'s `HandoffArtifact` has `DROP_ORDER`
-  (`notes, diff_ref, files_changed, verdict`) and `dropped(field)` precisely so a budgeted consumer
-  can shed fields in priority order. `summary` is deliberately **not** in `DROP_ORDER` — it can
-  never be shed; if the budget cannot fit `summary` alone, truncate it explicitly and mark it.
-- **Read:** `core/handoff.py` (start here), `core/dispatch.py`'s `_hop_message` **only**,
-  `core/archetypes.py` (per-role budgets belong with the archetype, not a new registry),
-  `specs/functional/pod-dispatch.spec.md` (now 4.0.0), `specs/functional/role-archetypes.spec.md`.
-- **No tokenizer dependency.** ROADMAP §4.5's no-new-heavy-deps rule stands; a documented
-  characters-per-token approximation with the ratio stated in the spec is acceptable and honest.
-  Do not claim exact token counts you cannot compute.
-- **Acceptance:** a hop message provably fits a role's budget · fields shed in `DROP_ORDER` order,
-  test-pinned · `summary` never silently dropped · R-7's blind cap removed, not layered on top.
-
-### C-2 — Memory distillation  *(Phase 17)*
-
-**Status:** TODO · **Size:** M · **Branch:** `pc/c-2`
-
-`docket maintain distill`; `clean`/`reset` gain `--distill-first` so memory is **never bare-deleted**.
-
-- **This is docket's first self-originated LLM call, and it goes through the driver** (decision
-  D-18): `agent_run` on a pod Lead or utility agent. **No new SDK dependency — hand-rolled
-  per-vendor clients are permanently banned.** Read D-18 in ROADMAP §6 before designing anything.
-- **Read:** `core/memory.py`, `core/runtime_driver.py` (L-1's port), the `maintain` commands,
-  `specs/functional/agent-lifecycle.spec.md`, `specs/functional/workspace-structure.spec.md`.
-- Distillation must be **testable without a live model** — the driver is a port, so inject a fake.
-  A test that only passes against a real daemon is not acceptable coverage.
-- **Acceptance:** `maintain clean`/`reset` cannot destroy undistilled memory without an explicit
-  opt-out · distillation is driver-backed and fake-testable · specs bumped.
-
-### W-5b — Populate the artifact's `files_changed` / `diff_ref`  *(Phase 16 follow-up)*
-
-**Status:** TODO · **Size:** S · **Branch:** `pc/w-5b`
-
-W-5 shipped these as **real fields with no producer**, because a git probe needs
-`edges/adapters/system.py`, which CL-2 owned that wave. Close the seam it declared.
-
-- **Read:** `core/handoff.py` (the seam is documented in its module docstring and in
-  `pod-dispatch.spec.md` 4.0.0), `edges/adapters/system.py` (`git_current_branch` lives here and
-  CL-2 kept it with a dated reason — this is plausibly the caller it was waiting for),
-  `core/dispatch.py`'s hop-completion path (coordinate with C-1/G-2 if you need more than the
-  producer call site).
-- Every shell-out goes through `edges/adapters/`. Degrade gracefully when the workspace is not a git
-  repo or `git` is absent — the adapter layer already has that pattern.
-- **Acceptance:** a repo-pod hop reports real changed files and a usable diff ref · a non-repo
-  workspace degrades cleanly, test-pinned · `notes` either gains a producer or is documented as
-  reserved · spec's seam note replaced with what actually shipped.
-
-### L-5 — Wrapped gateway spike  *(Phase 18 · D-18, daemon-gated)*
-
-**Status:** TODO · **Size:** S · **Branch:** `pc/l-5`
-
-Does the daemon tolerate a base-url swap cleanly enough for a LiteLLM-class sidecar gateway?
-**Follow G-5's and L-4's pattern: probe, record dated evidence, and let a well-evidenced "no" be a
-complete card.** Hand-rolled per-vendor clients are banned regardless of the answer.
-
-> **Sandboxing warning, learned from L-4 the hard way:** a newer OpenClaw CLI's one-time legacy
-> state migration **escapes `OPENCLAW_STATE_DIR`/`XDG_CONFIG_HOME`** and will reach into a real
-> `~/.openclaw`. It renamed a live `exec-approvals.json` on the host. **Isolate `$HOME`, or run in
-> a container.** Do not probe a newer build without doing so.
-
-- **Read:** `core/runtime_driver.py`, `core/provider.py`, `edges/adapters/openclaw.py`, D-18 in
-  ROADMAP §6, and `specs/api/mcp-server.spec.md`'s L-4 findings section for the evidence format.
-- **Acceptance:** a yes/no with reproducible evidence (versions, dates, exactly what was probed),
-  recorded in the owning spec and the commit body. Ship code only if the answer is a clean yes.
-
-### Deferred out of wave 6, with reasons
-
-- **G-3** (high-risk classes enforced) — genuinely blocked on G-2 landing first; it wires
-  `resolve_command_action`, which today has no callers, into processes docket launches.
-- **C-3** (one durable task state) and **C-5** (conversation registry auto-population) — both write
-  from the dispatch path, which G-2 owns. Wave 7.
-- **Dependency floors** — needs network access to resolve and test the floor set; see the gap note
-  below. Not a card until CI can run `--resolution lowest-direct`.
+**Deferred, not forgotten:** the **dependency floors** (`pyproject.toml` advertises `typer>=0.12`,
+`rich>=13`, `pydantic>=2` while CI only ever resolves the locked current versions). Needs a
+`--resolution lowest-direct` CI job; blocked on network access, not on effort. Do not raise the
+floors blind.
 
 ---
 
@@ -326,13 +250,19 @@ From Phase 14's honest record — these are **still true** until the cards above
 - Per-argument daemon enforcement for allowlisted bins (`git`, `npm`) still does not exist (G-3 narrows
   this where docket itself launches the process; the daemon-side half remains backlog).
 - `maxReworkCycles` has no dedicated CLI setter (set via the internal `meta-set` path).
-- ~~Hops still exchange concatenated raw text~~ — **closed by W-5**: hops now exchange a typed
-  `HandoffArtifact`. But `files_changed`, `diff_ref` and `notes` ship as **real fields with no
-  producer** (W-5b owns the first two). Do not read a populated-looking schema as populated data.
-- **The policy engine is still not on any live path.** `core/policy.py` is built and tested,
-  `cli/_metrics.py` already has a reader for its output, and nothing produces that output — the same
-  built-but-disconnected shape G-1 fixed for the approval store. G-2 owns it in wave 6; it has now
-  been deferred twice.
+- **`CLAUDE.md` had drifted badly and was re-trued by hand on 2026-07-30** (it is gitignored, so no
+  card could have fixed it): it still advertised "Lobster Workflows" as a core capability nine
+  merges after W-3 deleted that surface, and quoted 847 tests / 17 goldens against a tree with
+  1,684 and 18. **Nothing guards this file** — `metrics.py --check` covers README only. Re-read it
+  for truth at the end of each wave, or give it its own guard.
+- ~~Hops still exchange concatenated raw text~~ — **closed by W-5**, and W-5b gave
+  `files_changed`/`diff_ref` real producers. **`notes` still has no producer** and is documented as
+  reserved. Do not read a populated-looking schema as populated data.
+- ~~The policy engine is not on any live path~~ — **closed by G-2** (wave 6): `install` seeds the
+  baseline policies, `pre_input` evaluates at enqueue, `pre_output` on every hop output, and the
+  existing `cli/_metrics.py` reader needed no changes. **Still daemon-gated:** `pre_tool_call`
+  (in-turn interception) — docket orchestrates *between* hops and is never inside a turn to
+  intercept a tool call. And `resolve_command_action` still has **zero callers** (G-3, wave 7).
 - Hops still exchange **concatenated raw text**, not structured artifacts (W-5, in flight this wave).
 - **The runtime dependency floors in `pyproject.toml` are unverified.** They claim `typer>=0.12`,
   `rich>=13`, `pydantic>=2`, `pydantic-settings>=2`, `filelock>=3.13`, while CI runs
