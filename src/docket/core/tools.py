@@ -24,19 +24,33 @@ Order of operations in ``dispatch_tool``, and why each step precedes the next:
 4. **Gate.** ``evaluate_tool_call`` is the single decision point. P19-3 adds
    the ``pre_tool_call`` policy hook here — the hook docket has shipped
    templates for since Phase 11 and never once evaluated.
-5. **Execute**, catching everything, so a broken handler returns a result the
+5. **Route ``ask``.** A gate verdict of ``ask`` blocks the call on the real
+   approval store (``core/approval.py``'s ``wait_for_approval``) rather than
+   just reporting the requirement — the daemon is gone, so nothing else will
+   ever resolve this call if docket does not wait for it here.
+6. **Execute**, catching everything, so a broken handler returns a result the
    loop can feed back rather than unwinding the turn.
+
+Every gate/approval decision that is not a bare ``allow`` is audited
+(``core/audit.py``'s ``audit_log``) from this module, not from callers —
+the same "the chokepoint records, so nobody downstream has to remember to"
+reasoning that makes ``dispatch_tool`` the single execution path.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from docket.core import approval as _approval
+from docket.core import policy as _policy
+from docket.core.audit import audit_log
 from docket.core.llm import ToolCall, ToolCallArgumentsError, ToolSpec
 from docket.core.security import classify_command
+from docket.core.trace import redact as _redact
 from docket.edges.adapters.toolbox import ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
@@ -51,6 +65,14 @@ class ToolContext:
     inside one of these, and the first is the working directory for shell
     commands. An empty ``roots`` makes every path-taking tool fail — deliberate,
     since defaulting to the whole filesystem is the failure this guards.
+
+    ``role``/``project`` (P19-3) feed ``policy.policy_eval_detail``'s
+    ``applies_to`` matching and ``approval.approval_create``'s record. Both
+    default to ``""`` rather than being required: every shipped policy
+    template uses ``applies_to: ["*"]``, which matches an empty role, and an
+    approval record with no project still needs to be created and shown
+    somewhere — ``dispatch_tool`` falls back to ``"operator"`` for that case
+    rather than refusing to gate at all.
     """
 
     agent_id: str = ""
@@ -58,6 +80,8 @@ class ToolContext:
     roots: tuple[Path, ...] = ()
     timeout: int = 120
     env: dict[str, str] = field(default_factory=dict)
+    role: str = ""
+    project: str = ""
 
 
 @dataclass
@@ -173,15 +197,77 @@ class ToolRegistry:
         return name in self._tools
 
 
+# ── rendering a call for the policy engine ──────────────────────────────────
+
+
+def render_tool_call(name: str, args: dict[str, Any]) -> str:
+    """Render one tool call as the text a ``pre_tool_call`` regex policy matches.
+
+    **Contract — pinned by ``tests/python/test_p19_3_pre_tool_call.py`` and load
+    bearing for every shipped policy template, not an implementation detail:**
+
+        "<name> <key>=<json-value> <key>=<json-value> ..."
+
+    Keys appear in ``args``' own iteration order (the order the model's JSON
+    arguments decoded in); each value is rendered via ``json.dumps`` so a
+    string is quoted, a number/bool/``null`` renders as its JSON literal, and
+    a nested object/list renders inline. A call with no arguments renders as
+    just ``name``. No trailing whitespace, no line breaks inserted.
+
+    Why this shape: every shipped policy pattern (``rm\\s+-[rf]``,
+    ``git\\s+push\\s+.*\\bmain\\b``) was written to read like the raw shell
+    command it matches, and a tool's most policy-relevant argument is usually
+    that exact string (``bash``'s ``command``, a path). Putting the tool name
+    first and the arguments after, verbatim and quoted, keeps a command-shaped
+    regex matching a rendered call the same way it would match the bare
+    command. It is *not* symmetric — a pattern written assuming an argument's
+    text appears *before* the verb that acts on it (e.g. a path before the
+    word "write") will not match this render; see block-destructive.json's
+    changelog note for the two patterns P19-3 found and fixed for exactly
+    that reason.
+    """
+    parts = [name]
+    for key, value in args.items():
+        parts.append(f"{key}={json.dumps(value)}")
+    return " ".join(parts)
+
+
 # ── the gate ──────────────────────────────────────────────────────────────────
+
+
+# Most-restrictive-wins ranking, mirroring core/policy.py's _RANK philosophy
+# but over the three-valued tool Decision rather than five policy actions.
+_DECISION_RANK: dict[str, int] = {"deny": 2, "ask": 1, "allow": 0}
+
+# core/policy.py action -> tool Decision. `warn`/`redact` do not block
+# execution — they are recorded (see dispatch_tool) but never change what a
+# tool call is allowed to do, since neither implies a human must decide first.
+_POLICY_ACTION_TO_DECISION: dict[str, Decision] = {
+    "block": "deny",
+    "require_approval": "ask",
+    "warn": "allow",
+    "redact": "allow",
+    "allow": "allow",
+}
 
 
 @dataclass(frozen=True)
 class ToolVerdict:
-    """The gate's answer for one call."""
+    """The gate's answer for one call.
+
+    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit
+    (P19-3), independent of which check ended up deciding ``decision`` — so a
+    caller can tell a policy actually fired a ``warn``/``redact`` even on a
+    call whose overall decision is ``allow`` (e.g. the command classifier
+    already said allow, but a policy still wants a record). ``policy_action``
+    is ``""`` when no policy file matched at all, and ``"allow"`` when one
+    matched but explicitly allowed.
+    """
 
     decision: Decision
     reason: str = ""
+    policy_id: str = ""
+    policy_action: str = ""
 
 
 def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> ToolVerdict:
@@ -198,20 +284,55 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
     P19-3 adds the ``pre_tool_call`` policy hook to this function, so a
     deny/require_approval rule from a shipped template applies to every tool,
     not just ``bash``. Both checks land in this one function rather than at
-    their call sites, so "what gates a tool call" has a single answer.
+    their call sites, so "what gates a tool call" has a single answer. The two
+    gates can disagree — one call is combined via most-restrictive-wins
+    (``_DECISION_RANK``, the same philosophy as ``core/policy.py``'s own
+    ``_RANK``): deny beats ask beats allow.
+
+    Pure decision function — it never audits or traces. That is
+    ``dispatch_tool``'s job (matching ``core/dispatch.py``'s own
+    ``policy_eval_detail`` callers, which decide what to do with a
+    :class:`~docket.core.policy.PolicyHit` themselves rather than having the
+    evaluator emit records).
     """
+    command_decision: Decision = "allow"
+    command_reason = ""
     if tool.kind == "exec":
         command = str(args.get("command") or "")
-        verdict = classify_command(command)
-        if verdict.action != "allow":
-            return ToolVerdict(
-                "ask" if verdict.action == "ask" else "deny",
-                verdict.reason,
-            )
-    return ToolVerdict("allow")
+        cmd_verdict = classify_command(command)
+        if cmd_verdict.action != "allow":
+            command_decision = "ask" if cmd_verdict.action == "ask" else "deny"
+            command_reason = cmd_verdict.reason
+
+    rendered = render_tool_call(tool.name, args)
+    hit = _policy.policy_eval_detail(ctx.role, "pre_tool_call", rendered)
+    policy_decision = _POLICY_ACTION_TO_DECISION.get(hit.action, "allow")
+    policy_reason = f"policy {hit.policy_id!r}: {hit.message}" if hit.policy_id else ""
+
+    if _DECISION_RANK[command_decision] >= _DECISION_RANK[policy_decision]:
+        decision, reason = command_decision, command_reason
+    else:
+        decision, reason = policy_decision, policy_reason
+
+    return ToolVerdict(decision, reason, policy_id=hit.policy_id, policy_action=hit.action)
 
 
 # ── the chokepoint ────────────────────────────────────────────────────────────
+
+
+def _audit_tool_decision(action: str, tool_name: str, ctx: ToolContext, detail: str) -> None:
+    """Write one audit entry for a non-``allow`` (or ``warn``/``redact``) gate
+    decision. Centralized here so every gated tool call is recorded exactly
+    once, regardless of which check (command classifier or policy engine)
+    produced it — the arguments are rendered and passed through
+    ``core.trace.redact`` first, since a tool call's arguments can carry a
+    secret (a token in a ``write`` call, a credential in a ``bash`` command).
+    """
+    audit_log(
+        action,
+        f"tool={tool_name} agent={ctx.agent_id or '?'} role={ctx.role or '?'} "
+        f"project={ctx.project or '?'}: {_redact(detail)}",
+    )
 
 
 def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> ToolResult:
@@ -246,9 +367,49 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     verdict = evaluate_tool_call(tool, args, ctx)
     result.decision = verdict.decision
     result.reason = verdict.reason
-    if verdict.decision != "allow":
+
+    if verdict.policy_action in ("warn", "redact"):
+        # Allowed to proceed, but a policy still flagged it -- silently
+        # letting this through would waste the policy (P19-3 requirement).
+        _audit_tool_decision(
+            f"tool.{verdict.policy_action}",
+            tool.name,
+            ctx,
+            f"policy={verdict.policy_id!r} call={render_tool_call(tool.name, args)}",
+        )
+
+    if verdict.decision == "deny":
+        _audit_tool_decision(
+            "tool.deny",
+            tool.name,
+            ctx,
+            f"{verdict.reason} call={render_tool_call(tool.name, args)}",
+        )
         result.error = verdict.reason
         return result
+
+    if verdict.decision == "ask":
+        _audit_tool_decision(
+            "tool.ask", tool.name, ctx, f"{verdict.reason} call={render_tool_call(tool.name, args)}"
+        )
+        token = _approval.approval_create(
+            ctx.project or "operator",
+            ctx.role or "tool",
+            f"tool call {tool.name!r}: {verdict.reason}"[:1000],
+            context={"tool": tool.name, "callId": call.id},
+        )
+        wait_outcome = _approval.wait_for_approval(token)
+        if wait_outcome.state != "granted":
+            result.decision = "deny"
+            result.reason = (
+                f"approval {'timed out and was denied' if wait_outcome.timed_out else 'denied'} "
+                f"(token={token})"
+            )
+            result.error = result.reason
+            return result
+        # Granted: the call is now allowed, and falls through to execute.
+        result.decision = "allow"
+        result.reason = f"approved (token={token})"
 
     try:
         outcome = tool.handler(args, ctx)

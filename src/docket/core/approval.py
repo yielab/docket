@@ -23,6 +23,17 @@ sweep (``approval_sweep_expired``) resolves a stale pending record to
 **denied** (fail-closed), not the prior, read-by-nobody ``"expired"`` state,
 and best-effort notifies ``core/dispatch.py`` so a task waiting on that token
 is actually failed, not left stranded in ``waiting_approval`` forever.
+
+P19-3: ``wait_for_approval`` adds a second, *synchronous* consumer of this
+store for ``core/tools.py``'s in-turn gate. Unlike the async producer above —
+which creates a token and returns immediately, leaving the task
+``waiting_approval`` for some later call to resolve — an in-turn tool call has
+nowhere to go while it waits, so this function blocks the calling thread
+instead. It shares the same fail-closed timeout contract as
+``approval_sweep_expired`` (denied, never left pending) via the private
+``_resolve_timeout_as_denied`` helper both now call, and uses its own,
+shorter ``config.TOOL_APPROVAL_TIMEOUT`` — see config.py for why the two
+timeouts differ.
 """
 
 from __future__ import annotations
@@ -31,9 +42,12 @@ import contextlib
 import datetime as _dt
 import json
 import os
+import time as _time
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import docket.config as _cfg
 from docket.core.audit import audit_log
@@ -226,18 +240,38 @@ def list_pending() -> list[dict[str, Any]]:
     return out
 
 
+def _resolve_timeout_as_denied(data: dict[str, Any]) -> None:
+    """Fail-closed timeout resolution shared by the sweep and the in-turn waiter.
+
+    *data* must be a record already known to be ``state == "pending"`` (the
+    caller just read it). Transitions it to **denied**, writes the same
+    ``approval.deny`` / ``channel=timeout`` audit entry an explicit ``docket
+    deny`` would, and best-effort notifies ``core/dispatch.py`` so a dispatch
+    task waiting on this exact token is actually failed rather than left
+    stranded — a local import, guarded, so a problem on the dispatch side can
+    never break either caller.
+    """
+    token = str(data.get("token", ""))
+    data["state"] = "denied"
+    _store.write_json(_approval_path(token), data)
+    project = str(data.get("project", "")) or "operator"
+    role = str(data.get("role", "")) or "operator"
+    _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
+    audit_log("approval.deny", f"token={token} project={project} channel=timeout")
+    with contextlib.suppress(Exception):
+        from docket.core import dispatch as _dispatch
+
+        _dispatch.resolve_waiting_approval(token, "denied")
+
+
 def approval_sweep_expired() -> int:
     """Expire pending approvals older than APPROVAL_TIMEOUT — resolved as
     **denied** (fail-closed), not the prior, read-by-nobody ``"expired"``
     state (ROADMAP Phase 15 G-1). Returns the number of records swept. Called
     by the serve loop.
 
-    Each swept record is treated exactly like an explicit ``docket deny``: an
-    ``approval.deny`` audit entry is written (channel ``"timeout"`` — no human
-    answered it), and ``core/dispatch.py``'s ``resolve_waiting_approval`` is
-    given a chance to fail any dispatch task that was waiting on this exact
-    token — best-effort (a local import, guarded), so a problem on the
-    dispatch side can never break this sweep.
+    Each swept record is treated exactly like an explicit ``docket deny`` via
+    ``_resolve_timeout_as_denied`` — see that helper for what it writes.
     """
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
@@ -262,14 +296,76 @@ def approval_sweep_expired() -> int:
         except ValueError:
             continue
         if (now - dt.timestamp()) > timeout:
-            data["state"] = "denied"
-            _store.write_json(path, data)
+            _resolve_timeout_as_denied(data)
             swept += 1
-            token = str(data.get("token", ""))
-            project = str(data.get("project", "")) or "operator"
-            audit_log("approval.deny", f"token={token} project={project} channel=timeout")
-            with contextlib.suppress(Exception):
-                from docket.core import dispatch as _dispatch
-
-                _dispatch.resolve_waiting_approval(token, "denied")
     return swept
+
+
+@dataclass(frozen=True)
+class ApprovalWaitResult:
+    """Outcome of blocking on one token until it resolves or times out.
+
+    ``state`` is always a final state (never ``"pending"`` — by the time this
+    returns, the wait is over). ``timed_out`` distinguishes an explicit deny
+    from a fail-closed expiry, which is useful for the message handed back to
+    the model and for a human reading ``docket audit`` afterwards.
+    """
+
+    state: Literal["granted", "denied"]
+    token: str
+    timed_out: bool = False
+
+
+def wait_for_approval(
+    token: str,
+    *,
+    timeout: float | None = None,
+    poll_interval: float | None = None,
+    sleep: Callable[[float], None] | None = None,
+    clock: Callable[[], float] | None = None,
+) -> ApprovalWaitResult:
+    """Block the calling thread on *token* until it resolves, then fail closed.
+
+    Unlike ``core/dispatch.py``'s require_approval gate — which creates a
+    token and leaves the task ``waiting_approval`` for some *later* call to
+    resolve — an in-turn tool call (``core/tools.py``'s ``dispatch_tool``) has
+    nowhere else to go while it waits: the model is blocked on this exact
+    answer. So this function blocks instead of returning early, polling the
+    record every *poll_interval* seconds (default
+    ``config.TOOL_APPROVAL_POLL_INTERVAL_S`` — never busy-spins) until either
+    it resolves or *timeout* seconds elapse (default
+    ``config.TOOL_APPROVAL_TIMEOUT``; deliberately much shorter than the async
+    ``APPROVAL_TIMEOUT`` — see config.py for why).
+
+    A timeout resolves the record to **denied** via the same
+    ``_resolve_timeout_as_denied`` helper the expiry sweep uses — never left
+    dangling in ``pending``.
+
+    ``sleep``/``clock`` are injectable two ways, both real, both exercised by
+    the test suite: pass them explicitly (a direct unit test of this
+    function), or leave them ``None`` and monkeypatch the module's ``_time``
+    reference (``docket.core.approval._time``) — the callers this function
+    exists for (``core/tools.py``'s ``dispatch_tool``) call this with no
+    override, so an end-to-end test of *that* path fakes time the second way.
+    This is why the fallback is resolved in the body rather than as an
+    ordinary default-argument value: a default bound at function-definition
+    time would capture the real ``time.sleep`` once and never see a later
+    monkeypatch of the module attribute.
+    """
+    effective_timeout = _cfg.TOOL_APPROVAL_TIMEOUT if timeout is None else timeout
+    effective_poll = _cfg.TOOL_APPROVAL_POLL_INTERVAL_S if poll_interval is None else poll_interval
+    do_sleep = sleep if sleep is not None else _time.sleep
+    do_clock = clock if clock is not None else _time.monotonic
+    deadline = do_clock() + effective_timeout
+
+    while True:
+        data = _read(token)
+        state = str(data.get("state", ""))
+        if state == "granted":
+            return ApprovalWaitResult("granted", token)
+        if state in ("denied", "expired"):
+            return ApprovalWaitResult("denied", token)
+        if do_clock() >= deadline:
+            _resolve_timeout_as_denied(data)
+            return ApprovalWaitResult("denied", token, timed_out=True)
+        do_sleep(effective_poll)

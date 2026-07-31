@@ -38,7 +38,27 @@ SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-sched
 RUNS_FILE = Path(os.environ.get("RUNS_FILE", DOCKET_HOME / "docket-runs.json"))
 # Expired approvals are denied (fail-closed).
 SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
+# APPROVAL_TIMEOUT: the ASYNC path (core/dispatch.py's require_approval gate).
+# A task just sits `waiting_approval` while this runs out -- no process, hop,
+# or turn is blocked on it, so a generous 15 minutes costs nothing but wall
+# clock and gives a human on Telegram/CLI a realistic window to notice.
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
+# TOOL_APPROVAL_TIMEOUT (P19-3): the IN-TURN path (core/approval.py's
+# wait_for_approval, called from core/tools.py's dispatch_tool). This one
+# blocks a live call -- the model's turn, a real thread, and under `docket
+# serve` a whole dispatch worker slot -- so APPROVAL_TIMEOUT's 15 minutes
+# would starve unattended throughput on every gated tool call. 120s is
+# deliberately well under core/dispatch.py's DEFAULT_TIMEOUT (300s, one hop's
+# whole budget): a grant still leaves ~180s for the tool to actually run
+# before the hop itself would time out, while a human watching for the
+# approval still gets a full two minutes to react. Fails closed to denied on
+# expiry, exactly like APPROVAL_TIMEOUT's sweep.
+TOOL_APPROVAL_TIMEOUT = int(os.environ.get("TOOL_APPROVAL_TIMEOUT", "120"))
+# TOOL_APPROVAL_POLL_INTERVAL_S: how often wait_for_approval re-checks the
+# record while blocked. Small enough to feel responsive once a human answers,
+# large enough not to busy-spin a thread that may sit here for the whole
+# timeout.
+TOOL_APPROVAL_POLL_INTERVAL_S = float(os.environ.get("TOOL_APPROVAL_POLL_INTERVAL_S", "2"))
 # CLAIM_STALE_TIMEOUT: a pod task 'claimed' (status=running) longer than this
 # without finishing is presumed crashed — the dispatch sweep fails it with a
 # stale_claim trace event so it stops looking active forever (R-1).
