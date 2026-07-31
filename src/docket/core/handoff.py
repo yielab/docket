@@ -33,13 +33,25 @@ is the documented degrade path for that case (treat the old raw text as
   hop gated by a ``VerdictGate`` (Reviewer/Tester, or any W-8 verdict-gated
   archetype). ``None`` for every other hop: Lead, a ``MechanicalGate``- or
   ``ApprovalGate``-gated hop, or an unparseable verdict.
-- ``files_changed`` / ``diff_ref`` — structurally real fields, but **not**
-  populated by dispatch yet: doing so honestly needs a real git-diff probe,
-  and the git shell-out surface (``edges/adapters/system.py``) belongs to a
-  different in-flight card this wave. Left as an explicit, documented seam
-  (empty list / ``None``) — the same "seam, not a lie" convention
-  ``core/dispatch.py`` already uses for ``_policy_requires_approval`` (G-2).
-- ``notes`` — free-form and reserved; no producer yet.
+- ``files_changed`` / ``diff_ref`` — populated for an **Implementer** hop
+  (ROADMAP Phase 16 follow-up W-5b) via a real git probe:
+  ``core/dispatch.py``'s ``_implementer_diff_probe`` resolves the member's
+  working tree the same way the mechanical verify gate does (worktree →
+  shared codebase → the member's own workspace dir, via
+  ``core.pod.resolve_member_cwd``) and, when that tree is a real git
+  repository and a ``git`` binary is on ``PATH``, calls
+  ``edges/adapters/system.py``'s ``git_changed_files``/``git_current_branch``.
+  ``files_changed`` is the working tree's uncommitted changes (staged,
+  unstaged, untracked — not a diff against a fixed base ref); ``diff_ref`` is
+  the member's current branch name, a reference a caller can hand to
+  ``git diff``/``git log`` against the pod's base branch. Both stay at their
+  empty default for every non-Implementer hop, a ``workdir`` (non-codebase)
+  pod, a workspace that is not a git repository, or a host with no ``git``
+  binary — an honest degrade, never an exception, never a crash mid-dispatch.
+- ``notes`` — free-form and **reserved**: the schema carries it (and
+  ``DROP_ORDER`` accounts for it) so a future producer never needs a schema
+  migration, but nothing in dispatch writes it today. Always ``""`` unless a
+  caller builds an artifact by hand.
 
 This module is deliberately pure — no filesystem I/O, no subprocess, no import
 of ``core/dispatch.py`` — the same "leaf" shape as ``core/pipeline.py``.
@@ -69,6 +81,9 @@ class HandoffArtifact(BaseModel):
     files_changed: list[str] = Field(default_factory=list)
     diff_ref: str | None = None
     verdict: str | None = None
+    #: Free-form and reserved (W-5b): the schema and DROP_ORDER account for it
+    #: so a future producer needs no migration, but dispatch writes nothing
+    #: here today — always "" unless a caller builds an artifact by hand.
     notes: str = ""
 
     #: Least-valuable-first shedding order for a token-budgeted consumer.
