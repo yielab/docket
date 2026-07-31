@@ -273,6 +273,265 @@ docket serve               # READ-ONLY monitor — health checks only, never dis
 
 ---
 
+## Pipelines: the one dialect docket runs
+
+Everything in Step 6 above — Lead → Implementer → Reviewer → Tester, one hop per role — is
+docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed pipeline document
+(`core/pipeline.py`) that `docket pod <project> dispatch` runs whenever a pod has no pipeline
+file of its own. Writing a pipeline file lets you change the step order, add a parallel fan-out,
+or swap in a different gate — without touching pod membership at all.
+
+> **`docket workflow` is gone.** An older Lobster YAML dialect (`docket workflow validate|plan`)
+> used to live here; its own validator silently ignored constructs its own template emitted, so
+> docket was linting a format it could not fully run. It was retired outright (ROADMAP decision
+> D-16) rather than migrated — running it now prints a removed-command notice:
+>
+> ```text
+> $ docket workflow validate myflow
+> docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML validator
+> ignored four constructs its own template emitted; ROADMAP D-16).
+> Use: docket pipeline validate   (was: workflow <id> validate <name>)
+> Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>)
+> Use: docket pipeline run        to actually execute a pipeline
+> Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer read by docket.
+> ```
+>
+> Any old `.lobster.yml` files are left on disk untouched; docket just never reads them again.
+> `docket pipeline` below is the one dialect docket actually executes.
+
+### Zero migration: nothing changes until you opt in
+
+A pod with no pipeline file behaves **exactly** like `core/dispatch.py`'s hardcoded pipeline
+always has: Lead (no gate) → Implementer (mechanical check against its own `verifyCmd`) →
+Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → Tester
+(PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches
+those steps — same skip-absent-roles behavior `docket pod <project> dispatch` always had.
+Installing this feature changes nothing about an existing pod until you write a file and pass
+`--file`.
+
+### `docket pipeline validate` — check a file before you point a pod at it
+
+Pure structural validation, no project or pod involved. Every level of the document rejects an
+unrecognized key — a typo fails loudly instead of being silently ignored (the exact defect that
+got Lobster retired):
+
+```bash
+$ docket pipeline validate workflows/release.yml
+✓ Pipeline 'workflows/release.yml' is valid
+
+$ docket pipeline validate workflows/broken.yml
+✗ Error: Pipeline 'workflows/broken.yml' is invalid:
+  ✗ steps.0.verifyCommand: Extra inputs are not permitted
+```
+
+### `docket pipeline plan` — see what would actually run, without running it
+
+`plan` renders straight from the real executor (`core.orchestrator.resolve_plan`/`render_plan`)
+— never a second, drift-prone pretty-printer, and never a token spent:
+
+```bash
+$ docket pipeline plan myapp
+
+Pipeline plan — myapp
+
+Pipeline: default
+  [lead] role=lead -> myapp-lead [gate: none]
+  [implementer] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]
+  [reviewer] role=reviewer -> myapp-reviewer [gate: verdict(approve, rework->implementer)]
+  [tester] role=tester -> myapp-tester [gate: verdict(pass)]
+```
+
+A lean pod (no Reviewer/Tester) shows those two lines marked `(skipped — role not in pod)`
+instead of a resolved member id — `plan` always renders every step the spec declares, it just
+tells you honestly which ones this pod's current roster can run.
+
+### A custom pipeline: parallel fan-out, bounded rework, a human sign-off
+
+You already scaled myapp's Implementer for parallel work (`docket pod myapp add implementer`
+→ `myapp-implementer-2`, mentioned above). A pipeline file is how you actually put both
+implementers to work on one task, then require a human OK before the fix ships instead of an
+automated PASS/FAIL:
+
+```yaml
+# ~/code/myapp/workflows/release.yml
+name: release
+description: Fan the fix out across both implementers, then require a human OK before it ships.
+
+steps:
+  - id: plan
+    role: lead
+
+  - id: fanout
+    parallel:
+      - id: impl-a
+        agent: myapp-implementer
+      - id: impl-b
+        agent: myapp-implementer-2
+
+  - id: review
+    role: reviewer
+    gate:
+      type: verdict
+      pattern: "^(APPROVE|REQUEST-CHANGES)\\b"
+      passValues: [approve]
+      rework:
+        to: fanout
+        when: [request-changes]
+        maxCycles: 2
+
+  - id: ship
+    role: tester
+    gate:
+      type: approval
+      message: "Tests passed — ready to deploy?"
+```
+
+```bash
+$ docket pipeline plan myapp --file workflows/release.yml
+
+Pipeline plan — myapp
+
+Pipeline: release
+  [plan] role=lead -> myapp-lead [gate: none]
+  [fanout] parallel:
+    - myapp-implementer -> myapp-implementer [gate: none]
+    - myapp-implementer-2 -> myapp-implementer-2 [gate: none]
+  [review] role=reviewer -> myapp-reviewer [gate: verdict(approve, rework->fanout)]
+  [ship] role=tester -> myapp-tester [gate: approval]
+
+$ docket pipeline run myapp --file workflows/release.yml
+```
+
+`run` dispatches through `cli._pod._pod_dispatch` — the exact same rendering, run-registry
+recording, budget/approval gating, retries, and crash resume `docket pod myapp dispatch` uses.
+`--file` only swaps which `PipelineSpec` is walked; nothing else about how a hop runs changes.
+
+Three gate kinds, and what a failure does to the task:
+
+| Gate | Where it shows up | On failure |
+|---|---|---|
+| `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
+| `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
+| `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
+
+### Declared variables — real, but only wired to one trigger today
+
+A pipeline can declare `variables` (defaults, descriptions, `required`), but this format defines
+**no interpolation engine** — declaring one never substitutes a value into a hop's prompt or
+environment anywhere. The one place a declared variable's value is actually resolved today is the
+`docket serve` webhook (next section); `docket pipeline plan`/`run` from the CLI never look at
+`variables` at all — a `required` variable with no default does not block a CLI-triggered run.
+Treat `variables` today as metadata a webhook caller can supply and a later `docket runs show`
+can report, not a general parameterization mechanism yet.
+
+---
+
+## The run registry, `--follow`, and cancellation
+
+Every dispatch invocation — CLI, the serve webhook, a due schedule, the `--dispatch` sweep loop,
+or an MCP client — writes one record to a persisted run registry, so "is it done, did it fail, or
+did it never run" has an answer instead of vanishing behind a fire-and-forget thread:
+
+```bash
+$ docket runs list
+Dispatch runs
+┌──────────────────────┬─────────┬─────────┬───────────┬───────┬─────────────────────┬───────┐
+│ ID                    │ SOURCE  │ PROJECT │ STATE     │ TASKS │ CREATED             │ ERROR │
+├──────────────────────┼─────────┼─────────┼───────────┼───────┼─────────────────────┼───────┤
+│ run-3f2a1c9e-...      │ cli     │ myapp   │ succeeded │ 1     │ 2026-07-29T10:02:00 │       │
+└──────────────────────┴─────────┴─────────┴───────────┴───────┴─────────────────────┴───────┘
+
+$ docket runs show run-3f2a1c9e-... --json
+$ docket runs list --project myapp --json     # for scripting/dashboards
+```
+
+`--follow` on `docket pipeline run` tails the same durable trace store a hop already writes to,
+so you see hop-by-hop progress live instead of only the final summary:
+
+```bash
+$ docket pipeline run myapp --follow
+→ Following dispatch for 'myapp' (Ctrl-C stops watching, not the dispatch)
+
+  2026-07-29T10:02:00  tool_call                  (lead)
+  2026-07-29T10:02:05  tool_result                (lead)
+  2026-07-29T10:02:05  tool_call                  (implementer)
+  ...
+```
+
+Ctrl-C stops *watching only* — the dispatch keeps running and recording in the background,
+exactly like closing a `tail -f` window doesn't kill the process being tailed.
+
+A run stuck mid-hop can be killed outright:
+
+```bash
+$ docket runs cancel run-3f2a1c9e-...
+✓ cancelled run run-3f2a1c9e-... (1 process group(s) killed)
+```
+
+`cancel` kills the in-flight hop's **whole process group**, not just the immediate child (it may
+have shelled out further), and marks the run terminally `cancelled` — the killed hop surfaces as
+an ordinary hop failure through the same state machine, no new task-status vocabulary. A genuine
+cancellation writes a `runs.cancel` audit entry naming the run, its project, its pre-cancel state,
+and how many process groups were killed. Cancelling an already-terminal (or unknown) run changes
+nothing and writes no audit entry — but it still exits `1`, printed as an error
+(`run <id> is already <state>`), not a silent success; "no-op" describes its side effects, not
+its exit code.
+
+---
+
+## Scheduling and webhooks (unattended dispatch)
+
+Two ways to trigger a pod's pipeline without a human typing `dispatch`:
+
+### Schedules — cron, a daily time, or a fixed interval
+
+Schedules live in `~/.openclaw/docket-schedules.json` — there is no CLI writer for this file yet,
+so you edit it directly:
+
+```json
+{
+  "schedules": {
+    "myapp": "@every 30m",
+    "otherapp": "09:00",
+    "athird": "*/15 9-17 * * 1-5"
+  }
+}
+```
+
+Three formats: `@every <N>s|m|h`, a daily `HH:MM` (UTC), or a standard 5-field cron expression
+(`minute hour dom month dow`, UTC, numeric only — no `MON`/`JAN` name aliases). A schedule is
+checked at most once per matching minute and **only while `docket serve --dispatch` is running**
+— plain read-only `docket serve`, or no `docket serve` at all, never fires one. Each due project
+gets its own run record (`source: "schedule"`), so a scheduled dispatch is exactly as inspectable
+via `docket runs` as a manual one.
+
+### Webhooks — trigger from CI or any external system
+
+`docket serve` always exposes `POST /dispatch/<project>` (bearer-token authenticated), independent
+of `--dispatch` — a webhook call is an explicit request, not part of the passive monitor loop:
+
+```bash
+TOKEN=...   # printed at `docket serve` startup, or $DOCKET_SERVE_TOKEN
+
+curl -s -H "Authorization: Bearer $TOKEN" -X POST \
+  -H "Content-Type: application/json" -d '{"env": "staging"}' \
+  http://127.0.0.1:7331/dispatch/myapp
+# {"ok": true, "run": "run-3f2a1c9e-...", "project": "myapp", "status": "dispatched"}
+
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7331/runs/run-3f2a1c9e-... | jq .
+```
+
+The JSON body is resolved against the pod's own configured/default pipeline's declared
+`variables` **before** a run record is even created — this is the one path where a pipeline's
+declared `variables` actually do something (see the note above): a missing `required` variable
+is rejected with `400` and no run record is created at all; the resolved namespace is persisted
+on the run record
+(`docket runs show <id>` shows it) purely so you can answer "what did this dispatch actually see"
+— it is still never interpolated into a hop's prompt. The webhook always uses the pod's own
+pipeline; it has no way to supply a `--file` of its own, only variable *values*.
+
+---
+
 ## There is now one queue: per-pod dispatch
 
 `docket team` (the org manager's own delegate/queue/start/done/cancel task queue) was
@@ -502,6 +761,12 @@ Telegram" sections — kept in one place rather than duplicated here.
 ```
 delegate → dispatch → Lead → Implementer → (Reviewer) → (Tester) → you review + commit
 ```
+
+**Pipelines** (`docket pipeline validate/plan/run`, `docket runs list/show/cancel`):
+- `docket workflow`/Lobster is retired (D-16) — the docket-native pipeline is the one dialect
+  docket executes, and a pod with no pipeline file runs the built-in one unchanged.
+- Every dispatch — CLI, `--follow`, a schedule, a webhook, or the sweep loop — lands one record
+  in the run registry; `docket runs cancel` kills an in-flight hop's process group for real.
 
 **Key guarantees:**
 - One owner of completion (Lead) and one doer (Implementer) — no two-doer ambiguity.
