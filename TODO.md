@@ -541,7 +541,7 @@ timeout. Acceptance, test-pinned: a `block-destructive` policy actually blocks a
 call, and `high-risk-deploy` catches `git push` **by argument** — the deferred backlog item since
 Phase 13.
 
-**P19-4 · `core/session.py`: turn history + compaction** — *IN-PROGRESS (wave 8) · M*
+**P19-4 · `core/session.py`: turn history + compaction** — *DONE (`08c5c11`) · M*
 docket already owns HEARTBEAT, the conversation registry and memory logs; this adds the in-turn
 message history the loop needs. Durable per `agent:<id>:<project>` session key, written through
 `edges/store.py`. Compaction reuses C-1's budget compiler and C-2's distillation. Retires the
