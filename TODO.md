@@ -69,26 +69,22 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ CURRENT STATE
+## ▶ CURRENT STATE — ☑ THE PLATFORMIZATION PROGRAM IS COMPLETE (2026-07-31)
 
-**Waves 5 and 6 are both COMPLETE.** `platform` green: **1,684 tests** (`pytest` exit 0, zero
-FAILED/ERROR), 18/18 goldens, 20 specs valid, 37 commands, `ruff` + `ruff format` + `mypy --strict`
-clean, `metrics.py --check` in sync (and the guard itself is repaired — see below).
+**Phases 14, 15, 16, 17 and 18 are all closed.** 38 cards across 7 waves. `platform` green at
+close: **1,735 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical,
+**21 specs** valid / 0 warnings, 37 commands, ~22,880 lines, `ruff` + `ruff format` +
+`mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims.
 
-**Phases 16 and 18 are COMPLETE.** Phase 15 is down to its last card (G-3); Phase 17 is 3 of 5
-(C-3, C-5 open). Durable per-card records: the `☑ Wave 5 shipped` and `☑ Wave 6 shipped` blocks in
-ROADMAP.md's Phase 16 section. **Wave 7 is queued below.**
+Durable per-card records: the `☑ Waves 3–4 / 5 / 6 / 7 shipped` blocks in ROADMAP.md's Phase 16
+section. **There is no next wave queued** — what remains is the carried-forward list at the bottom
+of this file, which is deliberately short and none of it blocking.
 
-**Waves 3 and 4 are fully merged (11 cards).** Their durable record — what shipped, what was
-narrowed, and the two integration defects that the gates did *not* catch — is the
-`☑ Waves 3–4 shipped` block in ROADMAP.md's Phase 16 section. Per the board convention their
-per-card entries were cleared from here; ROADMAP holds the history.
+**Phase status:** Phase 14 **COMPLETE** (R-1…R-8) · Phase 15 **COMPLETE** (G-1…G-6, closed by G-3)
+· Phase 16 **COMPLETE** (W-1…W-8) · Phase 17 **COMPLETE** (C-1…C-5, closed by C-3/C-5) ·
+Phase 18 **COMPLETE** (L-1/L-2/L-3/L-6 shipped; L-4 and L-5 answered as evidenced spikes).
 
-**Phase status:** Phase 16 **COMPLETE** (W-1…W-8) · Phase 18 **COMPLETE** (L-4/L-5 answered as
-spikes) · Phase 15 at 5 of 6 (only **G-3**) · Phase 17 at 3 of 5 (**C-3**, **C-5**).
-**Four cards remain in the entire Platformization program.**
-
-### Two standing integrator checks (both earned the hard way)
+### Three standing integrator checks (all earned the hard way)
 
 1. **Never resolve a conflict in a roll-up table by picking a side.** `specs/README.md`'s status
    table, README's metric counts and the golden completion lists are edited by several branches at
@@ -101,6 +97,13 @@ spikes) · Phase 15 at 5 of 6 (only **G-3**) · Phase 17 at 3 of 5 (**C-3**, **C
    a silent skip for unmatched claims, against a README that had lost 3 of its 4 claims). Fixed:
    thousands separators are matched, and a README stating none of the tracked metrics is now a hard
    failure. When adding a guard, add a test that proves it fails on bad input.
+3. **Ask what set a guard actually checks, not just whether it is green.** Check 2 caught guards
+   that verified *nothing*; wave 7 caught two that verified the *wrong set* while reporting
+   success. `metrics.py` counted specs with an `*.spec.md` suffix filter while the blocking
+   validator globs `specs/acceptance/*.md`, so README published 20 where CI counted 21. The
+   dependency floors in `pyproject.toml` had never once been resolved-and-tested, and two of six
+   were false. **The tell is the same every time: a number nobody has ever watched go red.** When
+   two scripts both claim authority over one number, pin them to each other.
 
 ---
 
@@ -154,29 +157,59 @@ sibling cards concurrently, not bad luck. Budget merge time for it.
 
 ---
 
-## Wave 7 — IN FLIGHT (the last four cards of the Platformization program)
+## Wave 7 — ☑ COMPLETE (2026-07-31) — and with it, the whole Platformization program
 
-Dispatched 2026-07-31 as **three** branches, not four. Base branch for all three: `platform` at
-`910a557`.
+Merge order `c-3-c-5 → g-3 → cl-3`. Durable record: the `☑ Wave 7 shipped` block in ROADMAP.md's
+Phase 16 section. **Phases 14–18 are all closed. 38 cards across 7 waves.**
 
-| Branch | Cards | Phase | Closes |
-| --- | --- | --- | --- |
-| `pc/g-3` | **G-3 · High-risk classes enforced** | 15 | Wire `resolve_command_action` — verified **zero production callers**, only 3 test call sites and spec prose — into the processes docket launches and into G-2's `pre_output` scan. **Closes Phase 15.** |
-| `pc/c-3-c-5` | **C-3 · One durable task state** + **C-5 · Conversation registry auto-population** | 17 | Dispatch writes HEARTBEAT entries mechanically and keeps `last_message`/`task_ref` current; `doctor` flags TASK_LIST⇄HEARTBEAT divergence. **Closes Phase 17.** |
-| `pc/cl-3` | **CL-3 · Post-program dead-code sweep** | standing | Re-run CL-1's full-tree sweep against the ~5,000 lines waves 3–6 added. |
+**Tree at close:** 1,684 → **1,735 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens
+byte-identical, **21 specs** / 0 warnings, 37 commands, ~22,880 lines, `ruff` + `ruff format` +
+`mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims.
 
-### Scheduling decision: C-3 and C-5 are one card
+☑ **C-3 + C-5** (`0381e22`) durable task ledger + self-maintaining conversation registry — one
+branch, not two · ☑ **G-3** (`5e71330`) high-risk classification on two real docket-launched paths
+· ☑ **CL-3** (`31dadbb`) post-program sweep, 4 symbols deleted from 97 examined.
+
+**Integrator commits this wave:** `997e5c8` dependency floors corrected + `floors` CI job ·
+`77c4367` spec-count guard aligned to the blocking validator · `bb0de2c` the three high-risk
+helpers deleted · `9d02d4f` distillation failure kind reported.
+
+### Four lessons, in the order they cost something
+
+1. **"Wire the unused function" can be the wrong instruction.** G-3's card named
+   `resolve_command_action`. Wiring it proved it was unwireable: it resolves `ask`/`allow` for a
+   command string, and that decision belongs to the daemon's exec gate (D-15), which keys on
+   binary path and has no hook to consult docket. `match_high_risk` was the function that *could*
+   be called. **The card was right about the defect and wrong about the fix** — the agent caught
+   this and said so, which is the only reason it was caught.
+2. **A dead function next to the code that fixed dead code is worse than elsewhere.** Deleting
+   `resolve_command_action`/`is_high_risk`/`high_risk_bins` was not tidiness: leaving a
+   never-called ask/allow resolver one function away from Phase 15's whole point would have
+   published the opposite lesson.
+3. **Two guards were checking the wrong set while reporting success** — the same shape as Phase
+   14's vacuous `metrics.py --check`, found again twice in one day. The dependency floors had
+   never been resolved-and-tested (`typer>=0.12` fails 216 tests; `pydantic>=2` fails 56 modules
+   at import). `metrics.py` and `validate-specs.sh` disagreed on how many specs exist because one
+   used a suffix filter the other didn't. **Both are now pinned by a job or a test that fails on
+   bad input.** The recurring tell in all three: a number nobody had ever seen go red.
+4. **Carve-outs need disjoint regions, not merely different names.** C-3 and C-5 were queued as
+   separate cards with a note offering "one owner or a carve-out". Neither was available — they
+   write from the *same five* functions. Merging them into one branch was cheaper than any
+   scheduling trick, and both siblings then auto-merged with zero conflicts.
+
+### The scheduling decision, kept for the next program
 
 The queued board offered two options — one dispatch owner, or a repeat of wave 6's function-level
-carve-out. **Neither applies to this pair.** C-3 (HEARTBEAT ledger) and C-5 (registry
-`last_message`/`task_ref`) do not merely share a *file*; they write from the **same lifecycle
-points** — task claim, hop persist, task finalize. A carve-out only works when the regions are
-disjoint, and these are the same five functions. Split, they would have produced a guaranteed
-hand-resolved conflict in the one file that has cost the most to merge all program. They ship on
-one branch.
+carve-out. **Neither applies to a pair like C-3/C-5.** They do not merely share a *file*; they
+write from the **same lifecycle points** — task claim, hop persist, task finalize. A carve-out
+only works when the regions are disjoint, and these are the same five functions. Split, they would
+have produced a guaranteed hand-resolved conflict in the one file that has cost the most to merge
+all program. They shipped on one branch.
 
-**The carve-out that does apply** — G-3 vs C-3/C-5 in `core/dispatch.py`, genuinely disjoint
-regions, stated up front so the merge is predictable:
+**The carve-out that did apply** — G-3 vs C-3/C-5 in `core/dispatch.py`, genuinely disjoint
+regions, declared before dispatch so the merge was predictable. It held exactly: every hunk landed
+where declared (verified by reading the diff's hunk headers, not by trusting the reports), and all
+three branches merged with **no code conflict**.
 
 | Branch | Owns in `core/dispatch.py` | Owns elsewhere |
 | --- | --- | --- |
