@@ -99,42 +99,28 @@ class TestHighRiskPatterns:
         assert cls.name == "prod-deploy"
 
     def test_prod_deploy_matches_npm_publish(self) -> None:
-        assert _sec.is_high_risk("npm publish --access public") is True
+        assert _sec.match_high_risk("npm publish --access public") is not None
 
     def test_money_movement_matches_stripe(self) -> None:
-        assert _sec.is_high_risk("stripe charge customer") is True
+        assert _sec.match_high_risk("stripe charge customer") is not None
 
     def test_secret_access_matches_ssh_keygen(self) -> None:
-        assert _sec.is_high_risk("ssh-keygen -t ed25519") is True
+        assert _sec.match_high_risk("ssh-keygen -t ed25519") is not None
 
     def test_non_matching_command_is_not_high_risk(self) -> None:
-        assert _sec.is_high_risk("ls -la") is False
-        assert _sec.is_high_risk("git status") is False
+        assert _sec.match_high_risk("ls -la") is None
+        assert _sec.match_high_risk("git status") is None
 
-    def test_high_risk_bins_includes_git_and_npm(self) -> None:
-        bins = _sec.high_risk_bins()
+    def test_git_and_npm_are_the_bins_with_an_attached_class(self) -> None:
+        # The attached-bin set is read straight off HIGH_RISK_PATTERNS. It used
+        # to come from a `high_risk_bins()` helper, deleted with G-3: it had no
+        # production caller, because `docket gates classes` walks `cls.bins`
+        # itself and nothing else ever wanted the flattened set.
+        bins = {name for cls in _sec.HIGH_RISK_PATTERNS for name in cls.bins}
+
         assert "git" in bins
         assert "npm" in bins
         assert "ls" not in bins
-
-
-class TestResolveCommandAction:
-    def test_high_risk_forces_ask_even_when_binary_allowlisted(self) -> None:
-        # 'git' the binary is on the allowlist, but a high-risk invocation of
-        # it must still force 'ask' -- allowlist status must never bypass a
-        # high-risk match.
-        allowlist = ["/usr/bin/git"]
-        action = _sec.resolve_command_action("git push origin production", allowlist)
-        assert action == "ask"
-
-    def test_non_matching_allowlisted_command_is_allowed(self) -> None:
-        allowlist = ["/usr/bin/git"]
-        action = _sec.resolve_command_action("git status", allowlist)
-        assert action == "allow"
-
-    def test_non_matching_non_allowlisted_command_asks(self) -> None:
-        action = _sec.resolve_command_action("rm -rf /tmp/foo", ["/usr/bin/git"])
-        assert action == "ask"
 
 
 class TestResolveSafeBinPaths:
@@ -150,7 +136,7 @@ class TestResolveSafeBinPaths:
         monkeypatch.setattr(_sec.shutil, "which", lambda name: f"/usr/bin/{name}")
         paths = _sec.resolve_safe_bin_paths()
         bases = {p.rsplit("/", 1)[-1] for p in paths}
-        for name in _sec.high_risk_bins():
+        for name in {n for cls in _sec.HIGH_RISK_PATTERNS for n in cls.bins}:
             assert name in bases
 
     def test_non_high_risk_bin_still_resolved(self, oc_dir: Path) -> None:
@@ -171,7 +157,7 @@ class TestBuildExecApprovalsHighRisk:
         merged, _, _ = _sec.build_exec_approvals({}, paths, ["myshop"], force=False)
         for agent in merged["agents"].values():
             bases = {e["pattern"].rsplit("/", 1)[-1] for e in agent["allowlist"]}
-            for name in _sec.high_risk_bins():
+            for name in {n for cls in _sec.HIGH_RISK_PATTERNS for n in cls.bins}:
                 assert name in bases
 
 

@@ -17,7 +17,6 @@ import os
 import re
 import shutil
 import uuid
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,7 +27,7 @@ from docket.edges.adapters import openclaw as _oc
 # interpreters are deliberately OMITTED so they fall through the allowlist gate.
 # NOTE: a bin listed here (e.g. git, npm) can still have a HIGH_RISK_PATTERNS
 # class attached for documentation/visibility (`docket gates classes`) — that
-# does NOT exclude it from the seeded allowlist. See `high_risk_bins()`'s
+# does NOT exclude it from the seeded allowlist. See `HighRiskClass`'s
 # docstring for why: the daemon's allowlist gates by binary path, not
 # argument text, so excluding a whole bin would also block its benign uses.
 SAFE_BINS: tuple[str, ...] = (
@@ -62,10 +61,10 @@ class HighRiskClass:
     to ask — an unacceptable usability regression for tools used constantly.
     Per-argument enforcement of these classes is deferred pending a daemon-
     side capability that doesn't exist today (tracked as a backlog item,
-    similar to the deferred S2 redaction work). ``match_high_risk``/
-    ``is_high_risk``/``resolve_command_action`` remain useful now for any
-    caller that has an actual command string to classify (tests, a future
-    daemon hook, or docket's own subprocess call sites).
+    similar to the deferred S2 redaction work). ``match_high_risk`` is the
+    live classifier for the paths docket *does* control — G-3 wired it into
+    ``run_verify_cmd`` (refuse before the shell starts) and into dispatch's
+    ``pre_output`` scan.
     """
 
     name: str
@@ -113,59 +112,29 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
 )
 
 
-def high_risk_bins() -> frozenset[str]:
-    """SAFE_BINS members named by a HIGH_RISK_PATTERNS class, for visibility only.
-
-    NOT used to exclude anything from the seeded exec allowlist (see
-    HighRiskClass's docstring) — ``resolve_safe_bin_paths`` seeds these bins
-    normally. Note: ``docket gates classes`` (``cli/_gates.py``'s ``_classes``)
-    reads ``HIGH_RISK_PATTERNS``/``cls.bins`` directly today rather than calling
-    this function — it is exposed here for any future caller that wants just
-    the flattened bin set (a future daemon hook, or docket's own subprocess
-    call sites) without walking ``HIGH_RISK_PATTERNS`` itself.
-    """
-    out: set[str] = set()
-    for cls in HIGH_RISK_PATTERNS:
-        out.update(cls.bins)
-    return frozenset(out)
-
-
 def match_high_risk(command: str) -> HighRiskClass | None:
-    """Return the first HIGH_RISK_PATTERNS class matching *command*, else None."""
+    """Return the first HIGH_RISK_PATTERNS class matching *command*, else None.
+
+    The single classification entry point. G-3 wired it onto the two paths
+    docket itself controls: ``run_verify_cmd`` (which refuses a matching
+    command outright, before the shell ever starts) and dispatch's
+    ``pre_output`` hop-output scan.
+
+    Three sibling helpers — ``high_risk_bins``, ``is_high_risk`` and
+    ``resolve_command_action`` — were deleted when G-3 landed rather than left
+    beside this one. They had accumulated zero production callers because they
+    modelled a decision docket structurally cannot make: ``ask`` vs ``allow``
+    for a live agent tool call belongs to the daemon's exec gate (D-15), which
+    keys on binary path and has no hook to consult docket. Keeping a
+    never-called "always ask on high risk" resolver in a *security* module was
+    the exact defect Phase 15 existed to close — enforcement-shaped code that
+    enforces nothing. The policy itself is still published, honestly, by
+    ``docket gates classes`` and ``specs/functional/security-gates.spec.md``.
+    """
     for cls in HIGH_RISK_PATTERNS:
         if re.search(cls.pattern, command, re.IGNORECASE):
             return cls
     return None
-
-
-def is_high_risk(command: str) -> bool:
-    """True if *command* matches any HIGH_RISK_PATTERNS class."""
-    return match_high_risk(command) is not None
-
-
-def resolve_command_action(command: str, allowlist_paths: Sequence[str] = ()) -> str:
-    """Decide "ask" vs "allow" for one command string.
-
-    A high-risk pattern match ALWAYS forces "ask", regardless of whether the
-    invoked binary's resolved path appears in *allowlist_paths* — allowlist
-    status must never bypass a high-risk match, for any caller that has an
-    actual live command string to classify (tests, a future daemon hook, or
-    docket's own subprocess call sites). This is the mechanism available
-    *today*; it is not currently wired into the daemon's own allowlist gate,
-    which can only key on binary path (see HighRiskClass's docstring) — so a
-    live agent invocation of ``git``/``npm`` is not yet gated through this
-    function at daemon-approval time.
-    """
-    if is_high_risk(command):
-        return "ask"
-    command = command.strip()
-    if not command:
-        return "ask"
-    invoked = command.split()[0]
-    for path in allowlist_paths:
-        if path == invoked or os.path.basename(path) == os.path.basename(invoked):
-            return "allow"
-    return "ask"
 
 
 @dataclass
@@ -183,7 +152,7 @@ def resolve_safe_bin_paths() -> list[str]:
 
     Bins that are not on PATH are skipped (Bash ``command -v ... || continue``).
     Every SAFE_BINS member is seeded here, including ``git``/``npm`` — see
-    `high_risk_bins()`'s docstring for why they are *not* excluded despite
+    `HighRiskClass`'s docstring for why they are *not* excluded despite
     having an attached HIGH_RISK_PATTERNS class.
     """
     paths: list[str] = []

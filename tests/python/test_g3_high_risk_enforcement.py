@@ -1,11 +1,16 @@
 """G-3: high-risk classes enforced on docket-launched processes.
 
-Before this card, ``core/security.py``'s ``HIGH_RISK_PATTERNS``/
-``resolve_command_action`` had exactly three callers anywhere in the codebase
--- all of them tests (``test_m5_gates_policy.py``). A classifier nothing calls
+Before this card, ``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier had
+callers only in tests (``test_m5_gates_policy.py``). A classifier nothing calls
 is documentation, not enforcement -- the same defect shape G-1/G-2 fixed for
-the approval store and the policy engine. This suite exercises the two real
-wiring points this card adds:
+the approval store and the policy engine.
+
+``match_high_risk`` is what this card wired, and it is what survived. Three
+sibling helpers that composed it -- ``high_risk_bins``, ``is_high_risk`` and
+``resolve_command_action`` -- were deleted on merge rather than left beside it:
+none had a production caller, because they modelled an ask/allow decision the
+daemon's exec gate owns and docket cannot reach (D-15). This suite exercises
+the two real wiring points that remain:
 
   * TestRunVerifyCmdHighRisk  -- ``edges/adapters/system.py``'s
     ``run_verify_cmd`` is the one docket-launched subprocess built from a

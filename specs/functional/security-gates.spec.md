@@ -1,7 +1,7 @@
 # Security Gates Specification
 
 **Version**: 0.7.0
-**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design. G-3 also gave `resolve_command_action`'s underlying classifier its first real, non-test callers — see "High-risk action classes" below.
+**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below.
 **Last Updated**: 2026-07-31
 
 ## Purpose
@@ -222,11 +222,19 @@ are owned here, not there.
    string (e.g. `"git push origin production"`), not just the invoked binary name. This is
    intentionally a small policy seed, not exhaustive coverage; it is not yet user-configurable
    (a config-file override is a natural follow-up, not implemented today).
-2. For any caller that has an actual command string to classify (`resolve_command_action`,
-   used by tests and available to any future daemon hook or docket subprocess call site), a
-   high-risk pattern match **MUST** always resolve to `ask`, regardless of whether the invoked
-   binary's resolved path is present in the curated allowlist — allowlist membership **MUST
-   NOT** bypass a high-risk match in this decision function.
+2. On any path docket itself controls, a high-risk pattern match **MUST** take effect
+   regardless of whether the invoked binary's resolved path is present in the curated
+   allowlist — allowlist membership **MUST NOT** bypass a high-risk match. Both wired call
+   sites satisfy this by construction: neither consults the allowlist at all, and
+   `run_verify_cmd` refuses outright (a strictly stronger outcome than `ask`).
+
+   > This requirement was previously expressed by a `resolve_command_action` helper that
+   > returned `ask`/`allow` for a command string. That function was **deleted** when G-3
+   > landed: it never acquired a production caller, because the ask/allow decision for a live
+   > agent tool call belongs to the daemon's exec gate (D-15), which keys on binary path and
+   > has no hook to consult docket. A never-called decision function in a security module is
+   > the precise defect this phase existed to remove, so the requirement now constrains the
+   > real paths instead of a helper nothing invoked.
 3. **Money-movement** and **secret-access** classes **MUST** be treated as fully enforced by
    the shipped allowlist gate today: none of their named bins (`stripe`, `paypal`,
    `ssh-keygen`, `vault`, etc.) are members of the curated `SAFE_BINS` allowlist, so any live
@@ -250,11 +258,15 @@ are owned here, not there.
 
 ### Docket-launched process classification (implemented, ROADMAP Phase 15 G-3)
 
-Before this card, `resolve_command_action` (and the `HIGH_RISK_PATTERNS`/`match_high_risk`/
-`is_high_risk` classifier it composes) had exactly three callers anywhere in the codebase, all
-of them tests. A classifier nothing calls is documentation, not enforcement — the same defect
-shape G-1 fixed for the approval store and G-2 fixed for the policy engine. This section is
-what closes that gap for the classifier itself, on the two paths docket actually controls.
+Before this card, the `HIGH_RISK_PATTERNS` classifier had callers only in tests. A classifier
+nothing calls is documentation, not enforcement — the same defect shape G-1 fixed for the
+approval store and G-2 fixed for the policy engine. This section is what closes that gap for
+the classifier itself, on the two paths docket actually controls.
+
+`match_high_risk` is the surviving entry point. The three helpers that wrapped it —
+`high_risk_bins`, `is_high_risk` and `resolve_command_action` — were deleted on merge rather
+than left beside the wired one, since none of them gained a caller either (see the note under
+requirement 2 above for why `resolve_command_action` in particular could never have one).
 
 1. **Scope decision — which of docket's own subprocess calls are classification targets.**
    `edges/adapters/system.py` is the shell-out chokepoint (~11 `subprocess.run` call sites,
@@ -274,11 +286,11 @@ what closes that gap for the classifier itself, on the two paths docket actually
 2. `edges/adapters/system.py`'s `run_verify_cmd` **MUST** classify its `cmd` argument against
    `core.security.match_high_risk` before starting the subprocess. A match **MUST** fail
    closed — the shell command **MUST NOT** be started at all — and the returned failure message
-   **MUST** name the matched class and point at `docket gates classes`. This is a stronger
-   posture than `resolve_command_action`'s "ask": `run_verify_cmd` runs synchronously inside a
-   dispatch hop with no interactive approver reachable to answer a prompt, so refusing outright
-   is the only honest fail-closed behavior available here — the same posture the daemon's own
-   `askFallback: deny` takes when nobody answers a live prompt.
+   **MUST** name the matched class and point at `docket gates classes`. Refusing outright is a
+   stronger posture than routing to an approval prompt, and it is the only honest one available
+   here: `run_verify_cmd` runs synchronously inside a dispatch hop with no interactive approver
+   reachable to answer — the same posture the daemon's own `askFallback: deny` takes when nobody
+   answers a live prompt.
 3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
    **MUST** also classify each hop's real output against `core.security.match_high_risk`,
    independently of the JSON policy engine — the shipped `high-risk-*.json` templates are
@@ -587,11 +599,10 @@ $ docket trace myapp <session-id>
   G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket audit verify` detects
   an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
   audit.spec.md.
-- A high-risk pattern match **MUST NOT** be bypassed by allowlist status in
-  `resolve_command_action` for classes with no allowlist overlap (money-movement,
-  secret-access) — those are fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST
-  NOT** be claimed as enforced until per-argument daemon support exists; it remains a
-  documented policy only.
+- A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
+  controls. For classes with no allowlist overlap (money-movement, secret-access) this is
+  fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST NOT** be claimed as enforced
+  until per-argument daemon support exists; it remains a documented policy only.
 - A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue —
   `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
   `block` **MUST NOT** let a later pipeline step run — the hop that tripped it **MUST** be the
@@ -616,9 +627,8 @@ $ docket trace myapp <session-id>
 ### Version 0.7.0 (2026-07-31)
 
 - **ROADMAP Phase 15 G-3 — high-risk classes enforced on docket-launched processes.** Before
-  this card, `core/security.py`'s `HIGH_RISK_PATTERNS`/`resolve_command_action`/
-  `match_high_risk`/`is_high_risk` had exactly three callers anywhere in the codebase — all of
-  them tests (`test_m5_gates_policy.py`) — plus prose in this spec. A classifier nothing calls is
+  this card, `core/security.py`'s `HIGH_RISK_PATTERNS` classifier had callers only in tests
+  (`test_m5_gates_policy.py`) — plus prose in this spec. A classifier nothing calls is
   documentation, not enforcement, the same defect shape G-1 fixed for the approval store and G-2
   fixed for the policy engine. Closed on two real paths:
   - `edges/adapters/system.py`'s `run_verify_cmd` — the one docket-launched subprocess built
@@ -644,6 +654,17 @@ $ docket trace myapp <session-id>
     OpenClaw exec gate.
   - `docket gates classes` now also prints where the classifier is actually wired (no
     configuration surface added, read-only command unchanged in shape).
+  - **Three sibling helpers deleted on merge:** `high_risk_bins`, `is_high_risk` and
+    `resolve_command_action`. Wiring the classifier revealed that only `match_high_risk` had a
+    place to be called from. `resolve_command_action` in particular could never acquire one: it
+    resolved `ask` vs `allow` for a live command string, and that decision belongs to the
+    daemon's exec gate (D-15), which keys on binary path and has no hook to consult docket.
+    `is_high_risk` had no caller but `resolve_command_action`; `high_risk_bins` had none at all,
+    since `docket gates classes` walks `cls.bins` directly. Leaving a never-called ask/allow
+    resolver in a security module would have reproduced, one function over, the exact defect
+    this card was written to remove. The policy they described is unchanged and still published
+    by `docket gates classes` and by this spec; the affected tests now exercise
+    `match_high_risk`/`HIGH_RISK_PATTERNS` directly rather than being deleted with the helpers.
 
 ### Version 0.6.0 (2026-07-30)
 

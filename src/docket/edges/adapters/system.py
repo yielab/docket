@@ -223,14 +223,13 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
 
     G-3: *cmd* is classified against ``core.security``'s built-in high-risk
     action classes (money-movement / prod-deploy / secret-access) BEFORE the
-    subprocess is ever started -- a match fails closed (the shell command is
-    never run) rather than resolving to ``resolve_command_action``'s "ask":
-    this call is synchronous, inside a dispatch hop, with no interactive
-    approver reachable to answer a prompt, so the only honest fail-closed
-    posture available here is to refuse outright (the same posture the
-    daemon's own ``askFallback: deny`` takes when nobody answers a live
-    prompt). ``cwd``/``timeout`` are never classified -- they are not
-    operator-composed shell text, just plumbing for where/how long the
+    subprocess is ever started -- a match fails closed, so the shell command is
+    never run. Refusing outright, rather than routing to an approval prompt, is
+    the only honest posture available here: this call is synchronous, inside a
+    dispatch hop, with no interactive approver reachable to answer. It is the
+    same posture the daemon's own ``askFallback: deny`` takes when nobody
+    answers a live prompt. ``cwd``/``timeout`` are never classified -- they are
+    not operator-composed shell text, just plumbing for where/how long the
     already-cleared command runs.
     """
     risk_cls = _sec.match_high_risk(cmd)
