@@ -547,7 +547,7 @@ message history the loop needs. Durable per `agent:<id>:<project>` session key, 
 `edges/store.py`. Compaction reuses C-1's budget compiler and C-2's distillation. Retires the
 daemon's session JSONL as the source of usage data.
 
-**P19-5 · `core/agent_loop.py` + `DocketDriver`** — *TODO · L*
+**P19-5 · `core/agent_loop.py` + `DocketDriver`** — *IN-PROGRESS (wave 9) · L*
 The loop: compose context -> call model -> receive `tool_calls` -> **gate** -> execute -> feed
 results back -> repeat until a stop condition (final message, tool-call cap, token budget, timeout).
 `edges/adapters/docket_runtime.py::DocketDriver` implements `RuntimeDriver` on top of it, so
@@ -578,11 +578,11 @@ Phase 15, and G-5's unbridgeable gap closed by removing the other side of it.
 
 ### Wave C — hardening
 
-**P19-9 · Sandboxed exec** — *TODO · M*
+**P19-9 · Sandboxed exec** — *IN-PROGRESS (wave 9) · M*
 Container/bwrap jail for bash-class tools, reusing `edges/adapters/system.py`'s docker wrappers and
 the existing worktree/port/scratch isolation.
 
-**P19-10 · MCP client: pluggable tool servers** — *TODO · M*
+**P19-10 · MCP client: pluggable tool servers** — *IN-PROGRESS (wave 9) · M*
 Consume external MCP tool servers through P19-2's dispatcher. Never a second, ungated path. docket
 already ships an MCP *server*; this is the client half.
 
@@ -641,6 +641,27 @@ cards' additions rather than trusted to have merged cleanly. Every load-bearing 
 cards' reports was re-verified by the integrator planting the drift independently: the policy hook
 being consulted, the approval timeout failing closed, the `.env` pattern fix, and compaction's
 unit atomicity all went red on demand. P19-5 depends on both and follows.
+
+### Wave 9 ownership map (in flight)
+
+Three cards in parallel. `core/tools.py` is now the contention hotspot the way `core/dispatch.py` was
+in Phase 14, so ownership is **function-level**, not file-level, and is stated here rather than left
+to goodwill:
+
+| Card | Owns | Explicitly may not touch |
+| --- | --- | --- |
+| **P19-5** loop + driver | `core/agent_loop.py`, `edges/adapters/docket_runtime.py` (both new) | all of `core/tools.py`, `toolbox.py`, `system.py`, `llm.py`, `session.py` — import only |
+| **P19-9** sandboxed exec | `toolbox.py`, `system.py`, **and only** `ToolContext` + the `bash` registration in `core/tools.py` | `dispatch_tool` / `evaluate_tool_call` / `render_tool_call` — P19-3's gate logic stays byte-stable |
+| **P19-10** MCP client | new client modules under `edges/adapters/` + `core/` | **all** of `core/tools.py` — works through the public `Tool`/`ToolRegistry.register` API |
+
+Each appends to `config.py` in one contiguous commented block; that file auto-merged cleanly in wave
+8 and is checked after merge rather than trusted.
+
+**The P19-10 constraint worth remembering:** an MCP tool registers with `kind="write"`, never
+`"exec"` — `"exec"` routes into the shell-command classifier, which expects an `args["command"]` an
+MCP tool does not have, and would classify every such call as an empty command. `"write"` is not
+"ungated": the `pre_tool_call` hook fires for every tool kind, which is exactly why renting MCP as a
+transport does not cost docket its guardrails.
 
 ### Sequencing
 
