@@ -1,7 +1,7 @@
 # Security Gates Specification
 
-**Version**: 0.5.0
-**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store now has a real production producer (ROADMAP Phase 15 G-1); the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section).
+**Version**: 0.6.0
+**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -63,9 +63,10 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 > record, and `docket approve`/`docket deny` (and the HTTP endpoint below) genuinely resume or
 > kill the *dispatch task* that gate stopped — this is real, shipped behavior, not a future
 > contract. It is still scoped narrowly: it gates a pod dispatch hop, not the daemon's own
-> exec-approval prompt for an arbitrary tool call, and its only wired trigger source this version
-> is a pod-level Lead-meta role list (two more sources — a policy match, a pipeline step — are
-> documented, inert seams for later cards; see `pod-dispatch.spec.md`).
+> exec-approval prompt for an arbitrary tool call. Three trigger sources feed this one gate: a
+> pod-level Lead-meta role list (G-1), a pipeline `approval` step (W-1/W-2), and — since G-2 — a
+> `pre_input` guardrail policy match evaluated once at task enqueue, not per hop (see "Policy
+> engine on the live path" below and `pod-dispatch.spec.md`).
 >
 > **Why on-by-default is still safe:** the fail-closed property for an unattended agent's
 > *daemon-side* gate is the daemon's own `askFallback: deny` — a prompt nobody answers is denied
@@ -84,6 +85,8 @@ This specification covers:
 - Workspace isolation between agents
 - Audit logging of approvals and denials
 - The high-risk action-class policy (money-movement, prod-deploy, secret-access)
+- The declarative guardrail policy engine (`core/policy.py`) and where its `pre_input`/
+  `pre_output` hooks run on the live dispatch path (ROADMAP Phase 15 G-2)
 
 This specification does NOT cover Telegram transport (see telegram-integration.spec.md), which
 is *one* channel for approval prompts — the CLI and HTTP channels above are equally real and
@@ -245,6 +248,73 @@ are owned here, not there.
    allowlisted bins it overlaps and therefore does not yet fully gate — **MUST** be visible,
    read-only, via `docket gates classes`. This command **MUST NOT** change any configuration.
 
+### Policy engine on the live path (implemented, ROADMAP Phase 15 G-2)
+
+Before this card, `core/policy.py` was fully built and unit-tested (`policy_eval`, hooks,
+actions, most-restrictive-wins ranking) but had exactly one caller anywhere: the CLI's own
+dry-run printer, `docket policies test`. `docket install` never installed the six shipped
+templates. `cli/_metrics.py` already shipped a reader for guardrail-trip trace events with no
+producer anywhere. This section is what closes that gap — the same "built, tested, connected to
+nothing" shape G-1 fixed for the approval store one card earlier.
+
+1. `docket install` **MUST** install the baseline policy templates into `$POLICIES_DIR`
+   (idempotent — an existing file is left untouched, never overwritten), via the same producer
+   `docket policies init` uses (`core.policy.install_policies`). An empty `$POLICIES_DIR` makes
+   every hook evaluation a no-op (`policy_eval` returns `allow` unconditionally), so this step is
+   what makes the rest of this section possible at all, not an optional nicety.
+2. The `pre_input` hook **MUST** be evaluated exactly once per task, at
+   `core.dispatch.enqueue_task` time, against the task's raw description (role `"lead"` — the
+   pipeline's fixed entry point). It **MUST NOT** be re-evaluated before every subsequent hop —
+   doing so would re-trip the same `"*"`-scoped policy at every role in the pipeline for what is
+   really one piece of incoming text, demanding a fresh human decision per hop instead of one at
+   the door.
+   - `block` **MUST** reject the task before it is ever written to the pod's queue
+     (`DispatchError`; nothing persisted) and **MUST** close out a self-contained trace session
+     (`session_start` → `guardrail_check` → `guardrail_block` → `session_end`, status `aborted`) —
+     a rejected task is never dispatched, so nothing else will ever terminate that trace file, and
+     an unterminated file is invisible to `cli/_metrics.py`'s terminal-session reader.
+   - `require_approval` **MUST** persist the task straight into `waiting_approval` with a real
+     `core/approval.py` record (`context: {"taskId", "pipelineIndex": 0}`) — the exact same
+     resolution path G-1 already built for its pre-hop gate (grant → `pending` + a hop-0 gate
+     override; deny → terminal `failureKind: "approval_denied"`), fed from a second source.
+   - `redact` **MUST** scrub the stored task description (`core/trace.py`'s `redact()`) before it
+     is ever persisted to the queue file.
+   - `warn`/`allow` **MUST NOT** change task status or stored description; `warn` **MUST** still
+     emit a `guardrail_check` trace event.
+3. The `pre_output` hook **MUST** be evaluated on **every** hop's real output, inside
+   `core.dispatch.dispatch_task`, after the agent turn returns and before that output is embedded
+   in the carried-forward `HandoffArtifact` or the persisted `HopResult`.
+   - `redact` **MUST** scrub the hop's output in place before it is stored or handed to the next
+     hop.
+   - `block` **MUST** fail the hop the same way a failed agent turn does (the pipeline stops
+     there; later hops **MUST NOT** run).
+   - `warn`/`allow` **MUST** pass the output through unchanged.
+   - `require_approval` is **not** a `pre_output` outcome: a hop has already run by the time its
+     output exists, so there is no "before the hop" moment left to gate — an operator who wants a
+     human in the loop before a role runs uses the pod-level `requireApprovalRoles` gate or the
+     `pre_input` enqueue gate instead. A `pre_output` policy declaring `require_approval` **MUST**
+     behave exactly like `warn` (logged, not gated) rather than raise or silently do nothing.
+4. Every non-`allow` verdict on either hook **MUST** emit a `guardrail_check` trace event
+   (`payload: {hook, policy, action}`) — a pure audit trail, visible via `docket trace`. A `block`
+   verdict **MUST** additionally emit `guardrail_block`, with `payload.action` set to the
+   *tripped policy's id* (not the literal word `"block"`) — this is the shape
+   `cli/_metrics.py`'s existing "Guardrail trips" reader keys its tally on
+   (`payload.get("action", event_type)`), so trips are bucketed by which policy fired, not
+   collapsed into one undifferentiated row. `guardrail_check` is deliberately **not** tallied by
+   that reader — tallying both would double-count the same trip a `block` already reports via
+   `guardrail_block`.
+5. `pre_tool_call` (in-turn — a tool call attempted *inside* a running agent turn) **MUST
+   remain daemon-gated** and **MUST NOT** be evaluated by docket at any point in this flow —
+   docket orchestrates hops between turns; it is not inside a turn to intercept a tool call
+   (ROADMAP §4.5, D-15). The shipped `block-destructive`/`high-risk-*` templates use this hook
+   and are therefore schema-valid, dry-run-testable content with no live-path enforcement yet —
+   see G-3 (deferred, blocked on this card landing first).
+6. `docket policies validate [id|file.json]` **MUST** wire `core.policy.validate_policy` — a
+   schema check (required fields, valid hook/action, a compilable regex pattern) previously
+   implemented and unit-tested but callable only from tests, not the CLI. No argument validates
+   every file in `$POLICIES_DIR`; an argument is looked up first as a file path, then as an
+   installed policy's `id`. Exit code `1` if any checked file is invalid.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)
@@ -278,6 +348,18 @@ POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (beare
 # the daemon's own gate prompt (what actually fires on a gated binary today)
 /approve <id> allow-once|deny  # answered in the agent's chat session, daemon-side
                                 #   — NOT bridged to docket's store yet (G-5, not implemented)
+```
+
+### `docket policies` command (implemented, ROADMAP Phase 15 G-2)
+
+```bash
+docket policies list                        # MUST list installed policies (id/hook/action/description)
+docket policies show <id>                   # MUST print one installed policy's raw JSON
+docket policies init                        # MUST seed $POLICIES_DIR from the shipped templates
+                                             #   (idempotent; same producer docket install's own
+                                             #   policy step uses)
+docket policies test <hook> <role> "<text>" # MUST dry-run the evaluator (no trace emitted)
+docket policies validate [id|file.json]     # MUST schema-check installed policies, one, or a file
 ```
 
 ## Examples
@@ -326,6 +408,47 @@ An unanswered token fail-closes the same way: `approval_sweep_expired` (running 
 `docket serve`) resolves it to `denied` after `APPROVAL_TIMEOUT`, and the dispatch task fails
 terminally (`failureKind: "approval_denied"`) without anyone calling `docket deny` at all. See
 `pod-dispatch.spec.md` v2.1.0 for the full state-machine contract this flow is built on.
+
+### Policy engine flow — enqueue-time gate (implemented, ROADMAP Phase 15 G-2)
+
+A `require_approval` policy match on a task's description gates it before it is ever claimable —
+same resolution path as the G-1 example above, fed from a second source:
+
+```text
+$ docket pod myapp delegate "URGENT WIRE the vendor before EOD"
+✓ Queued for pod 'myapp': [task-9a1b2c3d-...] URGENT WIRE the vendor before EOD
+
+$ docket pod myapp queue
+  [task-9a1b2c3d-...] waiting_approval — URGENT WIRE the vendor before EOD
+
+$ docket approve apr-5678
+✓ Approval granted: apr-5678
+
+$ docket pod myapp dispatch
+  [task-9a1b2c3d-...] done — 2 hop(s), $0.0064
+```
+
+A `block` match never reaches the queue at all — the CLI reports the rejection immediately and
+nothing is persisted:
+
+```text
+$ docket pod myapp delegate "wipe the prod database tonight"
+✗ task rejected by guardrail policy 'no-wipes' at enqueue: absolutely not
+```
+
+`docket metrics` reads its "Guardrail trips" tally from exactly the `guardrail_block` events
+either flow (this one, or a `pre_output` block mid-dispatch) produces:
+
+```text
+$ docket metrics
+docket metrics  (window: 12 terminal sessions)
+
+  Success rate   83.3%  (10 success / 2 failure / 0 aborted)
+  ...
+  Guardrail trips:
+    no-wipes                       1
+    forbidden-marker               1
+```
 
 ### High-risk action classes (implemented)
 
@@ -382,11 +505,63 @@ secret-access — Secret/credential writes and key generation
   secret-access) — those are fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST
   NOT** be claimed as enforced until per-argument daemon support exists; it remains a
   documented policy only.
+- A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue —
+  `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
+  `block` **MUST NOT** let a later pipeline step run — the hop that tripped it **MUST** be the
+  task's last recorded hop when it fails.
+- `pre_tool_call` **MUST NOT** be evaluated by any code path this specification governs — it is
+  the one hook that would require docket to intercept a call *inside* a running agent turn, which
+  ROADMAP §4.5/D-15 places out of scope until a daemon-side interception point exists.
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
   resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
   spec does not duplicate that state machine, only the approval-store side of it.
 
 ## Changelog
+
+### Version 0.6.0 (2026-07-30)
+
+- **ROADMAP Phase 15 G-2 — policy engine on the live path.** Before this card, `core/policy.py`
+  was fully built and unit-tested but had exactly one caller anywhere: the CLI's own dry-run
+  printer (`docket policies test`). `docket install` never installed the six shipped templates.
+  `cli/_metrics.py` shipped a "Guardrail trips" reader with no producer anywhere. Deferred twice
+  before this wave — the same "built, tested, connected to nothing" shape G-1 fixed for the
+  approval store one card earlier. Added:
+  - `docket install`'s new Step 9 installs the baseline policy templates (idempotent, the same
+    `core.policy.install_policies` producer `docket policies init` now also calls — the two could
+    not previously drift on what "installed" means since they were two separate copies of the
+    same copy-loop; now there is one).
+  - `pre_input` is evaluated once, at `core.dispatch.enqueue_task` time — `block` rejects before
+    the task is ever queued (closing its own self-contained trace session so the rejection is
+    still visible to `docket metrics`); `require_approval` persists straight into
+    `waiting_approval` with a real G-1-shaped approval record (grant/deny resolve exactly like a
+    pre-hop gate); `redact` scrubs the stored description. This is deliberately a *single*
+    evaluation, not a per-hop one — seeded `core.dispatch._policy_requires_approval` looked like
+    the obvious wiring point (its docstring said so explicitly) but checking the same task text
+    before every hop would re-trip a `"*"`-scoped policy once per role instead of once per task;
+    that function's docstring now explains the decision instead of pointing at an open seam.
+  - `pre_output` is evaluated on every hop's real output inside `core.dispatch.dispatch_task`,
+    before it is embedded in the carried-forward `HandoffArtifact`/persisted `HopResult`: `redact`
+    scrubs in place, `block` fails the hop (stopping the pipeline) the same way a failed agent
+    turn does, `warn`/`allow` pass the text through. `require_approval` on this hook behaves like
+    `warn` — a hop has already run by the time its output exists, so there is no "before the hop"
+    moment left to gate.
+  - `guardrail_check`/`guardrail_block` trace events are now real, on every non-`allow` hit.
+    `guardrail_block`'s `payload.action` is set to the *tripped policy's id*, matching
+    `cli/_metrics.py`'s existing `payload.get("action", event_type)` tally convention — the
+    reader needed no changes, only a producer, so its shape is honored rather than replaced.
+    `guardrail_check` is intentionally not tallied by that reader (it would double-count the same
+    trip `guardrail_block` already reports); it remains a pure `docket trace` audit signal.
+  - `pre_tool_call` stays daemon-gated and unevaluated by this module, unchanged from every prior
+    version of this spec — G-2 did not expand what's claimed as enforced there.
+  - `docket policies validate [id|file.json]` now wires `core.policy.validate_policy` (CL-2 had
+    left it tested-but-unwired specifically to avoid a completions-golden diff on a
+    no-behavior-change cleanup card). This card adds new CLI surface deliberately, so
+    `completions_bash.golden`/`completions_zsh.golden` were regenerated — the only diff in either
+    file is `validate` appended to the `policies|policy` subcommand list.
+  - **What is still not true:** per-hop policy-driven approval (the seam
+    `_policy_requires_approval` was originally meant to fill) is not wired — see above for why
+    that turned out to be the wrong shape. G-3 (high-risk classes enforced on docket-launched
+    processes, including this card's `pre_output` scan) remains a separate, still-open card.
 
 ### Version 0.5.0 (2026-07-30)
 

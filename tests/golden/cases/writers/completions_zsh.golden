@@ -67,7 +67,7 @@ _docket() {
     models)          compadd list set preset reset provider ;;
     auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest ;;
-    policies|policy) compadd list show init test ;;
+    policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;

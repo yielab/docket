@@ -4,16 +4,21 @@
   docket policies show <id>          Show one policy
   docket policies init               Install baseline policies to $POLICIES_DIR
   docket policies test <hook> <role> "<text>"   Dry-run the evaluator
+  docket policies validate [id|file.json]       Schema-check installed policies, one, or a file
 
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
 docket-owned artefacts read/written directly (not openclaw config).
+
+``validate`` (ROADMAP Phase 15 G-2) wires ``core/policy.py``'s ``validate_policy`` — CL-2 had
+left it tested-but-unwired specifically to keep the completions goldens byte-identical that
+wave; this is new CLI surface, so those goldens were regenerated alongside it (see
+security-gates.spec.md's changelog for the exact diff).
 """
 
 from __future__ import annotations
 
 import json
-import os
-import shutil
+from pathlib import Path
 
 import docket.config as _cfg
 from docket import ui
@@ -29,6 +34,7 @@ def _help() -> int:
     ui.console.print("  docket policies show <id>                   Show one policy")
     ui.console.print("  docket policies init                        Install baseline policies")
     ui.console.print('  docket policies test <hook> <role> "<text>" Dry-run evaluator')
+    ui.console.print("  docket policies validate [id|file.json]     Schema-check policies")
     ui.console.print()
     ui.console.print(f"  Policy directory: {_cfg.POLICIES_DIR}")
     ui.console.print("  Hooks: pre_input | pre_tool_call | pre_output")
@@ -95,28 +101,20 @@ def _show(args: list[str]) -> int:
 
 
 def _init() -> int:
-    template_dir = _cfg.policy_templates_dir()
-    if not template_dir.is_dir():
-        ui.fail(f"Policy templates not found at {template_dir}")
+    result = _policy.install_policies()
+    if not result.template_dir.is_dir():
+        ui.fail(f"Policy templates not found at {result.template_dir}")
         return 1
 
-    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(_cfg.POLICIES_DIR, 0o700)
-
-    installed = 0
-    skipped = 0
-    for f in sorted(template_dir.glob("*.json")):
-        dest = _cfg.POLICIES_DIR / f.name
-        if dest.exists():
-            ui.dim(f"  skip (exists): {f.name}")
-            skipped += 1
+    for name, was_installed in result.entries:
+        if was_installed:
+            ui.success(f"installed: {name}")
         else:
-            shutil.copy(f, dest)
-            os.chmod(dest, 0o600)
-            ui.success(f"installed: {f.name}")
-            installed += 1
+            ui.dim(f"  skip (exists): {name}")
 
     ui.console.print()
+    installed = len(result.installed)
+    skipped = len(result.skipped)
     if installed > 0:
         word = "policy" if installed == 1 else "policies"
         ui.success(f"Installed {installed} baseline {word}.")
@@ -163,11 +161,69 @@ def _test(args: list[str]) -> int:
     return 0
 
 
+def _validate(args: list[str]) -> int:
+    """``docket policies validate [id|file.json]`` — wires ``core/policy.py``'s validate_policy.
+
+    No argument: schema-check every file in ``$POLICIES_DIR`` (the live, installed set).
+    An argument that resolves to an existing path validates that file directly (a candidate not
+    yet installed); otherwise it is looked up by policy ``id`` among the installed files, mirroring
+    ``show``'s lookup. Exit code is 1 if any checked file is invalid, matching ``docket roles
+    validate``'s convention.
+    """
+    target = args[0] if args and args[0] else ""
+
+    if target:
+        candidate = Path(target)
+        if candidate.is_file():
+            err = _policy.validate_policy(candidate)
+            if err:
+                ui.fail(err)
+                return 1
+            ui.success(f"{candidate} is valid.")
+            return 0
+
+        found = None
+        for f in _policy.policy_files():
+            try:
+                fid = json.loads(f.read_text(encoding="utf-8")).get("id", "")
+            except Exception:
+                fid = ""
+            if fid == target:
+                found = f
+                break
+        if found is None:
+            ui.fail(f"Policy not found: {target}")
+            return 1
+        err = _policy.validate_policy(found)
+        if err:
+            ui.fail(err)
+            return 1
+        ui.success(f"'{target}' is valid.")
+        return 0
+
+    # No argument: validate every installed file.
+    files = _policy.policy_files()
+    if not files:
+        ui.warn("No policies installed.")
+        ui.info("Run: docket policies init")
+        return 0
+
+    all_ok = True
+    for f in files:
+        err = _policy.validate_policy(f)
+        if err:
+            all_ok = False
+            ui.fail(err)
+        else:
+            ui.success(f"{f.name} is valid.")
+    return 0 if all_ok else 1
+
+
 def run_policies(sub: str | None = None, *, args: list[str] | None = None) -> int:
     """Dispatch the policies subcommand. Returns the process exit code.
 
-    sub:  list (default) | show | init | test | -h/--help
-    args: trailing positional args for show/test.
+    sub:  list (default) | show | init | test | validate | -h/--help
+    args: trailing positional args for show/test/validate.
     """
     rest = args or []
     subcmd = sub or "list"
@@ -179,4 +235,6 @@ def run_policies(sub: str | None = None, *, args: list[str] | None = None) -> in
         return _init()
     if subcmd == "test":
         return _test(rest)
+    if subcmd == "validate":
+        return _validate(rest)
     return _help()

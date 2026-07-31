@@ -52,6 +52,11 @@ def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "SITES_DIR", oc_dir / "Sites", raising=True)
     monkeypatch.setattr(_cfg, "LOG_DIR", oc_dir / "logs", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
+    # G-2: install now also seeds guardrail policies (Step 9) — repoint
+    # DOCKET_HOME/POLICIES_DIR too, or that step would touch the real
+    # ~/.openclaw/policies on whatever machine runs this test.
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", oc_dir, raising=True)
+    monkeypatch.setattr(_cfg, "POLICIES_DIR", oc_dir / "policies", raising=True)
     # ACL bound CONFIG_FILE / meta_path directly at import — rebind them.
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
@@ -492,6 +497,43 @@ def test_install_no_service_manager_hints(
     out = capsys.readouterr().out
     assert "No service manager detected" in out
     assert _sys.service_manager() == "none"
+
+
+# ── guardrail policies (Step 9 / G-2) ────────────────────────────────────────────
+
+
+def test_install_seeds_guardrail_policies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """G-2: `docket install` runs the same producer as `docket policies init` —
+    the policy engine has nothing to evaluate against an empty $POLICIES_DIR."""
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+
+    _install.run_install(want_gates=False, assume_yes=True)
+
+    policies_dir = oc_dir / "policies"
+    assert policies_dir.is_dir()
+    installed = {f.name for f in policies_dir.glob("*.json")}
+    assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
+    assert "Installed" in capsys.readouterr().out
+
+
+def test_install_policies_step_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    oc_dir = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth(monkeypatch)
+
+    _install.run_install(want_gates=False, assume_yes=True)
+    capsys.readouterr()
+    _install.run_install(want_gates=False, assume_yes=True)
+    out = capsys.readouterr().out
+
+    assert "already installed" in out
+    # No duplicate/overwritten files — still exactly the shipped template set.
+    installed = {f.name for f in (oc_dir / "policies").glob("*.json")}
+    assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
 
 
 # ── dependency detection (Step 1) — real probe, both ways ────────────────────────

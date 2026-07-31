@@ -415,6 +415,79 @@ class TestPolicies:
         assert rc == 0
         assert "docket policies list" in out
 
+    # ── validate (G-2: wires core.policy.validate_policy) ────────────────────────
+
+    def test_validate_no_args_checks_every_installed_file(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_policies(oc_dir)
+        rc = _policies.run_policies("validate")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "block-destructive.json is valid" in out
+
+    def test_validate_no_args_no_policies_installed(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = _policies.run_policies("validate")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "No policies installed." in out
+
+    def test_validate_by_id(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        _seed_policies(oc_dir)
+        rc = _policies.run_policies("validate", args=["block-destructive"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "'block-destructive' is valid." in out
+
+    def test_validate_by_id_not_found(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _seed_policies(oc_dir)
+        rc = _policies.run_policies("validate", args=["nope"])
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "Policy not found" in captured.err
+
+    def test_validate_by_file_path(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        candidate = oc_dir / "candidate.json"
+        candidate.write_text(
+            json.dumps(
+                {
+                    "id": "candidate",
+                    "applies_to": ["*"],
+                    "hook": "pre_input",
+                    "match": {"type": "regex", "pattern": "x"},
+                    "action": "warn",
+                }
+            )
+        )
+        rc = _policies.run_policies("validate", args=[str(candidate)])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "is valid" in out
+
+    def test_validate_by_file_path_invalid(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        candidate = oc_dir / "candidate.json"
+        candidate.write_text(json.dumps({"id": "candidate"}))  # missing required fields
+        rc = _policies.run_policies("validate", args=[str(candidate)])
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "missing fields" in captured.err
+
+    def test_validate_reports_invalid_installed_file(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (oc_dir / "policies").mkdir(parents=True, exist_ok=True)
+        (oc_dir / "policies" / "bad.json").write_text(json.dumps({"id": "bad"}))
+        rc = _policies.run_policies("validate")
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "missing fields" in captured.err
+
 
 class TestPolicyEngine:
     def test_most_restrictive_wins(self, oc_dir: Path) -> None:

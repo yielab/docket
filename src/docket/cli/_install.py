@@ -31,6 +31,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import policy as _policy
 from docket.core.audit import audit_log
 from docket.core.security import apply_approval_routing, apply_exec_approval_gates
 from docket.edges import store
@@ -268,6 +269,28 @@ def _step_gateway() -> None:
     else:
         ui.warn("Gateway service not started")
         ui.console.print(f"  Start manually: {_sys.service_hint('start')}")
+
+
+def _step_policies() -> None:
+    """Step 9 — install the baseline guardrail policy templates (ROADMAP Phase 15 G-2).
+
+    Idempotent (same producer as ``docket policies init``): a repeat install skips files
+    already present rather than overwriting local edits. This is what puts the policy
+    engine on the live path at all — ``pre_input``/``pre_output`` have nothing to evaluate
+    against an empty ``$POLICIES_DIR`` (``policy_eval`` returns ``allow`` unconditionally).
+    """
+    result = _policy.install_policies()
+    if not result.template_dir.is_dir():
+        ui.warn(f"Policy templates not found at {result.template_dir} — skipping")
+        return
+    installed = len(result.installed)
+    if installed > 0:
+        word = "policy" if installed == 1 else "policies"
+        ui.success(f"Installed {installed} baseline {word}")
+    else:
+        ui.success("Guardrail policies already installed")
+    ui.dim(f"  Policies active at: {result.policies_dir}")
+    ui.dim('  List/tune: docket policies list  ·  docket policies test <hook> <role> "<text>"')
 
 
 # One-line role identity for each org specialist's SOUL.md `## Scope` section
@@ -630,6 +653,10 @@ def run_install(
 
     ui.header("Step 8: Gateway service")
     _step_gateway()
+    ui.console.print()
+
+    ui.header("Step 9: Guardrail policies")
+    _step_policies()
     ui.console.print()
 
     _print_summary(auth_missing)
