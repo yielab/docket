@@ -19,6 +19,7 @@ from typing import ClassVar
 
 import pytest
 
+import docket.config as _cfg
 from docket.core import tools as core_tools
 from docket.core.llm import ToolCall
 from docket.core.security import classify_command, split_command_segments
@@ -34,6 +35,20 @@ from docket.edges.adapters import toolbox
 from docket.edges.adapters.toolbox import PathEscapeError, ToolOutcome, resolve_within
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """P19-3: `dispatch_tool` now also consults `core/policy.py` and, on an
+    `ask` verdict, blocks on `core/approval.py`'s real store. Isolate both so
+    this file's tests (which predate the policy hook and don't care about it)
+    never read a developer's real ``~/.openclaw/policies``, and set the
+    in-turn timeout to 0 so a gated call nothing ever grants resolves
+    immediately (fail-closed to denied) instead of really waiting.
+    """
+    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
+    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
+    monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 
 @pytest.fixture
@@ -263,13 +278,17 @@ class TestDispatchChokepoint:
         assert res.content.startswith("alpha")
 
     def test_gated_command_is_not_executed(self, ctx: ToolContext) -> None:
+        """P19-3: an `ask` verdict now blocks on the real approval store
+        (`_isolate_gates` above pins TOOL_APPROVAL_TIMEOUT to 0) rather than
+        just being reported, so with nothing ever granting it, it resolves
+        to a fail-closed deny before `dispatch_tool` returns."""
         marker = ctx.roots[0] / "should-not-exist"
         res = dispatch_tool(
             _call("bash", '{"command": "rm -rf /tmp/x && touch ' + str(marker) + '"}'),
             ctx,
             builtin_registry(),
         )
-        assert res.needs_approval and not res.executed
+        assert res.denied and not res.executed
         assert not marker.exists()
 
     def test_allowlisted_command_is_executed(self, ctx: ToolContext) -> None:
@@ -294,7 +313,9 @@ class TestDispatchChokepoint:
         be able to tell them apart."""
         refused = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
         failed = dispatch_tool(_call("read", '{"path": "nope.md"}'), ctx, builtin_registry())
-        assert (refused.decision, refused.executed) == ("ask", False)
+        # P19-3: an `ask` verdict resolves before dispatch_tool returns (see
+        # test_gated_command_is_not_executed) -- unresolved here too.
+        assert (refused.decision, refused.executed) == ("deny", False)
         assert (failed.decision, failed.executed, failed.ok) == ("allow", True, False)
 
 

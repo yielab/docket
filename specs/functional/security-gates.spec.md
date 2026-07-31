@@ -1,7 +1,7 @@
 # Security Gates Specification
 
-**Version**: 0.7.0
-**Status**: Implemented (on by default for new installs; daemon-enforced — see the approval-seam note below). Docket's own approval store has two real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). `pre_tool_call` remains daemon-gated and unevaluated by docket, by design. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below.
+**Version**: 0.8.0
+**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below.
 **Last Updated**: 2026-07-31
 
 ## Purpose
@@ -86,7 +86,11 @@ This specification covers:
 - Audit logging of approvals and denials
 - The high-risk action-class policy (money-movement, prod-deploy, secret-access)
 - The declarative guardrail policy engine (`core/policy.py`) and where its `pre_input`/
-  `pre_output` hooks run on the live dispatch path (ROADMAP Phase 15 G-2)
+  `pre_output`/`pre_tool_call` hooks run on a live path (ROADMAP Phase 15 G-2; Phase 19 P19-3)
+- `core/tools.py`'s in-turn tool-call gate: the combined command-classifier + `pre_tool_call`
+  policy decision, the synchronous approval wait it routes `ask` verdicts to
+  (`core/approval.py`'s `wait_for_approval`), and the audit trail it leaves (ROADMAP Phase 19
+  P19-3) — scoped strictly to calls made through that one dispatcher, not to the daemon
 
 This specification does NOT cover Telegram transport (see telegram-integration.spec.md), which
 is *one* channel for approval prompts — the CLI and HTTP channels above are equally real and
@@ -250,8 +254,20 @@ are owned here, not there.
    invocations to `ask` was evaluated and rejected — it would also force every benign,
    constant-use invocation of those tools to `ask`, an unacceptable usability regression. **This
    MUST NOT be described as fully enforced** in user-facing material; per-argument enforcement
-   for allowlisted bins is deferred pending a daemon-side capability that does not exist today,
-   and is tracked as a backlog item, not shipped behavior.
+   for allowlisted bins **at the daemon's own exec-allowlist** is deferred pending a daemon-side
+   capability that does not exist today, and is tracked as a backlog item, not shipped behavior.
+
+   > **Narrowed by ROADMAP Phase 19 P19-3.** This deferral is now true of the daemon-side half
+   > only. `core/tools.py`'s own dispatcher (see "In-turn tool-call gate" below) classifies a
+   > `bash` tool call's full command line via `core.security.classify_command` — which already
+   > distinguishes `git push origin main` from `git status` by argument, not just binary path —
+   > and separately evaluates it against the `high-risk-deploy` `pre_tool_call` template, which
+   > does the same by regex. Both are argument-aware and both apply to any call routed through
+   > that dispatcher. **Scope, stated precisely: this is enforcement over the tool calls docket
+   > itself dispatches, not a new capability added to the daemon's exec-allowlist.** As of this
+   > version nothing in the live pod-dispatch hop path calls that dispatcher yet (see the Status
+   > line and "In-turn tool-call gate" below), so today's actual pod-dispatch hops still run
+   > through the daemon's binary-path-only gate exactly as described above.
 5. The full high-risk class list — name, description, pattern, and (for prod-deploy) which
    allowlisted bins it overlaps and therefore does not yet fully gate — **MUST** be visible,
    read-only, via `docket gates classes`. This command **MUST NOT** change any configuration.
@@ -293,10 +309,12 @@ requirement 2 above for why `resolve_command_action` in particular could never h
    answers a live prompt.
 3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
    **MUST** also classify each hop's real output against `core.security.match_high_risk`,
-   independently of the JSON policy engine — the shipped `high-risk-*.json` templates are
-   hooked on `pre_tool_call`, which docket never evaluates (D-15: it is not inside a running
-   turn to intercept a tool call), so without this, a hop that reports having run a
-   money-movement or secret-access command trips nothing on the `pre_output` path at all.
+   independently of the JSON policy engine — the shipped `high-risk-*.json` templates are hooked
+   on `pre_tool_call`, which (since ROADMAP Phase 19 P19-3) docket evaluates on calls made
+   through its own `core/tools.py` dispatcher, but a pod-dispatch hop does not route through that
+   dispatcher yet (see "In-turn tool-call gate" below) — so without this `pre_output` scan, a hop
+   that reports having run a money-movement or secret-access command still trips nothing on the
+   path a hop actually runs today.
 4. A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** downgrade an already-stronger
    `policy_eval_detail` verdict (`redact`/`block`/`require_approval` all outrank a bare
    `allow`) — it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
@@ -307,12 +325,15 @@ requirement 2 above for why `resolve_command_action` in particular could never h
    redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check`
    trace event tagged `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
    claimed as one in user-facing material.
-5. **What remains advisory.** `pre_tool_call` interception (the daemon's own live tool-call
-   gate) is unchanged by this card and remains out of scope per D-15 — G-3 does not make docket
-   a per-argument enforcement daemon on the daemon's own exec path. The daemon's exec-allowlist
-   itself still gates by binary path only (see "High-risk action classes" above); G-3 adds two
-   new, real classification points under docket's *own* control, it does not change what the
-   daemon enforces.
+5. **What remains advisory.** `pre_tool_call` interception of the *daemon's own* live tool-call
+   gate is unchanged by this card and remains out of scope per D-15 — G-3 does not make docket a
+   per-argument enforcement daemon on the daemon's own exec path, and neither does ROADMAP Phase
+   19 P19-3's later work (see "In-turn tool-call gate" below): that card makes `pre_tool_call`
+   evaluate for calls docket dispatches through its own `core/tools.py`, which is a different
+   surface, not an extension of daemon enforcement. The daemon's exec-allowlist itself still
+   gates by binary path only (see "High-risk action classes" above); G-3 adds two new, real
+   classification points under docket's *own* control, it does not change what the daemon
+   enforces.
 
 ### Policy engine on the live path (implemented, ROADMAP Phase 15 G-2)
 
@@ -373,17 +394,98 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    collapsed into one undifferentiated row. `guardrail_check` is deliberately **not** tallied by
    that reader — tallying both would double-count the same trip a `block` already reports via
    `guardrail_block`.
-5. `pre_tool_call` (in-turn — a tool call attempted *inside* a running agent turn) **MUST
-   remain daemon-gated** and **MUST NOT** be evaluated by docket at any point in this flow —
-   docket orchestrates hops between turns; it is not inside a turn to intercept a tool call
-   (ROADMAP §4.5, D-15). The shipped `block-destructive`/`high-risk-*` templates use this hook
-   and are therefore schema-valid, dry-run-testable content with no live-path enforcement yet —
-   see G-3 (deferred, blocked on this card landing first).
+5. `pre_tool_call` **MUST NOT** be evaluated anywhere in *this* flow — `core/dispatch.py`'s
+   `enqueue_task`/`dispatch_task` orchestrate hops between daemon turns and remain outside any
+   individual tool call the daemon makes during one; that boundary is unchanged by ROADMAP Phase
+   19 P19-3. What P19-3 changed is that `pre_tool_call` is no longer *universally* unevaluated —
+   see "In-turn tool-call gate" below for the separate surface (`core/tools.py`) where it now
+   genuinely fires, and the Status line above for exactly what that does and does not cover today.
 6. `docket policies validate [id|file.json]` **MUST** wire `core.policy.validate_policy` — a
    schema check (required fields, valid hook/action, a compilable regex pattern) previously
    implemented and unit-tested but callable only from tests, not the CLI. No argument validates
    every file in `$POLICIES_DIR`; an argument is looked up first as a file path, then as an
    installed policy's `id`. Exit code `1` if any checked file is invalid.
+
+### In-turn tool-call gate (implemented, ROADMAP Phase 19 P19-3)
+
+Before this card, `core/dispatch.py` said in three places that `pre_tool_call` "stays
+daemon-gated, never evaluated here." That was true of every path docket controlled at the time —
+docket orchestrated hops *between* daemon turns and had no dispatcher of its own *inside* one.
+ROADMAP Phase 19 gives it one (`core/tools.py`'s `dispatch_tool`, P19-2's gated tool registry).
+This section is what finally evaluates the four `pre_tool_call` templates docket has shipped
+since Phase 11 against real calls made through that dispatcher — **not** against anything the
+daemon still executes; see the scope note that closes this section.
+
+1. **Rendering a call for the policy engine.** `core/tools.py`'s `render_tool_call(name, args)`
+   renders one tool call as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the
+   call's own argument order, each value `json.dumps`-encoded. This exact shape **MUST** be
+   treated as a contract, not an implementation detail — every shipped `pre_tool_call` pattern is
+   matched against its output, and `tests/python/test_p19_3_pre_tool_call.py::TestRenderToolCallShape`
+   pins it.
+
+   > **Two `block-destructive.json` alternatives were verified, not assumed, against this
+   > render.** `\.env\b.*write` and `\.ssh\/\s*write` require the path text to appear *before*
+   > the literal word "write". No render of a `write` tool call produces that order — a natural
+   > render puts the verb first (`write path=".env" ...`) — so, checked empirically, **neither
+   > alternative ever matched**. Both were fixed to match either order
+   > (`(?:\.env\b.*write|write.*\.env\b)` and the `.ssh` equivalent); the fix is covered by
+   > `TestBlockDestructiveShippedTemplate::test_policy_gates_a_write_call_the_command_classifier_never_inspects`
+   > and `::test_ssh_directory_write_is_also_gated`, both of which fail against the original
+   > patterns and pass against the fixed ones.
+2. `core/tools.py`'s `evaluate_tool_call` **MUST** be the single point that consults
+   `policy_eval_detail(ctx.role, "pre_tool_call", render_tool_call(tool.name, args))`, alongside
+   P19-2's command classifier — no second call site may gate a tool call. A policy `action`
+   **MUST** map onto the tool `Decision` vocabulary: `block` -> `deny`, `require_approval` ->
+   `ask`, `warn`/`redact`/`allow` -> `allow`. A `warn`/`redact` hit **MUST NOT** be silently
+   allowed through unrecorded — it **MUST** still write an audit entry (`tool.warn`/`tool.redact`)
+   even though the call proceeds.
+3. The command classifier's verdict and the policy engine's verdict **MUST** be combined
+   most-restrictive-wins (`deny` > `ask` > `allow`), the same ranking philosophy
+   `core/policy.py`'s own `_RANK` uses for competing policies. Either side alone can decide the
+   outcome; a `block-destructive` policy's `require_approval` on an otherwise-allowlisted `write`
+   call is exactly as binding as a classifier `ask` on an otherwise-unmatched `bash` command.
+4. `ToolContext` **MUST** carry `role`/`project` (both default `""`), feeding
+   `policy_eval_detail`'s `applies_to` matching and `approval_create`'s record. Every shipped
+   template uses `applies_to: ["*"]`, which **MUST** match an empty role — a bare `ToolContext()`
+   is not exempt from any installed policy.
+5. An `ask` verdict **MUST** block the call synchronously on the real approval store rather than
+   merely reporting the requirement: `dispatch_tool` calls `core.approval.approval_create` (falling
+   back to `"operator"`/`"tool"` when `project`/`role` are unset) and then
+   `core.approval.wait_for_approval`, which **MUST NOT** return until the record is granted,
+   denied, or its own timeout elapses.
+   - This timeout is **`config.TOOL_APPROVAL_TIMEOUT`** (default 120s) — a **separate**, shorter
+     knob from the async `APPROVAL_TIMEOUT` (900s) `core/dispatch.py`'s require_approval gate
+     uses. The two differ because they block different things: `APPROVAL_TIMEOUT` costs only wall
+     clock (a task sits `waiting_approval`, nothing is running); `TOOL_APPROVAL_TIMEOUT` blocks a
+     live call — the model's turn and, under `docket serve`, a real worker slot — so it is kept
+     well under `core/dispatch.py`'s `DEFAULT_TIMEOUT` (300s, one hop's whole budget), leaving
+     room for the tool to actually run after a grant.
+   - The wait **MUST** poll, not busy-spin (`config.TOOL_APPROVAL_POLL_INTERVAL_S`, default 2s).
+   - A timeout **MUST** resolve the record to **denied** — the same fail-closed contract
+     `approval_sweep_expired` already guarantees for the async path — via the same shared
+     `_resolve_timeout_as_denied` helper, never left dangling in `pending`.
+   - Granted: the call proceeds to the handler. Denied (explicitly, or by timeout): the handler
+     **MUST NOT** run.
+6. Every non-`allow` gate decision, and every `warn`/`redact` policy hit, **MUST** be recorded via
+   `audit_log` (`tool.deny`, `tool.ask`, `tool.warn`, `tool.redact`), with the rendered call
+   redacted through `core.trace.redact` first — a tool call's arguments can carry a secret (an API
+   key in a `write` call's content, a credential in a `bash` command). Approval resolution itself
+   (grant, explicit deny, or timeout-deny) continues to be recorded by `core/approval.py`'s
+   existing `approval.grant`/`approval.deny` audit entries, so a fully gated call leaves **both**
+   the gate's own decision and its resolution in `docket audit`.
+7. **Scope — stated precisely, matching the Status line.** This section governs `core/tools.py`'s
+   `dispatch_tool` and nothing else. As of this version:
+   - Nothing in the live pod-dispatch hop path (`core/dispatch.py`) calls `core/tools.py` —
+     `grep`-verified zero production callers outside `core/tools.py` itself. A pod-dispatch hop
+     today still runs as a full daemon turn, unintercepted, exactly as every prior version of
+     this spec described.
+   - The daemon's own native tool-calling loop remains entirely outside docket's reach — the G-5
+     findings below (no bridge to the daemon's live exec-approval prompt) are unaffected by this
+     card; P19-3 did not attempt to close that gap, and does not.
+   - `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase
+     19 P19-5 (`core/agent_loop.py` + `DocketDriver`) — this section documents a real, tested,
+     additive capability, not yet a live-path one. Do not cite this section as evidence that a
+     pod dispatch hop today is gated by `pre_tool_call`; it is not, until P19-5 lands.
 
 ## Interface Contracts
 
@@ -572,6 +674,51 @@ $ docket trace myapp <session-id>
   ... guardrail_check  {"hook": "pre_output", "policy": "high-risk:secret-access", "action": "warn"}
 ```
 
+### In-turn tool-call gate — examples (implemented, ROADMAP Phase 19 P19-3)
+
+There is no `docket` CLI command that exercises this today — `core/tools.py`'s dispatcher has no
+live-path caller yet (see the scope note in "In-turn tool-call gate" above) — so these are
+`dispatch_tool` call shapes, not shell transcripts a user can run yet. Each is exactly what
+`tests/python/test_p19_3_pre_tool_call.py` asserts.
+
+A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
+
+```text
+>>> dispatch_tool(ToolCall(id="c1", name="bash", arguments='{"command": "rm -rf /var/data"}'), ctx, registry)
+ToolResult(decision='deny', executed=False,
+           reason="approval timed out and was denied (token=apr-...)")
+# the registered handler's own side effect never happened
+```
+
+`high-risk-deploy` catches a production push by argument; the same tool with a feature branch is
+untouched:
+
+```text
+>>> evaluate_tool_call(bash_tool, {"command": "git push origin main"}, ctx)
+ToolVerdict(decision='ask', policy_id='high-risk-deploy', ...)
+>>> evaluate_tool_call(bash_tool, {"command": "git push origin feature/x"}, ctx)
+ToolVerdict(decision='allow', policy_id='', ...)
+```
+
+A `require_approval` policy asks, then executes once granted — through the same
+`core.approval.wait_for_approval` that fails a call closed on timeout:
+
+```text
+>>> dispatch_tool(ToolCall(id="c1", name="write", arguments='{"x": "launch-codes"}'), ctx, registry)
+# blocks; a concurrent `docket approve <token>` (or the timeout above) resolves it
+ToolResult(decision='allow', executed=True, ok=True, ...)   # granted
+ToolResult(decision='deny', executed=False, ...)            # denied, or unanswered past
+                                                             #   TOOL_APPROVAL_TIMEOUT
+```
+
+Every gated call above leaves an audit trail, not just a return value:
+
+```text
+$ docket audit
+  ... tool.ask     tool=bash agent=... role=implementer project=demo: ... call=bash command="rm -rf /var/data"
+  ... approval.deny token=apr-... project=demo channel=timeout
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -589,6 +736,10 @@ $ docket trace myapp <session-id>
   Stale docket-store records additionally resolve to **denied** (fail-closed, not merely
   "expire") while `docket serve` runs, and — since G-1 — a dispatch task waiting on such a
   record is failed terminally as part of that same resolution.
+- Since ROADMAP Phase 19 P19-3, every non-`allow` decision `core/tools.py`'s `dispatch_tool`
+  makes (`deny`, `ask`, and a `warn`/`redact` hit that still allows the call) **MUST** appear in
+  the audit log, with the gated call's rendered arguments passed through `core.trace.redact`
+  first.
 
 ### Invariants
 
@@ -601,15 +752,31 @@ $ docket trace myapp <session-id>
   audit.spec.md.
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
   controls. For classes with no allowlist overlap (money-movement, secret-access) this is
-  fully enforced today. Prod-deploy's `git`/`npm` overlap **MUST NOT** be claimed as enforced
-  until per-argument daemon support exists; it remains a documented policy only.
+  fully enforced today. Prod-deploy's `git`/`npm` overlap at the **daemon's own exec-allowlist**
+  **MUST NOT** be claimed as enforced until per-argument daemon support exists; it remains a
+  documented policy only there. It **MUST NOT** be described as unenforced anywhere, however —
+  since ROADMAP Phase 19 P19-3, a `git push origin main`-shaped command routed through
+  `core/tools.py`'s dispatcher is genuinely gated by argument, by both the command classifier and
+  the `high-risk-deploy` policy template; see "In-turn tool-call gate" above for the scope that
+  applies to.
 - A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue —
   `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
   `block` **MUST NOT** let a later pipeline step run — the hop that tripped it **MUST** be the
   task's last recorded hop when it fails.
-- `pre_tool_call` **MUST NOT** be evaluated by any code path this specification governs — it is
-  the one hook that would require docket to intercept a call *inside* a running agent turn, which
-  ROADMAP §4.5/D-15 places out of scope until a daemon-side interception point exists.
+- `pre_tool_call` **MUST NOT** be evaluated anywhere in `core/dispatch.py`'s hop-orchestration
+  flow, or by the daemon's own live tool-calling loop (unbridged — see the G-5 findings). It
+  **MUST** be evaluated on every call made through `core/tools.py`'s `dispatch_tool` (ROADMAP
+  Phase 19 P19-3) — a call that reaches that function and is not gated by `evaluate_tool_call` is
+  the specific regression `tests/python/test_p19_3_pre_tool_call.py` exists to catch. These two
+  statements are not in tension: they describe different, non-overlapping surfaces, and neither
+  implies the other is also true (see the Status line for which one covers today's actual
+  pod-dispatch hops).
+- A `require_approval`/`ask`-gated tool call through `core/tools.py` **MUST NOT** execute before
+  its approval resolves, and **MUST NOT** be left waiting indefinitely — `wait_for_approval`
+  **MUST** eventually return `granted` or `denied`, the latter both for an explicit deny and for
+  an unanswered `TOOL_APPROVAL_TIMEOUT`. A denied or timed-out call's handler **MUST NOT** run;
+  `tests/python/test_p19_3_pre_tool_call.py::TestDispatchToolApprovalRouting` proves this with the
+  handler's own execution flag, not just the returned decision.
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
   resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
   spec does not duplicate that state machine, only the approval-store side of it.
@@ -623,6 +790,59 @@ $ docket trace myapp <session-id>
   decided, never on top of it.
 
 ## Changelog
+
+### Version 0.8.0 (2026-07-31)
+
+- **ROADMAP Phase 19 P19-3 — the `pre_tool_call` hook finally evaluates.** docket has shipped
+  four `pre_tool_call` policy templates (`block-destructive`, `high-risk-credentials`,
+  `high-risk-deploy`, `high-risk-payment`) since Phase 11, and until this card not one had ever
+  been evaluated — `core/dispatch.py` said so, verbatim, in three places. Phase 19 gave docket its
+  own tool dispatcher (`core/tools.py`, P19-2); this card wires the policy hook into its single
+  decision point (`evaluate_tool_call`) and routes a `require_approval` verdict to a new
+  synchronous waiter on the real approval store. See "In-turn tool-call gate" above for the full
+  contract. Highlights:
+  - `render_tool_call(name, args)` is now the pinned, documented contract every `pre_tool_call`
+    pattern is matched against (`"<name> <key>=<json-value> ..."`) — a canonical render did not
+    exist before this card, so every shipped pattern was written against imagined input, never
+    checked against real output.
+  - **Two `block-destructive.json` alternatives were verified, empirically, to never match this
+    render — and fixed, not assumed correct.** `\.env\b.*write` and `\.ssh\/\s*write` require the
+    path to appear *before* the literal word "write"; a natural render of a `write` tool call
+    puts the verb first. Both were confirmed unmatchable against `write path=".env" ...`-shaped
+    input, then changed to match either order. This is a genuine behavior fix to a template that,
+    per the Status line history, had never once been exercised against real input before this
+    card — there was no way to have caught this sooner.
+  - The command classifier (P19-2) and the policy engine are combined most-restrictive-wins
+    (`deny` > `ask` > `allow`), the same ranking `core/policy.py`'s own competing-policy `_RANK`
+    already uses. `high-risk-deploy` now catches `git push origin main` by argument even for a
+    tool call the classifier alone would have allowed, and vice versa.
+  - `core/approval.py` gains `wait_for_approval` — a synchronous, polling waiter distinct from
+    the existing async require_approval gate (`core/dispatch.py`'s, which creates a token and
+    returns immediately). An in-turn tool call has nowhere else to go while it waits, so this
+    blocks the calling thread instead, on a **new, separate, shorter** timeout
+    (`config.TOOL_APPROVAL_TIMEOUT`, default 120s — see "In-turn tool-call gate" above for why it
+    differs from the existing 900s `APPROVAL_TIMEOUT`) and fails closed to **denied** on expiry
+    via the same helper the existing expiry sweep uses (`_resolve_timeout_as_denied`, factored out
+    of `approval_sweep_expired` for this card so the two share one fail-closed implementation, not
+    two). The wait is injectable two ways — explicit `sleep`/`clock` arguments for a direct unit
+    test, or monkeypatching the module's `_time` reference for an end-to-end test through
+    `dispatch_tool` — so no test in the suite ever sleeps for real.
+  - Every non-`allow` gate decision, and every `warn`/`redact` hit that still allows a call, is
+    now audited (`tool.deny`/`tool.ask`/`tool.warn`/`tool.redact`), with the rendered call
+    redacted through the existing `core.trace.redact` first.
+  - **Scope, precisely — read the Status line and "In-turn tool-call gate" above in full before
+    citing this card.** `pre_tool_call` now evaluates for calls made through `core/tools.py`'s
+    `dispatch_tool`; it does **not** make docket an enforcement daemon over anything else.
+    Nothing in the live pod-dispatch hop path calls that dispatcher yet (zero production callers
+    outside `core/tools.py` itself, verified by grep) — every pod-dispatch hop today still runs
+    as a full, unintercepted daemon turn, exactly as every prior version of this spec described.
+    The daemon's own native tool-calling loop remains unbridged (the G-5 findings are unaffected).
+    `core/tools.py` becomes the thing a hop actually runs through at ROADMAP Phase 19 P19-5.
+  - Prod-deploy's `git`/`npm` allowlist overlap (see "High-risk action classes" above) is
+    **narrowed, not closed**: per-argument enforcement now genuinely exists for calls routed
+    through `core/tools.py`, but remains deferred, exactly as before, at the **daemon's own**
+    exec-allowlist, which still gates by binary path only. Do not describe this card as closing
+    that gap outright — it closes it for one surface docket controls, not for the daemon's.
 
 ### Version 0.7.0 (2026-07-31)
 
