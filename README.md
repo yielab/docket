@@ -306,6 +306,44 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
 Configuration is kept in two synchronized places: `.docket-meta.json` per workspace (docket's
 view) and `~/.openclaw/openclaw.json` (the daemon's view).
 
+### Declarative orchestration
+
+- **Pipelines** — `docket pipeline validate/plan/run`. One dialect, defined in `core/pipeline.py`
+  and executed by `core/orchestrator.py` over the same pod-dispatch state machine, so `plan`
+  renders from the real executor rather than a second pretty-printer that can drift from it.
+- **Roles are data** — `docket roles list/show/add/validate`. Role archetypes are declarative
+  definitions rather than hardcoded branches, and **pod blueprints** provision a named pod shape
+  (software, research, content, ops) in one step. Pods are not limited to "build a web app".
+- **Typed handoffs** — hops exchange a structured artifact (summary, changed files, diff ref,
+  verdict) instead of concatenating raw text, and a **context compiler** fits each hop's message
+  to a per-role budget, shedding artifact fields in a documented priority order. Budgets use a
+  stated characters-per-token approximation — docket does not claim exact token counts.
+- **Runs and cancellation** — `docket runs list/show` keeps one record per dispatch invocation;
+  `docket runs cancel` kills the in-flight hop's process group and writes an audit entry.
+  Scheduled (cron) and webhook triggers can drive pipelines, and `--follow` tails one live.
+
+### Durable state docket owns
+
+The daemon keeps no durable transcript, so docket owns the state that has to survive a restart or
+a context reset:
+
+- **Task ledger** — dispatch mechanically maintains a delimited docket-owned region inside each
+  Lead's `HEARTBEAT.md`, so the ledger is true whether or not the agent wrote its own entries.
+  Only text between the delimiters is ever rewritten, so the agent's prose survives.
+  `docket doctor` flags divergence from `TASK_LIST.json` and re-syncs under `--fix`.
+- **Conversation registry** — `docket conversations list/show/resume/set`, seeded when you wire a
+  channel and kept current by dispatch after every hop.
+- **Memory distillation** — `docket maintain distill` summarizes memory logs into `MEMORY.md` and
+  archives the originals. `clean` and `reset` distill **first** by default, so memory is never
+  bare-deleted; if distillation fails, the delete is aborted rather than proceeding.
+- **Audit log** — hash-chained and tamper-evident (`docket audit verify`).
+
+### Runtime boundary
+
+`core/runtime_driver.py` is a typed port containing docket's coupling to the agent runtime — one
+shipped driver (OpenClaw), deliberately **not** a plugin framework. `docket mcp serve` exposes the
+control plane over MCP (stdio) for editors and other agents; it needs the optional `[mcp]` extra.
+
 ---
 
 ## Command reference
@@ -320,10 +358,17 @@ docket models / profile <id>               # Role→model policy / pin or budget
 docket cost [id] / doctor / maintain <id>  # Spend / fleet health / per-agent upkeep
 docket gates status                        # Approval-gate, routing, and audit posture
 docket serve [--dispatch]                  # Read-only API, optionally driving pod queues
+docket pipeline validate/plan/run <file>   # Declarative pipelines, run by the dispatch engine
+docket roles list/show/add/validate        # Declarative role archetypes
+docket runs list/show/cancel               # Dispatch run registry; cancel an in-flight hop
+docket conversations list/show/resume      # The conversation registry docket owns
+docket audit verify                        # Verify the audit log's tamper-evidence chain
+docket trace [id] / metrics                # Execution traces / session success-rate and drift
+docket mcp serve                           # Expose the control plane over MCP (needs [mcp] extra)
 ```
 
 Every command, subcommand, and flag — including `context`, `keys`/`auth`, `gates
-enable/isolate/classes`, `approve`/`deny`, `trace`, `audit`, `completions` — is documented in
+enable/isolate/classes`, `policies`, `persona`, `approve`/`deny`, `completions` — is documented in
 **[docs/commands.md](docs/commands.md)**, the full reference.
 
 ## Engineering
@@ -349,6 +394,11 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src
 Every figure above is drift-guarded in CI by `uv run python scripts/metrics.py --check`, which
 fails the build when this list and the tree disagree — and fails just as loudly if the prose stops
 stating them, so the guard cannot quietly end up verifying nothing.
+
+CI also runs the suite against the **lowest dependency versions `pyproject.toml` actually permits**
+(`uv pip compile --resolution lowest-direct`), so the declared floors are a tested promise rather
+than an assumption. That job exists because they were neither: two of the six advertised bounds
+turned out to be unusable when first measured.
 
 ## Security
 
