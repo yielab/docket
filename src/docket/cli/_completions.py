@@ -96,7 +96,7 @@ _docket_complete() {
     models)          words="list set preset reset provider" ;;
     auth)            words="status login key setup" ;;
     trace)           words="tail export ingest" ;;
-    policies|policy) words="list show init test" ;;
+    policies|policy) words="list show init test validate" ;;
     roles|role)      words="list show add validate" ;;
     completions|completion) words="bash zsh" ;;
     cost|usage)      [[ $cword -eq 2 ]] && words="$_ids --history --json" || words="--history --json --days" ;;
@@ -144,7 +144,7 @@ __ZSH_COMMANDS__
     models)          compadd list set preset reset provider ;;
     auth)            compadd status login key setup ;;
     trace)           compadd tail export ingest ;;
-    policies|policy) compadd list show init test ;;
+    policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;
     cost|usage)      (( CURRENT == 3 )) && { _docket_ids; compadd --history --json } || compadd --history --json --days ;;

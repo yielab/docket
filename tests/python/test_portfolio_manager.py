@@ -34,6 +34,11 @@ def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "SITES_DIR", oc_dir / "Sites", raising=True)
     monkeypatch.setattr(_cfg, "LOG_DIR", oc_dir / "logs", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
+    # G-2: install now also seeds guardrail policies (Step 9) — repoint
+    # DOCKET_HOME/POLICIES_DIR too, or that step would touch the real
+    # ~/.openclaw/policies on whatever machine runs this test.
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", oc_dir, raising=True)
+    monkeypatch.setattr(_cfg, "POLICIES_DIR", oc_dir / "policies", raising=True)
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
 

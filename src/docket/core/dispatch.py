@@ -38,21 +38,42 @@ labelled, never presented as recorded spend.
 G-1 (approval-gated dispatch): a sixth task status, ``waiting_approval``, sits between a
 gated hop and the rest of the pipeline. Pre-hop (after the budget gate, before the hop's
 message is composed), ``_hop_requires_approval`` checks whether this role's turn needs a
-human decision — today, only the pod Lead's ``requireApprovalRoles`` meta list (a policy-match
-source is a seam for G-2; a pipeline-step source is a seam for W-1/W-2, see
-``_policy_requires_approval``/``_pipeline_step_requires_approval``). A fired gate creates a
-real ``core/approval.py`` record (previously ``approval_create`` had no production caller at
-all — this is that missing producer), persists the task as ``waiting_approval`` with the
-token and the exact pipeline position it stopped at, and stops the hop — never claimable again
-by a plain dispatch run (``_eligible_for_claim`` only recognizes ``pending`` and a
-``stale_claim``-tagged ``failed``). ``docket approve``/``docket deny`` and the HTTP
-``POST /approvals/<token>`` endpoint call ``resolve_waiting_approval`` right after the
-underlying grant/deny (and the expiry sweep does the same on a fail-closed timeout): a grant
-flips the task back to ``pending`` and hands the exact stopped-at position back to the *next*
-claim as a single-use gate override (so a resumed run continues past that one hop without
+human decision — today, the pod Lead's ``requireApprovalRoles`` meta list, or a pipeline-step
+source (see ``_pod_requires_approval``/``_pipeline_step_requires_approval``; the third,
+policy-match source is G-2's ``enqueue_task`` gate below, not this per-hop check — see its own
+paragraph for why). A fired gate creates a real ``core/approval.py`` record (previously
+``approval_create`` had no production caller at all — this is that missing producer), persists
+the task as ``waiting_approval`` with the token and the exact pipeline position it stopped at,
+and stops the hop — never claimable again by a plain dispatch run (``_eligible_for_claim`` only
+recognizes ``pending`` and a ``stale_claim``-tagged ``failed``). ``docket approve``/``docket
+deny`` and the HTTP ``POST /approvals/<token>`` endpoint call ``resolve_waiting_approval`` right
+after the underlying grant/deny (and the expiry sweep does the same on a fail-closed timeout): a
+grant flips the task back to ``pending`` and hands the exact stopped-at position back to the
+*next* claim as a single-use gate override (so a resumed run continues past that one hop without
 re-prompting, while a later hop at the same role — e.g. a Reviewer rework cycle — still gates
 normally); a deny fails the task immediately and terminally (``failureKind:
 "approval_denied"``) — no agent turn is needed to kill a task that never ran its gated hop.
+
+G-2 (policy engine on the live path): ``core/policy.py``'s ``pre_input``/``pre_output`` hooks
+are now real producers, not just the CLI's own dry-run printer. ``pre_input`` is evaluated
+**once, at enqueue** (``enqueue_task``, role ``"lead"`` — the pipeline's fixed entry point) —
+deliberately *not* re-evaluated before every hop the way the pod-level ``requireApprovalRoles``
+gate is, because the same task text would otherwise re-trip a ``"*"``-scoped policy at every
+single hop, demanding a fresh human approval per role for what is really one piece of incoming
+text. A ``block`` verdict rejects the task before it ever reaches the queue (``DispatchError``,
+nothing persisted); a ``require_approval`` verdict persists the task straight into
+``waiting_approval`` with a real ``approval_create`` record — the exact same resolution path
+(grant → ``pending`` + a hop-0 gate override; deny → terminal ``failureKind:
+"approval_denied"``) G-1 already built, just fed from a second source. ``pre_output`` is
+evaluated on **every** hop's real output, inside ``_execute_unit`` right after the agent turn
+returns and before that text is embedded in the carried-forward ``HandoffArtifact`` or the
+persisted ``HopResult`` — ``redact`` scrubs the text in place, ``block`` fails the hop the same
+way a failed agent turn does, ``warn`` only logs. Every non-``allow`` verdict on either hook
+emits a ``guardrail_check`` trace event; a ``block`` verdict additionally emits
+``guardrail_block`` with the tripped policy's id as its ``action`` field — the shape
+``cli/_metrics.py``'s reader already keys its "Guardrail trips" tally on. In-turn
+``pre_tool_call`` stays daemon-gated (ROADMAP §4.5: docket is not inside a turn to intercept a
+tool call) and is never evaluated here.
 """
 
 from __future__ import annotations
@@ -74,6 +95,7 @@ from docket.core import models as _models
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
+from docket.core import policy as _policy
 from docket.core import runs as _runs
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
@@ -266,32 +288,116 @@ def read_tasks(project: str) -> list[dict[str, Any]]:
     return [_normalize_task(t) for t in tasks if isinstance(t, dict)]
 
 
+def _enqueue_pre_input_gate(
+    project: str, session_id: str, task_id: str, description: str, *, trusted: bool
+) -> _policy.PolicyHit:
+    """G-2: evaluate the ``pre_input`` policy hook once, at enqueue time.
+
+    Emits ``guardrail_check`` for any non-``allow`` verdict, and — only for ``block`` — a
+    self-contained ``session_start``/``guardrail_block``/``session_end`` triple: a task rejected
+    here is never dispatched, so nothing else will ever close out this session, and an
+    unterminated trace file is invisible to ``cli/_metrics.py``'s terminal-session reader. A
+    ``require_approval`` verdict deliberately does *not* synthesize a session_end — the task is
+    still going to run for real (once granted), and that real ``dispatch_task`` call supplies the
+    session's genuine start/end. Never raises; the caller decides what a ``block``/
+    ``require_approval`` result means for the task being built.
+    """
+    hit = _policy.policy_eval_detail("lead", "pre_input", description, trusted=trusted)
+    if hit.action == "allow":
+        return hit
+
+    if hit.action == "block":
+        _trace.trace_event(
+            project,
+            session_id,
+            "lead",
+            "session_start",
+            _json.dumps({"source": "enqueue", "task": task_id}),
+        )
+    _trace.trace_event(
+        project,
+        session_id,
+        "lead",
+        "guardrail_check",
+        _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.action}),
+    )
+    if hit.action == "block":
+        _trace.trace_event(
+            project,
+            session_id,
+            "lead",
+            "guardrail_block",
+            _json.dumps({"hook": "pre_input", "policy": hit.policy_id, "action": hit.policy_id}),
+        )
+        _trace.trace_event(
+            project,
+            session_id,
+            "lead",
+            "session_end",
+            _json.dumps({"status": "aborted", "reason": "guardrail_block"}),
+        )
+    return hit
+
+
 def enqueue_task(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
     """Append a pending task to the pod's queue and return it.
 
-    Raises DispatchError if the project has no Lead workspace (no pod yet). The
-    append is a locked read-modify-write (``store.read_modify_write``) so two
-    concurrent ``delegate`` calls can never clobber each other's task.
+    Raises DispatchError if the project has no Lead workspace (no pod yet), or if a
+    ``pre_input`` guardrail policy (G-2) matches this description with a ``block`` action
+    (nothing is persisted in that case). The append itself is a locked read-modify-write
+    (``store.read_modify_write``) so two concurrent ``delegate`` calls can never clobber each
+    other's task.
     """
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run: docket add {project})")
 
+    task_id = f"task-{_uuid.uuid4()}"
+    source = "operator"
+    session_id = f"agent:{project}:{task_id}"
+
+    hit = _enqueue_pre_input_gate(
+        project, session_id, task_id, description, trusted=source == "operator"
+    )
+    if hit.action == "block":
+        raise DispatchError(
+            f"task rejected by guardrail policy '{hit.policy_id}' at enqueue"
+            + (f": {hit.message}" if hit.message else "")
+        )
+
     task: dict[str, Any] = {
-        "id": f"task-{_uuid.uuid4()}",
-        "description": description,
+        "id": task_id,
+        "description": _trace.redact(description) if hit.action == "redact" else description,
         "priority": priority if priority in ("high", "normal", "low") else "normal",
         "status": "pending",
         "created": _now(),
         "startedAt": None,
         "completedAt": None,
-        "source": "operator",
+        "source": source,
         "hops": [],
         "reason": "",
         "costUsd": 0.0,
         "claimId": None,
         "claimedAt": None,
     }
+
+    if hit.action == "require_approval":
+        action_text = f"pod dispatch — task enqueue for '{project}': {description}"[:1000]
+        token = _ap.approval_create(
+            project, "lead", action_text, context={"taskId": task_id, "pipelineIndex": 0}
+        )
+        task["status"] = "waiting_approval"
+        task["approvalToken"] = token
+        task["pendingApprovalIndex"] = 0
+        _trace.trace_event(
+            project,
+            session_id,
+            "lead",
+            "approval_required",
+            _json.dumps(
+                {"role": "lead", "token": token, "pipelineIndex": 0, "policy": hit.policy_id}
+            ),
+        )
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
         tasks_raw = doc.get("tasks")
@@ -900,15 +1006,24 @@ def _pod_requires_approval(project: str, role: str) -> bool:
 
 
 def _policy_requires_approval(project: str, role: str, task: dict[str, Any]) -> bool:
-    """Seam for a policy-driven require_approval match (ROADMAP Phase 15 G-2) — NOT wired.
+    """Deliberately stays ``False`` — G-2 gates policy-driven approval at enqueue, not per hop.
 
-    G-1 ships only the pod-level gate (see ``_pod_requires_approval``); wiring the
-    role→model policy engine (or a high-risk action-class match — see
-    ``core/security.py``'s ``HIGH_RISK_PATTERNS``) into the live dispatch path is
-    explicitly out of scope for this card. This stub is the one place G-2 needs to
-    change: it MUST return ``True`` when a policy source requires approval for this
-    hop and ``False`` (never raise) otherwise, so an unwired or misconfigured policy
-    source can never block dispatch. Always returns ``False`` today.
+    This was originally documented as "the one place G-2 needs to change," under the
+    assumption that a policy-driven require_approval source would be checked pre-hop, the same
+    way ``_pod_requires_approval`` is. G-2 chose not to wire it that way: the only thing this
+    function has to evaluate against is the task's own (fixed, already-enqueued) description, so
+    checking it again before *every* hop would re-trip the same ``"*"``-scoped ``pre_input``
+    policy match at every role in the pipeline — one incoming piece of text demanding a fresh
+    human approval for the Lead, then again for the Implementer, then again for the Reviewer,
+    etc. Real per-hop policy gating belongs on what the hop *produces* (``pre_output``, scanned
+    in ``_execute_unit`` for every hop unconditionally) or on what a future in-turn tool call
+    attempts (``pre_tool_call`` — daemon-gated, not this module's to enforce). ``pre_input``'s
+    one meaningful evaluation point is enqueue time, before the task ever becomes a queued
+    ``dict`` — see ``enqueue_task``'s ``_enqueue_pre_input_gate``, which creates the exact same
+    ``waiting_approval`` state a pre-hop gate does, just from a single source instead of N.
+    Kept as an explicit, always-``False`` function (rather than deleted) so
+    ``_hop_requires_approval``'s three-source shape stays intact for a genuinely new *per-hop*
+    policy source, should one ever be designed.
     """
     return False
 
@@ -939,7 +1054,9 @@ def _hop_requires_approval(
     Three independent sources may demand a human decision; **any** one firing is
     enough to gate (a veto, not unanimous consent):
       1. the pod-level ``requireApprovalRoles`` Lead-meta list (G-1, wired today)
-      2. a policy match (G-2 — seam only, always False today)
+      2. a per-hop policy match (G-2 — deliberately stays ``False``; G-2's
+         ``pre_input`` policy source gates once, at enqueue, instead — see
+         ``_policy_requires_approval``'s docstring for why)
       3. a pipeline ``approval`` step (W-1/W-2 — wired: see
          ``_pipeline_step_requires_approval``)
     """
@@ -1297,25 +1414,67 @@ def dispatch_task(
             do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
             attempt += 1
 
+        # G-2: pre_output guardrail scan — every hop's real output, scanned once,
+        # before it is embedded in the carried-forward artifact or persisted hop
+        # record. Only `redact`/`block` change what gets carried forward
+        # (`warn`/`allow` pass the text through unchanged); `require_approval` is
+        # not a pre_output outcome (ROADMAP §4.5/Phase 15 G-2) — a hop has
+        # already run by the time its output exists, so there is no "before the
+        # hop" moment left to gate the way the pre-hop require_approval sources
+        # above do; a policy author who wants a human in the loop before this
+        # role runs uses `_pod_requires_approval`/enqueue's pre_input gate
+        # instead. pre_tool_call (in-turn) stays daemon-gated, never evaluated
+        # here.
+        hop_output = run_res.output
+        hop_ok = run_res.ok
+        hop_error = run_res.error
+        if hop_output:
+            hit = _policy.policy_eval_detail(role, "pre_output", hop_output)
+            if hit.action != "allow":
+                _trace_locked(
+                    project,
+                    session_id,
+                    role,
+                    "guardrail_check",
+                    _json.dumps(
+                        {"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}
+                    ),
+                )
+            if hit.action == "redact":
+                hop_output = _trace.redact(hop_output)
+            elif hit.action == "block":
+                _trace_locked(
+                    project,
+                    session_id,
+                    role,
+                    "guardrail_block",
+                    _json.dumps(
+                        {"hook": "pre_output", "policy": hit.policy_id, "action": hit.policy_id}
+                    ),
+                )
+                if hop_ok:
+                    hop_ok = False
+                    hop_error = f"blocked by guardrail policy '{hit.policy_id}'"
+
         # W-5: the verdict is parsed up front (rather than inside the
         # VerdictGate branch below, as it was pre-W-5) so it can be embedded
         # in the hop's own artifact *before* `on_hop` persists it — one
-        # source of truth, computed once. Guarded on `run_res.ok`: a failed
-        # subprocess call never reaches gate evaluation either (see the
-        # early return just below), so there is no meaningful verdict to
-        # report for it.
+        # source of truth, computed once. Guarded on `hop_ok`: a failed
+        # subprocess call (or a pre_output block) never reaches gate
+        # evaluation either (see the early return just below), so there is no
+        # meaningful verdict to report for it.
         verdict: str | None = None
-        if run_res.ok and isinstance(node.gate, _pipeline.VerdictGate):
-            verdict = _orch.parse_verdict(node.gate, run_res.output)
-        artifact = _handoff.HandoffArtifact(summary=run_res.output, verdict=verdict)
+        if hop_ok and isinstance(node.gate, _pipeline.VerdictGate):
+            verdict = _orch.parse_verdict(node.gate, hop_output)
+        artifact = _handoff.HandoffArtifact(summary=hop_output, verdict=verdict)
 
         hop = HopResult(
             role=role,
             member_id=member_id,
-            ok=run_res.ok,
-            output=run_res.output,
+            ok=hop_ok,
+            output=hop_output,
             cost_usd=run_res.cost_usd,
-            error=run_res.error,
+            error=hop_error,
             attempts=attempt,
             step_id=node.step_id,
             artifact=artifact,
@@ -1330,8 +1489,8 @@ def dispatch_task(
             project,
             session_id,
             role,
-            "tool_result" if run_res.ok else "error",
-            run_res.output or run_res.error or "",
+            "tool_result" if hop_ok else "error",
+            hop_output or hop_error or "",
             cost_usd=run_res.cost_usd or None,
         )
         if run_res.cost_usd:
@@ -1344,11 +1503,11 @@ def dispatch_task(
                 cost_usd=run_res.cost_usd,
             )
 
-        if not run_res.ok:
+        if not hop_ok:
             return _UnitOutcome(
                 kind="failed",
                 hops=[hop],
-                reason=f"{role} hop failed: {run_res.error or 'no result'}",
+                reason=f"{role} hop failed: {hop_error or 'no result'}",
             )
 
         gate = node.gate
@@ -1427,7 +1586,7 @@ def dispatch_task(
                     if cycles_so_far < rework.max_cycles and target_index is not None:
                         rework_counts[node.step_id] = cycles_so_far + 1
                         rework_event, _unused1, _unused2 = _verdict_event_names(role)
-                        redacted = _trace.redact(run_res.output)
+                        redacted = _trace.redact(hop_output)
                         _trace_locked(
                             project,
                             session_id,
@@ -1441,7 +1600,7 @@ def dispatch_task(
                     # Rework budget exhausted (or, defensively, no valid target) —
                     # this verdict is now terminal.
                     _unused3, rejected_event, _unused4 = _verdict_event_names(role)
-                    redacted = _trace.redact(run_res.output)
+                    redacted = _trace.redact(hop_output)
                     _trace_locked(
                         project,
                         session_id,
@@ -1465,7 +1624,7 @@ def dispatch_task(
             # tester role specifically, share one event name — see
             # `_verdict_event_names`).
             _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
-            redacted = _trace.redact(run_res.output)
+            redacted = _trace.redact(hop_output)
             if verdict is None:
                 _trace_locked(
                     project,

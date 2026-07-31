@@ -196,6 +196,53 @@ class TestMetrics:
         # role filter excludes the tester session
         assert "No terminal sessions found" in out
 
+    def test_guardrail_block_reported_from_a_real_g2_producer(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """G-2: `guardrail_block` is the live-path producer this reader was
+        waiting for — bucketed by the tripped policy's id (the reader's own
+        `payload.get("action", etype)` convention, fed the policy id rather
+        than the generic word "block" so the table names which policy fired)."""
+        proj = oc_dir / "traces" / "myapp"
+        proj.mkdir(parents=True)
+        session = [
+            {"event_type": "session_start", "ts": "2026-06-23T10:00:00", "agent_role": "lead"},
+            {
+                "event_type": "guardrail_check",
+                "ts": "2026-06-23T10:00:05",
+                "agent_role": "lead",
+                "payload": {"hook": "pre_output", "policy": "forbidden-marker", "action": "block"},
+            },
+            {
+                "event_type": "guardrail_block",
+                "ts": "2026-06-23T10:00:05",
+                "agent_role": "lead",
+                "payload": {
+                    "hook": "pre_output",
+                    "policy": "forbidden-marker",
+                    "action": "forbidden-marker",
+                },
+            },
+            {
+                "event_type": "session_end",
+                "ts": "2026-06-23T10:00:10",
+                "agent_role": "lead",
+                "payload": {"status": "failure"},
+            },
+        ]
+        (proj / "sess1.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in session) + "\n", encoding="utf-8"
+        )
+        rc = _metrics.run_metrics()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Guardrail trips:" in out
+        assert "forbidden-marker" in out
+        # guardrail_check is a pure audit-trail event, deliberately not tallied
+        # here too — it would double-count the same trip guardrail_block already
+        # reports (see core/dispatch.py's G-2 module docstring).
+        assert out.count("forbidden-marker") == 1
+
 
 # ── help ────────────────────────────────────────────────────────────────────────
 
