@@ -96,7 +96,11 @@ Display all project agents with status, model, and Telegram binding info.
 **Syntax:**
 ```bash
 docket list
+docket list --json     # machine-readable listing
 ```
+
+**Flags:**
+- **`--json`**: emit the full agent listing as JSON instead of the Rich table.
 
 **Output format:**
 ```
@@ -136,12 +140,32 @@ docket add                               # interactive
 docket add <project> [path]              # lean pod: <project>-lead + <project>-implementer
 docket add <project> [path] --pod full   # full pod: + reviewer + tester
 docket add <project> [path] --with reviewer,tester   # lean pod + named roles
+docket add --blueprint <name> [path]     # a named pod shape other than the default (software)
+docket add --from <spec-file>            # non-interactive: provision one or many pods from JSON/YAML
 ```
 
 **Flags:**
-- **`--pod full`**: provision the full pod — Lead, Implementer, Reviewer, and Tester.
+- **`--pod full`**: provision the full pod — Lead, Implementer, Reviewer, and Tester. Only
+  applies to the default `software` blueprint; ignored (with a warning) for any other blueprint,
+  which provisions its own fixed roster.
 - **`--with <roles>`**: start from the lean pod and add the named roles (comma-separated:
-  `reviewer`, `tester`, `implementer`). E.g. `--with reviewer` adds a review gate only.
+  `reviewer`, `tester`, `implementer`). E.g. `--with reviewer` adds a review gate only. Same
+  `software`-only restriction as `--pod full`.
+- **`--blueprint <name>`** (default `software`): provision a named **pod blueprint** instead of
+  the plain lean/full pod — see [Pod Blueprints](#pod-blueprints) below. Unknown name errors with
+  `unknown blueprint 'X'; valid blueprints: software, research, content, ops` and exits 1 before
+  any prompt is shown.
+- **`--codebase <path>`** / **`--path <path>`** (aliases): the codebase path (or, for a
+  `workdir`-kind blueprint, the pod's shared working directory) — same value as the `path`
+  positional; supplying it up front skips its interactive prompt.
+- **`--name <name>`**: display name — same value as the 1st positional; skips its prompt.
+- **`--from <spec-file>`**: non-interactive, declarative mode — provision one or many
+  agents/pods from a JSON or YAML file (`.yaml`/`.yml` needs PyYAML installed). Mutually
+  exclusive with every other flag/prompt. See [Declarative provisioning](#declarative-provisioning)
+  below.
+
+Interactive mode requires a TTY; without one (and without `--from`), `docket add` errors:
+`interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.`
 
 Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-reviewer`, `myapp-tester`
 (duplicated roles get `-2`, `-3` suffixes). A pod has **exactly one Lead**. Resize the pod later
@@ -192,6 +216,86 @@ docket add myapp ~/code/myapp --with reviewer
 - Sets permissions to 700 (dirs) and 600 (files)
 - Restarts gateway after creation
 - Pod members are ordinary registered agents, so `docket list`/`info`/`cost`/`doctor` see them
+
+#### Pod Blueprints
+
+A **blueprint** is a named, fixed pod shape — an alternative to the plain lean/full `software`
+pod for work that isn't "implement against a codebase." Four ship built-in:
+
+| Blueprint | Kind | Roles | Default budget | Shape |
+|---|---|---|---|---|
+| `software` (default) | codebase | lead, implementer | none | Today's plain lean pod, byte-identical to `docket add` with no `--blueprint` |
+| `research` | workdir | lead, researcher, analyst, writer, critic | $20 | Critic gates the final step (`APPROVE`\|`REJECT`), one rework cycle back to writer |
+| `content` | workdir | lead, writer, critic | $15 | Same Critic-gate pattern, no researcher/analyst step |
+| `ops` | workdir | lead, operator, monitor | $30 | Operator is gated on its own `verifyCmd`; Monitor is a human-approval gate |
+
+A **codebase** blueprint (`software`) treats the location argument as an existing codebase path
+(never auto-created) and auto-detects its stack. A **workdir** blueprint (`research`/`content`/
+`ops`) treats the location as the pod's one shared working directory instead — no codebase is
+assumed and no stack is auto-detected; if you don't pass one, docket provisions
+`~/.openclaw/workspaces/pods/<project>/` for you. `--blueprint` also changes the interactive
+prompt label ("Working directory" instead of "Codebase path").
+
+```bash
+# A research pod against its own working directory
+docket add briefing --blueprint research
+
+# An ops pod with an explicit shared working directory
+docket add rollout --blueprint ops --codebase ~/ops/rollout
+```
+
+`--pod full`/`--with` only extend the `software` roster; passing either alongside a different
+blueprint is ignored with a warning, since every other blueprint's roster is fixed.
+
+Only the four built-ins exist today — there is no `docket blueprints add <file>` to register a
+custom one yet (that overlay mechanism is unbuilt, unlike `docket roles add` for archetypes).
+See [pod-blueprints.spec.md](../specs/functional/pod-blueprints.spec.md).
+
+#### Declarative provisioning
+
+`docket add --from <spec-file>` provisions one or many agents/pods from a single JSON or YAML
+file, without any prompts — the same mechanism a CI job or a fleet-bootstrap script would use.
+The file is either a bare list of entries, `{"agents": [...]}`, or a single entry object.
+
+Each entry needs an `id`. An entry with a `blueprint` field provisions a pod via that blueprint
+(fields: `codebase` or `workDir` depending on the blueprint's kind, `stack`, `description`,
+`projectKey`, `budgetUsd`, `telegram`); an entry with no `blueprint` field provisions a single
+flat agent the same shape `docket add` always has (fields: `name`, `codebase`, `stack`, `model`,
+`description`, `telegram`, `budgetUsd`, `projectKey`).
+
+```json
+{
+  "agents": [
+    {
+      "id": "acme-api",
+      "name": "Acme API",
+      "codebase": "/home/user/projects/acme-api",
+      "stack": "Node/Express",
+      "model": "anthropic/claude-sonnet-4-6",
+      "description": "Customer-facing REST API",
+      "telegram": "-1001234567890",
+      "budgetUsd": "25"
+    },
+    {
+      "id": "launch-brief",
+      "blueprint": "content",
+      "workDir": "/home/user/work/launch-brief",
+      "description": "Product launch one-pager",
+      "budgetUsd": "10"
+    }
+  ]
+}
+```
+
+```bash
+docket add --from spec.json
+docket add --from spec.yaml   # requires PyYAML: pip install pyyaml
+```
+
+An entry whose id already exists is skipped with a warning, not an error; an unknown blueprint
+name is likewise skipped, not fatal to the rest of the file. The command always exits 0 and
+prints a summary of what was created vs. skipped — check the output, not just the exit code, in
+a script.
 
 ---
 
@@ -280,6 +384,8 @@ docket delete myproject
 - Cannot be undone (backup first if unsure)
 - Given a pod id (not a single member id), removes the whole pod — see [`docket pod`](#pod) to
   remove one member instead
+- Org specialists (manager, knowledge, security) cannot be removed with `docket delete` — it
+  errors outright rather than deleting a shared, fleet-wide agent
 
 ---
 
@@ -292,16 +398,25 @@ Clear memory, repair, or rebuild an agent. Consolidates the retired `reset`, `re
 
 **Syntax:**
 ```bash
-docket maintain [agent-id] [mode]
+docket maintain [agent-id] [mode] [--no-distill-first]
 ```
 
 **Modes:**
 - **`check`** (default): Health check and auto-fix — permissions (700/600), missing workspace
-  files, session-key sync between `.docket-meta.json` and `openclaw.json`, Telegram bindings
-- **`clean`**: Clear memory logs only (`memory/*.md`)
-- **`reset`**: Clear memory + MEMORY.md + HEARTBEAT.md
+  files, session-key sync between `.docket-meta.json` and `openclaw.json`, memory directory, and
+  a per-turn context-footprint estimate (warns if SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together
+  exceed the configured token budget)
+- **`clean`**: Clear memory logs only (`memory/*.md`) — **distills first by default** (see below)
+- **`reset`**: Clear memory + MEMORY.md + HEARTBEAT.md — **distills first by default**
 - **`rebuild`**: Deep rebuild — regenerate SOUL.md, AGENTS.md, TOOLS.md from metadata
 - **`sessions`**: Archive large/old session data
+- **`distill`**: Summarize `memory/*.md` into MEMORY.md via one driver-backed turn, then archive
+  the originals under `memory/<archive-dir>/`
+
+**Flags:**
+- **`--no-distill-first`** (`clean`/`reset` only): skip the automatic pre-delete distillation and
+  delete/clear memory undistilled. `--distill-first` is also accepted, as a no-op affirmation of
+  the default.
 
 **Example:**
 ```bash
@@ -309,17 +424,23 @@ docket maintain [agent-id] [mode]
 docket maintain myproject
 docket maintain myproject check
 
-# Clear memory logs (was: docket reset 1)
+# Clear memory logs, distilling into MEMORY.md first (was: docket reset 1)
 docket maintain myproject clean
 
-# Clear memory + heartbeat (was: docket reset 2)
+# Clear memory + heartbeat, distilling first (was: docket reset 2)
 docket maintain myproject reset
+
+# Skip distillation and delete logs undistilled
+docket maintain myproject clean --no-distill-first
 
 # Deep rebuild (was: docket reset 3)
 docket maintain myproject rebuild
 
 # Archive old sessions (was: docket cleanup safe)
 docket maintain myproject sessions
+
+# Summarize memory without clearing anything
+docket maintain myproject distill
 ```
 
 **Migration (deprecated → current):**
@@ -332,9 +453,27 @@ docket maintain myproject sessions
 | `docket reset [id] 3` | `docket maintain [id] rebuild` |
 | `docket cleanup [id]` | `docket maintain [id] sessions` |
 
+**Distillation and the fail-closed contract (`clean`/`reset`):**
+
+Memory is never bare-deleted. Before `clean` deletes `memory/*.md`, or `reset` clears memory +
+HEARTBEAT.md, docket runs one driver-backed turn that summarizes pending logs into MEMORY.md and
+archives the originals — the same work `docket maintain <id> distill` does standalone. **A
+failed distillation aborts the delete outright — nothing is touched:**
+```bash
+docket maintain myproject clean
+# → Distilling memory before proceeding (one driver-backed turn)...
+# ✗ Distillation failed (timeout): the turn did not complete -- nothing deleted.
+```
+`failure_kind` (`timeout`, `daemon_error`, `invalid_output`) tells you whether to just retry or
+whether the model's output needs a closer look. Pass `--no-distill-first` to skip this and
+delete/clear undistilled — you'll be warned that it's happening. When a `reset` runs a real
+distillation, MEMORY.md is left as freshly distilled rather than immediately cleared again in
+the same breath.
+
 **Notes:**
 - Preserves identity (`.docket-meta.json`, `openclaw.json`)
-- `reset`/`rebuild` are destructive and prompt for confirmation
+- `clean`/`reset`/`rebuild` prompt for confirmation and require a TTY (non-interactive calls are
+  cancelled, not silently applied)
 - Restarts the gateway after structural changes
 
 ---
@@ -469,7 +608,7 @@ See [Agent Teams (Pods)](AGENT-TEAMS.md).
 ```bash
 docket pod <project>                                   # list the pod's members (default)
 docket pod <project> list                              # same as above
-docket pod <project> add <role> [--count N] [--verify "<cmd>"]  # add member(s): implementer|reviewer|tester
+docket pod <project> add <role> [--count N|-n N] [--verify "<cmd>"]  # add member(s)
 docket pod <project> remove <member-id>                # remove one member
 docket pod <project> set-verify <member-id> "<cmd>"    # set an implementer's verify command
 docket pod <project> delegate [--priority high|normal|low] "<task>"   # queue a task
@@ -494,16 +633,25 @@ docket pod myapp
 ```
 
 #### add
-Add a member to the pod. Role is one of `implementer`, `reviewer`, `tester` (the Lead is unique —
-a pod always has exactly one). Duplicated roles get `-2`, `-3` ids. `--count N` adds several at
-once. `--verify "<cmd>"` (Implementer only) sets the mechanical verification gate `docket pod
-… dispatch` runs after that member's hop (CD-2) — it's written into the new member's
-`.docket-meta.json` (`verifyCmd`) and documented in its `TOOLS.md`.
+Add a member to the pod. Role is validated against the open role-archetype registry (see
+[`docket roles`](#roles)) — not a hardcoded `implementer|reviewer|tester` list, so a blueprint
+role (`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`) or any user-defined
+archetype works too; `programmer` is accepted as an alias for `implementer`. The Lead is unique —
+a pod always has exactly one and it cannot be added this way. Duplicated roles get `-2`, `-3`
+ids. `--count N` (short alias `-n N`) adds several at once. `--verify "<cmd>"` (also accepted as
+`--verify="<cmd>"`) sets the mechanical verification gate `docket pod … dispatch` runs after that
+member's hop (CD-2) — it's written into the new member's `.docket-meta.json` (`verifyCmd`) and
+documented in its `TOOLS.md`. Passing `--verify` for a non-implementer role doesn't error — it's
+silently ignored with a warning, since only an Implementer hop is verify-gated. A new member
+inherits the pod's `workspaceKind`/`workDir`/`blueprint` from its existing members, so adding to
+a `workdir`-kind pod (see [Pod Blueprints](#pod-blueprints)) doesn't wrongly treat it as a
+codebase agent.
 
 ```bash
 docket pod myapp add implementer          # adds myapp-implementer-2
 docket pod myapp add reviewer             # add a review gate later
 docket pod myapp add implementer --count 2 # two more parallel implementers
+docket pod myapp add implementer -n 2      # same, short form
 docket pod myapp add implementer --verify "npm test"  # gate this implementer's hops on `npm test`
 ```
 
@@ -530,7 +678,8 @@ docket pod myapp set-verify myapp-implementer "npm test"
 
 #### delegate
 Queue a task on the **pod's** task queue (which lives in the Lead's workspace). Optional
-`--priority high|normal|low` (default `normal`). This queues only; run it with `dispatch`.
+`--priority`/`-p` `high|normal|low` (default `normal`). The task description is capped at 500
+characters. This queues only; run it with `dispatch`.
 
 ```bash
 docket pod myapp delegate "Fix the null-token login crash"
@@ -619,6 +768,158 @@ machine, retry/timeout/rework semantics, and trace-event vocabulary.
 
 ---
 
+### pipeline
+
+Validate, plan, and run a **docket-native pipeline** — the one dialect docket actually executes
+(the retired Lobster/`docket workflow` YAML was a separate, non-executed thing; see
+[Removed Commands](#removed-commands)). A pipeline file declares a pod's hop order, gates, and
+rework edges instead of relying on the built-in default order.
+
+**Syntax:**
+```bash
+docket pipeline validate <file>                                   # structural check only
+docket pipeline plan <project> [--file <path>]                    # render the resolved plan
+docket pipeline run <project> [--file <path>] [--resume] [--timeout <seconds>] [--follow]
+```
+
+**Subcommands:**
+
+#### validate
+Pure structural validation of a pipeline file — no project involved, nothing dispatched. Checks
+step ids are unique, each step has exactly one of `role`/`agent`, gate shapes are well-formed,
+and rework edges point at an earlier step id.
+
+```bash
+docket pipeline validate ./ship-feature.yaml
+```
+
+#### plan
+Resolves the pipeline against a **project's actual pod roster** and prints the plan — the exact
+function `run`/`docket pod <p> dispatch` use internally to decide what to execute, not a second
+pretty-printer. Never executes anything or spends tokens. Without `--file`, resolves the pod's
+zero-migration default order (`lead → implementer → reviewer → tester`, whichever roles the pod
+actually has).
+
+```bash
+docket pipeline plan myapp --file ./ship-feature.yaml
+# Pipeline: ship-feature
+#   [plan] role=lead -> myapp-lead [gate: none]
+#   [build] role=implementer -> myapp-implementer [gate: mechanical(pytest -q)]
+```
+
+#### run
+Dispatches a project's pod through the given (or default) pipeline — this delegates to the exact
+same executor as `docket pod <project> dispatch`, so it is equally budget-gated, verify/Reviewer/
+Tester-gated, traced, and recorded in `docket runs`. `--resume`/`--timeout` behave identically to
+[`docket pod dispatch`](#pod). `--follow` tails the run's trace events live in the foreground
+(Ctrl-C stops watching, not the dispatch itself, which keeps running).
+
+```bash
+docket pipeline run myapp --file ./ship-feature.yaml --follow
+```
+
+**Pipeline file schema** (YAML or JSON; unknown keys are rejected):
+- `name` (required), `description`, `variables` (a name→`{default, description, required}` map —
+  declared but not yet interpolated into any hop's prompt/environment).
+- `steps`: each has `id` (unique), exactly one of `role` (a role-archetype slug) or `agent` (a
+  specific member id), optional `retries`, `timeout` (seconds), optional `gate`, or a `parallel`
+  list of child steps (one nesting level).
+- `gate.type`: `mechanical` (a `command`, or `null` to defer to the target's own `verifyCmd`),
+  `verdict` (a `pattern` regex, `passValues`, optional `rework: {to, when, maxCycles}` edge back
+  to an earlier step), or `approval` (a human sign-off message).
+
+```yaml
+name: ship-feature
+description: Build and verify a change.
+steps:
+  - id: plan
+    role: lead
+  - id: build
+    role: implementer
+    gate:
+      type: mechanical
+      command: "pytest -q"
+```
+
+**Aliases:** None
+
+**Notes:**
+- A pod with no pipeline file runs the built-in default order — declaring a pipeline is opt-in
+- `archetype` references inside a step are shape-validated only, never checked against the live
+  role registry
+- See [pipeline-format.spec.md](../specs/functional/pipeline-format.spec.md)
+
+---
+
+### roles
+
+Manage declarative **role archetypes** — the data-driven definitions behind every pod role
+(`lead`, `implementer`, `reviewer`, `tester`, and the blueprint-only roles `researcher`,
+`analyst`, `writer`, `critic`, `operator`, `monitor`). A role is data (SOUL/AGENTS templates,
+model class, gate contract, token budget), not a hardcoded branch, so `docket pod <p> add <role>`
+accepts any name in this registry.
+
+**Syntax:**
+```bash
+docket roles list                    # all archetypes (built-in + user-defined)
+docket roles show <name>             # one archetype's full definition
+docket roles add <file.yaml>         # register a new user-defined archetype
+docket roles validate [file.yaml]    # validate the live registry, or dry-run one candidate file
+```
+
+**Subcommands:**
+
+#### list (default)
+```bash
+docket roles list
+#   NAME           SOURCE     SCOPE CLASS   GATE        EDIT       DESCRIPTION
+#   lead           built-in   pod   cheap   none        none       orchestrates the pod; never edits code
+#   implementer    built-in   pod   strong  mechanical  write      writes code in the project workspace
+#   reviewer       built-in   pod   cheap   verdict     read-only  read-only veto on diffs
+#   tester         built-in   pod   cheap   verdict     read-only  behaviour-only PASS/FAIL
+#   researcher     starter    pod   strong  none        write      gathers and synthesizes source material
+```
+
+#### show
+Prints the full wire-format definition (YAML, falling back to JSON if PyYAML is missing):
+`name`, `version`, `scope` (`org`|`pod`), `modelClass` (`cheap`|`strong`), `soulTemplate`,
+`agentsTemplate`, `gateContract` (`none`|`verdict`|`mechanical`|`approval`), `editRights`
+(`none`|`read-only`|`write`, descriptive only — not enforced), `toolProfile`, `tokenBudget`.
+
+```bash
+docket roles show reviewer
+```
+
+#### add
+Registers a new archetype from a standalone YAML file into the user overlay
+(`~/.openclaw/docket-roles.json`) — built-ins are never edited, only shadowed by name.
+
+```bash
+docket roles add ./producer.yaml
+# ✓ Added archetype 'producer' (scope=pod, modelClass=cheap).
+```
+
+#### validate
+Structural field validation (closed enums, name regex, non-blank templates) plus a dry-run
+render of both templates against a representative variable set — catches a template referencing
+an unknown `${var}` before `add` persists it. With no file argument, validates every entry
+currently in the merged live registry instead.
+
+```bash
+docket roles validate
+docket roles validate ./producer.yaml   # dry-run without persisting
+```
+
+**Aliases:** None
+
+**Notes:**
+- Built-ins (`lead`/`implementer`/`reviewer`/`tester`) and the 6-role starter library are Python
+  literals, never loaded from files; a user archetype in `~/.openclaw/docket-roles.json` overlays
+  by name, and a malformed overlay entry is skipped rather than crashing a live fleet
+- See [role-archetypes.spec.md](../specs/functional/role-archetypes.spec.md)
+
+---
+
 ## Telegram Integration
 
 ### wire
@@ -670,8 +971,13 @@ Remove Telegram binding from an agent.
 **Syntax:**
 ```bash
 docket unwire <agent-id>
+docket unwire <agent-id> --channel telegram   # explicit (also the default)
 docket unwire           # Interactive picker
 ```
+
+**Flags:**
+- **`--channel <name>`** (default `telegram`): which channel binding to remove — same purpose
+  as `wire`'s flag.
 
 **Example:**
 ```bash
@@ -1021,7 +1327,8 @@ docket models                            # Show the role→model policy with pri
 docket models set <role> <provider/model> # Change one role's model
 docket models set default <provider/model> # Change the fallback default model
 docket models preset [name]              # List or apply a provider preset
-docket models reset                      # Restore built-in defaults
+docket models reset                      # Restore built-in defaults (asks for confirmation)
+docket models provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
 ```
 
 **Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`, `local` (no API key — run your own OpenAI-compatible endpoint, priced at `$0 (local)`)
@@ -1034,15 +1341,32 @@ docket models set programmer openai/gpt-4.1
 #   (every agent with role 'programmer' that follows the policy is updated)
 ```
 
+#### provider add
+Registers a local OpenAI-compatible endpoint (e.g. a self-hosted vLLM/Ollama server) so its
+models can be referenced from `docket models set`/`preset`. `--model` sets the model id served
+at that endpoint; `--name` a friendly label; `--ctx`/`--max-tokens` record context-window and
+output-token limits for display only.
+
+```bash
+docket models provider add homelab http://localhost:8000/v1 --model llama-3.1-70b
+```
+
 **Notes:**
 - Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`docket profile <id> <model>`) are never touched
 - Overrides persist in `~/.openclaw/docket-models.json` (`roles:` map); delete it or run `docket models reset` to restore built-ins
+- `docket models reset` prompts `Continue? [y/N]` before touching anything — a non-interactive
+  call that can't answer aborts rather than silently resetting the fleet
+- Applying a preset does more than swap models: it also writes the preset's own
+  economy/standard/premium anchors into `docket-models.json`, re-resolves every policy-following
+  agent, restarts the gateway once, and warns (with a `docket keys add <KEY>` hint, or
+  "register your endpoint" for `local`) if the preset's required key isn't stored yet
 - Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the
   actual model; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter route
   outside docket's curated free-tier rows, and `$0 (local)` for a local/ollama/lmstudio
   provider — never a fabricated dollar figure)
 - Tier names (`economy`/`standard`/`premium`) are rejected everywhere a model/role value is
-  expected — including here — per D-2 (0.2.0)
+  expected — including here — per D-2 (0.2.0); an invalid model prints the current role policy
+  table alongside the error so the fix is one line away
 
 ---
 
@@ -1136,16 +1460,27 @@ docket doctor --fix        # Apply auto-fixes for detected drift (mutates state)
   files, session-key resync). **This mutates state** — see the warning below.
 
 **What it checks:**
+
+`docket doctor` runs roughly twenty checks, not a fixed short list — the most load-bearing ones:
 1. Required dependencies (openclaw, python3; fzf optional)
 2. OpenClaw config file exists and is valid JSON
 3. Gateway service status
-4. Workspace permissions (700/600)
-5. Specialist agents present
-6. Telegram bindings
-7. Session key consistency
-8. Missing or corrupted files
-9. Leftover pre-Phase-10 global `programmer`/`reviewer`/`tester` workspaces (flagged for
-   migration to per-pod roles)
+4. Telegram bindings and today's gateway log
+5. Workspace permissions (700/600), missing/corrupted files
+6. Session key consistency (config drift between `.docket-meta.json` and `openclaw.json`)
+7. **Dispatch task ledger** — `TASK_LIST.json` (`status: "running"`) vs. the pod Lead's
+   `HEARTBEAT.md` dispatch ledger must agree; a mismatch prints exactly which task ids are
+   `missing from ledger`/`stale in ledger`, and `--fix` re-syncs the ledger from `TASK_LIST.json`
+   (always safe — `TASK_LIST.json` is dispatch's own source of truth)
+8. Legacy `docket-models.json` `profiles:` key left over after a `roles:`-only migration
+   (advisory; doesn't count as a failure)
+9. Budget/runaway-session detection, key hygiene, provider coverage, security-gate configuration
+10. Template/runtime-contract version — reseeds a missing or stale `WORKFLOW_AUTO.md`
+11. Agent metadata taxonomy — flags a leftover pre-Phase-10 global `programmer`/`reviewer`/
+    `tester` workspace (advisory: "legacy shared specialist — project roles now live in pods";
+    recreate via `docket pod <project> add <role>` and remove the global workspace)
+12. Scaffolding quarantine (OpenClaw's self-authored `IDENTITY.md`/`BOOTSTRAP.md`), memory index,
+    eval-results freshness
 
 **Example:**
 ```bash
@@ -1204,15 +1539,23 @@ By default it is **read-only**: it observes and reports, it does not run any age
 
 **Syntax:**
 ```bash
-docket serve                # read-only monitor (status / metrics / health only)
-docket serve --dispatch     # also drive every pod's queue through its pipeline each refresh
+docket serve                        # read-only monitor (status / metrics / health only)
+docket serve --dispatch             # also drive every pod's queue through its pipeline each refresh
+docket serve --port 8080            # bind a different port (default 7331)
+docket serve --interval 10          # refresh every 10s instead of the default 30s
+docket serve --token-file <path>    # write the bearer token to a 0600 file instead of stdout
 ```
 
 **Flags:**
+- **`-p`/`--port <N>`** (default `7331`): port to bind. Binds to `127.0.0.1` only — never
+  reachable off the host.
+- **`-i`/`--interval <seconds>`** (default `30`): sweep refresh interval.
 - **`--dispatch`**: on each refresh, also run every pod's **pending** tasks through its pipeline
   (the same `Lead → Implementer → Reviewer → Tester` hops as [`docket pod <project> dispatch`](#pod)).
   These are **real, costed LLM turns** and are **budget-gated** per hop (against each pod's Lead
   budget cap) and traced. Each pod's dispatch is **pod-local** — there is no cross-pod path.
+- **`--token-file <path>`**: write the bearer token needed for `/approvals`/`/dispatch`/`/runs`
+  to this file (mode 0600) instead of printing it to stdout.
 
 Plain `docket serve` never dispatches; driving agents is opt-in via `--dispatch`. See
 [Agent Teams (Pods)](AGENT-TEAMS.md) for the dispatch model.
@@ -1226,13 +1569,31 @@ docket serve
 docket serve --dispatch
 ```
 
+**HTTP endpoints** (while running):
+
+| Endpoint | Method | Auth |
+|---|---|---|
+| `/status.json` | GET | none |
+| `/metrics` | GET | none |
+| `/health` | GET | none |
+| `/approvals` | GET | Bearer token |
+| `/approvals/<token>` | POST `{"action": "grant"\|"deny"}` | Bearer token |
+| `/runs`, `/runs?project=<p>` | GET | Bearer token |
+| `/runs/<id>` | GET | Bearer token |
+| `/dispatch/<project>` | POST | Bearer token |
+
+The bearer token is generated fresh per `serve` invocation (printed to stdout, written to
+`--token-file` if given, or overridable via `DOCKET_SERVE_TOKEN`) and compared with
+`secrets.compare_digest`. `POST /dispatch/<project>` returns `{"run": "<id>"}` immediately and
+runs the pipeline in the background — poll `GET /runs/<id>` (or `docket runs show <id>`) for the
+outcome.
+
 **Aliases:** None
 
 **Notes:**
 - Read-only by default — safe to leave running for monitoring
-- `--dispatch` spends real budget; over-budget tasks are left pending (not run)
+- `--dispatch` spends real budget; over-budget tasks are left `blocked` (not run)
 - Per-task dispatch is traced (`docket trace`) for auditability
-- Also exposes local HTTP endpoints (`/status.json`, `/metrics`, `/health`) while running
 
 ---
 
@@ -1263,9 +1624,13 @@ echo 'eval "$(docket completions zsh)"'  >> ~/.zshrc
 - Only `bash` and `zsh` are supported (no fish) — an unknown shell name errors with exit 1
 - The top-level command-name list is generated live from the real Typer command registry, so it
   can never drift from `docket --help`
-- Second-level subcommand words (e.g. `gates status enable disable isolate classes`) are hand-maintained
-  in the completion templates, since those subcommands are parsed manually rather than being
-  Click subgroups; a regression test guards them against drift
+- Second-level subcommand words (e.g. `gates status enable disable isolate classes`) are
+  hand-maintained in the completion templates, since those subcommands are parsed manually
+  rather than being Click subgroups. **Only the top-level command list is regression-tested
+  against drift — the hand-maintained subcommand words are not,** and some have already drifted:
+  `pipeline`, `conversations`, `runs`, and `persona` are real top-level commands with real
+  subcommands that are missing from both the bash and zsh templates, so tab-completing past the
+  command name currently produces nothing for those four
 
 ---
 
@@ -1310,6 +1675,64 @@ docket snapshot -o /tmp/fleet-state.json
 **Notes:**
 - A whole-fleet **JSON** export to stdout or a file.
 - Useful for backups, dashboards, or feeding fleet state into another tool
+
+---
+
+### mcp
+
+Expose docket's own control plane as an **MCP server** over stdio, so an external MCP client
+(an IDE, another agent runtime) can inspect and drive the fleet through typed tool calls instead
+of shelling out to the CLI. This is a server only — `docket mcp serve` does not make docket
+consume other MCP servers' tools inside an agent turn; that is a separate, unbuilt concern.
+
+**Syntax:**
+```bash
+docket mcp serve
+```
+
+No flags. Requires the optional `[mcp]` extra:
+```bash
+pip install 'docket[mcp]'
+# or, in a uv-managed checkout:
+uv sync --extra mcp
+```
+If the SDK isn't installed, `docket mcp serve` prints an install hint to stderr and exits 1.
+
+**Transport:** newline-delimited JSON-RPC 2.0 on stdin/stdout — no HTTP, no bind address, no
+bearer token (unlike `docket serve`); the trust boundary is whoever can spawn the process.
+
+**Tools exposed** (10 — every call is audit-logged as `mcp.<tool>`):
+
+| Tool | Mirrors |
+|---|---|
+| `status` | `docket serve`'s `GET /status.json` |
+| `pods` | pod rosters across the fleet |
+| `queue(project, retry_task_id=None)` | `docket pod <p> queue [--retry]` |
+| `delegate(project, description, priority="normal")` | `docket pod <p> delegate` |
+| `dispatch(project, resume=False, timeout=None)` | `docket pod <p> dispatch` |
+| `runs(project=None, run_id=None)` | `docket runs list`/`show` |
+| `approvals_list` | `docket approve` (list) |
+| `approvals_grant(token)` | `docket approve <token>` |
+| `approvals_deny(token)` | `docket deny <token>` |
+| `cost(agent_id=None)` | `docket cost [id]` — recorded spend only, never a projection |
+
+Every mutating tool calls the exact same `core/` function as the equivalent CLI/HTTP path — no
+parallel logic, no auto-approve. `dispatch` creates a run record and returns its id immediately,
+then runs the pipeline in the background; poll `runs` for the outcome.
+
+**Example:**
+```bash
+pip install 'docket[mcp]'
+docket mcp serve
+```
+
+**Aliases:** None
+
+**Notes:**
+- `docket mcp` alone (no `serve`) prints usage and exits 0; an unrecognized subcommand exits 1
+- A tool call's own success/failure is expressed inside the MCP protocol (`isError`), never as a
+  process exit code
+- See [mcp-server.spec.md](../specs/api/mcp-server.spec.md)
 
 ---
 
@@ -1475,11 +1898,19 @@ Manage declarative guardrail policies evaluated on each agent turn.
 
 **Syntax:**
 ```bash
-docket policies list                     # List installed policies
-docket policies show <name>              # Print one policy's JSON
-docket policies init                     # Copy baseline policies (block-destructive, prompt-injection, secret-pii-redact)
-docket policies test <hook> <role> <text> # Dry-run the evaluator (no traces emitted)
+docket policies list                       # List installed policies
+docket policies show <name>                # Print one policy's JSON
+docket policies init                       # Copy the 6 baseline policies
+docket policies validate [id|file.json]    # Schema-check one (or every) installed policy
+docket policies test <hook> <role> <text>  # Dry-run the evaluator (no traces emitted)
 ```
+
+`init` copies every baseline template: `block-destructive`, `prompt-injection`,
+`secret-pii-redact`, and the three high-risk-action-class policies —
+`high-risk-payment`, `high-risk-deploy`, `high-risk-credentials`.
+
+Valid `<hook>` values for `test` are `pre_input`, `pre_tool_call`, and `pre_output` — a policy
+can fire at enqueue time, before a tool call, or on a hop's output.
 
 **Aliases:** `policy`
 
@@ -1498,7 +1929,10 @@ docket deny <token>        # Deny the pending approval
 
 **Notes:**
 - Token format: `apr-*`
-- Returns exit 1 if the token is not found or already resolved
+- Returns exit 1 if the token is not found, or if you resolve it to the **opposite** verdict from
+  what it already has (e.g. `deny` on an already-granted token). Re-resolving to the **same**
+  verdict it already has (e.g. `approve` on an already-granted token) is treated as an idempotent
+  no-op — a warning, but **exit 0**
 - **Provenance note:** docket's approval store has no production producer yet — nothing today
   creates an `apr-*` token from a live daemon exec-approval prompt or a Telegram notification
   (`approval_create` has no production caller; see ROADMAP Phase 15 G-1/G-5 and
@@ -1522,11 +1956,22 @@ every exception silently.
 ```bash
 docket runs list [--project <project>] [--json]
 docket runs show <run-id> [--json]
+docket runs cancel <run-id>
 ```
 
 **Options:**
 - **`--project <project>`** (list only): filter to one pod's runs.
 - **`--json`**: emit the bare record(s) as JSON instead of a Rich table.
+
+**Subcommands:**
+
+#### cancel
+Kills the in-flight hop's process group for a `running` run and marks it `cancelled` — writes an
+audit entry.
+
+```bash
+docket runs cancel run-3f2a1c9e-...
+```
 
 **Example:**
 ```bash
@@ -1542,8 +1987,8 @@ docket runs show run-3f2a1c9e-...
 ```
 
 **Notes:**
-- A run record's `source` is one of `cli | webhook | schedule | sweep`; `state` is one of
-  `queued | running | succeeded | failed`.
+- A run record's `source` is one of `cli | webhook | schedule | sweep | mcp`; `state` is one of
+  `queued | running | succeeded | failed | cancelled`.
 - A `failed` run carries the exception text in `error` — no dispatch call site silently discards
   an exception any more (`docket serve`'s webhook, schedule check, and sweep loop all record their
   outcome here instead of a bare `contextlib.suppress(Exception)`).
@@ -1587,13 +2032,16 @@ Compute success rate, latency, cost, and guardrail trip counts from trace data.
 
 **Syntax:**
 ```bash
-docket metrics [--role <role>] [--project <project>] [--window <N>]
+docket metrics [-r/--role <role>] [-p/--project <project>] [-w/--window <N>]
 ```
 
 **Options:**
-- **`--role`**: Filter to a specific agent role
-- **`--project`**: Filter to a specific project
-- **`--window N`**: Rolling window size in sessions (default from config)
+- **`-r`/`--role`**: Filter to a specific agent role
+- **`-p`/`--project`**: Filter to a specific project
+- **`-w`/`--window N`** (default `50`, `METRICS_WINDOW` env-overridable): rolling window size in
+  sessions
+
+**Output:** success rate, duration (mean/p95), cost (total/mean), and guardrail trip counts.
 
 ---
 
@@ -1614,9 +2062,10 @@ docket eval --recommend              # print tier right-sizing recommendations f
 **Flags:**
 - **`--live`** (default off): run live golden-task evals instead of structural-only checks.
 - **`--tier <economy|standard|premium>`** (default `standard`): the model-class label recorded
-  with the eval results, for right-sizing analysis. **This is not the same vocabulary as the
-  retired `docket profile`/`docket tier` shim** — it never sets or validates any agent's actual
-  model, and is unaffected by the tier-name rejection described under [profile](#profile).
+  with the eval results, for right-sizing analysis. It's a free-form string, not validated
+  against that enum by the CLI. **This is not the same vocabulary as the retired `docket
+  profile`/`docket tier` shim** — it never sets or validates any agent's actual model, and is
+  unaffected by the tier-name rejection described under [profile](#profile).
 - **`--role <name>`**: restrict to one role's eval script (`tests/evals/<role>.eval.sh`).
 - **`--recommend`**: run no evals; print tier recommendations derived from the most recent stored
   results instead.
@@ -1727,8 +2176,9 @@ source of truth. `docket <alias>` rewrites to `docket <command>` before argument
 | `completion` | `completions` |
 | `policy` | `policies` |
 
-`context`, `auth`, `pod`, `edit`, `models`, `profile`, `audit`, `trace`, `metrics`, `serve`,
-`approve`, `deny`, `list`, `help` have no alias.
+`context`, `auth`, `pod`, `pipeline`, `roles`, `edit`, `models`, `profile`, `persona`,
+`conversations`, `runs`, `mcp`, `audit`, `trace`, `metrics`, `serve`, `approve`, `deny`, `unwire`,
+`list`, `help` have no alias.
 
 ---
 
@@ -1759,9 +2209,9 @@ These command names are **not aliases** — typing them prints a migration notic
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success |
-| 1 | Error (generic; also used by all `_REMOVED` command notices) |
-| 2 | Missing dependency (also: `approve`/`deny` on an unknown/resolved token) |
+| 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
+| 1 | Error (generic; also used by all `_REMOVED` command notices, and `approve`/`deny` on an unknown token or one being flipped to the opposite verdict) |
+| 2 | Missing dependency |
 | 3 | Invalid argument |
 | 4 | Permission denied |
 | 5 | Service failure |
@@ -1775,7 +2225,16 @@ These command names are **not aliases** — typing them prints a migration notic
 | `DEBUG` | Enable debug output | `0` |
 | `EDITOR` | Text editor for `docket edit` | `vi` |
 | `OPENCLAW_DIR` | OpenClaw directory | `~/.openclaw` |
-| `DOCKET_NO_AUDIT` | Disable audit-log writes entirely | unset (audit on) |
+| `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
+| `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$OPENCLAW_DIR/approvals` |
+| `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
+| `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher and `docket eval` | package/launcher location |
+| `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
+
+There is **no** environment kill switch for the audit log — a prior `DOCKET_NO_AUDIT=1` escape
+hatch was removed because it let anyone silently disable docket's only tamper record; audit
+writes are unconditional and best-effort (a write failure never raises, but it also can't be
+turned off).
 
 ---
 
