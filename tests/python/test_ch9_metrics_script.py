@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import types
@@ -171,6 +172,41 @@ class TestCheckReadmeUnit:
         problems = METRICS.check_readme(readme, metrics)
 
         assert any("1042" in p and "1188" in p for p in problems)
+
+    def test_spec_count_matches_the_blocking_validator(self) -> None:
+        """`count_specs()` must agree with `scripts/validate-specs.sh`.
+
+        These two scripts are both authorities on "how many specifications does
+        this repo have", and they disagreed by one for as long as
+        `specs/acceptance/user-stories.md` has existed: the validator globs
+        `specs/acceptance/*.md`, while `count_specs()` used
+        `rglob("*.spec.md")` and could not see a file without that suffix.
+        README followed the metrics script and published 20 where the
+        CI-blocking gate counted 21.
+
+        Pinning them against each other is the only thing that keeps a future
+        category directory — or a future spec that does not use the `.spec.md`
+        suffix — from re-opening the same one-off silently.
+        """
+        validator = SCRIPT_PATH.parent / "validate-specs.sh"
+        out = subprocess.run(
+            ["bash", str(validator)],
+            capture_output=True,
+            text=True,
+            cwd=SCRIPT_PATH.parent.parent,
+            check=False,
+        ).stdout
+        match = re.search(r"Total Specifications:\s*(\d+)", out)
+        assert match, f"could not read a spec total out of the validator:\n{out}"
+
+        assert METRICS.count_specs() == int(match.group(1))
+
+    def test_count_specs_includes_a_non_spec_md_suffixed_specification(self) -> None:
+        """The acceptance spec is the concrete file the old suffix filter missed."""
+        counted = {p.name for p in (SCRIPT_PATH.parent.parent / "specs").glob("*/*.md")}
+
+        assert "user-stories.md" in counted
+        assert "README.md" not in counted, "the specs index is not itself a specification"
 
     def test_claims_found_reports_live_and_disarmed_guards(self, tmp_path: Path) -> None:
         readme = tmp_path / "README.md"

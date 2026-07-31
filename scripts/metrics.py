@@ -45,8 +45,23 @@ def count_loc() -> int:
 
 
 def count_specs() -> int:
-    """Spec files under specs/, of any category."""
-    return len(list(SPECS.rglob("*.spec.md")))
+    """Specifications under specs/, counted the way the blocking gate counts them.
+
+    Deliberately *not* `rglob("*.spec.md")`. `scripts/validate-specs.sh` — the
+    CI-blocking authority on what a specification is — globs each category
+    directory, and for `specs/acceptance/` it globs `*.md` rather than
+    `*.spec.md`. A suffix filter therefore silently misses
+    `specs/acceptance/user-stories.md`, which the validator does check, and the
+    two scripts disagreed by one for as long as that file has existed (README
+    followed the weaker one and claimed 20 where the gate said 21).
+
+    Counting every `*.md` one level below `specs/` reproduces the validator's
+    set exactly, and skips the two top-level files that live outside any
+    category and which the validator likewise ignores (`specs/README.md`, the
+    index, and `specs/test-framework.md`). A new category directory is picked
+    up automatically by both.
+    """
+    return len([p for p in SPECS.glob("*/*.md") if p.is_file()])
 
 
 def count_commands() -> int:
