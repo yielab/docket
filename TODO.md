@@ -521,27 +521,27 @@ reuses an SDK already declared as an optional extra, and docket stays the dispat
 
 ### Wave A — the runtime (additive; the tree stays green throughout)
 
-**P19-1 · `core/llm.py` port + `edges/adapters/llm.py` client** — *TODO · M*
+**P19-1 · `core/llm.py` port + `edges/adapters/llm.py` client** — *DONE (`5ec051c`) · M*
 Typed chat port in `core/` (`ChatMessage`, `ToolCall`, `ChatResponse`, `ChatBackend` Protocol),
 OpenAI-compatible implementation in `edges/` over stdlib `urllib` — **zero new dependencies**, and
 the same core-is-pure-typing / edges-does-I/O split `runtime_driver.py` already uses. Reports the
 response's real `usage` token counts: docket's first non-estimated token numbers. Failure modes map
 onto the existing `FailureKind` vocabulary so `core/dispatch.py`'s retry policy needs no changes.
 
-**P19-2 · `core/tools.py`: the gated tool registry** — *TODO · M*
+**P19-2 · `core/tools.py`: the gated tool registry** — *DONE (`75c2b04`) · M*
 Tool schema (JSON-Schema, as the model expects it), registry, and **one** dispatch chokepoint every
 call goes through — there must be no second path. Ships the built-in set
 (`read`/`write`/`edit`/`glob`/`grep`/`bash`). Bash **parses its arguments**, not just the binary
 path — the gap the daemon's allowlist structurally could not close.
 
-**P19-3 · Turn on `pre_tool_call`** — *TODO · S, and the point of the phase*
+**P19-3 · Turn on `pre_tool_call`** — *IN-PROGRESS (wave 8) · S, and the point of the phase*
 Wire the hook into P19-2's chokepoint so the four shipped templates finally evaluate. `deny` blocks
 and writes an audit entry; `require_approval` routes to the existing store and fails closed on
 timeout. Acceptance, test-pinned: a `block-destructive` policy actually blocks an `rm -rf` tool
 call, and `high-risk-deploy` catches `git push` **by argument** — the deferred backlog item since
 Phase 13.
 
-**P19-4 · `core/session.py`: turn history + compaction** — *TODO · M*
+**P19-4 · `core/session.py`: turn history + compaction** — *IN-PROGRESS (wave 8) · M*
 docket already owns HEARTBEAT, the conversation registry and memory logs; this adds the in-turn
 message history the loop needs. Durable per `agent:<id>:<project>` session key, written through
 `edges/store.py`. Compaction reuses C-1's budget compiler and C-2's distillation. Retires the
@@ -585,6 +585,34 @@ the existing worktree/port/scratch isolation.
 **P19-10 · MCP client: pluggable tool servers** — *TODO · M*
 Consume external MCP tool servers through P19-2's dispatcher. Never a second, ungated path. docket
 already ships an MCP *server*; this is the client half.
+
+### Wave 8 record (in flight)
+
+**Shipped: P19-1 (`5ec051c`) + P19-2 (`75c2b04`).** Facts later cards depend on, so they are not
+re-derived from memory:
+
+- **Inference needs no new dependency and the local endpoint really does tool-call.** Verified live,
+  not stubbed: a tool-calling exchange returned a well-formed call with real `usage` counts, and the
+  tool-result round-trip came back `finish_reason=stop`. Two real-server quirks are handled and
+  test-pinned — an assistant tool-call turn must be replayed with `content: null` (not `""`), and
+  llama.cpp can emit already-decoded dict arguments where the spec says JSON *string*.
+- **`TokenUsage` carries counts reported by the endpoint.** These are docket's first non-estimated
+  token numbers. Everything prior — `core/context.py` budgets, `maintain check` guards — is a
+  bytes/divisor approximation. Do not let the two get conflated in code or in prose.
+- **The Phase 13 per-argument gap is closed on the paths docket controls.** `classify_command` reads
+  the whole command line and every segment behind `;`/`&&`/`||`/pipe, so `git status` is allowed and
+  `git push origin production` asks. The daemon-side half remains impossible, and is moot once P19-7
+  lands.
+- **`resolve_command_action`'s deletion in G-3 was still correct.** It classified a bare binary name,
+  the exact granularity that made this distinction impossible, and it had no possible caller while
+  the daemon owned the turn. The new classifier is a different shape with a real enforcement point.
+- **Three architectural guards now hold the chokepoint invariant**: no module outside `core/tools.py`
+  imports the handlers, `dispatch_tool` itself calls the gate, and `edges/adapters/toolbox.py` holds
+  no policy vocabulary. All three were verified red against planted drift.
+
+**Scheduling.** P19-3 and P19-4 run in parallel — disjoint footprints (`core/tools.py` +
+`core/approval.py` + policy templates vs. a new `core/session.py`), each in its own worktree, per
+the Phase 14 contention rule. P19-5 depends on both and follows.
 
 ### Sequencing
 
