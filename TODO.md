@@ -534,7 +534,7 @@ call goes through — there must be no second path. Ships the built-in set
 (`read`/`write`/`edit`/`glob`/`grep`/`bash`). Bash **parses its arguments**, not just the binary
 path — the gap the daemon's allowlist structurally could not close.
 
-**P19-3 · Turn on `pre_tool_call`** — *IN-PROGRESS (wave 8) · S, and the point of the phase*
+**P19-3 · Turn on `pre_tool_call`** — *DONE (`9814da4`) · S, and the point of the phase*
 Wire the hook into P19-2's chokepoint so the four shipped templates finally evaluate. `deny` blocks
 and writes an audit entry; `require_approval` routes to the existing store and fails closed on
 timeout. Acceptance, test-pinned: a `block-destructive` policy actually blocks an `rm -rf` tool
@@ -610,9 +610,37 @@ re-derived from memory:
   imports the handlers, `dispatch_tool` itself calls the gate, and `edges/adapters/toolbox.py` holds
   no policy vocabulary. All three were verified red against planted drift.
 
-**Scheduling.** P19-3 and P19-4 run in parallel — disjoint footprints (`core/tools.py` +
-`core/approval.py` + policy templates vs. a new `core/session.py`), each in its own worktree, per
-the Phase 14 contention rule. P19-5 depends on both and follows.
+- **`pre_tool_call` fires.** The four shipped templates evaluate for the first time since Phase 11,
+  against a **pinned canonical render** (`render_tool_call`: `"<name> <key>=<json-value> ..."`) — that
+  render is a contract every policy pattern depends on, not an implementation detail, so it is
+  test-pinned. Policy and command classifier are combined most-restrictive-wins, mirroring
+  `core/policy.py`'s own `_RANK`.
+- **Two shipped policy patterns could never have matched anything, and now do.** P19-3 verified rather
+  than assumed it: `block-destructive`'s `\.env\b.*write` and `\.ssh\/\s*write` require the path to
+  appear *before* the verb, which no natural render produces. Both were fixed to match either order.
+  **This is what "shipped but never evaluated" costs** — nobody had ever run these against real input.
+- **The policy engine gates tools the command classifier cannot see.** A `write` call to `.env` is not
+  a shell command, so `classify_command` never inspects it; the hook does. That is the argument for
+  having both, and it is test-pinned.
+- **In-turn approval blocks and fails closed.** `wait_for_approval` (new, in `core/approval.py`) is the
+  in-turn counterpart to dispatch's async `waiting_approval`: the model is blocked on this exact
+  answer, so there is nowhere to return to. Timeout resolves the record to **denied** through the same
+  helper the expiry sweep uses — never left dangling. `TOOL_APPROVAL_TIMEOUT` is 120s, deliberately
+  short against dispatch's 300s hop budget so a grant still leaves time for the tool to run; the async
+  `APPROVAL_TIMEOUT` stays 900s because nothing is blocked on it.
+- **Compaction's real trap is tool-call atomicity.** An assistant message carrying `tool_calls` and the
+  `tool` messages answering it are one unit; split them and every endpoint rejects the next request.
+  `plan_compaction` only ever moves whole units, and `compact_session` re-validates its own output
+  before persisting. Failure to summarise leaves the stored history untouched (fail closed, per C-2).
+
+**Scheduling, and how it went.** P19-3 and P19-4 ran in parallel — disjoint footprints
+(`core/tools.py` + `core/approval.py` + policy templates vs. a new `core/session.py`), each in its
+own worktree, per the Phase 14 contention rule. Both auto-merged with **zero conflicts**; the one
+shared file (`config.py`, both adding constants) was verified after the merge to still carry both
+cards' additions rather than trusted to have merged cleanly. Every load-bearing claim in both
+cards' reports was re-verified by the integrator planting the drift independently: the policy hook
+being consulted, the approval timeout failing closed, the `.env` pattern fix, and compaction's
+unit atomicity all went red on demand. P19-5 depends on both and follows.
 
 ### Sequencing
 
@@ -646,8 +674,11 @@ From Phase 14's honest record — these are **still true** until the cards above
 - `docket models set/preset/reset` still write **no audit entry** (G-4 follow-up — **G-4b owns it this wave**).
 - Enforcement exists **only** in the pod-dispatch lane — spend or actions from a Telegram session or
   direct daemon use are entirely ungated, per D-9's "docket orchestrates hops" boundary.
-- Per-argument daemon enforcement for allowlisted bins (`git`, `npm`) still does not exist (G-3 narrows
-  this where docket itself launches the process; the daemon-side half remains backlog).
+- ~~Per-argument daemon enforcement for allowlisted bins (`git`, `npm`) still does not exist~~ —
+  **closed on docket's own paths by P19-2/P19-3 (wave 8)**: `classify_command` reads the whole command
+  line and every segment behind `;`/`&&`/`||`/pipe, so `git status` is allowed and `git push origin
+  production` asks. The daemon-side half remains impossible by construction (its allowlist gates by
+  binary path) and becomes moot at P19-7, when the daemon goes.
 - `maxReworkCycles` has no dedicated CLI setter (set via the internal `meta-set` path).
 - **`CLAUDE.md` had drifted badly and was re-trued by hand on 2026-07-30** (it is gitignored, so no
   card could have fixed it): it still advertised "Lobster Workflows" as a core capability nine
@@ -659,9 +690,12 @@ From Phase 14's honest record — these are **still true** until the cards above
   reserved. Do not read a populated-looking schema as populated data.
 - ~~The policy engine is not on any live path~~ — **closed by G-2** (wave 6): `install` seeds the
   baseline policies, `pre_input` evaluates at enqueue, `pre_output` on every hop output, and the
-  existing `cli/_metrics.py` reader needed no changes. **Still daemon-gated:** `pre_tool_call`
-  (in-turn interception) — docket orchestrates *between* hops and is never inside a turn to
-  intercept a tool call. And `resolve_command_action` still has **zero callers** (G-3, wave 7).
+  existing `cli/_metrics.py` reader needed no changes. ~~**Still daemon-gated:** `pre_tool_call`~~ —
+  **closed by P19-3 (wave 8)** for the calls docket dispatches itself: `core/tools.py`'s chokepoint
+  evaluates the hook, so all three hooks are now live. Precise scope, do not overstate it: nothing in
+  the pod-dispatch hop path calls that dispatcher yet (P19-5 wires it), and the daemon's own
+  tool-calling loop stays unbridged until P19-7 deletes it. `resolve_command_action` stayed deleted —
+  P19-2's `classify_command` is a different, argument-aware shape with a real enforcement point.
 - Hops still exchange **concatenated raw text**, not structured artifacts (W-5, in flight this wave).
 - ~~The runtime dependency floors in `pyproject.toml` are unverified~~ — **closed 2026-07-31, and
   the suspicion was right: two of the six advertised floors were false.** `typer>=0.12` failed 216
