@@ -1,15 +1,25 @@
-"""R-7: bounded hop prompts — the stopgap safety cap ahead of Phase 17's context compiler.
+"""R-7 (retired) / ROADMAP Phase 17 C-1: bounded hop prompts.
 
 ``core/dispatch.py``'s ``_hop_message`` used to concatenate every prior hop's
-*full* raw output into the next hop's prompt with no cap. This suite pins:
-
-  * TestHopCarryoverBudget / TestTruncateCarryover — the two pure helpers in
-    isolation (budget allocation by recency; head+tail truncation mechanics).
-  * TestHopMessageCap      — ``_hop_message`` itself: small tasks unchanged,
-    the task description never truncated (even when huge), truncation kicks
-    in once a prior hop's output exceeds its budget, newest-hop-least-
-    truncated, and the aggregate carryover never exceeds the configured cap
-    even with several large prior outputs (the pathological case).
+*full* raw output into the next hop's prompt with no cap at all (pre-R-7),
+then (R-7) capped the total *bytes* threaded forward with one process-wide
+constant and truncated blindly (head+tail, no regard for structure) once a
+hop's share was exceeded. **C-1 retires that mechanism entirely**: every prior
+hop's rendered ``HandoffArtifact`` is now fit to a per-role *token* budget via
+``core/context.py``'s ``compile_artifact``, which sheds the artifact's own
+less-valuable fields (``HandoffArtifact.DROP_ORDER``) before ever truncating
+``summary`` itself. R-7's ``_hop_carryover_budget``/``_truncate_carryover``
+helpers and ``config.HOP_CARRYOVER_BYTES`` were deleted on merge (C-1's
+file-ownership carve-out let it edit only ``_hop_message``, so it correctly
+left them in place and flagged them for the integrator), along with the two
+test classes that pinned them. See ``tests/python/test_c1_context_compiler.py``
+for the compiler's own unit tests; this file covers:
+  * TestHopMessageCap      — ``_hop_message`` itself, against the new
+    token-budget compiler: small tasks unchanged, the task description never
+    truncated (even when huge), truncation kicks in once a prior hop's
+    artifact exceeds its share, newest-hop-least-truncated, and the
+    aggregate carryover never exceeds the role's budget even with several
+    large prior outputs (the pathological case).
   * TestContextComposedTrace — the ``context_composed`` trace event emitted
     per hop by ``dispatch_task``, end to end through a real (lean) pod.
 """
@@ -24,6 +34,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import runtime_driver as _rd
 from docket.edges.adapters import openclaw as _oc
@@ -82,64 +93,12 @@ def _hop(role: str, output: str, member_id: str = "") -> _dispatch.HopResult:
     )
 
 
-# ── pure helper: per-hop recency budget ───────────────────────────────────────────
-
-
-class TestHopCarryoverBudget:
-    def test_most_recent_hop_gets_half_the_total(self) -> None:
-        assert _dispatch._hop_carryover_budget(0, 32_000) == 16_000
-
-    def test_each_older_rank_halves_again(self) -> None:
-        assert _dispatch._hop_carryover_budget(1, 32_000) == 8_000
-        assert _dispatch._hop_carryover_budget(2, 32_000) == 4_000
-        assert _dispatch._hop_carryover_budget(3, 32_000) == 2_000
-
-    def test_sum_across_any_number_of_ranks_never_reaches_total(self) -> None:
-        total = 32_768
-        for n in (1, 2, 3, 10, 50):
-            budgets = [_dispatch._hop_carryover_budget(r, total) for r in range(n)]
-            assert sum(budgets) < total
-
-
-# ── pure helper: head+tail truncation ─────────────────────────────────────────────
-
-
-class TestTruncateCarryover:
-    def test_output_within_budget_is_returned_unchanged(self) -> None:
-        text, truncated, sent = _dispatch._truncate_carryover("short output", 1000)
-        assert text == "short output"
-        assert truncated is False
-        assert sent == len(b"short output")
-
-    def test_output_over_budget_is_truncated_with_marker(self) -> None:
-        big = "X" * 1000
-        text, truncated, sent = _dispatch._truncate_carryover(big, 100)
-        assert truncated is True
-        assert "[... truncated" in text
-        assert "bytes ...]" in text
-        assert len(text.encode("utf-8")) <= 100
-        assert sent == len(text.encode("utf-8"))
-
-    def test_marker_records_exact_omitted_byte_count(self) -> None:
-        big = "Y" * 500
-        text, _truncated, _sent = _dispatch._truncate_carryover(big, 100)
-        # Head + tail kept plus the marker == original length.
-        marker_n = int(text.split("truncated ")[1].split(" bytes")[0])
-        kept = len(text.encode("utf-8")) - len(f"\n[... truncated {marker_n} bytes ...]\n")
-        assert marker_n + kept == 500
-
-    def test_zero_budget_still_bounded_and_deterministic(self) -> None:
-        text, truncated, sent = _dispatch._truncate_carryover("Z" * 50, 0)
-        assert truncated is True
-        assert sent <= 0 or "[... truncated" in text
-
-
 # ── _hop_message: the composed prompt itself ──────────────────────────────────────
 
 
 class TestHopMessageCap:
     def test_small_task_byte_identical_to_pre_cap_behaviour(self) -> None:
-        """Regression pin: below-budget content composes exactly as before R-7."""
+        """Regression pin: below-budget content composes exactly as before R-7/C-1."""
         task = {"description": "Fix the bug"}
         prior = [_hop("lead", "Plan: do X.")]
         message, comp = _dispatch._hop_message(task, "implementer", prior)
@@ -160,6 +119,7 @@ class TestHopMessageCap:
                 "original_bytes": len(b"Plan: do X."),
                 "sent_bytes": len(b"Plan: do X."),
                 "truncated": False,
+                "dropped_fields": [],
             }
         ]
         assert comp.description_bytes == len(b"Fix the bug")
@@ -176,35 +136,35 @@ class TestHopMessageCap:
         assert comp.sections == []
         assert comp.truncated is False
 
-    def test_task_description_never_truncated_even_when_huge(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(_cfg, "HOP_CARRYOVER_BYTES", 200)
+    def test_task_description_never_truncated_even_when_huge(self) -> None:
+        """The description is exempt from budgeting entirely — it costs tokens
+        out of the role's budget (leaving less for carryover) but is never
+        itself shed or cut, no matter how large."""
         huge_desc = "D" * 500_000
         task = {"description": huge_desc}
 
         lead_message, _lead_comp = _dispatch._hop_message(task, "lead", [])
         assert huge_desc in lead_message
 
-        message, comp = _dispatch._hop_message(task, "implementer", [_hop("lead", "small")])
+        message, comp = _dispatch._hop_message(task, "implementer", [_hop("lead", "small plan")])
         assert f"Task: {huge_desc}" in message
         assert comp.description_bytes == len(huge_desc.encode("utf-8"))
 
-    def test_prior_output_over_budget_is_truncated_with_marker_in_message(
+    def test_prior_output_over_budget_is_truncated_with_a_visible_marker(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_cfg, "HOP_CARRYOVER_BYTES", 100)
+        monkeypatch.setattr(_context, "budget_for_role", lambda role: 20)
         task = {"description": "task"}
         prior = [_hop("lead", "L" * 5000)]
         message, comp = _dispatch._hop_message(task, "implementer", prior)
-        assert "[... truncated" in message
+        assert "[... summary truncated" in message
         assert comp.truncated is True
         assert comp.sections[0]["truncated"] is True
         assert comp.sections[0]["original_bytes"] == 5000
         assert comp.sections[0]["sent_bytes"] < 5000
 
     def test_newest_hop_is_truncated_least(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "HOP_CARRYOVER_BYTES", 32_768)
+        monkeypatch.setattr(_context, "budget_for_role", lambda role: 8192)
         task = {"description": "task"}
         prior = [
             _hop("lead", "A" * 20_000),
@@ -219,23 +179,24 @@ class TestHopMessageCap:
         assert sent["lead"] < sent["implementer"] < sent["reviewer"]
         assert all(s["truncated"] for s in comp.sections)
 
-    def test_pathological_many_large_prior_outputs_never_exceed_cap(
+    def test_pathological_many_large_prior_outputs_never_exceed_the_role_budget(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Several large prior outputs (well beyond a normal 4-role pipeline) —
-        the aggregate carryover must still respect the configured cap."""
-        cap = 32_768
-        monkeypatch.setattr(_cfg, "HOP_CARRYOVER_BYTES", cap)
+        the aggregate carryover must still respect the role's token budget."""
+        cap_tokens = 8192
+        monkeypatch.setattr(_context, "budget_for_role", lambda role: cap_tokens)
         task = {"description": "task"}
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
         message, comp = _dispatch._hop_message(task, "tester", prior)
 
+        cap_bytes = cap_tokens * _cfg.CONTEXT_BYTES_PER_TOKEN
         total_carryover = sum(s["sent_bytes"] for s in comp.sections)
-        assert total_carryover < cap
+        assert total_carryover < cap_bytes
         assert all(s["truncated"] for s in comp.sections)
         # The description plus a small fixed per-hop wrapper overhead is all
         # that's added on top of the bounded carryover.
-        assert len(message.encode("utf-8")) < cap + len(task["description"]) + 2000
+        assert len(message.encode("utf-8")) < cap_bytes + len(task["description"]) + 2000
 
     def test_small_multi_hop_task_unchanged_no_truncation(self) -> None:
         """No regression for the common (small-output) multi-hop case either."""
