@@ -25,6 +25,10 @@ DOCKET is an architecture for autonomous agent teams that:
 
 ## Installation
 
+> **Security gates are on by default** for a new install: exec calls outside the curated
+> allowlist (`rm`, `dd`, `docker`, `systemctl`, …) need an explicit approve/deny before they run.
+> Pass `--no-gates` below to opt out for now — see [Security](SECURITY-SIMPLE.md) and `docket gates`.
+
 ### Create the Org Specialists
 ```bash
 docket install
@@ -50,6 +54,14 @@ docket add myapp --pod full           # + reviewer + tester
 docket add myapp --with reviewer      # lean pod + a reviewer
 docket pod myapp add reviewer         # add a role later
 ```
+
+The default pod shape is a **blueprint** called `software` (codebase, lead + implementer). For
+non-software work, pick a different one in one step — no codebase is assumed or auto-detected:
+```bash
+docket add my-market-scan --blueprint research   # lead + researcher + analyst + writer + critic
+```
+`docket roles list` shows every role available to compose into a pod (built-in and starter);
+see [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
 
 Templates are generated per-pod at `add` time — there is no separate upgrade step.
 
@@ -98,6 +110,12 @@ recorded spend against the Lead's budget cap (`docket profile myapp-lead --budge
 over budget, the task stays **pending** instead of running. Every hop is traced
 (`docket trace`) for a fully auditable run.
 
+If the pod has a Reviewer or Tester, their hop is **gated**, not advisory: a Reviewer's
+`REQUEST-CHANGES` sends the task back to the Implementer (bounded rework), and a Tester's
+`FAIL` fails the task outright. Give the Implementer a real check with
+`docket pod myapp add --verify "pytest -v"` (or `set-verify`) and a nonzero exit blocks
+advancement the same way. See [Agent Teams](AGENT-TEAMS.md) for the full gate breakdown.
+
 > The read-only `docket serve` monitor does **not** dispatch — only `--dispatch` does.
 
 ### Next: understand the team model
@@ -135,30 +153,26 @@ docket serve --dispatch                  # Background: drive every pod's queue
 
 ### Memory Management
 ```bash
-docket context <project-id> snapshot   # Create fast-access context
-docket context <project-id> index      # Index memory for search
-docket context <project-id> search <q> # Search indexed memory
-docket context <project-id> compress   # Archive old logs (>30 days)
+docket context <project-id>            # Recent activity, active tasks, context stats
+docket context <project-id> project    # Project view: codebase, stack, memory sections
+docket maintain <project-id> distill   # Summarize memory logs into MEMORY.md, archive originals
+docket maintain <project-id> check     # Health check + auto-fix for one agent's workspace
 ```
 
 ---
 
 ## Testing Your Setup
 
-### Test 1: Memory Snapshot
+### Test 1: Project Context
 ```bash
-# Create snapshot for a project
-docket context <project-name> snapshot
-
-# Verify it exists
-cat ~/.openclaw/workspaces/projects/<project-name>/SNAPSHOT.md
+docket context myapp project
 ```
 
 **What you should see:**
-- Project metadata (codebase path, stack, model)
-- Active tasks (from HEARTBEAT.md)
-- Recent activity (last 7 days)
-- Architectural decisions (from MEMORY.md)
+- Project metadata (codebase path, stack, model, session key)
+- Active tasks (parsed from HEARTBEAT.md)
+- Memory section headers (from MEMORY.md)
+- Memory-log count and last-active timestamp
 
 ### Test 2: Run a Task Through the Pod
 Queue a task and dispatch it — this exercises the real pipeline end to end:
@@ -188,8 +202,9 @@ docket pod myapp queue          # status flips to done (or pending if over budge
 > for mobile-first, conversational dispatch. The `delegate`/`dispatch` loop above is the
 > scriptable, traced path; Telegram is the same pipeline driven from your phone.
 
-**Why the Lead is fast:** it reads this pod's SNAPSHOT.md (~2K tokens) instead of full
-cross-project conversation history.
+**Why the Lead stays cheap:** its dispatch hops carry a bounded per-role token budget
+(2,000 tokens for the Lead — see `docket roles show lead`), and its workspace + session key
+are scoped to this one pod, never a shared cross-project history.
 
 ---
 
@@ -203,6 +218,11 @@ created once by `docket install` — they are not part of any single pod. Full p
 **[AGENT-TEAMS.md](AGENT-TEAMS.md)** — the short version: the Lead orchestrates and never edits
 code, the Implementer writes the code, an optional Reviewer is a read-only veto, and an optional
 Tester validates behavior only (never reads code).
+
+Roles are declarative, not a hardcoded four (`docket roles list`) — a starter library
+(`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`) ships alongside the four
+legacy roles, and `docket add --blueprint <name>` composes several of them into a non-software
+pod shape in one step. See [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
 
 ---
 
@@ -237,10 +257,11 @@ Either way the agents respond faster (each pod processes only its own context) a
 tokens (context isolated per project).
 
 ### Q: What if I want the old behavior back?
-**A:** Restore from backups:
+**A:** `docket maintain <id> rebuild` backs up the current workspace files into a
+`.backup-YYYYMMDD-HHMMSS/` directory before regenerating them. Restore from that backup:
 ```bash
 cd ~/.openclaw/workspaces/manager
-cp SOUL.md.backup-YYYYMMDD-HHMMSS SOUL.md
+cp .backup-YYYYMMDD-HHMMSS/SOUL.md SOUL.md
 systemctl --user restart openclaw-gateway.service
 ```
 
@@ -259,7 +280,8 @@ systemctl --user restart openclaw-gateway.service
 **A:** Check token usage:
 1. Message a pod's Lead with a status query
 2. Check OpenClaw logs for token count
-3. The Lead should read this pod's SNAPSHOT.md (~2K tokens), not a full cross-project history
+3. Run `docket context <lead-id> show` — recent activity, active tasks, and context stats
+   (log count, last active) for that one agent, never a cross-project blend
 
 ---
 
@@ -276,7 +298,7 @@ kept in one place rather than duplicated across every doc that touches them.
 1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
 2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
 3. **Monitor cost:** Check recorded spend with `docket cost`
-4. **Create snapshots & index memory:** `docket context <project> snapshot` / `docket context <project> index` per project
+4. **Review context & distill memory:** `docket context <project> project` / `docket maintain <project> distill` per project
 5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 
 ---
