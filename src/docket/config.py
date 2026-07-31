@@ -266,3 +266,35 @@ def pod_work_dir(project: str) -> Path:
     `codebase` path is shared by every member of a `software` pod.
     """
     return OPENCLAW_DIR / "workspaces" / "pods" / project / "workdir"
+
+
+# ── Phase 19 P19-5: the turn loop (core/agent_loop.py, edges/adapters/docket_runtime.py) ──
+#
+# Every bound below is a deliberate stop condition, not a throughput knob: an
+# unbounded loop burning money on a confused model is exactly the failure
+# mode P19-5 exists to prevent (ROADMAP Phase 19 / decision D-19). All are
+# env-overridable, matching every other tunable in this file.
+
+# AGENT_LOOP_MAX_ITERATIONS: hard cap on model round-trips within one
+# run_agent_turn call. One iteration = one ChatBackend.complete() call — the
+# primary defense against a model that never stops requesting tool calls.
+AGENT_LOOP_MAX_ITERATIONS = int(os.environ.get("AGENT_LOOP_MAX_ITERATIONS", "20"))
+# AGENT_LOOP_MAX_TOOL_CALLS: hard cap on total tool calls actually dispatched
+# across the whole turn, independent of how they are batched across
+# iterations — a single response requesting many calls at once is a distinct
+# risk from many responses requesting one each, so both are capped.
+AGENT_LOOP_MAX_TOOL_CALLS = int(os.environ.get("AGENT_LOOP_MAX_TOOL_CALLS", "40"))
+# AGENT_LOOP_WALL_CLOCK_TIMEOUT_S: default overall budget for one turn,
+# checked between iterations (not by interrupting an in-flight HTTP call).
+# edges.adapters.docket_runtime.DocketDriver.run_turn overrides this with its
+# own `timeout` argument — the same per-hop budget core/dispatch.py's
+# DEFAULT_TIMEOUT already resolves — so this default only matters for a bare
+# run_agent_turn() call with no explicit LoopConfig.
+AGENT_LOOP_WALL_CLOCK_TIMEOUT_S = float(os.environ.get("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S", "300"))
+# AGENT_LOOP_TOKEN_BUDGET: hard cap on one turn's cumulative *measured* token
+# usage (core.llm.TokenUsage's real counts — never the bytes/divisor estimate
+# core/context.py uses elsewhere; see core/session.py's "Budgeting honesty").
+AGENT_LOOP_TOKEN_BUDGET = int(os.environ.get("AGENT_LOOP_TOKEN_BUDGET", "100000"))
+# AGENT_LOOP_REQUEST_TIMEOUT_S: per-HTTP-call timeout passed to
+# ChatBackend.complete(), capped against whatever wall-clock budget remains.
+AGENT_LOOP_REQUEST_TIMEOUT_S = int(os.environ.get("AGENT_LOOP_REQUEST_TIMEOUT_S", "120"))
