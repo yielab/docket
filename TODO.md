@@ -427,66 +427,108 @@ have real, heavily-used call sites — nothing to hand off there either.
 
 ---
 
-## Phase 19 — Reducing the OpenClaw daemon dependency (opened 2026-07-31, user-requested)
+## Phase 19 — docket owns the runtime (opened 2026-07-31)
 
-**Ask:** "make sure we are not using openclaw anymore", with the local llama-server (Qwen3.6-35B-A3B)
-now correctly wired at `127.0.0.1:8081`.
+**Goal, in the user's terms:** stop depending on OpenClaw so docket has control of every layer —
+reusing robust libraries where they help, but **keeping control of guardrails and tool handling**.
+Decision **D-19** in ROADMAP §6.
 
-### What was measured before planning anything
+### The finding that decides the architecture
 
-| Question | Answer |
+docket ships **four** guardrail policy templates hooked on `pre_tool_call` — `block-destructive`,
+`high-risk-credentials`, `high-risk-deploy`, `high-risk-payment` — and **not one has ever been
+evaluated.** `core/policy.py` defines the hook, `validate_policy` accepts it, the templates ship in
+the wheel, and `core/dispatch.py` says in three places that it stays "daemon-gated, never evaluated
+here."
+
+That is the whole argument. docket already owns the governance stack — policy engine (3 hooks, 2
+live), approval store with three channels and fail-closed timeout, high-risk classifier, hash-chained
+audit, per-hop traces, worktree/port/scratch isolation. All of it can only act *between* turns,
+because the daemon owns what happens *inside* one. **Owning the loop is not new scope; it is the
+missing half of work already shipped.** The single most valuable guardrail docket has is currently
+dead code.
+
+### Verified preconditions (measured 2026-07-31, not assumed)
+
+| Check | Result |
 | --- | --- |
-| What does `run_turn` actually delegate? | One shell-out: `openclaw agent --agent <id> --session-id <key> -m <msg> --json --timeout N` |
-| What is inside that call? | The whole agent runtime: model loop, **tool execution**, session persistence, compaction |
-| Does the daemon really execute tools? | Yes — a real session on this host has **94 tool records** (`read` x73, `write` x2) |
-| What does llama-server provide? | **Inference only.** It parses no tool calls and executes nothing |
-| Is a second driver architecturally possible? | Yes — L-1's `RuntimeDriver` Protocol is 7 methods and exists precisely to contain this coupling |
+| Local llama-server does native tool calling | **Yes** — returned a well-formed `tool_calls` for a `calc` tool |
+| `pre_tool_call` exists as a first-class hook | **Yes**, with 4 shipped templates and zero evaluations |
+| `RuntimeDriver` port ready for a 2nd driver | **Yes** — 7 methods, built by L-1 for exactly this |
+| MCP client present? | **No** — docket ships an MCP *server* (10 tools); the client side is new |
+| New deps needed for inference | **None** — OpenAI-compatible chat completions is plain HTTP/JSON |
 
-**Conclusion: "drop the daemon" is two very different projects, and only one of them is proportionate.**
+### The architecture
 
-`run_turn` is the hard one. Replacing it means docket implements a tool-calling loop, the tool set
-itself (read/write/bash/glob/grep/fetch), sandboxing, an approval gate on tool calls, a session
-store with compaction, Telegram channels, and the RAG memory index. That is building a competing
-agent runtime — the "build vs wrap" line ROADMAP §4.5 draws and D-14 reaffirmed. It is a funded
-project, not a config change, and nothing in the tree today is a head start on it.
+```
+docket OWNS (control plane -- never delegated to a library)
+  core/agent_loop.py     the turn loop: call model -> receive tool_calls -> gate -> execute -> feed back
+  core/tools.py          tool registry + dispatch; EVERY call passes the gates below
+  core/policy.py         pre_input (live) | pre_tool_call (finally live) | pre_output (live)
+  core/approval.py       human-in-the-loop, 3 channels, fail-closed on timeout
+  core/security.py       high-risk action classes, allowlist, argument-aware at last
+  core/audit.py+trace.py hash-chained audit, per-tool-call traces
+  core/session.py        turn history + compaction (NEW; docket already owns memory/ledger/registry)
 
-The other six `RuntimeDriver` methods are comparatively cheap, and **docket's own LLM calls need no
-tools at all**.
+docket RENTS (protocol only -- no library sees a control decision)
+  inference   OpenAI-compatible /v1/chat/completions  -> stdlib urllib, zero new deps
+  tools       MCP client (official SDK, already an optional extra) -> pluggable tool servers
+  isolation   containers / git worktrees              -> already wrapped in edges/adapters
+```
+
+**Why no agent framework.** LangGraph/CrewAI/AutoGen own the loop, so they own the interception
+points. Adopting one moves docket's guardrails into a third party's callback API — the same
+dependency being escaped, with a new vendor and a worse audit story. It also contradicts the
+product's own positioning ("an ops/control plane, not an agent framework").
+
+**Why MCP for tools.** It makes the tool set pluggable without docket implementing every tool, it
+reuses an SDK already declared as an optional extra, and docket stays the dispatcher — so
+`pre_tool_call` fires on every call regardless of which server provides the tool. Built-in tools
+(read/write/edit/bash) still land in `core/tools.py` behind the same gate.
 
 ### Cards
 
-**P19-1 · `local-openai` driver for tool-free turns** — *Status: TODO · Size: M*
+**P19-1 · `local-openai` driver: inference without the daemon** — *TODO · M*
+Second `RuntimeDriver` for OpenAI-compatible endpoints. Tool-free turns first (this alone makes
+D-18's distillation/judge calls daemon-free). `capabilities()` reports honestly;
+`supports_sessions=False` until P19-4. Must **fail loudly** on a tool-requiring turn, never return a
+plausible empty result. Zero new dependencies — stdlib HTTP.
 
-A second `RuntimeDriver` implementation talking OpenAI-compatible `/v1/chat/completions` directly
-(llama-server, LM Studio, vLLM, any gateway). Implements `run_turn` for **tool-free** turns plus
-`capabilities()`; `supports_provisioning`/`supports_sessions` report **False** rather than faking
-them. This is what makes D-18's self-originated calls (memory distillation, judge steps) daemon-free.
+**P19-2 · `core/tools.py`: the gated tool registry** — *TODO · M*
+Tool schema, registry, and the single dispatch chokepoint every call goes through. Ships the
+built-in set (read/write/edit/glob/grep/bash). Bash goes through the existing exec-allowlist and
+high-risk classifier — **argument-aware**, which the daemon's binary-path-only gate never was.
 
-- This **revises D-14's "one shipped driver"** — record that explicitly; the trigger is a
-  user-stated requirement, which D-14 named as a valid one.
-- **Must not** silently accept a tool-using hop. If a caller asks for a turn that needs tools,
-  fail loudly with the reason, never return a plausible-looking empty result.
-- Acceptance: `docket maintain <id> distill` completes with the daemon **stopped** · driver
-  selectable by config · `capabilities()` honest · fake-testable, no live model required.
+**P19-3 · Turn on `pre_tool_call`** — *TODO · S, and the point of the phase*
+Wire the hook into P19-2's chokepoint so the four shipped templates finally evaluate. Every
+decision writes an audit entry; `require_approval` routes to the existing store. Acceptance: a
+`block-destructive` policy actually blocks an `rm -rf` tool call, test-pinned.
 
-**P19-2 · Honest capability reporting at the call site** — *Status: TODO · Size: S*
+**P19-4 · `core/session.py`: turn history + compaction** — *TODO · M*
+docket already owns HEARTBEAT, the conversation registry and memory logs; this adds the in-turn
+message history the loop needs, plus compaction reusing C-1's budget compiler and C-2's distillation.
 
-`docket doctor` and `docket info` should say which driver each agent resolves to and what that
-driver cannot do, so "daemon-free" is visible rather than assumed.
+**P19-5 · MCP client: pluggable tool servers** — *TODO · M · after P19-2/P19-3*
+Consume external MCP tool servers through the same gated dispatcher. Never a second, ungated path.
 
-**P19-3 · Decide the tool-loop question deliberately** — *Status: BLOCKED (needs a decision, not code)*
+**P19-6 · Channels** — *BLOCKED (decide first)*
+Telegram is the one capability with no docket-side equivalent. Options: keep the daemon for channels
+only; a thin bot library; or drop mobile control. **Do not start this before the loop works.**
 
-Do not start this as a side effect of P19-1. Options, honestly costed, belong in a decision entry
-before any code: (a) keep the daemon for tool-using hops; (b) adopt an existing tool-capable local
-runtime and write a driver for *it*; (c) build the loop in docket. (b) is the only one that both
-drops OpenClaw and avoids writing an agent runtime from scratch.
+**P19-7 · Sandboxed exec** — *TODO · M*
+Container/bwrap jail for bash-class tools, reusing `edges/adapters/system.py`'s docker wrappers and
+the existing worktree isolation.
 
-### Measured caveat on the local model
+### Sequencing
 
-The port fix works end-to-end (`manager` returned a correct reply through `provider: local`), but
-that trivial one-word turn took **107 s**. That matches the standing note that local Qwen is too slow
-for interactive/Telegram use. Moving *tool-using pod work* onto it is a latency decision, separate
-from the daemon-dependency question.
+P19-1 → P19-2 → **P19-3** → P19-4 → P19-5/P19-7 → P19-6. The daemon stays installed and usable
+throughout; agents migrate per-agent by driver, not fleet-wide by flag day. **P19-3 is the milestone
+that matters** — it is the moment docket's guardrails stop being advisory.
+
+### Measured caveat, unchanged
+
+The local Qwen answered a one-word prompt in **107 s**. Owning the loop does not make the model fast;
+model choice per role stays a separate decision from runtime ownership.
 
 ---
 
