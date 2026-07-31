@@ -298,3 +298,17 @@ AGENT_LOOP_TOKEN_BUDGET = int(os.environ.get("AGENT_LOOP_TOKEN_BUDGET", "100000"
 # AGENT_LOOP_REQUEST_TIMEOUT_S: per-HTTP-call timeout passed to
 # ChatBackend.complete(), capped against whatever wall-clock budget remains.
 AGENT_LOOP_REQUEST_TIMEOUT_S = int(os.environ.get("AGENT_LOOP_REQUEST_TIMEOUT_S", "120"))
+
+# ── P19-10: MCP client (D-19 "rent the protocol") ────────────────────────────
+# MCP_SERVERS_FILE: docket-owned registry of configured external MCP tool
+# servers (core/mcp_tools.py's McpServerConfig/McpServerRegistry), written
+# through edges/store.py like every other docket-owned JSON file.
+MCP_SERVERS_FILE = Path(os.environ.get("MCP_SERVERS_FILE", DOCKET_HOME / "docket-mcp-servers.json"))
+# MCP_CLIENT_TIMEOUT_S: default per-call bound (connect+list, or connect+call)
+# used when a server config does not specify its own `timeout`.
+MCP_CLIENT_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_TIMEOUT_S", "10"))
+# MCP_CLIENT_MAX_TIMEOUT_S: hard ceiling every server-specified timeout is
+# clamped to (`McpServerConfig.resolved_timeout`) — an operator (or a
+# careless config) cannot ask for an effectively unbounded wait that could
+# stall a whole turn on one misbehaving external server.
+MCP_CLIENT_MAX_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_MAX_TIMEOUT_S", "60"))
