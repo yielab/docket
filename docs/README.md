@@ -30,7 +30,7 @@ guardrails.
 | **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
-| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: routing, context management, agent roles |
+| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 
@@ -84,24 +84,30 @@ See the [Command Reference](commands.md) for the full set.
 ```
 ~/.openclaw/
 ├── openclaw.json                  # OpenClaw daemon config
+├── docket-conversations.json      # docket's own channel-thread registry
+├── docket-runs.json               # docket's own dispatch run registry
+├── audit.log                      # hash-chained audit log (docket audit verify)
 └── workspaces/
     ├── manager/                   # Org specialist: orchestrator (delegation only)
     ├── knowledge/                 # Org specialist: docs / research
     ├── security/                  # Org specialist: security audits
+    ├── portfolio-manager/         # Optional org specialist (docket install --portfolio)
     └── projects/
         └── <project>-<role>/      # Pod member workspace (e.g. myapp-lead, myapp-implementer)
-            ├── SOUL.md            # Identity + session key
+            ├── SOUL.md            # Identity + session key (+ optional persona)
             ├── AGENTS.md          # Session protocol
             ├── TOOLS.md           # Project commands
-            ├── HEARTBEAT.md       # Active tasks
-            ├── .docket-meta.json  # docket metadata
-            └── memory/            # Daily logs
+            ├── HEARTBEAT.md       # Durable task ledger (dispatch keeps its own region current)
+            ├── WORKFLOW_AUTO.md   # Runtime-forced startup file: codebase path + resume contract
+            ├── .docket-meta.json  # docket metadata (sessionKey, projectKey, optional persona)
+            ├── memory/            # Daily logs
+            └── workflows/         # Optional: docket-native pipeline YAML (docket pipeline run)
 ```
 
-> Org specialists (`manager`, `knowledge`, `security`) have one shared workspace at
-> `~/.openclaw/workspaces/<role>/`. Project pod members (`<project>-lead`, `<project>-implementer`,
-> etc.) each get an **isolated** workspace under `projects/` — no role is ever shared between
-> projects.
+> Org specialists (`manager`, `knowledge`, `security`, and the opt-in `portfolio-manager`) have
+> one shared workspace at `~/.openclaw/workspaces/<role>/`. Project pod members
+> (`<project>-lead`, `<project>-implementer`, etc.) each get an **isolated** workspace under
+> `projects/` — no role is ever shared between projects.
 
 ---
 
