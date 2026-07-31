@@ -17,6 +17,17 @@ chokepoint would be one refactor away from being bypassed.
 Layering: this module imports nothing from ``core/``. It reports what happened
 via a local ``ToolOutcome``; ``core/tools.py`` wraps that with what was
 *decided*.
+
+P19-9 (ROADMAP Phase 19): ``run_bash``'s ``sandbox`` parameter is the one
+addition to that contract, and it is still mechanism, not policy -- it does
+not decide *whether* a command may run (that is ``core/tools.py``'s gate,
+already applied by the time this function is ever called); it decides, once
+a command is already cleared to run, *what it can reach while it does*. The
+gate is not a sandbox, and this module's containment story was never a
+substitute for one either -- ``resolve_within`` only ever checked path
+*arguments* the file tools were given; a `bash` command's shell text was
+never checked against it at all, and still is not -- sandboxing constrains
+the running process instead, additively, never in place of that check.
 """
 
 from __future__ import annotations
@@ -24,8 +35,15 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+from docket.edges.adapters import system as _system
+from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
+
+SandboxMode = Literal["off", "auto"]
 
 # Tool output is fed straight back into a model's context, so an unbounded
 # result is a context-budget failure waiting to happen (and, for `bash`, a way
@@ -234,11 +252,57 @@ def grep_files(
 # ── exec ──────────────────────────────────────────────────────────────────────
 
 
+def _jailed_env(env: dict[str, str] | None) -> dict[str, str]:
+    """Minimal environment for a real (non-``"none"``) sandboxed run: PATH
+    plus whatever the caller explicitly asked to inject (e.g.
+    ``DOCKET_SCRATCH_DIR``). Deliberately **not** the full host environment
+    ``run_bash``'s unsandboxed path uses -- forwarding it wholesale into a
+    jail would hand a "sandboxed" command every credential the unsandboxed
+    path has anyway, which is precisely the reach this backend exists to
+    cut down, not preserve.
+    """
+    minimal = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    if env:
+        minimal.update(env)
+    return minimal
+
+
+def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
+    """The honest, per-call answer to "was this actually sandboxed, and by
+    what" -- ``""`` when nobody asked (``sandbox="off"``, the default;
+    ``run_bash``'s original, unsandboxed behaviour is untouched, byte for
+    byte, in that case). When asked (``sandbox="auto"``), always says what
+    really happened, including ``"none (...)"`` when neither backend panned
+    out. A jailed-looking result that was not actually jailed is precisely
+    the failure this card exists to prevent, so this never stays silent
+    once asked.
+    """
+    if sandbox != "auto" or availability is None:
+        return ""
+    if availability.backend != "none":
+        return f"sandbox: {availability.backend}"
+    reasons = [
+        reason
+        for ok, reason in (
+            (availability.docker, "docker unavailable"),
+            (availability.bwrap, "bwrap unavailable"),
+        )
+        if not ok
+    ]
+    if not reasons:
+        # Both backends actually checked out usable -- "none" here can only
+        # mean DOCKET_SANDBOX_BACKEND=none forced it. Say that plainly rather
+        # than print an empty, unexplained "()".
+        reasons = ["forced off via DOCKET_SANDBOX_BACKEND"]
+    return f"sandbox: none ({', '.join(reasons)})"
+
+
 def run_bash(
     roots: tuple[Path, ...],
     command: str,
     timeout: int = 120,
     env: dict[str, str] | None = None,
+    sandbox: SandboxMode = "off",
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -247,43 +311,97 @@ def run_bash(
     approval. Started in its own session so a timeout can kill the whole
     process group — a shell command that spawns children and then hangs is the
     normal case, not the exotic one, and killing only the shell orphans them.
+
+    ``sandbox`` is opt-in and defaults to ``"off"`` — with it, this function
+    behaves exactly as it always has, byte for byte. ``"auto"`` asks for the
+    strongest exec jail this host actually has *right now*
+    (``edges.adapters.system.sandbox_availability``, resolved fresh on every
+    call rather than cached from install time) and reports which one it got —
+    including ``"none"``, when neither docker nor bwrap panned out — as a
+    trailing ``[sandbox: ...]`` marker on the result. **This function never
+    decides whether to ask for a jail; it only reports, honestly, what
+    happened once asked.** A jail that was requested but failed to even start
+    is reported as a failure, never silently retried unsandboxed — the one
+    failure mode worse than no sandbox is one that is claimed and absent.
     """
     if not roots:
         return ToolOutcome(False, error="no working directory configured")
     cwd = roots[0].resolve()
-    run_env = {**os.environ, **env} if env else None
+
+    availability = _system.sandbox_availability() if sandbox == "auto" else None
+    backend: SandboxBackend = availability.backend if availability else "none"
+    tag = _sandbox_tag(sandbox, availability)
+
+    popen_env: dict[str, str] | None
+    container_name = ""
+    if backend == "docker":
+        container_name = f"docket-sbx-{uuid.uuid4().hex[:12]}"
+        popen_arg: str | list[str] = _system.docker_run_argv(container_name, roots, command, env)
+        shell = False
+        popen_env = None  # the CLI inherits; the container gets only `env`, via -e flags in argv
+    elif backend == "bwrap":
+        popen_arg = _system.bwrap_argv(roots, command)
+        shell = False
+        popen_env = _jailed_env(env)
+    else:
+        popen_arg = command
+        shell = True
+        popen_env = {**os.environ, **env} if env else None
+
     try:
         proc = subprocess.Popen(
-            command,
-            shell=True,
+            popen_arg,
+            shell=shell,
             cwd=str(cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=run_env,
+            env=popen_env,
             start_new_session=True,
         )
     except OSError as ex:
+        if backend != "none":
+            return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
         return ToolOutcome(False, error=f"cannot start command: {ex}")
 
     try:
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        if backend == "docker":
+            _system.docker_kill(container_name)
         _kill_group(proc)
-        return ToolOutcome(False, error=f"command timed out after {timeout}s")
+        message = f"command timed out after {timeout}s"
+        return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
 
     body = _truncate((out or "").strip())
     if proc.returncode != 0:
+        message = f"command exited {proc.returncode}"
         return ToolOutcome(
             False,
             content=body,
-            error=f"command exited {proc.returncode}",
+            error=f"{message} [{tag}]" if tag else message,
         )
-    return ToolOutcome(True, content=body or "(no output)")
+    content = body or "(no output)"
+    return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
 
 
 def _kill_group(proc: subprocess.Popen[str]) -> None:
-    """Kill a timed-out command's whole process group, then reap it."""
+    """Kill a timed-out command's whole process group, then reap it.
+
+    Holds under every sandbox backend this module supports, not just the
+    unsandboxed path: bwrap's own process (started with
+    ``start_new_session=True`` here, same as the plain case) stays in that
+    process group, so this reaches it and everything it forked, and Linux
+    additionally tears down bwrap's entire pid namespace the moment its
+    first process dies — a command inside it cannot escape by detaching
+    (verified: test_p19_9_sandboxed_exec.py's bwrap orphan test). Docker is
+    the one shape this does *not* cover on its own: ``docker run``'s CLI
+    process is a thin client the daemon runs the real container under, so
+    killing its process group alone leaves the container running (verified
+    the same way) — ``run_bash``'s timeout handler calls
+    ``system.docker_kill`` first, specifically because this function cannot
+    reach a docker-jailed command by process group at all.
+    """
     import contextlib
     import signal
 
