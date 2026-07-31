@@ -233,6 +233,118 @@ sweep, the legacy `CostTotals`/`DayRecord` decision, plus the two dispatch-local
 (`core/dispatch.py`'s `print()` and `dispatch_all_pods`). W-2 unblocked them; W-5 owns
 `core/dispatch.py` and the dispatch-adjacent test families this wave.
 
+**Confirmed resolved (CL-3, 2026-07-31)** — see the wave 3-6 section below: every row in this
+list, and every "medium confidence" row above, now has a real, verified production caller.
+
+---
+
+## Dead-code register — wave 3-6 sweep (CL-3, 2026-07-31)
+
+Re-ran CL-1's full-tree method against everything waves 3-6 added on top of the CL-1 baseline
+(`5f73e30`..`910a557`, ~4,100 inserted lines across 38 files) — the scope CL-2 explicitly left
+open (it covered waves 3-5's non-dispatch half only). Method: every top-level function/class/
+constant added since CL-1 (97 symbols) plus every method on a class among them, checked with
+`command grep -rn "<symbol>" src/ tests/ specs/ docs/ scripts/` for non-definition, non-test
+references. Per this wave's file-ownership split, deletions below are limited to files neither
+G-3 nor C-3/C-5 own; `core/dispatch.py` was swept read-only (fully off-limits for edits this
+wave — both siblings are in it) and its findings are recorded as deferred.
+
+### Deleted (high confidence — zero callers anywhere, verified)
+
+| Symbol | Location | Evidence |
+| --- | --- | --- |
+| `step_id_of()` | `core/orchestrator.py:81-83` (3 lines) | Zero references anywhere in `src/`/`tests/`/`specs/`/`docs/` — not even its own test file. `PlannedUnit`/`PlannedGroup` (the two members of the `PlannedNode` union it exists to abstract over) are accessed via plain `.step_id` attribute access everywhere it matters (`core/orchestrator.py`'s own `render_plan`, `core/dispatch.py`'s hop-loop, `tests/python/test_w2_orchestrator.py`) — the helper was never wired to a caller that needed the abstraction. |
+| `BlueprintRegistry.__contains__()` | `core/blueprints.py` (was lines 231-233, 3 lines) | Zero callers. Built symmetrically with `core/archetypes.py`'s `ArchetypeRegistry` (which has a real `"producer" in registry`-style caller in `tests/python/test_w6_archetypes.py`), but no code ever does `name in blueprint_registry` — there is no `docket blueprints` listing surface to need it. |
+| `BlueprintRegistry.items()` | `core/blueprints.py` (was lines 237-238, 2 lines) | Zero callers. Same shape as `ArchetypeRegistry.items()` (which IS called, by `cli/_roles.py:61,143` for `docket roles list/validate`) but `core/blueprints.py` has no CLI listing command to call it. |
+| `BUILTIN_BLUEPRINT_ORDER` | `core/blueprints.py` (was line 216, 1 line) | Zero production callers — only referenced by its own test file (`tests/python/test_w7_blueprints.py`, which used it in two assertions). Mirrors `core/archetypes.py`'s `BUILTIN_ROLE_ORDER`/`STARTER_ROLE_ORDER`, which ARE wired into `docket roles list`'s display (`cli/_roles.py:68-69`) — blueprints has no equivalent `docket blueprints list` command, so the display-order constant was never consumed. Textbook "seam shipped for a producer that never arrived" (built by the same convention as the archetypes registry, one card over). |
+
+Test fallout (expected, per the card): `test_w7_blueprints.py::TestRegistry::test_builtin_order`
+deleted — it tested only `BUILTIN_BLUEPRINT_ORDER`'s own value, nothing else, so it dies with the
+constant. `test_get_blueprint_known_roundtrips` (same class) is **not** deleted — its assertion
+(every built-in blueprint's name round-trips through `get_blueprint`) is real coverage — it now
+iterates `bp.load_registry().names()` instead of the deleted constant, matching the pattern the
+test right above it already uses. Net: **1,684 → 1,683 tests.**
+
+### Confirmed resolved since CL-1's register closed (no action — dated evidence for the record)
+
+Every row CL-1 left open with "re-check later" or "ambiguous, may be forward-looking" now has a
+real, verified production caller. This is the register earning its keep — recorded here so the
+next sweep doesn't re-litigate them:
+
+| Finding (as CL-1/CL-2 left it) | Now | Evidence |
+| --- | --- | --- |
+| `with_lock()` — "re-check after W-2 lands" | Resolved | `edges/store.py:83`'s `read_modify_write` now calls `with with_lock(path):` directly — exactly the call site CL-1 predicted W-2 would add. |
+| `git_current_branch()` — "genuinely ambiguous... may be forward-looking" | Resolved | `core/dispatch.py:835`, inside W-5b's `_implementer_diff_probe`: `diff_ref = _sys.git_current_branch(cwd) or None`. One wave later than CL-2 kept it, exactly as this card's brief cited. |
+| `validate_policy()` — "never called by the CLI" | Resolved | G-2 (wave 6) wired it into `docket policies validate` (`cli/_policies.py:178,197,213`). |
+| `VerifyResult.total_lines` — "written, never read" | Resolved | G-4b (wave 5) wired it into `cli/_audit.py:73`'s tamper-check message (`"...FAILED at line {result.break_at.line} of {result.total_lines}"`). |
+| `core/dispatch.py`'s `print()` layering violation | Resolved | W-5 (wave 5) replaced it with the typed `HopResult.verification_skipped` flag (`core/dispatch.py:177-183`); `cli/`'s renderer prints the notice now, not `core/`. |
+| `dispatch_all_pods` | Resolved | W-5 deleted it outright — `core/dispatch.py:2286-2293` carries the dated removal comment, pinned by `test_dispatch_all_pods_no_longer_called_unguarded_in_serve`. |
+| `AgentRunResult` alias | Resolved | Fully deleted (`edges/adapters/openclaw.py:906-912`'s comment documents the removal); only 3 historical/comment mentions remain tree-wide, zero live references. |
+| Ad-hoc-double → `FakeDriver` sweep | Resolved | `FakeDriver` (`tests/python/fakes.py`) is now the shared fixture across 7 test modules. |
+| Legacy `CostTotals`/`DayRecord` decision | Resolved (predates this card's scope — Phase 18 L-1) | Kept deliberately as the stable public shape `cli/_cost.py`/`cli/_doctor.py`/`core/dispatch.py` depend on, now a pure translation of the RuntimeDriver port's `UsageTotals` (`core/utils.py:90-97`'s docstring records the decision). Not part of waves 3-6, included here only because the old "still owed" row pointed at it. |
+
+### Checked specifically per this card's brief — kept, not dead
+
+- **`core/handoff.py`'s `notes` field** — still written by no producer (confirmed:
+  `core/dispatch.py` never sets it), but it is live schema: in `HandoffArtifact.DROP_ORDER`, in
+  `render()`'s conditional, in `_EMPTY_VALUES`. A schema field with no producer yet is not a dead
+  code path — its own docstring already says "reserved" and dated (W-5b). Do not delete; do not
+  read it as populated data either (see the "known-open gaps" section below).
+- **`core/handoff.py`'s `from_legacy_output()`** — has two real production callers:
+  `core/dispatch.py:187` (`HopResult.__post_init__`'s backfill) and `core/dispatch.py:884`
+  (`_hop_from_record`'s pre-W-5 record replay path). Not dead.
+- **`cli/_pod.py`'s `build_pod()`** — looked at first glance like it might be superseded by the
+  newer `build_pod_from_blueprint()` (W-7), since `docket add`'s interactive path now calls the
+  latter. It is not superseded: `build_pod_from_blueprint` calls `build_pod` internally
+  (`cli/_pod.py:601`) as its underlying primitive, and `build_pod` is still the direct, real
+  entry point for `docket pod add full` and ~50 test call sites that exercise pod provisioning
+  without a blueprint. Wrapped, not replaced.
+- **`cli/__init__.py`'s `cmd_pipeline`** — flagged by the automated sweep as having zero non-test
+  references (only its own test calls it directly); confirmed false positive — it is
+  Typer-registered via `@app.command("pipeline", ...)` immediately above its definition
+  (`cli/__init__.py:1337-1341`), the same pattern as the ~35 other `cmd_*` functions the register
+  already documents as confirmed-not-dead.
+
+### Medium confidence — flagged, not deleted (struct fields, not symbols)
+
+Two typed-result fields are populated with real data but have no production reader today — the
+same shape as CL-1's `VerifyResult.total_lines` finding, which sat unread for a full wave before
+G-4b gave it one. Given that precedent, deleting these now risks the exact false negative CL-1
+avoided by leaving `total_lines` for a later card to claim:
+
+| Field | Location | Note |
+| --- | --- | --- |
+| `CancelOutcome.killed_pids` | `core/runs.py:76` | `cancel_run()` builds the full pid list and returns it (`core/runs.py:324`), but `cli/_runs.py`'s `_cancel` only renders `.ok`/`.message` (a count), and the audit-log entry logs `len(killed)`, not the list. Only `tests/python/test_w2_cancellation.py` reads the field itself. No HTTP `/runs/<id>/cancel` endpoint exists yet that might want the exact pids. |
+| `DistillResult.failure_kind` | `core/memory.py` (in `core/memory.py` — **C-3/C-5-owned this wave, not edited**) | Populated from the driver's `TurnResult.failure_kind` at the one construction site, but `cli/_agents.py`'s `_run_distillation`/`_maintain_distill` only ever read `.error` (the string), never `.failure_kind`. Only `tests/python/test_c2_memory_distillation.py` reads it directly. Recorded here rather than acted on because the file is owned this wave. |
+
+### Deferred findings inside sibling-owned files (for the integrator, after G-3 / C-3-C-5 merge)
+
+Swept read-only per this wave's file-ownership split — nothing below was edited. Both are minor
+(struct-field level, not whole symbols) and low-risk to leave for the next sweep if the owning
+card doesn't touch the exact lines:
+
+1. **`core/runs.py:76` `CancelOutcome.killed_pids`** — see the table above. `core/runs.py` itself
+   is not owned by either sibling, but the *decision* of whether this is worth trimming belongs
+   with whoever next touches `docket runs cancel`'s rendering — flagging here rather than
+   deleting per this card's "judgment required" rule, since the precedent (`total_lines`) argues
+   for patience over deletion.
+2. **`core/memory.py` `DistillResult.failure_kind`** — see the table above. `core/memory.py` is
+   C-3/C-5-owned this wave; if their conversation-registry/task-durability work ends up touching
+   `_run_distillation`'s error rendering anyway, this is the moment to either wire `failure_kind`
+   into the CLI message (e.g. distinguishing a timeout from a malformed reply) or drop the field
+   — not before, since `core/dispatch.py`'s off-limits status this wave meant it could not be
+   cross-checked against how `TurnResult.failure_kind` is rendered elsewhere for consistency.
+
+No findings to defer in `core/security.py`, `edges/adapters/system.py`, or `cli/_gates.py`
+(G-3's files) — `high_risk_bins`/`resolve_command_action`/`match_high_risk`/`is_high_risk` are
+already correctly tracked as "deliberately not dead, awaiting G-3's wiring" in the section above
+and in ROADMAP's wave 7 table; re-flagging them here would just be re-litigating G-3's own card.
+Likewise `core/conversations.py`, `serve.py`, and `cli/_doctor.py` (C-3/C-5's other files) were
+read in full for this sweep and showed no new orphans introduced by waves 3-6 — `cli/_doctor.py`'s
+`_check_drift` now correctly delegates to `core/sync.py`'s `check_agent` (CL-2's fix, still
+holding), and `core/dispatch.py`'s off-limits `_UnitOutcome`/pre_output block were checked and
+have real, heavily-used call sites — nothing to hand off there either.
+
 ---
 
 ## Known-open gaps carried forward (do not let these get quietly re-claimed)

@@ -213,8 +213,6 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
     ),
 }
 
-BUILTIN_BLUEPRINT_ORDER: tuple[str, ...] = ("software", "research", "content", "ops")
-
 #: `docket add` with no `--blueprint` resolves to this — today's default pod.
 DEFAULT_BLUEPRINT = "software"
 
@@ -228,14 +226,8 @@ class BlueprintRegistry:
     def get(self, name: str) -> PodBlueprint | None:
         return self.blueprints.get(name)
 
-    def __contains__(self, name: object) -> bool:
-        return name in self.blueprints
-
     def names(self) -> tuple[str, ...]:
         return tuple(self.blueprints.keys())
-
-    def items(self) -> list[tuple[str, PodBlueprint]]:
-        return list(self.blueprints.items())
 
 
 def load_registry() -> BlueprintRegistry:
