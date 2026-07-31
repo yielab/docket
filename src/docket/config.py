@@ -217,6 +217,14 @@ PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 # resume/visibility. See internal-docs/telegram-conversation-memory.md.
 CONVERSATIONS_FILE = DOCKET_HOME / "docket-conversations.json"
 
+# SESSIONS_DIR: durable per-session turn history (ROADMAP Phase 19 P19-4,
+# core/session.py). One self-contained subdirectory per session key (its own
+# JSON file, its own edges/store.py lock file) rather than one shared
+# registry, so that appending to or compacting one session's history can
+# never block on, or corrupt, another session's -- see core/session.py's
+# module docstring for the full rationale.
+SESSIONS_DIR = Path(os.environ.get("SESSIONS_DIR", DOCKET_HOME / "sessions"))
+
 
 def pod_scratch_dir(project: str) -> Path:
     """Isolated scratch data directory for a pod's runtime state.

@@ -25,6 +25,7 @@ specs/
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── role-archetypes.spec.md           # Declarative role archetypes (registry, overlay, CLI)
 │   ├── security-gates.spec.md            # Exec-approval gates (on by default; daemon-enforced)
+│   ├── session-history.spec.md           # Durable per-session turn history + compaction (Phase 19 P19-4)
 │   ├── session-scoping.spec.md           # Multi-project session isolation
 │   ├── telegram-integration.spec.md      # Telegram wire/unwire bindings
 │   └── workspace-structure.spec.md       # Per-agent workspace layout
@@ -107,10 +108,12 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-07-30 (wave 6 complete: L-5, W-5b, C-1, C-2, G-2 — after wave 5's L-4, G-4b, W-4, CL-2, W-5 and wave 4's
-> CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1, W-6, L-1, L-3).
+> Last synchronized: 2026-07-31 (Phase 19 P19-4 added Session History — see its row below).
+> Previously synchronized 2026-07-30 (wave 6 complete: L-5, W-5b, C-1, C-2, G-2 — after wave 5's
+> L-4, G-4b, W-4, CL-2, W-5 and wave 4's CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1,
+> W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
-> (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 20
+> (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 21
 > `.spec.md` files on disk.
 > Verified row-by-row against every spec's own `**Version**` header, not carried forward — an
 > index table cannot be auto-merged correctly when several branches bump versions in parallel.
@@ -128,6 +131,7 @@ Each specification document must include:
 | Pod Dispatch | 5.0.0 | Complete | v2 state machine (Phase 14 R-1…R-7); require_approval + `waiting_approval` (Phase 15 G-1); RuntimeDriver port (Phase 18 L-1); executor-driven generalized gates, parallel groups, cancellation (Phase 16 W-2/W-8); typed handoff artifacts replace raw-text hop concatenation (Phase 16 W-5), with a real `files_changed`/`diff_ref` producer (W-5b); token-budgeted hop prompts via the context compiler, retiring R-7's byte cap (Phase 17 C-1) |
 | Role Archetypes | 1.3.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7); per-role `tokenBudget` for the context compiler (Phase 17 C-1) |
 | Security Gates | 0.6.0 | Implemented (on by default) | Approval store has a real producer (Phase 15 G-1); daemon-gate bridge confirmed unavailable upstream, with evidence (Phase 15 G-5); the policy engine is on the live dispatch path — `pre_input` at enqueue, `pre_output` per hop (Phase 15 G-2) |
+| Session History | 1.0.0 | Implemented, not yet on a live path | `core/session.py` (Phase 19 P19-4): durable per-session turn history, lossless message round-trip, atomic tool-call/tool-result compaction, fail-closed summarisation; first caller is `core/agent_loop.py` (P19-5, not yet built) |
 | Session Scoping | 1.0.1 | Complete | |
 | Telegram Integration | 1.0.1 | Complete | |
 | Workspace Structure | 1.4.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
