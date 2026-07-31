@@ -72,13 +72,15 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 ## ▶ CURRENT STATE — ☑ THE PLATFORMIZATION PROGRAM IS COMPLETE (2026-07-31)
 
 **Phases 14, 15, 16, 17 and 18 are all closed.** 38 cards across 7 waves. `platform` green at
-close: **1,735 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical,
-**21 specs** valid / 0 warnings, 37 commands, ~22,880 lines, `ruff` + `ruff format` +
+close: **1,745 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical,
+**21 specs** valid / 0 warnings, 37 commands, ~22,890 lines, `ruff` + `ruff format` +
 `mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims.
 
 Durable per-card records: the `☑ Waves 3–4 / 5 / 6 / 7 shipped` blocks in ROADMAP.md's Phase 16
-section. **There is no next wave queued** — what remains is the carried-forward list at the bottom
-of this file, which is deliberately short and none of it blocking.
+section.
+
+**Opened since:** **Phase 19 — reducing the OpenClaw daemon dependency** (below), from a
+user request on 2026-07-31. It is scoped from measurement, not ambition: see decision **D-19**.
 
 **Phase status:** Phase 14 **COMPLETE** (R-1…R-8) · Phase 15 **COMPLETE** (G-1…G-6, closed by G-3)
 · Phase 16 **COMPLETE** (W-1…W-8) · Phase 17 **COMPLETE** (C-1…C-5, closed by C-3/C-5) ·
@@ -422,6 +424,69 @@ read in full for this sweep and showed no new orphans introduced by waves 3-6 �
 `_check_drift` now correctly delegates to `core/sync.py`'s `check_agent` (CL-2's fix, still
 holding), and `core/dispatch.py`'s off-limits `_UnitOutcome`/pre_output block were checked and
 have real, heavily-used call sites — nothing to hand off there either.
+
+---
+
+## Phase 19 — Reducing the OpenClaw daemon dependency (opened 2026-07-31, user-requested)
+
+**Ask:** "make sure we are not using openclaw anymore", with the local llama-server (Qwen3.6-35B-A3B)
+now correctly wired at `127.0.0.1:8081`.
+
+### What was measured before planning anything
+
+| Question | Answer |
+| --- | --- |
+| What does `run_turn` actually delegate? | One shell-out: `openclaw agent --agent <id> --session-id <key> -m <msg> --json --timeout N` |
+| What is inside that call? | The whole agent runtime: model loop, **tool execution**, session persistence, compaction |
+| Does the daemon really execute tools? | Yes — a real session on this host has **94 tool records** (`read` x73, `write` x2) |
+| What does llama-server provide? | **Inference only.** It parses no tool calls and executes nothing |
+| Is a second driver architecturally possible? | Yes — L-1's `RuntimeDriver` Protocol is 7 methods and exists precisely to contain this coupling |
+
+**Conclusion: "drop the daemon" is two very different projects, and only one of them is proportionate.**
+
+`run_turn` is the hard one. Replacing it means docket implements a tool-calling loop, the tool set
+itself (read/write/bash/glob/grep/fetch), sandboxing, an approval gate on tool calls, a session
+store with compaction, Telegram channels, and the RAG memory index. That is building a competing
+agent runtime — the "build vs wrap" line ROADMAP §4.5 draws and D-14 reaffirmed. It is a funded
+project, not a config change, and nothing in the tree today is a head start on it.
+
+The other six `RuntimeDriver` methods are comparatively cheap, and **docket's own LLM calls need no
+tools at all**.
+
+### Cards
+
+**P19-1 · `local-openai` driver for tool-free turns** — *Status: TODO · Size: M*
+
+A second `RuntimeDriver` implementation talking OpenAI-compatible `/v1/chat/completions` directly
+(llama-server, LM Studio, vLLM, any gateway). Implements `run_turn` for **tool-free** turns plus
+`capabilities()`; `supports_provisioning`/`supports_sessions` report **False** rather than faking
+them. This is what makes D-18's self-originated calls (memory distillation, judge steps) daemon-free.
+
+- This **revises D-14's "one shipped driver"** — record that explicitly; the trigger is a
+  user-stated requirement, which D-14 named as a valid one.
+- **Must not** silently accept a tool-using hop. If a caller asks for a turn that needs tools,
+  fail loudly with the reason, never return a plausible-looking empty result.
+- Acceptance: `docket maintain <id> distill` completes with the daemon **stopped** · driver
+  selectable by config · `capabilities()` honest · fake-testable, no live model required.
+
+**P19-2 · Honest capability reporting at the call site** — *Status: TODO · Size: S*
+
+`docket doctor` and `docket info` should say which driver each agent resolves to and what that
+driver cannot do, so "daemon-free" is visible rather than assumed.
+
+**P19-3 · Decide the tool-loop question deliberately** — *Status: BLOCKED (needs a decision, not code)*
+
+Do not start this as a side effect of P19-1. Options, honestly costed, belong in a decision entry
+before any code: (a) keep the daemon for tool-using hops; (b) adopt an existing tool-capable local
+runtime and write a driver for *it*; (c) build the loop in docket. (b) is the only one that both
+drops OpenClaw and avoids writing an agent runtime from scratch.
+
+### Measured caveat on the local model
+
+The port fix works end-to-end (`manager` returned a correct reply through `provider: local`), but
+that trivial one-word turn took **107 s**. That matches the standing note that local Qwen is too slow
+for interactive/Telegram use. Moving *tool-using pod work* onto it is a latency decision, separate
+from the daemon-dependency question.
 
 ---
 
