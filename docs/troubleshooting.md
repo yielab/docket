@@ -125,22 +125,18 @@ docket cost <agent-id>
 docket cost  # All agents
 ```
 
-#### 4. **Context Management** (Manual)
-Add to agent's SOUL.md:
-```markdown
-## Context Management
-
-What I Read Each Turn:
-1. SOUL.md (~1K) - cached
-2. SNAPSHOT.md (~2K) - cached
-3. Last 10 messages (~5-10K) - NOT cached
-4. Current file (~3K) - NOT cached
-
-Max context: ~15K tokens
-
-Auto-Compression:
-- After 10 turns: compress to summary
-- After 50 turns: suggest reset
+#### 4. **Check the per-turn context footprint**
+`docket maintain <agent-id> check` estimates the tokens re-sent every turn from the files that
+actually get re-injected (SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, MEMORY.md) and warns when
+they exceed the configured budget:
+```bash
+docket maintain <agent-id> check
+# ⚠ Context footprint: ~7,400 tok/turn (budget 6,000) — trim MEMORY.md/HEARTBEAT.md
+```
+If it's over budget, summarize the daily logs into MEMORY.md and archive them instead of letting
+`memory/` grow unbounded:
+```bash
+docket maintain <agent-id> distill
 ```
 
 ## Model Errors
@@ -242,12 +238,67 @@ docket pod <p> delegate "<task>"   # queue a task first
 docket pod <p> queue               # check what's pending
 ```
 
-### A dispatched task stays "pending" (blocked)
-The pod is over its budget cap — dispatch is budget-gated before each hop, so an over-budget pod
-leaves the task pending instead of running it. Check or raise the Lead's cap:
+### A dispatched task stays "blocked" (budget cap reached)
+
+Dispatch checks the pod's recorded (or estimated) spend against the Lead's budget cap before
+*every* hop. Once the cap is reached, the task is left `blocked` (never silently retried or
+rewritten back to `pending`) **and the pod's Lead is marked paused** — every further claim
+against this pod is refused outright (`paused_refused`) until the pause is explicitly cleared,
+not just re-blocked hop by hop:
+
 ```bash
-docket cost <p>-lead               # see recorded spend
-docket profile <p>-lead --budget <N>   # raise the cap (USD)
+$ docket pod myapp dispatch
+  [task-c410e91a-...] blocked — pod budget reached ($5.12 ≥ $5.00) before implementer
+```
+
+Check the recorded spend, then either raise the cap or resume from the pause. Resuming a pod's
+Lead also un-blocks every `blocked` task in that pod at once:
+
+```bash
+docket cost myapp-lead                    # see recorded spend
+docket profile myapp-lead --budget <N>    # raise the cap (USD), if the spend is expected
+docket profile myapp-lead --resume        # clear the auto-pause + unblock the pod's queue
+# → Unblocked 1 budget-blocked task(s) in pod 'myapp'.
+# ✓ Resumed 'myapp-lead' — auto-pause cleared.
+```
+
+To retry a single blocked task without touching the pod-wide pause, use `docket pod myapp queue
+--retry <task-id>` instead — it moves just that task back to `pending`.
+
+### A dispatched task fails with "verification_failed" / the verify command failed
+
+The Implementer's hop is gated on its `verifyCmd` (if one is set — see `docket pod <p> add
+--verify`/`set-verify`). A non-zero exit from that command fails the hop and leaves the task
+`pending` with a `verification_failed` trace event; it is **not** retried automatically (only a
+timeout or a daemon hiccup on the *agent turn* itself is retried — a real, deterministic
+non-zero exit or a bad verdict never is). Inspect the recorded output and either fix the
+underlying failure or clear/adjust the gate:
+
+```bash
+docket trace tail <p>                       # see the verify command's (redacted) output
+docket pod <p> set-verify <p>-implementer "npm test"   # change the gate command
+docket pod <p> queue --retry <task-id>      # re-run once you believe it will pass
+```
+
+The command runs in the Implementer's git worktree when one exists, otherwise the pod's shared
+codebase root — if it's failing only because it ran in the wrong directory, that's the first
+thing to check.
+
+### A task fails with "tester reported FAIL" (or an unparseable verdict)
+
+The Tester gate is a structural PASS/FAIL parse of the first non-blank line of its reply. `FAIL`
+or anything that doesn't parse as PASS/FAIL (`tester_verdict_failed`) fails the task outright —
+there is no rework cycle for a Tester verdict (only a Reviewer's `REQUEST-CHANGES` gets one):
+
+```bash
+$ docket pod myapp dispatch
+  [task-91a2c410-...] failed — tester reported FAIL
+```
+
+Read the Tester's full reply via `docket trace tail <p>`, fix the underlying issue, then requeue:
+
+```bash
+docket pod myapp queue --retry task-91a2c410-...
 ```
 
 ### "pod has no lead — cannot dispatch"
@@ -287,60 +338,48 @@ docket doctor
 
 ## Memory & Context
 
+There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context` has no
+`search`/`index`/`snapshot`/`compress` subcommand — those were removed (the OpenClaw runtime
+does semantic memory search itself; see [Removed Commands](commands.md#removed-commands)). The
+real per-agent memory contract is: `WORKFLOW_AUTO.md` (the runtime-forced startup file, re-read
+after every context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
+`memory/YYYY-MM-DD.md` logs.
+
 ### Agents still using large context?
 
-1. **Verify the fleet is healthy:**
+1. **Get the real per-turn footprint estimate and distill if it's over budget:**
+
+   ```bash
+   docket maintain <agent-id> check     # look for the "Context footprint" line
+   docket maintain <agent-id> distill   # summarize memory/*.md into MEMORY.md, archive originals
+   ```
+
+2. **Verify the fleet is healthy, then restart:**
 
    ```bash
    docket list
    docket doctor
-   ```
-
-2. **Check SNAPSHOT.md exists:**
-
-   ```bash
-   ls ~/.openclaw/workspaces/projects/*/SNAPSHOT.md
-   ```
-
-3. **Create snapshot if missing:**
-
-   ```bash
-   docket context <project-id> snapshot
-   ```
-
-4. **Restart gateway:**
-
-   ```bash
    systemctl --user restart openclaw-gateway.service
    ```
 
-### Agents not acknowledging immediately?
+### Agent stuck re-reading/re-creating its startup file, or ignoring HEARTBEAT.md on resume?
 
-1. Check SOUL.md has an "IMMEDIATE ACKNOWLEDGMENT" section:
+`docket doctor` re-seeds a missing or stale `WORKFLOW_AUTO.md` (the runtime's post-compaction
+contract file — a weak model loops offering to (re)create this instead of working when it's
+missing or carries an old contract-version marker):
 
-   ```bash
-   grep "IMMEDIATE ACKNOWLEDGMENT" ~/.openclaw/workspaces/manager/SOUL.md
-   ```
+```bash
+docket doctor
+# Runtime startup contract:
+# ✓ myproject-implementer: seeded WORKFLOW_AUTO.md (codebase /home/user/code/myproject)
+```
 
-2. If missing, regenerate the agent's templates from its metadata:
+If HEARTBEAT.md itself looks wrong (not just the startup file), regenerate everything from
+metadata instead:
 
-   ```bash
-   docket maintain manager rebuild
-   ```
-
-### Memory index not working?
-
-1. Create the index first:
-
-   ```bash
-   docket context <project-id> index
-   ```
-
-2. Verify the index file:
-
-   ```bash
-   ls ~/.openclaw/workspaces/projects/<project-id>/.memory-index.json
-   ```
+```bash
+docket maintain <agent-id> rebuild
+```
 
 ## Getting Help
 
