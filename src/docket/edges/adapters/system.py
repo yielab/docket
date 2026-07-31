@@ -283,13 +283,10 @@ def git_current_branch(cwd: str) -> str:
 
     Degrades gracefully on a missing binary, a non-repo directory, or a timeout.
 
-    2026-07-30 (CL-2 dead-code register): no production caller yet. Kept
-    (rather than deleted) because `git_worktree_add`/`git_worktree_remove`
-    (this same module, ROADMAP Phase 16 W-7) just gave pod Implementers real
-    git worktrees, making "what branch is this pod's worktree on" a plausible
-    near-term `docket doctor`/`docket pod` display — this is the obvious
-    primitive for that, already tested. Re-evaluate if it still has no caller
-    once pod worktrees grow another feature.
+    ROADMAP Phase 16 follow-up W-5b: this is now the ``diff_ref`` producer for
+    an Implementer hop's ``HandoffArtifact`` (`core/dispatch.py`'s
+    ``_implementer_diff_probe`` calls it against the resolved member cwd) —
+    the near-term caller the 2026-07-30 CL-2 dead-code note anticipated.
     """
     if not git_available():
         return ""
@@ -321,6 +318,47 @@ def git_is_repo(cwd: str) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
     return result.returncode == 0
+
+
+def git_changed_files(cwd: str) -> list[str]:
+    """Return paths with uncommitted changes in `cwd` (staged, unstaged, untracked).
+
+    ROADMAP Phase 16 follow-up W-5b: the `files_changed` producer for an
+    Implementer hop's `HandoffArtifact` (`core/dispatch.py`'s
+    `_implementer_diff_probe`). Uses `git status --porcelain` rather than a
+    diff against a fixed base ref, so it reflects the real working-tree state
+    regardless of whether the Implementer has committed anything this hop —
+    the same "check the tree, not an assumption about it" spirit as
+    `resolve_member_cwd`. A rename line (`R  old -> new`) reports only the
+    new path. Degrades to `[]` on a missing git binary, a non-repo directory,
+    a timeout, or a clean tree — never raises. Sorted for determinism (the
+    porcelain output order is otherwise directory-scan order, which is not
+    guaranteed stable across platforms).
+    """
+    if not git_available():
+        return []
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=_QUERY_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    files: list[str] = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        # Porcelain v1: two status chars, a space, then the path. A rename/copy
+        # line reads "R  old/path -> new/path" — keep only the new path.
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        files.append(path.strip())
+    return sorted(files)
 
 
 def git_worktree_add(repo_dir: str, worktree_path: str, branch: str) -> tuple[bool, str]:

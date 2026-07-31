@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Complete. Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
 generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
 "Parallel step groups", and "Cancellation" below. The require_approval gate
@@ -17,7 +17,9 @@ This card gates Phase 17's C-1 (the context compiler). The `core/dispatch.py:131
 layering violation — `core/` never prints) is also gone: a mechanical gate's unset-command skip is
 now a typed `HopResult.verification_skipped` flag rendered by `cli/_pod.py`, plus a `tool_result`
 trace event carrying the same fact — see "Implementer verification gate" and "Generalized gate
-execution" below.
+execution" below. **W-5b (this version)** closes the `files_changed`/`diff_ref` seam W-5 declared:
+a successful Implementer hop's artifact now carries a real git probe's output — see "Implementer
+diff producer" below. `notes` remains reserved, with no producer, documented as such.
 **Last Updated**: 2026-07-30
 
 ## Purpose
@@ -82,6 +84,9 @@ This specification covers:
 - **Structured handoff artifacts** (W-5): the `HandoffArtifact` model's fields and field-priority
   drop order, how a hop's artifact is built and rendered into the next hop's prompt, and its
   persistence/backward-compatibility contract for `--resume`
+- **Implementer diff producer** (W-5b): how a successful Implementer hop's `files_changed`/
+  `diff_ref` are populated via a real git probe (`edges/adapters/system.py`), and the three ways
+  it degrades cleanly (a `workdir` pod, a non-repo codebase, a missing `git` binary)
 - The complete task-status and failure-kind vocabulary, and every trace event this pipeline emits
 
 This specification does NOT cover:
@@ -118,14 +123,11 @@ This specification does NOT cover:
   not the registry's own authoring/validation contract
 - Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
   workspace kind) — see `workspace-structure.spec.md` and ROADMAP Phase 16 card W-7 (not shipped)
-- A real token-budgeting consumer of `HandoffArtifact.DROP_ORDER`/`dropped()` — ROADMAP Phase 17's
-  C-1 (the context compiler, blocked on this card landing, not yet started). This spec covers only
-  the artifact's shape and how dispatch itself builds/renders/persists one, not how a future
-  caller would budget across several
-- A real `files_changed`/`diff_ref` producer (a git-diff probe) — `HandoffArtifact` declares both
-  fields but dispatch does not populate them as of this version; see `core/handoff.py`'s own
-  module docstring for why (the git shell-out surface belongs to a different in-flight card) and
-  "Structured handoff artifacts" below
+- A real token-budgeting consumer of `HandoffArtifact.DROP_ORDER`/`dropped()` (including the real
+  `files_changed`/`diff_ref` values W-5b now produces) — ROADMAP Phase 17's C-1 (the context
+  compiler, not yet started). This spec covers only the artifact's shape, how dispatch itself
+  builds/renders/persists one, and (as of W-5b) how `files_changed`/`diff_ref` are populated — not
+  how a future caller would budget across several
 
 ## Requirements
 
@@ -612,24 +614,27 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    `error`, `attempts`) so a caller can see exactly which hop stopped the pipeline, how many
    attempts it took, and why.
 
-### Structured handoff artifacts (ROADMAP Phase 16 W-5)
+### Structured handoff artifacts (ROADMAP Phase 16 W-5, W-5b)
 
 1. Every hop **MUST** produce a typed `HandoffArtifact` (`core/handoff.py`) — a Pydantic model with
    exactly five fields: `summary` (the hop's full reply text — always populated), `verdict`
    (the parsed gate marker for a `VerdictGate`-gated hop, else `None`), `files_changed` and
-   `diff_ref` (structurally real fields; not populated by dispatch as of this version — see
-   `core/handoff.py`'s own module docstring for the honest reason and what would need to change to
-   populate them), and `notes` (free-form, reserved, no producer yet). `HopResult.artifact` **MUST**
-   always be set once a hop is constructed — a hop built without one explicitly backfills via
+   `diff_ref` (populated for an Implementer hop by a real git probe — see "Implementer diff
+   producer" below — and at their empty default for every other hop), and `notes` (free-form and
+   **reserved**: the schema and `DROP_ORDER` account for it so a future producer needs no schema
+   migration, but no dispatch code writes it). `HopResult.artifact` **MUST** always be set once a
+   hop is constructed — a hop built without one explicitly backfills via
    `HandoffArtifact.from_legacy_output(output)` (treating the raw text as `summary`, every other
    field at its default) in `__post_init__`.
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
    exactly `summary` unchanged when every other field is at its default (true for every hop today
-   except a verdict-gated one) — so a hop with nothing else to report composes byte-identically to
-   the pre-W-5 raw-text behaviour; a populated `verdict` (Reviewer/Tester and any verdict-gated
-   archetype) appends a `"Verdict: <value>"` line the raw reply itself does not structurally
-   carry.
+   except a verdict-gated one, or an Implementer hop whose diff probe found real changes) — so a
+   hop with nothing else to report composes byte-identically to the pre-W-5 raw-text behaviour; a
+   populated `verdict` (Reviewer/Tester and any verdict-gated archetype) appends a
+   `"Verdict: <value>"` line, and a populated `files_changed`/`diff_ref` (an Implementer hop with
+   real changes) appends `"Files changed: ..."`/`"Diff ref: ..."` lines the raw reply itself does
+   not structurally carry.
 3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the
    persisted `hops[]` entry, dumped via `HandoffArtifact.model_dump()`) so `--resume` recovers it
    exactly, not just the raw `output` string it was already persisting. A hop record persisted
@@ -644,6 +649,34 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    artifact shape is the deliverable this card was scoped to ship.
 5. This module **MUST** stay pure — no filesystem I/O, no subprocess, no import of
    `core/dispatch.py` (the same "leaf" shape as `core/pipeline.py`).
+
+### Implementer diff producer (ROADMAP Phase 16 follow-up W-5b)
+
+1. After a **successful** Implementer hop (`run_res.ok`), dispatch **MUST** attempt to populate
+   that hop's artifact `files_changed`/`diff_ref` via `_implementer_diff_probe` before the artifact
+   is constructed. Every other role (Lead, Reviewer, Tester, or any non-Implementer archetype)
+   **MUST** get `([], None)` unconditionally — this probe is Implementer-only.
+2. The probe **MUST** resolve the member's working tree via `core.pod.resolve_member_cwd` — the
+   same worktree → shared codebase → member workspace-dir preference order the mechanical verify
+   gate already uses (see "Implementer verification gate") — so the diff probe and the verify gate
+   can never disagree about which tree is being inspected.
+3. When the resolved directory is a real git repository and a `git` binary is on `PATH`
+   (`edges/adapters/system.py`'s `git_available`/`git_is_repo`), the probe **MUST** set
+   `files_changed` from `git_changed_files` (the working tree's uncommitted staged/unstaged/
+   untracked paths — not a diff against a fixed base ref) and `diff_ref` from
+   `git_current_branch` (the member's current branch name, `None` rather than `""` when detached
+   or unresolvable) — both via `edges/adapters/system.py`; **no module outside `edges/adapters/`
+   MUST ever shell out to `git` directly.**
+4. The probe **MUST** degrade to `files_changed=[]`/`diff_ref=None` — never raise, never fail the
+   hop, never stop the pipeline — for each of: a `workdir`-kind (non-codebase) pod, whose
+   Implementer has no codebase and no worktree and therefore resolves to its own plain workspace
+   dir (never a git repository); a `codebase` that exists on disk but was never `git init`-ed
+   (worktree provisioning already falls back to a flat workspace for this case — see
+   `workspace-structure.spec.md`'s CD-5 section — and the diff probe reaches the same conclusion
+   independently via `git_is_repo`); and a host with no `git` binary on `PATH` at dispatch time,
+   even against an otherwise-real git repository.
+5. `git_current_branch` (`edges/adapters/system.py`) is this probe's `diff_ref` source — it has a
+   real production caller as of this version.
 
 ### Bounded hop prompts
 
@@ -877,6 +910,42 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   an orphaned child process running after the run is marked `"cancelled"`.
 
 ## Changelog
+
+### Version 4.1.0 (2026-07-30)
+
+- **ROADMAP Phase 16 follow-up, card W-5b (Implementer diff producer) — closes the seam W-5
+  declared.** W-5 shipped `HandoffArtifact.files_changed`/`.diff_ref` as real, structurally-typed
+  fields with no producer, documented as an honest seam because the git shell-out surface
+  (`edges/adapters/system.py`) belonged to a different in-flight card that wave. This card closes
+  it:
+  - New `edges/adapters/system.py` function `git_changed_files(cwd)` — returns the working tree's
+    uncommitted changes (`git status --porcelain`, staged/unstaged/untracked, rename lines
+    collapsed to their new path, sorted for determinism) or `[]` on a missing binary, a non-repo
+    directory, a timeout, or a clean tree. Follows the module's existing degrade pattern exactly
+    (`git_available`/`git_is_repo`/`git_current_branch`).
+  - `git_current_branch` (`edges/adapters/system.py`) gains its first production caller as of this
+    version — the 2026-07-30 CL-2 dead-code note kept it as tested scaffolding for exactly this
+    kind of near-term caller; that note is now removed from its docstring.
+  - New `core/dispatch.py` function `_implementer_diff_probe(member_id, role)` — the producer call
+    site, invoked once per successful hop right before its `HandoffArtifact` is constructed.
+    Returns `([], None)` immediately for any non-Implementer role; for an Implementer, resolves the
+    member's working tree via the same `core.pod.resolve_member_cwd` preference order the
+    mechanical verify gate already uses (worktree → shared codebase → workspace dir), then calls
+    `git_changed_files`/`git_current_branch` only when that directory is confirmed a real git
+    repository with a `git` binary on `PATH`. Every shell-out still goes through
+    `edges/adapters/system.py`; `core/dispatch.py` itself never calls `git` directly.
+  - Degrades to an empty artifact (`files_changed=[]`, `diff_ref=None`) — never an exception, never
+    a failed hop — for a `workdir`-kind pod (no codebase, no worktree, resolves to a plain
+    non-repo workspace dir), a `codebase` that exists but was never `git init`-ed (the same
+    flat-workspace-fallback case CD-5 already handles for worktree provisioning), and a host with
+    no `git` binary on `PATH` at dispatch time even against an otherwise-real repository. All three
+    paths are test-pinned end to end through `dispatch_task`, not just at the unit level.
+  - `notes` remains free-form and **reserved**: the schema and `DROP_ORDER` already accounted for
+    it, so no migration is needed if it ever gains a producer, but nothing in dispatch writes it as
+    of this version — documented explicitly in `core/handoff.py`'s module docstring rather than
+    left to look populated.
+  - No CLI surface, no schema change to `HandoffArtifact` itself (both fields existed since W-5) —
+    goldens are unaffected.
 
 ### Version 4.0.0 (2026-07-30)
 

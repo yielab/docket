@@ -716,6 +716,38 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
     }
 
 
+def _implementer_diff_probe(member_id: str, role: str) -> tuple[list[str], str | None]:
+    """Real `files_changed`/`diff_ref` for an Implementer hop's artifact (W-5b).
+
+    Closes the seam ROADMAP Phase 16 card W-5 declared: `HandoffArtifact`
+    shipped both fields real but unpopulated because the git shell-out
+    surface belonged to a different in-flight card that wave (see
+    `core/handoff.py`'s module docstring).
+
+    Only meaningful for ``role == "implementer"`` — every other role returns
+    ``([], None)``, the same empty default `HandoffArtifact` already ships.
+    Resolves the member's working tree exactly the way the MechanicalGate
+    verify branch below does (worktree -> shared codebase -> the member's own
+    docket workspace dir, via ``core.pod.resolve_member_cwd``) so the two can
+    never disagree about which tree is being inspected. Every shell-out goes
+    through ``edges/adapters/system.py``; this function itself never calls
+    git directly. Degrades to ``([], None)`` — never raises — when git is
+    missing, the resolved directory is not a git repository (a ``workdir``
+    pod with no codebase resolves to its plain workspace dir, which is not a
+    repo), or the underlying git calls otherwise fail.
+    """
+    if role != "implementer":
+        return [], None
+    worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
+    member_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
+    cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
+    if not _sys.git_available() or not _sys.git_is_repo(cwd):
+        return [], None
+    files_changed = _sys.git_changed_files(cwd)
+    diff_ref = _sys.git_current_branch(cwd) or None
+    return files_changed, diff_ref
+
+
 def _hop_record(h: HopResult) -> dict[str, Any]:
     """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``).
 
@@ -1307,7 +1339,21 @@ def dispatch_task(
         verdict: str | None = None
         if run_res.ok and isinstance(node.gate, _pipeline.VerdictGate):
             verdict = _orch.parse_verdict(node.gate, run_res.output)
-        artifact = _handoff.HandoffArtifact(summary=run_res.output, verdict=verdict)
+        # W-5b: real files_changed/diff_ref for a successful Implementer hop —
+        # closes the seam W-5 declared (see core/handoff.py's module
+        # docstring). `_implementer_diff_probe` degrades to ([], None) for
+        # every other role, a workdir pod, a non-repo workspace, or a host
+        # with no git binary, so this never raises mid-dispatch.
+        files_changed: list[str] = []
+        diff_ref: str | None = None
+        if run_res.ok:
+            files_changed, diff_ref = _implementer_diff_probe(member_id, role)
+        artifact = _handoff.HandoffArtifact(
+            summary=run_res.output,
+            verdict=verdict,
+            files_changed=files_changed,
+            diff_ref=diff_ref,
+        )
 
         hop = HopResult(
             role=role,
