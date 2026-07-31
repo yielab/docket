@@ -1,6 +1,7 @@
-"""System adapter: typed wrappers over systemctl, docker, and git.
+"""System adapter: typed wrappers over systemctl, docker, bwrap, and git.
 
-Every shell-out to a host service manager, container runtime, or git lives here.
+Every shell-out to a host service manager, container runtime, sandbox
+tool, or git lives here.
 
 Design notes:
   * service_manager() detects the init system so commands degrade cleanly on
@@ -20,6 +21,15 @@ real shell (``shell=True``) -- every other function in this module runs a
 fixed argv list it built itself, which is not a comparable classification
 target (see ``security-gates.spec.md``'s "Docket-launched process
 classification" section for the full scoping rationale).
+
+P19-9 (ROADMAP Phase 19): the "exec sandbox" section below adds bwrap
+alongside docker as a second, weaker-but-dependency-free jail backend for
+``edges/adapters/toolbox.py``'s ``run_bash``. Detection (``sandbox_availability``)
+and argv construction (``bwrap_argv``/``docker_run_argv``) are mechanism only,
+the same "no policy vocabulary" split ``core.security``'s classifier already
+has from this module -- *whether* to ask for a jail is a decision made by
+``core/tools.py``'s ``ToolContext.sandbox`` (opt-in, default ``"off"``), never
+by this module.
 """
 
 from __future__ import annotations
@@ -28,6 +38,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from docket.core import security as _sec
@@ -206,6 +217,226 @@ def docker_ps() -> list[str]:
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+# ── exec sandbox (ROADMAP Phase 19 P19-9) ───────────────────────────────────
+#
+# `edges/adapters/toolbox.py`'s `run_bash` has no jail of its own -- P19-3's
+# gate decides whether a command may run at all, not what it can reach once
+# it does. These functions are the mechanism half of that: detecting which
+# jail backend is actually usable on this host (not just installed) and
+# building the argv that applies it. The *decision* to ask for one lives on
+# `ToolContext.sandbox` (`core/tools.py`, opt-in, default "off") -- this
+# module never decides, only detects and constructs, matching the existing
+# split with `core.security`'s classifier.
+
+SandboxBackend = Literal["docker", "bwrap", "none"]
+
+# Image for the docker exec-jail. Small and generic on purpose: this jail's
+# job is filesystem/process containment for an arbitrary shell command, not
+# matching any particular project's runtime, so there is no reason to derive
+# it from the workspace under test. Override on a host that pre-pulled a
+# different image, or has no network to pull this one -- an unpullable image
+# is a legitimate way to end up back at "none", not a bug to work around here.
+SANDBOX_DOCKER_IMAGE = os.environ.get("DOCKET_SANDBOX_IMAGE", "alpine:3.20")
+
+# Detection probes must be fast (they run on every "auto" call) and must
+# never hang a tool call over a jail that turns out to be unusable.
+_SANDBOX_PROBE_TIMEOUT = 5
+
+
+def docker_daemon_reachable() -> bool:
+    """True if docker is on PATH AND its daemon actually answers.
+
+    `docker_available()` only checks the binary. A daemon that is not
+    running, not reachable (a socket permission the current user lacks), or
+    simply absent behind an installed CLI is common enough -- rootless
+    setups, a freshly installed package whose service was never started --
+    that treating "binary present" as "usable" is exactly the silent
+    degrade this card exists to prevent.
+    """
+    if not docker_available():
+        return False
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=_SANDBOX_PROBE_TIMEOUT,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def bwrap_available() -> bool:
+    """True if bwrap is on PATH AND can actually build a sandbox right now.
+
+    The binary alone is not enough evidence: a kernel with unprivileged user
+    namespaces disabled (hardened hosts, and some already-containerized CI
+    runners) makes bwrap fail at its very first real invocation despite
+    being installed. Detection therefore runs a real, harmless,
+    side-effect-free smoke test -- bind the whole host root over itself and
+    run `true` -- rather than trusting `which`.
+    """
+    if not _which("bwrap"):
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "bwrap",
+                "--unshare-all",
+                "--die-with-parent",
+                "--ro-bind",
+                "/",
+                "/",
+                "--",
+                "/bin/true",
+            ],
+            capture_output=True,
+            timeout=_SANDBOX_PROBE_TIMEOUT,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+@dataclass(frozen=True)
+class SandboxAvailability:
+    """One probe of both backends: the strongest usable one, and the raw
+    per-backend result that explains why not, when neither is usable.
+
+    This is the "am I actually sandboxed, and by what" capability check --
+    answerable with no command run at all, for `docket doctor` and this
+    card's own honest per-call reporting (`toolbox.run_bash`'s ``[sandbox:
+    ...]`` marker uses `docker`/`bwrap` to build the reason when `backend`
+    comes back "none"). It is deliberately a different question from "did
+    *this* command run in a jail" -- a boolean here answers the first, never
+    the second.
+    """
+
+    backend: SandboxBackend
+    docker: bool
+    bwrap: bool
+
+
+def sandbox_availability() -> SandboxAvailability:
+    """Probe both backends once and report the strongest usable one.
+
+    Descending strength: a container (docker, only if its daemon answers)
+    beats a namespace jail (bwrap, only if it can really build one) beats no
+    jail at all. Honors DOCKET_SANDBOX_BACKEND as an override -- the same
+    pattern as `service_manager`'s DOCKET_SERVICE_MANAGER -- for tests, and
+    for an operator who wants to force or disable a backend regardless of
+    what is actually installed.
+    """
+    docker_ok = docker_daemon_reachable()
+    bwrap_ok = bwrap_available()
+    override = os.environ.get("DOCKET_SANDBOX_BACKEND")
+    backend: SandboxBackend
+    if override in ("docker", "bwrap", "none"):
+        backend = override  # type: ignore[assignment]
+    elif docker_ok:
+        backend = "docker"
+    elif bwrap_ok:
+        backend = "bwrap"
+    else:
+        backend = "none"
+    return SandboxAvailability(backend=backend, docker=docker_ok, bwrap=bwrap_ok)
+
+
+def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
+    """Build the bwrap argv that jails *command* to *roots*.
+
+    The whole host filesystem is bound read-only over itself, then each of
+    *roots* is re-bound read-write on top -- the same "contain to a known
+    set of roots, not a blanket allow" shape `toolbox.resolve_within` uses
+    for file tools, extended to the exec surface. `--unshare-all` gives the
+    command its own pid/ipc/uts/mount namespaces, so it cannot see or signal
+    any process outside its own tree -- and, since Linux tears down an
+    entire pid namespace when its first process dies, killing this call's
+    process group cannot leave a namespace orphan behind (verified: see
+    test_p19_9_sandboxed_exec.py's process-tree test). Network is left
+    shared (`--share-net` overrides `--unshare-all`'s default): most
+    legitimate bash-tool work (git fetch/push, package installs) needs it,
+    and cutting it is a materially larger, separate decision this card does
+    not make.
+    """
+    argv = [
+        "bwrap",
+        "--unshare-all",
+        "--share-net",
+        "--die-with-parent",
+        "--ro-bind",
+        "/",
+        "/",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+    ]
+    for root in roots:
+        resolved = str(root.resolve())
+        argv += ["--bind", resolved, resolved]
+    argv += ["--", "/bin/sh", "-c", command]
+    return argv
+
+
+def docker_run_argv(
+    container_name: str, roots: tuple[Path, ...], command: str, env: dict[str, str] | None
+) -> list[str]:
+    """Build the ``docker run`` argv that jails *command* to *roots*.
+
+    Each of *roots* is bind-mounted read-write at its own path; nothing else
+    of the host is visible at all (a container's filesystem is empty apart
+    from the image, which is the whole point). Runs as the calling user's
+    uid/gid so files it creates in a mounted root are not left root-owned on
+    the host (verified: the docker default -- no `--user` -- does exactly
+    that). *env* carries only what the caller explicitly asked to inject
+    (`ToolContext.env`, e.g. `DOCKET_SCRATCH_DIR`) -- deliberately **not**
+    the full host environment: a container starts with none of it by
+    default, and forwarding it back in would hand a jailed command every
+    credential the unsandboxed path has, undermining the containment this
+    backend exists to add. Network is left at the image's default bridge,
+    for the same reason `bwrap_argv` keeps `--share-net`.
+    """
+    argv = [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        container_name,
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+    ]
+    for root in roots:
+        resolved = str(root.resolve())
+        argv += ["-v", f"{resolved}:{resolved}"]
+    argv += ["-w", str(roots[0].resolve())]
+    for key, value in (env or {}).items():
+        argv += ["-e", f"{key}={value}"]
+    argv += [SANDBOX_DOCKER_IMAGE, "sh", "-c", command]
+    return argv
+
+
+def docker_kill(container_name: str) -> None:
+    """Force-stop (and, via the original run's ``--rm``, remove) a
+    docker-jailed run by name. Best-effort; never raises.
+
+    The one behavior a container backend needs that a plain subprocess does
+    not: ``docker run``'s own CLI process is a thin client whose process
+    group does NOT reach the container the daemon actually runs -- killing
+    only the CLI leaves the container executing under dockerd, an orphan no
+    host process is watching (verified empirically: a ``docker run --rm``
+    process killed via its own process group left its container running).
+    ``docker kill`` reaches the daemon directly instead. Swallows every
+    failure -- this runs from a timeout handler, where a hung kill must not
+    become a second hang, and a container that already exited on its own is
+    not an error here.
+    """
+    import contextlib
+
+    with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+        subprocess.run(["docker", "kill", container_name], capture_output=True, timeout=10)
 
 
 _VERIFY_MAX_OUTPUT = 4096  # cap trace payload so one bad run doesn't bloat traces

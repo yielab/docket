@@ -51,7 +51,7 @@ from docket.core.audit import audit_log
 from docket.core.llm import ToolCall, ToolCallArgumentsError, ToolSpec
 from docket.core.security import classify_command
 from docket.core.trace import redact as _redact
-from docket.edges.adapters.toolbox import ToolOutcome
+from docket.edges.adapters.toolbox import SandboxMode, ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
 Decision = Literal["allow", "ask", "deny"]
@@ -73,6 +73,16 @@ class ToolContext:
     approval record with no project still needs to be created and shown
     somewhere — ``dispatch_tool`` falls back to ``"operator"`` for that case
     rather than refusing to gate at all.
+
+    ``sandbox`` (P19-9) is a **mechanism** choice, not a gate decision — it is
+    consulted only by the ``bash`` tool's handler, after ``evaluate_tool_call``
+    has already allowed the call, and only changes what an already-permitted
+    command can reach while it runs, never whether it runs. Defaults to
+    ``"off"`` (today's plain, unsandboxed exec, unchanged) rather than
+    ``"auto"``: a docker/bwrap jail is real, opt-in hardening, not something a
+    bare ``ToolContext()`` should silently start relying on — see
+    ``edges.adapters.toolbox.run_bash`` and `specs/functional/security-gates.spec.md`
+    for the on-by-default-vs-opt-in rationale.
     """
 
     agent_id: str = ""
@@ -82,6 +92,7 @@ class ToolContext:
     env: dict[str, str] = field(default_factory=dict)
     role: str = ""
     project: str = ""
+    sandbox: SandboxMode = "off"
 
 
 @dataclass
@@ -568,7 +579,10 @@ def builtin_registry() -> ToolRegistry:
             description=(
                 "Run a shell command in the workspace. Commands are classified before they "
                 "run; anything off the allowlist or matching a high-risk action class "
-                "requires human approval."
+                "requires human approval. If sandboxing is enabled for this agent, an "
+                "approved command additionally runs inside the strongest exec jail (a "
+                "container or bwrap) available on the host; otherwise it runs directly in "
+                "the workspace."
             ),
             parameters={
                 "type": "object",
@@ -583,6 +597,7 @@ def builtin_registry() -> ToolRegistry:
                 _str_arg(args, "command"),
                 _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
                 ctx.env,
+                ctx.sandbox,
             ),
             kind="exec",
         )

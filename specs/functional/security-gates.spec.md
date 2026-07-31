@@ -1,7 +1,7 @@
 # Security Gates Specification
 
-**Version**: 0.8.0
-**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below.
+**Version**: 0.9.0
+**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, like the in-turn tool-call gate, has no live-path caller yet: nothing constructs a `ToolContext` with `sandbox="auto"` in production until ROADMAP Phase 19 P19-5 wires a real agent loop. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on.
 **Last Updated**: 2026-07-31
 
 ## Purpose
@@ -91,6 +91,10 @@ This specification covers:
   policy decision, the synchronous approval wait it routes `ask` verdicts to
   (`core/approval.py`'s `wait_for_approval`), and the audit trail it leaves (ROADMAP Phase 19
   P19-3) — scoped strictly to calls made through that one dispatcher, not to the daemon
+- The exec sandbox for the `bash` tool (ROADMAP Phase 19 P19-9): backend detection
+  (`edges.adapters.system.sandbox_availability`), the docker/bwrap jails it can build, and the
+  honest reporting contract that keeps "a jail is available" and "this call ran in one" distinct
+  — a mechanism layered *underneath* the gate above, never a substitute for it
 
 This specification does NOT cover Telegram transport (see telegram-integration.spec.md), which
 is *one* channel for approval prompts — the CLI and HTTP channels above are equally real and
@@ -487,6 +491,130 @@ daemon still executes; see the scope note that closes this section.
      additive capability, not yet a live-path one. Do not cite this section as evidence that a
      pod dispatch hop today is gated by `pre_tool_call`; it is not, until P19-5 lands.
 
+### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
+
+The section above is a gate: it decides whether a `bash` call may run at all. It was never a
+sandbox, and never claimed to be one — `edges/adapters/toolbox.py`'s module docstring has said so
+since P19-2. `resolve_within`'s containment only ever checked path *arguments* the file tools were
+given; a `bash` command's shell text was never checked against it, and still is not. Once a command
+clears the gate, this section is what constrains what it can reach while it runs — additive to the
+gate, never a replacement for it, and additive to `resolve_within`, never a replacement for that
+either.
+
+1. **Backend detection is real, not assumed.** `edges.adapters.system.sandbox_availability()`
+   probes, on every call, which of two backends the host actually has *right now*, in descending
+   strength:
+   - **`docker`** — a container. Requires not just the binary (`docker_available`) but a reachable
+     daemon (`docker_daemon_reachable`, a real `docker info` probe) — a binary with no running or
+     reachable daemon is common enough (rootless setups, a freshly installed package whose service
+     was never started) that "installed" **MUST NOT** be treated as "usable".
+   - **`bwrap`** — a namespace jail (mount/pid/ipc/uts, via `--unshare-all`). Requires not just the
+     binary but a real, harmless smoke test actually building a sandbox (`bwrap_available`) — a
+     kernel with unprivileged user namespaces disabled (hardened hosts, some already-containerized
+     CI runners) makes the binary present but the capability absent, and detection **MUST** observe
+     that, not trust `which`.
+   - **`none`** — neither is usable. The command still runs (subject to the gate above and to
+     `ToolContext.sandbox` — see below); it is just not jailed, and this **MUST** be visible to the
+     caller (requirement 4).
+   - `DOCKET_SANDBOX_BACKEND` (`docker`|`bwrap`|`none`) **MUST** override the automatic choice —
+     the same escape-hatch pattern `service_manager()`'s `DOCKET_SANDBOX_BACKEND` uses — for tests
+     and for an operator who wants to force or disable a backend regardless of what is installed.
+2. **Opt-in, default off — a narrower default than the gate itself, deliberately.**
+   `core/tools.py`'s `ToolContext.sandbox` (`"off"` | `"auto"`) defaults to `"off"`: the `bash` tool
+   handler **MUST NOT** ask for a jail unless the caller explicitly sets `sandbox="auto"`. This
+   mirrors the existing Docker workspace isolation posture (`docket gates isolate`, also opt-in) for
+   the same reason: docker is not installed on every developer machine, bwrap is a Linux-only
+   binary docket has never previously depended on, and turning a jail on by default for a codebase
+   that does not have Rack CLI's own testing behind it risks breaking ordinary tool calls in ways
+   `--no-gates` never did (the P19-3 gate only ever narrows *which* commands need a human; a
+   filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
+   path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
+   `"off"` until an operator has verified docker or bwrap works on their fleet's hosts**, then opt
+   in per role via whatever constructs `ToolContext` (ROADMAP Phase 19 P19-5's agent loop, not yet
+   built) — the same "opt in, verify, then adopt" path Docker workspace isolation already uses.
+3. **The jail is additive to `resolve_within`, never a replacement.** A `bwrap` jail binds the whole
+   host filesystem read-only over itself, then re-binds each of `ToolContext.roots` read-write on
+   top — the same "contain to a known set of roots" shape `resolve_within` already uses for file
+   tools, extended to the exec surface. A `docker` jail is stronger still: nothing outside the
+   mounted roots exists inside the container's filesystem at all. Both **MUST** hold at the same
+   time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
+   NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
+   command's jail **MUST NOT** be treated as a substitute for gating that command in the first
+   place. Both are test-pinned (`tests/python/test_p19_9_sandboxed_exec.py`).
+4. **Honest capability reporting: two distinct questions, two distinct answers.**
+   - *"Is sandboxing configured/available?"* — a pure, side-effect-free capability probe,
+     `sandbox_availability()`, answerable with no command run at all (the future `docket doctor`
+     hook this card leaves for; not wired to any CLI surface yet, per this wave's file-ownership
+     split).
+   - *"Did **this** command run in a jail?"* — a per-call answer. `toolbox.run_bash` **MUST** report
+     the backend actually used whenever `sandbox="auto"` was asked for, as a trailing
+     `[sandbox: <backend>]` marker on the result — including `[sandbox: none (...)]`, with the real
+     reason, when neither backend panned out. `sandbox="off"` (the default) **MUST NOT** emit this
+     marker at all, and **MUST NOT** change `run_bash`'s output in any other way — the unsandboxed
+     path is byte-for-byte the function that shipped in P19-2.
+   - A boolean meaning "sandboxing is configured" **MUST NOT** be conflated with "this command ran
+     in a jail" anywhere this is surfaced. Requirement 5 covers the specific failure mode this rule
+     exists to prevent.
+5. **A jail that fails to start MUST fail closed, not fall back to unsandboxed.** If `sandbox="auto"`
+   resolves to a real backend (`sandbox_availability()` said `docker` or `bwrap`) but the actual
+   subprocess launch raises (`OSError` — the binary vanished, permissions changed, the daemon died
+   between the probe and the call), `run_bash` **MUST** return a failure naming the backend that
+   failed to start (`"sandbox (<backend>) failed to start: <error>"`) and **MUST NOT** silently retry
+   the command unsandboxed. A jail that is claimed and absent is worse than no jail at all, because
+   it is trusted; a refusal is honest.
+6. **Environment is minimized inside a real jail, never inherited wholesale.** When an actual
+   backend (`docker` or `bwrap`) is in effect, the jailed process **MUST NOT** receive the full host
+   environment `run_bash`'s unsandboxed path uses — only `PATH` plus whatever `ToolContext.env`
+   explicitly injects (e.g. `DOCKET_SCRATCH_DIR`, per the existing pod resource-allocation
+   convention in `core/resources.py`). Forwarding the full host environment into a "sandboxed" call
+   would hand it every credential the unsandboxed path has anyway, undermining the containment this
+   section exists to add. `sandbox="off"`, and `sandbox="auto"` when it resolves to `"none"`, are
+   unaffected — both keep `run_bash`'s original full-environment behavior, since no jail is actually
+   applied in either case.
+7. **Timeout and process-group kill hold under every backend, verified per-backend, not assumed.**
+   `edges/adapters/toolbox.py`'s existing timeout contract — start the command in its own session so
+   a hang with forked children can still be killed as a whole (`_kill_group`) — **MUST** continue to
+   leave no orphan under a real jail:
+   - **bwrap**: `_kill_group`'s existing process-group `SIGKILL` **MUST** suffice on its own. bwrap
+     does not detach into a new session, so it and everything it forks stay in the same host process
+     group `_kill_group` already signals; Linux additionally tears down bwrap's entire pid namespace
+     the moment its first process dies, so a command inside it cannot escape by detaching even if it
+     tried. Verified empirically (see `test_p19_9_sandboxed_exec.py`'s bwrap orphan test): a command
+     that forks two background `sleep`s and hangs leaves zero matching processes after a timeout.
+   - **docker**: `_kill_group` alone **MUST NOT** be relied on — `docker run`'s own CLI process is a
+     thin client, and the real command runs under `dockerd`, a separate process tree the CLI's
+     process group never covers. Killing only the CLI's process group leaves the container running
+     (verified empirically while building this card: a `docker run --rm` process killed via its own
+     process group left its container executing). `run_bash`'s timeout handler **MUST** call
+     `system.docker_kill(<container name>)` — a direct `docker kill`, which (combined with the
+     original run's `--rm`) also removes the container — before, or in addition to, killing the CLI's
+     own process group.
+   - This is a real, test-pinned regression class, not a hypothetical: the docker case was planted
+     and verified red during this card's development by temporarily removing the `docker_kill` call
+     from the timeout handler — the container was still `docker ps`-visible after the call returned;
+     reverted, it is not (see `test_p19_9_sandboxed_exec.py::TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`).
+8. **Network is left reachable inside a real jail, on both backends, by deliberate choice, not
+   oversight.** `bwrap_argv` passes `--share-net` (overriding `--unshare-all`'s default); the docker
+   backend leaves the image's default bridge network untouched. Most legitimate `bash`-tool work
+   (`git fetch`/`push`, package installs) needs network access, and cutting it off is a materially
+   larger, separate decision this card does not make — a network-isolated mode is a natural future
+   addition, not a gap being silently left open. This **MUST NOT** be described as network isolation
+   anywhere in user-facing material; this section governs filesystem and process containment only.
+9. **Scope — stated precisely, matching the Status line.** This section governs
+   `edges/adapters/toolbox.py`'s `run_bash` and the `bash` tool registration in `core/tools.py`
+   only. As of this version:
+   - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed today —
+     `grep`-verified zero production call sites pass `sandbox="auto"`. This is real, tested,
+     additive infrastructure with no live-path caller yet, the same shape P19-2/P19-3's
+     `core/tools.py` had before P19-5 — not a claim that any agent is sandboxed today.
+   - `docket doctor`/`docket gates classes` do not yet surface `sandbox_availability()` — this wave
+     owns the mechanism (`edges/adapters/system.py`, `edges/adapters/toolbox.py`, the
+     `ToolContext`/`bash`-registration slice of `core/tools.py`) and leaves CLI wiring to whichever
+     card touches those command modules next.
+   - This section does not change anything about the daemon's own exec path, the G-5 findings, or
+     the `pre_tool_call`/command-classifier gate above — it is a second, independent layer
+     underneath calls that already cleared that gate, exactly as requirement 3 states.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)
@@ -719,6 +847,57 @@ $ docket audit
   ... approval.deny token=apr-... project=demo channel=timeout
 ```
 
+### Exec sandbox — examples (implemented, opt-in, ROADMAP Phase 19 P19-9)
+
+Like the section above, `ToolContext.sandbox` has no live-path caller yet — these are
+`toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
+`tests/python/test_p19_9_sandboxed_exec.py` asserts, not shell transcripts a user can run today.
+
+The default — `sandbox="off"` — is the same function that shipped in P19-2, byte for byte:
+
+```text
+>>> toolbox.run_bash((workspace,), "printf %s hi", env={"X": "1"})
+ToolOutcome(ok=True, content='hi', error='')          # no marker, ever, unless asked
+```
+
+Asking for a jail (`sandbox="auto"`) on a host with a usable backend reports which one ran —
+here, a command that tries to write outside its allowed root is contained by the jail itself, on
+top of (not instead of) the gate that already let it through:
+
+```text
+>>> toolbox.run_bash((workspace,), 'echo breached > /etc/should-not-write; echo rc=$?', sandbox="auto")
+ToolOutcome(ok=True,
+            content='/bin/sh: 1: cannot create /etc/should-not-write: Read-only file system\nrc=2\n\n[sandbox: bwrap]',
+            error='')
+```
+
+On a host with neither docker nor bwrap usable, the same call still runs — the gate above already
+decided it may — but says so honestly instead of looking identical to a jailed result:
+
+```text
+>>> toolbox.run_bash((workspace,), "printf %s hi", sandbox="auto")
+ToolOutcome(ok=True, content='hi\n\n[sandbox: none (docker unavailable, bwrap unavailable)]', error='')
+```
+
+A jail that was asked for but fails to actually start is a reported failure, not a silent
+unsandboxed run:
+
+```text
+>>> toolbox.run_bash((workspace,), "echo should-never-run", sandbox="auto")   # bwrap vanishes mid-launch
+ToolOutcome(ok=False, content='', error='sandbox (bwrap) failed to start: [Errno 2] ...')
+```
+
+A timed-out command that forked children leaves nothing behind under either real backend — the
+docker case specifically needs `system.docker_kill`, not just a process-group signal, because
+`docker run`'s CLI process does not cover the container the daemon actually runs:
+
+```text
+>>> toolbox.run_bash((workspace,), "sleep 20", timeout=1, sandbox="auto")   # DOCKET_SANDBOX_BACKEND=docker
+ToolOutcome(ok=False, content='', error='command timed out after 1s [sandbox: docker]')
+$ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
+                                                                             # (empty — no orphan)
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -788,8 +967,92 @@ $ docket audit
   redacting anything by itself — it is a `guardrail_check`-visible classification signal only
   (ROADMAP Phase 15 G-3), layered underneath whatever the installed JSON policy engine already
   decided, never on top of it.
+- `ToolContext.sandbox="off"` (the default) **MUST** produce byte-for-byte the same `run_bash`
+  output as before ROADMAP Phase 19 P19-9 existed — no marker, no environment change, no argv
+  change. `tests/python/test_p19_9_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
+- `sandbox="auto"` resolving to a real backend that then fails to start (`OSError` on launch)
+  **MUST NOT** cause the command to run unsandboxed instead — it **MUST** be reported as a failure
+  naming the backend. `TestHonestReportingIsDeterministic::test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback`
+  proves this by forcing the launch to raise and asserting the command's own side effect (a marker
+  it would otherwise have printed) never happens.
+- A real exec jail (docker or bwrap) **MUST NOT** weaken `resolve_within`'s containment for
+  `read`/`write`/`edit`/`glob`/`grep` calls, and `resolve_within`'s containment **MUST NOT** be
+  read as covering `bash` — the two are independent and both apply at once.
+  `TestChokepointWiring::test_file_tool_containment_is_unaffected_by_ctx_sandbox` and the real-jail
+  write-outside-roots tests in `TestRealBwrapJail` each prove one direction; neither implies the
+  other.
+- A timed-out `bash` call running under a real backend **MUST NOT** leave an orphan: no surviving
+  process for bwrap (`TestRealBwrapJail::test_timeout_leaves_no_orphaned_children`, a host-wide
+  `pgrep` check), no surviving container for docker
+  (`TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`, a `docker ps`
+  check) — both skipped, with an explicit reason, on a host lacking the relevant backend, never
+  silently passing in its absence.
+- A real exec jail's environment **MUST NOT** include the full host environment — only `PATH` and
+  `ToolContext.env`'s explicit entries. `sandbox="off"`, and `sandbox="auto"` when it resolves to
+  `"none"`, are unaffected and **MUST** keep receiving the full host environment exactly as before
+  this card.
 
 ## Changelog
+
+### Version 0.9.0 (2026-07-31)
+
+- **ROADMAP Phase 19 P19-9 — an exec sandbox for the `bash` tool.** P19-3's gate decides whether a
+  command may run; nothing before this card constrained what an already-*allowed* `bash` command
+  could reach once it started — `resolve_within` never inspected a shell command's text at all.
+  Added a jail, layered underneath the gate, never a replacement for it:
+  - **Two backends, detected, not assumed.** `edges.adapters.system.sandbox_availability()` picks
+    the strongest of docker (only if its daemon actually answers, not just the binary) and bwrap
+    (only if a real smoke test can build a namespace sandbox, not just the binary present) —
+    `"none"` when neither checks out. `DOCKET_SANDBOX_BACKEND` overrides the choice, the same
+    pattern `service_manager()`'s override already uses.
+  - **Opt-in, default `"off"`.** `core/tools.py`'s new `ToolContext.sandbox` field defaults to
+    `"off"` — a deliberately narrower default than the gate itself, matching the existing Docker
+    workspace isolation posture (`docket gates isolate`, also opt-in) rather than turning on
+    filesystem containment that could break a legitimate call the gate would have allowed. See
+    "Exec sandbox for the `bash` tool" above for the full opt-in-vs-default rationale.
+  - **Containment is additive, verified together, not assumed compatible.** A bwrap jail binds the
+    host read-only and re-binds `ToolContext.roots` read-write on top — the same shape
+    `resolve_within` uses for file tools, extended to the exec surface; a docker jail is stronger
+    still (nothing else exists inside the container's filesystem). Both hold at the same time as
+    `resolve_within`'s own check on file-tool calls — proven, not assumed, by
+    `tests/python/test_p19_9_sandboxed_exec.py`'s combined tests.
+  - **Honest reporting keeps two questions distinct.** `sandbox_availability()` answers "is a jail
+    configured/possible" with no command run; `run_bash`'s new `[sandbox: <backend>]` marker
+    (emitted only when `sandbox="auto"` was actually asked for) answers "did *this* command run in
+    one" — including `[sandbox: none (docker unavailable, bwrap unavailable)]` when neither backend
+    panned out. A jail that fails to start (`OSError` on launch) is reported as a failure naming
+    the backend, never silently retried unsandboxed.
+  - **Timeout/kill verified per backend, not assumed to generalize.** bwrap needs nothing beyond
+    the existing process-group `SIGKILL` (`_kill_group`) — it does not detach into a new session,
+    and Linux tears down its whole pid namespace when its first process dies regardless. Docker
+    needs an explicit `system.docker_kill(<name>)`: `docker run`'s CLI process is a thin client,
+    and killing only its process group leaves the actual container running under `dockerd` —
+    verified empirically while building this card, then planted as drift (the `docker_kill` call
+    removed) and confirmed to reproduce the orphan before being restored; see
+    `TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`. A second
+    planted-and-reverted drift (swapping bwrap's `--ro-bind` for `--bind`) confirmed the
+    containment check itself is load-bearing: a canary write escaped to the real host filesystem
+    with the drift in place, and did not once reverted.
+  - **A real jail minimizes environment; an unsandboxed run does not.** `sandbox="off"` and
+    `sandbox="auto"` resolving to `"none"` keep `run_bash`'s original full-host-environment
+    behavior; an actual docker/bwrap jail receives only `PATH` plus `ToolContext.env`'s explicit
+    entries, so a "sandboxed" call cannot inherit every credential the unsandboxed path has anyway.
+  - **Network stays reachable inside a real jail, on both backends, by choice.** Cutting it off is
+    a materially larger, separate decision this card does not make — see requirement 8 above. This
+    is filesystem/process containment, not network isolation, and is not described as the latter
+    anywhere in this spec.
+  - **Scope, precisely.** `ToolContext.sandbox` defaults to `"off"` everywhere it is constructed
+    today (`grep`-verified zero production callers pass `sandbox="auto"`) — the same
+    real-but-not-yet-live-path shape P19-2/P19-3 had before ROADMAP Phase 19 P19-5. No CLI surface
+    (`docket doctor`, `docket gates classes`) was added or changed by this card; that wiring is left
+    to whichever card next touches those command modules.
+  - Tests: `tests/python/test_p19_9_sandboxed_exec.py` (30 cases) — pure unit tests for detection
+    and argv shape that need no real docker/bwrap, deterministic honest-reporting tests that force
+    backend choice via monkeypatch/env so they never depend on host capability, and real-backend
+    tests (containment, env minimization, timeout/orphan checks) that are skipped, with an explicit
+    reason, on a host lacking the relevant binary or daemon — never silently passing in its
+    absence. Verified directly: on a host forced to report neither backend available, the
+    real-backend classes skip with their stated reasons and every other test still passes.
 
 ### Version 0.8.0 (2026-07-31)
 
