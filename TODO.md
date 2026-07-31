@@ -433,6 +433,14 @@ have real, heavily-used call sites — nothing to hand off there either.
 reusing robust libraries where they help, but **keeping control of guardrails and tool handling**.
 Decision **D-19** in ROADMAP §6.
 
+**Scope ruling (2026-07-31, from the user): clean break, no compatibility layer.** docket is
+pre-1.0 with no external installs to protect, so this phase does **not** stand a second runtime up
+beside the daemon and ships **no** migration path. The OpenClaw driver, the ACL, the daemon's
+config file and every shell-out to the `openclaw` binary are **deleted**; `docket install` is
+reimplemented to provision a docket-native home from scratch. Local installs are **re-created, not
+upgraded**. This supersedes this phase's first draft, which sequenced a per-agent migration and
+kept the daemon installed throughout — legacy carried for nobody.
+
 ### The finding that decides the architecture
 
 docket ships **four** guardrail policy templates hooked on `pre_tool_call` — `block-destructive`,
@@ -458,9 +466,34 @@ dead code.
 | MCP client present? | **No** — docket ships an MCP *server* (10 tools); the client side is new |
 | New deps needed for inference | **None** — OpenAI-compatible chat completions is plain HTTP/JSON |
 
+### Measured blast radius of the break (do not re-estimate from memory)
+
+| Surface | Size |
+| --- | --- |
+| ACL functions/classes to delete or re-home | **82** in `edges/adapters/openclaw.py` (1,600 lines) |
+| `src/` modules importing the ACL | **22** |
+| test modules mentioning openclaw | **62 of 91** |
+
+### What actually replaces each daemon capability
+
+Nothing may be quietly dropped in the name of "no legacy" — this table is the completeness check.
+
+| Daemon capability today | docket replacement | Card |
+| --- | --- | --- |
+| Inference call | OpenAI-compatible HTTP, stdlib | P19-1 |
+| Tool execution | `core/tools.py` gated registry | P19-2 |
+| In-turn exec approval gate | `pre_tool_call` + existing approval store | P19-3 |
+| Session persistence / transcript | `core/session.py` (docket-owned, durable) | P19-4 |
+| The turn loop itself | `core/agent_loop.py` + `DocketDriver` | P19-5 |
+| Agent registry (`openclaw.json`) | docket-owned `fleet.json` via `edges/store.py` | P19-6 |
+| Token/cost usage from session JSONL | real `usage` counts off the API response | P19-4 → P19-7 |
+| Auth profiles / provider config | `docket keys` + docket-owned provider config | P19-7 |
+| Gateway systemd unit | not needed — `docket serve` already exists | P19-7 |
+| Telegram channel | docket-owned bot | P19-8 |
+
 ### The architecture
 
-```
+```text
 docket OWNS (control plane -- never delegated to a library)
   core/agent_loop.py     the turn loop: call model -> receive tool_calls -> gate -> execute -> feed back
   core/tools.py          tool registry + dispatch; EVERY call passes the gates below
@@ -486,49 +519,90 @@ reuses an SDK already declared as an optional extra, and docket stays the dispat
 `pre_tool_call` fires on every call regardless of which server provides the tool. Built-in tools
 (read/write/edit/bash) still land in `core/tools.py` behind the same gate.
 
-### Cards
+### Wave A — the runtime (additive; the tree stays green throughout)
 
-**P19-1 · `local-openai` driver: inference without the daemon** — *TODO · M*
-Second `RuntimeDriver` for OpenAI-compatible endpoints. Tool-free turns first (this alone makes
-D-18's distillation/judge calls daemon-free). `capabilities()` reports honestly;
-`supports_sessions=False` until P19-4. Must **fail loudly** on a tool-requiring turn, never return a
-plausible empty result. Zero new dependencies — stdlib HTTP.
+**P19-1 · `core/llm.py` port + `edges/adapters/llm.py` client** — *TODO · M*
+Typed chat port in `core/` (`ChatMessage`, `ToolCall`, `ChatResponse`, `ChatBackend` Protocol),
+OpenAI-compatible implementation in `edges/` over stdlib `urllib` — **zero new dependencies**, and
+the same core-is-pure-typing / edges-does-I/O split `runtime_driver.py` already uses. Reports the
+response's real `usage` token counts: docket's first non-estimated token numbers. Failure modes map
+onto the existing `FailureKind` vocabulary so `core/dispatch.py`'s retry policy needs no changes.
 
 **P19-2 · `core/tools.py`: the gated tool registry** — *TODO · M*
-Tool schema, registry, and the single dispatch chokepoint every call goes through. Ships the
-built-in set (read/write/edit/glob/grep/bash). Bash goes through the existing exec-allowlist and
-high-risk classifier — **argument-aware**, which the daemon's binary-path-only gate never was.
+Tool schema (JSON-Schema, as the model expects it), registry, and **one** dispatch chokepoint every
+call goes through — there must be no second path. Ships the built-in set
+(`read`/`write`/`edit`/`glob`/`grep`/`bash`). Bash **parses its arguments**, not just the binary
+path — the gap the daemon's allowlist structurally could not close.
 
 **P19-3 · Turn on `pre_tool_call`** — *TODO · S, and the point of the phase*
-Wire the hook into P19-2's chokepoint so the four shipped templates finally evaluate. Every
-decision writes an audit entry; `require_approval` routes to the existing store. Acceptance: a
-`block-destructive` policy actually blocks an `rm -rf` tool call, test-pinned.
+Wire the hook into P19-2's chokepoint so the four shipped templates finally evaluate. `deny` blocks
+and writes an audit entry; `require_approval` routes to the existing store and fails closed on
+timeout. Acceptance, test-pinned: a `block-destructive` policy actually blocks an `rm -rf` tool
+call, and `high-risk-deploy` catches `git push` **by argument** — the deferred backlog item since
+Phase 13.
 
 **P19-4 · `core/session.py`: turn history + compaction** — *TODO · M*
 docket already owns HEARTBEAT, the conversation registry and memory logs; this adds the in-turn
-message history the loop needs, plus compaction reusing C-1's budget compiler and C-2's distillation.
+message history the loop needs. Durable per `agent:<id>:<project>` session key, written through
+`edges/store.py`. Compaction reuses C-1's budget compiler and C-2's distillation. Retires the
+daemon's session JSONL as the source of usage data.
 
-**P19-5 · MCP client: pluggable tool servers** — *TODO · M · after P19-2/P19-3*
-Consume external MCP tool servers through the same gated dispatcher. Never a second, ungated path.
+**P19-5 · `core/agent_loop.py` + `DocketDriver`** — *TODO · L*
+The loop: compose context -> call model -> receive `tool_calls` -> **gate** -> execute -> feed
+results back -> repeat until a stop condition (final message, tool-call cap, token budget, timeout).
+`edges/adapters/docket_runtime.py::DocketDriver` implements `RuntimeDriver` on top of it, so
+`core/dispatch.py`, the pipeline executor and every existing caller are unchanged.
+**After this card the daemon is unused — not yet uninstalled.**
 
-**P19-6 · Channels** — *BLOCKED (decide first)*
-Telegram is the one capability with no docket-side equivalent. Options: keep the daemon for channels
-only; a thin bot library; or drop mobile control. **Do not start this before the loop works.**
+### Wave B — the removal (this is what "no legacy" means)
 
-**P19-7 · Sandboxed exec** — *TODO · M*
+**P19-6 · docket-native home + fleet registry** — *TODO · M*
+`~/.openclaw/` -> `~/.docket/`; agent registration, channel bindings, gates/isolation flags and
+model defaults move out of `openclaw.json` into a docket-owned `fleet.json` through
+`edges/store.py`. **The dual-source problem disappears with it:** `core/sync.py`,
+`core/oc_models.py` and `doctor`'s config-drift check are **deleted rather than ported** — with one
+source of truth there is nothing left to drift.
+
+**P19-7 · Delete the ACL; reimplement install/doctor/cost** — *TODO · L*
+Delete `edges/adapters/openclaw.py` and every `openclaw` shell-out, auth-profile read, gateway
+restart and version probe. Reimplement `docket install` to provision a docket-native home with no
+external daemon; re-point `doctor`, `gates`, `keys`, `auth`, `cost` and `context` at docket-owned
+state. `openclaw` leaves the dependency list, CLAUDE.md and the README.
+**Acceptance: `command grep -ril openclaw src/` returns nothing but a historical note.**
+
+**P19-8 · Channels: docket-owned Telegram** — *TODO · M (was BLOCKED; the clean break decides it)*
+With no daemon there is no daemon channel to fall back on, so docket owns the bot: long-poll over
+stdlib HTTP, bound to the existing approval store and pod delegation. This is what finally makes
+Telegram a **real** docket approval channel — the claim CLAUDE.md has had to explicitly deny since
+Phase 15, and G-5's unbridgeable gap closed by removing the other side of it.
+
+### Wave C — hardening
+
+**P19-9 · Sandboxed exec** — *TODO · M*
 Container/bwrap jail for bash-class tools, reusing `edges/adapters/system.py`'s docker wrappers and
-the existing worktree isolation.
+the existing worktree/port/scratch isolation.
+
+**P19-10 · MCP client: pluggable tool servers** — *TODO · M*
+Consume external MCP tool servers through P19-2's dispatcher. Never a second, ungated path. docket
+already ships an MCP *server*; this is the client half.
 
 ### Sequencing
 
-P19-1 → P19-2 → **P19-3** → P19-4 → P19-5/P19-7 → P19-6. The daemon stays installed and usable
-throughout; agents migrate per-agent by driver, not fleet-wide by flag day. **P19-3 is the milestone
-that matters** — it is the moment docket's guardrails stop being advisory.
+P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-6 -> P19-7 -> P19-8 -> P19-9/P19-10.
+
+Wave A is additive — every card lands on a green tree with the existing suite passing. The daemon
+stops being *used* at P19-5 and stops being *present* at P19-7. Wave C is optional depth once the
+loop is real.
+
+**P19-3 is the milestone that matters** — the moment docket's guardrails stop being advisory.
+**P19-7 is the moment the dependency is actually gone**; do not report the phase complete before
+that grep is clean.
 
 ### Measured caveat, unchanged
 
-The local Qwen answered a one-word prompt in **107 s**. Owning the loop does not make the model fast;
-model choice per role stays a separate decision from runtime ownership.
+The local Qwen answered a one-word prompt in **107 s**. Owning the loop does not make the model
+fast; model choice per role stays a separate decision from runtime ownership. Nothing in this phase
+may be sold as a performance improvement.
 
 ---
 
@@ -561,16 +635,15 @@ From Phase 14's honest record — these are **still true** until the cards above
   (in-turn interception) — docket orchestrates *between* hops and is never inside a turn to
   intercept a tool call. And `resolve_command_action` still has **zero callers** (G-3, wave 7).
 - Hops still exchange **concatenated raw text**, not structured artifacts (W-5, in flight this wave).
-- **The runtime dependency floors in `pyproject.toml` are unverified.** They claim `typer>=0.12`,
-  `rich>=13`, `pydantic>=2`, `pydantic-settings>=2`, `filelock>=3.13`, while CI runs
-  `uv sync --all-extras --dev` off `uv.lock` and therefore only ever exercises the current versions
-  (typer 0.26, rich 15, pydantic 2.13, filelock 3.29). Nothing has ever tested docket against the
-  floors it advertises, so a `pip install docket` into an older environment may resolve a
-  combination that has never run. The fix is a `--resolution lowest-direct` job in CI — either the
-  floors pass and the claim becomes real, or they fail and get raised to what is actually supported.
-  **Not attempted here: it needs network access to resolve the floor set, which this environment
-  blocks.** Do not raise the floors blind — an untested floor and a wrong floor look identical until
-  someone installs.
+- ~~The runtime dependency floors in `pyproject.toml` are unverified~~ — **closed 2026-07-31, and
+  the suspicion was right: two of the six advertised floors were false.** `typer>=0.12` failed 216
+  tests (click 8.4.2 incompatibility) and `pydantic>=2` failed 56 test modules at import; both were
+  raised to what actually runs (`typer>=0.13`, `pydantic>=2.1`). The measured floor set —
+  typer 0.13.0 / rich 13.0.0 / pydantic 2.1.0 / pydantic-settings 2.0.0 / filelock 3.13.0 /
+  pyyaml 6.0 — now passes the full suite, and a `floors` CI job resolves `--resolution
+  lowest-direct` and runs pytest against it so the claim stays real. **Do not raise or lower a
+  floor without re-measuring** — an untested floor and a wrong floor look identical until someone
+  installs.
 - ~~`scripts/validate-specs.sh` reports two spec references on one line as a broken reference~~ —
   **fixed by the integrator in `771f622`**, along with a second defect found next to it: `check_todos`
   ran its loop in a pipe subshell, so every warning increment was discarded and a spec full of TODO
