@@ -56,7 +56,7 @@ Total: ~220K tokens in one bloated window
 Engineer: "Fix the login bug"   (to the <project> pod's Lead)
          ↓
 Lead: Owns this pod's context/memory + human comms
-    → Reads this project's SNAPSHOT.md (2K tokens)
+    → Reads this pod's workspace contract (WORKFLOW_AUTO.md + MEMORY.md + HEARTBEAT.md)
     → Decomposes the work, dispatches to the Implementer
     → NEVER edits code
          ↓
@@ -222,7 +222,8 @@ use `store.py`.
 **Each project's context stays inside its own pod.**
 
 - Every pod has its own workspace and per-pod session key
-- The Lead reads this pod's SNAPSHOT.md (2K), not a shared cross-project history (100K)
+- The Lead reads this pod's workspace contract (`WORKFLOW_AUTO.md`, `MEMORY.md`,
+  `HEARTBEAT.md`), not a shared cross-project history
 - The Implementer runs inside the project workspace, reading only the files it touches
 - The Reviewer reads the diff only, not the entire file
 - The Tester reads reproduction steps only, not code
@@ -325,9 +326,9 @@ the story.
 ### Response Time
 
 Isolated pods process less context per turn, so the Lead can answer status/memory queries
-quickly (it reads SNAPSHOT.md rather than a full cross-project history), while code changes
-still take as long as the Implementer needs to do the work. Measure actuals for your own
-workload rather than relying on fixed figures.
+quickly (it reads its own workspace contract — `MEMORY.md`/`HEARTBEAT.md` — rather than a full
+cross-project history), while code changes still take as long as the Implementer needs to do the
+work. Measure actuals for your own workload rather than relying on fixed figures.
 
 ---
 
@@ -353,7 +354,8 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 
 **Capabilities:**
 - Owns this pod's context, memory, and human (Telegram) comms
-- Reads this pod's SNAPSHOT.md, not a full cross-project history
+- Reads this pod's workspace contract — `WORKFLOW_AUTO.md`, `MEMORY.md`, `HEARTBEAT.md` — not
+  a full cross-project history
 - Decomposes work and dispatches to the pod's workers — `docket pod <project> dispatch`
   (or `docket serve --dispatch`) really runs the next hop, one costed agent turn at a time
 - Holds the per-pod budget cap that gates every dispatch hop
@@ -559,102 +561,76 @@ A shared agent reads:
 Total: 150K+ tokens per turn, growing across projects
 ```
 
-### Solution: Isolated pods + SNAPSHOT.md
+### Solution: Isolated pods + the workspace contract
 
 **After DOCKET:**
 ```
 The pod's Lead reads:
-- this project's SNAPSHOT.md: ~2K tokens
+- this workspace's WORKFLOW_AUTO.md, MEMORY.md, and HEARTBEAT.md
 The Implementer reads:
 - only the workspace files it touches
 ────────────────────────────────────
 Context stays scoped to one project's pod
 ```
 
-### SNAPSHOT.md Contents
+There is no generated `SNAPSHOT.md`, and `docket context` no longer has `snapshot`/`index`/
+`search`/`compress` subcommands — they, and the per-agent index/snapshot artifacts they wrote,
+were removed (the openclaw runtime's own memory backend handles semantic search; docket does not
+keep a rival index). What actually scopes a pod's context is the **workspace startup contract**
+docket provisions on `docket add`/`docket install` and `docket doctor` re-seeds if a workspace is
+missing one or has a stale version:
 
-Created by `docket context <project> snapshot`:
+- **`WORKFLOW_AUTO.md`** — the startup protocol. The openclaw runtime forces every agent to
+  re-read this file after each context reset, so docket anchors the codebase path and the
+  resume/durability rules here — the one place guaranteed to survive compaction even when
+  `SOUL.md`/`MEMORY.md` fall out of context.
+- **`MEMORY.md`** — long-term curated project facts (what the project is, architecture, current
+  state) — written by the agent, seeded with a stub on first run.
+- **`HEARTBEAT.md`** — the durable in-flight task ledger. An agent is instructed to write
+  multi-step work here *before* starting it; a pod dispatch hop additionally keeps its own
+  delimited region in sync mechanically (see [Dispatch Internals](#dispatch-internals)), so the
+  ledger reflects real queue state, not only an agent's compliance.
+
+Plus the dated `memory/YYYY-MM-DD.md` logs, read on demand rather than all at once. A fresh
+`HEARTBEAT.md` seeds like this:
 
 ```markdown
-# Project Snapshot — 2026-03-06
+# HEARTBEAT.md — mywebsite-lead
 
-## Metadata
-- Project: mywebsite
-- Codebase: ~/Sites/mywebsite
-- Stack: Next.js
-- Model: strong class (role policy)
-- Session Key: agent:mywebsite:main
+_Your durable task ledger. It survives context resets; your working memory does not._
+_The moment you accept multi-step work, record it here **before** you start. Read it first
+every session — unchecked items mean you were interrupted, so resume them instead of greeting
+as if idle._
 
-## Current State
-### Active Tasks (from HEARTBEAT.md)
-- [ ] Fix authentication bug
-- [ ] Add dark mode toggle
+## Active Tasks
+_none yet_
 
-## Recent Activity (Last 7 Days)
-### 2026-03-06
-- Implemented user profile page
-- Fixed null pointer in login.js
+## Pending Decisions
+_none_
 
-### 2026-03-05
-- Added password reset flow
-- Updated dependencies
-
-## Architectural Decisions (from MEMORY.md)
-### Auth Strategy
-- Using Auth0 for OAuth2
-- JWT tokens stored in httpOnly cookies
-- Refresh token rotation enabled
-
-## Quick Stats
-- Total memory files: 45
-- Last activity: 2 hours ago
-- Size: 12MB
+## Notes
+_none_
 ```
 
-**Agent reads this (2K tokens) instead of full history (100K tokens).**
-
-### Memory Index
-
-Created by `docket context <project> index`:
-
-```json
-{
-  "indexed_at": "2026-03-06T14:30:00Z",
-  "files": [
-    {"path": "memory/2026-03-06.md", "date": "2026-03-06", "entries": 5},
-    {"path": "memory/2026-03-05.md", "date": "2026-03-05", "entries": 3}
-  ],
-  "keywords": {
-    "authentication": ["2026-03-06", "2026-03-04"],
-    "dark mode": ["2026-03-06"],
-    "null pointer": ["2026-03-06", "2026-02-28"]
-  },
-  "decisions": [
-    {"title": "Auth Strategy", "preview": "Using Auth0 for OAuth2..."},
-    {"title": "Database Choice", "preview": "PostgreSQL with Prisma..."}
-  ]
-}
-```
-
-**Fast search without reading all files.**
+`docket context <id> show` and `docket context <id> project` are read-only renderers over
+exactly these files — recent memory-log lines, active tasks parsed from `HEARTBEAT.md`,
+`MEMORY.md`'s section headers, and last-activity/log-count stats. They display the contract; they
+don't generate a separate summary artifact.
 
 ### Memory Commands
 
 ```bash
-# Create fast-access snapshot
-docket context <project> snapshot
+# Read-only dashboard: recent memory logs, active tasks, today's gateway activity
+docket context <id> show
 
-# Index for search
-docket context <project> index
+# Project quick reference: codebase/stack/model, active tasks, MEMORY.md sections
+docket context <id> project
 
-# Search indexed memory
-docket context <project> search "authentication bug"
+# Summarize pending daily logs into MEMORY.md (see Memory Distillation below)
+docket maintain <id> distill
 
-# Archive old logs (>30 days)
-docket context <project> compress
-
-# Show quick reference
-docket context <project> project
+# Re-seed a missing or stale WORKFLOW_AUTO.md / MEMORY.md / HEARTBEAT.md
+docket doctor --fix
 ```
 
 ### Memory Distillation
@@ -718,7 +694,7 @@ on your models and current pricing — read it with `docket cost`.)
 ```
 Each pod is sealed:
 ❌ No agent reads another project's history or memory
-✅ The Lead reads this pod's SNAPSHOT.md; the Implementer reads its own workspace
+✅ The Lead reads this pod's workspace contract; the Implementer reads its own workspace
 
 Per-pod session keys keep context from accumulating across projects.
 ```
@@ -727,7 +703,7 @@ Per-pod session keys keep context from accumulating across projects.
 
 ```
 Status / memory query:
-The Lead reads this pod's SNAPSHOT.md / HEARTBEAT.md (~1-2K tokens)
+The Lead reads this pod's MEMORY.md / HEARTBEAT.md
 instead of a full cross-project history — no worker is spawned.
 ```
 
@@ -749,11 +725,11 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 
 ### Features Implemented ✅
 
-- [x] Memory management system (`docket context`)
+- [x] Memory management system (`docket context show/project`)
 - [x] Pod delegation + dispatch (`docket pod <project> delegate/queue/dispatch`) — replaces the
   retired `docket team` queue
-- [x] SNAPSHOT.md generation
-- [x] Memory indexing & search
+- [x] Workspace startup contract generation (`WORKFLOW_AUTO.md`/`MEMORY.md`/`HEARTBEAT.md`) +
+  `docket doctor` re-seeding of a missing or stale one
 - [x] Per-pod context isolation (workspace + session key)
 - [x] Security checklist (6 points)
 - [x] Behavior-only validation
@@ -958,7 +934,7 @@ is: token reduction from isolation is real but not a fixed percentage, and docke
 
 1. **If not installed:** `docket install` (creates org specialists)
 2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
-3. **Create snapshots:** `docket context <project> snapshot` (for all projects)
+3. **Inspect context:** `docket context <project> show` (quick per-project view)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (recorded spend)
 
