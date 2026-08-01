@@ -13,11 +13,14 @@
 >
 > ---
 >
-> ## Active: PHASE 19 — docket takes the runtime (D-19). Phases 20/21 planned.
+> ## Active: PHASE 19 — docket takes the runtime (D-19), then Phase 21 (the substrate), then what survives of Phase 20
 >
 > Executable board for **Phase 19** in [ROADMAP.md](ROADMAP.md) — read that section first, plus
-> decisions **D-19** (own the loop, rent the protocols; clean break, no migration) and the newly
-> opened **D-20/D-21/D-22/D-23** in §6. Phases 14–18 are all **COMPLETE**; their durable per-card
+> decisions **D-19** (own the loop, rent the protocols; clean break, no migration), **D-20**
+> (**ANSWERED** — a factory for agentic products, so both: factory first, embeddable substrate
+> second), **D-21** (package split, YES, *packaging only*), **D-22** (tenant axis, **CUT**), **D-23**
+> (egress — `fetch` tool yes, lockdown deferred) and **D-24** (the prioritization ruling that cut
+> roughly half of Phases 20/21) in §6. Phases 14–18 are all **COMPLETE**; their durable per-card
 > record lives in ROADMAP, not here.
 >
 > **Scheduling rule, carried from Phase 14 and re-earned in wave 9:** schedule by **file contention**,
@@ -80,12 +83,31 @@ cutover is wave 11 (P19-6 -> P19-7), which is also where the ACL and `openclaw.j
 **24 specs** valid / 0 warnings, 37 commands, ~27,100 lines, `ruff` + `ruff format` + `mypy --strict`
 (71 files) clean, `metrics.py --check` in sync across all five claims.
 
-**Newly opened decisions (2026-07-31), from the stated company objective — agentic products, docket
-as main orchestrator:** **D-20** (is docket the *factory* that builds products, the *runtime* they
-ship on, or both — these have opposite requirements and conflating them is the main risk),
-**D-21** (split into an embeddable `docket-runtime` library + control plane), **D-22** (project-scoped
-vs tenant-scoped multi-tenancy — cheap now, expensive after the first product embeds), **D-23**
-(network egress default). Waves 10 and 11 are correct under either reading of D-20 and proceed now.
+**The goal is now stated, and it resolved the open decision.** The user's objective is **a factory for
+agentic products**. That answers **D-20: both, in an order** — factory first (it exists; Phase 19
+finishes it), embeddable substrate second (Phase 21). The reasoning is one sentence and worth keeping
+in front of you while working: *if every product is agentic, the runtime is the common part of every
+product*, so the factory's highest-value output is a **reusable substrate**, not agent-written code.
+
+**What that answer does NOT buy — read this before scoping anything:** the *hosted-SaaS* half.
+Multi-tenancy, authn for external callers, queues/workers, streaming and per-customer quota are
+**out of scope**. The substrate is a **library a product embeds**; the product owns its own serving
+layer. Conflating "embeddable library" with "hosted product runtime" is the failure mode D-20 exists
+to prevent.
+
+**Decision status (2026-07-31):** **D-20 ANSWERED** (both, factory first) · **D-21 YES** — the package
+split is live, *packaging only*, after the removal wave · **D-22 CUT** — stay project-scoped, build
+nothing, re-open only if docket itself serves multiple end customers · **D-23 re-scoped** — ship the
+`fetch` tool, defer the egress lockdown · **D-24 NEW — the prioritization ruling.**
+
+**D-24 cut roughly half of Phases 20/21, including the integrator's own recommendations from hours
+earlier.** Full verdict table in ROADMAP §5 (*"Prioritization ruling"*). What it means for this board:
+**CUT** — OpenTelemetry (P20-1), streaming (P21-2), tenant axis (P21-3), and any browser-automation
+tooling (that is an MCP config, per P19-13). **DEFERRED** — egress lockdown, fleet trace query
+(P20-3), build-agent profile (P21-4). **KEPT** — the removal wave, P19-11's `fetch` tool, P19-12,
+P19-13, P21-1, one new XS card **P21-5** (`agentic-product` blueprint — a row in an existing
+registry, not new machinery), P20-2 and P20-4. The test applied was §4.5's, not "is this best practice
+for someone": **does a measured need in *this* system ask for it.** It binds the integrator too.
 
 **Phase status:** Phase 14 **COMPLETE** (R-1…R-8) · Phase 15 **COMPLETE** (G-1…G-6, closed by G-3)
 · Phase 16 **COMPLETE** (W-1…W-8) · Phase 17 **COMPLETE** (C-1…C-5, closed by C-3/C-5) ·
@@ -561,21 +583,26 @@ results back -> repeat until a stop condition (final message, tool-call cap, tok
 
 ### Wave B — the removal (this is what "no legacy" means)
 
-**P19-6 · docket-native home + fleet registry** — *TODO · M*
+> **Re-sequenced 2026-07-31:** P19-6 was pulled forward into **wave 10** (it is disjoint from the
+> runtime-capability cards and the spine should start immediately); P19-7 and P19-8 are **wave 11**.
+> The card text below is the durable definition — the live schedule is the wave-10 block and the
+> sequencing table further down.
+
+**P19-6 · docket-native home + fleet registry** — *moved to wave 10 · M*
 `~/.openclaw/` -> `~/.docket/`; agent registration, channel bindings, gates/isolation flags and
 model defaults move out of `openclaw.json` into a docket-owned `fleet.json` through
 `edges/store.py`. **The dual-source problem disappears with it:** `core/sync.py`,
 `core/oc_models.py` and `doctor`'s config-drift check are **deleted rather than ported** — with one
 source of truth there is nothing left to drift.
 
-**P19-7 · Delete the ACL; reimplement install/doctor/cost** — *TODO · L*
+**P19-7 · Delete the ACL; reimplement install/doctor/cost** — *TODO · L · wave 11*
 Delete `edges/adapters/openclaw.py` and every `openclaw` shell-out, auth-profile read, gateway
 restart and version probe. Reimplement `docket install` to provision a docket-native home with no
 external daemon; re-point `doctor`, `gates`, `keys`, `auth`, `cost` and `context` at docket-owned
 state. `openclaw` leaves the dependency list, CLAUDE.md and the README.
 **Acceptance: `command grep -ril openclaw src/` returns nothing but a historical note.**
 
-**P19-8 · Channels: docket-owned Telegram** — *TODO · M (was BLOCKED; the clean break decides it)*
+**P19-8 · Channels: docket-owned Telegram** — *TODO · M · wave 11 (was BLOCKED; the clean break decides it)*
 With no daemon there is no daemon channel to fall back on, so docket owns the bot: long-poll over
 stdlib HTTP, bound to the existing approval store and pod delegation. This is what finally makes
 Telegram a **real** docket approval channel — the claim CLAUDE.md has had to explicitly deny since
@@ -706,55 +733,114 @@ edited by several branches at once holds no single correct side.
 reference only the inert `ToolOutcome` type, and added a narrower guard in its place. The integrator
 re-verified that replacement by planting a real handler-function import — it fired.
 
-### Wave 10 — finish the runtime's capabilities (added 2026-07-31)
+### ▶ Wave 10 — READY TO DISPATCH (four cards in parallel; re-scoped by D-24 on 2026-07-31)
 
-Three cards closing gaps found by auditing what an agent can actually *do* once the loop runs. All
-three are runtime-side and disjoint from the registry refactor, so they are safe to run before the
-removal wave.
+**Change from the earlier plan:** wave 10 was three runtime-capability cards with the removal
+deferred to wave 11. It now **pulls P19-6 forward** so the removal spine starts immediately — the
+daemon still resolves `OpenClawDriver`, and every runtime claim on this board is theoretical until
+that flips. P19-6 (state-side) and P19-11/12/13 (runtime-side) touch disjoint trees, so they run
+together. P19-7 stays in wave 11 because it cannot start until P19-6's registry exists.
 
-**P19-11 · `fetch` tool + network egress policy** — *TODO · M · decision D-23*
-**The gap, measured not assumed:** `curl`/`wget` correctly ask, but `python3 -c "import urllib..."`,
-`node` and `git clone <url>` are **allowed unattended** — both interpreters are on the curated
-allowlist because agents need them constantly, and both are universal escape hatches. **Network
-egress is therefore effectively ungated**, and P19-9's sandbox does not close it (both backends
-leave the network reachable). The gate currently *reads* as if network were controlled, which is
-worse than an honestly open one. Ship: a first-class `fetch` tool (domain allowlist, size cap,
-timeout, gated like every other tool) so there is an inspectable path, plus the opt-in egress
-lockdown mechanism (`--network none` / `--unshare-net` in P19-9's backends). **Default stays open**
-per D-23 — closing it breaks `npm install`, `pip` and `git clone`.
+#### Ownership map — function-level where a file is hot (state it, do not leave it to goodwill)
+
+| Card | Owns | Explicitly may not touch |
+| --- | --- | --- |
+| **P19-6** fleet registry | `edges/adapters/openclaw.py` (writes redirected), new `fleet.json` handling, `config.py` **path constants only**, deletion of `core/sync.py` + `core/oc_models.py` | `core/tools.py`, `core/agent_loop.py`, `core/archetypes.py`, `cli/_mcp.py`, `edges/adapters/toolbox.py` |
+| **P19-11** `fetch` tool | new `edges/adapters/fetch.py`, **and only** the registration entry for `fetch` in `core/tools.py` | `dispatch_tool` / `evaluate_tool_call` / `render_tool_call` — P19-3's gate logic stays byte-stable. Also all of `toolbox.py` |
+| **P19-12** role tool sets + identity | `core/archetypes.py`, `core/identity.py`, `core/agent_loop.py` (prompt composition) | **all** of `core/tools.py` — compose through the public `ToolRegistry.without()` API only |
+| **P19-13** MCP servers CLI | `cli/_mcp.py`, `core/mcp_tools.py`, `edges/adapters/mcp_client.py`, docs | **all** of `core/tools.py`; any built-in tool registration |
+
+**`config.py` will conflict again** — P19-6 adds path constants while others may add tool constants.
+That is expected and the resolution is settled: **keep both blocks, then import the module and assert
+every constant exists**. Do not resolve it by reading the diff and assuming (wave 9's lesson).
+
+#### Dispatch protocol (identical for every card in the wave — no per-card negotiation)
+
+1. **One agent per card, one worktree per card, branch `pc/<card-id>`** (e.g. `pc/p19-12`). Merge
+   into `platform`, never into `main`.
+2. **Read before writing:** ROADMAP.md's Phase 19 section, §2 (Python ground truth), §4.5
+   (architectural principles + the anti-overengineering "we will NOT" list), §6 decisions
+   **D-19/D-20/D-21/D-24**, `CLAUDE.md`, and this card's own ownership row above.
+3. **Stay inside your ownership row.** If a card genuinely needs a file another card owns, **stop and
+   report it** rather than editing it — the integrator re-slices the wave. Three waves have now run
+   clean on this rule; every conflict we did hit came from a file nobody had assigned.
+4. **Do not edit `ROADMAP.md`, `TODO.md`, `README.md` or `CLAUDE.md`.** They are integrator-owned.
+   **Report what you shipped; do not update the board.** Phase 14 lost real time to roll-up tables
+   conflicting on nearly every merge.
+5. **A guard is not evidence until you have seen it fail.** Any test a card adds to protect an
+   invariant must be run against **planted drift** — break the thing on purpose, watch it go red,
+   restore, watch it go green — and the report must say which drift was planted. Three separate
+   guards in this repo were green while verifying nothing; this is the only rule that catches that.
+6. **Never regenerate a golden to make a diff go away.** Only P19-13 adds CLI surface, so only P19-13
+   regenerates goldens, and it must explain the diff line by line. For every other card the 18 goldens
+   stay byte-identical.
+7. **Definition of done** is the list in *"How to use this board"* above — full gate suite green
+   (`ruff check` · `ruff format --check` · `mypy src` · `pytest` · `golden verify-all` ·
+   `validate-specs.sh`), the card's spec updated with a version bump + changelog entry and a Status
+   line matching **what actually shipped**, commit as `Type: description` with **no** AI/Claude/
+   Co-Authored-By trailer, and the diff grepped for real names and `/home/<user>` paths.
+8. **Report back:** what shipped, what you deliberately did **not** ship and why, every load-bearing
+   claim with the command that proves it, and anything you found in a sibling card's territory
+   (do not fix it — report it).
+
+#### The cards
+
+**P19-6 · docket-native home + fleet registry** — *TODO · M · the removal spine starts here*
+`~/.openclaw/` -> `~/.docket/`; agent registration, channel bindings, gates/isolation flags and model
+defaults move out of `openclaw.json` into a docket-owned `fleet.json` through `edges/store.py`.
+**The dual-source problem disappears with it:** `core/sync.py`, `core/oc_models.py` and `doctor`'s
+config-drift check are **deleted rather than ported** — with one source of truth there is nothing left
+to drift. Per the clean-break amendment to D-19, **write no migration code**; local installs are
+re-created, not upgraded.
+
+**P19-11 · `fetch` tool** — *TODO · S (was M) · decision D-23, re-scoped*
+**Re-scoped by D-24: ship the tool, drop the lockdown.** The gap is measured, not assumed:
+`curl`/`wget` correctly ask, but `python3 -c "import urllib..."`, `node` and `git clone <url>` are
+**allowed unattended** — both interpreters are on the curated allowlist because agents need them
+constantly, and both are universal escape hatches. Ship a first-class `fetch` tool (domain allowlist,
+size cap, timeout, gated like every other tool) so there is an **inspectable** egress path.
+**Do NOT ship** the opt-in `--network none` / `--unshare-net` lockdown: it is off by default, breaks
+`npm install`/`pip`/`git clone` when on, and buys a config option rather than a guarantee.
+**Instead, this card must make the docs say the true thing** — egress is open, `fetch` is the
+inspectable path, and the escape hatches are named. An honestly-open gate beats one that reads as
+closed.
 
 **P19-12 · Per-role tool sets + identity composition** — *TODO · M*
 Two omissions P19-5 recorded honestly rather than papering over. (1) `ToolRegistry.without()` exists
-and is tested but **nothing composes it per role** — a Reviewer is told not to edit code instead of
-being unable to, which is a strictly weaker guarantee and the exact distinction docket sells.
+and is tested but **nothing composes it per role** — a Reviewer is *told* not to edit code instead of
+being *unable* to, which is a strictly weaker guarantee and the exact distinction docket sells.
 (2) The loop **composes no system prompt at all**: `SOUL.md`, the docket-owned persona
 (`core/identity.py`) and `WORKFLOW_AUTO.md`'s resume contract never reach the model. Wire both;
-role -> toolset belongs in `core/archetypes.py` as data, not a branch.
+role -> toolset belongs in `core/archetypes.py` as **data, not a branch**. Acceptance must include a
+test that a Reviewer registry genuinely lacks `write`/`edit` — asserted by dispatching and getting a
+tool-not-found denial, not by inspecting a dict.
 
 **P19-13 · `docket mcp servers` CLI + browser recipe** — *TODO · S*
 P19-10 shipped `add_mcp_server`/`load_mcp_tools` as tested, uncalled library functions. Give them a
 CLI (`docket mcp servers add/list/remove`) and document the payoff: **browser support is
 configuration, not code** — point it at the Playwright MCP server and P19-10's client gates those
 tools exactly like a built-in (namespaced `mcp__<server>__<tool>`, so a remote server cannot shadow
-`bash`). Same for web search. This is what "rent the protocol" buys.
+`bash`). Same for web search. This is what "rent the protocol" buys, and it is why **browser
+automation is on the never-build list** (D-24). Adds CLI surface, so this card **regenerates goldens**
+and must explain the diff.
 
-**Not in this wave, deliberately:** streaming (D-20(b) only), a tenant axis (D-22), and anything
-observability-shaped (Phase 20, after the removal wave — instrumenting code P19-7 deletes is waste).
+### Sequencing (updated 2026-07-31)
 
-### Sequencing
+| Wave | Cards | Mode | Gate to the next wave |
+| --- | --- | --- | --- |
+| 8-9 | ☑ P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10 | done | — |
+| **10** | **P19-6 · P19-11 · P19-12 · P19-13** | **4 parallel** | P19-6 merged (P19-7 needs its registry) |
+| **11** | **P19-7** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean |
+| **12** | **P21-1** -> **P21-5** | sequential | library boundary test seen to fail on a planted import |
+| **13** | **P20-2 · P20-4** | 2 parallel | — |
 
-**Waves 8-9 (done):** P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10.
+**Wave 11 closes Phase 19. Wave 12 is Phase 21 (the substrate — the factory's actual product line).
+Wave 13 is all that survives of Phase 20.** Anything not in this table was cut or deferred by D-24;
+do not let it get quietly re-claimed.
 
-**Wave 10 (next):** P19-11 / P19-12 / P19-13 in parallel — runtime capabilities, disjoint from the
-registry refactor.
-
-**Wave 11 (the removal):** P19-6 -> P19-7, **sequential** — P19-7 cannot start until the fleet
-registry P19-6 creates exists. Then P19-8 (channels).
-
-**Wave 12+:** Phase 20 (observability), then Phase 21 (packaging) once **D-20** is answered.
-
-Waves 10 and 11 are correct under either reading of D-20, which is why they proceed while that
-decision is still open.
+**P19-3 was the milestone that mattered** — the moment docket's guardrails stopped being advisory.
+**P19-7 is the moment the dependency is actually gone**; do not report Phase 19 complete before that
+grep is clean.
 
 Wave A is additive — every card lands on a green tree with the existing suite passing. The daemon
 stops being *used* at P19-5 and stops being *present* at P19-7. Wave C is optional depth once the
