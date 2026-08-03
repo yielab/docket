@@ -92,6 +92,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("SCHEDULE_FILE", "docket-schedules.json"),
     ("RUNS_FILE", "docket-runs.json"),
     ("MCP_SERVERS_FILE", "docket-mcp-servers.json"),
+    ("TELEGRAM_OFFSET_FILE", "docket-telegram-offset.json"),
     ("MODEL_REGISTRY_FILE", "docket-models.json"),
     ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),
     ("PROJECTS_DIR", "workspaces/projects"),

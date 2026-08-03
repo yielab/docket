@@ -360,3 +360,29 @@ FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
 # the fleet registry tracks only what has no other home (see core/fleet.py's
 # module docstring for the full rationale).
 FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))
+
+# ── P19-8: docket-owned Telegram approval channel ──
+# The bot token is stored as an ordinary docket-keys secret (core/secrets.py)
+# under this name -- `docket keys add TELEGRAM_BOT_TOKEN` -- rather than a
+# bespoke config file, so it inherits the same at-rest handling (0600 JSON)
+# and the same redaction path (core/trace.py's redact() reads every stored
+# secret VALUE via core.secrets.secret_values()) every other credential
+# already gets. cli/_keys.py excludes this one name from the per-agent .env
+# sync every other stored key gets -- no project agent needs the fleet's own
+# bot credential, and every project workspace is a wider blast radius than
+# the single `docket serve` process that actually uses it.
+TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN"
+# TELEGRAM_POLL_TIMEOUT_S: the Telegram-side long-poll wait passed to
+# getUpdates -- an empty reply after this many seconds is normal, not a
+# failure. TELEGRAM_REQUEST_TIMEOUT_S is this process's own socket timeout
+# and MUST exceed it, or a legitimately empty long-poll would look like a
+# local timeout.
+TELEGRAM_POLL_TIMEOUT_S = int(os.environ.get("TELEGRAM_POLL_TIMEOUT_S", "25"))
+TELEGRAM_REQUEST_TIMEOUT_S = float(os.environ.get("TELEGRAM_REQUEST_TIMEOUT_S", "35"))
+# TELEGRAM_OFFSET_FILE: the last-processed `update_id` + 1, persisted so a
+# `docket serve` restart resumes from where it left off instead of Telegram
+# redelivering the whole backlog (getUpdates only forgets an update once a
+# strictly-greater offset has been acknowledged). No env override -- internal
+# bookkeeping, not something an operator has a reason to relocate (same
+# no-override shape as AUDIT_LOG/MODEL_REGISTRY_FILE above).
+TELEGRAM_OFFSET_FILE = DOCKET_HOME / "docket-telegram-offset.json"

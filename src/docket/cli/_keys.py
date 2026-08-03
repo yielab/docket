@@ -67,6 +67,15 @@ _KEY_PREFIXES: dict[str, tuple[str, int]] = {
     "OPENROUTER_API_KEY": ("sk-or-", 0),
 }
 
+# Stored secrets that are docket's own operational credentials, not a model
+# provider's -- these are excluded from `_sync_keys_to_agents`'s per-agent
+# .env write. Every project agent's workspace is a wider blast radius than
+# the one process that actually needs the credential; `TELEGRAM_BOT_TOKEN`
+# (ROADMAP Phase 19 P19-8) is read by `core/telegram.py`/`docket serve`
+# only, and no agent's own turn has any legitimate use for docket's channel
+# bot's own token.
+_NON_AGENT_KEYS: frozenset[str] = frozenset({_cfg.TELEGRAM_BOT_TOKEN_KEY})
+
 
 def _mask_key(value: str) -> str:
     if len(value) > 12:
@@ -107,7 +116,7 @@ def _sync_keys_to_agents() -> None:
                 env_lines.append(f'{key_name}="{secrets[key_name]}"')
 
         for key_name, value in secrets.items():
-            if key_name not in _PROVIDER_KEYS:
+            if key_name not in _PROVIDER_KEYS and key_name not in _NON_AGENT_KEYS:
                 env_lines.append(f'{key_name}="{value}"')
 
         env_file = ws / ".env"
