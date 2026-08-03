@@ -1,8 +1,8 @@
 # Security Gates Specification
 
-**Version**: 0.9.0
-**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, like the in-turn tool-call gate, has no live-path caller yet: nothing constructs a `ToolContext` with `sandbox="auto"` in production until ROADMAP Phase 19 P19-5 wires a real agent loop. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on.
-**Last Updated**: 2026-07-31
+**Version**: 0.10.0
+**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, like the in-turn tool-call gate, has no live-path caller yet: nothing constructs a `ToolContext` with `sandbox="auto"` in production until ROADMAP Phase 19 P19-5 wires a real agent loop. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -615,6 +615,66 @@ either.
      the `pre_tool_call`/command-classifier gate above — it is a second, independent layer
      underneath calls that already cleared that gate, exactly as requirement 3 states.
 
+### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
+
+**Say the true thing: network egress is open by default, on this fleet, today.** This is not a
+gap being quietly disclosed — it is the explicit, deliberate outcome of decision D-23, and this
+section exists so no other part of this spec (or any user-facing material) is read as implying
+otherwise.
+
+1. **The measured gap, precisely — not a general worry.** `bash`'s command classifier
+   (`core/security.py`'s `classify_command`) correctly routes `curl`/`wget` to `ask`, because
+   neither is a member of `SAFE_BINS`. But `python3`, `node`, and `git` **are** curated-allowlist
+   members (`SAFE_BINS` includes all three) — `python3 -c "import urllib.request; ..."`, a `node`
+   one-liner, and `git clone <url>` **MUST NOT** be described as gated: they run unattended today
+   under the existing allowlist, exactly like `git status` or `npm test` does, because the
+   classifier gates by binary + argument shape, not by "does this binary happen to also make
+   network calls". Both interpreters are on the allowlist because agents need them constantly for
+   ordinary, benign work — removing them would be a far larger regression than this card scopes
+   (the same tradeoff the "High-risk action classes" section above already made for `git`/`npm`).
+2. **What this card ships instead: an inspectable path, not a closed gate.** `fetch`
+   (`edges/adapters/fetch.py`'s `fetch_url`, registered in `core/tools.py`'s `builtin_registry()`
+   as a `kind="read"` tool) is a first-class, gated tool an agent can reach for instead of the
+   escape hatches above. It enforces, inside the handler itself (mechanism, not policy — the same
+   discipline `toolbox.resolve_within` uses for file paths):
+   - **A domain allowlist** (`config.FETCH_ALLOWED_DOMAINS`, exact hostnames, comma-separated,
+     **empty by default**). A host not on the list **MUST** be refused before any socket opens —
+     `fetch` does not default to "reachable everywhere" just because the fleet's overall egress
+     posture is open; an operator opts a domain in explicitly.
+   - **A response size cap** (`config.FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes). A
+     response over the cap **MUST** be truncated with the truncation announced in the returned
+     text, matching `toolbox.MAX_OUTPUT_CHARS`'s existing announced-truncation contract for every
+     other built-in.
+   - **A timeout** (`config.FETCH_TIMEOUT_S`, default 15s, overridable per call up to the same
+     order of magnitude via the tool's own `timeout` argument).
+   - **A redirect guard.** A redirect off the domain allowlist **MUST** be refused, not silently
+     followed — otherwise the allowlist would be decorative (an allowlisted host could simply
+     redirect anywhere). `edges/adapters/fetch.py`'s `_DomainLockedRedirectHandler` intercepts
+     `urllib`'s own redirect-following at the documented extension point
+     (`HTTPRedirectHandler.redirect_request`) before a connection to the new host is ever opened.
+3. **Gated exactly like every other built-in — no second execution path.** `fetch` is registered
+   through `ToolRegistry.register` like `read`/`write`/`bash`, and every call still passes through
+   `core/tools.py`'s single chokepoint (`dispatch_tool` -> `evaluate_tool_call`) — a `pre_tool_call`
+   policy can `block`/`require_approval`/`warn`/`redact` a `fetch` call exactly as it can any other
+   tool, rendered the same `"fetch url=... timeout=..."` shape `render_tool_call` already produces
+   for everything else. Because `kind="read"`, a `fetch` call does **not** additionally route
+   through the exec command classifier (there is no shell command to classify) — its containment
+   is the domain allowlist above, enforced in the handler, the same layering `ToolContext.sandbox`
+   uses for the `bash` tool (mechanism underneath the gate, never a substitute for it).
+4. **What this card explicitly does NOT ship, and why — decisions D-23/D-24.** The opt-in
+   `--network none`/`--unshare-net` sandbox lockdown from "Exec sandbox for the `bash` tool"
+   above's requirement 8 is **deferred**, not implemented by this card. It would need to be
+   default-off to avoid breaking `npm install`/`pip`/`git clone` (the same three commands most
+   `bash`-tool work already depends on), which means it would buy a config option nobody has yet
+   asked to turn on, not a guarantee — see D-23/D-24 in `ROADMAP.md`. `fetch` closes none of the
+   escape hatches named in requirement 1; it exists so reaching for the network doesn't have to
+   mean reaching for one of them.
+5. **Scope — stated precisely, matching the Status line.** This section governs
+   `edges/adapters/fetch.py`'s `fetch_url` and the `fetch` tool registration in `core/tools.py`
+   only. `FETCH_ALLOWED_DOMAINS` is empty in a default install — no domain is reachable through
+   `fetch` until an operator configures one — and nothing in this section changes what `bash`,
+   `python3`, `node`, or `git` may already do; those stay exactly as described in requirement 1.
+
 ## Interface Contracts
 
 ### `docket gates` command (implemented)
@@ -898,6 +958,51 @@ $ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
                                                                              # (empty — no orphan)
 ```
 
+### Network egress and the `fetch` tool — examples (implemented, ROADMAP Phase 19 P19-11)
+
+A host not on the allowlist is refused before any connection opens — the default state, since
+`FETCH_ALLOWED_DOMAINS` is empty until an operator configures it:
+
+```text
+>>> fetch_url("https://example.com/status")
+ToolOutcome(ok=False, content='',
+            error="'example.com' is not on the fetch domain allowlist (none configured); "
+                  "add it to FETCH_ALLOWED_DOMAINS to permit it")
+```
+
+Once configured, the same call succeeds, is size-capped, and a redirect off the allowlist is
+refused rather than followed:
+
+```text
+# FETCH_ALLOWED_DOMAINS=api.example.com
+>>> fetch_url("https://api.example.com/status")
+ToolOutcome(ok=True, content='HTTP 200 application/json\n\n{"status": "ok"}', error='')
+
+>>> fetch_url("https://api.example.com/huge-report")   # FETCH_MAX_RESPONSE_BYTES=200000
+ToolOutcome(ok=True,
+            content='HTTP 200 text/csv\n\n<first 200000 bytes>\n\n'
+                    '[truncated: response exceeded 200000 bytes]',
+            error='')
+
+>>> fetch_url("https://api.example.com/redirects-offsite")   # 302 -> http://attacker.example/x
+ToolOutcome(ok=False, content='',
+            error="HTTP 302 from https://api.example.com/redirects-offsite: redirected to "
+                  "'attacker.example', which is not on the fetch domain allowlist")
+```
+
+Escape hatches the allowlist does **not** apply to — named here so this is never read as "network
+egress is gated" — stay exactly as capable as they were before this card, because that gap is
+explicitly out of scope (decision D-23):
+
+```text
+$ python3 -c "import urllib.request; urllib.request.urlopen('https://anywhere.example')"
+# runs unattended today -- python3 is a SAFE_BINS member; classify_command never sees the URL
+$ node -e "require('https').get('https://anywhere.example')"
+# runs unattended today -- same reason, for node
+$ git clone https://anywhere.example/repo.git
+# runs unattended today -- git is a SAFE_BINS member
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -919,6 +1024,9 @@ $ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
   makes (`deny`, `ask`, and a `warn`/`redact` hit that still allows the call) **MUST** appear in
   the audit log, with the gated call's rendered arguments passed through `core.trace.redact`
   first.
+- A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any
+  host — the allowlist starts empty, not populated with a starter set, so "network egress is
+  open" is never confused with "`fetch` reaches anywhere by default" (ROADMAP Phase 19 P19-11).
 
 ### Invariants
 
@@ -991,8 +1099,67 @@ $ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
   `ToolContext.env`'s explicit entries. `sandbox="off"`, and `sandbox="auto"` when it resolves to
   `"none"`, are unaffected and **MUST** keep receiving the full host environment exactly as before
   this card.
+- `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
+  refusal happens before `urllib.request.build_opener` is ever called, not merely before the
+  content is returned. `tests/python/test_p19_11_fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
+  proves this by making `build_opener` raise if invoked at all.
+- A redirect `fetch` follows **MUST NOT** land on a host absent from the same allowlist — the
+  domain allowlist governs the whole request, including any redirect chain, not just the
+  originally requested URL. `TestRedirects::test_redirect_off_the_allowlist_is_refused` proves
+  this against a real HTTP 302 response, not a mocked assumption about `urllib`'s behavior.
+- `fetch`'s response size cap **MUST** be enforced with an announced truncation, matching
+  `toolbox.MAX_OUTPUT_CHARS`'s existing contract for every other built-in — a truncated `fetch`
+  result **MUST NOT** be indistinguishable from a response that was genuinely that short.
+- `fetch` **MUST** be gated through `core/tools.py`'s existing chokepoint like every other
+  built-in — a `pre_tool_call` policy that blocks a rendered `fetch` call **MUST** deny it before
+  the handler runs, exactly as it would for `bash`/`write`. This card adds no second execution
+  path and no second gate.
 
 ## Changelog
+
+### Version 0.10.0 (2026-08-02)
+
+- **ROADMAP Phase 19 P19-11 — the `fetch` tool (decisions D-23, D-24).** D-23 measured docket's
+  real network-egress gap precisely: `curl`/`wget` correctly ask through the `bash` command
+  classifier, but `python3`, `node`, and `git` are `SAFE_BINS` members, so `python3 -c
+  "import urllib..."`, a `node` one-liner, and `git clone <url>` all reach the network unattended.
+  D-24 re-scoped the card to ship the tool, not a lockdown:
+  - **`edges/adapters/fetch.py`'s `fetch_url`, registered as `core/tools.py`'s new `fetch`
+    built-in (`kind="read"`).** Zero new dependencies — stdlib `urllib`, the same choice
+    `edges/adapters/llm.py` (P19-1) made for the same reason.
+  - **A domain allowlist (`config.FETCH_ALLOWED_DOMAINS`, empty by default), a response size cap
+    (`config.FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes, truncation always announced), and a
+    timeout (`config.FETCH_TIMEOUT_S`, default 15s)** — all enforced inside the handler itself
+    (mechanism, not policy — the same discipline `toolbox.resolve_within` uses for file paths),
+    independent of whatever `core/tools.py`'s chokepoint already decided.
+  - **A redirect off the allowlist is refused, not silently followed** — `urllib`'s own
+    `HTTPRedirectHandler.redirect_request` extension point is used to intercept a redirect before
+    any connection to the new host opens; otherwise an allowlisted host could redirect anywhere
+    and the allowlist would be decorative. Verified against a real local HTTP server issuing a
+    real 302, not a mocked assumption about `urllib`'s behavior.
+  - **Gated exactly like every other built-in.** `fetch` goes through the same
+    `dispatch_tool` -> `evaluate_tool_call` chokepoint every other tool call does; a
+    `pre_tool_call` policy can `block`/`require_approval` a rendered `fetch url=... timeout=...`
+    call the same way it can any other tool. No change to `dispatch_tool`, `evaluate_tool_call`,
+    or `render_tool_call` themselves — this card only adds a registration entry.
+  - **What this card deliberately does NOT ship:** the opt-in `--network none`/`--unshare-net`
+    lockdown from "Exec sandbox for the `bash` tool" above's requirement 8. D-24 deferred it — it
+    would need to default off to avoid breaking `npm install`/`pip`/`git clone`, which means it
+    would buy a config option nobody has asked to turn on, not a guarantee. `fetch` closes none of
+    the escape hatches named above; it exists so reaching the network doesn't have to mean
+    reaching for one of them. **Read the Status line and "Network egress and the `fetch` tool"
+    above before citing this card as closing docket's egress gap — it does not, on purpose.**
+  - Tests: `tests/python/test_p19_11_fetch_tool.py` (16 cases) — a real local HTTP server
+    (stdlib `http.server`) backs the allowlist, size-cap, timeout, redirect, and HTTP-error
+    behavior; a `pre_tool_call` policy test dispatches a real `fetch` call through the
+    unmodified `dispatch_tool` to prove the gate applies. Four guards were planted as drift and
+    confirmed to fail before being reverted: disabling the domain check (2 tests went red),
+    disabling the redirect guard (the blocked-redirect test went red, following the fake redirect
+    into a DNS failure instead of a clean refusal), removing the response-size slice (the
+    truncation count went red, 101 bytes kept instead of 100), and registering the tool with
+    `kind="exec"` instead of `kind="read"` (three tests went red, including the dispatch and
+    policy-gate tests, because an empty `command` argument was denied by the command classifier
+    before ever reaching the handler).
 
 ### Version 0.9.0 (2026-07-31)
 

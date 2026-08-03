@@ -338,7 +338,15 @@ class TestResultReportedBackToTheModel:
 
 class TestRegistry:
     def test_builtins_present(self) -> None:
-        assert builtin_registry().names() == ["bash", "edit", "glob", "grep", "read", "write"]
+        assert builtin_registry().names() == [
+            "bash",
+            "edit",
+            "fetch",
+            "glob",
+            "grep",
+            "read",
+            "write",
+        ]
 
     def test_specs_carry_schemas_the_model_can_use(self) -> None:
         specs = {s.name: s for s in builtin_registry().specs()}
@@ -348,7 +356,7 @@ class TestRegistry:
     def test_without_narrows_the_set(self) -> None:
         readonly = builtin_registry().without("write", "edit", "bash")
         assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 3
+        assert len(readonly) == 4
 
     def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
         readonly = builtin_registry().without("write")
@@ -373,11 +381,18 @@ class TestSinglePathToExecution:
     # `tests/python/test_p19_10_mcp_client.py`'s `TestGatedExactlyLikeABuiltin`,
     # which dispatches an MCP-adapted tool through the real, unmodified
     # `dispatch_tool` and proves a `pre_tool_call` policy gates it.
+    #
+    # edges/adapters/fetch.py (ROADMAP Phase 19 P19-11): same shape again --
+    # it imports `ToolOutcome` only, to construct the return value its own
+    # `fetch_url` handler function produces. `core/tools.py`'s `fetch`
+    # registration calls `fetch_url` directly (the same way it calls
+    # `toolbox.read_file` et al.); nothing outside `dispatch_tool` ever does.
     ALLOWED_IMPORTERS: ClassVar[set[str]] = {
         "core/tools.py",
         "edges/adapters/toolbox.py",
         "core/mcp_tools.py",
         "edges/adapters/mcp_client.py",
+        "edges/adapters/fetch.py",
     }
 
     @staticmethod

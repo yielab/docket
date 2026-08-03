@@ -312,3 +312,29 @@ MCP_CLIENT_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_TIMEOUT_S", "10"))
 # careless config) cannot ask for an effectively unbounded wait that could
 # stall a whole turn on one misbehaving external server.
 MCP_CLIENT_MAX_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_MAX_TIMEOUT_S", "60"))
+
+# ── P19-11: the `fetch` tool (decisions D-23/D-24 — ship the tool, not the lockdown) ──
+#
+# Network egress stays open by default (`bash` + curl/wget correctly ask, but
+# python3/node/git-clone are curated-allowlist escape hatches that reach the
+# network unattended — see security-gates.spec.md's "Network egress and the
+# `fetch` tool" section). These three constants are what make `fetch` an
+# *inspectable* path instead of a third unattended one: a domain allowlist, a
+# response size cap, and a timeout — enforced inside `edges/adapters/fetch.py`
+# itself (mechanism, the same way `resolve_within`'s containment lives in
+# `edges/adapters/toolbox.py` rather than in `core/tools.py`'s gate).
+
+# FETCH_ALLOWED_DOMAINS: comma-separated exact hostnames `fetch` may reach.
+# Empty by default — an operator opts a domain in explicitly rather than the
+# tool defaulting to "anywhere", which would just be a second unattended
+# escape hatch with extra steps.
+FETCH_ALLOWED_DOMAINS: tuple[str, ...] = tuple(
+    d.strip().lower() for d in os.environ.get("FETCH_ALLOWED_DOMAINS", "").split(",") if d.strip()
+)
+# FETCH_MAX_RESPONSE_BYTES: response bodies are fed straight into a model's
+# context, same reasoning as `toolbox.MAX_OUTPUT_CHARS` for the other
+# built-ins; truncation is always announced in the returned text.
+FETCH_MAX_RESPONSE_BYTES = int(os.environ.get("FETCH_MAX_RESPONSE_BYTES", str(200_000)))
+# FETCH_TIMEOUT_S: default per-call wall-clock bound, overridable per call via
+# the tool's own `timeout` argument up to this same order of magnitude.
+FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
