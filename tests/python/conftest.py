@@ -133,16 +133,56 @@ def write_fake_openclaw(bindir: Path) -> Path:
     return script
 
 
+@pytest.fixture(autouse=True)
+def _shim_openclaw_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Safety net: no test may ever reach the developer's **real** `openclaw`.
+
+    **Measured, not assumed.** Wiring a logging wrapper around the real binary
+    and running the full suite caught **17 real invocations**, five of which
+    mutated the developer's actual ``~/.openclaw/openclaw.json``::
+
+        openclaw config set channels.telegram.groups.-123456789 {"requireMention": false}
+        openclaw config set channels.telegram.groups.-999888777 {"requireMention": false}
+        openclaw agents add myshop --workspace /tmp/... --non-interactive
+
+    Four fake Telegram group bindings from tests were found sitting in the real
+    config as a result. The daemon's own ``config-audit.jsonl`` recorded each as
+    ``event: config.write`` against the real path -- and grew **only** while the
+    suite ran (zero growth across a four-minute idle window), which is what
+    ruled out "background daemon activity" as an explanation.
+
+    The cause is structural, not a bad test: ``edges/adapters/openclaw.py``
+    shells out to ``openclaw`` (``wire_channel``, ``add_agent``, version and
+    approval probes), and only tests that explicitly requested the old
+    ``fake_openclaw`` fixture had a shim on PATH. Every other test fell through
+    to whatever ``openclaw`` the developer happens to have installed. This is
+    **pre-existing** -- verified present at ``e9ef2cd``, before wave 11 -- and
+    it disappears entirely at P19-7b, which deletes every shell-out. Until then
+    it re-pollutes on every run, including in CI on any machine with the daemon.
+
+    Autouse for the same reason ``_isolate_docket_home`` is: a test cannot opt
+    into safety it does not know it needs. A test that wants to assert the
+    *absent* binary case still deletes this directory (see ``fake_openclaw``,
+    which returns this same path).
+    """
+    bindir = tmp_path / "_ocbin"
+    write_fake_openclaw(bindir)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    return bindir
+
+
 @pytest.fixture
-def fake_openclaw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def fake_openclaw(_shim_openclaw_on_path: Path) -> Path:
     """Prepend a real (shim) `openclaw` binary to PATH.
+
+    Now a thin alias over the autouse ``_shim_openclaw_on_path`` so both resolve
+    to the **same** directory: a test that deletes the returned path to exercise
+    the absent-binary case removes the autouse shim too, rather than uncovering
+    the developer's real binary underneath it.
 
     Lets dependency/version/health checks execute their real code instead of
     being stubbed — they pass because they genuinely find an `openclaw` on PATH,
     which is the honest analogue of a machine that has the daemon installed.
     Returns the bin directory so a test can remove it to assert the absent case.
     """
-    bindir = tmp_path / "_ocbin"
-    write_fake_openclaw(bindir)
-    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-    return bindir
+    return _shim_openclaw_on_path
