@@ -6,13 +6,15 @@ and wraps this in a Typer command, raising ``typer.Exit(code)``.
 
 Subcommands: ``show`` (default) | ``project``. Both are pure read-only renderers
 over the canonical memory layout (``core/memory.py``). Semantic search over an
-agent's memory is the openclaw runtime's job (``memory_search``/``memory_get``),
-not docket's — docket does not maintain a rival keyword index.
+agent's memory is not docket's job — docket does not maintain a rival keyword
+index.
 """
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
+from urllib.parse import quote as _urlquote
 
 import docket.config as _cfg
 from docket import ui
@@ -76,39 +78,21 @@ def _context_show(agent_id: str, ws: Path) -> None:
 
     ui.console.print()
 
-    ui.console.print("[bold]Gateway Activity[/bold]")
-    today = _mem.today().strftime("%Y-%m-%d")
-    log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
-    if log_file.is_file():
-        try:
-            all_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-            matched = [ln for ln in all_lines if agent_id in ln][-5:]
-            if matched:
-                for ln in matched:
-                    ui.console.print(f"  [dim]{ln}[/dim]")
-            else:
-                ui.console.print(f"  [dim]No entries today for '{agent_id}'.[/dim]")
-        except OSError:
-            ui.console.print("  [dim]Cannot read log file.[/dim]")
-    else:
-        ui.console.print(f"  [dim]No log for {today}.[/dim]")
-
-    ui.console.print()
-
     ui.console.print("[bold]Context Statistics[/bold]")
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     activity = last_activity(agent_id)
 
-    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
+    # Phase 19 P19-7b: there is no daemon gateway log to tail any more; session
+    # size now reads docket's own durable per-session storage (core/session.py)
+    # for this agent's *current* session key, rather than a daemon JSONL file.
     session_size = "n/a"
-    if sessions_dir.is_dir():
-        session_files = sorted(sessions_dir.glob("*.jsonl"))
-        if session_files:
-            try:
-                size_bytes = session_files[-1].stat().st_size
-                session_size = f"{size_bytes // 1024}KB"
-            except OSError:
-                pass
+    with contextlib.suppress(Exception):
+        raw = store.read_json(_cfg.meta_path(agent_id))
+        session_key = str(raw.get("sessionKey", ""))
+        if session_key:
+            session_file = _cfg.SESSIONS_DIR / _urlquote(session_key, safe="") / "session.json"
+            if session_file.is_file():
+                session_size = f"{session_file.stat().st_size // 1024}KB"
 
     ui.console.print(f"  Log files:    {mem_count}")
     ui.console.print(f"  Session size: {session_size}")

@@ -29,12 +29,12 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.cli import app as _app
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod as _podcore
 from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
@@ -45,31 +45,14 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Register/unregister mutate agents.list directly (no real openclaw)."""
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
 
 def _seed_pod(
@@ -78,15 +61,12 @@ def _seed_pod(
     project: str = "demo",
     roles: tuple[str, ...] = _podcore.DEFAULT_POD_ROLES,
 ) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return oc_dir
+    return home
 
 
 class _RecordingRunner:
@@ -198,14 +178,14 @@ class TestInfoDisplaysPausedCorrectly:
     }
 
     def _setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paused_value: object) -> Path:
-        oc_dir = tmp_path / ".openclaw"
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        home = tmp_path / ".docket"
+        ws = home / "workspaces" / "projects" / "myshop"
         ws.mkdir(parents=True)
         meta = {**self.META, "paused": paused_value, "pausedReason": "budget"}
         (ws / ".docket-meta.json").write_text(json.dumps(meta))
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-        _point_at(oc_dir, monkeypatch)
-        return oc_dir
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_at(home, monkeypatch)
+        return home
 
     def test_real_bool_true_shows_paused_in_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -267,30 +247,23 @@ class TestProfileResume:
     }
 
     def _setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        oc_dir = tmp_path / ".openclaw"
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        home = tmp_path / ".docket"
+        ws = home / "workspaces" / "projects" / "myshop"
         ws.mkdir(parents=True)
         (ws / ".docket-meta.json").write_text(json.dumps(self.META))
-        (oc_dir / "openclaw.json").write_text(
-            json.dumps(
-                {
-                    "agents": {"list": [{"id": "myshop", "model": self.META["model"]}]},
-                    "bindings": [],
-                }
-            )
-        )
-        _point_at(oc_dir, monkeypatch)
-        return oc_dir
+        (home / "fleet.json").write_text(json.dumps({"agents": [{"id": "myshop"}], "bindings": []}))
+        _point_at(home, monkeypatch)
+        return home
 
     def test_resume_clears_paused_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = self._setup(tmp_path, monkeypatch)
+        home = self._setup(tmp_path, monkeypatch)
         runner = CliRunner()
         result = runner.invoke(_app, ["profile", "myshop", "--resume"])
         assert result.exit_code == 0, result.output
         raw = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
+            (home / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
         )
         assert AgentMeta.coerce_paused(raw.get("paused")) is False
         assert raw.get("pausedReason", "") == ""
@@ -298,24 +271,24 @@ class TestProfileResume:
     def test_resume_writes_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = self._setup(tmp_path, monkeypatch)
+        home = self._setup(tmp_path, monkeypatch)
         runner = CliRunner()
         result = runner.invoke(_app, ["profile", "myshop", "--resume"])
         assert result.exit_code == 0, result.output
-        audit_text = (oc_dir / "audit.log").read_text()
+        audit_text = (home / "audit.log").read_text()
         entries = [json.loads(line) for line in audit_text.splitlines() if line.strip()]
         assert any(e["action"] == "profile.resume" and "myshop" in e["detail"] for e in entries)
 
     def test_resume_on_unpaused_agent_is_a_harmless_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        home = tmp_path / ".docket"
+        ws = home / "workspaces" / "projects" / "myshop"
         ws.mkdir(parents=True)
         meta = {**self.META, "paused": False, "pausedReason": ""}
         (ws / ".docket-meta.json").write_text(json.dumps(meta))
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-        _point_at(oc_dir, monkeypatch)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_at(home, monkeypatch)
         runner = CliRunner()
         result = runner.invoke(_app, ["profile", "myshop", "--resume"])
         assert result.exit_code == 0, result.output
@@ -337,7 +310,7 @@ class TestAutoPauseDispatch:
         assert results[0].status == "blocked"
 
         lead_id = _podcore.member_id("demo", "lead")
-        meta = _oc.meta_read(lead_id)
+        meta = _fleet.meta_read(lead_id)
         assert meta.is_paused() is True
         assert meta.paused_reason == "budget"
 
@@ -380,7 +353,7 @@ class TestAutoPauseDispatch:
         assert result.exit_code == 0, result.output
 
         lead_id = _podcore.member_id("demo", "lead")
-        assert _oc.meta_read(lead_id).is_paused() is False
+        assert _fleet.meta_read(lead_id).is_paused() is False
         assert _dispatch.read_tasks("demo")[0]["status"] == "pending"
 
         # Budget is still (mock-)exceeded, so a fresh dispatch blocks (and
@@ -388,7 +361,7 @@ class TestAutoPauseDispatch:
         # the queue, it doesn't forgive the cap.
         _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
         assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
-        assert _oc.meta_read(lead_id).is_paused() is True
+        assert _fleet.meta_read(lead_id).is_paused() is True
 
 
 # ── estimate fallback for gating ───────────────────────────────────────────────────
@@ -419,7 +392,7 @@ class TestEstimateFallback:
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         lead_id = _podcore.member_id("demo", "lead")
-        _oc.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
         spent, estimated = _dispatch.pod_gating_cost("demo")
@@ -434,15 +407,15 @@ class TestEstimateFallback:
         recorded spend at 0 forever — the cap must still trip, from tokens."""
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         lead_id = _podcore.member_id("demo", "lead")
-        _oc.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-        _oc.meta_set(lead_id, "budgetUsd", "1")
+        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+        _fleet.meta_set(lead_id, "budgetUsd", "1")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
         _dispatch.enqueue_task("demo", "Too expensive")
 
         results = _dispatch.dispatch_pod("demo", runner=_RecordingRunner())
         assert results[0].status == "blocked"
         assert "estimated" in results[0].reason
-        assert _oc.meta_read(lead_id).is_paused() is True
+        assert _fleet.meta_read(lead_id).is_paused() is True
 
 
 # ── recorded spend is never contaminated by an estimate ───────────────────────────
@@ -465,7 +438,7 @@ class TestRecordedSpendNeverContaminated:
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         lead_id = _podcore.member_id("demo", "lead")
-        _oc.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
         runner = CliRunner()
@@ -481,7 +454,7 @@ class TestRecordedSpendNeverContaminated:
     ) -> None:
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         lead_id = _podcore.member_id("demo", "lead")
-        _oc.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
+        _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
         _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
         runner = CliRunner()

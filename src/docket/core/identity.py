@@ -52,7 +52,8 @@ PERSONA_END = "<!-- docket-persona:end -->"
 #: elsewhere) since no other module currently needs the bare filename.
 SOUL_FILE = "SOUL.md"
 
-#: OpenClaw base-assistant scaffolding that must not linger in a docket-managed
+#: Base-assistant scaffolding a self-authoring runtime may leave behind, and that
+#: must not linger in a docket-managed
 #: workspace. ``BOOTSTRAP.md`` ("you just woke up, figure out who you are") and the
 #: empty ``IDENTITY.md`` ("pick a name") self-author a drifting identity that fights
 #: the docket-generated, role-derived ``SOUL.md`` — the exact split-brain that made a
@@ -62,7 +63,7 @@ SCAFFOLDING_FILES = ("IDENTITY.md", "BOOTSTRAP.md")
 
 
 def quarantine_scaffolding(ws: Path) -> list[str]:
-    """Move any OpenClaw base-assistant scaffolding in *ws* into ``.docket-archive/``.
+    """Move any base-assistant scaffolding in *ws* into ``.docket-archive/``.
 
     Returns the archived filenames (empty if none). **Reversible** — files are moved,
     not deleted — so it is safe to run on provisioning and in ``docket doctor``.

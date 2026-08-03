@@ -15,8 +15,8 @@ ROADMAP Phase 15 G-2). The CLI's ``policies test`` path calls ``policy_test`` wh
 dry-run with no trace side-effects, so this module itself never emits traces (matching
 DOCKET_NO_TRACE=1) — callers that need a trace record emit it themselves.
 
-Policy files are docket-owned artefacts (not openclaw config), so this module
-reads them directly rather than through the ACL.
+Policy files are docket-owned artefacts, so this module reads them directly
+through ``edges/store.py`` rather than through any daemon config path.
 
 Live-path wiring (G-2, ROADMAP Phase 15): ``pre_input`` is evaluated once, at
 task enqueue (``core/dispatch.py``'s ``enqueue_task``) — not re-evaluated before

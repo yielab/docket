@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Complete
-**Last Updated**: 2026-08-02
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -133,7 +133,7 @@ commands. Six modes **MUST** be supported.
   `memory/.distilled/<day>/` **before** deleting anything (ROADMAP Phase 17 C-2) — **MUST** be the
   default behaviour; `--no-distill-first` is the explicit opt-out that restores the pre-C-2
   behaviour of deleting `memory/*.md` outright with no distillation step
-- A failed distillation (driver/daemon error, timeout, or an empty reply) **MUST** abort the whole
+- A failed distillation (driver/model error, timeout, or an empty reply) **MUST** abort the whole
   `clean` operation before any file is deleted — never partially apply
 - Preserve SOUL.md, AGENTS.md, TOOLS.md
 - Preserve session and project keys
@@ -174,7 +174,7 @@ commands. Six modes **MUST** be supported.
   `RuntimeDriver` port every pod dispatch hop already uses
 - Archive the original daily logs to `memory/.distilled/<day>/` (moved, not deleted) once the
   summary is durably written
-- **MUST** fail closed: a driver failure (timeout, daemon error, non-zero exit) or an empty reply
+- **MUST** fail closed: a driver failure (timeout, model error, non-zero exit) or an empty reply
   leaves every file on disk untouched and returns a non-zero exit code — no partial archive, no
   partial MEMORY.md write
 - No pending logs is a no-op success (there is nothing undistilled to lose)
@@ -214,7 +214,7 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
 ### Return Codes
 
 - `0`: Success
-- `1`: Any error (unknown agent, invalid arguments, permission problems, daemon failures —
+- `1`: Any error (unknown agent, invalid arguments, permission problems, driver failures —
   docket's CLI-wide convention; see ../api/cli-interface.spec.md)
 
 ## Examples
@@ -225,7 +225,7 @@ docket maintain <agent-id> [check|clean|reset|rebuild|sessions]
 $ docket add mywebsite ~/projects/website
 [INFO] Creating agent: mywebsite
 [INFO] Stack: node (detected: package.json)
-[INFO] Workspace: ~/.openclaw/workspaces/projects/mywebsite
+[INFO] Workspace: ~/.docket/workspaces/projects/mywebsite
 [INFO] Session key: agent:mywebsite:default
 [SUCCESS] Agent 'mywebsite' created and registered
 ```
@@ -245,8 +245,9 @@ Continue? (y/N): y
 ## Validation
 
 ### Pre-conditions
-- OpenClaw daemon **MUST** be running
-- User **MUST** have write permissions to ~/.openclaw
+- User **MUST** have write permissions to ~/.docket (corrected ROADMAP Phase 19 P19-7b: there
+  is no external daemon to have running any more — `edges/adapters/openclaw.py` and every
+  `openclaw` shell-out are deleted; `DocketDriver` talks to a model endpoint directly)
 - Python 3.11+ **MUST** be available (docket's runtime requirement)
 
 ### Post-conditions
@@ -272,10 +273,9 @@ After successful creation:
 |-------|-------|----------|
 | Agent already exists | Duplicate ID | Use different ID or delete existing |
 | Codebase not found | Invalid path | Verify path exists |
-| Permission denied | Insufficient rights | Check ~/.openclaw permissions |
+| Permission denied | Insufficient rights | Check ~/.docket permissions |
 | Workspace corrupted | Missing files | Run `docket maintain check` |
-| Daemon not running | OpenClaw down | Start with `systemctl --user start openclaw-gateway` |
-| Distillation turn failed (no daemon, model error, timeout) | `docket maintain distill`, or `clean`/`reset` with `--distill-first` (the default) | Nothing was deleted (fail-closed); retry once the daemon/model is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
+| Distillation turn failed (model error, timeout, no credential) | `docket maintain distill`, or `clean`/`reset` with `--distill-first` (the default) | Nothing was deleted (fail-closed); retry once the model endpoint is reachable, or pass `--no-distill-first` to `clean`/`reset` to proceed without distilling |
 
 ## Performance Criteria
 
@@ -290,6 +290,19 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.8.0 (2026-08-03)
+
+- ROADMAP Phase 19 P19-7b (the OpenClaw daemon is deleted): removed the "OpenClaw daemon MUST
+  be running" pre-condition — there is no external daemon any more, so it cannot be a
+  pre-condition of anything (`DocketDriver` talks to a model endpoint directly). Corrected every
+  `~/.openclaw` path reference to `~/.docket` (the workspace-creation example, the permissions
+  pre-condition, and the "permission denied" error-recovery row). Removed the "Daemon not
+  running / Start with systemctl --user start openclaw-gateway" error-recovery row outright — no
+  successor: there is no gateway systemd unit left to start. Reworded "driver/daemon error" to
+  "driver/model error" in the distillation fail-closed requirements and the exit-code
+  description (a distillation turn can still fail — timeout, bad credential, empty reply — the
+  failure just no longer has a daemon in the loop to attribute it to).
 
 ### Version 1.7.0 (2026-08-02)
 

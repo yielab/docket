@@ -30,7 +30,6 @@ from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic environment (mirrors test_dispatch.py / test_pod_provisioning.py) ──
 
@@ -41,34 +40,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", oc_dir / "approvals", raising=True)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "APPROVALS_DIR", home / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", oc_dir / "docket-runs.json", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Register/unregister mutate agents.list directly (no real openclaw)."""
-    monkeypatch.setattr(_pod_cli.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
+    monkeypatch.setattr(_cfg, "RUNS_FILE", home / "docket-runs.json", raising=True)
 
 
 def _seed_pod(
@@ -76,15 +56,12 @@ def _seed_pod(
     monkeypatch: pytest.MonkeyPatch,
     project: str = "demo",
 ) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return oc_dir
+    return home
 
 
 def _audit_actions(action: str) -> list[dict[str, Any]]:
@@ -136,10 +113,10 @@ class TestToolPods:
     def test_no_pods_returns_empty_list(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-        _point_at(oc_dir, monkeypatch)
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_at(home, monkeypatch)
         assert _mcp.tool_pods() == {"pods": []}
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,10 +189,10 @@ class TestToolDelegate:
     def test_unknown_project_rejected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-        _point_at(oc_dir, monkeypatch)
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        _point_at(home, monkeypatch)
         with pytest.raises(_mcp.McpToolError, match="no pod"):
             _mcp.tool_delegate("ghost-project", "task")
 
@@ -376,16 +353,16 @@ class TestToolRuns:
     def test_lists_all_runs_newest_first(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         first = _runs.create_run("cli", "alpha")
         second = _runs.create_run("mcp", "beta")
         result = _mcp.tool_runs()
         assert [r["id"] for r in result["runs"]] == [second["id"], first["id"]]
 
     def test_filters_by_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         _runs.create_run("cli", "alpha")
         _runs.create_run("cli", "beta")
         result = _mcp.tool_runs(project="alpha")
@@ -395,22 +372,22 @@ class TestToolRuns:
     def test_fetch_by_id_returns_bare_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         rec = _runs.create_run("cli", "demo")
         result = _mcp.tool_runs(run_id=rec["id"])
         assert result["id"] == rec["id"]
         assert "runs" not in result
 
     def test_unknown_id_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         with pytest.raises(_mcp.McpToolError, match="Unknown run"):
             _mcp.tool_runs(run_id="run-nope")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         _mcp.tool_runs()
         assert len(_audit_actions("mcp.runs")) == 1
 
@@ -420,23 +397,23 @@ class TestToolRuns:
 
 class TestToolApprovalsList:
     def test_lists_pending_approvals(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         token = _approval.approval_create("demo", "implementer", "deploy prod")
         result = _mcp.tool_approvals_list()
         assert [p["token"] for p in result["pending"]] == [token]
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         _mcp.tool_approvals_list()
         assert len(_audit_actions("mcp.approvals_list")) == 1
 
 
 class TestToolApprovalsGrantDeny:
     def _seed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         return _approval.approval_create("demo", "implementer", "deploy prod")
 
     def test_grant_transitions_to_granted(
@@ -485,8 +462,8 @@ class TestToolApprovalsGrantDeny:
     def test_grant_unknown_token_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         with pytest.raises(_mcp.McpToolError, match="not found"):
             _mcp.tool_approvals_grant("apr-does-not-exist")
 

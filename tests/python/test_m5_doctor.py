@@ -1,9 +1,14 @@
 """M5 tests: doctor — system-wide health checks + JSON health probe.
 
-These call run_doctor() in-process with OPENCLAW_DIR monkeypatched to a temp
-seed (the config module reads OPENCLAW_DIR at import time, so we patch the
-already-imported module attributes). stdout is captured to assert on the
-human report; the return value is the process exit code.
+These call run_doctor() in-process with DOCKET_HOME/FLEET_FILE monkeypatched
+to a temp seed. stdout is captured to assert on the human report; the return
+value is the process exit code.
+
+Phase 19 P19-7b deleted the daemon and every check here that only ever made
+sense against it: binary presence, gateway status, daemon config validity/
+perms, the daemon's own security-audit/exec-approval report, the browser/
+gateway-log scans, and the "OpenClaw memory index" advisory. What replaced
+each is noted at its former call site below.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli import _doctor
-from docket.edges.adapters import openclaw as _oc
+from docket.core import secrets as _secrets
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -34,29 +39,6 @@ _FULL_META: dict[str, Any] = {
     "templateVersion": str(_doctor.TEMPLATE_VERSION),
 }
 
-_OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {
-                    "sessionKey": "agent:myshop:default",
-                    "projectKey": "default",
-                },
-            }
-        ],
-    },
-    "bindings": [],
-    "channels": {},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings + gates/isolation flags live in
-# fleet.json now, not openclaw.json's `agents`/`bindings`/`security` above
-# (which the daemon still owns until P19-7 and stays in `_OC_CONFIG`, used
-# only for the pieces that are still genuinely daemon-owned, e.g. `channels`).
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
@@ -66,40 +48,20 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture(autouse=True)
-def _no_restart(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
-    """Never touch systemctl during doctor tests.
-
-    ``fake_openclaw`` puts a real `openclaw` shim on PATH so the binary health
-    check runs its real ``shutil.which`` probe (CI has no daemon) — the health
-    result then reflects config state, not what's on the runner's PATH.
-    """
+def _no_restart(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
 
 
-def _point_config_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Repoint the already-imported config + ACL modules at a temp OPENCLAW_DIR.
-
-    Both docket.config and the openclaw ACL bind paths at import time, so we
-    patch the live module attributes. We also stub the two ACL functions that
-    shell out to the real `openclaw` CLI so tests stay hermetic regardless of
-    what is on PATH.
-    """
-    cfg_file = oc_dir / "openclaw.json"
-    fleet_file = oc_dir / "fleet.json"
-    projects = oc_dir / "workspaces" / "projects"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
+def _point_config_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repoint the already-imported config module at a temp DOCKET_HOME."""
+    fleet_file = home / "fleet.json"
+    projects = home / "workspaces" / "projects"
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
     monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects, raising=True)
-    # ACL bound CONFIG_FILE / FLEET_FILE / meta_path directly at import — rebind them.
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-    # Keep security probes hermetic (no real openclaw CLI invocation).
-    monkeypatch.setattr(
-        _oc, "security_gate_report", lambda: ("NA", "approvals snapshot unavailable", "")
-    )
-    monkeypatch.setattr(_oc, "security_audit_report", lambda: _oc.SecurityAudit(False, 0, 0, 0, []))
+    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
+    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
 
 
 def _seed(
@@ -112,9 +74,9 @@ def _seed(
     meta_model: str = "anthropic/claude-sonnet-4-6",
     secrets: dict[str, str] | None = None,
 ) -> Path:
-    """Create a temp ~/.openclaw with one myshop agent and repoint config."""
-    oc_dir = tmp_path / ".openclaw"
-    ws = oc_dir / "workspaces" / "projects" / "myshop"
+    """Create a temp DOCKET_HOME with one myshop agent and repoint config."""
+    home = tmp_path / ".docket"
+    ws = home / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
 
     meta = {**_FULL_META, "model": meta_model}
@@ -126,24 +88,20 @@ def _seed(
     for f in files:
         (ws / f).write_text(f"# {f}\n")
 
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps(_OC_CONFIG))
-    cfg_file.chmod(0o600)
-
     fleet = json.loads(json.dumps(_FLEET_CONFIG))
     if not register:
         fleet["agents"] = []
-    fleet_file = oc_dir / "fleet.json"
+    fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(fleet))
     fleet_file.chmod(0o600)
 
     if secrets is not None:
-        sfile = oc_dir / "secrets.json"
+        sfile = home / "secrets.json"
         sfile.write_text(json.dumps(secrets))
         sfile.chmod(0o600)
 
-    _point_config_at(oc_dir, monkeypatch)
-    return oc_dir
+    _point_config_at(home, monkeypatch)
+    return home
 
 
 # ── JSON health-probe contract ─────────────────────────────────────────────────
@@ -153,9 +111,8 @@ class TestJsonProbe:
     def test_json_healthy_exits_zero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Full workspace, registered, key present, in sync, gateway forced active.
+        # Full workspace, registered, key present, in sync.
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         rc = _doctor.run_doctor(json_out=True)
         out = capsys.readouterr().out
         data = json.loads(out)
@@ -166,9 +123,8 @@ class TestJsonProbe:
     def test_json_degraded_exits_one(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Missing workspace files + missing provider key + gateway down → issues.
+        # Missing workspace files + missing provider key → issues.
         _seed(tmp_path, monkeypatch, full_workspace=False)
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: False)
         rc = _doctor.run_doctor(json_out=True)
         data = json.loads(capsys.readouterr().out)
         assert data["healthy"] is False
@@ -179,15 +135,11 @@ class TestJsonProbe:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         _doctor.run_doctor(json_out=True)
         checks = json.loads(capsys.readouterr().out)["checks"]
         for key in (
-            "openclaw",
             "python3",
-            "config",
-            "gateway",
-            "telegram",
+            "fleet",
             "agents",
             "modelConfig",
             "budget",
@@ -197,38 +149,25 @@ class TestJsonProbe:
             "templateDrift",
         ):
             assert key in checks
+        # Phase 19 P19-7b: no daemon, so these keys are gone, not repointed —
+        # a doctor --json consumer must not expect them any more.
+        for gone_key in ("openclaw", "gateway", "telegram"):
+            assert gone_key not in checks
 
-    def test_json_gateway_status(
+    def test_json_fleet_status(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: False)
         _doctor.run_doctor(json_out=True)
         data = json.loads(capsys.readouterr().out)
-        assert data["checks"]["gateway"]["ok"] is False
-        assert data["checks"]["gateway"]["status"] == "inactive"
+        assert data["checks"]["fleet"]["ok"] is True
+        assert data["checks"]["fleet"]["agents"] == 1
 
 
 # ── individual checks ──────────────────────────────────────────────────────────
 
 
 class TestChecks:
-    def test_config_valid(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _doctor._check_config() == 0
-        assert "Config JSON valid" in capsys.readouterr().out
-
-    def test_config_missing(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        _point_config_at(oc_dir, monkeypatch)
-        assert _doctor._check_config() == 1
-        assert "Config missing" in capsys.readouterr().out
-
     def test_project_agents_missing_files_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -245,18 +184,18 @@ class TestChecks:
         issues = _doctor._check_project_agents(["myshop"])
         out = capsys.readouterr().out
         assert issues == 1
-        assert "not registered in openclaw" in out
+        assert "not registered in fleet" in out
 
     def test_project_agents_healthy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        oc_dir = _seed(tmp_path, monkeypatch)
-        # Add a Telegram binding so the agent hits the success (stdout) path.
-        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        home = _seed(tmp_path, monkeypatch)
+        # Add a channel binding so the agent hits the success (stdout) path.
+        fleet = json.loads((home / "fleet.json").read_text())
         fleet["bindings"] = [
             {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
         ]
-        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
+        (home / "fleet.json").write_text(json.dumps(fleet))
         assert _doctor._check_project_agents(["myshop"]) == 0
         assert "OK  →  group -100" in capsys.readouterr().out
 
@@ -266,8 +205,8 @@ class TestChecks:
         """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for
         an Implementer) — `docket doctor` must not flag that as broken.
         """
-        oc_dir = _seed(tmp_path, monkeypatch, full_workspace=False)
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+        ws = home / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
             (ws / f).write_text(f"# {f}\n")
         meta_p = ws / ".docket-meta.json"
@@ -276,11 +215,11 @@ class TestChecks:
         meta_p.write_text(json.dumps(data))
         # Rename the workspace/agent so it resolves as a pod member (`pod_of`
         # requires the `<project>-<role>` shape).
-        pod_ws = oc_dir / "workspaces" / "projects" / "demo-lead"
+        pod_ws = home / "workspaces" / "projects" / "demo-lead"
         ws.rename(pod_ws)
-        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        fleet = json.loads((home / "fleet.json").read_text())
         fleet["agents"][0]["id"] = "demo-lead"
-        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
+        (home / "fleet.json").write_text(json.dumps(fleet))
 
         issues = _doctor._check_project_agents(["demo-lead"])
         out = capsys.readouterr().out
@@ -291,19 +230,19 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Unlike the Lead, an Implementer is still expected to have a TOOLS.md."""
-        oc_dir = _seed(tmp_path, monkeypatch, full_workspace=False)
-        ws = oc_dir / "workspaces" / "projects" / "myshop"
+        home = _seed(tmp_path, monkeypatch, full_workspace=False)
+        ws = home / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
             (ws / f).write_text(f"# {f}\n")
         meta_p = ws / ".docket-meta.json"
         data = json.loads(meta_p.read_text())
         data["role"] = "implementer"
         meta_p.write_text(json.dumps(data))
-        pod_ws = oc_dir / "workspaces" / "projects" / "demo-implementer"
+        pod_ws = home / "workspaces" / "projects" / "demo-implementer"
         ws.rename(pod_ws)
-        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        fleet = json.loads((home / "fleet.json").read_text())
         fleet["agents"][0]["id"] = "demo-implementer"
-        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
+        (home / "fleet.json").write_text(json.dumps(fleet))
 
         issues = _doctor._check_project_agents(["demo-implementer"])
         out = capsys.readouterr().out
@@ -377,25 +316,31 @@ class TestChecks:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
         assert _doctor._check_provider_coverage(["myshop"]) == 0
 
-    def test_security_gates_perms_ok(
+    def test_security_gates_always_on_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """Phase 19 P19-7b: no daemon exec-approval config/audit to check any
+        more — the tool-call gate is unconditionally active, and that is what
+        this check now reports instead."""
         _seed(tmp_path, monkeypatch)
-        # No openclaw CLI on PATH → gate report NA, audit unavailable, perms 600.
         issues = _doctor._check_security_gates()
         out = capsys.readouterr().out
         assert issues == 0
-        assert "Config perms: 600" in out
+        assert "Tool-call gate: always active" in out
 
-    def test_security_gates_perms_world_readable_flagged(
+    def test_security_gates_reports_approval_routing_and_isolation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        oc_dir = _seed(tmp_path, monkeypatch)
-        (oc_dir / "openclaw.json").chmod(0o644)
+        home = _seed(tmp_path, monkeypatch)
+        fleet = json.loads((home / "fleet.json").read_text())
+        fleet["security"]["approvalRoutingState"] = "on"
+        fleet["security"]["approvalRoutingMode"] = "session"
+        (home / "fleet.json").write_text(json.dumps(fleet))
+
         issues = _doctor._check_security_gates()
         out = capsys.readouterr().out
-        assert issues == 1
-        assert "group/other-accessible" in out
+        assert issues == 0
+        assert "Approval routing: on (mode=session)" in out
 
     def test_template_version_current(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -415,8 +360,8 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # AA-8: a meta written before `scope` existed gets it backfilled.
-        oc_dir = _seed(tmp_path, monkeypatch)
-        meta_p = oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json"
+        home = _seed(tmp_path, monkeypatch)
+        meta_p = home / "workspaces" / "projects" / "myshop" / ".docket-meta.json"
         data = json.loads(meta_p.read_text())
         data.pop("scope", None)
         meta_p.write_text(json.dumps(data))
@@ -427,8 +372,8 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # AA-8: a leftover global programmer/reviewer/tester workspace is flagged.
-        oc_dir = _seed(tmp_path, monkeypatch)
-        (oc_dir / "workspaces" / "programmer").mkdir(parents=True)
+        home = _seed(tmp_path, monkeypatch)
+        (home / "workspaces" / "programmer").mkdir(parents=True)
         _doctor._check_metadata_backfill(["myshop"])
         out = capsys.readouterr().out
         assert "programmer" in out and "legacy shared specialist" in out
@@ -437,11 +382,11 @@ class TestChecks:
 # ── Phase 17 C-4: specialists join the runtime contract healer ──────────────────
 
 
-def _seed_bare_specialist(oc_dir: Path, role: str = "security") -> Path:
+def _seed_bare_specialist(home: Path, role: str = "security") -> Path:
     """A specialist workspace with only `.docket-meta.json` — the exact
     pre-C-4 defect (`_provision_specialists` used to write nothing else).
     """
-    ws = oc_dir / "workspaces" / role
+    ws = home / "workspaces" / role
     ws.mkdir(parents=True)
     ws.chmod(0o700)
     meta = {
@@ -461,8 +406,8 @@ class TestRuntimeContractSpecialists:
     def test_managed_workspace_ids_includes_provisioned_specialists(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = _seed(tmp_path, monkeypatch)
-        _seed_bare_specialist(oc_dir, "security")
+        home = _seed(tmp_path, monkeypatch)
+        _seed_bare_specialist(home, "security")
         ids = _doctor._managed_workspace_ids(["myshop"])
         assert "myshop" in ids
         assert "security" in ids
@@ -474,8 +419,8 @@ class TestRuntimeContractSpecialists:
     ) -> None:
         from docket.core import memory as _mem
 
-        oc_dir = _seed(tmp_path, monkeypatch)
-        ws = _seed_bare_specialist(oc_dir, "security")
+        home = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(home, "security")
         assert not (ws / _mem.REQUIRED_STARTUP_FILE).exists()
 
         issues = _doctor._check_runtime_contract(["myshop"])
@@ -490,8 +435,8 @@ class TestRuntimeContractSpecialists:
     ) -> None:
         from docket.core import memory as _mem
 
-        oc_dir = _seed(tmp_path, monkeypatch)
-        ws = _seed_bare_specialist(oc_dir, "knowledge")
+        home = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(home, "knowledge")
         (ws / _mem.REQUIRED_STARTUP_FILE).write_text("# Auto-generated workflow steps\n(legacy)\n")
         assert not _mem.contract_ok(ws)
 
@@ -507,8 +452,8 @@ class TestRuntimeContractSpecialists:
 
         # myshop (from _seed) has no WORKFLOW_AUTO.md of its own — isolate the
         # specialist-only assertion by checking just the "manager" agent.
-        oc_dir = _seed(tmp_path, monkeypatch)
-        ws = _seed_bare_specialist(oc_dir, "manager")
+        home = _seed(tmp_path, monkeypatch)
+        ws = _seed_bare_specialist(home, "manager")
         _mem.seed_contract(ws, project="manager", codebase="")
         (ws / "MEMORY.md").write_text("real curated memory\n")
 
@@ -526,9 +471,8 @@ class TestRuntimeContractSpecialists:
         """
         from docket.core import memory as _mem
 
-        oc_dir = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        ws = _seed_bare_specialist(oc_dir, "security")
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
+        home = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
+        ws = _seed_bare_specialist(home, "security")
 
         _doctor.run_doctor(json_out=False, do_fix=True)
 
@@ -543,7 +487,6 @@ class TestFullRun:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         rc = _doctor.run_doctor(json_out=False)
         out = capsys.readouterr().out
         assert "All checks passed" in out
@@ -553,7 +496,6 @@ class TestFullRun:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed(tmp_path, monkeypatch, full_workspace=False)
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: False)
         rc = _doctor.run_doctor(json_out=False)
         out = capsys.readouterr().out
         assert "critical issue(s) found" in out
@@ -562,12 +504,11 @@ class TestFullRun:
     def test_human_no_agents(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-        (oc_dir / "openclaw.json").write_text(json.dumps(_OC_CONFIG))
-        (oc_dir / "openclaw.json").chmod(0o600)
-        _point_config_at(oc_dir, monkeypatch)
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": []}))
+        (home / "fleet.json").chmod(0o600)
+        _point_config_at(home, monkeypatch)
         rc = _doctor.run_doctor(json_out=False)
         captured = capsys.readouterr()
         # The "no agents" notice is a warn() → stdout (mirrors Bash).

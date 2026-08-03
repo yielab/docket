@@ -8,15 +8,15 @@ _docket_complete() {
   local commands="install list add info delete maintain context wire unwire scope profile persona keys auth models pod pipeline roles logs edit cost doctor gates conversations runs mcp audit eval snapshot serve completions trace metrics policies approve deny help"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
-  local _oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
+  local _dh="${DOCKET_HOME:-$HOME/.docket}"
   local _ids="" _d _b
-  if [[ -d "$_oc/workspaces/projects" ]]; then
-    for _d in "$_oc/workspaces/projects"/*/; do
+  if [[ -d "$_dh/workspaces/projects" ]]; then
+    for _d in "$_dh/workspaces/projects"/*/; do
       [[ -d "$_d" ]] || continue; _b="${_d%/}"; _ids+=" ${_b##*/}"
     done
   fi
-  if [[ -d "$_oc/workspaces" ]]; then
-    for _d in "$_oc/workspaces"/*/; do
+  if [[ -d "$_dh/workspaces" ]]; then
+    for _d in "$_dh/workspaces"/*/; do
       [[ -d "$_d" ]] || continue; _b="${_d%/}"; _b="${_b##*/}"
       [[ "$_b" == "projects" ]] && continue; _ids+=" $_b"
     done

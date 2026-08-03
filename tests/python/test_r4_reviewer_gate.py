@@ -33,11 +33,11 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic helpers (mirror test_cd2_verify.py) ─────────────────────────────
 
@@ -48,18 +48,16 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
@@ -81,7 +79,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _oc.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
 
 def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = None) -> None:
@@ -102,7 +100,7 @@ def _trace_events(project: str) -> list[dict[str, Any]]:
 
 
 def _role_of(agent_id: str) -> str:
-    return _oc.meta_get(agent_id, "role", "") or agent_id
+    return _fleet.meta_get(agent_id, "role", "") or agent_id
 
 
 # ── pure parser ───────────────────────────────────────────────────────────────

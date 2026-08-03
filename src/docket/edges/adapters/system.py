@@ -1,26 +1,20 @@
-"""System adapter: typed wrappers over systemctl, docker, bwrap, and git.
+"""System adapter: typed wrappers over docker, bwrap, and git.
 
-Every shell-out to a host service manager, container runtime, sandbox
-tool, or git lives here.
+Every shell-out to a container runtime, sandbox tool, or git lives here.
 
 Design notes:
-  * service_manager() detects the init system so commands degrade cleanly on
-    macOS (launchd) or hosts with no user service manager.
   * Every subprocess call catches FileNotFoundError / TimeoutExpired / OSError
     and degrades gracefully so a missing binary never crashes a command.
   * Functions are module-level and typed so callers can monkeypatch them in tests.
 
 G-3 (ROADMAP Phase 15): this module imports ``docket.core.security`` for its
 pure, side-effect-free command classifier (``match_high_risk`` -- no I/O of
-its own; the ``docket.edges.adapters.openclaw`` import that module carries
-for its *other* functions is unused by the classifier path and creates no
-import cycle, since ``openclaw.py`` only reaches back into this module via a
-deferred, in-function import). ``run_verify_cmd`` is the one function here
-that launches a fully free-form, operator-composed command string through a
-real shell (``shell=True``) -- every other function in this module runs a
-fixed argv list it built itself, which is not a comparable classification
-target (see ``security-gates.spec.md``'s "Docket-launched process
-classification" section for the full scoping rationale).
+its own). ``run_verify_cmd`` is the one function here that launches a fully
+free-form, operator-composed command string through a real shell
+(``shell=True``) -- every other function in this module runs a fixed argv
+list it built itself, which is not a comparable classification target (see
+``security-gates.spec.md``'s "Docket-launched process classification"
+section for the full scoping rationale).
 
 P19-9 (ROADMAP Phase 19): the "exec sandbox" section below adds bwrap
 alongside docker as a second, weaker-but-dependency-free jail backend for
@@ -30,6 +24,14 @@ the same "no policy vocabulary" split ``core.security``'s classifier already
 has from this module -- *whether* to ask for a jail is a decision made by
 ``core/tools.py``'s ``ToolContext.sandbox`` (opt-in, default ``"off"``), never
 by this module.
+
+Phase 19 P19-7b: the daemon's gateway systemd unit (``openclaw-gateway.service``)
+and the ``service_manager``/``service_hint``/``systemctl_*`` helpers that only
+ever existed to start/restart/probe it are deleted along with the daemon --
+there is nothing left to manage. ``gateway_active``/``restart_gateway`` stay
+as honest, always-inactive/no-op stubs (see their docstrings) so the ~20
+call sites across ``cli/`` that used to restart the gateway after a mutating
+command need no individual changes.
 """
 
 from __future__ import annotations
@@ -43,15 +45,12 @@ from typing import Literal
 
 from docket.core import security as _sec
 
-GATEWAY_UNIT = "openclaw-gateway.service"
-
-# Kept short so a hung daemon never blocks a CLI command.
+# Kept short so a hung subprocess never blocks a CLI command.
 _QUERY_TIMEOUT = 5
-_RESTART_TIMEOUT = 15
 
 # Outcome tags for restart_gateway(); the cli layer renders these via ui.*
 # (edges/ has no knowledge of terminals — see ROADMAP §2).
-RestartStatus = Literal["dry_run", "not_running", "restarted", "failed"]
+RestartStatus = Literal["dry_run", "not_running", "restarted", "failed", "no_daemon"]
 
 
 @dataclass(frozen=True)
@@ -89,98 +88,57 @@ def _which(binary: str) -> bool:
     return False
 
 
-def service_manager() -> str:
-    """Return the init system managing user services: 'systemd', 'launchd', 'none'.
+def secret_tool_available() -> bool:
+    """Return True if the `secret-tool` (libsecret) binary is on PATH."""
+    return _which("secret-tool")
 
-    Honors DOCKET_SERVICE_MANAGER as an override (used by tests and exotic hosts).
+
+def secret_tool_lookup(service: str, key: str) -> str | None:
+    """Look up one secret's value in the OS keyring via `secret-tool lookup`.
+
+    Returns ``None`` on any failure (binary missing, timeout, no match) --
+    ``core/secrets.py``'s keyring backend treats that as "no value", never
+    an error. This is the one shell-out `core/secrets.py` needs (D-13's
+    scope: every shell-out funnels through ``edges/adapters/``, never
+    ``core/`` directly).
     """
-    override = os.environ.get("DOCKET_SERVICE_MANAGER")
-    if override:
-        return override
-    if _which("systemctl"):
-        return "systemd"
-    if _which("launchctl"):
-        return "launchd"
-    return "none"
-
-
-def service_hint(action: str) -> str:
-    """Return the platform command a user would run for `action` (hint messages only)."""
-    mgr = service_manager()
-    if mgr == "systemd":
-        return f"systemctl --user {action} {GATEWAY_UNIT}"
-    if mgr == "launchd":
-        return f"openclaw gateway {action}  (or your launchd service)"
-    return f"openclaw gateway {action}"
-
-
-def systemctl_is_active(unit: str = GATEWAY_UNIT) -> bool:
-    """Return True if a systemd --user unit is active (False off systemd)."""
-    if service_manager() != "systemd":
-        return False
     try:
         result = subprocess.run(
-            ["systemctl", "--user", "is-active", unit],
+            ["secret-tool", "lookup", "service", service, "key", key],
             capture_output=True,
-            timeout=_QUERY_TIMEOUT,
+            text=True,
+            timeout=10,
         )
-        return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
-
-
-def systemctl_restart(unit: str = GATEWAY_UNIT) -> bool:
-    """Restart a systemd --user unit. Returns True on success, False off systemd."""
-    if service_manager() != "systemd":
-        return False
-    try:
-        result = subprocess.run(
-            ["systemctl", "--user", "restart", unit],
-            capture_output=True,
-            timeout=_RESTART_TIMEOUT,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
-
-
-def systemctl_start(unit: str = GATEWAY_UNIT) -> bool:
-    """Start a systemd --user unit. Returns True on success (False off systemd)."""
-    if service_manager() != "systemd":
-        return False
-    try:
-        result = subprocess.run(
-            ["systemctl", "--user", "start", unit],
-            capture_output=True,
-            timeout=_RESTART_TIMEOUT,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return False
+        return None
+    return result.stdout or None
 
 
 def gateway_active() -> bool:
-    """Return True if the OpenClaw gateway service is active."""
-    return systemctl_is_active(GATEWAY_UNIT)
+    """No daemon gateway exists any more (Phase 19 P19-7b removed it).
+
+    Kept as a stable, always-``False`` call site so every existing caller
+    (``cli/__init__.py``'s status line, ``cli/_doctor.py``, ``serve.py``'s
+    ``/status.json``/``/metrics``/``/health``) reads an honest answer instead
+    of needing an individual rewrite.
+    """
+    return False
 
 
 def restart_gateway() -> RestartResult:
-    """Restart the OpenClaw gateway if it is running.
+    """No daemon gateway exists any more -- nothing to restart.
 
-    Honors DOCKET_NO_RESTART=1 for test hermeticity. Returns a RestartResult;
-    ``ok`` is True on success or when the service is already down, False if the
-    restart failed. Never prints — the cli layer renders the result via ui.*.
+    Honors DOCKET_NO_RESTART=1 for parity with the old dry-run contract
+    (moot now that both paths are no-ops). Kept as a stable call site for the
+    ~20 places across ``cli/`` that used to restart the gateway after a
+    mutating command (keys, profile, wire, gates, pod add/remove, …); each
+    still calls this, gets an honest no-op, and renders it via
+    ``_render_restart_result``. Never prints — the cli layer renders the
+    result via ui.*.
     """
     if os.environ.get("DOCKET_NO_RESTART") == "1":
         return RestartResult(status="dry_run", ok=True)
-
-    if not gateway_active():
-        return RestartResult(status="not_running", ok=True, hint=service_hint("start"))
-
-    if not systemctl_restart(GATEWAY_UNIT):
-        return RestartResult(status="failed", ok=False, hint=service_hint("status"))
-    time.sleep(2)
-    return RestartResult(status="restarted", ok=True)
+    return RestartResult(status="no_daemon", ok=True)
 
 
 def docker_available() -> bool:
@@ -324,10 +282,9 @@ def sandbox_availability() -> SandboxAvailability:
 
     Descending strength: a container (docker, only if its daemon answers)
     beats a namespace jail (bwrap, only if it can really build one) beats no
-    jail at all. Honors DOCKET_SANDBOX_BACKEND as an override -- the same
-    pattern as `service_manager`'s DOCKET_SERVICE_MANAGER -- for tests, and
-    for an operator who wants to force or disable a backend regardless of
-    what is actually installed.
+    jail at all. Honors DOCKET_SANDBOX_BACKEND as an override -- for tests,
+    and for an operator who wants to force or disable a backend regardless
+    of what is actually installed.
     """
     docker_ok = docker_daemon_reachable()
     bwrap_ok = bwrap_available()
@@ -503,16 +460,14 @@ def _process_group_alive(pgid: int) -> bool:
 def kill_process_group(pgid: int, grace_s: float = 2.0) -> bool:
     """SIGTERM a process group; escalate to SIGKILL if still alive after *grace_s*.
 
-    Used both by ``edges.adapters.openclaw.agent_run`` (a timed-out agent
-    turn) and ``core/runs.py``'s ``cancel_run`` (an operator-requested
+    Used by ``core/runs.py``'s ``cancel_run`` (an operator-requested
     ``docket runs cancel``) — the one place that knows how to actually stop
     an in-flight hop's subprocess *and everything it shelled out to*, not
     just its immediate pid. Relies on the subprocess having been started
     with ``start_new_session=True`` (so its own pid doubles as its process
-    group id — see ``agent_run``); calling this on a pid that was never
-    started that way would signal whatever unrelated group happens to share
-    that id, so callers must only ever pass a pid ``agent_run`` itself
-    reported via its ``on_spawn`` hook.
+    group id); calling this on a pid that was never started that way would
+    signal whatever unrelated group happens to share that id, so callers
+    must only ever pass a pid reported via a driver's own ``on_spawn`` hook.
 
     Returns ``True`` if the group was observed alive at all (a signal was
     meaningfully sent), ``False`` if it was already gone — a harmless no-op,

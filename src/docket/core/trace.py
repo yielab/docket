@@ -10,10 +10,11 @@ with ``DOCKET_NO_TRACE=1``.
 Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
 line-independent, not a read-modify-write of a whole document, so this module
 writes JSONL directly rather than through ``edges/store.py``. The ingestion
-bridge (``trace_ingest``) projects daemon turns into this store, but — since
+bridge (``trace_ingest``) projects turns into this store, but — since
 Phase 18 L-1 — reads them only through the RuntimeDriver port
-(``edges.adapters.openclaw.OpenClawDriver``); this module itself has no
-knowledge of the daemon's on-disk session-JSONL format, only of its own.
+(``edges.adapters.docket_runtime.DocketDriver`` as of Phase 19 P19-7a); this
+module itself has no knowledge of any driver's on-disk session format, only
+of its own.
 """
 
 from __future__ import annotations
@@ -96,13 +97,13 @@ def _now_iso() -> str:
 def _stored_secret_values() -> list[str]:
     """Stored secret values longer than 8 chars (redact.sh's >8 filter).
 
-    Best-effort: reads through the OpenClaw ACL (local import avoids a cycle) and
+    Best-effort: reads docket's own secrets store (``core/secrets.py``) and
     returns [] on any error, so redaction never fails a trace write.
     """
     try:
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import secrets as _secrets
 
-        return [v for v in (s.strip() for s in _oc.secrets_values()) if len(v) > 8]
+        return [v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8]
     except Exception:
         return []
 
@@ -209,11 +210,11 @@ def trace_ingest(project: str) -> None:
     core/runtime_driver.py.
 
     Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
-    (``DocketDriver``, reading ``core/session.py``'s own storage), not the
-    ACL's ``OpenClawDriver`` -- the same cutover ``core/dispatch.py``'s hop
-    execution made, and required for the same reason: pod-dispatch hops now
-    write turns through ``DocketDriver``, so ingesting from the old daemon
-    driver would silently see nothing new, ever.
+    (``DocketDriver``, reading ``core/session.py``'s own storage) -- the same
+    cutover ``core/dispatch.py``'s hop execution made, and required for the
+    same reason: pod-dispatch hops now write turns through ``DocketDriver``,
+    so ingesting from the pre-cutover driver would silently see nothing new,
+    ever. That earlier driver was deleted outright in Phase 19 P19-7b.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return

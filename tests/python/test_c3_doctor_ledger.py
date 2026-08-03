@@ -19,7 +19,6 @@ import docket.config as _cfg
 from docket.cli import _doctor, _pod
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic pod fixture (mirrors test_dispatch.py's _seed_pod) ─────────────────
 
@@ -30,50 +29,25 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
     monkeypatch.setattr(
-        _cfg, "CONVERSATIONS_FILE", oc_dir / "docket-conversations.json", raising=True
+        _cfg, "CONVERSATIONS_FILE", home / "docket-conversations.json", raising=True
     )
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-    # Doctor's other checks shell out to the real openclaw CLI for security
-    # state -- stub them so this file only ever exercises the ledger check.
-    monkeypatch.setattr(
-        _oc, "security_gate_report", lambda: ("NA", "approvals snapshot unavailable", "")
-    )
-    monkeypatch.setattr(_oc, "security_audit_report", lambda: _oc.SecurityAudit(False, 0, 0, 0, []))
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
 
 
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return oc_dir
+    return home
 
 
 def _lead_ws(project: str = "demo") -> Path:
@@ -94,10 +68,10 @@ class TestNoPods:
     def test_no_dispatchable_pods_is_a_silent_no_op(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}}))
-        _point_at(oc_dir, monkeypatch)
+        home = tmp_path / ".docket"
+        home.mkdir()
+        (home / "fleet.json").write_text(json.dumps({"agents": []}))
+        _point_at(home, monkeypatch)
         assert _doctor._check_dispatch_ledger(do_fix=False) == 0
         assert "Dispatch task ledger" not in capsys.readouterr().out
 
@@ -209,7 +183,6 @@ class TestDoctorJson:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         task_id = _claim_a_task()
         _mem.write_dispatch_tasks(_lead_ws(), [])  # corrupt: drop the ledger entry
 
@@ -232,7 +205,6 @@ class TestDoctorJson:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        monkeypatch.setattr(_doctor, "gateway_active", lambda: True)
         _claim_a_task()
 
         capsys.readouterr()  # discard pod-provisioning output from setup above

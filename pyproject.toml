@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "docket"
 version = "0.2.0-beta.1"
-description = "OpenClaw project agent manager"
+description = "Agent fleet control plane: provisioning, cost guardrails, and gated tool execution"
 requires-python = ">=3.11"
 # Floors are empirically verified, not aspirational. Every bound below was
 # resolved with `uv pip compile --resolution lowest-direct` and then run against

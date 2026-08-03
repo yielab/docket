@@ -146,21 +146,18 @@ class TestRealSdkIntegration:
         import json as _json
 
         import docket.config as _cfg
-        from docket.edges.adapters import openclaw as _oc
 
-        # Isolate from the real ~/.openclaw — this exercises a real tool call
-        # (status → core.utils/serve.build_status → the ACL), so it must not
-        # touch the developer's actual daemon config.
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        cfg_file = oc_dir / "openclaw.json"
-        cfg_file.write_text(_json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
-        monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-        monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-        monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+        # Isolate from the real ~/.docket — this exercises a real tool call
+        # (status → core.fleet → fleet.json), so it must not touch the
+        # developer's actual docket home.
+        home = tmp_path / ".docket"
+        home.mkdir()
+        fleet_file = home / "fleet.json"
+        fleet_file.write_text(_json.dumps({"agents": [], "bindings": []}))
+        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+        monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
         server = _mcp._build_server()
 

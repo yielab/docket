@@ -1,10 +1,16 @@
 """M5 T5.4b + T5.3 tests: gates, policies, approve, deny.
 
 Drives the four CLI run_* surfaces (and the core engines behind them) in-process
-against a temp OPENCLAW_DIR. config.py and the openclaw ACL bind paths at import
-time, so we repoint the live module attributes (the same technique as the doctor
-and trace/audit suites). The `openclaw`/`docker` binaries are stubbed off PATH so
-gate writes take the direct (hermetic) path and isolation reports "needs Docker".
+against a temp DOCKET_HOME. config.py binds paths at import time, so we repoint
+the live module attributes (the same technique as the doctor and trace/audit
+suites). The `docker` binary is stubbed off PATH so isolation reports "needs
+Docker".
+
+Phase 19 P19-7b deleted the daemon and its own exec-approvals.json file
+format along with `resolve_safe_bin_paths`/`build_exec_approvals` (the
+functions that used to seed it) -- `docket gates enable/disable` now only
+flips fleet.json's approval-routing state (see cli/_gates.py); there is no
+daemon config left to write.
 """
 
 from __future__ import annotations
@@ -21,27 +27,9 @@ from docket.cli import _approve, _deny, _gates, _policies
 from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
-from docket.edges.adapters import openclaw as _oc
 
-_OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-        "list": [
-            {"id": "myshop", "model": "anthropic/claude-sonnet-4-6", "metadata": {}},
-            {"id": "content", "model": "anthropic/claude-haiku-4-5", "metadata": {}},
-        ],
-    },
-    "bindings": [
-        {
-            "agentId": "myshop",
-            "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-100"}},
-        }
-    ],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings + gates/isolation flags live in
-# fleet.json now, not openclaw.json's `agents`/`bindings`/`security` above.
+# P19-6/P19-7b: agent registration + channel bindings + gates/isolation flags
+# live in fleet.json now -- openclaw.json is gone entirely.
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}, {"id": "content"}],
     "bindings": [
@@ -54,22 +42,16 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 @pytest.fixture()
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Temp ~/.openclaw with config + ACL paths repointed; binaries stubbed off."""
-    d = tmp_path / ".openclaw"
+    """Temp DOCKET_HOME with config paths repointed; docker stubbed off PATH."""
+    d = tmp_path / ".docket"
     (d / "policies").mkdir(parents=True)
     (d / "approvals").mkdir(parents=True)
-    cfg_file = d / "openclaw.json"
-    cfg_file.write_text(json.dumps(_OC_CONFIG))
-    cfg_file.chmod(0o600)
     fleet_file = d / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
     monkeypatch.setattr(_cfg, "POLICIES_DIR", d / "policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
@@ -77,24 +59,19 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # relying only on the conftest-wide safety net, matching this fixture's
     # own pattern of repointing every config path it touches.
     monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
-    # ACL bound CONFIG_FILE at import — rebind.
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     # Never touch systemctl.
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
 
-    # Stub `openclaw` and `docker` off PATH so writes take the direct path and
-    # isolation reports "needs Docker". Real binaries (git, python3, ...) pass.
+    # Stub `docker` off PATH so isolation reports "needs Docker". Real
+    # binaries (git, python3, ...) pass.
     real_which = shutil.which
 
     def fake_which(name: str, *a: Any, **k: Any) -> str | None:
-        if name in ("openclaw", "docker"):
+        if name == "docker":
             return None
         return real_which(name, *a, **k)
 
-    monkeypatch.setattr(_sec.shutil, "which", fake_which)
     monkeypatch.setattr(_gates.shutil, "which", fake_which)
-    # ACL.write_exec_approvals + security_gate_report import shutil locally; stub
-    # the module-level shutil they would resolve via `import shutil as _shutil`.
     monkeypatch.setattr(shutil, "which", fake_which)
     return d
 
@@ -139,42 +116,12 @@ class TestHighRiskPatterns:
         assert "ls" not in bins
 
 
-class TestResolveSafeBinPaths:
-    def test_high_risk_attached_bins_still_seeded(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # git/npm have a HIGH_RISK_PATTERNS class attached for documentation
-        # (docket gates classes) but the daemon can only gate by binary path,
-        # not argument text -- excluding them wholesale would also block
-        # every benign invocation (git status, npm test, ...), so they stay
-        # seeded like any other SAFE_BINS member. Stub PATH resolution so the
-        # assertion doesn't depend on npm actually being installed here.
-        monkeypatch.setattr(_sec.shutil, "which", lambda name: f"/usr/bin/{name}")
-        paths = _sec.resolve_safe_bin_paths()
-        bases = {p.rsplit("/", 1)[-1] for p in paths}
-        for name in {n for cls in _sec.HIGH_RISK_PATTERNS for n in cls.bins}:
-            assert name in bases
-
-    def test_non_high_risk_bin_still_resolved(self, oc_dir: Path) -> None:
-        paths = _sec.resolve_safe_bin_paths()
-        bases = {p.rsplit("/", 1)[-1] for p in paths}
-        assert "ls" in bases
-
-
-class TestBuildExecApprovalsHighRisk:
-    def test_seeded_allowlist_includes_high_risk_attached_bins(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # See test_high_risk_attached_bins_still_seeded: these bins remain
-        # allowlisted despite having a documented high-risk class, since the
-        # daemon can't distinguish their risky/benign invocations.
-        monkeypatch.setattr(_sec.shutil, "which", lambda name: f"/usr/bin/{name}")
-        paths = _sec.resolve_safe_bin_paths()
-        merged, _, _ = _sec.build_exec_approvals({}, paths, ["myshop"], force=False)
-        for agent in merged["agents"].values():
-            bases = {e["pattern"].rsplit("/", 1)[-1] for e in agent["allowlist"]}
-            for name in {n for cls in _sec.HIGH_RISK_PATTERNS for n in cls.bins}:
-                assert name in bases
+# TestResolveSafeBinPaths / TestBuildExecApprovalsHighRisk deleted (P19-7b):
+# resolve_safe_bin_paths()/build_exec_approvals() seeded the daemon's own
+# exec-approvals.json allowlist file -- a daemon file format that no longer
+# exists, deleted along with the daemon rather than ported. No successor:
+# docket's own gate (pre_tool_call + classify_command, P19-2/P19-3) is
+# argument-aware and always active; it does not need a seeded bin allowlist.
 
 
 # ── gates ─────────────────────────────────────────────────────────────────────
@@ -184,87 +131,76 @@ class TestGatesStatus:
     def test_status_unset(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # No openclaw CLI → gate report NA; routing/isolation unset.
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
         assert rc == 0
         assert "Approval routing: not configured" in out
         assert "Workspace isolation: not configured" in out
 
-    def test_status_ok_policy(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    def test_status_always_reports_the_gate_active(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(
-            _gates._oc,
-            "security_gate_report",
-            lambda: ("OK", "security=allowlist ask=on-miss askFallback=deny", "agents=2"),
-        )
+        # P19-3: there is no daemon gate report left to query -- docket's own
+        # tool-call gate (pre_tool_call + classify_command) is unconditionally
+        # active, and `docket gates status` says so regardless of routing/
+        # isolation configuration.
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Policy: security=allowlist" in out
+        assert "always active" in out.lower()
+
+    def test_status_after_enable_reports_routing_on(
+        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _gates.run_gates("enable")
+        capsys.readouterr()
+        rc = _gates.run_gates("status")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Approval routing: on (mode=session)" in out
 
 
 class TestGatesEnableDisable:
-    def test_enable_writes_exec_approvals_direct(
+    """P19-7b: `docket gates enable/disable` no longer seeds a daemon
+    exec-approvals.json allowlist (that file format is gone along with the
+    daemon) -- it only flips fleet.json's approval-routing state. There is
+    no existing-config distinction left to force over, so the old
+    idempotent/--force tests (which asserted on repeated exec-approvals.json
+    writes) have no successor and are deleted rather than adapted.
+    """
+
+    def test_enable_turns_on_routing(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         rc = _gates.run_gates("enable")
         out = capsys.readouterr().out
         assert rc == 0
-        appr = json.loads((oc_dir / "exec-approvals.json").read_text())
-        assert appr["defaults"]["security"] == "allowlist"
-        assert appr["defaults"]["ask"] == "on-miss"
-        assert appr["defaults"]["askFallback"] == "deny"
-        # 'main' is always seeded plus the two registered agents.
-        for aid in ("main", "myshop", "content"):
-            assert appr["agents"][aid]["allowlist"]
-        assert "Applied gate defaults" in out
-        # Direct write because openclaw is off PATH.
-        assert "directly (gateway not reached)" in out
+        assert "Approval routing on (mode=session)" in out
         # Routing wired; myshop has a telegram binding → count >= 1.
-        assert "Approval routing on" in out
-        assert "1 Telegram-bound agent" in out
-        # P19-6: fleet.json now carries approval-routing state, not openclaw.json.
+        assert "1 channel-bound agent" in out
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["approvalRoutingState"] == "on"
         assert fleet["security"]["approvalRoutingMode"] == "session"
 
-    def test_enable_idempotent_without_force(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_enable_is_idempotent(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         _gates.run_gates("enable")
         capsys.readouterr()
         rc = _gates.run_gates("enable")
         out = capsys.readouterr().out
         assert rc == 0
-        assert "Gate defaults already set" in out
+        assert "Approval routing on (mode=session)" in out
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["approvalRoutingState"] == "on"
 
-    def test_enable_force_overwrites(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _gates.run_gates("enable")
-        capsys.readouterr()
-        rc = _gates.run_gates("enable", force=True)
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Applied gate defaults" in out
-
-    def test_disable_resets_defaults_and_routing(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_disable_resets_routing(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         _gates.run_gates("enable")
         capsys.readouterr()
         rc = _gates.run_gates("disable")
         out = capsys.readouterr().out
         assert rc == 0
-        appr = json.loads((oc_dir / "exec-approvals.json").read_text())
-        assert appr["defaults"] == {}
-        # Seeded allowlists are left in place.
-        assert appr["agents"]["main"]["allowlist"]
+        assert "Approval routing off" in out
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["approvalRoutingState"] == "off"
-        assert "falls back to tools.exec" in out
 
 
 class TestGatesClasses:
@@ -286,7 +222,7 @@ class TestGatesClasses:
         out = capsys.readouterr().out
         assert rc == 0
         assert "git" in out
-        assert "stay allowlisted" in out
+        assert "stay allowlisted" in out or "classify_command reads the" in out
         assert "npm" in out
 
 
@@ -310,7 +246,7 @@ class TestGatesIsolate:
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
         assert fleet["security"]["isolationEnabled"] is True
-        assert "Sandbox isolation on" in out
+        assert "Sandbox isolation recorded on" in out
 
     def test_isolate_off(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

@@ -17,7 +17,9 @@ import pytest
 import docket.config as _cfg
 from docket.cli._pipeline import run_pipeline
 from docket.core import dispatch as _dispatch
-from docket.edges.adapters import openclaw as _oc
+from docket.core import fleet as _fleet
+
+from .fakes import FakeDriver
 
 _VALID_PIPELINE = """\
 name: sample
@@ -47,19 +49,18 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
     monkeypatch.setattr(_cfg, "RUNS_FILE", tmp_path / "docket-runs.json", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
@@ -81,7 +82,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _oc.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
 
 class TestPipelineValidateCli:
@@ -176,26 +177,18 @@ class TestPipelineRunCli:
     def test_run_dispatches_through_the_default_pipeline(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Phase 19 P19-7a repointed core/dispatch.py's production driver
-        # resolution at edges.adapters.docket_runtime.default_driver()
-        # (DocketDriver), not the ACL's OpenClawDriver -- this fake `openclaw`
-        # binary on PATH is only reached if we monkeypatch the resolution
-        # point back, which is exactly what this test wants to keep proving
-        # (the pipeline CLI wires through to a real dispatch, whichever
-        # driver is behind it).
+        # `docket pipeline run`'s CLI dispatcher has no `runner=` injection
+        # point (unlike `core.dispatch.dispatch_pod`, called directly
+        # elsewhere with `runner=FakeDriver(...)`) -- it always resolves the
+        # production driver internally, so proving it wires through to a
+        # real dispatch means monkeypatching that resolution point itself.
+        # Phase 19 P19-7b deleted the daemon-facing driver this test used to
+        # monkeypatch back in for that purpose; FakeDriver is the one
+        # supported test double for a RuntimeDriver (see fakes.py).
         monkeypatch.setattr(
-            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+            "docket.edges.adapters.docket_runtime.default_driver",
+            lambda: FakeDriver(ok=True, cost=0.0),
         )
-        bindir = tmp_path / "bin"
-        bindir.mkdir()
-        script = bindir / "openclaw"
-        script.write_text(
-            "#!/usr/bin/env python3\nimport json\nprint(json.dumps({'output': 'done', 'cost': 0.0}))\n"
-        )
-        script.chmod(0o755)
-        import os
-
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
         _write_meta("demo-lead")
         _dispatch.enqueue_task("demo", "a task")

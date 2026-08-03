@@ -4,7 +4,7 @@ EXIT:0
 _docket() {
   local -a commands
   commands=(
-    'install:Bootstrap OpenClaw + specialist agents'
+    'install:Bootstrap a docket-native home + specialist agents'
     'list:List all project agents'
     'add:Add a new project agent (interactive or --from <spec-file>)'
     'info:Detailed status of one agent'
@@ -17,12 +17,12 @@ _docket() {
     'profile:Pin or unpin an agent'\''s model; set a budget cap; resume from auto-pause'
     'persona:Set/clear an agent'\''s optional display persona (docket-owned; rendered into SOUL.md)'
     'keys:API key management (add/list/remove/rotate/validate/export/setup)'
-    'auth:Model-provider authentication (status/login/key/setup)'
+    'auth:Model-provider credential status (no docket-native login flow yet)'
     'models:View and edit the role→model policy'
     'pod:Manage a project'\''s pod: list members, add/remove a role, or set an implementer'\''s verify command'
     'pipeline:Validate, plan, and run a docket-native pipeline (ROADMAP Phase 16 W-1/W-2)'
     'roles:Manage declarative role archetypes: list/show/add/validate (ROADMAP Phase 16 W-6)'
-    'logs:View memory logs and gateway entries'
+    'logs:View memory logs'
     'edit:Open workspace files in $EDITOR'
     'cost:Token usage and cost breakdown'
     'doctor:System-wide health check with auto-fix'
@@ -44,9 +44,9 @@ _docket() {
   )
 
   _docket_ids() {
-    local oc="${OPENCLAW_DIR:-$HOME/.openclaw}"
+    local dh="${DOCKET_HOME:-$HOME/.docket}"
     local -a ids
-    ids=(${oc}/workspaces/projects/*(/N:t) ${oc}/workspaces/*(/N:t))
+    ids=(${dh}/workspaces/projects/*(/N:t) ${dh}/workspaces/*(/N:t))
     ids=(${ids:#projects})
     compadd -a ids
   }

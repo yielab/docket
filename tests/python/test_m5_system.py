@@ -1,14 +1,19 @@
-"""M5 tests: docket.edges.adapters.system — systemctl/docker/git wrappers.
+"""M5 tests: docket.edges.adapters.system — docker/git wrappers, gateway stubs.
 
-These tests fake `subprocess.run` (and the service-manager override) with
-monkeypatch so no real systemctl/docker/git is ever invoked. They cover:
-  * gateway active / inactive
-  * restart success / failure
-  * DOCKET_NO_RESTART=1 dry-run
-  * the no-systemd fallback path
+These tests fake `subprocess.run` with monkeypatch so no real docker/git is
+ever invoked. They cover:
+  * gateway_active/restart_gateway's honest always-inactive/no-op stubs
   * docker availability + ps
   * git branch lookup
   * git changed-files probe (W-5b)
+
+Phase 19 P19-7b deleted the daemon's gateway systemd unit and every
+service_manager/service_hint/systemctl_* helper that only ever existed to
+start/restart/probe it -- there is nothing left to manage, so their tests
+are deleted, not adapted (see edges/adapters/system.py's module docstring).
+gateway_active/restart_gateway survive as stable, always-honest stubs so the
+~20 call sites across cli/ that used to restart the gateway need no
+individual rewrite; both are covered below for their new behavior.
 """
 
 from __future__ import annotations
@@ -30,132 +35,15 @@ class _FakeCompleted:
         self.stderr = ""
 
 
-def _force_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "systemd")
+# ── gateway_active / restart_gateway (honest no-op stubs) ──────────────────────
 
 
-def _force_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+def test_gateway_active_always_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
+        raise AssertionError("gateway_active must never shell out -- no daemon exists")
 
-
-# ── service_manager / service_hint ──────────────────────────────────────────────
-
-
-def test_service_manager_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "launchd")
-    assert system.service_manager() == "launchd"
-
-
-def test_service_manager_detects_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_SERVICE_MANAGER", raising=False)
-    monkeypatch.setattr(system, "_which", lambda b: b == "systemctl")
-    assert system.service_manager() == "systemd"
-
-
-def test_service_manager_detects_launchd(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_SERVICE_MANAGER", raising=False)
-    monkeypatch.setattr(system, "_which", lambda b: b == "launchctl")
-    assert system.service_manager() == "launchd"
-
-
-def test_service_manager_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_SERVICE_MANAGER", raising=False)
-    monkeypatch.setattr(system, "_which", lambda b: False)
-    assert system.service_manager() == "none"
-
-
-def test_service_hint_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-    assert system.service_hint("restart") == "systemctl --user restart openclaw-gateway.service"
-
-
-def test_service_hint_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_none(monkeypatch)
-    assert system.service_hint("start") == "openclaw gateway start"
-
-
-# ── systemctl_is_active / gateway_active ────────────────────────────────────────
-
-
-def test_gateway_active_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-
-    def fake_run(cmd: list[str], **_: Any) -> _FakeCompleted:
-        assert cmd == ["systemctl", "--user", "is-active", system.GATEWAY_UNIT]
-        return _FakeCompleted(returncode=0)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    assert system.gateway_active() is True
-
-
-def test_gateway_active_false_when_inactive(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=3))
+    monkeypatch.setattr(subprocess, "run", boom)
     assert system.gateway_active() is False
-
-
-def test_systemctl_is_active_false_off_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_none(monkeypatch)
-
-    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("subprocess.run must not be called off systemd")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    assert system.systemctl_is_active() is False
-
-
-def test_systemctl_is_active_handles_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-
-    def raise_fnf(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise FileNotFoundError
-
-    monkeypatch.setattr(subprocess, "run", raise_fnf)
-    assert system.systemctl_is_active() is False
-
-
-def test_systemctl_is_active_handles_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-
-    def raise_timeout(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise subprocess.TimeoutExpired(cmd="systemctl", timeout=5)
-
-    monkeypatch.setattr(subprocess, "run", raise_timeout)
-    assert system.systemctl_is_active() is False
-
-
-# ── systemctl_restart / systemctl_start ─────────────────────────────────────────
-
-
-def test_systemctl_restart_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0))
-    assert system.systemctl_restart() is True
-
-
-def test_systemctl_restart_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=1))
-    assert system.systemctl_restart() is False
-
-
-def test_systemctl_restart_off_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_none(monkeypatch)
-
-    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("must not shell out off systemd")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    assert system.systemctl_restart() is False
-
-
-def test_systemctl_start_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted(returncode=0))
-    assert system.systemctl_start() is True
-
-
-# ── restart_gateway ─────────────────────────────────────────────────────────────
 
 
 def test_restart_gateway_dry_run(
@@ -173,54 +61,15 @@ def test_restart_gateway_dry_run(
     assert capsys.readouterr().out == ""
 
 
-def test_restart_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restart_gateway_no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DOCKET_NO_RESTART", raising=False)
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(system, "gateway_active", lambda: True)
-    monkeypatch.setattr(system, "systemctl_restart", lambda unit=system.GATEWAY_UNIT: True)
-    monkeypatch.setattr(system.time, "sleep", lambda _s: None)
-    assert system.restart_gateway() == system.RestartResult(status="restarted", ok=True)
-
-
-def test_restart_gateway_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_NO_RESTART", raising=False)
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(system, "gateway_active", lambda: True)
-    monkeypatch.setattr(system, "systemctl_restart", lambda unit=system.GATEWAY_UNIT: False)
-    result = system.restart_gateway()
-    assert result.ok is False
-    assert result.status == "failed"
-    assert result.hint  # service_hint('status') text, rendered by cli/
-
-
-def test_restart_gateway_not_running_returns_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_NO_RESTART", raising=False)
-    _force_systemd(monkeypatch)
-    monkeypatch.setattr(system, "gateway_active", lambda: False)
-
-    def boom(*_a: Any, **_k: Any) -> bool:
-        raise AssertionError("must not restart a stopped service")
-
-    monkeypatch.setattr(system, "systemctl_restart", boom)
-    result = system.restart_gateway()
-    assert result.ok is True
-    assert result.status == "not_running"
-    assert result.hint  # service_hint('start') text, rendered by cli/
-
-
-def test_restart_gateway_no_systemd_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Off systemd, gateway_active is False so restart is a graceful no-op."""
-    monkeypatch.delenv("DOCKET_NO_RESTART", raising=False)
-    _force_none(monkeypatch)
 
     def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("no systemctl off systemd")
+        raise AssertionError("no daemon exists -- must not shell out")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    # gateway_active() -> systemctl_is_active() -> False off systemd, no shell-out.
     result = system.restart_gateway()
-    assert result.ok is True
-    assert result.status == "not_running"
+    assert result == system.RestartResult(status="no_daemon", ok=True)
 
 
 # ── docker ──────────────────────────────────────────────────────────────────────

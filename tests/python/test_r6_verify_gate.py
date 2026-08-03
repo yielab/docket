@@ -33,9 +33,9 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
 from docket.core import runtime_driver as _rd
-from docket.edges.adapters import openclaw as _oc
 
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
 
@@ -97,7 +97,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _oc.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
 
 def _fake_runner() -> _dispatch.Runner:
@@ -129,21 +129,16 @@ class TestDispatchVerifyCwd:
         monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
 
-        oc_dir = tmp_path / ".openclaw"
-        (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-        cfg_file = oc_dir / "openclaw.json"
-        cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-        monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-        monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-        monkeypatch.setattr(
-            _cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True
-        )
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-        monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+        monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+        monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
     def test_verify_runs_in_worktree_when_present(self, tmp_path: Path) -> None:
         worktree = tmp_path / "worktree"
@@ -212,35 +207,29 @@ class TestDispatchVerifyCwd:
 # ── TestSetVerifyValidation: cli/_pod.py's set-verify / --verify ────────────
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
 
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    _point_at(oc_dir, monkeypatch)
-    # No real openclaw daemon in the test environment — force the hermetic
-    # add_agent fallback in provision_member() regardless of what's on $PATH.
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: None)
+    _point_at(home, monkeypatch)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-    return oc_dir
+    return home
 
 
-def _meta(oc_dir: Path, member_id: str) -> dict[str, Any]:
-    p = oc_dir / "workspaces" / "projects" / member_id / ".docket-meta.json"
+def _meta(home: Path, member_id: str) -> dict[str, Any]:
+    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
     return json.loads(p.read_text())
 
 

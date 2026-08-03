@@ -1,8 +1,8 @@
 """Atomic JSON file I/O with filelock, .bak rotation, and 0600 permissions.
 
-All reads and writes to docket-owned JSON files (both .docket-meta.json and
-openclaw.json) go through these two functions. The ACL (edges/adapters/openclaw.py)
-is the only caller for openclaw-owned files.
+All reads and writes to docket-owned JSON files (.docket-meta.json,
+fleet.json, and every other docket-owned registry) go through these two
+functions.
 
 Single-writer rule (D-12, ROADMAP §6): this module is the one chokepoint for
 docket-owned JSON writes. The one documented exemption is append-only JSONL

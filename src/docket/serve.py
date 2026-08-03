@@ -59,8 +59,8 @@ from pathlib import Path
 from typing import Any
 
 import docket.config as cfg
+from docket.core import fleet as oc
 from docket.core import utils
-from docket.edges.adapters import openclaw as oc
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -134,7 +134,7 @@ def build_status() -> dict[str, Any]:
         agents.append(rec)
 
     for spec in _SPECIALISTS:
-        spec_dir = cfg.OPENCLAW_DIR / "workspaces" / spec
+        spec_dir = cfg.WORKSPACES_DIR / spec
         if not spec_dir.is_dir():
             continue
         rec = _agent_record(spec, kind="specialist", registered=registered)

@@ -31,7 +31,6 @@ from docket.cli import _audit as audit_cli
 from docket.cli import _keys as keys_cli
 from docket.cli._agents import run_add, run_delete
 from docket.core import audit as _audit
-from docket.edges.adapters import openclaw as _oc
 
 # ── shared helpers ───────────────────────────────────────────────────────────
 
@@ -41,9 +40,9 @@ def _entries(action: str) -> list[dict[str, Any]]:
 
 
 def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "demo") -> Path:
-    """A minimal, non-pod project agent: workspace + meta + openclaw.json entry."""
-    oc_dir = tmp_path / ".openclaw"
-    ws = oc_dir / "workspaces" / "projects" / aid
+    """A minimal, non-pod project agent: workspace + meta + fleet.json entry."""
+    home = tmp_path / ".docket"
+    ws = home / "workspaces" / "projects" / aid
     ws.mkdir(parents=True)
     meta = {
         "kind": "project",
@@ -56,38 +55,32 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
     }
     (ws / ".docket-meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(
+    (home / "fleet.json").write_text(
         json.dumps(
             {
-                "agents": {
-                    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-                    "list": [{"id": aid, "model": "anthropic/claude-sonnet-4-6", "metadata": {}}],
-                },
+                "agents": [{"id": aid, "model": "anthropic/claude-sonnet-4-6"}],
                 "bindings": [],
-                "channels": {},
             }
         ),
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
-    return oc_dir
+    return home
 
 
 @pytest.fixture()
 def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A bare OPENCLAW_DIR for exercising core/audit.py directly."""
-    d = tmp_path / ".openclaw"
+    """A bare DOCKET_HOME for exercising core/audit.py directly."""
+    d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
     monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
     return d
 
@@ -275,9 +268,9 @@ class TestAuditVerifyCommand:
 class TestKeysAudit:
     @pytest.fixture()
     def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        d = tmp_path / ".openclaw"
+        d = tmp_path / ".docket"
         d.mkdir()
-        monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
+        monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
         monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
         monkeypatch.setenv("DOCKET_NO_RESTART", "1")
         monkeypatch.setattr(
@@ -376,15 +369,15 @@ class TestAgentAddDeleteAudit:
     def test_agent_add_declarative_writes_one_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-        cfg_file = oc_dir / "openclaw.json"
-        cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
-        monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-        monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-        monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
+        home = tmp_path / ".docket"
+        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+        monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+        monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
         monkeypatch.setenv("DOCKET_NO_RESTART", "1")
 
         spec_file = tmp_path / "spec.json"

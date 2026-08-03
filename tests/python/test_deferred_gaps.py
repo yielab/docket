@@ -21,24 +21,21 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import approval as _ap
+from docket.core import secrets as _secrets
 from docket.core import trace as _trace
-from docket.edges.adapters import openclaw as _oc
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Temp ~/.openclaw with all docket-owned store paths repointed."""
-    d = tmp_path / ".openclaw"
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Temp DOCKET_HOME with all docket-owned store paths repointed."""
+    d = tmp_path / ".docket"
     d.mkdir()
-    cfg_file = d / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
+    (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", d / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
     monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
     return d
@@ -48,15 +45,15 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 class TestApprovalTrace:
-    def _events_for(self, oc_dir: Path, project: str) -> list[dict[str, object]]:
+    def _events_for(self, home: Path, project: str) -> list[dict[str, object]]:
         events: list[dict[str, object]] = []
-        for tf in (oc_dir / "traces" / project).glob("*.jsonl"):
+        for tf in (home / "traces" / project).glob("*.jsonl"):
             events.extend(_trace.read_trace(tf))
         return events
 
-    def test_create_emits_approval_requested(self, oc_dir: Path) -> None:
+    def test_create_emits_approval_requested(self, home: Path) -> None:
         token = _ap.approval_create("myshop", "programmer", "rm -rf /tmp/x")
-        events = self._events_for(oc_dir, "myshop")
+        events = self._events_for(home, "myshop")
         reqs = [e for e in events if e["event_type"] == "approval_requested"]
         assert len(reqs) == 1
         payload = reqs[0]["payload"]
@@ -66,36 +63,36 @@ class TestApprovalTrace:
         assert reqs[0]["agent_role"] == "programmer"
         assert reqs[0]["project"] == "myshop"
 
-    def test_grant_emits_approval_granted(self, oc_dir: Path) -> None:
+    def test_grant_emits_approval_granted(self, home: Path) -> None:
         token = _ap.approval_create("myshop", "programmer", "ship it")
         _ap.approval_grant(token)
-        events = self._events_for(oc_dir, "myshop")
+        events = self._events_for(home, "myshop")
         grants = [e for e in events if e["event_type"] == "approval_granted"]
         assert len(grants) == 1
         assert grants[0]["payload"] == {"token": token}
 
-    def test_deny_emits_approval_denied(self, oc_dir: Path) -> None:
+    def test_deny_emits_approval_denied(self, home: Path) -> None:
         token = _ap.approval_create("myshop", "reviewer", "nope")
         _ap.approval_deny(token)
-        events = self._events_for(oc_dir, "myshop")
+        events = self._events_for(home, "myshop")
         denies = [e for e in events if e["event_type"] == "approval_denied"]
         assert len(denies) == 1
         assert denies[0]["payload"] == {"token": token}
 
-    def test_action_is_redacted_in_record_and_trace(self, oc_dir: Path) -> None:
+    def test_action_is_redacted_in_record_and_trace(self, home: Path) -> None:
         action = "deploy with ANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz123456"
         token = _ap.approval_create("myshop", "programmer", action)
         rec = _ap.approval_get(token)
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz123456" not in rec["action"]
         assert "[REDACTED]" in rec["action"]
-        events = self._events_for(oc_dir, "myshop")
+        events = self._events_for(home, "myshop")
         req = next(e for e in events if e["event_type"] == "approval_requested")
         payload = req["payload"]
         assert isinstance(payload, dict)
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz123456" not in str(payload["action"])
 
     def test_trace_failure_never_breaks_approval(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def _boom(*_a: object, **_k: object) -> bool:
             raise RuntimeError("trace store down")
@@ -110,26 +107,29 @@ class TestApprovalTrace:
 
 
 class TestStoredSecretRedaction:
-    def test_redacts_stored_secret_value(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_redacts_stored_secret_value(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # File-backend secrets.json maps KEY -> value.
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
         secret = "supersecretvalue1234567890"
-        (oc_dir / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
+        (home / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
         out = _trace.redact(f"the token is {secret} ok")
         assert secret not in out
         assert "[REDACTED]" in out
 
-    def test_short_stored_value_not_redacted(self, oc_dir: Path) -> None:
+    def test_short_stored_value_not_redacted(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # redact.sh only redacts stored values longer than 8 chars.
-        (oc_dir / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
+        (home / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
         assert _trace.redact("value abc123 here") == "value abc123 here"
 
-    def test_redaction_in_trace_event(self, oc_dir: Path) -> None:
+    def test_redaction_in_trace_event(self, home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
         secret = "anothersecretvalue0987654321"
-        (oc_dir / "secrets.json").write_text(json.dumps({"K": secret}))
+        (home / "secrets.json").write_text(json.dumps({"K": secret}))
         _trace.trace_event("p", "s", "r", "tool_call", json.dumps({"text": f"x {secret} y"}))
-        events = _trace.read_trace(oc_dir / "traces" / "p" / "s.jsonl")
+        events = _trace.read_trace(home / "traces" / "p" / "s.jsonl")
         assert secret not in json.dumps(events)
 
 
@@ -181,49 +181,17 @@ class TestServeSweeps:
 
 
 # ── GAP 4: doctor advisory sections ───────────────────────────────────────────
+#
+# The Brave-browser advisory (_check_brave_browser) scanned for
+# `openclaw/browser` processes spawned by the OpenClaw daemon's headless web
+# UI. Phase 19 P19-7b deletes the daemon and every openclaw shell-out; there
+# is no longer a browser process for docket to observe, so the check itself
+# was deleted from cli/_doctor.py (no successor -- daemon-owned capability,
+# honestly gone, not silently dropped). Only the eval-results advisory
+# (docket-owned) remains below.
 
 
 class TestDoctorAdvisorySections:
-    def test_brave_section_no_processes(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli import _doctor
-
-        class _Res:
-            stdout = "USER 1 0.0 0.0 ? ? bash\n"
-
-        import subprocess as sp
-
-        monkeypatch.setattr(sp, "run", lambda *_a, **_k: _Res())
-        rc = _doctor._check_brave_browser()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Brave browser: not running" in out
-
-    def test_brave_section_running(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli import _doctor
-
-        def _fake_run(cmd: list[str], **_k: object) -> object:
-            class _R:
-                stdout = ""
-
-            r = _R()
-            if cmd[:2] == ["ps", "aux"]:
-                r.stdout = "user 1 0 0 ? ? node openclaw/browser/headless\n"
-            elif cmd[:2] == ["ps", "-eo"]:
-                r.stdout = "  1  120  node openclaw/browser/headless\n"
-            return r
-
-        import subprocess as sp
-
-        monkeypatch.setattr(sp, "run", _fake_run)
-        rc = _doctor._check_brave_browser()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Brave browser: 1 processes running" in out
-
     def test_eval_results_section(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

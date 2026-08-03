@@ -26,15 +26,12 @@ Three invariants are pinned here, in order of how much they matter:
 from __future__ import annotations
 
 import ast
-import json
 from pathlib import Path
 from typing import ClassVar
 
 import pytest
 
-import docket.config as _cfg
 from docket.core.fleet import FleetAgent
-from docket.edges.adapters import openclaw as _oc
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKET_SRC = REPO_ROOT / "src" / "docket"
@@ -83,34 +80,11 @@ class TestFleetAgentSchemaMinimal:
         assert not hasattr(agent, "session_key")
 
 
-class TestRegistrationNeverTouchesOpenclawJson:
-    def _point_at(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg_file = oc_dir / "openclaw.json"
-        fleet_file = oc_dir / "fleet.json"
-        monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-        monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-        monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
-        monkeypatch.setattr(_cfg, "meta_path", lambda aid: oc_dir / f"{aid}.meta.json")
-        monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-    def test_add_and_remove_agent_leave_openclaw_json_untouched(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        cfg_file = oc_dir / "openclaw.json"
-        seed = {"agents": {"list": [], "defaults": {"model": ""}}, "bindings": []}
-        cfg_file.write_text(json.dumps(seed))
-        self._point_at(oc_dir, monkeypatch)
-
-        before = cfg_file.read_text()
-        _oc.add_agent("myshop", "anthropic/claude-sonnet-4-6", "agent:myshop:default", "default")
-        assert _oc.agent_registered("myshop")
-        _oc.remove_agent("myshop")
-        after = cfg_file.read_text()
-
-        assert after == before, "openclaw.json must be byte-identical after fleet registration"
+# TestRegistrationNeverTouchesOpenclawJson deleted (Phase 19 P19-7b):
+# openclaw.json itself -- not just fleet registration's non-interference with
+# it -- is gone. P19-6 proved add_agent/remove_agent left the daemon's file
+# byte-identical; P19-7b closes the loop by deleting that file format
+# outright, so there is no longer anything for this test to leave untouched.
 
 
 class TestDualSourceModulesDeleted:

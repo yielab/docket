@@ -2,7 +2,7 @@
 
 These call the public run_* entry points in-process. stdout is captured with
 capsys to assert on the rendered text; the return value is the process exit
-code. Config-dependent modules (metrics) are repointed at a temp OPENCLAW_DIR.
+code. Config-dependent modules (metrics) are repointed at a temp DOCKET_HOME.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class TestCompletions:
         assert "#compdef docket" in out
         assert "_docket()" in out
         assert "_docket_ids()" in out
-        assert "'install:Bootstrap OpenClaw + specialist agents'" in out
+        assert "'install:Bootstrap a docket-native home + specialist agents'" in out
 
     def test_no_arg_prints_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = _completions.run_completions(None)
@@ -112,9 +112,8 @@ class TestEval:
 
 @pytest.fixture
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    d = tmp_path / ".openclaw"
+    d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
     monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
     return d

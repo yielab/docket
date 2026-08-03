@@ -8,7 +8,7 @@ verbatim (``{}`` when omitted) — the seam that lets a consumer created
 elsewhere (today: ``core/dispatch.py``'s require_approval gate) find what a
 token gated once it's resolved; see ``approval_create``.
 
-Approval records are docket-owned artefacts (not openclaw config), so writes
+Approval records are docket-owned artefacts, so writes
 go through the ``edges/store.py`` single-writer chokepoint (D-12) rather than
 the ACL.
 Trace emission and secret redaction are best-effort and isolated behind the thin

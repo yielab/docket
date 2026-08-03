@@ -1,10 +1,10 @@
-"""M6 tests: install — OpenClaw + specialist bootstrap.
+"""M6 tests: install — docket-native home + specialist bootstrap.
 
-These call run_install() in-process with OPENCLAW_DIR monkeypatched to a temp
-seed. The openclaw/systemctl shell-outs are stubbed so the run is hermetic:
-``_oc.register_agent_cli`` records specialist registrations into a fake
-agents.list, and DOCKET_NO_RESTART keeps systemctl untouched. Step 6 auth is
-driven by stubbing ``_oc.auth_profiles_summary`` (existing/disabled/missing).
+Phase 19 P19-7b: there is no external daemon any more. These tests call
+``run_install()`` in-process with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched
+to a temp seed; specialist registration writes straight to fleet.json (no
+shell-out to stub), and Step 5 (model credentials) is driven by seeding
+``core/secrets.py``'s store directly.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli import _install
-from docket.edges.adapters import openclaw as _oc
-from docket.edges.adapters import system as _sys
+from docket.core import fleet as _fleet
+from docket.core import secrets as _secrets
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -29,85 +29,43 @@ _PROJECT_ROLES = ("programmer", "reviewer", "tester")
 
 
 @pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
-    """Never touch systemctl during install tests.
-
-    ``fake_openclaw`` puts a real `openclaw` shim on PATH so Step 1's dependency
-    probe and the version read run their REAL code (they pass because they
-    genuinely find the binary — no stubbing of docket's own logic). The daemon's
-    state-mutating ``agents add`` is simulated at the ACL boundary by
-    ``_fake_registration`` (the only thing that needs a running daemon).
-    """
+def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     # No registry file → built-in role→model defaults apply.
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Repoint config + ACL + system modules at a temp OPENCLAW_DIR."""
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "SITES_DIR", oc_dir / "Sites", raising=True)
-    monkeypatch.setattr(_cfg, "LOG_DIR", oc_dir / "logs", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    # G-2: install now also seeds guardrail policies (Step 9) — repoint
-    # DOCKET_HOME/POLICIES_DIR too, or that step would touch the real
-    # ~/.openclaw/policies on whatever machine runs this test.
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", oc_dir / "policies", raising=True)
-    # ACL bound CONFIG_FILE / meta_path directly at import — rebind them.
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repoint config modules at a temp DOCKET_HOME."""
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "SITES_DIR", home / "Sites", raising=True)
+    monkeypatch.setattr(_cfg, "LOG_DIR", home / "logs", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "POLICIES_DIR", home / "policies", raising=True)
+    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
+    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
 
 
-def _fake_registration(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make register_agent_cli append to agents.list instead of shelling out."""
-
-    def _fake(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _fake)
+def _no_auth() -> None:
+    _secrets.save_secrets({})
 
 
-def _no_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_oc, "auth_profiles_summary", lambda agent="main": [])
-
-
-def _ok_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    prof = _oc.ProfileSummary(
-        id="anthropic-main", provider="anthropic", type="token", disabled=False, disabled_reason=""
-    )
-    monkeypatch.setattr(_oc, "auth_profiles_summary", lambda agent="main": [prof])
-
-
-def _disabled_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    prof = _oc.ProfileSummary(
-        id="anthropic-main",
-        provider="anthropic",
-        type="token",
-        disabled=True,
-        disabled_reason="usage",
-    )
-    monkeypatch.setattr(_oc, "auth_profiles_summary", lambda agent="main": [prof])
+def _ok_auth() -> None:
+    _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
 
 
 def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Empty ~/.openclaw with a minimal openclaw.json (already-initialized path)."""
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
-    cfg_file.chmod(0o600)
-    _point_at(oc_dir, monkeypatch)
-    _fake_registration(monkeypatch)
-    return oc_dir
+    """Empty DOCKET_HOME with a minimal fleet.json (already-initialized path)."""
+    home = tmp_path / ".docket"
+    home.mkdir(parents=True)
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
+    fleet_file.chmod(0o600)
+    _point_at(home, monkeypatch)
+    return home
 
 
 # ── full install run ────────────────────────────────────────────────────────────
@@ -117,27 +75,26 @@ def test_install_creates_only_org_specialists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # AA-2: install registers the org roles only; project roles are NOT global.
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     rc = _install.run_install(want_gates=False, assume_yes=True)
     assert rc == 0
 
-    raw = json.loads((oc_dir / "openclaw.json").read_text())
-    ids = {a["id"] for a in raw["agents"]["list"]}
+    ids = {a.id for a in _fleet.list_agents()}
     assert ids == set(_ORG_SPECIALISTS)
     # No global programmer/reviewer/tester singleton (the Defect-B fix).
     assert not (ids & set(_PROJECT_ROLES))
 
 
 def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
 
     for spec in _ORG_SPECIALISTS:
-        meta_file = oc_dir / "workspaces" / spec / _cfg.META_FILE
+        meta_file = home / "workspaces" / spec / _cfg.META_FILE
         assert meta_file.is_file(), f"missing meta for {spec}"
         meta: dict[str, Any] = json.loads(meta_file.read_text())
         assert meta["kind"] == "specialist"
@@ -150,7 +107,7 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
 
     # Project roles are not provisioned as global workspaces.
     for role in _PROJECT_ROLES:
-        assert not (oc_dir / "workspaces" / role / _cfg.META_FILE).is_file()
+        assert not (home / "workspaces" / role / _cfg.META_FILE).is_file()
 
 
 # ── C-4: specialists join the workspace contract ────────────────────────────────
@@ -166,13 +123,13 @@ def test_specialist_gets_full_workspace_contract(
     """
     from docket.core import memory as _mem
 
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
 
     for spec in _ORG_SPECIALISTS:
-        ws = oc_dir / "workspaces" / spec
+        ws = home / "workspaces" / spec
         assert ws.stat().st_mode & 0o777 == 0o700
 
         for fname in (
@@ -196,7 +153,7 @@ def test_specialist_gets_full_workspace_contract(
         # TOOLS.md is deliberately NOT written — a specialist has no codebase.
         assert not (ws / "TOOLS.md").exists()
 
-    meta = json.loads((oc_dir / "workspaces" / "security" / _cfg.META_FILE).read_text())
+    meta = json.loads((home / "workspaces" / "security" / _cfg.META_FILE).read_text())
     assert meta["sessionKey"] == "agent:security:org"
     assert meta["projectKey"] == "org"
 
@@ -207,11 +164,11 @@ def test_specialist_reprovisioning_preserves_real_content(
     """Re-running `docket install` on an already-provisioned fleet must not
     clobber a HEARTBEAT.md/MEMORY.md the agent has actually written to.
     """
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
     _install.run_install(want_gates=False, assume_yes=True)
 
-    ws = oc_dir / "workspaces" / "security"
+    ws = home / "workspaces" / "security"
     hb = ws / "HEARTBEAT.md"
     mem_md = ws / "MEMORY.md"
     hb.write_text("# HEARTBEAT.md — security\n\n## Active Tasks\n- [ ] real in-flight task\n")
@@ -234,11 +191,11 @@ def test_specialist_backfills_bare_legacy_workspace(
     """
     from docket.core import memory as _mem
 
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     # Simulate the pre-C-4 state: registered + meta only, nothing else.
-    ws = oc_dir / "workspaces" / "knowledge"
+    ws = home / "workspaces" / "knowledge"
     ws.mkdir(parents=True)
     ws.chmod(0o700)
     (ws / _cfg.META_FILE).write_text(
@@ -255,11 +212,7 @@ def test_specialist_backfills_bare_legacy_workspace(
         )
     )
     (ws / _cfg.META_FILE).chmod(0o600)
-    raw = json.loads((oc_dir / "openclaw.json").read_text())
-    raw["agents"]["list"].append(
-        {"id": "knowledge", "model": "anthropic/claude-haiku-4-5", "metadata": {}}
-    )
-    (oc_dir / "openclaw.json").write_text(json.dumps(raw))
+    _fleet.add_agent("knowledge", "anthropic/claude-haiku-4-5")
 
     assert not (ws / "SOUL.md").exists()
 
@@ -271,139 +224,125 @@ def test_specialist_backfills_bare_legacy_workspace(
     assert _mem.contract_ok(ws)
 
 
-def test_install_configures_agent_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+def test_install_configures_default_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
 
-    raw = json.loads((oc_dir / "openclaw.json").read_text())
-    defaults = raw["agents"]["defaults"]
-    assert defaults["model"] == {"primary": _cfg.DEFAULT_MODEL}
-    assert defaults["compaction"] == {"mode": "safeguard"}
-    assert defaults["maxConcurrent"] == 4
-    assert defaults["subagents"] == {"maxConcurrent": 8}
-    assert raw["channels"]["telegram"]["enabled"] is True
-    assert raw["channels"]["telegram"]["groups"] == {}
+    assert _fleet.get_default_model() == _cfg.DEFAULT_MODEL
 
 
 def test_install_creates_directories(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
 
-    assert (oc_dir / "workspaces" / "projects").is_dir()
-    assert (oc_dir / "Sites").is_dir()
+    assert (home / "workspaces" / "projects").is_dir()
+    assert (home / "Sites").is_dir()
 
 
 def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A second run reports specialists already registered and stays clean."""
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     assert _install.run_install(want_gates=False, assume_yes=True) == 0
     assert _install.run_install(want_gates=False, assume_yes=True) == 0
 
-    raw = json.loads((oc_dir / "openclaw.json").read_text())
-    ids = [a["id"] for a in raw["agents"]["list"]]
+    ids = [a.id for a in _fleet.list_agents()]
     # No duplicate registrations on the second pass.
     assert sorted(ids) == sorted(_ORG_SPECIALISTS)
 
 
-# ── Step 6 auth branches ────────────────────────────────────────────────────────
+# ── Step 5: model credentials ────────────────────────────────────────────────────
 
 
-def test_step6_detects_existing_auth(
+def test_step5_detects_existing_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Claude auth already configured" in out
-    # auth_missing is False → next steps must NOT include the auth nudge.
-    assert "Set up Claude auth" not in out
+    assert "Model credential(s) available" in out
+    # auth_missing is False → next steps must NOT include the credential nudge.
+    assert "Store a model-provider credential" not in out
 
 
-def test_step6_warns_when_all_disabled(
+def test_step5_missing_credential_warns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
-    _disabled_auth(monkeypatch)
-
-    _install.run_install(want_gates=False, assume_yes=True)
-    out = capsys.readouterr().out
-    assert "All Claude auth profiles are currently disabled" in out
-    assert "Set up Claude auth" in out  # auth_missing → nudge present
-
-
-def test_step6_missing_auth_non_tty_does_not_prompt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _no_auth(monkeypatch)
-    # Force non-interactive so the chooser is skipped (no openclaw shell-out).
-    monkeypatch.setattr(_install.sys.stdin, "isatty", lambda: False)
+    _no_auth()
 
     rc = _install.run_install(want_gates=False, assume_yes=True)
     assert rc == 0
     out = capsys.readouterr().out
-    assert "No Claude auth configured" in out
-    assert "Non-interactive shell" in out
-    assert "Set up Claude auth" in out
+    assert "No model-provider credential found yet" in out
+    assert "docket keys add ANTHROPIC_API_KEY" in out
+    assert "Store a model-provider credential" in out  # auth_missing → nudge present
 
 
-def test_step6_missing_auth_interactive_invokes_chooser(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With a TTY + no profile, Step 6 calls the interactive chooser."""
-    _seed_fresh(tmp_path, monkeypatch)
-    _no_auth(monkeypatch)
-    monkeypatch.setattr(_install.sys.stdin, "isatty", lambda: True)
-    called: list[bool] = []
-    monkeypatch.setattr(_install, "_auth_setup_interactive", lambda: called.append(True) or False)
-
-    _install.run_install(want_gates=False, assume_yes=True)
-    assert called == [True]
-
-
-# ── Step 7 security gates (on by default; want_gates=False simulates --no-gates) ─
-
-
-def test_install_no_gates_leaves_exec_approvals_absent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
-
-    _install.run_install(want_gates=False, assume_yes=True)
-    assert not (oc_dir / "exec-approvals.json").exists()
-
-
-def test_install_with_gates_applies_exec_approvals(
+def test_step5_reads_env_var_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
-    # Keep gate application off the live daemon (write directly to the file).
-    monkeypatch.setattr(
-        "docket.core.security._oc.write_exec_approvals",
-        lambda data: _write_local(oc_dir, data),
-        raising=False,
-    )
+    _seed_fresh(tmp_path, monkeypatch)
+    _no_auth()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
+
+    _install.run_install(want_gates=False, assume_yes=True)
+    out = capsys.readouterr().out
+    assert "Model credential(s) available" in out
+    assert "ANTHROPIC_API_KEY" in out
+    assert "environment" in out
+
+
+# ── Step 6 security: approval routing + perms hardening ─────────────────────────
+
+
+def test_install_no_gates_skips_approval_routing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
+
+    _install.run_install(want_gates=False, assume_yes=True)
+    out = capsys.readouterr().out
+    assert "Approval-routing setup skipped (--no-gates)" in out
+    r_state, _mode = _fleet.get_approval_routing()
+    assert r_state != "on"
+
+
+def test_install_with_gates_turns_on_approval_routing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     rc = _install.run_install(want_gates=True, assume_yes=True)
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Exec-approval gates applied" in out
-    assert (oc_dir / "exec-approvals.json").is_file()
+    assert "Approval routing on" in out
+    r_state, r_mode = _fleet.get_approval_routing()
+    assert r_state == "on"
+    assert r_mode == "session"
 
 
-def _write_local(oc_dir: Path, data: dict[str, Any]) -> bool:
-    (oc_dir / "exec-approvals.json").write_text(json.dumps(data))
-    return False  # not via daemon
+def test_install_always_reports_tool_call_gate_always_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regardless of --gates/--no-gates, the real tool-call gate (policy engine +
+    high-risk classifier) is unconditionally active (Phase 19 P19-3) — install
+    must never imply otherwise."""
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
+
+    _install.run_install(want_gates=False, assume_yes=True)
+    out = capsys.readouterr().out
+    assert "policy engine" in out or "high-risk classifier" in out
 
 
 # ── FD-5: gates-default-on at the CLI layer ─────────────────────────────────────
@@ -411,8 +350,8 @@ def _write_local(oc_dir: Path, data: dict[str, Any]) -> bool:
 # The tests above drive run_install() directly with an explicit want_gates=
 # True/False, exercising the security step in isolation. The two tests below
 # instead go through the real Typer `install` command (docket.cli.app) to prove
-# the *CLI flag's own default* now applies gates with zero flags passed, and that
-# --no-gates remains a working, explicit opt-out.
+# the *CLI flag's own default* now applies routing with zero flags passed, and
+# that --no-gates remains a working, explicit opt-out.
 
 
 def test_install_cli_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -420,21 +359,16 @@ def test_install_cli_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.Mo
 
     from docket.cli import app
 
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
-    # Keep gate application off the live daemon (write directly to the file).
-    monkeypatch.setattr(
-        "docket.core.security._oc.write_exec_approvals",
-        lambda data: _write_local(oc_dir, data),
-        raising=False,
-    )
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     runner = CliRunner()
     result = runner.invoke(app, ["install", "--yes"])  # no --gates/--no-gates passed
 
     assert result.exit_code == 0
-    assert "Exec-approval gates applied" in result.output
-    assert (oc_dir / "exec-approvals.json").is_file()
+    assert "Approval routing on" in result.output
+    r_state, _mode = _fleet.get_approval_routing()
+    assert r_state == "on"
 
 
 def test_install_cli_no_gates_flag_still_opts_out(
@@ -444,32 +378,32 @@ def test_install_cli_no_gates_flag_still_opts_out(
 
     from docket.cli import app
 
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     runner = CliRunner()
     result = runner.invoke(app, ["install", "--yes", "--no-gates"])
 
     assert result.exit_code == 0
-    assert not (oc_dir / "exec-approvals.json").exists()
+    r_state, _mode = _fleet.get_approval_routing()
+    assert r_state != "on"
 
 
-# ── perms hardening (Step 7 / G2) ───────────────────────────────────────────────
+# ── perms hardening ──────────────────────────────────────────────────────────────
 
 
 def test_install_hardens_world_readable_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # secrets.json is never rewritten by install, so its perms survive to Step 7.
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
-    secrets = oc_dir / "secrets.json"
-    secrets.write_text("{}")
-    secrets.chmod(0o644)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
+    secrets_file = home / "secrets.json"
+    secrets_file.write_text("{}")
+    secrets_file.chmod(0o644)
 
     _install.run_install(want_gates=False, assume_yes=True)
 
-    assert secrets.stat().st_mode & 0o777 == 0o600
+    assert secrets_file.stat().st_mode & 0o777 == 0o600
     assert "Tightened permissions to 600" in capsys.readouterr().out
 
 
@@ -477,29 +411,13 @@ def test_install_reports_already_hardened(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
     assert "permissions already owner-only" in capsys.readouterr().out
 
 
-# ── gateway service (Step 8) ────────────────────────────────────────────────────
-
-
-def test_install_no_service_manager_hints(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
-    # DOCKET_SERVICE_MANAGER=none is set by the autouse fixture.
-
-    _install.run_install(want_gates=False, assume_yes=True)
-    out = capsys.readouterr().out
-    assert "No service manager detected" in out
-    assert _sys.service_manager() == "none"
-
-
-# ── guardrail policies (Step 9 / G-2) ────────────────────────────────────────────
+# ── guardrail policies (G-2) ─────────────────────────────────────────────────────
 
 
 def test_install_seeds_guardrail_policies(
@@ -507,12 +425,12 @@ def test_install_seeds_guardrail_policies(
 ) -> None:
     """G-2: `docket install` runs the same producer as `docket policies init` —
     the policy engine has nothing to evaluate against an empty $POLICIES_DIR."""
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
 
-    policies_dir = oc_dir / "policies"
+    policies_dir = home / "policies"
     assert policies_dir.is_dir()
     installed = {f.name for f in policies_dir.glob("*.json")}
     assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
@@ -522,8 +440,8 @@ def test_install_seeds_guardrail_policies(
 def test_install_policies_step_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    _ok_auth(monkeypatch)
+    home = _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
 
     _install.run_install(want_gates=False, assume_yes=True)
     capsys.readouterr()
@@ -532,29 +450,32 @@ def test_install_policies_step_is_idempotent(
 
     assert "already installed" in out
     # No duplicate/overwritten files — still exactly the shipped template set.
-    installed = {f.name for f in (oc_dir / "policies").glob("*.json")}
+    installed = {f.name for f in (home / "policies").glob("*.json")}
     assert installed == {f.name for f in _cfg.policy_templates_dir().glob("*.json")}
 
 
-# ── dependency detection (Step 1) — real probe, both ways ────────────────────────
+# ── dependency detection (Step 1) ────────────────────────────────────────────────
 
 
-def test_check_dependencies_passes_with_openclaw(fake_openclaw: Path) -> None:
-    """The real Step-1 probe finds `openclaw` on PATH and does not flag it."""
-    assert "openclaw" not in _install._check_dependencies()
+def test_check_dependencies_passes_with_python_and_git() -> None:
+    """The real Step-1 probe finds python3/git on PATH (the real dev/CI
+    environment) and does not flag them."""
+    missing = _install._check_dependencies()
+    assert "python3" not in missing
+    assert "git" not in missing
 
 
-def test_check_dependencies_flags_missing_openclaw(
+def test_check_dependencies_flags_missing_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With no `openclaw` on PATH, the real probe reports it missing — and a full
-    install aborts with a non-zero exit (the genuine 'daemon not installed' path)."""
+    """With no `git` on PATH, the real probe reports it missing — and a full
+    install aborts with a non-zero exit."""
     empty = tmp_path / "empty-bin"
     empty.mkdir()
-    monkeypatch.setenv("PATH", str(empty))  # nothing — not even python3/git
-    assert "openclaw" in _install._check_dependencies()
+    monkeypatch.setenv("PATH", str(empty))  # nothing at all on PATH
+    assert "git" in _install._check_dependencies()
 
-    oc_dir = _seed_fresh(tmp_path, monkeypatch)
-    monkeypatch.setenv("PATH", str(empty))  # _seed_fresh ran with a real PATH; re-empty it
-    assert oc_dir.exists()
+    home = _seed_fresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("PATH", str(empty))  # _seed_fresh's fixtures don't touch PATH; re-assert
+    assert home.exists()
     assert _install.run_install(want_gates=False, assume_yes=True) == 1

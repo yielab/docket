@@ -1,39 +1,42 @@
 """RuntimeDriver port (Phase 18 L-1 / decision D-14).
 
-A 2026-07-29 platform audit found the execution slice half-escaping the ACL:
-session-JSONL cost parsing lived in ``core/utils.py``, ``trace_ingest`` knew the
-daemon's session-log record shapes from inside ``core/trace.py``, and callers
-shelled out to ``openclaw`` through a growing pile of ad-hoc argv shapes. This
-module is the fix: a single typed ``Protocol`` that ``core/`` and ``cli/``
-program against, so that *no* module outside ``edges/adapters/`` ever needs to
-know what a session JSONL line, a daemon CLI invocation, or a cost record
-actually looks like on disk.
+A 2026-07-29 platform audit found the execution slice half-escaping the ACL
+that existed at the time: session-JSONL cost parsing lived in
+``core/utils.py``, ``trace_ingest`` knew the daemon's session-log record
+shapes from inside ``core/trace.py``, and callers shelled out to the daemon's
+CLI through a growing pile of ad-hoc argv shapes. This module is the fix: a
+single typed ``Protocol`` that ``core/`` and ``cli/`` program against, so
+that *no* module outside ``edges/adapters/`` ever needs to know what a
+session JSONL line, a daemon CLI invocation, or a cost record actually looks
+like on disk.
 
 ROADMAP §4.5 has a standing ban on an ``AbstractBackend`` — decision D-14
 *revises* that ban, not repeals it: **one typed port, one shipped driver**
-(``edges.adapters.openclaw.OpenClawDriver``), plus a ``FakeDriver`` test double
-(``tests/python/fakes.py``). This is containment of coupling that already
-existed, not speculative plugin-framework generality. A second real driver
-still needs a §4.5 trigger (upstream stall/breakage) or a paying user — adding
-driver discovery, entry points, or a config-selectable backend here would be
-scope creep beyond this card.
+(``edges.adapters.docket_runtime.DocketDriver``, since Phase 19 P19-7b
+deleted the daemon-facing driver this port originally shipped with), plus a
+``FakeDriver`` test double (``tests/python/fakes.py``). This is containment
+of coupling that already existed, not speculative plugin-framework
+generality. A second real driver still needs a §4.5 trigger (upstream
+stall/breakage) or a paying user — adding driver discovery, entry points, or
+a config-selectable backend here would be scope creep beyond this card.
 
 The six required members mirror an agent's whole lifecycle:
 
 - ``run_turn``    — one costed agent turn (the hot path; ``core/dispatch.py``'s
   pipeline and, per D-18, docket's own first self-originated LLM call go
   through this).
-- ``provision`` / ``teardown`` — register/unregister an agent with the daemon.
+- ``provision`` / ``teardown`` — register/unregister an agent with whatever
+  runtime the driver backs onto (an honest no-op for ``DocketDriver``, which
+  backs onto no external registry at all).
 - ``list_sessions`` / ``usage`` — durable-session enumeration and token/cost
-  aggregation, reading the daemon's on-disk session JSONL — the format
+  aggregation, reading the driver's own on-disk session format — the format
   knowledge this card pulls out of ``core/``.
 - ``capabilities`` — what this driver instance can actually promise (e.g.
-  whether the daemon reports real USD cost at all), so callers never have to
+  whether it reports real USD cost at all), so callers never have to
   hardcode an assumption about the one shipped driver's quirks.
 
-Nothing in this module touches a filesystem, a subprocess, or an OpenClaw file
-format — it is pure typing, exactly like ``core/oc_models.py`` mirrors
-openclaw.json's *schema* without being the thing that reads or writes it.
+Nothing in this module touches a filesystem or a subprocess — it is pure
+typing, describing only the shape a driver's return values must have.
 """
 
 from __future__ import annotations
@@ -56,9 +59,7 @@ class TurnResult:
     Field order is load-bearing: dozens of existing tests construct this
     positionally (``TurnResult(False, "", 0.0, {}, "boom")``) — do not reorder
     or insert a field before ``failure_kind`` without a matching sweep of
-    those call sites. (Before W-5, most of those call sites went through
-    ``edges.adapters.openclaw.AgentRunResult``, a now-deleted alias of this
-    same class — see that module's history.)
+    those call sites.
     """
 
     ok: bool
@@ -200,9 +201,9 @@ class DriverCapabilities:
 
     Exists so a caller (including C-2's later self-originated LLM call, D-18)
     never has to hardcode an assumption about the one shipped driver's
-    quirks — e.g. today's OpenClaw daemon (v2026.2.23) reports only token
-    counts, never a USD cost field, so ``reports_cost_usd`` is False even
-    though ``run_turn`` always returns a (zero) ``cost_usd``.
+    quirks — ``DocketDriver`` reports only measured token counts, never a
+    USD cost field, so ``reports_cost_usd`` is False even though
+    ``run_turn`` always returns a (zero) ``cost_usd``.
     """
 
     driver_name: str
@@ -219,7 +220,7 @@ class RuntimeDriver(Protocol):
     """The typed boundary between docket's domain logic and an agent runtime.
 
     ``core/`` and ``cli/`` depend on this Protocol, never on a concrete
-    driver's on-disk format knowledge. ``edges.adapters.openclaw.OpenClawDriver``
+    driver's on-disk format knowledge. ``edges.adapters.docket_runtime.DocketDriver``
     is the one shipped implementation; ``tests/python/fakes.py``'s
     ``FakeDriver`` is the one test double — see the module docstring for why
     there is exactly one of each.

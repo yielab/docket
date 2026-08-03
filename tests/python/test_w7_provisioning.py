@@ -23,8 +23,8 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _agents, _doctor, _pod
 from docket.core import blueprints as _bp
+from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic helpers (mirrors test_w6_pod_registry.py / test_cd1_resources.py) ──
 
@@ -35,47 +35,38 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", oc_dir / "docket-roles.json", raising=True)
-    monkeypatch.setattr(_cfg, "PORT_ALLOC_FILE", oc_dir / "port-allocations.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: None)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", home / "docket-roles.json", raising=True)
+    monkeypatch.setattr(_cfg, "PORT_ALLOC_FILE", home / "port-allocations.json", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
 
 def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
-    return oc_dir
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
+    return home
 
 
-def _ids(oc_dir: Path) -> list[str]:
-    # P19-6: agent registration lives in fleet.json now, not openclaw.json's
-    # `agents.list` -- read via the ACL rather than a fixed relative path.
-    del oc_dir  # kept for call-site compatibility; no longer the source
-    return [a.id for a in _oc.list_agents()]
+def _ids(home: Path) -> list[str]:
+    # P19-6/P19-7b: agent registration lives in fleet.json now.
+    del home  # kept for call-site compatibility; no longer the source
+    return [a.id for a in _fleet.list_agents()]
 
 
-def _meta(oc_dir: Path, member_id: str) -> dict[str, Any]:
-    p = oc_dir / "workspaces" / "projects" / member_id / ".docket-meta.json"
+def _meta(home: Path, member_id: str) -> dict[str, Any]:
+    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
     return json.loads(p.read_text())
 
 
-def _ws(oc_dir: Path, member_id: str) -> Path:
-    return oc_dir / "workspaces" / "projects" / member_id
+def _ws(home: Path, member_id: str) -> Path:
+    return home / "workspaces" / "projects" / member_id
 
 
 # ── every built-in blueprint provisions ─────────────────────────────────────

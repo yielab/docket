@@ -6,7 +6,7 @@ more workers (Implementer, Reviewer, Tester), each with its own workspace
 id ``<project>-<role>`` (``-N`` for duplicates).
 
 Composition logic lives in `core/pod.py`; this module does the I/O: workspace +
-templates + meta + daemon registration via the ACL.
+templates + meta + fleet registration (`core/fleet.py`).
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from docket import ui
 from docket.core import archetypes as _arch
 from docket.core import blueprints as _bp
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import pipeline as _pipeline
@@ -31,7 +32,6 @@ from docket.core import pod
 from docket.core import resources as _res
 from docket.core.audit import audit_log
 from docket.edges import store as _store
-from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 # Bump when the pod-member templates change (doctor flags older members).
@@ -200,7 +200,7 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
     """Render a pod member's AGENTS.md from its archetype's `agentsTemplate` (W-6).
 
     Byte-identical to the pre-W-6 hand-written generator for the four legacy
-    roles. Section names matter: the openclaw runtime re-injects the "Session
+    roles. Section names matter: the turn loop re-injects the "Session
     Startup" and "Red Lines" H2 blocks after every compaction
     (readPostCompactionContext) — a custom archetype must keep those headings
     verbatim or the injection silently stops firing (see
@@ -257,12 +257,12 @@ def _write_member_workspace(
             ),
             encoding="utf-8",
         )
-    # Seed the files the openclaw post-compaction audit re-reads every reset,
+    # Seed the files the turn loop's system-prompt composition re-reads every turn,
     # anchoring the codebase (or, for a `workdir`-kind pod, the working
     # directory) path where a just-reset agent will actually see it.
     _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack, work_dir=work_dir)
 
-    # Keep pod-member identity docket-owned: quarantine OpenClaw's self-authoring
+    # Keep pod-member identity docket-owned: quarantine any self-authoring
     # scaffolding (IDENTITY.md/BOOTSTRAP.md) so it can't split the member's identity.
     from docket.core import identity as _identity
 
@@ -383,17 +383,10 @@ def provision_member(
         blueprint_name=blueprint_name,
         budget_usd=budget_usd,
     )
-    ws_path = str(_cfg.PROJECTS_DIR / member.member_id)
-
-    if shutil.which("openclaw"):
-        ok, msg = _oc.register_agent_cli(member.member_id, ws_path, member.model)
-        if not ok:
-            return (False, msg)
-
-    # P19-6: fleet.json is docket's own registry, never written by the daemon
-    # CLI above — register unconditionally (see cli/_agents.py's run_add for
-    # the identical reasoning).
-    _oc.add_agent(member.member_id, member.model, member.session_key, project_key)
+    # Phase 19 P19-7b: registration is fleet.json only now -- there is no
+    # daemon CLI to shell out to (see cli/_agents.py's run_add for the
+    # identical reasoning).
+    _fleet.add_agent(member.member_id, member.model, member.session_key, project_key)
     return (True, "")
 
 
@@ -433,9 +426,8 @@ def free_pod_resources(project: str) -> None:
 
 
 def teardown_member(member_id: str) -> tuple[bool, str]:
-    """Remove one pod member: daemon registration + workspace + agents.list entry.
+    """Remove one pod member: fleet registration + workspace.
 
-    Does NOT restart the gateway — the caller batches one restart per command.
     Does NOT free pod resources — the caller is responsible for that when it
     knows the full pod is being torn down or the last implementer is leaving.
     If the member has a git worktree, it is removed before the workspace dir.
@@ -452,20 +444,17 @@ def teardown_member(member_id: str) -> tuple[bool, str]:
     if worktree_dir and codebase:
         _ok, _err = _sys.git_worktree_remove(codebase, worktree_dir)
 
-    ok, msg = (True, "")
-    if shutil.which("openclaw"):
-        ok, msg = _oc.unregister_agent_cli(member_id)
-    # Belt-and-braces: ensure it's gone from agents.list and the docket workspace.
+    # Phase 19 P19-7b: no daemon to unregister from -- fleet.json only.
     with contextlib.suppress(Exception):
-        _oc.remove_agent(member_id)
+        _fleet.remove_agent(member_id)
     if ws.is_dir():
         shutil.rmtree(ws, ignore_errors=True)
-    return (ok, msg)
+    return (True, "")
 
 
 def pod_member_ids(project: str) -> list[str]:
     """Registered agent ids that belong to ``project``'s pod (Lead first)."""
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     return [mid for mid, _role, _idx in pod.members_of(all_ids, project)]
 
 
@@ -638,12 +627,12 @@ def dispatch(project: str, sub: str | None, extra: list[str]) -> None:
 
 
 def _pod_list(project: str) -> None:
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     members = pod.members_of(all_ids, project)
     if not members:
         ui.warn(f"No pod found for '{project}'. Create one with: docket add {project}")
         return
-    has_resources = any(bool(_oc.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
+    has_resources = any(bool(_fleet.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
     table = Table(title=f"Pod — {project}")
     table.add_column("MEMBER", style="bold")
     table.add_column("ROLE")
@@ -653,11 +642,11 @@ def _pod_list(project: str) -> None:
         table.add_column("PORTS")
         table.add_column("SCRATCH")
     for mid, role, _idx in members:
-        model = _oc.meta_get(mid, "model", "?")
+        model = _fleet.meta_get(mid, "model", "?")
         if has_resources:
-            port_start_s = _oc.meta_get(mid, "portRangeStart", "")
-            port_count_s = _oc.meta_get(mid, "portRangeCount", "")
-            scratch = _oc.meta_get(mid, "scratchDir", "")
+            port_start_s = _fleet.meta_get(mid, "portRangeStart", "")
+            port_count_s = _fleet.meta_get(mid, "portRangeCount", "")
+            scratch = _fleet.meta_get(mid, "scratchDir", "")
             if port_start_s and port_count_s:
                 try:
                     port_end = int(port_start_s) + int(port_count_s) - 1
@@ -692,12 +681,12 @@ def _pod_add(project: str, extra: list[str]) -> None:
     # member) — a new member of a workdir pod must not fall back to being a
     # codebase-kind member.
     base_id = pod_member_ids(project)[0]
-    codebase = _oc.meta_get(base_id, "codebase", "")
-    stack = _oc.meta_get(base_id, "stack", "")
-    description = _oc.meta_get(base_id, "description", "")
-    project_key = _oc.meta_get(base_id, "projectKey", "default") or "default"
-    work_dir = _oc.meta_get(base_id, "workDir", "")
-    blueprint_name = _oc.meta_get(base_id, "blueprint", "")
+    codebase = _fleet.meta_get(base_id, "codebase", "")
+    stack = _fleet.meta_get(base_id, "stack", "")
+    description = _fleet.meta_get(base_id, "description", "")
+    project_key = _fleet.meta_get(base_id, "projectKey", "default") or "default"
+    work_dir = _fleet.meta_get(base_id, "workDir", "")
+    blueprint_name = _fleet.meta_get(base_id, "blueprint", "")
     role_models, _, _ = _mp.load_registry()
 
     canon_role = pod.normalize_role(role)
@@ -762,7 +751,7 @@ def _pod_remove(project: str, extra: list[str]) -> None:
         ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
         raise typer.Exit(1)
     # Read role before teardown removes the workspace.
-    role = _oc.meta_get(member_id, "role", "")
+    role = _fleet.meta_get(member_id, "role", "")
     ok, msg = teardown_member(member_id)
     if ok:
         ui.success(f"Removed {member_id}")
@@ -772,7 +761,7 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     # Free runtime resources if this was the last implementer in the pod.
     if role == "implementer":
         remaining = pod_member_ids(project)
-        remaining_roles = {_oc.meta_get(mid, "role", "") for mid in remaining}
+        remaining_roles = {_fleet.meta_get(mid, "role", "") for mid in remaining}
         if "implementer" not in remaining_roles:
             free_pod_resources(project)
     from docket.cli import _render_restart_result
@@ -786,17 +775,17 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
     No-op for non-implementers and for members with no allocated resources and no
     verify command (nothing to render).
     """
-    role = _oc.meta_get(member_id, "role", "")
+    role = _fleet.meta_get(member_id, "role", "")
     if role != "implementer":
         return
-    port_start_s = _oc.meta_get(member_id, "portRangeStart", "")
-    port_count_s = _oc.meta_get(member_id, "portRangeCount", "")
-    scratch = _oc.meta_get(member_id, "scratchDir", "")
-    verify_cmd = _oc.meta_get(member_id, "verifyCmd", "")
+    port_start_s = _fleet.meta_get(member_id, "portRangeStart", "")
+    port_count_s = _fleet.meta_get(member_id, "portRangeCount", "")
+    scratch = _fleet.meta_get(member_id, "scratchDir", "")
+    verify_cmd = _fleet.meta_get(member_id, "verifyCmd", "")
     if not ((port_start_s and scratch) or verify_cmd):
         return
-    worktree_dir = _oc.meta_get(member_id, "worktreeDir", "")
-    raw_codebase = _oc.meta_get(member_id, "codebase", "")
+    worktree_dir = _fleet.meta_get(member_id, "worktreeDir", "")
+    raw_codebase = _fleet.meta_get(member_id, "codebase", "")
     codebase = pod.resolve_member_cwd(member_id, worktree_dir, raw_codebase)
     content = _member_tools(
         project,
@@ -827,7 +816,7 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     if pod.parse_member_id(member_id, project) is None:
         ui.error(f"'{member_id}' is not a member of the '{project}' pod.")
         raise typer.Exit(1)
-    role = _oc.meta_get(member_id, "role", "")
+    role = _fleet.meta_get(member_id, "role", "")
     if role != "implementer":
         ui.error(
             f"'{member_id}' is a {role or 'unknown role'} — verifyCmd only applies to implementers."
@@ -838,7 +827,7 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     except VerifyCmdError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    _oc.meta_set(member_id, "verifyCmd", verify_cmd)
+    _fleet.meta_set(member_id, "verifyCmd", verify_cmd)
     _regenerate_member_tools(member_id, project)
     audit_log("pod.set-verify", f"member={member_id} cmd={verify_cmd!r}")
     ui.success(f"Set verify command for {member_id}: {verify_cmd!r}")

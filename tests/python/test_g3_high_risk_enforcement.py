@@ -40,9 +40,9 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
-from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 # ── system adapter: run_verify_cmd's own high-risk guard ─────────────────────
@@ -100,22 +100,19 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", oc_dir / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", oc_dir / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "POLICIES_DIR", home / "policies", raising=True)
+    monkeypatch.setattr(_cfg, "APPROVALS_DIR", home / "approvals", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
@@ -137,7 +134,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _oc.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
 
 def _seed_lean_pod(project: str = "myapp") -> None:

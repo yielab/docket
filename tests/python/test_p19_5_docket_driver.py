@@ -35,9 +35,9 @@ from docket.edges.adapters.docket_runtime import DocketDriver
 
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", tmp_path / "openclaw", raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", tmp_path / "docket", raising=True)
     monkeypatch.setattr(
-        _cfg, "PROJECTS_DIR", tmp_path / "openclaw" / "workspaces" / "projects", raising=True
+        _cfg, "PROJECTS_DIR", tmp_path / "docket" / "workspaces" / "projects", raising=True
     )
     monkeypatch.setattr(_cfg, "SESSIONS_DIR", tmp_path / "sessions", raising=True)
     monkeypatch.setattr(_cfg, "TRACES_DIR", tmp_path / "traces", raising=True)

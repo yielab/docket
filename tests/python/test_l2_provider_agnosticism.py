@@ -192,27 +192,16 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
     "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
 
-def _make_env(oc_dir: Path, extra_path: Path | None = None) -> dict[str, str]:
+def _make_env(home: Path, extra_path: Path | None = None) -> dict[str, str]:
     env = {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
-        "DOCKET_HOME": str(oc_dir),
+        "DOCKET_HOME": str(home),
         "DOCKET_NO_RESTART": "1",
     }
     if extra_path is not None:
@@ -221,35 +210,35 @@ def _make_env(oc_dir: Path, extra_path: Path | None = None) -> dict[str, str]:
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir()
-    ws = oc_dir / "workspaces" / "projects" / agent_id
+    home = tmp_path / ".docket"
+    home.mkdir()
+    ws = home / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
-    return oc_dir
+    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    return home
 
 
-def _run(args: list[str], oc_dir: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
+def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
     import subprocess
 
     result = subprocess.run(
         [sys.executable, "-m", "docket", *args],
         capture_output=True,
         text=True,
-        env=_make_env(oc_dir, extra_path),
+        env=_make_env(home, extra_path),
     )
     return result.returncode, result.stdout, result.stderr
 
 
 class TestNonAnthropicPresetShowsNoResidue:
     def test_openai_preset_then_models_has_no_claude_residue(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
+        home = _setup_agent(tmp_path)
+        rc, _out, err = _run(["models", "preset", "openai"], home)
         assert rc == 0, err
 
-        rc, out, err = _run(["models"], oc_dir)
+        rc, out, err = _run(["models"], home)
         assert rc == 0, err
         # The policy table + default + rank-anchor lines (the part of the
         # display that reflects *this fleet's* configuration) must carry no
@@ -266,99 +255,71 @@ class TestNonAnthropicPresetShowsNoResidue:
         assert "gpt-4.1" in policy_section
 
     def test_preset_persists_rank_anchors_to_registry(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "preset", "google"], oc_dir)
+        home = _setup_agent(tmp_path)
+        rc, _out, err = _run(["models", "preset", "google"], home)
         assert rc == 0, err
-        reg = json.loads((oc_dir / "docket-models.json").read_text())
+        reg = json.loads((home / "docket-models.json").read_text())
         assert reg["rankAnchors"]["standard"] == "google/gemini-2.5-flash"
 
 
 class TestLocalPresetCli:
     def test_local_preset_listed(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, err = _run(["models", "preset"], oc_dir)
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["models", "preset"], home)
         assert rc == 0, err
         assert "local" in out
 
     def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _out, err = _run(["models", "preset", "local"], oc_dir)
+        home = _setup_agent(tmp_path)
+        rc, _out, err = _run(["models", "preset", "local"], home)
         assert rc == 0, err
 
-        rc, out, err = _run(["models"], oc_dir)
+        rc, out, err = _run(["models"], home)
         assert rc == 0, err
         assert "$0 (local)" in out
         assert "n/a" not in out
         assert "$0.00" not in out
 
 
-class TestAuthProviderFlag:
-    """`docket auth login/key/setup --provider <x>` threads through to the ACL.
-
-    A fake `openclaw` shim echoes back its own argv (as `AUTH_ARGS:<json>`) so
-    the test can assert the exact command docket built, without a real
-    daemon.
+class TestAuthProviderGoneHonestly:
+    """P19-7b deleted the daemon `docket auth login/key/setup` used to shell
+    out to for the OAuth-like token exchange -- there is no docket-native
+    replacement. Every subcommand must say so plainly (rc=1, a message naming
+    the real working path: `docket keys add <PROVIDER>_API_KEY`), never
+    silently no-op or report a fake success. See cli/_keys.py's run_auth
+    docstring and _AUTH_GONE_MESSAGE.
     """
 
-    @staticmethod
-    def _write_argv_echo_openclaw(bindir: Path) -> None:
-        bindir.mkdir(parents=True, exist_ok=True)
-        script = bindir / "openclaw"
-        script.write_text(
-            "#!/usr/bin/env python3\n"
-            "import sys, json\n"
-            "args = sys.argv[1:]\n"
-            "if args[:1] == ['--version']:\n"
-            "    print('openclaw 2026.2.23 (test shim)')\n"
-            "else:\n"
-            "    print('AUTH_ARGS:' + json.dumps(args))\n"
-            "sys.exit(0)\n"
-        )
-        script.chmod(0o755)
+    def test_login_reports_gone_not_fake_success(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["auth", "login"], home)
+        assert rc == 1
+        assert "No docket-native provider-auth flow exists" in out + err
+        assert "docket keys add ANTHROPIC_API_KEY" in out + err
 
-    def _argv_from_output(self, out: str) -> list[str]:
-        for line in out.splitlines():
-            if line.startswith("AUTH_ARGS:"):
-                result: list[str] = json.loads(line[len("AUTH_ARGS:") :])
-                return result
-        raise AssertionError(f"no AUTH_ARGS marker in output:\n{out}")
+    def test_login_names_the_explicit_provider(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["auth", "login", "--provider", "openai"], home)
+        assert rc == 1
+        assert "docket keys add OPENAI_API_KEY" in out + err
 
-    def test_login_defaults_to_anthropic(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        bindir = tmp_path / "_ocbin"
-        self._write_argv_echo_openclaw(bindir)
-        rc, out, err = _run(["auth", "login"], oc_dir, extra_path=bindir)
+    def test_key_subcommand_also_reports_gone(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["auth", "key", "--provider", "openrouter"], home)
+        assert rc == 1
+        assert "docket keys add OPENROUTER_API_KEY" in out + err
+
+    def test_setup_subcommand_also_reports_gone(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["auth", "setup", "--provider", "google"], home)
+        assert rc == 1
+        assert "docket keys add GOOGLE_AI_API_KEY" in out + err
+
+    def test_status_lists_stored_keys_not_a_daemon_query(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        rc, out, err = _run(["auth"], home)
         assert rc == 0, err
-        argv = self._argv_from_output(out)
-        assert argv == ["models", "auth", "setup-token", "--provider", "anthropic"]
-
-    def test_login_threads_explicit_provider(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        bindir = tmp_path / "_ocbin"
-        self._write_argv_echo_openclaw(bindir)
-        rc, out, err = _run(["auth", "login", "--provider", "openai"], oc_dir, extra_path=bindir)
-        assert rc == 0, err
-        argv = self._argv_from_output(out)
-        assert argv == ["models", "auth", "setup-token", "--provider", "openai"]
-
-    def test_key_threads_explicit_provider(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        bindir = tmp_path / "_ocbin"
-        self._write_argv_echo_openclaw(bindir)
-        rc, out, err = _run(["auth", "key", "--provider", "openrouter"], oc_dir, extra_path=bindir)
-        assert rc == 0, err
-        argv = self._argv_from_output(out)
-        assert argv == ["models", "auth", "paste-token", "--provider", "openrouter"]
-
-    def test_provider_flag_not_duplicated_onto_extra(self, tmp_path: Path) -> None:
-        """--provider must be consumed, not forwarded again as a stray extra."""
-        oc_dir = _setup_agent(tmp_path)
-        bindir = tmp_path / "_ocbin"
-        self._write_argv_echo_openclaw(bindir)
-        rc, out, err = _run(["auth", "login", "--provider", "google"], oc_dir, extra_path=bindir)
-        assert rc == 0, err
-        argv = self._argv_from_output(out)
-        assert argv.count("--provider") == 1
+        assert "No docket-native subscription/OAuth auth exists yet" in out + err
 
 
 class TestExtractProviderHelper:

@@ -1,7 +1,7 @@
 """Memory domain — the single owner of an agent's on-disk memory layout.
 
 Every fact about *where* memory lives, *what* it is named, *which clock* names
-it, and *what contract the openclaw runtime imposes on it* lives here. The CLI
+it, and *what durability contract the turn loop relies on* lives here. The CLI
 surfaces (``cli/_context.py``, the ``docket maintain`` checks in ``cli/_agents.py``,
 ``cli/_doctor.py``) and the provisioning flow (``core/provisioning.py``) are thin
 callers over this module — none of them re-derive paths or dates.
@@ -69,14 +69,18 @@ captured somewhere durable first.
 
 ## The runtime contract
 
-The openclaw gateway runs a *post-compaction audit* after every context reset
-(``dist/*.js``: ``DEFAULT_REQUIRED_READS = ["WORKFLOW_AUTO.md", /memory\\/\\d{4}-\\d{2}-\\d{2}\\.md/]``).
-It checks the agent issued a Read for those files and, if not, injects a warning
-demanding it. docket is the provisioner, so docket must make them *exist* — else
-the audit can never pass and a weak model loops offering to create them. Because
-``WORKFLOW_AUTO.md`` is the one file the runtime forces the agent to re-read on
-every reset, it is also where we anchor the codebase path and the read order so
-they survive compaction even when ``SOUL.md``/``MEMORY.md`` fall out of context.
+Pre-Phase-19, the external daemon's gateway ran a *post-compaction audit* after
+every context reset (requiring a Read of ``WORKFLOW_AUTO.md`` and the day's
+``memory/YYYY-MM-DD.md``, nagging the model until it complied). Phase 19
+P19-12 replaced that with something stronger: ``core/agent_loop.py``'s own
+turn loop (via ``core.identity.system_prompt_for_agent``) composes
+``SOUL.md``, the live persona, and ``WORKFLOW_AUTO.md`` into the system
+message on **every** turn, unconditionally — not a nag after the fact, an
+input the model cannot skip reading. docket is still the provisioner, so it
+must make these files *exist* and stay current; ``WORKFLOW_AUTO.md`` remains
+where we anchor the codebase path and the read order so they survive
+compaction even when ``SOUL.md``/``MEMORY.md`` fall out of the message
+history proper.
 
 One clock: all day math is **UTC**, matching ``.docket-meta.json`` ``created``
 and the trace/audit timestamps, so docket never disagrees with itself about
@@ -95,7 +99,7 @@ from typing import Any
 import docket.config as _cfg
 from docket.core.runtime_driver import FailureKind, TurnResult
 
-# --- openclaw runtime contract (keep in sync with DEFAULT_REQUIRED_READS) -----
+# --- turn-loop durability contract (keep in sync with agent_loop.py's prompt) -
 
 #: The always-re-read startup file the runtime audits for.
 REQUIRED_STARTUP_FILE = "WORKFLOW_AUTO.md"
@@ -406,7 +410,7 @@ def seed_contract(
     day: _dt.date | None = None,
     work_dir: str = "",
 ) -> None:
-    """Create/refresh the files the openclaw post-compaction audit requires.
+    """Create/refresh the files the turn loop's system-prompt composition requires.
 
     Rewrites ``WORKFLOW_AUTO.md`` (derived — always refreshed). Creates
     ``MEMORY.md`` and today's ``memory/YYYY-MM-DD.md`` only if absent, so
@@ -456,8 +460,8 @@ def seed_contract(
 #
 # See the module docstring's "Memory distillation" section for the design
 # rationale. Everything below is pure I/O over one workspace plus one
-# injected driver call — no OpenClaw format knowledge, no ui/print (this is
-# core/, per the standing layer rule), no import of edges/adapters/openclaw.
+# injected driver call — no daemon file-format knowledge, no ui/print (this is
+# core/, per the standing layer rule), no import of edges/adapters/ at all.
 
 #: Subdirectory (under ``memory/``) that archived, already-distilled daily
 #: logs are moved into. A dated subdirectory per ``distill_memory`` call. A
@@ -471,7 +475,7 @@ DISTILLED_ARCHIVE_DIRNAME = ".distilled"
 #: (a plain ``Callable``, not the full ``RuntimeDriver`` Protocol) for the
 #: identical reason: there is no OS process here for a caller to track or
 #: cancel, so the Protocol's ``on_spawn`` keyword has nothing to attach to,
-#: and dropping it is what lets both ``OpenClawDriver.run_turn`` (a bound
+#: and dropping it is what lets both ``DocketDriver.run_turn`` (a bound
 #: method) and ``tests/python/fakes.py``'s ``FakeDriver`` (directly, as a
 #: callable instance) satisfy this type with zero adapter code.
 DistillRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
@@ -655,8 +659,8 @@ def distill_memory(
 #
 # See the module docstring's "The dispatch task ledger" section for the design
 # rationale. Everything below is pure text/file manipulation over one
-# workspace's HEARTBEAT.md -- no OpenClaw format knowledge (this is
-# docket-owned workspace state, not an ACL-guarded file), no ui/print (core/
+# workspace's HEARTBEAT.md -- no daemon file-format knowledge (this is
+# docket-owned workspace state), no ui/print (core/
 # never prints), no knowledge of dispatch.py's TASK_LIST.json schema beyond
 # the handful of plain dict keys `sync_dispatch_tasks` reads.
 

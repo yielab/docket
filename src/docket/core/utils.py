@@ -30,35 +30,24 @@ def last_activity(agent_id: str) -> str:
 
 
 def gateway_active() -> bool:
-    """Return True if openclaw-gateway.service is active.
+    """Return True if a daemon gateway is active.
 
-    The unit name itself is single-sourced in `edges/adapters/system.py`'s
-    `GATEWAY_UNIT` (Phase 18 L-2 removed a second, unused copy that had
-    drifted in here) — this module only forwards to the adapter.
+    Phase 19 P19-7b: there is no daemon gateway any more, so this always
+    returns False -- see ``edges/adapters/system.py``'s ``gateway_active``,
+    which this only forwards to.
     """
     from docket.edges.adapters import system as _system
 
     return _system.gateway_active()
 
 
-def openclaw_version() -> str:
-    """Return `openclaw --version` output, or '?' if unavailable.
-
-    The subprocess call lives behind the ACL (core has no subprocess of its
-    own — ROADMAP §3); this just applies the display fallback.
-    """
-    from docket.edges.adapters import openclaw as _oc
-
-    probe = _oc.openclaw_version()
-    return probe.output if (probe.available and probe.returncode == 0 and probe.output) else "?"
-
-
 def restart_gateway() -> RestartResult:
-    """Restart openclaw-gateway.service if it is running.
+    """No daemon gateway exists any more -- nothing to restart.
 
-    Honors DOCKET_NO_RESTART=1 for test hermeticity. Thin pass-through to the
-    edges adapter; returns a typed result (never prints — cli/ renders it via
-    ui.*, since core has no knowledge of terminals).
+    Honors DOCKET_NO_RESTART=1 for test hermeticity (moot now that both
+    paths are no-ops). Thin pass-through to the edges adapter; returns a
+    typed result (never prints — cli/ renders it via ui.*, since core has no
+    knowledge of terminals).
     """
     from docket.edges.adapters import system as _system
 
@@ -187,40 +176,3 @@ def model_source(agent_id: str) -> str:
     """
     raw = store.read_json(cfg.meta_path(agent_id))
     return str(raw.get("modelSource", "policy")) or "policy"
-
-
-def scan_telegram_groups() -> list[tuple[str, str, str]]:
-    """Scan OpenClaw log files for Telegram group IDs.
-
-    Returns a list of (chat_id, title, bound_agent_id) tuples.
-    bound_agent_id is '' if the group has no docket binding.
-    """
-    import re as _re
-
-    from docket.edges.adapters import openclaw as _oc
-
-    log_dir = cfg.LOG_DIR
-    if not log_dir.is_dir():
-        return []
-
-    chat_ids: dict[str, str] = {}  # chat_id → title
-    for log_file in sorted(log_dir.glob("openclaw-*.log")):
-        try:
-            text = log_file.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for m in _re.finditer(r'"chatId":(-[0-9]+)', text):
-            gid = m.group(1)
-            if gid not in chat_ids:
-                title_m = _re.search(rf'"chatId":{_re.escape(gid)},"title":"([^"]*)"', text)
-                chat_ids[gid] = title_m.group(1) if title_m else "unknown"
-
-    if not chat_ids:
-        return []
-
-    oc_cfg = _oc.load_config()
-    binding_map: dict[str, str] = {
-        b.peer_id: b.agent_id for b in oc_cfg.bindings if b.channel == "telegram"
-    }
-
-    return [(gid, title, binding_map.get(gid, "")) for gid, title in chat_ids.items()]

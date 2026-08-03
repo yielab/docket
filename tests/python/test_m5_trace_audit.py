@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,19 +18,21 @@ from docket.cli import _audit as audit_cli
 from docket.cli import _trace as trace_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
-from docket.edges.adapters import openclaw as _oc
+
+if TYPE_CHECKING:
+    from docket.core.llm import ChatMessage
 
 
 @pytest.fixture()
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Temp ~/.openclaw with config paths repointed for trace + audit."""
-    d = tmp_path / ".openclaw"
+    """Temp DOCKET_HOME with config paths repointed for trace + audit."""
+    d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
     monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
     monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
     monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
+    monkeypatch.setattr(_cfg, "SESSIONS_DIR", d / "sessions", raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     return d
@@ -223,95 +226,99 @@ class TestTraceRecord:
 # ── trace: ingest + sweep ─────────────────────────────────────────────────────────
 
 
-def _seed_daemon_session(oc_dir: Path, project: str, session: str, lines: list[dict]) -> Path:
-    sdir = oc_dir / "agents" / project / "sessions"
-    sdir.mkdir(parents=True, exist_ok=True)
-    f = sdir / f"{session}.jsonl"
-    f.write_text("".join(json.dumps(line) + "\n" for line in lines))
-    return f
+def _seed_docket_session(session_key: str, lines: list[ChatMessage]) -> None:
+    """Seed a docket-owned session (core/session.py), the one live format
+    `trace_ingest` reads today (see `TestTraceIngestThroughDocketDriver` in
+    test_l1_runtime_driver.py for docket_runtime.default_driver()'s own
+    happy-path coverage; this class exercises trace_ingest's own
+    idempotent-offset / timeout-session_end mechanics, which are agnostic to
+    which driver produced the session).
+    """
+    from docket.core import session as _session
+
+    _session.append_messages(session_key, lines)
 
 
 class TestTraceIngest:
-    """Daemon-format session ingestion, driven through `OpenClawDriver` directly.
+    """`trace_ingest`'s idempotent-offset / timeout-session_end mechanics.
 
-    P19-7a repointed `core/trace.py`'s production `trace_ingest` at
-    `edges.adapters.docket_runtime.default_driver()` (`DocketDriver`), not
-    the ACL's `OpenClawDriver` -- see test_l1_runtime_driver.py's
-    `TestTraceIngestThroughDocketDriver` for that production path. This
-    class still seeds daemon-shaped session JSONL, so it monkeypatches the
-    resolution point back to `OpenClawDriver` to keep exercising its
-    idempotent-offset / timeout-session_end mechanics, which are otherwise
-    untested elsewhere and still real, still shipped code (P19-7b deletes it).
+    Phase 19 P19-7b deleted the daemon-facing driver this class used to seed
+    daemon-shaped session JSONL against and monkeypatch back in as the
+    resolution point. `trace_ingest` itself only ever sees a driver's
+    neutral `SessionSummary`/`SessionSlice` shapes (see `core/trace.py`'s
+    module docstring), so these tests now seed a real docket-owned session
+    (`core/session.py`) and drive ingestion through the real production
+    `DocketDriver` -- the mechanics under test (offset tracking, idempotent
+    re-ingest, synthetic session_end on timeout) are unchanged; only the
+    session format producing the input changed.
     """
 
-    @pytest.fixture(autouse=True)
-    def _use_openclaw_driver(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
-        )
-
     def test_ingest_projects_turns(self, oc_dir: Path) -> None:
-        now = trace_core._now_iso()
-        _seed_daemon_session(
-            oc_dir,
-            "myshop",
-            "sess1",
-            [
-                {"type": "message", "timestamp": now, "id": "m1"},
-                {"type": "tool_use", "timestamp": now, "id": "t1"},
-                {"type": "tool_result", "timestamp": now, "id": "t1"},
-            ],
+        from docket.core.llm import ToolCall, assistant, tool_result, user
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _seed_docket_session(
+            session_key, [user("go"), assistant(tool_calls=[call]), tool_result(call, "ok")]
         )
         trace_core.trace_ingest("myshop")
-        tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
+        tf = oc_dir / "traces" / "myshop" / f"{session_key}.jsonl"
         assert tf.is_file()
         types = [r["event_type"] for r in trace_core.read_trace(tf)]
-        # session_start + tool_call + tool_result (message is not projected).
         assert types == ["session_start", "tool_call", "tool_result"]
 
     def test_ingest_idempotent(self, oc_dir: Path) -> None:
-        _seed_daemon_session(
-            oc_dir,
-            "myshop",
-            "sess1",
-            [{"type": "tool_use", "timestamp": trace_core._now_iso(), "id": "t1"}],
-        )
+        from docket.core.llm import ToolCall, assistant, user
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _seed_docket_session(session_key, [user("go"), assistant(tool_calls=[call])])
         trace_core.trace_ingest("myshop")
         trace_core.trace_ingest("myshop")
-        tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
+        tf = oc_dir / "traces" / "myshop" / f"{session_key}.jsonl"
         types = [r["event_type"] for r in trace_core.read_trace(tf)]
         assert types == ["session_start", "tool_call"]
-        idx = json.loads((oc_dir / "traces" / "myshop" / ".ingest-index.json").read_text())
-        assert idx["sess1"] == 1
+        idx_path = oc_dir / "traces" / "myshop" / ".ingest-index.json"
+        idx = json.loads(idx_path.read_text())
+        # DocketDriver's offset is a message-index cursor into
+        # SessionRecord.messages (see read_new_turns' docstring), not a line
+        # count -- 2 messages (user + assistant/tool_calls) were seeded.
+        assert idx[session_key] == 2
 
     def test_ingest_incremental(self, oc_dir: Path) -> None:
-        now = trace_core._now_iso()
-        src = _seed_daemon_session(
-            oc_dir,
-            "myshop",
-            "sess1",
-            [{"type": "tool_use", "timestamp": now, "id": "t1"}],
-        )
+        from docket.core.llm import ToolCall, assistant, tool_result, user
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _seed_docket_session(session_key, [user("go"), assistant(tool_calls=[call])])
         trace_core.trace_ingest("myshop")
-        with src.open("a") as f:
-            f.write(json.dumps({"type": "tool_result", "timestamp": now}) + "\n")
+        _seed_docket_session(session_key, [tool_result(call, "ok")])
         trace_core.trace_ingest("myshop")
-        tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
+        tf = oc_dir / "traces" / "myshop" / f"{session_key}.jsonl"
         types = [r["event_type"] for r in trace_core.read_trace(tf)]
         assert types == ["session_start", "tool_call", "tool_result"]
 
     def test_ingest_timeout_session_end(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from docket.core.llm import ToolCall, assistant, user
+
         monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 1, raising=True)
-        _seed_daemon_session(
-            oc_dir,
-            "myshop",
-            "old",
-            [{"type": "tool_use", "timestamp": "2000-01-01T00:00:00Z", "id": "t1"}],
-        )
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _seed_docket_session(session_key, [user("go"), assistant(tool_calls=[call])])
+
+        # Backdate the stored session's `updated` timestamp so it reads as
+        # long-idle without sleeping the test.
+        from docket.core import session as _session
+
+        session_path = _session._session_path(session_key)
+        raw = json.loads(session_path.read_text())
+        raw["updated"] = "2000-01-01T00:00:00Z"
+        session_path.write_text(json.dumps(raw))
+
         trace_core.trace_ingest("myshop")
-        tf = oc_dir / "traces" / "myshop" / "old.jsonl"
+        tf = oc_dir / "traces" / "myshop" / f"{session_key}.jsonl"
         types = [r["event_type"] for r in trace_core.read_trace(tf)]
         assert types[-1] == "session_end"
         assert trace_core.read_trace(tf)[-1]["payload"]["status"] == "aborted"
@@ -323,17 +330,16 @@ class TestTraceIngest:
     def test_run_trace_ingest_command(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed_daemon_session(
-            oc_dir,
-            "myshop",
-            "sess1",
-            [{"type": "tool_use", "timestamp": trace_core._now_iso(), "id": "t1"}],
-        )
+        from docket.core.llm import ToolCall, assistant, user
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _seed_docket_session(session_key, [user("go"), assistant(tool_calls=[call])])
         rc = trace_cli.run_trace("ingest", "myshop")
         out = capsys.readouterr().out
         assert rc == 0
         assert "Ingest complete" in out
-        assert (oc_dir / "traces" / "myshop" / "sess1.jsonl").is_file()
+        assert (oc_dir / "traces" / "myshop" / f"{session_key}.jsonl").is_file()
 
 
 class TestTraceSweep:

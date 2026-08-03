@@ -3,7 +3,7 @@
 docket already owns the durable state that survives *between* turns: the
 ``HEARTBEAT.md`` task ledger (``core/memory.py``), the conversation registry
 (``core/conversations.py``), memory logs, traces. What it has never owned is
-the message history *inside* a turn, because the OpenClaw daemon owned the
+the message history *inside* a turn, because an external daemon owned the
 loop. Phase 19 takes the loop back (P19-5); this module is the durable store
 that loop replays on every model call, keyed on docket's existing session
 coordinate (``agent:<id>:<project>``, see ``specs/functional/session-scoping.spec.md``).

@@ -33,7 +33,7 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
-from docket.edges.adapters import openclaw as _oc
+from docket.core import fleet as _fleet
 from docket.edges.adapters import system as _sys
 
 # ── TestImplementerDiffProbeUnit: _implementer_diff_probe in isolation ──────
@@ -45,14 +45,14 @@ class TestImplementerDiffProbeUnit:
             raise AssertionError("a non-implementer hop must never probe git")
 
         monkeypatch.setattr(_sys, "git_available", boom)
-        monkeypatch.setattr(_oc, "meta_get", boom)
+        monkeypatch.setattr(_fleet, "meta_get", boom)
         assert _dispatch._implementer_diff_probe("demo-lead", "lead") == ([], None)
         assert _dispatch._implementer_diff_probe("demo-reviewer", "reviewer") == ([], None)
 
     def test_missing_git_binary_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_oc, "meta_get", lambda _id, _field, default="": default)
+        monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
         monkeypatch.setattr(_sys, "git_available", lambda: False)
 
         def boom(*_a: Any, **_k: Any) -> Any:
@@ -65,7 +65,7 @@ class TestImplementerDiffProbeUnit:
     def test_non_repo_cwd_degrades_without_probing_further(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(_oc, "meta_get", lambda _id, _field, default="": default)
+        monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
         monkeypatch.setattr(_sys, "git_available", lambda: True)
         monkeypatch.setattr(_sys, "git_is_repo", lambda _cwd: False)
 
@@ -80,7 +80,7 @@ class TestImplementerDiffProbeUnit:
     def test_real_probe_resolves_worktree_first(self, monkeypatch: pytest.MonkeyPatch) -> None:
         meta = {"worktreeDir": "/wt/demo-implementer", "codebase": "/src/demo"}
         monkeypatch.setattr(
-            _oc, "meta_get", lambda _id, field, default="": meta.get(field, default)
+            _fleet, "meta_get", lambda _id, field, default="": meta.get(field, default)
         )
         monkeypatch.setattr(_sys, "git_available", lambda: True)
         seen_cwds: list[str] = []
@@ -103,7 +103,7 @@ class TestImplementerDiffProbeUnit:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _oc,
+            _fleet,
             "meta_get",
             lambda _id, field, default="": {"codebase": "/src/demo"}.get(field, default),
         )
@@ -137,29 +137,13 @@ def _init_git_repo(path: Path) -> None:
     )
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
 
 
 def _seed_pod(
@@ -170,15 +154,12 @@ def _seed_pod(
     codebase: str = "",
     work_dir: str = "",
 ) -> Path:
-    oc_dir = tmp_path / f"{project}-oc"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / f"{project}-oc"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
-    return oc_dir
+    return home
 
 
 @pytest.fixture(autouse=True)
@@ -251,11 +232,11 @@ class TestDispatchPopulatesRealDiff:
         _seed_pod(tmp_path, monkeypatch, "demo", codebase=str(repo_dir))
 
         implementer_id = "demo-implementer"
-        worktree_dir = _oc.meta_get(implementer_id, "worktreeDir", "")
+        worktree_dir = _fleet.meta_get(implementer_id, "worktreeDir", "")
         # CD-5 provisions a real worktree for a repo pod's Implementer -- if
         # this is empty, the fixture didn't set up what this test assumes.
         assert worktree_dir, "expected a provisioned git worktree for the Implementer"
-        expected_branch = _oc.meta_get(implementer_id, "worktreeBranch", "")
+        expected_branch = _fleet.meta_get(implementer_id, "worktreeBranch", "")
         assert expected_branch
 
         task: dict[str, Any] = {"id": "t1", "description": "add a feature", "status": "pending"}
@@ -316,7 +297,7 @@ class TestDegradePaths:
         _seed_pod(tmp_path, monkeypatch, "flatpod", codebase=str(plain_dir))
 
         implementer_id = "flatpod-implementer"
-        assert _oc.meta_get(implementer_id, "worktreeDir", "") == ""
+        assert _fleet.meta_get(implementer_id, "worktreeDir", "") == ""
 
         task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("flatpod", task, runner=_PlainRunner())
@@ -338,7 +319,7 @@ class TestDegradePaths:
         _seed_pod(tmp_path, monkeypatch, "gitless", codebase=str(repo_dir))
 
         implementer_id = "gitless-implementer"
-        worktree_dir = _oc.meta_get(implementer_id, "worktreeDir", "")
+        worktree_dir = _fleet.meta_get(implementer_id, "worktreeDir", "")
         assert worktree_dir
 
         # Simulate "no git binary" only for the dispatch call itself -- the

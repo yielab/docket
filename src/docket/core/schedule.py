@@ -1,7 +1,7 @@
 """Scheduled dispatch — cron-like spec parsing for serve.
 
 Schedules are read from ``SCHEDULE_FILE`` (default
-``~/.openclaw/docket-schedules.json``):
+``~/.docket/docket-schedules.json``):
 
   {"schedules": {"myproject": "@every 30m", "otherproject": "09:00",
                   "athird": "*/15 9-17 * * 1-5"},

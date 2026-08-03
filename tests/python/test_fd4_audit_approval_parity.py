@@ -44,15 +44,13 @@ _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Temp ~/.openclaw with all docket-owned store paths repointed."""
-    d = tmp_path / ".openclaw"
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Temp DOCKET_HOME with all docket-owned store paths repointed."""
+    d = tmp_path / ".docket"
     d.mkdir()
-    cfg_file = d / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
+    (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", d / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
@@ -64,7 +62,7 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture()
-def live_server(oc_dir: Path):
+def live_server(home: Path):
     """Real ThreadingHTTPServer on a random port, sharing the repointed config."""
 
     class _Handler(_DocketHandler):
@@ -92,9 +90,9 @@ def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  
         return exc.code, json.loads(exc.read())
 
 
-def _trace_events(oc_dir: Path, project: str) -> list[dict[str, object]]:
+def _trace_events(home: Path, project: str) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
-    for tf in (oc_dir / "traces" / project).glob("*.jsonl"):
+    for tf in (home / "traces" / project).glob("*.jsonl"):
         events.extend(_trace.read_trace(tf))
     return events
 
@@ -110,7 +108,7 @@ def _last_audit_entry(action: str) -> dict[str, object]:
 
 class TestGrantDenyViaCli:
     def test_grant_via_cli_audits_channel_cli(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+        self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = _ap.approval_create("proj-cli-grant", "implementer", "deploy")
         rc = approve_cli.run_approve(token)
@@ -119,13 +117,13 @@ class TestGrantDenyViaCli:
         entry = _last_audit_entry("approval.grant")
         assert entry["detail"] == f"token={token} project=proj-cli-grant channel=cli"
 
-        events = _trace_events(oc_dir, "proj-cli-grant")
+        events = _trace_events(home, "proj-cli-grant")
         grants = [e for e in events if e["event_type"] == "approval_granted"]
         assert len(grants) == 1
         assert grants[0]["payload"] == {"token": token}
 
     def test_deny_via_cli_audits_channel_cli(
-        self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
+        self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = _ap.approval_create("proj-cli-deny", "reviewer", "nope")
         rc = deny_cli.run_deny(token)
@@ -134,7 +132,7 @@ class TestGrantDenyViaCli:
         entry = _last_audit_entry("approval.deny")
         assert entry["detail"] == f"token={token} project=proj-cli-deny channel=cli"
 
-        events = _trace_events(oc_dir, "proj-cli-deny")
+        events = _trace_events(home, "proj-cli-deny")
         denies = [e for e in events if e["event_type"] == "approval_denied"]
         assert len(denies) == 1
         assert denies[0]["payload"] == {"token": token}
@@ -145,7 +143,7 @@ class TestGrantDenyViaCli:
 
 class TestGrantDenyViaHttp:
     def test_grant_via_http_audits_channel_http(
-        self, oc_dir: Path, live_server: tuple[str, str]
+        self, home: Path, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
         apr_token = _ap.approval_create("proj-http-grant", "implementer", "deploy")
@@ -156,13 +154,13 @@ class TestGrantDenyViaHttp:
         entry = _last_audit_entry("approval.grant")
         assert entry["detail"] == f"token={apr_token} project=proj-http-grant channel=http"
 
-        events = _trace_events(oc_dir, "proj-http-grant")
+        events = _trace_events(home, "proj-http-grant")
         grants = [e for e in events if e["event_type"] == "approval_granted"]
         assert len(grants) == 1
         assert grants[0]["payload"] == {"token": apr_token}
 
     def test_deny_via_http_audits_channel_http(
-        self, oc_dir: Path, live_server: tuple[str, str]
+        self, home: Path, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
         apr_token = _ap.approval_create("proj-http-deny", "reviewer", "nope")
@@ -173,7 +171,7 @@ class TestGrantDenyViaHttp:
         entry = _last_audit_entry("approval.deny")
         assert entry["detail"] == f"token={apr_token} project=proj-http-deny channel=http"
 
-        events = _trace_events(oc_dir, "proj-http-deny")
+        events = _trace_events(home, "proj-http-deny")
         denies = [e for e in events if e["event_type"] == "approval_denied"]
         assert len(denies) == 1
         assert denies[0]["payload"] == {"token": apr_token}
@@ -183,21 +181,21 @@ class TestGrantDenyViaHttp:
 
 
 class TestExplicitChannelArgument:
-    def test_grant_with_explicit_telegram_channel(self, oc_dir: Path) -> None:
+    def test_grant_with_explicit_telegram_channel(self, home: Path) -> None:
         token = _ap.approval_create("proj-telegram", "implementer", "deploy")
         _ap.approval_grant(token, channel="telegram")
 
         entry = _last_audit_entry("approval.grant")
         assert entry["detail"] == f"token={token} project=proj-telegram channel=telegram"
 
-    def test_deny_with_explicit_telegram_channel(self, oc_dir: Path) -> None:
+    def test_deny_with_explicit_telegram_channel(self, home: Path) -> None:
         token = _ap.approval_create("proj-telegram-2", "reviewer", "nope")
         _ap.approval_deny(token, channel="telegram")
 
         entry = _last_audit_entry("approval.deny")
         assert entry["detail"] == f"token={token} project=proj-telegram-2 channel=telegram"
 
-    def test_unspecified_channel_defaults_to_unknown(self, oc_dir: Path) -> None:
+    def test_unspecified_channel_defaults_to_unknown(self, home: Path) -> None:
         token = _ap.approval_create("proj-default", "implementer", "x")
         _ap.approval_grant(token)
 
@@ -210,7 +208,7 @@ class TestExplicitChannelArgument:
 
 class TestAuditFailureNeverBreaksApproval:
     def test_audit_kill_switch_removed_still_never_raises(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """G-4: DOCKET_NO_AUDIT is no longer a kill switch.
 
@@ -228,15 +226,15 @@ class TestAuditFailureNeverBreaksApproval:
         assert entries[0]["detail"] == f"token={token} project=proj-no-audit channel=cli"
 
     def test_audit_write_failure_does_not_raise(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A missing AUDIT_LOG parent dir best-effort creates it rather than
         raising or losing the entry (Phase 19 P19-7a: AUDIT_LOG is now under
         genuinely docket-owned DOCKET_HOME, not the daemon's OPENCLAW_DIR, so
         a missing parent means "first write", not "OpenClaw never installed"
         -- see core/audit.py's audit_log() docstring)."""
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "nope" / "audit.log", raising=True)
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "nope" / "audit.log", raising=True)
         token = _ap.approval_create("proj-missing-dir", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise
         assert _ap.approval_get(token)["state"] == "granted"
-        assert (oc_dir / "nope" / "audit.log").is_file()
+        assert (home / "nope" / "audit.log").is_file()

@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -75,7 +75,7 @@ docket [global-options] <command> [command-options] [arguments]
 | --version | -v | Show version info | - |
 | --debug | -d | Enable debug output | false |
 | --quiet | -q | Suppress informational output | false |
-| --config | -c | Use alternate config file | ~/.openclaw/docket.conf |
+| --config | -c | Use alternate config file | ~/.docket/docket.conf |
 | --no-color | - | Disable colored output | false |
 
 ## Command Registry
@@ -83,7 +83,8 @@ docket [global-options] <command> [command-options] [arguments]
 ### Core Commands
 
 #### docket install
-**Purpose**: Bootstrap OpenClaw and specialist agents
+**Purpose**: Bootstrap a docket-native home and specialist agents (ROADMAP Phase 19 P19-7b —
+no external daemon involved any more)
 **Syntax**: `docket install [--portfolio] [--gates]`
 **Arguments**: None
 **Options**:
@@ -164,7 +165,8 @@ or provisioning registered no member — docket's flat convention, see Return Co
 - `reset`: Clean + clear MEMORY.md (unless a distillation just refreshed it) and HEARTBEAT.md
   (was `docket reset 2`)
 - `rebuild`: Deep rebuild — regenerate all files from metadata (was `docket reset 3`)
-- `sessions`: Archive large/old session data (was `docket cleanup safe`)
+- `sessions`: Report per-session storage size (ROADMAP Phase 19 P19-4: session compaction is
+  automatic now, so there is nothing left to trim or archive manually; was `docket cleanup safe`)
 - `distill` (ROADMAP Phase 17 C-2): summarize pending `memory/*.md` day-logs into a dated
   `MEMORY.md` section via one driver-backed agent turn (decision D-18 — no provider SDK, routed
   through the same `RuntimeDriver` port every pod dispatch hop uses), then archive the originals
@@ -233,16 +235,21 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 **Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
 
 #### docket auth
-**Purpose**: Manage how agents authenticate to a model provider (front-end over `openclaw models auth`). Distinct from `docket keys`, which manages workspace secrets, not model auth.
+**Purpose**: Report which provider API-key credentials are stored. **ROADMAP Phase 19 P19-7b
+deleted the daemon `docket auth login/key/setup` used to shell out to** (`openclaw models auth
+setup-token`/`paste-token`) — there is no docket-native subscription/OAuth-style auth flow to
+replace it with, and this command says so plainly rather than faking success. Distinct from
+`docket keys`, which manages the workspace secrets that are the real working credential path.
 **Syntax**: `docket auth [action] [--provider <name>]`
 **Actions**:
-- `status`: Show configured auth profiles and whether any is usable — default
-- `setup [--provider <name>]`: Interactive chooser — subscription token or API key
-- `login [--provider <name>]`: Configure a subscription-style token (`setup-token`)
-- `key [--provider <name>]`: Configure an API key (`paste-token`)
-**Options**: `--provider <name>` (login/key/setup only) — which provider to authenticate; defaults to `anthropic` when omitted, for backward compatibility. Threaded through to the `openclaw models auth` call the ACL builds (Phase 18 L-2 — previously hardcoded).
-**Output**: Profile status or setup confirmation
-**Return**: 0 on success, non-zero if the underlying flow fails or is cancelled
+- `status` (default, no subcommand): List which `<PROVIDER>_API_KEY` names are present in
+  docket's own secret store (`core/secrets.py`) and point at `docket keys add` as the real path
+- `login [--provider <name>]`, `key [--provider <name>]`, `setup [--provider <name>]`: **all
+  return exit 1** with a message naming the real working path (`docket keys add
+  <PROVIDER>_API_KEY`) — no docket-native replacement exists yet
+**Options**: `--provider <name>` — which provider's env-var name to report/name in the message; defaults to `anthropic` when omitted.
+**Output**: For `status`, the list of stored provider keys (or a warning that none are stored). For `login`/`key`/`setup`, the honest-gone error message.
+**Return**: 0 for `status`; 1 for `login`/`key`/`setup` (always — there is nothing for them to succeed at)
 
 ### Pipeline Commands
 
@@ -307,7 +314,7 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `remove <member-id>`: Remove a pod member
 - `delegate "<task>" [--priority high|normal|low]`: Queue a task on this pod's own list
-  (one queue per pod, at `~/.openclaw/workspaces/<project>-lead/TASK_LIST.json`)
+  (one queue per pod, at `~/.docket/workspaces/<project>-lead/TASK_LIST.json`)
 - `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
   `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
   other way is a pod-wide budget change (`docket profile <lead-id> --budget`/`--resume`). A
@@ -339,7 +346,7 @@ user-defined (ROADMAP Phase 16 W-6; see role-archetypes.spec.md)
   rights, description)
 - `show <name>`: Print one archetype's full definition (YAML, or JSON if PyYAML is unavailable)
 - `add <file.yaml>`: Validate a standalone archetype YAML file and merge it into the user
-  overlay (`~/.openclaw/docket-roles.json`); overrides a built-in/starter archetype by reusing
+  overlay (`~/.docket/docket-roles.json`); overrides a built-in/starter archetype by reusing
   its name
 - `validate [file.yaml]`: With no argument, validate every archetype in the live registry; with
   a file argument, validate that candidate definition without persisting it
@@ -392,9 +399,11 @@ an unrecognized subcommand was given
 - `project`: Show project-level context
 
 `search`/`snapshot`/`index`/`compress` and the `SNAPSHOT.md` artifact were **removed** — see the
-CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory is the openclaw
-runtime's job (`memory_search`/`memory_get`); docket does not maintain a rival keyword index.
-Folding logs into `MEMORY.md` is `docket maintain <id> distill`.
+CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory (`memory_search`/
+`memory_get`) was the now-deleted OpenClaw daemon's job (ROADMAP Phase 19 P19-7b) — there is no
+successor, and docket does not maintain a rival keyword index, so this is a real, named gap
+rather than a capability delegated elsewhere. Folding logs into `MEMORY.md` is
+`docket maintain <id> distill`.
 **Output**: Context view or action confirmation
 **Return**: 0 on success, 1 if not found
 
@@ -407,11 +416,13 @@ Folding logs into `MEMORY.md` is `docket maintain <id> distill`.
 **Return**: 0 on success, 1 if not found
 
 #### docket logs
-**Purpose**: Show an agent's latest memory log and today's gateway entries
+**Purpose**: Show an agent's latest memory log. **ROADMAP Phase 19 P19-7b removed the
+"today's gateway entries" section** — there is no daemon gateway log left to scan for a bound
+peer's activity, and no successor; the command reports memory logs only.
 **Syntax**: `docket logs [agent-id]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Latest memory day-log plus today's gateway log lines for the agent's group
+**Output**: Latest memory day-log (first ~40 lines, with a "more lines" note if truncated)
 **Return**: 0 on success, 1 if not found
 
 ### Maintenance Commands
@@ -422,12 +433,12 @@ Folding logs into `MEMORY.md` is `docket maintain <id> distill`.
 **Options**:
 - `--verbose`: Detailed diagnostic output
 **Output**: System health report
-**Checks**:
-- OpenClaw daemon status
-- Required commands availability
-- Configuration validity
-- Workspace permissions
-- Agent registrations
+**Checks** (ROADMAP Phase 19 P19-7b — no daemon left to check status of):
+- Required commands availability (`python3`, etc.)
+- Fleet registry (`fleet.json`) and agent-registration validity
+- Model config/registry drift
+- Workspace permissions and template drift
+- Dispatch ledger sync, budget/runaway spend, key hygiene, security-gate posture
 **Return**: 0 if healthy, count of issues found
 
 #### docket cost
@@ -465,17 +476,25 @@ Folding logs into `MEMORY.md` is `docket maintain <id> distill`.
 ### Security and Gates
 
 #### docket gates
-**Purpose**: Manage enforced exec-approval gates (on by default for new installs; `docket install --no-gates` opts out)
+**Purpose**: Report/manage docket's own tool-call gate posture. **ROADMAP Phase 19 P19-3
+made the gate itself (the policy engine + argument-aware command classifier) unconditionally
+active on every tool call docket dispatches — there is nothing left to "enable"; ROADMAP Phase
+19 P19-7b then deleted the daemon this command used to configure**, so what remains is strictly
+narrower: approval-routing destination and isolation-mode posture.
 **Syntax**: `docket gates <action>`
 **Actions**:
-- `status`: Show current gates configuration
-- `enable`: Enable exec-approval gates (writes to openclaw.json)
-- `disable`: Disable exec-approval gates
-- `isolate <on|off>`: Toggle Docker workspace isolation
+- `status`: Report the gate as always-active, plus current approval-routing/isolation posture
+- `enable [--force]`: Turn approval routing on (`fleet.json`'s `approvalRoutingState`); `--force`
+  is accepted for CLI compatibility but is a no-op — there is no exec-approval-allowlist
+  config left to (re-)apply
+- `disable`: Turn approval routing off
+- `isolate <on|off>`: Record (not yet enforce — the turn loop does not consult this flag)
+  whether tool execution should run inside a Docker sandbox
 - `classes`: List the documented high-risk action classes (money-movement, prod-deploy,
-  secret-access); read-only, makes no config changes. Enforcement is honest-but-uneven:
-  money-movement/secret-access always ask today (their bins were never allowlisted);
-  prod-deploy's `git`/`npm` overlap is documented policy only — see security-gates.spec.md
+  secret-access); read-only, makes no config changes. All three are now fully enforced by
+  `core/tools.py`'s `dispatch_tool` (the only execution path since P19-7b) — see
+  security-gates.spec.md v0.11.0 for why prod-deploy's `git`/`npm` overlap is no longer merely
+  documented policy
 **Output**: Gates status or update confirmation
 **Return**: 0 on success
 
@@ -497,7 +516,7 @@ exists yet), 1 when a broken link is detected
 **Purpose**: Run specialist-role structural checks and optional live golden tasks
 **Syntax**: `docket eval [--live]`
 **Options**:
-- `--live` (env: `DOCKET_EVAL_LIVE=1`): Run live tasks against the daemon (billable)
+- `--live` (env: `DOCKET_EVAL_LIVE=1`): Run live tasks against the configured model endpoint (billable)
 **Output**: Pass/fail per specialist role; model optimization hints
 **Return**: 0 if all pass, 1 if any fail
 
@@ -510,7 +529,9 @@ exists yet), 1 when a broken link is detected
 - `<session-id>`: Render one session's events human-readable
 - `tail <project>`: Follow the most-recent open session live
 - `export <project> [--since YYYY-MM-DD]`: Print raw JSONL to stdout
-- `ingest <project>`: Pull daemon session logs into the trace store
+- `ingest <project>`: Project the active driver's session history (`core/session.py`, via
+  `DocketDriver`) into the trace store — no daemon session-JSONL format left to parse
+  (ROADMAP Phase 19 P19-7b)
 **Output**: Human-readable event log or raw JSONL
 **Return**: 0 on success, 1 if session not found
 
@@ -540,10 +561,12 @@ exists yet), 1 when a broken link is detected
 **Syntax**: `docket approve <token>`
 **Arguments**:
 - `token` (required): An `apr-*` token from docket's approval store (list pending with
-  `docket approve` and no arguments). The store has **two** production producers since Phase 15:
-  G-1's pod-level and pipeline-step `require_approval` gates, and G-2's `pre_input` policy match
-  at enqueue. The daemon's own gate prompts still do **not** mint these tokens and are a separate
-  mechanism — G-5's spike found no practical bridge (security-gates.spec.md)
+  `docket approve` and no arguments). The store has **three** production producers since Phase 15
+  G-1/G-2 and Phase 19 P19-3: pod-level/pipeline-step `require_approval` gates, a `pre_input`
+  policy match at enqueue, and an in-turn `core/tools.py` tool-call gate. Since ROADMAP Phase 19
+  P19-7b deleted the daemon outright, this is now the **only** approval system — the "daemon's
+  own gate prompt, unbridged" caveat this line used to carry no longer applies to anything real
+  (security-gates.spec.md v0.11.0)
 **Output**: Approval confirmation
 **Return**: 0 on success, 1 if token not found or already resolved
 
@@ -569,7 +592,10 @@ exists yet), 1 when a broken link is detected
 **Return**: 0 on success, 1 on error
 
 #### docket conversations
-**Purpose**: Inspect docket's durable conversation registry (pointers to channel threads; the daemon keeps no durable transcript)
+**Purpose**: Inspect docket's durable conversation registry (pointers to channel threads; even
+before ROADMAP Phase 19 P19-7b deleted the daemon outright, it kept no durable transcript of its
+own — its per-agent sqlite was a rebuildable RAG index, not a transcript — so docket has always
+owned this, and now there is no daemon at all to contrast it with)
 **Syntax**: `docket conversations <list|show <id>|resume <id>|set <id> [fields]>`
 **Actions**:
 - `list`: Table of registered conversations (agent, channel, peer, status, topic)
@@ -585,19 +611,26 @@ exists yet), 1 when a broken link is detected
 command and does not appear in `docket --help`).
 
 #### docket wire
-**Purpose**: Bind a Telegram group to an agent (see telegram-integration.spec.md)
-**Syntax**: `docket wire [agent-id]`
+**Purpose**: Bind a channel group/peer to an agent — manual ID entry only (see
+telegram-integration.spec.md; ROADMAP Phase 19 P19-7b removed log-based Telegram group
+auto-discovery, `scan_telegram_groups`, along with the daemon gateway log it read)
+**Syntax**: `docket wire [agent-id] [--channel <name>]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Binding confirmation; restarts gateway
+**Output**: Prompts for the peer/group ID, records the binding in `fleet.json`, and registers the
+thread in the conversation registry. No docket-owned channel bot exists yet (P19-8) — a binding
+is recorded but nothing listens on it until then. `restart_gateway()` still runs for call-site
+compatibility but is now an honest no-op (`status="no_daemon"`) — there is no gateway process to
+restart
 **Return**: 0 on success, 1 if not found
 
 #### docket unwire
-**Purpose**: Remove an agent's Telegram binding
-**Syntax**: `docket unwire [agent-id]`
+**Purpose**: Remove an agent's channel binding
+**Syntax**: `docket unwire [agent-id] [--channel <name>]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Unbind confirmation; restarts gateway
+**Output**: Unbind confirmation. `restart_gateway()` still runs for call-site compatibility but is
+now an honest no-op (`status="no_daemon"`)
 **Return**: 0 on success, 1 if not found
 
 #### docket completions
@@ -652,12 +685,12 @@ Default table uses column alignment:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DOCKET_HOME` | Base directory | `~/.openclaw` |
+| `DOCKET_HOME` | Base directory for all docket-owned state (renamed from `OPENCLAW_DIR`, ROADMAP Phase 19 P19-6/P19-7b — the old variable and its `~/.openclaw` default are deleted, no fallback) | `~/.docket` |
 | `DOCKET_DEBUG` | Enable debug (0/1) | 0 |
 | `DOCKET_NO_COLOR` | Disable colors (0/1) | 0 |
 | `DOCKET_MODEL_DEFAULT` | Override the fallback default model (`provider/model`) | (role policy) |
 | `DOCKET_EDITOR` | Preferred editor | $EDITOR or nano |
-| `OPENCLAW_API` | API endpoint | http://localhost:8000 |
+| `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` | Process-wide override of the OpenAI-compatible chat endpoint `DocketDriver` talks to (`edges/adapters/llm.py`'s `resolve_endpoint`) — replaces the deleted `OPENCLAW_API` daemon endpoint; there is no daemon left to point at | (per-provider resolution; no daemon endpoint) |
 
 ## Return Code Convention
 
@@ -667,7 +700,7 @@ distinguishes error kinds:
 | Code | Meaning | Used By |
 |------|---------|---------|
 | 0 | Success | All commands |
-| 1 | Any failure (not found, invalid arguments, permission, daemon error, …) | All commands |
+| 1 | Any failure (not found, invalid arguments, permission, driver/model error, …) | All commands |
 | 2 | SKIP (role not installed / live mode off — non-blocking for CI) | `eval` only |
 
 No other exit codes are produced. (Earlier revisions of this spec described codes 2–9 and
@@ -682,7 +715,7 @@ the contract-level summary follows.
 ### Agent ID Validation
 - Pattern: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
 - Length: 3-50 characters
-- Reserved IDs: manager, system, docket, openclaw
+- Reserved IDs: manager, system, docket
 
 ### Path Validation
 - Must be absolute or tilde-expanded
@@ -691,7 +724,9 @@ the contract-level summary follows.
 
 ### Model Validation
 - Must be well-formed `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
-- The daemon validates the actual model; docket accepts any well-formed string and warns if pricing is unknown
+- docket does not itself validate that the named model exists at the provider; it accepts any
+  well-formed string and warns if pricing is unknown (an unresolvable model surfaces as a
+  driver-level error the first time a turn actually runs, not at validation time)
 - Tier names (`economy`, `standard`, `premium`) are **not accepted** — removed in 0.2.0 (D-2 exit); they hard-error like any other malformed input (see input-validation.spec.md)
 
 ### Numeric Validation
@@ -727,7 +762,7 @@ Format: `"Action description. Continue? (y/N): "`
 ### Example
 ```
 [ERROR] Agent not found: myproject
-        Details: No workspace at ~/.openclaw/workspaces/projects/myproject
+        Details: No workspace at ~/.docket/workspaces/projects/myproject
         Suggestion: Use 'docket list' to see available agents
 ```
 
@@ -748,9 +783,9 @@ Format: `"Action description. Continue? (y/N): "`
 ## Backwards Compatibility
 
 ### Version Detection
-- Check ~/.openclaw/version file
-- Migrate configs if needed
-- Warn on version mismatch
+- No config migration exists or is planned — ROADMAP decision D-19 (Phase 19) is an explicit
+  clean break: a pre-P19-7b install's `~/.openclaw` state (including any version marker there)
+  is not read, moved, or migrated. A fresh `docket install` simply writes a new `~/.docket` home.
 
 ### Deprecated Features
 - `docket reset <level>` → Use `docket maintain clean|reset|rebuild`
@@ -760,6 +795,32 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.13.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7b — the OpenClaw daemon is deleted; truth-passed every command
+  section that still described it.** `edges/adapters/openclaw.py` (the ACL), every `openclaw`
+  binary shell-out, `openclaw.json`, and the daemon's own auth-profiles concept are gone
+  outright — no compatibility layer, no migration (D-19). Fixed: `docket install`/`docket auth`
+  (already corrected mid-cycle, kept as-is), `docket gates` (no more "writes to openclaw.json";
+  it now manages only `fleet.json`'s approval-routing/isolation posture, per `cli/_gates.py`),
+  `docket doctor`'s Checks list (no more "OpenClaw daemon status"; the real `_doctor_json()` key
+  set), `docket logs` (no more "today's gateway entries" — no gateway log left to scan),
+  `docket eval --live` ("against the configured model endpoint", not "the daemon"), `docket
+  trace ingest` (projects the active driver's session history via `DocketDriver`/
+  `core/session.py`, not daemon session-JSONL), `docket wire`/`docket unwire` (manual peer/group
+  ID entry only — log-based Telegram group auto-discovery, `scan_telegram_groups`, is deleted
+  along with the gateway log it read; `restart_gateway()` is now an honest `status="no_daemon"`
+  no-op kept only for call-site compatibility), `docket context`'s semantic-search note (named as
+  a real gap, not attributed to a runtime that no longer exists), `docket conversations`'s
+  purpose line, the Environment Variables table (`DOCKET_HOME` default is `~/.docket`, not
+  `~/.openclaw`; replaced the fictional `OPENCLAW_API` row with the real
+  `DOCKET_LLM_BASE_URL`/`DOCKET_LLM_API_KEY` override `edges/adapters/llm.py`'s
+  `resolve_endpoint` reads), and Backwards Compatibility's "Version Detection" (rewritten to
+  state D-19's actual no-migration policy instead of a fictional config-migration step). Several
+  of these sections (`--config` default, `docket pod delegate`'s queue path, `docket roles add`'s
+  overlay path, the error-example path) were already corrected earlier in this cycle and are
+  unchanged here.
 
 ### Version 1.12.0 (2026-07-31)
 

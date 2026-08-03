@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -17,7 +17,7 @@ as a private internal seed table, never as accepted user input.
 This specification covers:
 
 - The agent roles the policy knows about and their built-in model classes
-- The user registry overlay (`~/.openclaw/docket-models.json`), including the registry-
+- The user registry overlay (`~/.docket/docket-models.json`), including the registry-
   overridable rank-anchor seed table (`rankAnchors`)
 - Model intent per agent (`modelSource: policy | pinned`) and migration inference
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
@@ -40,9 +40,19 @@ was investigated as a spike, separately from any behavior this spec defines. **L
 concluded 2026-07-30: yes, the daemon tolerates the base-url swap cleanly, and no new code was
 required** — the `docket models provider` command documented below (Presets, Examples) already
 is that mechanism; it was simply never exercised against a non-local base URL before. See
-"L-5 spike findings" below for the full dated evidence trail.
+"L-5 spike findings" below for the full dated evidence trail. **Superseded by ROADMAP Phase 19
+P19-7b (2026-08-03): the daemon and the ACL (`edges/adapters/openclaw.py`) this spike
+investigated are both deleted outright.** The spike's question ("does the daemon tolerate a
+base-url swap") no longer has a subject — `docket models provider add` now writes the same
+provider block into `core/fleet.py`'s `fleet.json` `providers` dict (`core/provider.py`'s
+`add_local_provider`/`get_local_provider`), read directly by `edges/adapters/llm.py`'s
+`resolve_endpoint` to build `DocketDriver`'s own chat client. There is no daemon in the loop
+to "tolerate" anything, so a base-url swap is trivially docket's own, first-party behavior now,
+not a question of upstream compatibility. The evidence trail below is kept verbatim as the
+historical record of the investigation that originally validated the mechanism's shape; read
+every "the daemon" reference in it as describing a system this codebase no longer ships.
 
-## L-5 spike findings (investigated 2026-07-30, verdict: yes — no code shipped, none was needed)
+## L-5 spike findings (investigated 2026-07-30, verdict: yes — no code shipped, none was needed; historical — superseded by P19-7b, see note above)
 
 1. **Question.** ROADMAP Phase 18 L-5 / decision D-18 asks whether OpenClaw's daemon tolerates
    pointing its provider config at a LiteLLM-class sidecar gateway cleanly enough to justify
@@ -176,7 +186,7 @@ is that mechanism; it was simply never exercised against a non-local base URL be
 
 ### User registry overlay
 
-1. `~/.openclaw/docket-models.json` **MAY** contain a `roles` map (`role → provider/model`);
+1. `~/.docket/docket-models.json` **MAY** contain a `roles` map (`role → provider/model`);
    well-formed entries **MUST** override the built-in role defaults. Unknown role names
    **MUST** be ignored with a warning.
 2. A legacy registry containing only a `profiles` map **MUST** keep working: the rank
@@ -211,8 +221,11 @@ is that mechanism; it was simply never exercised against a non-local base URL be
 3. `docket models preset <name>` **MUST** map the preset's cheap/strong classes onto all
    eight roles and persist them, plus the rank anchors and default.
 4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
-   and project, registered or not) **MUST** be re-resolved to its role's new model in both
-   config sources, with one gateway restart at the end. Pinned agents **MUST NOT** be touched.
+   and project, registered or not) **MUST** be re-resolved to its role's new model in
+   `.docket-meta.json` — the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`
+   tracks bare registration only, never a copy of `model`, so there is no second config source
+   to keep in sync, and no gateway to restart since P19-7b deleted it). Pinned agents **MUST
+   NOT** be touched.
 5. Each policy change (`set`/`preset`/`reset`) **MUST** write one audit-log entry (the
    `models.*` action family — see audit.spec.md's Requirement 1) recording the role(s) affected
    (or `default`) and the before/after model, so the audit log alone answers "which role
@@ -222,8 +235,10 @@ is that mechanism; it was simply never exercised against a non-local base URL be
 
 ### Pinning agents (docket profile)
 
-1. `docket profile <id> <provider/model>` **MUST** pin the agent: set the model in both
-   config sources and `modelSource: pinned`, then restart the gateway.
+1. `docket profile <id> <provider/model>` **MUST** pin the agent: set the model in
+   `.docket-meta.json` (the only place it lives, see "Changing the policy" above) and
+   `modelSource: pinned`. `restart_gateway()` still runs for call-site compatibility but is now
+   an honest `status="no_daemon"` no-op (ROADMAP Phase 19 P19-7b) — there is no gateway left.
 2. `docket profile <id> default` **MUST** re-attach the agent to its role policy: resolve the
    role's model, set it, and stamp `modelSource: policy`.
 3. `docket profile <id>` with no argument **MUST** display the current model, role (with WHY),
@@ -254,7 +269,7 @@ is that mechanism; it was simply never exercised against a non-local base URL be
 
 ### Legacy registry migration
 
-1. On first load of a user's `~/.openclaw/docket-models.json`, if it has a `profiles:` key
+1. On first load of a user's `~/.docket/docket-models.json`, if it has a `profiles:` key
    but no `roles:` key, docket **MUST** derive equivalent per-role overrides from the
    `profiles:` tier-anchor values (using the same cheap/strong-class mapping as the built-in
    seed) and write them under `roles:`, then remove `profiles:`. This migration **MUST** run
@@ -331,8 +346,9 @@ table unless set — a known display quirk.
 | (premium anchor) | claude-opus-4-6 | 15.00 | 75.00 |
 
 Pricing is a manual snapshot (`MODEL_PRICING`, dated by `MODEL_PRICING_AS_OF`) used for
-display and comparative estimates only — recorded spend comes from the daemon
-(cost-tracking.spec.md). Resolved gap (Phase 18 L-2): the table now carries a `local/
+display and comparative estimates only — recorded spend comes from measured token counts in
+docket's own per-session storage (ROADMAP Phase 19 P19-4/P19-7b; `_cfg.SESSIONS_DIR`, see
+cost-tracking.spec.md), not a daemon. Resolved gap (Phase 18 L-2): the table now carries a `local/
 qwen3-30b-a3b` row and the three `openrouter-free` preset models, all priced at zero
 (sourced from docket's own free-tier/local claims, not an invented figure); `LOCAL_PROVIDERS`
 (`local`, `ollama`, `lmstudio`) independently price at `$0 (local)` regardless of whether the
@@ -422,9 +438,10 @@ $ docket models
 
 ### Post-conditions
 
-- After a pin or policy change, `.docket-meta.json` `model` **MUST** equal the agent's model
-  in `openclaw.json` `agents.list`, `modelSource` **MUST** reflect the intent, and the
-  gateway **MUST** have been restarted exactly once per command.
+- After a pin or policy change, `.docket-meta.json` `model` **MUST** reflect the new value —
+  the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`'s `FleetAgent` tracks bare
+  registration only, never a copy of `model`, so there is no second location to keep in sync).
+  `modelSource` **MUST** reflect the intent (`policy` vs `pinned`).
 
 ### Invariants
 
@@ -433,6 +450,27 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.5.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7b — the OpenClaw daemon and the ACL are deleted.** Superseded the
+  L-5 spike's live subject: `docket models provider add` now writes its provider block into
+  `core/fleet.py`'s `fleet.json` `providers` dict (`core/provider.py`'s
+  `add_local_provider`/`get_local_provider`), read directly by `edges/adapters/llm.py`'s
+  `resolve_endpoint` — there is no daemon provider config or ACL in the loop any more, so a
+  base-url swap is docket's own first-party behavior, not a question of upstream tolerance.
+  The L-5 evidence trail is kept verbatim as historical record; added a note at the top of the
+  Purpose section and a header annotation on "L-5 spike findings" marking it historical. Fixed
+  three path references (`~/.openclaw/docket-models.json` -> `~/.docket/docket-models.json`,
+  ROADMAP P19-6/P19-7b moved `MODEL_REGISTRY_FILE` under `DOCKET_HOME`). Corrected the pricing
+  section's "recorded spend comes from the daemon" to point at docket's own per-session storage
+  (`_cfg.SESSIONS_DIR`). Corrected the profile/policy-change post-condition: it no longer
+  describes keeping `.docket-meta.json`'s model in sync with `openclaw.json`'s `agents.list`
+  (deleted; and per P19-6, `fleet.json` never tracked model in the first place, so there was
+  already only one place it lived). Also fixed "Changing the policy"/"Pinning agents"
+  requirements 4/1, which still said "both config sources, with one gateway restart" — there is
+  one config source (`.docket-meta.json`) and `restart_gateway()` is now an honest
+  `status="no_daemon"` no-op kept only for call-site compatibility.
 
 ### Version 2.4.0 (2026-07-30)
 

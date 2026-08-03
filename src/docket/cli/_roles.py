@@ -11,7 +11,7 @@
 ``run_roles(sub, args)`` returns the process exit code. The registry itself
 (built-ins + starter library + user overlay) lives in `core/archetypes.py`;
 this module is the presentation layer only — it never touches
-`~/.openclaw/docket-roles.json` directly (that's `core/archetypes.py`'s
+`~/.docket/docket-roles.json` directly (that's `core/archetypes.py`'s
 `add_user_archetype`, which goes through `edges/store.py`).
 """
 

@@ -1,10 +1,10 @@
-"""M5 tests: serve — stdlib HTTP server port of lib/commands/serve.sh.
+"""M5 tests: serve — stdlib HTTP server for docket's read API.
 
 These exercise the pure builders (build_status / render_metrics / render_health)
-against a seeded fake OPENCLAW_DIR, plus a live round-trip through the threaded
+against a seeded fake DOCKET_HOME, plus a live round-trip through the threaded
 HTTP server on port 0. The pure-function assertions are the contract guard:
 they pin the /status.json JSON keys and the Prometheus metric line names so any
-drift from serve.sh is caught.
+drift is caught.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from typing import Any
 import pytest
 
 import docket.config as _cfg
-import docket.edges.adapters.openclaw as _oc
 import docket.serve as serve
 from docket.serve import _DocketHandler
 
@@ -31,29 +30,7 @@ META: dict[str, Any] = {
     "modelSource": "policy",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [
-        {
-            "agentId": "myshop",
-            "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-100123"}},
-        }
-    ],
-    "channels": {"telegram": {"enabled": True}},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings live in fleet.json now, not
-# openclaw.json's `agents`/`bindings` above.
+# Agent registration + channel bindings live in fleet.json.
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [
@@ -66,29 +43,24 @@ FLEET_CONFIG: dict[str, Any] = {
 
 @pytest.fixture()
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Seed a temp OPENCLAW_DIR with one project agent + openclaw.json + fleet.json."""
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir()
-    ws = oc_dir / "workspaces" / "projects" / "myshop"
+    """Seed a temp DOCKET_HOME with one project agent + fleet.json."""
+    home = tmp_path / ".docket"
+    home.mkdir()
+    ws = home / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "memory" / "2026-06-20.md").write_text("# log\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
-    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
-    config_file = oc_dir / "openclaw.json"
-    fleet_file = oc_dir / "fleet.json"
-    monkeypatch.setenv("OPENCLAW_DIR", str(oc_dir))
-    monkeypatch.setenv("DOCKET_HOME", str(oc_dir))
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
+    fleet_file = home / "fleet.json"
+    monkeypatch.setenv("DOCKET_HOME", str(home))
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
     monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects")
-    monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
-    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects")
     # Force gateway "down" for deterministic gateway fields.
     monkeypatch.setattr(serve.utils, "gateway_active", lambda: False)
-    return oc_dir
+    return home
 
 
 # ── build_status ──────────────────────────────────────────────────────────────

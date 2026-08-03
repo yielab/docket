@@ -1,6 +1,6 @@
 EXIT:0
 
-  OpenClaw  ● gateway up  ○ telegram off  │  8 agents  1 binding(s)  │  vopenclaw 0.0.0-fake
+  docket  8 agent(s)  1 channel binding(s)  │  v0.2.0b1
   ──────────────────────────────────────────────────────────────────
 PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
 

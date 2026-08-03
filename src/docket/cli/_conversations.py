@@ -1,7 +1,7 @@
 """``docket conversations`` — inspect and resume the conversation registry.
 
-docket-owned view over ``core/conversations.py``. Since OpenClaw keeps no durable
-transcript, this is where an operator sees which channel threads exist, what each is
+docket-owned view over ``core/conversations.py``. Since no agent runtime docket
+drives keeps a durable transcript, this is where an operator sees which channel threads exist, what each is
 about, and resumes one (marks it in-progress and prints a brief for the agent/dispatch
 to pick up). Populated by ``docket wire`` (on binding) and ``docket conversations
 set/resume``.

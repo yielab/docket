@@ -1,13 +1,17 @@
 # Workspace Structure Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Complete. **ROADMAP Phase 19 P19-7a** moved `PROJECTS_DIR` (`docket.config`) from
-`OPENCLAW_DIR` to `DOCKET_HOME` — a project-agent (pod-member) workspace now lives at
+`OPENCLAW_DIR` to `DOCKET_HOME` — a project-agent (pod-member) workspace lives at
 `~/.docket/workspaces/projects/<agent-id>/`, not `~/.openclaw/workspaces/projects/<agent-id>/`.
-Org-specialist workspaces (`~/.openclaw/workspaces/<role>/`) are **unchanged** — they stay under
-`OPENCLAW_DIR` until P19-7b. No migration: per D-19's clean break, a pre-existing install's
-workspaces at the old path are not moved or read from; `docket add` on this version simply writes
-new workspaces at the new path.
+**ROADMAP Phase 19 P19-7b completed the move**: `OPENCLAW_DIR` itself is deleted, and
+`WORKSPACES_DIR` (`docket.config`) — the base every org-specialist workspace resolves against
+too — now points at `DOCKET_HOME` unconditionally. An org-specialist workspace (`manager`,
+`knowledge`, `security`, `portfolio-manager`) lives at `~/.docket/workspaces/<role>/`, not
+`~/.openclaw/workspaces/<role>/`, as of this version — there is no daemon-owned workspace tier
+left. No migration: per D-19's clean break, a pre-existing install's workspaces at the old path
+are not moved or read from; `docket install`/`docket add` on this version simply write new
+workspaces at the new path.
 **Last Updated**: 2026-08-03
 
 ## Purpose
@@ -87,7 +91,8 @@ covers the resulting file set for either workspace kind, not blueprint selection
 ### Org specialists
 
 1. Org specialists (security, knowledge, manager, and the opt-in
-   `portfolio-manager`) live at `~/.openclaw/workspaces/<role>/` and **MUST**
+   `portfolio-manager`) live at `~/.docket/workspaces/<role>/` (moved from
+   `~/.openclaw/workspaces/<role>/` at ROADMAP P19-7b) and **MUST**
    have the same durable workspace set a project agent gets, minus `TOOLS.md`
    and any codebase-specific field neither exists for:
    - `SOUL.md` — role identity, scope, and a session key of the form
@@ -115,9 +120,9 @@ covers the resulting file set for either workspace kind, not blueprint selection
    (`.docket-meta.json` only, no `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` at all)
    is backfilled by re-running `docket install`, which never touches a file
    that already exists.
-4. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json`) is
-   retired; if present from a pre-Phase-10 install it is left on disk untouched and is read
-   by nothing.
+4. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json` on a
+   pre-P19-7b install, or `~/.docket/workspaces/manager/TASK_LIST.json` on one already migrated
+   to `DOCKET_HOME`) is retired; if present it is left on disk untouched and is read by nothing.
 
 ### Permissions
 
@@ -171,7 +176,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ### A provisioned org-specialist workspace
 
 ```text
-~/.openclaw/workspaces/security/
+~/.docket/workspaces/security/
 ├── SOUL.md
 ├── AGENTS.md
 ├── HEARTBEAT.md
@@ -186,8 +191,9 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ### Pre-conditions
 
-- `~/.openclaw` **MUST** be writable (org-specialist workspaces, still daemon-owned state).
-- `~/.docket` **MUST** be writable (project-agent/pod-member workspaces, moved here at P19-7a).
+- `~/.docket` **MUST** be writable — every workspace tier (project-agent/pod-member since
+  P19-7a, org-specialist since P19-7b) lives here now; `OPENCLAW_DIR`/`~/.openclaw` is deleted
+  and no longer a pre-condition of anything.
 
 ### Post-conditions
 
@@ -211,6 +217,20 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.7.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7b (the OpenClaw daemon is deleted).** Completes the move version
+  1.6.0 started: `docket.config.WORKSPACES_DIR` (the base every org-specialist workspace
+  resolves against, and `PROJECTS_DIR`'s own parent) now points at `DOCKET_HOME`
+  unconditionally — `OPENCLAW_DIR` itself is deleted, not merely superseded for one workspace
+  tier. An org-specialist workspace (`manager`, `knowledge`, `security`, `portfolio-manager`)
+  lives at `~/.docket/workspaces/<role>/`, not `~/.openclaw/workspaces/<role>/`, as of this
+  version. Updated the "Org specialists" requirement, the org-specialist example tree, the
+  legacy manager-queue path, and the pre-conditions section (one `~/.docket` writability
+  pre-condition now, not two). No migration: per D-19's clean break, a pre-existing install's
+  specialist workspaces at the old `~/.openclaw` path are not moved or read from; `docket
+  install` on this version simply writes new specialist workspaces at the new path.
 
 ### Version 1.6.0 (2026-08-03)
 

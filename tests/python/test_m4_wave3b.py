@@ -1,7 +1,12 @@
 """M4 wave-3b tests: logs.
 
-All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
+and DOCKET_NO_RESTART=1 so no systemctl calls are made. Phase 19 P19-7b: the
+daemon and openclaw.json are gone -- fleet.json is the only registry left,
+and `docket logs`' old "Gateway log" section (which scanned the daemon's
+gateway log for a bound peer's activity) has no successor -- there is no
+gateway log to scan any more, so the section is simply gone (see
+cli/__init__.py's cmd_logs).
 
 (The `docket workflow` coverage this module used to carry was deleted when
 that command was retired — see tests/python/test_w3_workflow_removed.py.)
@@ -35,29 +40,6 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default"},
-            }
-        ],
-    },
-    "bindings": [
-        {
-            "agentId": "myshop",
-            "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-999"}},
-        }
-    ],
-    "channels": {"telegram": {"enabled": True}},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings live in fleet.json now, not
-# openclaw.json's `agents`/`bindings` above.
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [
@@ -68,11 +50,10 @@ FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _make_env(oc_dir: Path) -> dict[str, str]:
+def _make_env(home: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
-        "DOCKET_HOME": str(oc_dir),
+        "DOCKET_HOME": str(home),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -81,21 +62,19 @@ def _setup_agent(
     tmp_path: Path,
     agent_id: str = "myshop",
     *,
-    oc_config: dict[str, Any] | None = None,
     fleet_config: dict[str, Any] | None = None,
 ) -> Path:
-    """Create a minimal project workspace with memory log.  Returns oc_dir."""
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir(exist_ok=True)
-    ws = oc_dir / "workspaces" / "projects" / agent_id
+    """Create a minimal project workspace with memory log. Returns DOCKET_HOME."""
+    home = tmp_path / ".docket"
+    home.mkdir(exist_ok=True)
+    ws = home / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     mem_dir = ws / "memory"
     mem_dir.mkdir()
     (mem_dir / "2026-06-20.md").write_text("# Day log\n" + "line\n" * 50)
-    (oc_dir / "openclaw.json").write_text(json.dumps(oc_config or OC_CONFIG))
-    (oc_dir / "fleet.json").write_text(json.dumps(fleet_config or FLEET_CONFIG))
-    return oc_dir
+    (home / "fleet.json").write_text(json.dumps(fleet_config or FLEET_CONFIG))
+    return home
 
 
 def _run(
@@ -120,64 +99,52 @@ def _run(
 
 class TestCmdLogs:
     def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["logs", "ghost"], _make_env(oc_dir))
+        home = _setup_agent(tmp_path)
+        rc, _, err = _run(["logs", "ghost"], _make_env(home))
         assert rc == 1
         assert "ghost" in err
 
     def test_shows_memory_log_header(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(oc_dir))
+        home = _setup_agent(tmp_path)
+        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
         assert rc == 0
         assert "Latest memory log" in out
         assert "2026-06-20.md" in out
 
     def test_shows_first_40_lines(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(oc_dir))
+        home = _setup_agent(tmp_path)
+        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
         assert rc == 0
         # File has 51 lines (# Day log + 50 "line\n")
         assert "more lines" in out
 
     def test_no_memory_log_message(self, tmp_path: Path) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        ws = oc_dir / "workspaces" / "projects" / "bare"
+        home = tmp_path / ".docket"
+        home.mkdir()
+        ws = home / "workspaces" / "projects" / "bare"
         ws.mkdir(parents=True)
         (ws / ".docket-meta.json").write_text(json.dumps(META))
-        (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
-        rc, out, _ = _run(["logs", "bare"], _make_env(oc_dir))
+        (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+        rc, out, _ = _run(["logs", "bare"], _make_env(home))
         assert rc == 0
         assert "No memory logs" in out
 
     def test_non_tty_without_id_exits_1(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, _, err = _run(["logs"], _make_env(oc_dir))
+        home = _setup_agent(tmp_path)
+        rc, _, err = _run(["logs"], _make_env(home))
         assert rc == 1
         assert "required" in err.lower()
 
-    def test_gateway_section_shown_with_binding(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        # Write a fake log file for today
-        import datetime as dt
-
-        today = dt.date.today().strftime("%Y-%m-%d")
-        log_dir = tmp_path / "oclog"
-        log_dir.mkdir()
-        log_file = log_dir / f"openclaw-{today}.log"
-        log_file.write_text("-999 some event\n-999 another event\n")
-        env = {**_make_env(oc_dir), "OPENCLAW_LOG_DIR": str(log_dir)}
-        rc, out, _ = _run(["logs", "myshop"], env)
-        assert rc == 0
-        assert "Gateway log" in out
-        assert "2 entries" in out
-
-    def test_gateway_section_absent_without_binding(self, tmp_path: Path) -> None:
-        fleet_config = {**FLEET_CONFIG, "bindings": []}
-        oc_dir = _setup_agent(tmp_path, fleet_config=fleet_config)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(oc_dir))
+    def test_no_gateway_section_daemon_is_gone(self, tmp_path: Path) -> None:
+        # P19-7b: there is no daemon gateway log left to scan for a bound
+        # peer's activity, so the section is gone outright -- not
+        # conditional on a binding any more. No successor; deliberately
+        # verified absent regardless of binding state.
+        home = _setup_agent(tmp_path)
+        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
         assert rc == 0
         assert "Gateway log" not in out
+        assert "openclaw" not in out.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +155,6 @@ class TestCmdLogs:
 @pytest.mark.parametrize("cmd", [["logs", "x"]])
 def test_wave3b_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
     """logs must NOT fall through to Bash (exit 127)."""
-    oc_dir = _setup_agent(tmp_path)
-    rc, _, _ = _run(cmd, _make_env(oc_dir))
+    home = _setup_agent(tmp_path)
+    rc, _, _ = _run(cmd, _make_env(home))
     assert rc != 127

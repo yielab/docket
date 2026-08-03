@@ -20,9 +20,9 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import archetypes as _arch
+from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod
-from docket.edges.adapters import openclaw as _oc
 
 
 @pytest.fixture(autouse=True)
@@ -31,39 +31,28 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", oc_dir / "docket-roles.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "audit.log", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: None)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", home / "docket-roles.json", raising=True)
+    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 
 
 def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
-    return oc_dir
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
+    return home
 
 
-def _ids(oc_dir: Path) -> list[str]:
-    # P19-6: agent registration lives in fleet.json now, not openclaw.json's
-    # `agents.list` -- read via the ACL rather than a fixed relative path,
-    # since FLEET_FILE's actual location is fixture-managed (conftest's
-    # autouse isolation, or a test's own override).
-    del oc_dir  # kept for call-site compatibility; no longer the source
-    return [a.id for a in _oc.list_agents()]
+def _ids(home: Path) -> list[str]:
+    # P19-6/P19-7b: agent registration lives in fleet.json now.
+    del home  # kept for call-site compatibility; no longer the source
+    return [a.id for a in _fleet.list_agents()]
 
 
 class TestNormalizeRoleAgainstRegistry:

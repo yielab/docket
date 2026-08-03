@@ -82,8 +82,8 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "Use: docket pod <project> queue                (was: team queue)",
         "Use: docket pod <project> dispatch              to actually run queued tasks",
         "Org-wide view: docket install --portfolio       (Portfolio Manager)",
-        "Any old queue file at ~/.openclaw/workspaces/manager/TASK_LIST.json is preserved, "
-        "untouched, but no longer read by docket.",
+        "Any old manager TASK_LIST.json from a pre-Phase-19 install is untouched on disk "
+        "but no longer read by docket.",
     ),
     "workflow": (
         "docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML "
