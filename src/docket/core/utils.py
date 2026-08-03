@@ -91,14 +91,20 @@ def aggregate_cost(agent_id: str) -> CostTotals:
     """Return aggregated token/cost totals for *agent_id*.
 
     Phase 18 L-1: the session-JSONL parsing this used to do directly now lives
-    behind the RuntimeDriver port (``edges.adapters.openclaw.OpenClawDriver``'s
-    ``usage()``) — this is a pure translation from the driver's ``UsageTotals``
-    to the legacy ``CostTotals`` shape ``cli/_cost.py``, ``cli/_doctor.py``, and
-    ``core/dispatch.py`` already depend on. See core/runtime_driver.py.
-    """
-    from docket.edges.adapters import openclaw as _oc
+    behind the RuntimeDriver port -- this is a pure translation from the
+    driver's ``UsageTotals`` to the legacy ``CostTotals`` shape
+    ``cli/_cost.py``, ``cli/_doctor.py``, and ``core/dispatch.py`` already
+    depend on. See core/runtime_driver.py.
 
-    t = _oc.default_driver().usage(agent_id).totals
+    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
+    (``DocketDriver``), not the ACL's ``OpenClawDriver`` -- load-bearing for
+    ``core/dispatch.py``'s own pod-budget gate (``pod_gating_cost`` calls this
+    for every hop's member), which must see the same driver hops actually
+    execute through or the budget cap silently stops tripping.
+    """
+    from docket.edges.adapters import docket_runtime as _dr
+
+    t = _dr.default_driver().usage(agent_id).totals
     return CostTotals(
         input_tokens=t.input_tokens,
         output_tokens=t.output_tokens,
@@ -151,8 +157,16 @@ def cost_history(agent_id: str) -> list[DayRecord]:
 
     Phase 18 L-1: delegates to the RuntimeDriver port's ``usage()`` (see
     ``aggregate_cost``'s docstring) instead of parsing session JSONL directly.
+
+    Phase 19 P19-7a: same cutover as ``aggregate_cost`` -- resolves
+    ``edges.adapters.docket_runtime.default_driver()``. Note ``DocketDriver``'s
+    ``usage().by_day`` is always empty (see its docstring: a session's stored
+    usage is one running total, not timestamped per turn), so this always
+    returns ``[]`` against the production driver now -- an honest gap, not a
+    regression this card papers over; see the report for what the daemon
+    provided here that docket cannot yet.
     """
-    from docket.edges.adapters import openclaw as _oc
+    from docket.edges.adapters import docket_runtime as _dr
 
     return [
         DayRecord(
@@ -162,7 +176,7 @@ def cost_history(agent_id: str) -> list[DayRecord]:
             output_tokens=d.output_tokens,
             cost_usd=d.cost_usd,
         )
-        for d in _oc.default_driver().usage(agent_id).by_day
+        for d in _dr.default_driver().usage(agent_id).by_day
     ]
 
 

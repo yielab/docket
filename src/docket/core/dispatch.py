@@ -104,6 +104,7 @@ from docket.core import security as _sec
 from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
+from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
@@ -1204,7 +1205,7 @@ def dispatch_task(
     fires before each retry sleep so the caller can refresh the task's claim
     timestamp (see ``_touch_claim``) before it goes stale.
     """
-    run = runner or _oc.default_driver().run_turn
+    run = runner or _dr.default_driver().run_turn
     # W-2: pid tracking (for `docket runs cancel`) only makes sense for a real
     # OS process, i.e. the production driver — never an injected test
     # runner/fake, none of which accept an `on_spawn` kwarg (and none of which
@@ -1396,7 +1397,7 @@ def dispatch_task(
                 # test double's exact shape); calling the concrete production
                 # driver directly here (rather than through `run`) is what
                 # lets it take the extra `on_spawn` kwarg type-safely.
-                run_res = _oc.default_driver().run_turn(
+                run_res = _dr.default_driver().run_turn(
                     member_id, session_id, message, hop_timeout, env, on_spawn=_on_spawn
                 )
             else:

@@ -1,8 +1,14 @@
 # Workspace Structure Specification
 
-**Version**: 1.5.0
-**Status**: Complete
-**Last Updated**: 2026-07-31
+**Version**: 1.6.0
+**Status**: Complete. **ROADMAP Phase 19 P19-7a** moved `PROJECTS_DIR` (`docket.config`) from
+`OPENCLAW_DIR` to `DOCKET_HOME` — a project-agent (pod-member) workspace now lives at
+`~/.docket/workspaces/projects/<agent-id>/`, not `~/.openclaw/workspaces/projects/<agent-id>/`.
+Org-specialist workspaces (`~/.openclaw/workspaces/<role>/`) are **unchanged** — they stay under
+`OPENCLAW_DIR` until P19-7b. No migration: per D-19's clean break, a pre-existing install's
+workspaces at the old path are not moved or read from; `docket add` on this version simply writes
+new workspaces at the new path.
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -31,7 +37,8 @@ covers the resulting file set for either workspace kind, not blueprint selection
 ### Project-agent workspace
 
 1. Each project agent **MUST** have a workspace at
-   `~/.openclaw/workspaces/projects/<agent-id>/` containing:
+   `~/.docket/workspaces/projects/<agent-id>/` (`docket.config.PROJECTS_DIR`; moved from
+   `OPENCLAW_DIR` to `DOCKET_HOME` at ROADMAP P19-7a) containing:
    - `SOUL.md` — agent identity, scope, session key, and (optional) docket-owned persona block
    - `AGENTS.md` — session protocol and delegation rules
    - `TOOLS.md` — project-specific commands. For a standalone (non-pod) project agent this is
@@ -134,7 +141,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ### A provisioned project-agent workspace (`codebase`-kind)
 
 ```text
-~/.openclaw/workspaces/projects/mywebsite/
+~/.docket/workspaces/projects/mywebsite/
 ├── SOUL.md
 ├── AGENTS.md
 ├── TOOLS.md
@@ -150,7 +157,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 ### A provisioned pod member with no TOOLS.md (`workdir`-kind, non-Implementer)
 
 ```text
-~/.openclaw/workspaces/projects/my-market-scan-researcher/
+~/.docket/workspaces/projects/my-market-scan-researcher/
 ├── SOUL.md
 ├── AGENTS.md
 ├── HEARTBEAT.md
@@ -179,7 +186,8 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ### Pre-conditions
 
-- `~/.openclaw` **MUST** be writable.
+- `~/.openclaw` **MUST** be writable (org-specialist workspaces, still daemon-owned state).
+- `~/.docket` **MUST** be writable (project-agent/pod-member workspaces, moved here at P19-7a).
 
 ### Post-conditions
 
@@ -203,6 +211,17 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.6.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7a (the runtime cutover).** `docket.config.PROJECTS_DIR` moved from
+  `OPENCLAW_DIR` to `DOCKET_HOME` — every project-agent (pod-member) workspace now lives at
+  `~/.docket/workspaces/projects/<agent-id>/`, not `~/.openclaw/workspaces/projects/<agent-id>/`.
+  Updated requirement 1 and both project-agent example trees. Org-specialist workspaces
+  (`~/.openclaw/workspaces/<role>/`, requirement in "Org-specialist workspace") are unaffected —
+  they stay under `OPENCLAW_DIR` until ROADMAP P19-7b. Added a `~/.docket` writability
+  pre-condition alongside the existing `~/.openclaw` one. No migration: per D-19's clean break, a
+  pre-existing install's workspaces at the old path are not moved or read from.
 
 ### Version 1.5.0 (2026-07-31)
 

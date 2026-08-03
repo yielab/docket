@@ -1,10 +1,11 @@
 # Audit Log Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
 removal below are all shipped, now including `models.*`, `runs.cancel`, and `mcp_servers.*` — see
-Requirement 2 for what audit still does NOT see)
-**Last Updated**: 2026-08-02
+Requirement 2 for what audit still does NOT see). **ROADMAP Phase 19 P19-7a** moved the log file
+itself from `$OPENCLAW_DIR/audit.log` to `$DOCKET_HOME/audit.log` — see Requirement 5.
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -105,10 +106,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 4. Each entry **MUST** record `ts` (UTC ISO-8601, millisecond resolution — see
    Requirement 8), `user`, `pid`, `action`, `detail`, and the tamper-evidence
    fields `seq` and `prev_hash` (Requirement 9).
-5. The log file **MUST** live at `$OPENCLAW_DIR/audit.log` and **MUST** be created with
-   mode `0600`.
-6. Recording **MUST** be best-effort: a missing directory or write failure
-   **MUST NOT** fail the calling command.
+5. The log file **MUST** live at `$DOCKET_HOME/audit.log` (moved from `$OPENCLAW_DIR/audit.log`
+   at ROADMAP P19-7a — the last docket-owned state that lived under the daemon's directory) and
+   **MUST** be created with mode `0600`.
+6. Recording **MUST** be best-effort: a write failure **MUST NOT** fail the calling command. A
+   missing parent directory **MUST** be created (`mkdir(parents=True, exist_ok=True)`), not
+   treated as a reason to skip recording — before P19-7a, a missing `$OPENCLAW_DIR` meant "OpenClaw
+   was never installed" and correctly no-op'd; `$DOCKET_HOME` is genuinely docket-owned with
+   nothing external to bootstrap it, so a missing parent now means only "first-ever docket write",
+   and self-creating it is what stops the log silently losing its very first entry on a fresh
+   `~/.docket`.
 7. **There is no environment kill switch.** A prior `DOCKET_NO_AUDIT=1` escape
    hatch has been removed entirely — it was an unauthenticated way to silently
    disable the only tamper record docket keeps, indistinguishable from the
@@ -271,6 +278,18 @@ redundant.
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.5.0 (2026-08-03)
+
+- **ROADMAP Phase 19, card P19-7a (the runtime cutover).** `AUDIT_LOG` (`docket.config`) moved
+  from `$OPENCLAW_DIR/audit.log` to `$DOCKET_HOME/audit.log` — updated Requirement 5. Requirement
+  6 changed alongside it: `audit_log()` now creates a missing parent directory itself rather than
+  silently no-op'ing, because `$DOCKET_HOME` (unlike `$OPENCLAW_DIR`, the daemon's own directory)
+  has nothing external bootstrapping it — a missing parent under the old contract meant "OpenClaw
+  was never installed" (a legitimate skip signal); under the new one it just means "first-ever
+  docket write" (not a reason to lose the entry). No change to entry schema, tamper-evidence
+  chain, rotation, or the no-kill-switch contract. No migration: per D-19's clean break, a
+  pre-existing `$OPENCLAW_DIR/audit.log` is not read, moved, or chained-from.
 
 ### Version 2.4.0 (2026-08-02)
 

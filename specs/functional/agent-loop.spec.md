@@ -1,19 +1,22 @@
 # Agent Loop Specification
 
-**Version**: 1.1.0
-**Status**: Implemented. `core/agent_loop.py` and `edges/adapters/docket_runtime.py`
-(ROADMAP Phase 19 P19-5) are the first live callers of `core/llm.py` (P19-1),
-`core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4) — this is the card that makes
-the OpenClaw daemon *unused*, not yet uninstalled (Wave B / P19-6 / P19-7 removes it).
-`DocketDriver` is a complete, independently-tested `RuntimeDriver` implementation; it is not
-wired as any caller's default driver in this wave — `core/dispatch.py`, `core/trace.py`'s
-`trace_ingest` and every other existing `RuntimeDriver` caller are unchanged and still
-resolve `edges.adapters.openclaw.default_driver()`. ROADMAP Phase 19's P19-12 closed two
+**Version**: 1.2.0
+**Status**: Implemented and **live in production**. `core/agent_loop.py` and
+`edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
+`core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
+`DocketDriver` was a complete, independently-tested `RuntimeDriver` implementation as of P19-5,
+but not yet wired as any caller's default driver. **ROADMAP Phase 19 P19-7a (the runtime
+cutover, 2026-08-03) is what wires it**: `edges.adapters.docket_runtime.default_driver()` (new
+in that card) is now the resolution point `core/dispatch.py`'s hop execution, `core/trace.py`'s
+`trace_ingest`, `core/utils.py`'s cost aggregation, and `cli/_agents.py`'s distillation turn all
+call — this is the card that makes the OpenClaw daemon *unused* by production traffic, not yet
+uninstalled (P19-7b removes it). See `pod-dispatch.spec.md`'s "Runtime driver resolution
+(P19-7a)" for the dispatch-side contract this made real. ROADMAP Phase 19's P19-12 closed two
 omissions P19-5 recorded honestly rather than papering over: the loop now narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
 agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent`) — see the new
 "Per-role tool narrowing" and "System prompt composition" requirements below.
-**Last Updated**: 2026-08-02
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -350,6 +353,20 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.2.0 (2026-08-03)
+
+- **ROADMAP Phase 19, card P19-7a (the runtime cutover).** `edges.adapters.docket_runtime.py`
+  gained its own `default_driver()` singleton resolver (mirroring
+  `edges.adapters.openclaw.default_driver()`'s pattern), and every production caller that used to
+  resolve the ACL's version now resolves this one instead: `core/dispatch.py`'s two hop-execution
+  call sites, `core/trace.py`'s `trace_ingest`, `core/utils.py`'s `aggregate_cost`/`cost_history`,
+  and `cli/_agents.py`'s `_run_distillation` (D-18's first self-originated LLM call). No change to
+  `DocketDriver`'s own implementation or public signature — this version documents that the loop
+  this spec describes is now the one real turns actually run on, not just a tested-but-unused
+  parallel path. See `pod-dispatch.spec.md` v6.0.0 for the dispatch-side behavior changes this
+  causes (cost_usd always 0.0 in production, `docket runs cancel` cannot interrupt an in-flight
+  turn). No new trace event types, no new CLI flags, no golden diff (no new CLI surface).
 
 ### Version 1.1.0 (2026-08-02)
 

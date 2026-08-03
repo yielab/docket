@@ -17,6 +17,7 @@ from docket.cli import _audit as audit_cli
 from docket.cli import _trace as trace_cli
 from docket.core import audit as audit_core
 from docket.core import trace as trace_core
+from docket.edges.adapters import openclaw as _oc
 
 
 @pytest.fixture()
@@ -73,10 +74,22 @@ class TestAudit:
         assert len(entries) == 1
         assert entries[0]["action"] == "keys.add"
 
-    def test_missing_dir_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "nope" / "audit.log", raising=True)
+    def test_missing_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Phase 19 P19-7a: AUDIT_LOG moved from OPENCLAW_DIR (guaranteed to
+        exist by something outside docket's control -- the daemon's own
+        directory) to DOCKET_HOME (genuinely docket-owned, nothing external
+        bootstraps it). Before this card a missing parent meant "OpenClaw was
+        never installed" and audit_log correctly no-op'd; now it just means
+        "first-ever docket write", so it creates its own parent directory,
+        matching every other DOCKET_HOME-derived writer (core/trace.py,
+        core/session.py) — the log would otherwise silently lose its very
+        first entry on a fresh ~/.docket.
+        """
+        monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "fresh" / "audit.log", raising=True)
         audit_core.audit_log("keys.add", "X")  # must not raise
-        assert not (tmp_path / "nope").exists()
+        logf = tmp_path / "fresh" / "audit.log"
+        assert logf.is_file()
+        assert audit_core.read_audit()[0]["action"] == "keys.add"
 
     def test_run_audit_no_log(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = audit_cli.run_audit()
@@ -219,6 +232,24 @@ def _seed_daemon_session(oc_dir: Path, project: str, session: str, lines: list[d
 
 
 class TestTraceIngest:
+    """Daemon-format session ingestion, driven through `OpenClawDriver` directly.
+
+    P19-7a repointed `core/trace.py`'s production `trace_ingest` at
+    `edges.adapters.docket_runtime.default_driver()` (`DocketDriver`), not
+    the ACL's `OpenClawDriver` -- see test_l1_runtime_driver.py's
+    `TestTraceIngestThroughDocketDriver` for that production path. This
+    class still seeds daemon-shaped session JSONL, so it monkeypatches the
+    resolution point back to `OpenClawDriver` to keep exercising its
+    idempotent-offset / timeout-session_end mechanics, which are otherwise
+    untested elsewhere and still real, still shipped code (P19-7b deletes it).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _use_openclaw_driver(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+        )
+
     def test_ingest_projects_turns(self, oc_dir: Path) -> None:
         now = trace_core._now_iso()
         _seed_daemon_session(

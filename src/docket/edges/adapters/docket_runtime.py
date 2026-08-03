@@ -2,11 +2,17 @@
 
 Implements ``core.runtime_driver.RuntimeDriver`` on top of ``core/agent_loop.py``
 so ``core/dispatch.py``, the pipeline executor and every existing caller that
-programs against the Protocol work unchanged — this module adds a new,
-complete, independently-tested driver; it does not repoint ``default_driver()``
-or edit any caller. After this card the daemon is *unused* by this driver, not
-yet uninstalled: ``edges/adapters/openclaw.py`` and the actual default-driver
-cutover are Wave B's concern (P19-6/P19-7).
+programs against the Protocol work unchanged.
+
+P19-5 shipped this driver fully tested but unused in production: nothing yet
+repointed the callers that resolve a driver, so every real turn still ran
+through ``edges/adapters/openclaw.py``'s ``OpenClawDriver``. **P19-7a (the
+runtime cutover) is what flips it** -- this module's own ``default_driver()``
+below is now the single resolution point every production caller uses, so a
+production pod-dispatch hop (and every other driver-backed turn: distillation,
+cost aggregation, trace ingestion) executes here, on docket's own gated loop,
+not the daemon. ``edges/adapters/openclaw.py`` and its ``OpenClawDriver`` are
+untouched and still importable directly -- deleting them is P19-7b.
 
 Every ``run_turn`` goes through ``core.agent_loop.run_agent_turn``, which in
 turn dispatches every tool call through ``core.tools.dispatch_tool`` — the one
@@ -352,3 +358,29 @@ class DocketDriver:
             # JSONL file that may or may not exist.
             supports_sessions=True,
         )
+
+
+_DRIVER: DocketDriver | None = None
+
+
+def default_driver() -> DocketDriver:
+    """Return the process-wide ``DocketDriver`` singleton (P19-7a: the runtime cutover).
+
+    Mirrors ``edges.adapters.openclaw.default_driver()``'s singleton pattern --
+    stateless, so a fresh instance would behave identically; this just gives
+    every real caller one named object. This is now the driver every
+    production turn resolves through: ``core/dispatch.py``'s two pod-dispatch
+    hop-execution call sites, ``core/trace.py``'s session-ingestion sweep,
+    ``core/utils.py``'s cost aggregation, and ``cli/_agents.py``'s
+    distillation turn (D-18's first self-originated LLM call) all resolve
+    the driver here rather than through the ACL.
+
+    ``edges.adapters.openclaw.default_driver()`` still exists and still
+    resolves ``OpenClawDriver`` -- nothing outside its own module and test
+    file calls it anymore after this card, which is exactly what leaves it
+    for P19-7b to delete outright along with the rest of the ACL.
+    """
+    global _DRIVER
+    if _DRIVER is None:
+        _DRIVER = DocketDriver()
+    return _DRIVER

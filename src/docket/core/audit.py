@@ -1,6 +1,6 @@
 """Audit log for mutating operations.
 
-Appends one JSON line per change to ``$OPENCLAW_DIR/audit.log`` (0600) recording
+Appends one JSON line per change to ``$DOCKET_HOME/audit.log`` (0600) recording
 who/when/what — table stakes for "what changed this agent/binding/key, and when".
 Secret VALUES are never logged: callers pass only the key name / action target.
 
@@ -20,9 +20,11 @@ specs/functional/audit.spec.md for the full rationale and schema.
 
 Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
 line-independent, not a read-modify-write of a whole document, so this module
-writes JSONL directly rather than through ``edges/store.py``. The log lives
-under OPENCLAW_DIR but is a docket-owned artefact, not an openclaw config
-file, so it does not go through the ACL either.
+writes JSONL directly rather than through ``edges/store.py``. The log is a
+docket-owned artefact (Phase 19 P19-7a moved it from OPENCLAW_DIR to
+DOCKET_HOME, alongside the model/archetype registries and PROJECTS_DIR — the
+last docket state still living in the daemon's directory), so it does not go
+through the ACL either.
 """
 
 from __future__ import annotations
@@ -135,12 +137,23 @@ def audit_log(action: str, detail: str = "") -> None:
     detail: human-readable target (an id, key name, model id — never a secret
     value).
 
-    Best-effort and never raises: a missing OPENCLAW_DIR or a write failure
-    silently no-ops. Recording cannot be disabled by environment variable —
-    there is no kill switch (see module docstring).
+    Best-effort and never raises: a write failure silently no-ops. Recording
+    cannot be disabled by environment variable — there is no kill switch (see
+    module docstring).
+
+    Phase 19 P19-7a: AUDIT_LOG moved from OPENCLAW_DIR (the daemon's own
+    directory, guaranteed to exist by something outside docket's control) to
+    DOCKET_HOME (genuinely docket-owned). Nothing external bootstraps
+    DOCKET_HOME anymore, so this creates its parent directory itself, exactly
+    like every other DOCKET_HOME-derived writer already does
+    (``core/trace.py``'s ``project_dir.mkdir(parents=True, exist_ok=True)``,
+    ``core/session.py``'s ``_ensure_session_dir``) — the log would otherwise
+    silently lose its very first entry on a fresh ``~/.docket``.
     """
     logf = _cfg.AUDIT_LOG
-    if not logf.parent.is_dir():
+    try:
+        logf.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
         return
 
     try:

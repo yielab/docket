@@ -230,9 +230,13 @@ class TestAuditFailureNeverBreaksApproval:
     def test_audit_write_failure_does_not_raise(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A missing AUDIT_LOG parent dir best-effort no-ops rather than raising."""
+        """A missing AUDIT_LOG parent dir best-effort creates it rather than
+        raising or losing the entry (Phase 19 P19-7a: AUDIT_LOG is now under
+        genuinely docket-owned DOCKET_HOME, not the daemon's OPENCLAW_DIR, so
+        a missing parent means "first write", not "OpenClaw never installed"
+        -- see core/audit.py's audit_log() docstring)."""
         monkeypatch.setattr(_cfg, "AUDIT_LOG", oc_dir / "nope" / "audit.log", raising=True)
         token = _ap.approval_create("proj-missing-dir", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise
         assert _ap.approval_get(token)["state"] == "granted"
-        assert not (oc_dir / "nope").exists()
+        assert (oc_dir / "nope" / "audit.log").is_file()

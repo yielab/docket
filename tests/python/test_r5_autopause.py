@@ -110,21 +110,39 @@ class _RecordingRunner:
 
 
 def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int) -> None:
-    """Write a session JSONL with token usage but NO ``usage.cost`` field.
+    """Seed a docket-native session (``core/session.py``'s on-disk shape) with
+    real measured token counts and no cost figure.
 
-    This is the exact daemon v2026.2.23 shape the R-5 card is about: token
-    counts only, no USD cost, so ``aggregate_cost().cost_usd`` stays 0.0
-    forever unless something estimates from the tokens instead.
+    Phase 19 P19-7a repointed ``aggregate_cost`` at ``DocketDriver``
+    (``edges.adapters.docket_runtime.default_driver()``), not the ACL's
+    ``OpenClawDriver`` -- this now writes the format it actually reads.
+    ``DocketDriver`` *never* reports a USD cost (see
+    ``core/runtime_driver.py``'s ``TurnResult.cost_usd`` docstring), which is
+    exactly the "tokens without cost" shape this R-5 suite was originally
+    written against for the daemon -- the estimate-fallback behaviour under
+    test is unchanged, only the driver reporting it is. *oc_dir* is unused
+    (kept so every existing call site is untouched); the write goes through
+    ``_cfg.SESSIONS_DIR``, which this suite already isolates per test via
+    conftest.py's autouse ``_isolate_docket_home``.
     """
-    sessions_dir = oc_dir / "agents" / agent_id / "sessions"
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(
-        {
-            "timestamp": "2026-07-30T00:00:00Z",
-            "message": {"usage": {"input": input_tokens, "output": output_tokens}},
-        }
-    )
-    (sessions_dir / "session-1.jsonl").write_text(line + "\n")
+    from urllib.parse import quote
+
+    session_key = f"agent:{agent_id}:default"
+    sdir = _cfg.SESSIONS_DIR / quote(session_key, safe="")
+    sdir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "sessionKey": session_key,
+        "created": "2026-07-30T00:00:00Z",
+        "updated": "2026-07-30T00:00:00Z",
+        "messages": [],
+        "usage": {
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cachedTokens": 0,
+            "turns": 1,
+        },
+    }
+    (sdir / "session.json").write_text(json.dumps(record))
 
 
 # ── AgentMeta.coerce_paused / is_paused ────────────────────────────────────────────
@@ -453,7 +471,7 @@ class TestRecordedSpendNeverContaminated:
         runner = CliRunner()
         result = runner.invoke(_app, ["cost", lead_id])
         assert result.exit_code == 0, result.output
-        assert "none recorded by the daemon" in result.output
+        assert "none recorded" in result.output
         # The estimate ($4.80 for these tokens/model) must never appear here
         # dressed up as a cost figure.
         assert "4.80" not in result.output

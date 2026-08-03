@@ -2,9 +2,12 @@
 
 ``run_cost(...)`` returns the process exit code; the coordinator wraps it in
 a Typer command and raises ``typer.Exit(code)``. Dollar figures are the
-daemon's recorded spend from session data
-(``~/.openclaw/agents/*/sessions/*.jsonl``); the bundled model-pricing table
-only powers the comparative estimate shown alongside it.
+active driver's recorded spend from session data
+(``core.utils.aggregate_cost``/``cost_history``, delegating to whichever
+``RuntimeDriver`` is resolved -- ``DocketDriver`` in production since Phase 19
+P19-7a, which never reports a USD cost at all: see
+``edges/adapters/docket_runtime.py``'s ``usage()`` docstring); the bundled
+model-pricing table only powers the comparative estimate shown alongside it.
 """
 
 from __future__ import annotations
@@ -161,6 +164,14 @@ def _cmd_cost_all() -> None:
             ui.warn(f"  Runaway session: {r}")
 
     ui.console.print()
+    # NOTE (P19-7a): this footer's literal ~/.openclaw path is now stale for
+    # the production DocketDriver path (real data lives under
+    # DOCKET_HOME/sessions instead) -- left unchanged deliberately, because
+    # this exact line is golden-pinned (tests/golden/cases/readonly/cost.golden)
+    # and this card adds no new CLI surface to justify a golden diff. Flagged
+    # in the P19-7a report as a known, deliberately-deferred inaccuracy, not
+    # fixed here; a spec/docs-owning card should correct the wording without
+    # also touching cost logic.
     ui.dim("  Recorded spend from session data in ~/.openclaw/agents/*/sessions/*.jsonl")
     ui.dim(
         f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"
@@ -193,8 +204,7 @@ def _render_agent_cost(agent_id: str) -> None:
         )
     else:
         ui.console.print(
-            f"  [bold]{'Total cost:':<16}[/bold] "
-            "[dim]none recorded by the daemon for these sessions[/dim]"
+            f"  [bold]{'Total cost:':<16}[/bold] [dim]none recorded for these sessions[/dim]"
         )
 
     if budget_raw and str(budget_raw) not in ("", "0"):

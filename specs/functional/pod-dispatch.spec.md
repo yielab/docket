@@ -1,7 +1,13 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 5.1.0
-**Status**: Complete. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
+**Version**: 6.0.0
+**Status**: Complete. **ROADMAP Phase 19 P19-7a (the runtime cutover)**: a pod-dispatch hop now
+executes through `edges.adapters.docket_runtime.DocketDriver` — docket's own gated turn loop
+(`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint) — not
+`edges.adapters.openclaw.OpenClawDriver`/the daemon. `core/dispatch.py`'s two production driver
+call sites resolve `edges.adapters.docket_runtime.default_driver()`, not the ACL's; see "Runtime
+driver resolution (P19-7a)" and "Cancellation" below for what changed in each hop-execution and
+mid-hop-cancellation requirement. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
 registry auto-population) are now implemented — see "Mechanical HEARTBEAT ledger" and
 "Conversation registry auto-population" below: the pod Lead's `HEARTBEAT.md` dispatch ledger and
 a wired agent's conversation `last_message`/`task_ref` are now kept current mechanically, at the
@@ -12,7 +18,9 @@ generalized gate execution (Phase 16 W-8) are now implemented — see "Generaliz
 (Requirements → "require_approval gate and waiting_approval") now ships with **two** wired
 sources (pod-level and pipeline-defined); the policy-driven source (Phase 15 G-2) remains an
 explicit, inert seam — see that section's "Sources" list. Hops run through the RuntimeDriver port
-(Phase 18 L-1) — a containment refactor with no behavior change. The role-archetype registry's
+(Phase 18 L-1) — a containment refactor with no behavior change **at the time it shipped**; P19-7a
+(2026-08-03) is the behavior change that port made possible — see "Runtime driver resolution
+(P19-7a)" below. The role-archetype registry's
 `gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
 when the step declares none of its own. **Structured handoff artifacts (ROADMAP Phase 16 W-5)**
 are implemented — see "Structured handoff artifacts" below: a hop's output is a typed
@@ -30,7 +38,7 @@ truncation are retired, and every prior hop's rendered artifact is fit to a **pe
 budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, see `role-archetypes.spec.md`
 v1.3.0) via `core/context.py`'s `compile_artifact`, which sheds `HandoffArtifact.DROP_ORDER` fields
 before ever truncating `summary` itself.
-**Last Updated**: 2026-07-31
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -655,7 +663,29 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    child-by-child resume granularity. (This does not affect the rework-replay path at all, per
    requirement 3.)
 
-### Cancellation (ROADMAP Phase 16 W-2)
+### Runtime driver resolution (ROADMAP Phase 19 P19-7a)
+
+1. `core/dispatch.py`'s two production hop-execution call sites (the `runner or ...run_turn`
+   fallback, and the pid-tracking call inside the retry loop) **MUST** resolve
+   `edges.adapters.docket_runtime.default_driver()` — `DocketDriver`, which dispatches every tool
+   call through `core/tools.py`'s gated chokepoint (`pre_tool_call`/approval/audit all live) —
+   never `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`, the daemon-shelling ACL
+   driver). An **injected** `runner` (a test double, or a future non-default driver passed
+   explicitly) always wins over both — this requirement governs only the no-injected-runner
+   fallback path every real `docket pod <p> dispatch` / `docket pipeline run` invocation takes.
+2. `edges.adapters.openclaw.OpenClawDriver` and its `default_driver()` **MUST NOT** be deleted by
+   this requirement — they remain real, directly-constructible, fully-tested code; nothing outside
+   their own module resolves them anymore, which is what leaves them for a later removal card
+   (ROADMAP P19-7b) rather than this one.
+3. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
+   `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) — real measured
+   token counts are still recorded (`core.session`'s `MeasuredUsage`, surfaced through
+   `core.utils.aggregate_cost`), but a token count **MUST NOT** be converted into a dollar figure
+   at this boundary. R-5's estimate-fallback budget gate (`pod_gating_cost`) already accounts for
+   a driver that records tokens but not cost; it works unchanged against `DocketDriver` for
+   exactly that reason.
+
+### Cancellation (ROADMAP Phase 16 W-2; scope narrowed by P19-7a)
 
 1. `docket runs cancel <id>` **MUST** kill every hop subprocess currently recorded as in-flight
    for that run's id, and **MUST** mark the run a new terminal state, `"cancelled"` — see
@@ -681,6 +711,18 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    reported as such, never re-signalled or double-finished. A run's own normal completion
    (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
    wrote back to `"succeeded"`/`"failed"`.
+6. **Known gap, P19-7a (not fixed by this spec version):** requirements 1-3 above describe real,
+   still-shipped behavior for a hop that happens to run through `OpenClawDriver` (constructed
+   directly, or resolved by an explicit override) — but a hop running through the production
+   default, `DocketDriver`, has **no OS subprocess to track or kill**: its `run_turn` makes
+   in-process HTTP calls, and its `on_spawn` parameter is accepted but never invoked (see
+   `core/runtime_driver.py`'s `RuntimeDriver.run_turn` docstring). `docket runs cancel` against
+   such a hop still marks the run `"cancelled"` honestly (reported as "nothing in flight to kill"
+   — never a false claim that a process was killed) and requirement 5's no-op/no-clobber rules
+   still hold, but the in-flight model/tool call itself is **not interrupted** — it keeps running
+   to completion in its own thread. `core/agent_loop.py` has no cooperative-cancellation hook
+   today. Closing this gap is out of scope for P19-7a (it is new capability work on the loop, not
+   a driver-resolution flip) and is not currently scheduled on the board.
 
 ### Hop-failure semantics (general)
 
@@ -1026,6 +1068,32 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.0.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7a (the runtime cutover).** `core/dispatch.py`'s two production
+  driver-resolution call sites now resolve `edges.adapters.docket_runtime.default_driver()`
+  (`DocketDriver`) instead of `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`) — a
+  real pod-dispatch hop executes on docket's own gated turn loop, not the daemon. See "Runtime
+  driver resolution (P19-7a)" (new) and "Cancellation" (narrowed, new requirement 6) above.
+  Behavior changes, not just an internal refactor:
+  - A hop's `cost_usd` is now unconditionally `0.0` (`DocketDriver.capabilities().reports_cost_usd`
+    is always `False`); real token counts are still recorded and still drive R-5's estimate
+    fallback for budget gating, which is unaffected.
+  - `docket runs cancel` can no longer interrupt an in-flight hop's model/tool call — no OS
+    process exists to kill under `DocketDriver`. The run registry still transitions honestly to
+    `"cancelled"`; the hop itself keeps running. Named as a gap, not fixed here (out of scope: new
+    capability work on `core/agent_loop.py`, not a driver-resolution flip).
+  - `docket cost --history` (`core/trace.py`'s `trace_ingest`, `core/utils.py`'s `aggregate_cost`/
+    `cost_history`, all repointed at the same resolution point) now always reports an empty
+    per-day breakdown against the production driver — `DocketDriver.usage().by_day` is always
+    `[]` (a session's stored usage is one running total, not timestamped per turn). `docket cost`
+    (non-history) and `docket trace` both still work correctly against real `DocketDriver` data.
+  - `edges.adapters.openclaw.OpenClawDriver` is untouched and still directly constructible/tested
+    — this version does not delete it, only stops routing production hops through it. Deletion is
+    ROADMAP P19-7b.
+  - No new trace event types, no new CLI flags, no change to the task status vocabulary or the
+    claim/retry/finalize state machine itself.
 
 ### Version 5.1.0 (2026-07-31)
 

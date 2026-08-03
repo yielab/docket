@@ -84,6 +84,40 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     return oc_dir
 
 
+def _write_docket_session(
+    oc_dir: Path,
+    session_key: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int = 0,
+    turns: int = 1,
+    updated: str = "2024-03-15T10:00:00Z",
+) -> None:
+    """Seed a docket-native session (``core/session.py``'s on-disk shape)
+    directly. P19-7a's replacement for writing daemon-format ``sessions/*.jsonl``:
+    a pod-dispatch hop's turns now land here, through ``DocketDriver``, not
+    the old daemon session log ``docket cost``'s tests used to fake.
+    """
+    from urllib.parse import quote
+
+    sdir = oc_dir / "sessions" / quote(session_key, safe="")
+    sdir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "sessionKey": session_key,
+        "created": updated,
+        "updated": updated,
+        "messages": [],
+        "usage": {
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cachedTokens": cached_tokens,
+            "turns": turns,
+        },
+    }
+    (sdir / "session.json").write_text(json.dumps(record))
+
+
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Run `python -m docket <args>` with OPENCLAW_DIR overridden."""
     import subprocess
@@ -297,23 +331,13 @@ class TestCmdCost:
 
     def test_cost_json_with_session_data(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        sessions = oc_dir / "agents" / "myshop" / "sessions"
-        sessions.mkdir(parents=True)
-        session_line = json.dumps(
-            {
-                "timestamp": "2024-03-15T10:00:00Z",
-                "message": {
-                    "usage": {
-                        "input": 1000,
-                        "output": 200,
-                        "cacheRead": 500,
-                        "cacheWrite": 100,
-                        "cost": {"total": 0.005},
-                    }
-                },
-            }
+        _write_docket_session(
+            oc_dir,
+            "agent:myshop:default",
+            input_tokens=1000,
+            output_tokens=200,
+            cached_tokens=500,
         )
-        (sessions / "session-1.jsonl").write_text(session_line + "\n")
         rc, out, _ = _run(["cost", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
@@ -321,8 +345,13 @@ class TestCmdCost:
         assert a["input"] == 1000
         assert a["output"] == 200
         assert a["turns"] == 1
-        assert abs(a["costUsd"] - 0.005) < 1e-9
-        assert abs(data["totalUsd"] - 0.005) < 1e-9
+        # P19-7a: DocketDriver never reports a USD cost -- CLAUDE.md's standing
+        # rule against turning a measured-token count into a billing claim,
+        # the same "0.0 with real token counts recorded" contract run_turn
+        # already had, now visible through `docket cost` too (a named
+        # capability gap vs. the daemon -- see the P19-7a report).
+        assert a["costUsd"] == 0.0
+        assert data["totalUsd"] == 0.0
 
     def test_cost_json_budget_null_when_absent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -359,48 +388,31 @@ class TestCmdCost:
         assert data["history"] == []
 
     def test_cost_history_json_with_data(self, tmp_path: Path) -> None:
+        """P19-7a: ``DocketDriver.usage().by_day`` is always ``[]`` -- a
+        session's stored usage is one running total for its lifetime, with no
+        per-turn timestamp to bucket by day (see
+        ``edges/adapters/docket_runtime.py``'s ``usage()`` docstring).
+        ``docket cost --history`` is an honest empty list against the
+        production driver now, not a silently-stale daemon-JSONL read -- a
+        named capability gap (see the P19-7a report), not a bug this test
+        should paper over.
+        """
         oc_dir = _setup_agent(tmp_path)
-        sessions = oc_dir / "agents" / "myshop" / "sessions"
-        sessions.mkdir(parents=True)
-        line = json.dumps(
-            {
-                "timestamp": "2024-03-15T10:00:00Z",
-                "message": {
-                    "usage": {
-                        "input": 500,
-                        "output": 100,
-                        "cost": {"total": 0.002},
-                    }
-                },
-            }
-        )
-        (sessions / "s.jsonl").write_text(line + "\n")
+        _write_docket_session(oc_dir, "agent:myshop:default", input_tokens=500, output_tokens=100)
         rc, out, _ = _run(["cost", "--history", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        assert len(data["history"]) == 1
-        row = data["history"][0]
-        assert row["date"] == "2024-03-15"
-        assert row["turns"] == 1
+        assert data["history"] == []
 
     def test_cost_history_days_filter(self, tmp_path: Path) -> None:
+        """Same gap as above: real usage exists, but --history stays empty
+        regardless of --days since DocketDriver reports no daily breakdown."""
         oc_dir = _setup_agent(tmp_path)
-        sessions = oc_dir / "agents" / "myshop" / "sessions"
-        sessions.mkdir(parents=True)
-        for day in ("2024-01-01", "2024-01-02", "2024-01-10"):
-            line = json.dumps(
-                {
-                    "timestamp": f"{day}T10:00:00Z",
-                    "message": {"usage": {"input": 1, "output": 1, "cost": {"total": 0.0}}},
-                }
-            )
-            (sessions / f"{day}.jsonl").write_text(line + "\n")
+        _write_docket_session(oc_dir, "agent:myshop:default", input_tokens=1, output_tokens=1)
         rc, out, _ = _run(["cost", "--history", "--days", "2", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        # Only the last 2 days: 2024-01-02 and 2024-01-10
-        assert len(data["history"]) == 2
-        assert data["history"][-1]["date"] == "2024-01-10"
+        assert data["history"] == []
 
 
 # ---------------------------------------------------------------------------
