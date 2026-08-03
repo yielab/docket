@@ -87,6 +87,26 @@ vocabulary — the same two event types ``core/trace.py``'s ``trace_ingest``
 already projects from daemon session logs, reused here for a live-emitted
 equivalent rather than an ingested one). ``docket trace`` can now show what
 an agent actually did inside a turn; the daemon kept this to itself.
+
+## Per-role tool sets and the system prompt (ROADMAP Phase 19 P19-12)
+
+Two omissions this card closes, both recorded honestly rather than papered
+over when P19-5 shipped:
+
+- **The tool registry handed to the model was never narrowed by role.**
+  ``core.archetypes.registry_for_role`` is called once per turn, before the
+  first ``backend.complete``, so a Reviewer is never even *advertised*
+  ``write``/``edit``, and if a call for either arrives anyway (a stale
+  client, a hallucination), ``dispatch_tool`` refuses it as an unknown tool
+  against the narrowed registry — a strictly stronger guarantee than a
+  SOUL.md instruction. This function never branches on a role's name; the
+  denylist is data on the role's archetype (see ``core/archetypes.py``).
+- **No system prompt was composed at all.** ``core.identity.system_prompt_for_agent``
+  reads this agent's ``SOUL.md``, live persona, and ``WORKFLOW_AUTO.md`` (the
+  resume/durability contract) and folds them into one prompt, prepended as a
+  ``system`` message. Composed fresh every turn — never persisted to session
+  history — so a persona change or a re-seeded ``WORKFLOW_AUTO.md`` is
+  reflected on the very next turn rather than frozen into a stored message.
 """
 
 from __future__ import annotations
@@ -98,7 +118,9 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import docket.config as _cfg
-from docket.core.llm import ChatBackend, ChatMessage, TokenUsage, tool_result, user
+from docket.core import archetypes as _archetypes
+from docket.core import identity as _identity
+from docket.core.llm import ChatBackend, ChatMessage, TokenUsage, system, tool_result, user
 from docket.core.runtime_driver import FailureKind
 from docket.core.session import append_messages, load_messages
 from docket.core.tools import ToolContext, ToolRegistry, dispatch_tool
@@ -240,10 +262,19 @@ def run_agent_turn(
     started = clock()
     project = ctx.project or ctx.agent_id or "unknown"
 
+    # P19-12: resolved once per turn, not per iteration -- neither the
+    # role's toolset nor this agent's identity files change mid-turn.
+    registry = _archetypes.registry_for_role(registry, ctx.role)
+    system_prompt = _identity.system_prompt_for_agent(ctx.agent_id)
+
     history = load_messages(session_key)
     incoming = user(message)
     append_messages(session_key, [incoming])
     messages: list[ChatMessage] = [*history, incoming]
+    if system_prompt:
+        # Composed fresh, never persisted -- see the module docstring's
+        # "Per-role tool sets and the system prompt" section.
+        messages = [system(system_prompt), *messages]
 
     total_usage = TokenUsage()
     tool_calls_executed = 0
