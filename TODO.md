@@ -595,7 +595,25 @@ model defaults move out of `openclaw.json` into a docket-owned `fleet.json` thro
 `core/oc_models.py` and `doctor`'s config-drift check are **deleted rather than ported** — with one
 source of truth there is nothing left to drift.
 
-**P19-7 · Delete the ACL; reimplement install/doctor/cost** — *TODO · L · wave 11*
+> **Split into P19-7a + P19-7b (integrator, 2026-08-03).** Measured before dispatching rather than
+> estimated from the card text: **44 files** under `src/` mention `openclaw`, **23** import the ACL,
+> and the ACL itself is **1,549 lines / 72 functions**. That is too large for one agent to keep
+> coherent, and it bundles two different risks — *flipping the runtime* and *deleting the old one*.
+> The seam is exact: `_oc.default_driver()` is the **single** point that decides which runtime
+> executes a hop (`core/dispatch.py` ~1207 and ~1399), so the flip can be verified on its own before
+> anything is deleted. Splitting there buys an integration checkpoint at the most consequential
+> moment in the phase.
+>
+> **P19-7a · The runtime cutover** — *IN-PROGRESS · M · wave 11*
+> `default_driver()` returns `DocketDriver`, so production pod-dispatch hops execute on docket's own
+> gated loop. Moves the four remaining docket-owned constants (`MODEL_REGISTRY_FILE`,
+> `ARCHETYPE_REGISTRY_FILE`, `PROJECTS_DIR`, `AUDIT_LOG`) under `DOCKET_HOME`. Deletes nothing.
+> **Walks straight into wave 10's trap** — it moves four more constants across the
+> `OPENCLAW_DIR`/`DOCKET_HOME` boundary that silently de-isolated the suite last time, so rule 10's
+> snapshot proof is mandatory and `test_p19_6b_docket_home_isolation.py`'s third test is *expected*
+> to fire until `_DOCKET_HOME_PATHS` is extended. Extend the list; never weaken the guard.
+>
+> **P19-7b · Delete the ACL; reimplement install/doctor/cost** — *TODO · L · wave 11, after P19-7a*
 Delete `edges/adapters/openclaw.py` and every `openclaw` shell-out, auth-profile read, gateway
 restart and version probe. Reimplement `docket install` to provision a docket-native home with no
 external daemon; re-point `doctor`, `gates`, `keys`, `auth`, `cost` and `context` at docket-owned
@@ -881,7 +899,7 @@ and must explain the diff.
 | --- | --- | --- | --- |
 | 8-9 | ☑ P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10 | done | — |
 | 10 | ☑ P19-6 · P19-11 · P19-12 · P19-13 | done (2026-08-02) | — |
-| **▶ 11** | **P19-7** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean |
+| **▶ 11** | **P19-7a** -> **P19-7b** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean (after P19-7b) |
 | **12** | **P21-1** -> **P21-5** | sequential | library boundary test seen to fail on a planted import |
 | **13** | **P20-2 · P20-4** | 2 parallel | — |
 
