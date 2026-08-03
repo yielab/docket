@@ -34,7 +34,7 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
-    mcp)             words="serve" ;;
+    mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs|run)        words="list show cancel" ;;
     conversations|conv) words="list show resume set" ;;

@@ -1,12 +1,17 @@
 # MCP Client Specification
 
-**Version**: 1.0.0
-**Status**: Implemented, not yet on a live path. `core/mcp_tools.py` and
-`edges/adapters/mcp_client.py` (ROADMAP Phase 19 P19-10) ship fully tested and unused, the same
-way `core/llm.py` (P19-1), `core/tools.py` (P19-2), and `core/session.py` (P19-4) shipped ahead
-of their own callers — `core/agent_loop.py` (Phase 19 P19-5, not yet built) is the first intended
-consumer, which will call `load_mcp_tools` when it builds a turn's `ToolRegistry`.
-**Last Updated**: 2026-07-31
+**Version**: 1.1.0
+**Status**: Implemented. Configuration (`docket mcp servers add/list/remove`, ROADMAP Phase 19
+P19-13) and the underlying adapt-and-gate machinery (`core/mcp_tools.py`,
+`edges/adapters/mcp_client.py`, Phase 19 P19-10) are both shipped and CLI-reachable. **Still not
+on a live agent-turn path**: `core/agent_loop.py`'s `run_agent_turn` (Phase 19 P19-5) takes an
+already-built `ToolRegistry` as a caller-supplied argument rather than building one itself, so
+nothing in production yet calls `load_mcp_tools` to fold a configured server's tools into that
+registry before a turn starts — the same way `core/llm.py` (P19-1), `core/tools.py` (P19-2), and
+`core/session.py` (P19-4) shipped ahead of their own callers. Configuring a server today makes it
+inspectable (`docket mcp servers list`) and ready; it does not yet make its tools available to a
+running agent.
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -33,6 +38,12 @@ This specification covers:
   timeout that guarantees it
 - Screening a remote tool's name/description through the existing `pre_input` policy hook before
   it is ever registered (untrusted input arriving as tool metadata, not task text)
+- The `docket mcp servers add/list/remove` CLI (`cli/_mcp.py`, ROADMAP Phase 19 P19-13) — pure
+  presentation over the configuration functions above; it validates flags and calls
+  `add_mcp_server`/`load_mcp_servers`/`remove_mcp_server` unchanged
+- The recipe this whole client exists to unlock: pointing docket at an off-the-shelf MCP server
+  (Playwright for browser automation, any MCP-compliant search server for web search) as
+  configuration rather than code — see Examples
 
 This specification does NOT cover:
 
@@ -48,9 +59,8 @@ This specification does NOT cover:
   consumption as "a deliberately separate, unbuilt card (ROADMAP Phase 18 L-4, daemon-gated)" is
   superseded by this specification now that D-19 has docket, not a daemon, own the loop
 - Non-stdio MCP transports (HTTP/SSE) — only a spawned stdio subprocess server is supported today
-- Any CLI surface for managing configured servers — `add_mcp_server`/`remove_mcp_server`/
-  `load_mcp_servers` are complete, tested library functions with no CLI wiring yet, matching how
-  `core/tools.py`'s `builtin_registry()` shipped before any command called it
+- Actually connecting to a configured server during a live agent turn — `docket mcp servers add`
+  only writes configuration; nothing calls `load_mcp_tools` in production yet (see Status above)
 
 ## Requirements
 
@@ -135,6 +145,30 @@ This specification does NOT cover:
     failure (missing SDK, spawn failure, protocol error, timeout, malformed response) — every one
     of those comes back as data (`McpListResult(ok=False, ...)` / `ToolOutcome(False, ...)`).
 
+### CLI (`docket mcp servers`)
+
+20. `docket mcp servers list` **MUST** show every configured server's name and launch command,
+    **MUST NOT** print any `env` value in the clear (mask as `KEY=****`, matching `docket keys
+    list`'s masking convention), and **MUST NOT** connect to any server — it is a pure read of
+    `load_mcp_servers()`.
+21. `docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command>
+    [args...]` **MUST** treat everything after a literal `--` token as the server's launch command
+    and arguments verbatim, so a command's own flags (e.g. `npx -y ...`) are never misparsed as
+    `docket`'s own flags. `--env`/`--timeout` **MUST** be rejected with a descriptive error (exit
+    1) if given after `--`, malformed, or given with no `--` present at all — a missing separator
+    **MUST NOT** silently swallow the rest of the arguments as flags.
+22. `docket mcp servers add` **MUST** build one `McpServerConfig` from the parsed name/command/
+    args/env/timeout and pass it to `add_mcp_server` unchanged, surfacing that function's
+    `ValueError` (bad/duplicate name) as a CLI error (exit 1) rather than a traceback.
+23. `docket mcp servers add`/`remove` **MUST** write an audit entry (`mcp_servers.add` /
+    `mcp_servers.remove`) naming the server and, for `add`, its launch command — **MUST NOT**
+    record any `env` value, matching Requirement 20's masking rule for `list`. `docket mcp servers
+    list` is read-only and **MUST NOT** write an audit entry.
+24. None of `docket mcp servers add/list/remove` **MUST** import from, or otherwise reach,
+    `core/tools.py` or any built-in tool registration — this CLI only ever calls the configuration
+    functions in Requirements 1-3; connecting to a server and adapting its tools remains
+    `load_mcp_tools`'s job, on whatever path eventually calls it (see Status).
+
 ## Interface Contracts
 
 ### Module API (`docket.core.mcp_tools`)
@@ -206,7 +240,63 @@ unrelated call's connection state.
 `timeout: 0.0` means "use `docket.config.MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped
 to `MCP_CLIENT_MAX_TIMEOUT_S`.
 
+### CLI syntax (`cli/_mcp.py`)
+
+```
+docket mcp servers list
+docket mcp servers add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command> [args...]
+docket mcp servers remove <name>
+```
+
+`add`'s `--`-separator convention (Requirement 21) is deliberate: an MCP server's own launch
+command frequently carries flags of its own (`npx -y ...`, `-- --headless`, ...), and a
+flag-parser that tried to distinguish "docket's flags" from "the command's flags" by position
+alone would misparse the first one it saw. Everything after `--` is opaque to docket.
+
 ## Examples
+
+### Recipe: browser support (and web search) is configuration, not code
+
+This is the payoff decision D-19 ("rent the protocol") and decision D-24 (browser automation is on
+the never-build list) both point at: docket never needed to write a Playwright wrapper, a headless
+Chrome driver, or a search-API client. Pointing docket's MCP client at an existing MCP server for
+that capability is a configuration step, and the client already built for P19-10 gates whatever
+that server advertises exactly like a built-in tool — no new code path, no special-casing "this
+tool drives a browser."
+
+1. **Configure the server** — the [Playwright MCP server](https://github.com/microsoft/playwright-mcp)
+   is a stdio MCP server that drives a real browser (navigate, click, fill forms, read the DOM,
+   screenshot) and ships as an `npx` package, so nothing beyond Node (already on every agent's
+   curated allowlist) is required:
+
+   ```
+   docket mcp servers add playwright -- npx -y @playwright/mcp@latest
+   ```
+
+2. **What this buys, mechanically, once something calls `load_mcp_tools`** (see Status — not yet a
+   live path): every tool Playwright advertises (`browser_navigate`, `browser_click`,
+   `browser_snapshot`, ...) registers as `mcp__playwright__<tool>` (Requirement 7). No amount of
+   the remote server misbehaving — even a hypothetical hostile fork naming one of its own tools
+   `bash` — can make `mcp__playwright__bash` collide with or shadow the real, gated `bash` tool
+   (Requirement 8; see "A malicious server cannot shadow a built-in" below and
+   `TestCollisionRule.test_a_malicious_server_naming_itself_after_a_builtin_tool_does_not_shadow_it`
+   in `tests/python/test_p19_10_mcp_client.py`). Every call — "click this button", "read this
+   page" — still passes through the unmodified `dispatch_tool` chokepoint: the same
+   `pre_tool_call` policy hooks, the same approval routing, the same audit trail a `bash` or `edit`
+   call gets (Requirement 5; see "Gated exactly like a built-in" below).
+3. **The same recipe, same reasoning, for web search**: configure any MCP-compliant search server
+   (`docket mcp servers add search -- <its stdio launch command>`) and its tools register as
+   `mcp__search__<tool>`, gated the same way. There is nothing browser- or search-specific in
+   `core/mcp_tools.py` or `edges/adapters/mcp_client.py` — the mechanism is the transport, not the
+   capability.
+4. **Remove it just as cheaply** when it is no longer needed: `docket mcp servers remove
+   playwright`. No code to revert, because none was written.
+
+What this recipe deliberately does **not** do: it does not ship a Playwright wrapper, a browser
+driver, or a search client anywhere in this codebase — writing one is explicitly out of scope
+under decision D-24 (browser automation is on the never-build list) precisely because this
+recipe makes it unnecessary. The entire "browser support" is the one `add` command above, plus
+whatever server-side npm package the operator chooses to trust.
 
 ### Registering a server's tools alongside the built-ins
 
@@ -275,6 +365,11 @@ dispatch_tool(
   still resolve to its original `Tool` object (identity-preserving, not merely name-preserving).
 - A tool skipped for a policy reason (`McpToolSkip.reason` naming a policy) **MUST NOT** appear in
   the registry under its namespaced name.
+- `docket mcp servers add`'s parsed `command`/`args` **MUST** match exactly what followed `--` on
+  the command line, in order — the CLI **MUST NOT** reorder, deduplicate, or otherwise transform
+  the launch command it was given.
+- `docket mcp servers list` **MUST NOT** ever cause a subprocess to be spawned — it reads
+  `load_mcp_servers()` only.
 
 ### Invariants
 
@@ -284,8 +379,27 @@ dispatch_tool(
 - A call to an adapted tool **MUST NOT** be able to reach its underlying protocol exchange without
   first passing through `dispatch_tool`'s gate — this module holds no reference to a handler it
   did not just build for `ToolRegistry.register`, and calls the handler nowhere itself.
+- `cli/_mcp.py`'s `docket mcp servers` commands **MUST NOT** import anything from `core/tools.py`
+  or `edges/adapters/toolbox.py` beyond the inert `ToolOutcome` type already allowed for
+  `core/mcp_tools.py` itself (see `TestOnlyTheInertResultTypeIsImported` in
+  `tests/python/test_p19_10_mcp_client.py`) — the CLI is configuration only, never a second
+  execution path.
 
 ## Changelog
+
+### Version 1.1.0 (2026-08-02)
+
+- **ROADMAP Phase 19, card P19-13 — `docket mcp servers` CLI.** Added `docket mcp servers
+  list/add/remove` (`cli/_mcp.py`), a pure presentation layer over `add_mcp_server`/
+  `load_mcp_servers`/`remove_mcp_server`, which shipped tested and uncalled in Version 1.0.0
+  (P19-10). `add`'s `--`-separator syntax (Requirement 21) keeps a server's own launch flags from
+  ever being misparsed as docket's. Added the `mcp_servers.add`/`mcp_servers.remove` audit action
+  family (see `audit.spec.md` Version 2.4.0). Documented the recipe this client exists to unlock —
+  pointing docket at the Playwright MCP server (browser automation) or any MCP-compliant search
+  server, as configuration rather than code — under Examples. **Still not on a live agent-turn
+  path**: this version does not change that `load_mcp_tools` has no production caller (see
+  Status); configuring a server makes it inspectable and ready, not yet reachable by a running
+  agent.
 
 ### Version 1.0.0 (2026-07-31)
 

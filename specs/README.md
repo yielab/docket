@@ -126,7 +126,7 @@ Each specification document must include:
 | Agent Lifecycle | 1.6.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
 | Agent Loop | 1.1.0 | Implemented | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver` (Phase 19 P19-5): the turn loop docket now owns, dispatching every tool call through `core.tools.dispatch_tool`; not yet wired as any caller's default driver (Wave B / P19-6 / P19-7); per-role tool narrowing + composed system prompt (Phase 19 P19-12) |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 2.3.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b) and `runs.cancel` (Phase 16 W-4) all covered — both formerly tracked gaps closed; what remains uncovered is structural (actions taken outside docket) |
+| Audit | 2.4.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b), `runs.cancel` (Phase 16 W-4) and `mcp_servers.*` (Phase 19 P19-13) all covered; what remains uncovered is structural (actions taken outside docket) |
 | Cost Tracking | 1.3.0 | Implemented | Auto-pause is real (Phase 14 R-5); session-JSONL parsing now lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane |
 | Eval | 1.0.1 | Complete | `--tier` is a results label (carved out of tier removal) |
 | Model Profiles | 2.4.0 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6); `models.*` audit coverage (Phase 15 G-4b); carries the L-5 spike's evidence that a sidecar gateway needs no new capability (Phase 18 L-5) |
@@ -140,7 +140,7 @@ Each specification document must include:
 | Telegram Integration | 1.0.1 | Complete | |
 | Workspace Structure | 1.5.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
 | CLI Interface | 1.12.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
-| MCP Client | 1.0.0 | Implemented, not yet on a live path | `core/mcp_tools.py` + `edges/adapters/mcp_client.py` (Phase 19 P19-10): external MCP tool servers adapted into docket's registry, namespaced `mcp__<server>__<tool>` so a remote tool can never shadow a built-in, and dispatched through the same gated chokepoint |
+| MCP Client | 1.1.0 | Implemented, not yet on a live agent-turn path | `core/mcp_tools.py` + `edges/adapters/mcp_client.py` (Phase 19 P19-10): external MCP tool servers adapted into docket's registry, namespaced `mcp__<server>__<tool>` so a remote tool can never shadow a built-in, and dispatched through the same gated chokepoint; `docket mcp servers add/list/remove` CLI (Phase 19 P19-13) |
 | MCP Server | 1.3.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.7.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
