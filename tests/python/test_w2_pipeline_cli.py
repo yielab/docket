@@ -176,6 +176,16 @@ class TestPipelineRunCli:
     def test_run_dispatches_through_the_default_pipeline(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        # Phase 19 P19-7a repointed core/dispatch.py's production driver
+        # resolution at edges.adapters.docket_runtime.default_driver()
+        # (DocketDriver), not the ACL's OpenClawDriver -- this fake `openclaw`
+        # binary on PATH is only reached if we monkeypatch the resolution
+        # point back, which is exactly what this test wants to keep proving
+        # (the pipeline CLI wires through to a real dispatch, whichever
+        # driver is behind it).
+        monkeypatch.setattr(
+            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+        )
         bindir = tmp_path / "bin"
         bindir.mkdir()
         script = bindir / "openclaw"

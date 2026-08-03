@@ -6,9 +6,11 @@ and `clean`/`reset` gaining a `--distill-first` default (with
 undistilled memory. Calls `run_maintain` directly (the same pattern
 test_w7_provisioning.py uses for `run_add`) with `sys.stdin.isatty`/
 `builtins.input` monkeypatched for the confirm prompt, and
-`edges.adapters.openclaw.default_driver` monkeypatched to return
+`edges.adapters.docket_runtime.default_driver` monkeypatched to return
 `tests/python/fakes.py`'s `FakeDriver` -- no live daemon, no `openclaw`
-binary, anywhere in this file.
+binary, anywhere in this file. (Phase 19 P19-7a repointed `cli/_agents.py`'s
+`_run_distillation` at `docket_runtime.default_driver`, not the ACL's; this
+file's monkeypatch target moved with it.)
 
 A hermetic no-fake, no-daemon proof (the real `OpenClawDriver` failing
 because `openclaw` isn't on PATH) lives in test_m4_final.py's
@@ -26,7 +28,7 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _agents
 from docket.core import memory as _mem
-from docket.edges.adapters import openclaw as _oc
+from docket.edges.adapters import docket_runtime as _dr
 
 from .fakes import FakeDriver
 
@@ -59,7 +61,7 @@ def _confirm_yes(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _use_fake_driver(monkeypatch: pytest.MonkeyPatch, fake: FakeDriver) -> None:
-    monkeypatch.setattr(_oc, "default_driver", lambda: fake)
+    monkeypatch.setattr(_dr, "default_driver", lambda: fake)
 
 
 # ── docket maintain <id> distill ────────────────────────────────────────────

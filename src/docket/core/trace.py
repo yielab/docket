@@ -193,28 +193,34 @@ def trace_event(
 
 
 def trace_ingest(project: str) -> None:
-    """Idempotently project daemon session logs into the trace store.
+    """Idempotently project the active driver's session logs into the trace store.
 
-    Projects each daemon turn into tool_call/tool_result events, offset-tracked
+    Projects each turn into tool_call/tool_result events, offset-tracked
     (.ingest-index.json) to avoid double-emit. Synthesises a session_end for
-    timed-out open sessions. No-ops when DOCKET_NO_TRACE=1 or the daemon has no
+    timed-out open sessions. No-ops when DOCKET_NO_TRACE=1 or the driver has no
     sessions for *project*.
 
     Phase 18 L-1: the daemon session-JSONL format knowledge this used to hold
     directly (raw ``sessions/*.jsonl`` globbing, the ``type``/``timestamp``
-    record vocabulary) now lives behind the RuntimeDriver port
-    (``edges.adapters.openclaw.OpenClawDriver``'s ``list_sessions``/
-    ``read_new_turns``) — this function only ever sees the driver's neutral
-    ``SessionSummary``/``SessionSlice`` shapes and applies docket's own
-    trace-event policy (redaction elsewhere, timeout handling, event
-    vocabulary) on top. See core/runtime_driver.py.
+    record vocabulary) now lives behind the RuntimeDriver port -- this
+    function only ever sees the driver's neutral ``SessionSummary``/
+    ``SessionSlice`` shapes and applies docket's own trace-event policy
+    (redaction elsewhere, timeout handling, event vocabulary) on top. See
+    core/runtime_driver.py.
+
+    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
+    (``DocketDriver``, reading ``core/session.py``'s own storage), not the
+    ACL's ``OpenClawDriver`` -- the same cutover ``core/dispatch.py``'s hop
+    execution made, and required for the same reason: pod-dispatch hops now
+    write turns through ``DocketDriver``, so ingesting from the old daemon
+    driver would silently see nothing new, ever.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return
 
-    from docket.edges.adapters import openclaw as _oc
+    from docket.edges.adapters import docket_runtime as _dr
 
-    driver = _oc.default_driver()
+    driver = _dr.default_driver()
     sessions = driver.list_sessions(project)
     if not sessions:
         return

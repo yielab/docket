@@ -72,6 +72,12 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
 
 
 def _install_fake_openclaw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase 19 P19-7a repointed core/dispatch.py's production driver
+    # resolution at edges.adapters.docket_runtime.default_driver()
+    # (DocketDriver), not the ACL's OpenClawDriver -- monkeypatch it back so
+    # this fake `openclaw` binary on PATH is actually reached, same as
+    # test_w2_pipeline_cli.py's identical fixture.
+    monkeypatch.setattr("docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver)
     bindir = tmp_path / "bin"
     bindir.mkdir()
     script = bindir / "openclaw"

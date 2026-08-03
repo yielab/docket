@@ -62,6 +62,16 @@ def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 # under ``src/docket/`` binds these at import (no ``from docket.config import
 # TRACES_DIR`` etc.), so patching the config module alone is sufficient --
 # ``FLEET_FILE`` above is the one exception, and it patches its rebinding too.
+#
+# P19-7a (the runtime cutover) added the last four: MODEL_REGISTRY_FILE,
+# ARCHETYPE_REGISTRY_FILE, PROJECTS_DIR and AUDIT_LOG moved out of
+# OPENCLAW_DIR here, walking straight into the same trap P19-6 hit -- a test
+# that only repointed OPENCLAW_DIR for hermeticity no longer isolates them for
+# free. ``AUDIT_LOG`` already had its own dedicated ``_isolate_audit_log``
+# fixture above (predating DOCKET_HOME/OPENCLAW_DIR decoupling); it is listed
+# here too so ``test_p19_6b_docket_home_isolation.py``'s source-scanning guard
+# (which does not know about that separate fixture) stays green. Both
+# fixtures isolate it to a safe tmp path, so the redundancy is harmless.
 _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("TRACES_DIR", "traces"),
     ("APPROVALS_DIR", "approvals"),
@@ -72,6 +82,10 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("SCHEDULE_FILE", "docket-schedules.json"),
     ("RUNS_FILE", "docket-runs.json"),
     ("MCP_SERVERS_FILE", "docket-mcp-servers.json"),
+    ("MODEL_REGISTRY_FILE", "docket-models.json"),
+    ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),
+    ("PROJECTS_DIR", "workspaces/projects"),
+    ("AUDIT_LOG", "audit.log"),
 )
 
 

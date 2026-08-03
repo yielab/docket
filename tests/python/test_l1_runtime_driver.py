@@ -68,6 +68,12 @@ class TestProtocolConformance:
         assert isinstance(FakeDriver(), _rd.RuntimeDriver)
 
     def test_default_driver_is_a_singleton(self) -> None:
+        # Phase 19 P19-7a repointed every production caller at
+        # edges.adapters.docket_runtime.default_driver() instead (see
+        # test_p19_7a_runtime_cutover.py) -- this ACL-owned default_driver()
+        # is otherwise unused now, which is exactly what leaves it for P19-7b
+        # to delete outright along with the rest of the ACL. Still real,
+        # still worth pinning: nothing about OpenClawDriver itself changed.
         assert _oc.default_driver() is _oc.default_driver()
         assert isinstance(_oc.default_driver(), _oc.OpenClawDriver)
 
@@ -220,8 +226,20 @@ class TestUsage:
         by_day = _oc.OpenClawDriver().usage("myshop").by_day
         assert [d.date for d in by_day] == ["2024-01-01", "2024-01-02", "2024-01-10"]
 
-    def test_core_utils_wrappers_translate_the_same_data(self, oc_dir: Path) -> None:
-        """aggregate_cost/cost_history (core/utils.py) are pure translations now."""
+    def test_core_utils_wrappers_translate_the_same_data(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """aggregate_cost/cost_history (core/utils.py) are pure translations now.
+
+        Phase 19 P19-7a repointed both functions at
+        ``edges.adapters.docket_runtime.default_driver()``; monkeypatch it
+        back to an ``OpenClawDriver`` here since this test's whole point is
+        pinning the translation against *that* driver's daemon-JSONL usage
+        data, independent of which driver production resolves by default.
+        """
+        monkeypatch.setattr(
+            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+        )
         _write_session(
             oc_dir,
             "myshop",
@@ -297,11 +315,17 @@ class TestReadNewTurns:
         assert second.next_offset == 2
 
 
-# ── trace_ingest end-to-end through the driver (core/trace.py has no format knowledge) ──
+# ── trace_ingest end-to-end through OpenClawDriver directly (core/trace.py has
+# no format knowledge -- this proves the *shape* of the contract still holds
+# for OpenClawDriver itself, even though production trace_ingest no longer
+# resolves it by default; see TestTraceIngestThroughDocketDriver below for
+# what production actually calls after P19-7a) ──────────────────────────────
 
 
-class TestTraceIngestThroughDriver:
-    def test_ingest_projects_turns_via_driver(self, oc_dir: Path) -> None:
+class TestTraceIngestThroughOpenClawDriverDirectly:
+    def test_ingest_projects_turns_when_driver_is_openclaw(
+        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from docket.core import trace as _trace
 
         _write_session(
@@ -314,8 +338,54 @@ class TestTraceIngestThroughDriver:
                 {"type": "tool_result", "timestamp": _trace._now_iso(), "id": "t1"},
             ],
         )
+        # P19-7a repointed core/trace.py's production call at
+        # edges.adapters.docket_runtime.default_driver() -- monkeypatch that
+        # (not edges.adapters.openclaw.default_driver, which nothing calls
+        # anymore) to still exercise OpenClawDriver's own decoding through
+        # the exact same trace_ingest code path.
+        monkeypatch.setattr(
+            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+        )
         _trace.trace_ingest("myshop")
         tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
+        assert tf.is_file()
+        types = [r["event_type"] for r in _trace.read_trace(tf)]
+        assert types == ["session_start", "tool_call", "tool_result"]
+
+
+# ── trace_ingest through DocketDriver -- what production actually resolves
+# after P19-7a (the runtime cutover). A pod-dispatch hop's turns now live in
+# core/session.py's own storage, not daemon JSONL, so this is the path that
+# must work for `docket trace` to show anything real post-cutover. ──────────
+
+
+class TestTraceIngestThroughDocketDriver:
+    def test_ingest_projects_turns_from_a_real_docket_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.core import session as _session
+        from docket.core import trace as _trace
+        from docket.core.llm import ToolCall, assistant, tool_result, user
+        from docket.edges.adapters.docket_runtime import DocketDriver
+
+        traces_dir = tmp_path / "traces"
+        monkeypatch.setattr(_cfg, "TRACES_DIR", traces_dir, raising=True)
+        monkeypatch.setattr(_cfg, "SESSIONS_DIR", tmp_path / "sessions", raising=True)
+        monkeypatch.setenv("DOCKET_NO_COST_INDEX", "1")
+        monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
+
+        session_key = "agent:myshop:default"
+        call = ToolCall(id="t1", name="read", arguments="{}")
+        _session.append_messages(
+            session_key,
+            [user("go"), assistant(tool_calls=[call]), tool_result(call, "ok")],
+        )
+
+        driver = DocketDriver()
+        monkeypatch.setattr("docket.edges.adapters.docket_runtime.default_driver", lambda: driver)
+        _trace.trace_ingest("myshop")
+
+        tf = traces_dir / "myshop" / f"{session_key}.jsonl"
         assert tf.is_file()
         types = [r["event_type"] for r in _trace.read_trace(tf)]
         assert types == ["session_start", "tool_call", "tool_result"]

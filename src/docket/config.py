@@ -11,28 +11,41 @@ from pathlib import Path
 
 OPENCLAW_DIR = Path(os.environ.get("OPENCLAW_DIR", Path.home() / ".openclaw"))
 
+# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root,
+# independent of OPENCLAW_DIR -- the daemon's directory, which P19-7b deletes.
+# Defined ahead of CONFIG_FILE/MODEL_REGISTRY_FILE/etc. below so the four
+# still-docket-owned constants P19-7a (the runtime cutover) moved out of
+# OPENCLAW_DIR can resolve under it directly. Before P19-6, DOCKET_HOME
+# aliased OPENCLAW_DIR (same physical directory, convenient while docket's
+# files and the daemon's lived side by side); now it is genuinely docket's
+# own home. Every file already resolved via DOCKET_HOME
+# (traces/policies/approvals/schedules/runs/sessions/conversations/mcp-servers/
+# FLEET_FILE below, plus MODEL_REGISTRY_FILE/ARCHETYPE_REGISTRY_FILE/
+# PROJECTS_DIR/AUDIT_LOG as of P19-7a) moves with it automatically. Files
+# that remain daemon-owned (openclaw.json, auth-profiles, specialist/pod
+# workspaces under OPENCLAW_DIR/workspaces/<specialist|pods>, session JSONL)
+# stay under OPENCLAW_DIR until P19-7b deletes that tree outright.
+DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
+
+# CONFIG_FILE stays under OPENCLAW_DIR: it is genuinely daemon-owned (the
+# daemon's own config file) and P19-7b deletes it outright, not migrates it.
 CONFIG_FILE = OPENCLAW_DIR / "openclaw.json"
-MODEL_REGISTRY_FILE = OPENCLAW_DIR / "docket-models.json"
+# MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG:
+# docket-owned, not daemon-owned -- the last docket state still living under
+# OPENCLAW_DIR before P19-7a (the runtime cutover) moved it under DOCKET_HOME.
+# Per D-19's clean break, no migration/fallback: a pre-existing install's
+# files at the old OPENCLAW_DIR-relative paths are simply not read again.
+MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
 # ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes (ROADMAP Phase 16 W-6) —
 # the same overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
 # overlaid by a user `roles:` map). See core/archetypes.py.
-ARCHETYPE_REGISTRY_FILE = OPENCLAW_DIR / "docket-roles.json"
-PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
+ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
+PROJECTS_DIR = DOCKET_HOME / "workspaces" / "projects"
 SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
 LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 
-# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root,
-# independent of OPENCLAW_DIR -- the daemon's directory, which P19-7 deletes.
-# Before this card DOCKET_HOME aliased OPENCLAW_DIR (same physical directory,
-# convenient while docket's files and the daemon's lived side by side); now it
-# is genuinely docket's own home. Every file already resolved via DOCKET_HOME
-# (traces/policies/approvals/schedules/runs/sessions/conversations/mcp-servers/
-# FLEET_FILE below) moves with it automatically -- no other constant changes.
-# Files that remain daemon-owned (openclaw.json, auth-profiles, workspaces,
-# session JSONL) stay under OPENCLAW_DIR until P19-7 deletes that tree outright.
-DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
-AUDIT_LOG = OPENCLAW_DIR / "audit.log"
+AUDIT_LOG = DOCKET_HOME / "audit.log"
 # AUDIT_LOG_MAX_BYTES: audit.log rotates to a single-generation backup
 # (audit.log.1, overwriting any prior one) once it reaches this size. `docket
 # audit verify` only verifies the current file — each rotation starts a fresh

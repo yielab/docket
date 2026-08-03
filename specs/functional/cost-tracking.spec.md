@@ -1,9 +1,12 @@
 # Cost Tracking Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
-scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause")
-**Last Updated**: 2026-07-30
+scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). **ROADMAP Phase 19
+P19-7a (the runtime cutover)** repointed cost reporting at `edges.adapters.docket_runtime`'s
+`DocketDriver` by default, not the ACL's `OpenClawDriver` — see requirements 2-4 below and
+"Known gap" under `--history`.
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -28,21 +31,29 @@ pod-dispatch.spec.md).
 
 1. `docket cost [agent-id]` **MUST** report token usage and dollar cost; with no id it
    **MUST** aggregate across all agents.
-2. Costs **MUST** be derived from session data under `~/.openclaw/agents/*/sessions/*.jsonl`.
-3. Dollar figures are the daemon's **recorded** spend, taken verbatim from the session
-   files' `usage.cost.total`. docket **MUST NOT** substitute its own pricing math for
-   recorded spend: when the daemon records no cost, `docket cost` **MUST** say so
-   ("none recorded by the daemon for these sessions") rather than print a computed
-   figure as if recorded. The bundled pricing table powers comparative estimates only
-   (see model-profiles.spec.md).
-4. **(Phase 18 L-1 / D-14)** The session-JSONL parsing behind requirement 2 **MUST** live
-   entirely inside `edges/adapters/openclaw.py`'s `OpenClawDriver` — the one shipped
-   implementation of the `RuntimeDriver` port (`core/runtime_driver.py`) — and **MUST NOT**
-   appear anywhere under `core/`. `core/utils.py`'s `aggregate_cost`/`cost_history` are pure
-   translations of the driver's `usage()` return value into the legacy `CostTotals`/
-   `DayRecord` shapes `cli/_cost.py`, `cli/_doctor.py`, and `core/dispatch.py` already depend
-   on; they no longer open a session file themselves. A guard test
-   (`test_ch2_openclaw_acl_guard.py::test_core_has_no_session_format_knowledge`) fails the
+2. Costs **MUST** be derived from the resolved `RuntimeDriver`'s session data
+   (`core.utils.aggregate_cost`/`cost_history`, delegating to
+   `edges.adapters.docket_runtime.default_driver()`) — in production, since ROADMAP P19-7a,
+   `DocketDriver` reading `core/session.py`'s own storage under `$DOCKET_HOME/sessions`, not
+   `~/.openclaw/agents/*/sessions/*.jsonl` (the daemon's format, which `OpenClawDriver` still
+   reads when directly constructed — see requirement 4).
+3. Dollar figures are the resolved driver's **recorded** spend, never docket's own pricing math
+   substituted for it: when the driver records no cost, `docket cost` **MUST** say so ("none
+   recorded for these sessions") rather than print a computed figure as if recorded.
+   `DocketDriver` **never** reports a cost (`capabilities().reports_cost_usd` is always `False`
+   — see `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this branch is now the
+   normal case in production, not an edge case; the bundled pricing table powers comparative
+   estimates only (see model-profiles.spec.md).
+4. **(Phase 18 L-1 / D-14; resolution point moved at P19-7a)** The session-format parsing behind
+   requirement 2 **MUST** live entirely inside the concrete `RuntimeDriver` implementation
+   (`edges/adapters/openclaw.py`'s `OpenClawDriver` for daemon-format JSONL,
+   `edges/adapters/docket_runtime.py`'s `DocketDriver` for docket-native `core/session.py`
+   storage) and **MUST NOT** appear anywhere under `core/`. `core/utils.py`'s
+   `aggregate_cost`/`cost_history` are pure translations of whichever driver
+   `edges.adapters.docket_runtime.default_driver()` resolves — `DocketDriver` in production —
+   into the legacy `CostTotals`/`DayRecord` shapes `cli/_cost.py`, `cli/_doctor.py`, and
+   `core/dispatch.py` already depend on; they no longer open a session file themselves. A guard
+   test (`test_ch2_openclaw_acl_guard.py::test_core_has_no_session_format_knowledge`) fails the
    build if this regresses.
 
 ### Budget caps
@@ -99,7 +110,7 @@ pod-dispatch.spec.md).
 ```bash
 docket cost [agent-id]            # Usage and recorded cost (table)
 docket cost --json                # Machine-readable (see cli-json-shapes.spec.md)
-docket cost --history [--days N]  # Daily recorded-cost history
+docket cost --history [--days N]  # Daily recorded-cost history (see "Known gap" below)
 docket profile <agent-id> --budget <USD>   # Set/clear a cap (0 = none)
 docket profile <agent-id> --resume         # Clear an auto-pause; unblocks a paused pod's Lead
 docket doctor                     # Includes budget/runaway check (display only)
@@ -109,6 +120,16 @@ docket doctor                     # Includes budget/runaway check (display only)
 
 - `0`: Success
 - `1`: Any error (unknown agent, invalid budget value)
+
+### Known gap: `--history` is always empty against the production driver (P19-7a)
+
+`DocketDriver.usage().by_day` is always `[]` — a session's stored usage
+(`core.session.MeasuredUsage`) is one running total for its whole lifetime, with no per-turn
+timestamp to bucket by day (unlike the daemon-JSONL `OpenClawDriver.usage()` reads, which
+timestamps every record). `docket cost --history` therefore returns an honest empty history
+against real production data, regardless of `--days`; `docket cost` (non-history) is unaffected —
+totals still aggregate correctly. Adding a per-turn usage log to fabricate a daily breakdown is
+new scope for `core/session.py`, not part of P19-7a; this is a named capability gap, not a bug.
 
 ## Examples
 
@@ -173,6 +194,24 @@ $ docket pod myproject dispatch
   **MUST NOT** be summed into, or presented as, recorded spend.
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-03)
+
+- **ROADMAP Phase 19, card P19-7a (the runtime cutover).** `core/utils.py`'s `aggregate_cost`/
+  `cost_history` now resolve `edges.adapters.docket_runtime.default_driver()` (`DocketDriver` in
+  production), not `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`). Updated
+  requirements 2-4. Real behavior changes documented, not smoothed over:
+  - `docket cost`'s "none recorded" branch (requirement 3) is now the **normal** production case,
+    since `DocketDriver` never reports a cost at all — wording changed from "none recorded by the
+    daemon" to "none recorded", since there is no daemon in the loop for a `DocketDriver`-executed
+    turn.
+  - New "Known gap" section: `docket cost --history` always returns an empty history against the
+    production driver (`DocketDriver.usage().by_day` is unconditionally `[]`) — named explicitly,
+    not fixed by this version.
+  - `docket cost` (non-history) totals are unaffected — real recorded token counts still
+    aggregate correctly through `DocketDriver`'s own session storage.
+  - `OpenClawDriver`'s daemon-JSONL reading is untouched and still real when directly constructed
+    or explicitly resolved; only the production default moved.
 
 ### Version 1.3.0 (2026-07-30)
 

@@ -34,7 +34,10 @@ from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import resources as _res
 from docket.core import runtime_driver as _rd
+from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, assistant
+from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters import openclaw as _oc
+from docket.edges.adapters.docket_runtime import DocketDriver
 
 from .fakes import FakeDriver
 
@@ -452,22 +455,76 @@ class TestAgentRunRealShape:
         assert _oc._extract_run_cost(flat) == pytest.approx(0.02)
 
 
-# ── end-to-end: driver → real agent_run → fake binary ────────────────────────────
+# ── end-to-end: driver → real agent_loop → real gated tool chokepoint ────────────
+#
+# Phase 19 P19-7a (the runtime cutover): before this card, no injected runner
+# meant `dispatch_pod` resolved the ACL's `agent_run`, which shelled a real
+# subprocess to `openclaw` -- proven above by `_write_fake_openclaw`. After
+# this card, the *same* "no injected runner" path resolves
+# `edges.adapters.docket_runtime.default_driver()` instead: docket's own
+# `core/agent_loop.py`, dispatching every tool call through
+# `core/tools.py`'s gated chokepoint. `TestAgentRun` above still proves the
+# ACL's subprocess wrapper works (P19-7b deletes it, not this card) --
+# `TestEndToEnd` below proves it is no longer what a real dispatch actually
+# calls.
+
+
+class _ScriptedBackend:
+    """Replays a fixed script of `ChatResponse`s -- see test_p19_5_docket_driver.py
+    for the identical pattern; redefined locally per this suite's convention
+    of self-contained per-file test doubles rather than a shared fake."""
+
+    def __init__(self, responses: list[ChatResponse]) -> None:
+        self._responses = list(responses)
+        self.calls: list[list[ChatMessage]] = []
+
+    def complete(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: Any = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: int = 120,
+    ) -> ChatResponse:
+        self.calls.append(list(messages))
+        return self._responses.pop(0)
+
+
+def _final_response(text: str) -> ChatResponse:
+    return ChatResponse(
+        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
+    )
 
 
 class TestEndToEnd:
-    def test_full_stack_through_fake_binary(
+    def test_full_stack_through_docket_driver(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """No injected runner -> a real pod-dispatch hop executes through
+        `DocketDriver`, not the ACL. A "fail"-mode fake `openclaw` binary is
+        left on PATH and never invoked: if dispatch still shelled out to it,
+        this test would fail on that binary's non-zero exit, not merely pass
+        by coincidence.
+        """
         oc_dir = _seed_pod(tmp_path, monkeypatch)
         bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "ok")
+        _write_fake_openclaw(bindir, "fail")
         monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+
+        backend = _ScriptedBackend(
+            [_final_response("lead plan"), _final_response("implementer done")]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
         _dispatch.enqueue_task("demo", "End to end")
-        # No injected runner → uses the real ACL agent_run, which shells the fake.
         results = _dispatch.dispatch_pod("demo")
         assert results[0].status == "done"
-        assert results[0].cost_usd == pytest.approx(0.04)  # 2 hops x 0.02
+        # cost_usd stays 0.0 through DocketDriver — CLAUDE.md's standing rule
+        # against turning a measured-token estimate into a billing claim.
+        assert results[0].cost_usd == 0.0
+        assert len(backend.calls) == 2  # one turn per pod hop (lead, implementer)
         tasks = _dispatch.read_tasks("demo")
         assert tasks[0]["status"] == "done"
         assert (oc_dir / "traces" / "demo").is_dir()

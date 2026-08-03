@@ -299,6 +299,25 @@ class TestDispatchCancellationIntegration:
     def test_cancel_run_kills_the_in_flight_hop_and_the_task_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Pid-based mid-hop cancellation, proven against a real subprocess.
+
+        Phase 19 P19-7a repointed `core/dispatch.py`'s production driver
+        resolution at `edges.adapters.docket_runtime.default_driver()`
+        (`DocketDriver`), whose `run_turn` makes in-process HTTP calls with
+        no OS process to track -- `on_spawn` is deliberately never fired (see
+        its docstring), so a DocketDriver-executed hop cannot actually be
+        killed mid-flight by `docket runs cancel` today; the run registry
+        still marks it "cancelled" honestly ("nothing in flight to kill"),
+        but no in-flight call is interrupted. That is a named capability gap
+        (see the P19-7a report), not something this test should paper over.
+        This test still monkeypatches the resolution point back to
+        `OpenClawDriver` to keep proving the real subprocess-kill mechanics
+        this whole card (W-2) exists for -- still real, still shipped code
+        (P19-7b deletes it, not this one).
+        """
+        monkeypatch.setattr(
+            "docket.edges.adapters.docket_runtime.default_driver", _oc.OpenClawDriver
+        )
         bindir = tmp_path / "bin"
         bindir.mkdir()
         script = bindir / "openclaw"

@@ -29,6 +29,7 @@ from docket.core.audit import audit_log
 from docket.core.models import AgentMeta
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
+from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters import openclaw as _oc
 
 # Flags that consume the following token as their value (skipped when scanning
@@ -1009,6 +1010,10 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
     did — callers gate their own destructive step on `.ok` (ROADMAP Phase 17
     C-2's fail-closed contract: a failed driver turn must block, not warn
     and proceed).
+
+    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
+    -- docket's first self-originated LLM call (D-18) now genuinely runs
+    through docket's own gated loop rather than the ACL's ``OpenClawDriver``.
     """
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
@@ -1019,7 +1024,7 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
         label=name,
         agent_id=agent_id,
         session_key=session_key,
-        driver=_oc.default_driver().run_turn,
+        driver=_dr.default_driver().run_turn,
     )
     if not result.ok:
         # `failure_kind` is what makes this actionable rather than just alarming:
