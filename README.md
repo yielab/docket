@@ -107,9 +107,11 @@ this three-layer stack running reliably:
   every pod's queue in the background.
 - **Config drift detection**: `docket doctor` and `docket maintain check` catch runaway loops,
   stale sessions, and autonomy regressions silently introduced by OpenClaw updates.
-- **Budget guardrails**: per-pod USD cap that auto-pauses the pod's Lead on breach — primarily
-  from the daemon's recorded spend, falling back to a clearly labelled token-based estimate only
-  when the daemon records no cost at all (never mixed into reported spend). Dispatch refuses a
+- **Budget guardrails**: per-pod USD cap that auto-pauses the pod's Lead on breach. **Since the
+  Phase 19 runtime cutover this fires on a clearly labelled token-based estimate**, not on
+  recorded spend — docket's own driver reports no dollar figure by design, and an estimate is
+  never relabelled as spend (see [Cost reporting and its limits](#cost-reporting-and-its-limits)).
+  Dispatch refuses a
   paused pod's tasks outright; `docket profile <id> --resume` clears the pause. A
   role→cheapest-adequate-model policy and `docket cost` reporting round it out.
 - **Read API for dashboards**: `docket serve` exposes a versioned read-only API
@@ -248,15 +250,25 @@ keep everything healthy at scale.
 
 ## Cost reporting and its limits
 
+> [!WARNING]
+> **Since the Phase 19 runtime cutover, docket reports no recorded dollar spend at all.**
+> Agent turns now run on docket's own loop (`DocketDriver`) instead of the OpenClaw daemon, and
+> that driver deliberately reports `cost_usd = 0.0` with `reports_cost_usd = False`. **Real,
+> measured token counts are still recorded** — what is gone is the daemon's dollar figure.
+> docket will not multiply tokens by a price table and call the result spend, so `docket cost`
+> now shows tokens and a clearly labelled estimate, and `docket cost --history` is empty.
+> Budget auto-pause consequently fires on the **labelled estimate**, not on recorded spend.
+> Treat this section's "recorded spend" wording as describing the pre-cutover daemon path.
+
 docket's cost numbers come in two flavors:
 
-- **Recorded spend (trustworthy).** Dollar figures in `docket cost` come straight from
-  OpenClaw's session usage logs — the daemon records what each call actually cost. This does
-  not depend on any pricing table docket maintains. The budget auto-pause gates on this recorded
-  figure first; only when the daemon has recorded **no** cost at all does it fall back to a
-  token-based estimate priced from docket's own table — always rendered clearly labelled
-  (`~$X.XX (estimated — daemon recorded no cost)`) and never mixed into, or reported as,
-  recorded spend.
+- **Recorded spend (trustworthy) — currently unavailable.** Dollar figures in `docket cost` used
+  to come straight from OpenClaw's session usage logs, where the daemon recorded what each call
+  actually cost, independent of any pricing table docket maintains. **The cutover removed that
+  source**; nothing in docket replaces it, because the only honest replacement would be an
+  estimate wearing a recorded-spend label. The budget auto-pause still gates on a figure, but
+  that figure is now always the token-based estimate, rendered labelled
+  (`~$X.XX (estimated — daemon recorded no cost)`) and never presented as recorded spend.
 - **Comparative estimates (best-effort).** "What this would cost on a cheaper model" and role→model
   price labels are computed from a **hardcoded pricing table** (~13 models, snapshotted from a known
   OpenClaw catalog). Model prices change; treat these as estimates. Models not in the table show
@@ -272,9 +284,9 @@ docket's cost numbers come in two flavors:
 > expensive, when a run spikes, whether to auto-pause) — and always **reconcile against your
 > provider's own billing dashboard** before treating any number as money owed.
 
-Within those limits: the recorded-spend and budget-cap numbers track real usage and are what the
-auto-pause primarily fires on (falling back to a labelled estimate only when the daemon recorded
-nothing); treat model-to-model savings comparisons as directional only.
+Within those limits: token counts are **measured and real**, dollar figures are **estimates**, and
+the auto-pause fires on the labelled estimate. Treat model-to-model savings comparisons as
+directional only.
 
 ## Concepts
 
@@ -385,13 +397,13 @@ pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 
 By the numbers:
 
-- **2,096 tests** in the pytest suite (`tests/python/`)
-- **~27,600 lines** of Python in the shipped `docket` package
+- **2,097 tests** in the pytest suite (`tests/python/`)
+- **~27,700 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,096-test Python suite
+uv run pytest                                        # 2,097-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
