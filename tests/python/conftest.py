@@ -34,6 +34,29 @@ def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "_autouse_audit.log", raising=True)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Safety net: default FLEET_FILE to an ephemeral path for every test.
+
+    ROADMAP Phase 19 P19-6 decoupled ``DOCKET_HOME`` (fleet.json's home) from
+    ``OPENCLAW_DIR`` -- pre-P19-6, a test that repointed ``OPENCLAW_DIR``/
+    ``CONFIG_FILE`` for hermeticity got fleet-registry isolation "for free"
+    (docket-models.json etc. still don't). Since the two are independent now,
+    the same test would otherwise read/write the developer's real
+    ``~/.docket/fleet.json`` -- or worse, leak agent-registration state
+    between unrelated tests that happen to share that real default path.
+    Mirrors ``_isolate_audit_log`` above for the identical reason; a test
+    that wants a specific fleet.json still repoints ``_cfg.FLEET_FILE`` (and
+    ``edges.adapters.openclaw.FLEET_FILE``, bound at import time) itself,
+    which simply overrides this default.
+    """
+    fleet_file = tmp_path / "_autouse_fleet.json"
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    from docket.edges.adapters import openclaw as _oc
+
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
+
+
 def write_fake_openclaw(bindir: Path) -> Path:
     """Write a minimal `openclaw` shim that answers the read-only probes docket
     makes during install/doctor (``--version``; everything else exits 0)."""

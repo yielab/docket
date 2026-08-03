@@ -206,7 +206,7 @@ def scan_telegram_groups() -> list[tuple[str, str, str]]:
 
     oc_cfg = _oc.load_config()
     binding_map: dict[str, str] = {
-        b.match.peer.id: b.agent_id for b in oc_cfg.bindings if b.match.channel == "telegram"
+        b.peer_id: b.agent_id for b in oc_cfg.bindings if b.channel == "telegram"
     }
 
     return [(gid, title, binding_map.get(gid, "")) for gid, title in chat_ids.items()]

@@ -40,6 +40,17 @@ _OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings + gates/isolation flags live in
+# fleet.json now, not openclaw.json's `agents`/`bindings`/`security` above.
+_FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}, {"id": "content"}],
+    "bindings": [
+        {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
+    ],
+    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 @pytest.fixture()
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -50,10 +61,15 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     cfg_file = d / "openclaw.json"
     cfg_file.write_text(json.dumps(_OC_CONFIG))
     cfg_file.chmod(0o600)
+    fleet_file = d / "fleet.json"
+    fleet_file.write_text(json.dumps(_FLEET_CONFIG))
+    fleet_file.chmod(0o600)
 
     monkeypatch.setattr(_cfg, "OPENCLAW_DIR", d, raising=True)
     monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
     monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
     monkeypatch.setattr(_cfg, "POLICIES_DIR", d / "policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
@@ -209,9 +225,10 @@ class TestGatesEnableDisable:
         # Routing wired; myshop has a telegram binding → count >= 1.
         assert "Approval routing on" in out
         assert "1 Telegram-bound agent" in out
-        # openclaw.json now carries approvals.exec routing.
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        assert cfg["approvals"]["exec"] == {"enabled": True, "mode": "session"}
+        # P19-6: fleet.json now carries approval-routing state, not openclaw.json.
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["approvalRoutingState"] == "on"
+        assert fleet["security"]["approvalRoutingMode"] == "session"
 
     def test_enable_idempotent_without_force(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
@@ -245,8 +262,8 @@ class TestGatesEnableDisable:
         assert appr["defaults"] == {}
         # Seeded allowlists are left in place.
         assert appr["agents"]["main"]["allowlist"]
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        assert cfg["approvals"]["exec"]["enabled"] is False
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["approvalRoutingState"] == "off"
         assert "falls back to tools.exec" in out
 
 
@@ -289,9 +306,10 @@ class TestGatesIsolate:
         rc = _gates.run_gates("isolate", want="on")
         out = capsys.readouterr().out
         assert rc == 0
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        sb = cfg["agents"]["defaults"]["sandbox"]
-        assert sb == {"mode": "non-main", "scope": "agent", "workspaceAccess": "rw"}
+        # P19-6: isolation mode lives in fleet.json now, not openclaw.json.
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["isolationMode"] == "non-main"
+        assert fleet["security"]["isolationEnabled"] is True
         assert "Sandbox isolation on" in out
 
     def test_isolate_off(
@@ -303,8 +321,8 @@ class TestGatesIsolate:
         rc = _gates.run_gates("isolate", want="off")
         out = capsys.readouterr().out
         assert rc == 0
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        assert cfg["agents"]["defaults"]["sandbox"]["mode"] == "off"
+        fleet = json.loads(_cfg.FLEET_FILE.read_text())
+        assert fleet["security"]["isolationMode"] == "off"
         assert "disabled (mode=off)" in out
 
     def test_unknown_subcommand_shows_usage(

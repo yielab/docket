@@ -51,6 +51,7 @@ def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -116,12 +117,16 @@ class TestCmdProfile:
         assert meta["model"] == "anthropic/claude-opus-4-6"
         assert meta["modelSource"] == "pinned"
 
-    def test_profile_pin_also_updates_openclaw(self, tmp_path: Path) -> None:
+    def test_profile_pin_updates_meta_only(self, tmp_path: Path) -> None:
+        """P19-6: model lives in .docket-meta.json only now — the fleet
+        registry never tracked per-agent model, and `docket profile` no
+        longer touches openclaw.json at all (see core/fleet.py)."""
         oc_dir = _setup_agent(tmp_path)
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        agent = next(a for a in oc["agents"]["list"] if a["id"] == "myshop")
-        assert agent["model"] == "anthropic/claude-opus-4-6"
+        meta = json.loads(
+            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
+        )
+        assert meta["model"] == "anthropic/claude-opus-4-6"
 
     def test_profile_default_sets_policy(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
@@ -224,15 +229,17 @@ class TestCmdScope:
         assert meta["projectKey"] == "billing"
         assert meta["sessionKey"] == "agent:myshop:billing"
 
-    def test_scope_set_does_not_write_metadata_to_openclaw(self, tmp_path: Path) -> None:
-        # sessionKey lives in .docket-meta.json (asserted above); it is NEVER
-        # written into openclaw.json — the daemon rejects a `metadata` key on an
-        # agent entry, so the ACL strips it (any seed metadata is dropped too).
+    def test_scope_set_does_not_touch_openclaw_json(self, tmp_path: Path) -> None:
+        # P19-6: sessionKey/projectKey live in .docket-meta.json only. Pre-P19-6
+        # this asserted the daemon-rejected `metadata` key got stripped on a
+        # write-then-strip round trip; `docket scope set` no longer writes
+        # openclaw.json at all, which is the stronger version of the same
+        # guarantee — assert the file is untouched, byte for byte.
         oc_dir = _setup_agent(tmp_path)
+        before = (oc_dir / "openclaw.json").read_text()
         _run(["scope", "myshop", "set", "billing"], oc_dir)
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        agent = next(a for a in oc["agents"]["list"] if a["id"] == "myshop")
-        assert "metadata" not in agent
+        after = (oc_dir / "openclaw.json").read_text()
+        assert after == before
 
     def test_scope_set_without_key_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

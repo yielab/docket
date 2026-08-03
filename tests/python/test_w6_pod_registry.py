@@ -58,8 +58,12 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _ids(oc_dir: Path) -> list[str]:
-    raw = json.loads((oc_dir / "openclaw.json").read_text())
-    return [a["id"] for a in raw["agents"]["list"]]
+    # P19-6: agent registration lives in fleet.json now, not openclaw.json's
+    # `agents.list` -- read via the ACL rather than a fixed relative path,
+    # since FLEET_FILE's actual location is fixture-managed (conftest's
+    # autouse isolation, or a test's own override).
+    del oc_dir  # kept for call-site compatibility; no longer the source
+    return [a.id for a in _oc.list_agents()]
 
 
 class TestNormalizeRoleAgainstRegistry:

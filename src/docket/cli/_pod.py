@@ -389,10 +389,11 @@ def provision_member(
         ok, msg = _oc.register_agent_cli(member.member_id, ws_path, member.model)
         if not ok:
             return (False, msg)
-    else:
-        _oc.add_agent(member.member_id, member.model, member.session_key, project_key)
 
-    _oc.sync_session_key(member.member_id, member.session_key, project_key)
+    # P19-6: fleet.json is docket's own registry, never written by the daemon
+    # CLI above — register unconditionally (see cli/_agents.py's run_add for
+    # the identical reasoning).
+    _oc.add_agent(member.member_id, member.model, member.session_key, project_key)
     return (True, "")
 
 

@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Complete
-**Last Updated**: 2026-07-31
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -42,7 +42,8 @@ This specification does NOT cover:
 5. **MUST** initialize configuration files (SOUL.md, AGENTS.md, HEARTBEAT.md, and — for a
    standalone agent or a pod Implementer with allocated resources/a verify command — TOOLS.md;
    see workspace-structure.spec.md for the exact per-role file set)
-6. **MUST** register agent in openclaw.json
+6. **MUST** register agent in docket's fleet registry (`fleet.json`; ROADMAP Phase 19 P19-6 — see
+   ../data/docket-meta.spec.md's "Sync contract (retired)" for what this replaced)
 7. **MUST** set appropriate file permissions (700 for dirs, 600 for files)
 8. **SHOULD** auto-detect project stack (`codebase`-kind blueprints only)
 9. **SHOULD** suggest appropriate model profile based on project type
@@ -68,8 +69,8 @@ This specification does NOT cover:
 
 ### Agent States
 
-An agent is either **registered** (workspace + metadata + openclaw.json entry all present)
-or **deleted**. There is no separate stopped state; the docket-local `paused` flag
+An agent is either **registered** (workspace + `.docket-meta.json` + a `fleet.json` entry all
+present) or **deleted**. There is no separate stopped state; the docket-local `paused` flag
 (cost-tracking.spec.md) marks an agent that dispatch must refuse, without unregistering it.
 
 ### Agent Listing (docket list)
@@ -106,7 +107,7 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
 
 1. **MUST** prompt for confirmation (interactive; there is no `--force` bypass flag)
 2. **MUST** remove workspace directory completely
-3. **MUST** unregister from openclaw.json
+3. **MUST** unregister from docket's fleet registry (`fleet.json`)
 4. **MUST** remove any Telegram bindings and conversation-registry entries
 5. **SHOULD** display deletion summary
 6. Deleting a pod project **MUST** tear down every pod member and free the pod's
@@ -121,8 +122,10 @@ commands. Six modes **MUST** be supported.
 - Verify and fix missing workspace directory → recreate
 - Regenerate missing core files from templates
 - Reset invalid permissions to 700/600
-- Restore corrupted metadata from openclaw.json
-- Re-register a missing openclaw registration
+- Backfill a specialist's missing `.docket-meta.json` from the role→model policy (ROADMAP Phase
+  19 P19-6 retired the older openclaw.json-model fallback this backfill used to prefer — the
+  fleet registry never tracked per-agent model, so the policy resolver is now the only source)
+- Re-register a missing fleet registration
 - Clean up orphaned Telegram bindings
 
 #### clean - Memory Logs
@@ -251,13 +254,15 @@ After successful creation:
 - Workspace directory **MUST** exist at expected path
 - All core files **MUST** be present and valid
 - Agent **MUST** appear in `docket list` output
-- Agent **MUST** be registered in openclaw.json
+- Agent **MUST** be registered in docket's fleet registry (`fleet.json`)
 
 ### Invariants
 - Agent IDs **MUST** be unique across system
 - Session keys **MUST** follow format: `agent:<id>:<project>`
 - Workspace permissions **MUST** be 700 for directories, 600 for files
-- Metadata **MUST** be synchronized between .docket-meta.json and openclaw.json
+- Model and session key **MUST** exist in exactly one place: `.docket-meta.json` (ROADMAP Phase 19
+  P19-6 — `fleet.json` tracks the bare registration fact only, never a copy of either field; see
+  ../data/docket-meta.spec.md's "Sync contract (retired)")
 
 ## Error Handling
 
@@ -285,6 +290,16 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.7.0 (2026-08-02)
+
+- ROADMAP Phase 19 P19-6 (docket-native fleet registry): agent registration/unregistration now
+  target docket's own `fleet.json` (`core/fleet.py`), not `openclaw.json`'s `agents.list` — the
+  removal spine's first card. Reworded the registered-state definition, the create/delete
+  MUSTs, the post-conditions/invariants, and `maintain check`'s auto-fix bullets accordingly.
+  Retired the "metadata synchronized between .docket-meta.json and openclaw.json" invariant —
+  see ../data/docket-meta.spec.md v2.8.0's "Sync contract (retired)": `fleet.json` never tracks
+  `model`/`sessionKey`, so there is exactly one place either lives now, not two kept in sync.
 
 ### Version 1.6.0 (2026-07-31)
 

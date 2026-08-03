@@ -31,6 +31,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(tmp_path / ".openclaw"),
+        "DOCKET_HOME": str(tmp_path / ".openclaw"),
         "DOCKET_NO_RESTART": "1",
     }
 

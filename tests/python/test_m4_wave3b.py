@@ -56,11 +56,23 @@ OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings live in fleet.json now, not
+# openclaw.json's `agents`/`bindings` above.
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [
+        {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-999"}
+    ],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -70,6 +82,7 @@ def _setup_agent(
     agent_id: str = "myshop",
     *,
     oc_config: dict[str, Any] | None = None,
+    fleet_config: dict[str, Any] | None = None,
 ) -> Path:
     """Create a minimal project workspace with memory log.  Returns oc_dir."""
     oc_dir = tmp_path / ".openclaw"
@@ -81,6 +94,7 @@ def _setup_agent(
     mem_dir.mkdir()
     (mem_dir / "2026-06-20.md").write_text("# Day log\n" + "line\n" * 50)
     (oc_dir / "openclaw.json").write_text(json.dumps(oc_config or OC_CONFIG))
+    (oc_dir / "fleet.json").write_text(json.dumps(fleet_config or FLEET_CONFIG))
     return oc_dir
 
 
@@ -159,8 +173,8 @@ class TestCmdLogs:
         assert "2 entries" in out
 
     def test_gateway_section_absent_without_binding(self, tmp_path: Path) -> None:
-        oc_config = {**OC_CONFIG, "bindings": []}
-        oc_dir = _setup_agent(tmp_path, oc_config=oc_config)
+        fleet_config = {**FLEET_CONFIG, "bindings": []}
+        oc_dir = _setup_agent(tmp_path, fleet_config=fleet_config)
         rc, out, _ = _run(["logs", "myshop"], _make_env(oc_dir))
         assert rc == 0
         assert "Gateway log" not in out

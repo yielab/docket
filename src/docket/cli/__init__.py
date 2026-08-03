@@ -162,8 +162,8 @@ def _cmd_list_json() -> None:
     registered = {a.id for a in _oc.list_agents(oc)}
     tg_bindings: dict[str, str | None] = {}
     for b in oc.bindings:
-        if b.match.channel == "telegram":
-            tg_bindings[b.agent_id] = b.match.peer.id or None
+        if b.channel == "telegram":
+            tg_bindings[b.agent_id] = b.peer_id or None
 
     from docket.core import pod as _pod_mod
 
@@ -201,11 +201,11 @@ def _cmd_list_human() -> None:
     registered_ids = {a.id for a in _oc.list_agents(oc)}
     tg_bindings: dict[str, str] = {}
     for b in oc.bindings:
-        if b.match.channel == "telegram":
-            tg_bindings[b.agent_id] = b.match.peer.id
+        if b.channel == "telegram":
+            tg_bindings[b.agent_id] = b.peer_id
 
-    total_agents = len(oc.agents.items)
-    tg_binding_count = sum(1 for b in oc.bindings if b.match.channel == "telegram")
+    total_agents = len(oc.agents)
+    tg_binding_count = sum(1 for b in oc.bindings if b.channel == "telegram")
     gw_up = gateway_active()
     tg_on = _oc.get_telegram_enabled()
 
@@ -710,8 +710,6 @@ def cmd_scope(
         new_session = f"agent:{aid}:{project_key}"
         _oc.meta_set(aid, "projectKey", project_key)
         _oc.meta_set(aid, "sessionKey", new_session)
-        with contextlib.suppress(KeyError):
-            _oc.sync_session_key(aid, new_session, project_key)
         audit_log("scope.set", f"{aid}={project_key}")
         ui.success(f"Session scope updated: {current_key} → {project_key}")
         ui.success(f"Session key: {new_session}")
@@ -722,8 +720,6 @@ def cmd_scope(
         new_session = f"agent:{aid}:default"
         _oc.meta_set(aid, "projectKey", "default")
         _oc.meta_set(aid, "sessionKey", new_session)
-        with contextlib.suppress(KeyError):
-            _oc.sync_session_key(aid, new_session, "default")
         audit_log("scope.reset", aid)
         ui.success("Session scope reset to: default")
         ui.success(f"Session key: {new_session}")
@@ -1627,9 +1623,7 @@ def cmd_snapshot(
 
     def _agent_bindings(aid: str) -> list[dict[str, Any]]:
         return [
-            {"channel": b.match.channel, "peerId": b.match.peer.id}
-            for b in oc.bindings
-            if b.agent_id == aid
+            {"channel": b.channel, "peerId": b.peer_id} for b in oc.bindings if b.agent_id == aid
         ]
 
     agents_out: list[dict[str, Any]] = []

@@ -67,11 +67,30 @@ OC_CONFIG_WITH_BINDING: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings live in fleet.json now, not
+# openclaw.json's `agents`/`bindings` above.
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
+FLEET_CONFIG_WITH_BINDING: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [
+        {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-123456789"}
+    ],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -96,6 +115,8 @@ def _setup_agent(
     (ws / "SOUL.md").write_text("# SOUL\n")
     oc_cfg = OC_CONFIG_WITH_BINDING if with_binding else OC_CONFIG
     (oc_dir / "openclaw.json").write_text(json.dumps(oc_cfg))
+    fleet_cfg = FLEET_CONFIG_WITH_BINDING if with_binding else FLEET_CONFIG
+    (oc_dir / "fleet.json").write_text(json.dumps(fleet_cfg))
     return oc_dir
 
 
@@ -170,8 +191,8 @@ class TestCmdDelete:
         oc_dir = _setup_agent(tmp_path)
         rc, _, err = _run(["delete", "myshop"], _make_env(oc_dir), "n\nmyshop\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        registered_ids = [a["id"] for a in oc["agents"]["list"]]
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        registered_ids = [a["id"] for a in fleet["agents"]]
         assert "myshop" not in registered_ids
 
     def test_delete_keeps_workspace_when_n(self, tmp_path: Path) -> None:
@@ -191,8 +212,8 @@ class TestCmdDelete:
         oc_dir = _setup_agent(tmp_path, with_binding=True)
         rc, _, err = _run(["delete", "myshop"], _make_env(oc_dir), "n\nmyshop\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        myshop_bindings = [b for b in oc["bindings"] if b["agentId"] == "myshop"]
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
 
     def test_delete_dry_run_gateway(self, tmp_path: Path) -> None:
@@ -232,16 +253,16 @@ class TestCmdUnwire:
         rc, _, _ = _run(["unwire", "myshop"], _make_env(oc_dir), "n\n")
         assert rc == 0
         # Binding must still be there
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        myshop_bindings = [b for b in oc["bindings"] if b["agentId"] == "myshop"]
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert len(myshop_bindings) == 1
 
     def test_unwire_removes_binding(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, with_binding=True)
         rc, _, err = _run(["unwire", "myshop"], _make_env(oc_dir), "y\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        myshop_bindings = [b for b in oc["bindings"] if b["agentId"] == "myshop"]
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
 
     def test_unwire_dry_run_gateway(self, tmp_path: Path) -> None:
@@ -295,10 +316,10 @@ class TestCmdWire:
             stdin_text="Y\n",
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        binding = next((b for b in oc["bindings"] if b["agentId"] == "myshop"), None)
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
-        assert binding["match"]["peer"]["id"] == "-123456789"
+        assert binding["peerId"] == "-123456789"
 
     def test_wire_single_unbound_group_reject(self, tmp_path: Path) -> None:
         oc_dir, log_dir = _setup_wire_env(tmp_path, [("-123456789", "Dev Group")])
@@ -322,10 +343,10 @@ class TestCmdWire:
             stdin_text="1\n",
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        binding = next((b for b in oc["bindings"] if b["agentId"] == "myshop"), None)
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
-        assert binding["match"]["peer"]["id"] == "-111"
+        assert binding["peerId"] == "-111"
 
     def test_wire_multiple_unbound_groups_abort(self, tmp_path: Path) -> None:
         oc_dir, log_dir = _setup_wire_env(
@@ -352,10 +373,10 @@ class TestCmdWire:
             stdin_text="0\n-999888777\n",  # 0 = manual, then ID
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        oc = json.loads((oc_dir / "openclaw.json").read_text())
-        binding = next((b for b in oc["bindings"] if b["agentId"] == "myshop"), None)
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
-        assert binding["match"]["peer"]["id"] == "-999888777"
+        assert binding["peerId"] == "-999888777"
 
     def test_wire_all_bound_then_abort(self, tmp_path: Path) -> None:
         # Agent already has a binding; the one group in logs is already bound.

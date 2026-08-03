@@ -307,10 +307,9 @@ class TestPipeline:
 
     def test_no_lead_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        # Remove the lead from the registry → no dispatchable pod.
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw["agents"]["list"] = [a for a in raw["agents"]["list"] if a["id"] != "demo-lead"]
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
+        # Remove the lead from the fleet registry → no dispatchable pod
+        # (P19-6: registration lives in fleet.json now, not openclaw.json).
+        _oc.remove_agent("demo-lead")
         with pytest.raises(_dispatch.DispatchError):
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
 

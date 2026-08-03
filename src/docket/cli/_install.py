@@ -453,6 +453,10 @@ def _provision_specialists() -> None:
             ui.info(f"Creating {spec} agent...")
             spec_dir.mkdir(parents=True, exist_ok=True)
             ok, message = _oc.register_agent_cli(spec, str(spec_dir), spec_model)
+            # P19-6: fleet.json is docket's own registry, never written by the
+            # daemon CLI above — register unconditionally (mirrors
+            # cli/_agents.py's run_add / cli/_pod.py's _register_agent).
+            _oc.add_agent(spec, spec_model)
             why = _cfg.ROLE_WHY.get(spec, "")
             if ok:
                 ui.success(f"{spec}: created ({spec_model} — {why})")
@@ -526,6 +530,9 @@ def _provision_portfolio_manager() -> None:
         ui.info(f"Creating {role} agent...")
         ws.mkdir(parents=True, exist_ok=True)
         ok, message = _oc.register_agent_cli(role, str(ws), model)
+        # P19-6: fleet.json is docket's own registry — register unconditionally
+        # regardless of the daemon CLI outcome (see _provision_specialists).
+        _oc.add_agent(role, model)
         if ok:
             ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
         else:

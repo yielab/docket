@@ -48,6 +48,25 @@ def _make_openclaw(tmp_path: Path) -> Path:
     return path
 
 
+def _make_fleet(oc_dir: Path) -> Path:
+    """Write a minimal fleet.json (P19-6) and return its path.
+
+    Mirrors _make_openclaw's registration/binding content — agent
+    registration and channel bindings live here now, not in openclaw.json.
+    """
+    fleet = {
+        "agents": [{"id": "myshop"}],
+        "bindings": [
+            {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-999"}
+        ],
+        "defaults": {"model": "anthropic/claude-sonnet-4-6"},
+        "security": {"gatesEnabled": False, "isolationEnabled": False},
+    }
+    path = oc_dir / "fleet.json"
+    path.write_text(json.dumps(fleet, indent=2))
+    return path
+
+
 def _make_meta(workspace: Path, overrides: dict | None = None) -> Path:
     """Write a .docket-meta.json in *workspace*."""
     workspace.mkdir(parents=True, exist_ok=True)
@@ -168,37 +187,42 @@ class TestAgentMeta:
             assert meta.scope == AgentScope.project, role
 
 
-# ── T2.2: OpenClaw models ─────────────────────────────────────────────────────
+# ── T2.2: fleet + auth-profiles models ────────────────────────────────────────
 
 
-class TestOpenClawConfig:
+class TestFleetConfig:
+    """ROADMAP Phase 19 P19-6: core/fleet.py's FleetConfig, replacing the
+    deleted core/oc_models.py's OpenClawConfig for docket's own registry."""
+
     def test_parse_fixture(self, tmp_path: Path) -> None:
-        from docket.core.oc_models import OpenClawConfig
+        from docket.core.fleet import FleetConfig
 
-        raw = json.loads(_make_openclaw(tmp_path).read_text())
-        cfg = OpenClawConfig.model_validate(raw)
-        assert len(cfg.agents.items) == 1
-        assert cfg.agents.items[0].id == "myshop"
-        assert cfg.agents.defaults.model == "anthropic/claude-sonnet-4-6"
+        raw = json.loads(_make_fleet(tmp_path).read_text())
+        cfg = FleetConfig.model_validate(raw)
+        assert len(cfg.agents) == 1
+        assert cfg.agents[0].id == "myshop"
+        assert cfg.defaults.model == "anthropic/claude-sonnet-4-6"
         assert len(cfg.bindings) == 1
         assert cfg.bindings[0].agent_id == "myshop"
-        assert not cfg.security.gates.enabled
+        assert not cfg.security.gates_enabled
 
     def test_extra_fields_survive(self) -> None:
-        from docket.core.oc_models import OpenClawConfig
+        from docket.core.fleet import FleetConfig
 
         raw = {
-            "agents": {"list": [], "defaults": {"model": ""}, "unknownKey": True},
+            "agents": [],
             "bindings": [],
-            "security": {"gates": {"enabled": False}},
+            "security": {"gatesEnabled": False},
             "newTopLevelKey": 42,
         }
-        cfg = OpenClawConfig.model_validate(raw)
+        cfg = FleetConfig.model_validate(raw)
         dumped = cfg.model_dump(by_alias=True)
         assert dumped["newTopLevelKey"] == 42
 
     def test_auth_profiles_parse(self) -> None:
-        from docket.core.oc_models import AuthProfiles
+        # Phase 19 P19-6: moved from core/oc_models.py (deleted) into the ACL
+        # itself, since it is the only remaining consumer.
+        from docket.edges.adapters.openclaw import AuthProfiles
 
         raw = {
             "profiles": {
@@ -337,14 +361,16 @@ class TestStore:
 
 @pytest.fixture()
 def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Set up a temp OPENCLAW_DIR with openclaw.json and a project workspace."""
+    """Set up a temp OPENCLAW_DIR with openclaw.json, fleet.json, and a project workspace."""
     oc_dir = tmp_path / ".openclaw"
     oc_dir.mkdir()
     workspace = oc_dir / "workspaces" / "projects" / "myshop"
     _make_meta(workspace)
     _make_openclaw(oc_dir)  # writes oc_dir/openclaw.json
+    fleet_file = _make_fleet(oc_dir)  # writes oc_dir/fleet.json
 
     monkeypatch.setenv("OPENCLAW_DIR", str(oc_dir))
+    monkeypatch.setenv("DOCKET_HOME", str(oc_dir))
     # Patch both docket.config (where functions read from at call time) AND
     # docket.edges.adapters.openclaw (where CONFIG_FILE was captured at import time).
     import docket.config as _cfg
@@ -354,10 +380,12 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     projects_dir = oc_dir / "workspaces" / "projects"
     monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
     monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json")
-    # CONFIG_FILE is imported by value into the ACL module — patch it there too.
+    # CONFIG_FILE / FLEET_FILE are imported by value into the ACL module — patch there too.
     monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file)
     return oc_dir
 
 
@@ -384,16 +412,11 @@ class TestACL:
 
         agent = oc.get_agent("myshop")
         assert agent is not None
-        assert agent.model == "anthropic/claude-sonnet-4-6"
-        assert agent.metadata.session_key == "agent:myshop:default"
-
-    def test_set_agent_model(self, oc_env: Path) -> None:
-        from docket.edges.adapters import openclaw as oc
-
-        oc.set_agent_model("myshop", "anthropic/claude-haiku-4-5")
-        agent = oc.get_agent("myshop")
-        assert agent is not None
-        assert agent.model == "anthropic/claude-haiku-4-5"
+        assert agent.id == "myshop"
+        # P19-6: the fleet registry tracks bare registration only — model and
+        # sessionKey are .docket-meta.json's job (core/fleet.py's rationale).
+        assert not hasattr(agent, "model")
+        assert oc.meta_get("myshop", "sessionKey") == "agent:myshop:default"
 
     def test_add_remove_agent(self, oc_env: Path) -> None:
         from docket.edges.adapters import openclaw as oc
@@ -484,51 +507,27 @@ class TestACL:
         assert oc.oc_get_path("no.such.key", "mydefault") == "mydefault"
 
     def test_oc_set_path(self, oc_env: Path) -> None:
+        # oc_get_path/oc_set_path are raw openclaw.json dotted-path helpers,
+        # untouched by P19-6 (openclaw.json stays the daemon's file until
+        # P19-7) — round-trip through them alone, not through
+        # get_default_model() (fleet.json now, a different file).
         from docket.edges.adapters import openclaw as oc
 
         oc.oc_set_path("agents.defaults.model", '"anthropic/claude-haiku-4-5"')
-        assert oc.get_default_model() == "anthropic/claude-haiku-4-5"
+        assert oc.oc_get_path("agents.defaults.model") == "anthropic/claude-haiku-4-5"
 
     def test_set_model_both(self, oc_env: Path) -> None:
         from docket.edges.adapters import openclaw as oc
 
         oc.set_model_both("myshop", "anthropic/claude-haiku-4-5")
-        assert oc.get_agent("myshop").model == "anthropic/claude-haiku-4-5"  # type: ignore[union-attr]
         assert oc.meta_get("myshop", "model") == "anthropic/claude-haiku-4-5"
 
 
-# ── T2.5: sync ────────────────────────────────────────────────────────────────
-
-
-class TestSync:
-    def test_no_drift_when_in_sync(self, oc_env: Path) -> None:
-        from docket.core.sync import check_agent
-
-        drifts = check_agent("myshop")
-        assert drifts == []
-
-    def test_model_drift_detected(self, oc_env: Path) -> None:
-        import docket.config as cfg
-        from docket.core.sync import check_agent
-        from docket.edges import store
-
-        # Manually corrupt meta.json model without touching openclaw.json
-        meta_file = cfg.PROJECTS_DIR / "myshop" / ".docket-meta.json"
-        raw = store.read_json(meta_file)
-        raw["model"] = "anthropic/claude-haiku-4-5"
-        store.write_json(meta_file, raw)
-
-        drifts = check_agent("myshop")
-        assert len(drifts) == 1
-        assert drifts[0].field == "model"
-        assert drifts[0].meta_value == "anthropic/claude-haiku-4-5"
-        assert drifts[0].oc_value == "anthropic/claude-sonnet-4-6"
-
-    def test_check_all_empty_for_clean(self, oc_env: Path) -> None:
-        from docket.core.sync import check_all
-
-        assert check_all() == []
-
+# P19-6: core/sync.py (meta<->openclaw.json drift check) is deleted, not
+# ported — with fleet.json as the single source of truth for registration/
+# bindings/gates/defaults, and .docket-meta.json the single source for
+# model/sessionKey, there is nothing left to drift between. TestSync (which
+# exercised core.sync.check_agent/check_all) is removed along with it.
 
 # ── T2.6: _json bridge (CLI) ──────────────────────────────────────────────────
 
@@ -539,13 +538,20 @@ class TestJsonBridge:
     @pytest.fixture(autouse=True)
     def _patch_env(self, oc_env: Path, tmp_path: Path) -> None:
         os.environ["OPENCLAW_DIR"] = str(oc_env)
+        # P19-6: DOCKET_HOME (fleet.json's home) no longer defaults from
+        # OPENCLAW_DIR — a real subprocess needs both pinned to the same dir.
+        os.environ["DOCKET_HOME"] = str(oc_env)
 
     def _run(self, *args: str) -> tuple[int, str, str]:
         result = subprocess.run(
             [sys.executable, "-m", "docket", "_json", *args],
             capture_output=True,
             text=True,
-            env={**os.environ, "OPENCLAW_DIR": os.environ["OPENCLAW_DIR"]},
+            env={
+                **os.environ,
+                "OPENCLAW_DIR": os.environ["OPENCLAW_DIR"],
+                "DOCKET_HOME": os.environ["DOCKET_HOME"],
+            },
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
 

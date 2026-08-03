@@ -603,12 +603,14 @@ def _provision_agent(
             ui.warn(
                 f"openclaw agent add exited {add_result.returncode} — register manually if needed"
             )
-    else:
-        with contextlib.suppress(Exception):
-            _oc.add_agent(agent_id, model, session_key, project_key)
 
+    # P19-6: fleet.json is docket's own registry, never written by the daemon
+    # CLI above — register unconditionally regardless of whether `openclaw
+    # agents add` was found/succeeded (previously this only ran as a fallback
+    # when the CLI was unavailable, back when openclaw.json was the one
+    # registry both sides shared).
     with contextlib.suppress(Exception):
-        _oc.sync_session_key(agent_id, session_key, project_key)
+        _oc.add_agent(agent_id, model, session_key, project_key)
 
     audit_log("agent.add", f"{agent_id} model={model} source={source}")
 

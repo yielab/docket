@@ -111,6 +111,33 @@ cat >"$OC_DIR/openclaw.json" <<'JSON'
 JSON
 chmod 600 "$OC_DIR/openclaw.json"
 
+# ── fleet.json (Phase 19 P19-6: docket's own registry, DOCKET_HOME-pinned to
+# $OC_DIR by run.sh — see that file's run_docket() for why) ────────────────────
+# Mirrors openclaw.json's agents/bindings/security above: agent registration,
+# channel bindings, and gates/isolation flags now live here instead. Per-agent
+# model is deliberately NOT duplicated (see core/fleet.py) -- only the bare
+# registration fact.
+cat >"$OC_DIR/fleet.json" <<'JSON'
+{
+  "agents": [
+    { "id": "myshop" },
+    { "id": "content" },
+    { "id": "programmer" },
+    { "id": "reviewer" },
+    { "id": "tester" },
+    { "id": "knowledge" },
+    { "id": "security" },
+    { "id": "manager" }
+  ],
+  "bindings": [
+    { "agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-1001234567890" }
+  ],
+  "defaults": { "model": "anthropic/claude-sonnet-4-6" },
+  "security": { "gatesEnabled": false, "isolationEnabled": false }
+}
+JSON
+chmod 600 "$OC_DIR/fleet.json"
+
 # ── docket-models.json (empty policy — uses built-in defaults) ─────────────────
 cat >"$OC_DIR/docket-models.json" <<'JSON'
 {

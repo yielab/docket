@@ -52,10 +52,21 @@ OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings live in fleet.json now, not
+# openclaw.json's `agents`/`bindings` above.
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [
+        {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100123"}
+    ],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 @pytest.fixture()
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Seed a temp OPENCLAW_DIR with one project agent + openclaw.json."""
+    """Seed a temp OPENCLAW_DIR with one project agent + openclaw.json + fleet.json."""
     oc_dir = tmp_path / ".openclaw"
     oc_dir.mkdir()
     ws = oc_dir / "workspaces" / "projects" / "myshop"
@@ -63,13 +74,18 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "memory" / "2026-06-20.md").write_text("# log\n")
     (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
+    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     config_file = oc_dir / "openclaw.json"
+    fleet_file = oc_dir / "fleet.json"
     monkeypatch.setenv("OPENCLAW_DIR", str(oc_dir))
+    monkeypatch.setenv("DOCKET_HOME", str(oc_dir))
     monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
     monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects")
     monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file)
     # Force gateway "down" for deterministic gateway fields.
     monkeypatch.setattr(serve.utils, "gateway_active", lambda: False)
     return oc_dir

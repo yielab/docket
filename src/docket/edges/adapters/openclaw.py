@@ -11,6 +11,16 @@ cost/turn parsing that used to leak into ``core/utils.py`` and
 ``core/trace.py``; the free functions below (``agent_run``,
 ``register_agent_cli``, …) are unchanged and the driver delegates to them
 directly, so nothing about their tested behavior moves.
+
+Phase 19 P19-6 (D-19): agent registration, channel bindings, gates/isolation
+flags and the org-wide default model no longer live in ``openclaw.json`` —
+they moved to the docket-owned ``fleet.json`` (``core/fleet.py``'s
+``FleetConfig``, read/written through ``edges/store.py``, never through the
+raw-dict helpers below). This module still knows both formats: the
+fleet-backed functions (``list_agents``, ``get_binding``, ``get_gates_enabled``,
+…) and the still-daemon-owned raw ``openclaw.json`` helpers (auth profiles,
+secrets, telegram/channel config, exec approvals, session-JSONL usage) that
+are P19-7's job to delete along with the rest of this file.
 """
 
 from __future__ import annotations
@@ -22,25 +32,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 if TYPE_CHECKING:
     import subprocess
 
 import docket.config as _cfg
 from docket.config import (
     CONFIG_FILE,
+    FLEET_FILE,
     auth_profiles_path,
     meta_path,
 )
-from docket.core.models import AgentMeta
-from docket.core.oc_models import (
-    AuthProfiles,
-    OcAgent,
-    OcAgentMetadata,
-    OcBinding,
-    OcMatch,
-    OcPeer,
-    OpenClawConfig,
+from docket.core.fleet import (
+    FleetAgent,
+    FleetBinding,
+    FleetConfig,
 )
+from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
     DriverCapabilities,
     ProvisionResult,
@@ -55,47 +64,52 @@ from docket.core.runtime_driver import (
 )
 from docket.edges import store
 
+# ─────────────────────────────────────────────────────────────────────────────
+# auth-profiles.json models (Phase 19 P19-6: moved in from the now-deleted
+# core/oc_models.py, which existed only for the ACL's own use. This is
+# genuinely daemon-owned state — unlike the fleet registry, it is NOT being
+# replaced by this card; it goes away entirely at P19-7 with the rest of the
+# ACL, so it is kept lenient and undisturbed here rather than "improved".
+# ─────────────────────────────────────────────────────────────────────────────
 
-def load_config() -> OpenClawConfig:
-    """Return the full openclaw.json as a validated model (public entry point)."""
-    return _load_oc()
-
-
-def _load_oc() -> OpenClawConfig:
-    raw = store.read_json(CONFIG_FILE)
-    return OpenClawConfig.model_validate(raw)
-
-
-def _strip_empty_modeled_keys(data: dict[str, Any]) -> None:
-    """Drop the modeled `metadata` block and an empty `security` block before writing.
-
-    docket models a per-agent `metadata` object (sessionKey/projectKey) so its
-    in-memory model round-trips, but current OpenClaw versions REJECT an
-    unrecognised `metadata` key on an agent entry and refuse to start (verified
-    against 2026.2.23: ``agents.list.N: Unrecognized key: "metadata"``). docket's
-    source of truth for sessionKey/projectKey is `.docket-meta.json`, so the
-    `metadata` block is **never persisted to openclaw.json** — it is stripped
-    unconditionally here (a real sessionKey is not "synced" into openclaw.json;
-    that was an unfulfillable contract given the daemon schema). The default
-    (all-off) `security` block is likewise stripped when empty. Other empty
-    defaults (e.g. an empty `bindings` list) are untouched.
-    """
-    for agent in data.get("agents", {}).get("list", []):
-        agent.pop("metadata", None)
-    sec = data.get("security")
-    if (
-        isinstance(sec, dict)
-        and set(sec) <= {"gates", "isolation"}
-        and not sec.get("gates", {}).get("enabled")
-        and not sec.get("isolation", {}).get("enabled")
-    ):
-        data.pop("security", None)
+_LENIENT = ConfigDict(extra="allow", populate_by_name=True)
 
 
-def _save_oc(cfg: OpenClawConfig) -> None:
-    data = cfg.model_dump(by_alias=True, exclude_none=False)
-    _strip_empty_modeled_keys(data)
-    store.write_json(CONFIG_FILE, data)
+class AuthProfileUsage(BaseModel):
+    model_config = _LENIENT
+
+    disabled_until: float = Field(0.0, alias="disabledUntil")
+    disabled_reason: str = Field("", alias="disabledReason")
+
+
+class AuthProfile(BaseModel):
+    model_config = _LENIENT
+
+    provider: str = ""
+    type: str = ""  # "token", "oauth", "api_key"
+
+
+class AuthProfiles(BaseModel):
+    """Shape of ~/.openclaw/agents/<agent>/agent/auth-profiles.json."""
+
+    model_config = _LENIENT
+
+    profiles: dict[str, AuthProfile] = Field(default_factory=dict)
+    usage_stats: dict[str, AuthProfileUsage] = Field(default_factory=dict, alias="usageStats")
+
+
+def load_config() -> FleetConfig:
+    """Return the full fleet registry as a validated model (public entry point)."""
+    return _load_fleet()
+
+
+def _load_fleet() -> FleetConfig:
+    raw = store.read_json(FLEET_FILE)
+    return FleetConfig.model_validate(raw)
+
+
+def _save_fleet(cfg: FleetConfig) -> None:
+    store.write_json(FLEET_FILE, cfg)
 
 
 def meta_read(agent_id: str) -> AgentMeta:
@@ -124,108 +138,68 @@ def meta_set(agent_id: str, field: str, value: Any) -> None:
     store.write_json(path, raw)
 
 
-def list_agents(cfg: OpenClawConfig | None = None) -> list[OcAgent]:
-    """Return the full agents.list from openclaw.json."""
-    return (cfg or _load_oc()).agents.items
+def list_agents(cfg: FleetConfig | None = None) -> list[FleetAgent]:
+    """Return the fleet's registered-agent list."""
+    return (cfg or _load_fleet()).agents
 
 
-def get_agent(agent_id: str, cfg: OpenClawConfig | None = None) -> OcAgent | None:
+def get_agent(agent_id: str, cfg: FleetConfig | None = None) -> FleetAgent | None:
     """Return one agent entry by id, or None if not registered."""
-    for agent in (cfg or _load_oc()).agents.items:
+    for agent in (cfg or _load_fleet()).agents:
         if agent.id == agent_id:
             return agent
     return None
 
 
-def agent_registered(agent_id: str, cfg: OpenClawConfig | None = None) -> bool:
-    """Return True if agent_id is in openclaw.json agents.list."""
+def agent_registered(agent_id: str, cfg: FleetConfig | None = None) -> bool:
+    """Return True if agent_id is registered in the fleet."""
     return get_agent(agent_id, cfg) is not None
 
 
-def set_agent_model(agent_id: str, model: str) -> None:
-    """Update the model field for one agent in agents.list."""
-    cfg = _load_oc()
-    for agent in cfg.agents.items:
-        if agent.id == agent_id:
-            agent.model = model
-            _save_oc(cfg)
-            return
-    raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
-
-
-def set_agent_session_key(agent_id: str, session_key: str) -> None:
-    """Update metadata.sessionKey for one agent."""
-    oc = _load_oc()
-    for agent in oc.agents.items:
-        if agent.id == agent_id:
-            agent.metadata.session_key = session_key
-            _save_oc(oc)
-            return
-    raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
-
-
-def sync_session_key(agent_id: str, session_key: str, project_key: str) -> None:
-    """Write both sessionKey and projectKey in one round-trip."""
-    oc = _load_oc()
-    for agent in oc.agents.items:
-        if agent.id == agent_id:
-            agent.metadata.session_key = session_key
-            agent.metadata.project_key = project_key
-            _save_oc(oc)
-            return
-    raise KeyError(f"Agent '{agent_id}' not found in openclaw.json")
-
-
-def get_default_model(cfg: OpenClawConfig | None = None) -> str:
-    """Return agents.defaults.model as a bare id string.
-
-    OpenClaw stores this as either a string or {"primary": "<id>"}; both are
-    normalised to the id here.
-    """
-    model = (cfg or _load_oc()).agents.defaults.model
-    if isinstance(model, dict):
-        return str(model.get("primary", ""))
-    return model
+def get_default_model(cfg: FleetConfig | None = None) -> str:
+    """Return the fleet's org-wide default model id."""
+    return (cfg or _load_fleet()).defaults.model
 
 
 def set_default_model(model: str) -> None:
-    """Write agents.defaults.model."""
-    cfg = _load_oc()
-    cfg.agents.defaults.model = model
-    _save_oc(cfg)
+    """Write the fleet's org-wide default model id."""
+    cfg = _load_fleet()
+    cfg.defaults.model = model
+    _save_fleet(cfg)
 
 
 def add_agent(
     agent_id: str,
-    model: str,
+    model: str = "",
     session_key: str = "",
     project_key: str = "",
 ) -> None:
-    """Append an agent to agents.list (no-op if already present)."""
-    cfg = _load_oc()
+    """Register agent_id in the fleet (no-op if already present).
+
+    ``model``/``session_key``/``project_key`` are accepted for call-site
+    compatibility (pre-P19-6 callers pass all four) but are not stored here —
+    ``.docket-meta.json`` (``AgentMeta``) is their one real home; duplicating
+    them in the fleet registry is exactly the second-writer shape this card
+    removes. See ``core/fleet.py``'s module docstring.
+    """
+    cfg = _load_fleet()
     if not agent_registered(agent_id, cfg):
-        cfg.agents.items.append(
-            OcAgent(
-                id=agent_id,
-                model=model,
-                metadata=OcAgentMetadata(session_key=session_key, project_key=project_key),
-            )
-        )
-        _save_oc(cfg)
+        cfg.agents.append(FleetAgent(id=agent_id))
+        _save_fleet(cfg)
 
 
 def remove_agent(agent_id: str) -> None:
-    """Remove agent from agents.list."""
-    cfg = _load_oc()
-    cfg.agents.items = [a for a in cfg.agents.items if a.id != agent_id]
-    _save_oc(cfg)
+    """Remove agent_id from the fleet registry."""
+    cfg = _load_fleet()
+    cfg.agents = [a for a in cfg.agents if a.id != agent_id]
+    _save_fleet(cfg)
 
 
-def get_binding(agent_id: str, channel: str = "telegram", cfg: OpenClawConfig | None = None) -> str:
+def get_binding(agent_id: str, channel: str = "telegram", cfg: FleetConfig | None = None) -> str:
     """Return the peer id for a channel binding, or '' if none."""
-    for b in (cfg or _load_oc()).bindings:
-        if b.agent_id == agent_id and b.match.channel == channel:
-            return b.match.peer.id
+    for b in (cfg or _load_fleet()).bindings:
+        if b.agent_id == agent_id and b.channel == channel:
+            return b.peer_id
     return ""
 
 
@@ -236,32 +210,26 @@ def upsert_binding(
     peer_kind: str = "group",
 ) -> None:
     """Add or replace a channel binding for an agent."""
-    cfg = _load_oc()
+    cfg = _load_fleet()
     cfg.bindings = [
-        b for b in cfg.bindings if not (b.agent_id == agent_id and b.match.channel == channel)
+        b for b in cfg.bindings if not (b.agent_id == agent_id and b.channel == channel)
     ]
     cfg.bindings.append(
-        OcBinding(
-            agent_id=agent_id,
-            match=OcMatch(
-                channel=channel,
-                peer=OcPeer(kind=peer_kind, id=peer_id),
-            ),
-        )
+        FleetBinding(agent_id=agent_id, channel=channel, peer_kind=peer_kind, peer_id=peer_id)
     )
-    _save_oc(cfg)
+    _save_fleet(cfg)
 
 
 def remove_binding(agent_id: str, channel: str | None = None) -> None:
     """Remove one or all channel bindings for an agent."""
-    cfg = _load_oc()
+    cfg = _load_fleet()
     if channel is None:
         cfg.bindings = [b for b in cfg.bindings if b.agent_id != agent_id]
     else:
         cfg.bindings = [
-            b for b in cfg.bindings if not (b.agent_id == agent_id and b.match.channel == channel)
+            b for b in cfg.bindings if not (b.agent_id == agent_id and b.channel == channel)
         ]
-    _save_oc(cfg)
+    _save_fleet(cfg)
 
 
 def wire_group(
@@ -273,7 +241,10 @@ def wire_group(
     """Wire an agent to a channel peer: allowlist entry + binding upsert.
 
     Returns True if the openclaw allowlist step succeeded, False if unavailable.
-    The binding is always written regardless of the allowlist result.
+    The binding is always written (to fleet.json) regardless of the allowlist
+    result. The allowlist step itself is genuinely daemon-owned (it tells the
+    running daemon which Telegram groups may message it at all) and is
+    untouched by P19-6 — it goes away with the daemon at P19-7.
     """
     import subprocess as _sp
 
@@ -298,24 +269,24 @@ def wire_group(
     return allowlist_ok
 
 
-def get_gates_enabled(cfg: OpenClawConfig | None = None) -> bool:
-    return (cfg or _load_oc()).security.gates.enabled
+def get_gates_enabled(cfg: FleetConfig | None = None) -> bool:
+    return (cfg or _load_fleet()).security.gates_enabled
 
 
 def set_gates_enabled(enabled: bool) -> None:
-    cfg = _load_oc()
-    cfg.security.gates.enabled = enabled
-    _save_oc(cfg)
+    cfg = _load_fleet()
+    cfg.security.gates_enabled = enabled
+    _save_fleet(cfg)
 
 
-def get_isolation_enabled(cfg: OpenClawConfig | None = None) -> bool:
-    return (cfg or _load_oc()).security.isolation.enabled
+def get_isolation_enabled(cfg: FleetConfig | None = None) -> bool:
+    return (cfg or _load_fleet()).security.isolation_enabled
 
 
 def set_isolation_enabled(enabled: bool) -> None:
-    cfg = _load_oc()
-    cfg.security.isolation.enabled = enabled
-    _save_oc(cfg)
+    cfg = _load_fleet()
+    cfg.security.isolation_enabled = enabled
+    _save_fleet(cfg)
 
 
 @dataclass
@@ -453,11 +424,11 @@ def channel_names() -> list[str]:
     return list(channels.keys())
 
 
-def agent_bindings(agent_id: str, cfg: OpenClawConfig | None = None) -> list[dict[str, str]]:
+def agent_bindings(agent_id: str, cfg: FleetConfig | None = None) -> list[dict[str, str]]:
     """Return [{channel, peerId}, ...] for one agent's bindings."""
     return [
-        {"channel": b.match.channel, "peerId": b.match.peer.id}
-        for b in (cfg or _load_oc()).bindings
+        {"channel": b.channel, "peerId": b.peer_id}
+        for b in (cfg or _load_fleet()).bindings
         if b.agent_id == agent_id
     ]
 
@@ -477,26 +448,14 @@ def get_config_perms() -> str:
 
 
 def get_isolation_mode() -> str:
-    """Return agents.defaults.sandbox.mode from openclaw.json ('unset' if absent)."""
-    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
-    agents = raw.get("agents")
-    defaults = agents.get("defaults") if isinstance(agents, dict) else None
-    sandbox = defaults.get("sandbox") if isinstance(defaults, dict) else None
-    if not isinstance(sandbox, dict):
-        return "unset"
-    mode = sandbox.get("mode")
-    return str(mode) if mode else "unset"
+    """Return the fleet's sandbox isolation mode ('unset' if never configured)."""
+    return _load_fleet().security.isolation_mode
 
 
 def get_approval_routing() -> tuple[str, str]:
-    """Return (state, mode) for approvals.exec routing; state is 'on' | 'off' | 'unset'."""
-    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
-    approvals = raw.get("approvals")
-    exec_cfg = approvals.get("exec") if isinstance(approvals, dict) else None
-    if not isinstance(exec_cfg, dict) or not exec_cfg:
-        return ("unset", "")
-    state = "on" if exec_cfg.get("enabled") else "off"
-    return (state, str(exec_cfg.get("mode") or ""))
+    """Return (state, mode) for exec-approval routing; state is 'on' | 'off' | 'unset'."""
+    sec = _load_fleet().security
+    return (sec.approval_routing_state, sec.approval_routing_mode)
 
 
 def secrets_keys() -> set[str]:
@@ -661,19 +620,20 @@ def has_agent_defaults() -> bool:
 
 
 def agent_count() -> int:
-    """Return the number of registered agents."""
-    raw: dict[str, Any] = store.read_json(CONFIG_FILE)
-    agents = raw.get("agents")
-    items = agents.get("list") if isinstance(agents, dict) else None
-    return len(items) if isinstance(items, list) else 0
+    """Return the number of agents registered in the fleet."""
+    return len(_load_fleet().agents)
 
 
 def configure_agent_defaults(default_model: str) -> None:
-    """Write agents.defaults + ensure channels.telegram exists.
+    """Write agents.defaults + ensure channels.telegram exists; seed the fleet default model.
 
-    Sets the default model, workspace, safeguard compaction, concurrency caps,
-    and an enabled Telegram channel. These blocks are OpenClaw-internal and
-    not modelled in OpenClawConfig, so they are written via the raw dict.
+    The openclaw.json block (workspace, safeguard compaction, concurrency caps,
+    an enabled Telegram channel) is daemon-internal bootstrap state, unrelated
+    to the fleet registry and untouched by P19-6 — it is written via the raw
+    dict exactly as before. The default *model*, however, is a fleet concept
+    since P19-6 (``get_default_model``/``set_default_model`` read/write
+    fleet.json), so this also seeds it there — the one call site
+    (``docket install``) that used to set both in one round-trip still does.
     """
     raw: dict[str, Any] = store.read_json(CONFIG_FILE)
 
@@ -699,6 +659,7 @@ def configure_agent_defaults(default_model: str) -> None:
         channels["telegram"] = {"enabled": True, "groups": {}}
 
     store.write_json(CONFIG_FILE, raw)
+    set_default_model(default_model)
 
 
 @dataclass
@@ -1118,12 +1079,17 @@ def oc_set_path(dotpath: str, json_value: str) -> None:
 
 
 def set_model_both(agent_id: str, model: str) -> None:
-    """Update model in openclaw.json agents.list AND .docket-meta.json.
+    """Update an agent's model.
 
-    The two writes are NOT in a single transaction; openclaw.json is updated
-    first. If the second write fails, docket doctor will detect the drift.
+    Pre-P19-6 this wrote both openclaw.json's agents.list AND
+    .docket-meta.json, which was the exact second-writer shape that made
+    drift possible. `.docket-meta.json` (`AgentMeta`) is model's one home now
+    — the fleet registry never tracked it (see `core/fleet.py`) — so this is
+    a single write. Kept as a named function (rather than inlining
+    `meta_set` at every call site) since "update an agent's model" is a
+    meaningful operation on its own, and it is what `docket profile`/
+    `docket models set` call.
     """
-    set_agent_model(agent_id, model)
     meta_set(agent_id, "model", model)
 
 
@@ -1182,27 +1148,18 @@ def write_exec_approvals(data: dict[str, Any]) -> bool:
 
 
 def set_approval_routing(enabled: bool, mode: str = "session") -> None:
-    """Write approvals.exec = {enabled, mode} in openclaw.json."""
-    raw = store.read_json(CONFIG_FILE)
-    approvals = raw.setdefault("approvals", {})
-    if not isinstance(approvals, dict):
-        approvals = {}
-        raw["approvals"] = approvals
-    approvals["exec"] = {"enabled": enabled, "mode": mode}
-    store.write_json(CONFIG_FILE, raw)
+    """Write the fleet's exec-approval routing state."""
+    cfg = _load_fleet()
+    cfg.security.approval_routing_state = "on" if enabled else "off"
+    cfg.security.approval_routing_mode = mode
+    _save_fleet(cfg)
 
 
 def disable_approval_routing() -> None:
-    """Set approvals.exec.enabled = false."""
-    if not CONFIG_FILE.exists():
-        return
-    raw = store.read_json(CONFIG_FILE)
-    approvals = raw.get("approvals")
-    exec_cfg = approvals.get("exec") if isinstance(approvals, dict) else None
-    if not isinstance(exec_cfg, dict):
-        return
-    exec_cfg["enabled"] = False
-    store.write_json(CONFIG_FILE, raw)
+    """Turn exec-approval routing off."""
+    cfg = _load_fleet()
+    cfg.security.approval_routing_state = "off"
+    _save_fleet(cfg)
 
 
 def set_sandbox_isolation(
@@ -1210,41 +1167,33 @@ def set_sandbox_isolation(
     scope: str = "agent",
     workspace_access: str = "rw",
 ) -> None:
-    """Write agents.defaults.sandbox = {mode, scope, workspaceAccess}."""
-    raw = store.read_json(CONFIG_FILE)
-    agents = raw.setdefault("agents", {})
-    if not isinstance(agents, dict):
-        agents = {}
-        raw["agents"] = agents
-    defaults = agents.setdefault("defaults", {})
-    if not isinstance(defaults, dict):
-        defaults = {}
-        agents["defaults"] = defaults
-    defaults["sandbox"] = {
-        "mode": mode,
-        "scope": scope,
-        "workspaceAccess": workspace_access,
-    }
-    store.write_json(CONFIG_FILE, raw)
+    """Write the fleet's sandbox isolation mode.
+
+    ``scope``/``workspace_access`` are accepted for call-site compatibility
+    with the pre-P19-6 openclaw.json shape, but are not persisted: docket has
+    never had a caller that passes anything but the defaults
+    (``core/security.py``'s ``apply_workspace_isolation`` always calls this
+    with mode="non-main" only), and the CLI's own status text
+    (``cli/_gates.py``'s ``_isolate``) is already a static string, not a
+    render of these fields.
+    """
+    cfg = _load_fleet()
+    cfg.security.isolation_mode = mode
+    cfg.security.isolation_enabled = mode not in ("off", "unset")
+    _save_fleet(cfg)
 
 
 def disable_sandbox_isolation() -> None:
-    """Set agents.defaults.sandbox.mode = "off"."""
-    if not CONFIG_FILE.exists():
-        return
-    raw = store.read_json(CONFIG_FILE)
-    agents = raw.get("agents")
-    defaults = agents.get("defaults") if isinstance(agents, dict) else None
-    sandbox = defaults.get("sandbox") if isinstance(defaults, dict) else None
-    if not isinstance(sandbox, dict):
-        return
-    sandbox["mode"] = "off"
-    store.write_json(CONFIG_FILE, raw)
+    """Set the fleet's sandbox isolation mode to 'off'."""
+    cfg = _load_fleet()
+    cfg.security.isolation_mode = "off"
+    cfg.security.isolation_enabled = False
+    _save_fleet(cfg)
 
 
 def all_agent_ids() -> list[str]:
-    """Return agent ids registered in openclaw.json; 'main' is always included."""
-    if not CONFIG_FILE.exists():
+    """Return agent ids registered in the fleet; 'main' is always included."""
+    if not FLEET_FILE.exists():
         return ["main"]
     try:
         ids = [a.id for a in list_agents() if a.id]
