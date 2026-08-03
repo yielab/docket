@@ -1,10 +1,28 @@
 """Role archetypes: versioned, declarative role definitions (ROADMAP Phase 16 W-6).
 
 A *role archetype* is data, not code: a name, a scope, a model class, SOUL/AGENTS
-prose templates, a gate contract, edit rights, and a tool profile. `core/pod.py`'s
+prose templates, a gate contract, edit rights, a tool profile, and (ROADMAP Phase
+19 P19-12) an enforced tool denylist. `core/pod.py`'s
 `normalize_role`/`member_id`/`policy_role_for` resolve pod roles against the
 registry this module builds instead of a hardcoded 4-tuple, so a fifth (sixth,
 ...) role is data, never a new hardcoded string in `core/pod.py`/`cli/_pod.py`.
+
+## Per-role tool sets (ROADMAP Phase 19 P19-12)
+
+`tool_profile` (below) is prose — descriptive, never enforced. That was a real
+gap: a Reviewer was *told* "read-only: no write/edit/exec" in its SOUL.md, but
+`core/agent_loop.py` handed it the same full tool registry as an Implementer.
+Being told not to do something is a strictly weaker guarantee than being
+*unable* to, and that distinction is exactly what docket sells (see
+ROADMAP's P19-12 card and CLAUDE.md's roles-as-data convention).
+
+`denied_tools` closes that gap as data: the built-in tool names (from
+`core.tools.builtin_registry()`) a role may never call. `registry_for_role`
+below is the one place that data is consumed — it removes exactly those names
+via `ToolRegistry.without()`, which `core/agent_loop.py` calls once per turn
+before advertising tools to the model or dispatching a call. No caller ever
+branches on a role's name; the branch would be the anti-pattern this card
+exists to close.
 
 Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles —
 lead, implementer, reviewer, tester — byte-identical to the pre-W-6 hand-written
@@ -64,6 +82,7 @@ from typing import Any
 
 import docket.config as cfg
 from docket.core import memory as _mem
+from docket.core.tools import ToolRegistry
 from docket.edges import store as _store
 
 SCOPES: frozenset[str] = frozenset({"org", "pod"})
@@ -140,6 +159,14 @@ class RoleArchetype:
     # ROADMAP Phase 17 C-1: this role's context-compiler token budget — see
     # the module docstring's "token_budget" paragraph and `core/context.py`.
     token_budget: int = 6000
+    # ROADMAP Phase 19 P19-12: built-in tool names this role may never call —
+    # see the module docstring's "Per-role tool sets" section. Open (like
+    # `tool_profile`), not validated against the live tool registry: a name
+    # that does not exist in a given registry is simply a no-op removal for
+    # `ToolRegistry.without()`. Empty (the default) means "no narrower than
+    # whatever registry the caller hands in" — today's behavior, preserved
+    # for any archetype that does not opt in.
+    denied_tools: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -197,6 +224,8 @@ class RoleArchetype:
             doc["policyRole"] = self.policy_role
         if self.description:
             doc["description"] = self.description
+        if self.denied_tools:
+            doc["deniedTools"] = list(self.denied_tools)
         return doc
 
 
@@ -251,6 +280,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         policy_role=str(doc.get("policyRole", "")),
         description=str(doc.get("description", "")),
         token_budget=token_budget,
+        denied_tools=tuple(str(t) for t in doc.get("deniedTools", [])),
     )
 
 
@@ -366,6 +396,11 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # before any budgeting for this role) — a modest budget is declared
         # for completeness/forward-compat, not exercised today.
         token_budget=2000,
+        # "You NEVER edit code, run git, or execute the build" (see
+        # `_LEAD_BODY` above) — P19-12 makes that a real tool absence, not
+        # just an instruction. read/glob/grep stay, so a Lead can still
+        # inspect state to coordinate.
+        denied_tools=("write", "edit", "bash"),
     ),
     "implementer": RoleArchetype(
         name="implementer",
@@ -382,6 +417,8 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # The biggest consumer: needs the Lead's plan and (on rework) the
         # Reviewer's full REQUEST-CHANGES note to act on.
         token_budget=8000,
+        # Full-repo: no built-in tool is off limits.
+        denied_tools=(),
     ),
     "reviewer": RoleArchetype(
         name="reviewer",
@@ -396,6 +433,9 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         policy_role="reviewer",
         description="read-only veto on diffs",
         token_budget=6000,
+        # "Read-only: no write/edit/exec" (see `_REVIEWER_BODY` above) — now
+        # a genuine tool absence, not merely a SOUL.md instruction.
+        denied_tools=("write", "edit", "bash"),
     ),
     "tester": RoleArchetype(
         name="tester",
@@ -412,6 +452,9 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # Only needs the Implementer's summary to validate behaviour, not a
         # full review history.
         token_budget=4000,
+        # "Read-only-exec": no write/edit, but `bash` stays so it can
+        # actually run the test suite it reports PASS/FAIL on.
+        denied_tools=("write", "edit"),
     ),
 }
 
@@ -523,6 +566,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="research-read-write",
         description="gathers and synthesizes source material",
         token_budget=8000,
+        denied_tools=(),
     ),
     "analyst": RoleArchetype(
         name="analyst",
@@ -536,6 +580,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="data-analysis",
         description="analyzes data/evidence and draws conclusions",
         token_budget=8000,
+        denied_tools=(),
     ),
     "writer": RoleArchetype(
         name="writer",
@@ -549,6 +594,7 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="content-authoring",
         description="drafts the pod's content deliverable",
         token_budget=6000,
+        denied_tools=(),
     ),
     "critic": RoleArchetype(
         name="critic",
@@ -562,6 +608,8 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="read-only",
         description="vets the pod's output; veto power",
         token_budget=6000,
+        # Mirrors the reviewer archetype: read-only means no write/edit/exec.
+        denied_tools=("write", "edit", "bash"),
     ),
     "operator": RoleArchetype(
         name="operator",
@@ -575,6 +623,8 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="ops-exec",
         description="executes real operational actions",
         token_budget=8000,
+        # Executes real operations, which includes running commands.
+        denied_tools=(),
     ),
     "monitor": RoleArchetype(
         name="monitor",
@@ -588,6 +638,9 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="read-only-observability",
         description="observes signals and reports status; no unilateral action",
         token_budget=4000,
+        # "You observe ... you do not act" (see `_MONITOR_BODY` above): no
+        # write/edit/exec at all.
+        denied_tools=("write", "edit", "bash"),
     ),
 }
 
@@ -664,6 +717,29 @@ def load_registry() -> ArchetypeRegistry:
         except ArchetypeError:
             continue
     return ArchetypeRegistry(archetypes)
+
+
+def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
+    """Narrow *base* to exactly what *role* may call (ROADMAP Phase 19 P19-12).
+
+    Looks *role* up in the live archetype registry and removes every name in
+    its `denied_tools` via the public `ToolRegistry.without()` API — the same
+    method a caller could invoke by hand, just resolved from data instead of
+    a per-role branch (`core/agent_loop.py` is the one caller, once per turn).
+    This is the whole point of the card: a Reviewer's registry genuinely lacks
+    `write`/`edit`, so a call to either is refused by `dispatch_tool` as an
+    *unknown tool* — a strictly stronger guarantee than a SOUL.md instruction
+    telling it not to use them.
+
+    An unrecognized *role* (empty string, a bare project id, any name absent
+    from the registry) or one with an empty `denied_tools` returns *base*
+    unchanged — today's behavior for anyone this card does not narrow, not a
+    silent denial of everything.
+    """
+    archetype = load_registry().get(role)
+    if archetype is None or not archetype.denied_tools:
+        return base
+    return base.without(*archetype.denied_tools)
 
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:

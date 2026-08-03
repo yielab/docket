@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented. `core/agent_loop.py` and `edges/adapters/docket_runtime.py`
 (ROADMAP Phase 19 P19-5) are the first live callers of `core/llm.py` (P19-1),
 `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4) — this is the card that makes
@@ -8,8 +8,12 @@ the OpenClaw daemon *unused*, not yet uninstalled (Wave B / P19-6 / P19-7 remove
 `DocketDriver` is a complete, independently-tested `RuntimeDriver` implementation; it is not
 wired as any caller's default driver in this wave — `core/dispatch.py`, `core/trace.py`'s
 `trace_ingest` and every other existing `RuntimeDriver` caller are unchanged and still
-resolve `edges.adapters.openclaw.default_driver()`.
-**Last Updated**: 2026-07-31
+resolve `edges.adapters.openclaw.default_driver()`. ROADMAP Phase 19's P19-12 closed two
+omissions P19-5 recorded honestly rather than papering over: the loop now narrows the tool
+registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
+agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent`) — see the new
+"Per-role tool narrowing" and "System prompt composition" requirements below.
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -32,6 +36,10 @@ This specification covers:
 - `edges/adapters/docket_runtime.py`'s `DocketDriver`: how the 7-method `RuntimeDriver`
   Protocol is implemented on top of the loop with no daemon underneath, including the
   driver's tool-containment root resolution and its `capabilities()` honesty contract
+- That `run_agent_turn` narrows its tool registry by role (via
+  `core.archetypes.registry_for_role`) and composes a system prompt (via
+  `core.identity.system_prompt_for_agent`), once per turn, and what effect each has on the
+  messages sent to the backend and persisted to session history (ROADMAP Phase 19 P19-12)
 
 This specification does NOT cover:
 
@@ -39,6 +47,13 @@ This specification does NOT cover:
   `edges/adapters/llm.py`, ROADMAP Phase 19 P19-1)
 - The tool registry, the gate, or the chokepoint itself (`core/tools.py`, ROADMAP Phase 19
   P19-2/P19-3) — this spec only depends on `dispatch_tool`'s documented contract
+- The archetype schema, `deniedTools` data, and `registry_for_role`'s own contract — see
+  `role-archetypes.spec.md`'s "Per-role tool sets"; this spec only covers that `run_agent_turn`
+  calls it and what that does to a turn
+- The persona rendering/upsert primitives (`render_persona_block`, `upsert_persona_block`) or
+  the identity file layout itself (`SOUL.md`, `WORKFLOW_AUTO.md`) — see `workspace-structure.spec.md`
+  and `core/identity.py`'s own docstring; this spec only covers that `run_agent_turn` composes
+  and injects the result
 - Durable session storage or compaction (`core/session.py`, ROADMAP Phase 19 P19-4,
   `session-history.spec.md`) — this spec only depends on `load_messages`/`append_messages`'s
   documented contract
@@ -131,6 +146,40 @@ This specification does NOT cover:
 25. `list_sessions` **MUST** scope its results to sessions whose key belongs to the requested
     agent id, even when that agent has been re-scoped to more than one project over its
     lifetime (`docket scope ... set`).
+
+### Per-role tool narrowing (ROADMAP Phase 19 P19-12)
+
+26. `run_agent_turn` **MUST** narrow the *registry* it was given via
+    `core.archetypes.registry_for_role(registry, ctx.role)` exactly once per turn, before the
+    first `backend.complete` call — not per iteration, since a role's tool set does not change
+    mid-turn. Every use of the registry for the rest of the turn (advertising tool specs to the
+    model, `dispatch_tool`) **MUST** use the narrowed result.
+27. A tool call requesting a name the role's archetype denies **MUST** be refused by
+    `dispatch_tool` as an unknown tool — the same refusal path an unrelated hallucinated tool
+    name takes — never a distinct "forbidden for your role" code path. This is what makes the
+    guarantee real: the model is not even advertised the tool, and if a call for it arrives
+    anyway, the registry genuinely does not contain it.
+28. `run_agent_turn` **MUST NOT** contain a branch on a specific role's name (e.g.
+    `if ctx.role == "reviewer"`) to decide what to narrow — the denylist is data on the
+    archetype (see `role-archetypes.spec.md`'s "Per-role tool sets"), and `registry_for_role` is
+    the single, generic function consuming it.
+
+### System prompt composition (ROADMAP Phase 19 P19-12)
+
+29. `run_agent_turn` **MUST** compose a system prompt via
+    `core.identity.system_prompt_for_agent(ctx.agent_id)` once per turn and, when non-empty,
+    prepend it as a `system`-role message ahead of the turn's history and incoming user message.
+    An empty result (no workspace, no identity files, no `agent_id`) **MUST NOT** add an empty
+    `system` message.
+30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), its
+    live persona (read fresh from `.docket-meta.json`, not trusted from whatever `SOUL.md` has
+    on disk), and its `WORKFLOW_AUTO.md` (the resume/durability contract; `core/memory.py`,
+    `CONTRACT_VERSION`) — see `core/identity.py`'s `compose_system_prompt` for the exact
+    composition rule.
+31. The composed system prompt **MUST NOT** be persisted to session history through
+    `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
+    so a persona change or a re-seeded `WORKFLOW_AUTO.md` is reflected on the very next turn
+    rather than frozen into a stored message.
 
 ## Interface Contracts
 
@@ -245,6 +294,26 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 Given an agent whose metadata sets both `codebase` and a raw `worktreeDir` field, a `read`
 tool call resolves against the worktree directory, not the codebase — worktree wins.
 
+### A Reviewer cannot dispatch a write
+
+```python
+ctx = ToolContext(agent_id="rev-1", role="reviewer", project="demo", roots=(workspace,))
+result = agent_loop.run_agent_turn(backend, builtin_registry(), ctx, "agent:rev-1:default", "edit it")
+# the model was never advertised "write"/"edit"/"bash" (registry_for_role narrowed them out);
+# if it requests one anyway, dispatch_tool's tool_result answers "REFUSED: unknown tool ..."
+# result.ok can still be True — the turn completes normally, just without that call executing
+```
+
+### The system prompt reaches the model
+
+```python
+# ws/SOUL.md exists, ws/WORKFLOW_AUTO.md exists, agent has a persona set
+result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
+# backend.complete's first call's messages[0].role == "system"
+# that message's content folds in SOUL.md, the live persona, and WORKFLOW_AUTO.md
+# core.session.load_messages(session_key) contains no "system"-role message afterward
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -274,8 +343,25 @@ tool call resolves against the worktree directory, not the codebase — worktree
   token usage the turn recorded.
 - Two agents **MUST NOT** be able to see each other's sessions through
   `DocketDriver.list_sessions`.
+- A role's denied tool names **MUST NOT** be reachable through `dispatch_tool` for that role's
+  turn — proven at the dispatch level (an "unknown tool" refusal), never merely by inspecting
+  `RoleArchetype.denied_tools` or a `ToolRegistry`'s name set.
+- The system prompt `run_agent_turn` composes **MUST NOT** appear in
+  `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.1.0 (2026-08-02)
+
+- **ROADMAP Phase 19, card P19-12 (per-role tool sets + identity composition).** Closed two
+  omissions this spec's own Version 1.0.0 recorded as out of scope for P19-5: `run_agent_turn`
+  now narrows its tool registry by role once per turn (`core.archetypes.registry_for_role`,
+  new requirements 26–28) and composes a system prompt from `SOUL.md`/the live persona/
+  `WORKFLOW_AUTO.md` (`core.identity.system_prompt_for_agent`, new requirements 29–31). Both are
+  resolved once per turn, not per iteration; the system prompt is never persisted to session
+  history. No change to `run_agent_turn`'s or `DocketDriver`'s public signatures — this is a
+  behavior change inside an unchanged interface. No CLI surface added; the 18 golden cases are
+  unaffected.
 
 ### Version 1.0.0 (2026-07-31)
 

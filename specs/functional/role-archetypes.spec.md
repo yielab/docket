@@ -1,13 +1,17 @@
 # Role Archetypes Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
 pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). ROADMAP Phase 17's C-1 (the context
 compiler) added a `tokenBudget` field — see "Archetype schema" and "Context-compiler token
-budget" below. This spec's own scope (the archetype schema/registry/CLI) is otherwise unchanged.
-**Last Updated**: 2026-07-30
+budget" below. ROADMAP Phase 19's P19-12 added `deniedTools` — see "Archetype schema" and the new
+"Per-role tool sets" section — and, unlike `editRights`, it is genuinely *enforced*:
+`core.archetypes.registry_for_role` is called by `core/agent_loop.py` once per turn to remove
+those tool names from the registry the model is given, so a denied tool is unreachable, not just
+discouraged. See `agent-loop.spec.md` for how the turn loop consumes it.
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -27,8 +31,12 @@ byte-identical, a starter library ships six more (`researcher`, `analyst`, `writ
 This specification covers:
 
 - The archetype schema: `name`, `version`, `scope`, `modelClass`, `soulTemplate`,
-  `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`, and the optional
+  `agentsTemplate`, `gateContract`, `editRights`, `toolProfile`, `deniedTools`, and the optional
   `policyRole`/`description` fields — which are closed typed enums and which are open prose
+- The `deniedTools` field and `registry_for_role`, the one function that turns it into an
+  actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API (ROADMAP Phase 19
+  P19-12) — this spec documents the data and that function's contract; `agent-loop.spec.md`
+  documents that `core/agent_loop.py` calls it once per turn
 - The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identical-to-legacy
   guarantee
 - The starter library (researcher/analyst/writer/critic/operator/monitor)
@@ -68,10 +76,12 @@ This specification does NOT cover:
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
    `editRights`, `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
-   C-1; see "Context-compiler token budget" below). `policyRole` and `description` **MAY** be
-   present (empty/absent is valid for both); `tokenBudget` **MAY** be absent from a wire document
+   C-1; see "Context-compiler token budget" below). `policyRole`, `description`, and
+   `deniedTools` (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below) **MAY** be present
+   (empty/absent is valid for all three); `tokenBudget` **MAY** be absent from a wire document
    (a pre-C-1 user overlay entry, or a hand-authored YAML file that predates this field) and
-   defaults to `6000` when omitted — never a parse error.
+   defaults to `6000` when omitted — never a parse error. `deniedTools` absent/empty defaults to
+   `()` — no narrower than whatever registry the caller hands in.
 2. `scope` **MUST** be one of exactly `"org"` | `"pod"` — a closed enum. Every built-in and
    starter-library archetype shipped today is `"pod"`-scoped (org-scoped archetypes are a valid,
    validated value in the type system, reserved for a future card; none ship yet).
@@ -84,19 +94,24 @@ This specification does NOT cover:
    Reviewer/Tester verdict-parsing convention (`^\s*(A|B)\b`, case-insensitive) — see "Legacy
    archetype fidelity" below for the exact values the reviewer/tester archetypes carry.
 5. `editRights` **MUST** be one of exactly `"none"` | `"read-only"` | `"write"` — a closed enum.
-   This is descriptive metadata (matching this project's existing "instruction-level constraint,
-   not enforced permission" security model — see `CLAUDE.md`'s Security section) — no code path
-   technically prevents a `"read-only"` archetype's agent from writing a file.
+   `editRights` itself remains descriptive metadata, by design — it is not mechanically derived
+   into a tool denylist, because the mapping is not one-to-one (the `tester` archetype is
+   `"read-only"` yet keeps `bash`, since observing behaviour requires running it; see "Per-role
+   tool sets" below). The genuinely-enforced counterpart is the separate `deniedTools` field —
+   an archetype author declares both independently, and nothing in this schema computes one from
+   the other.
 6. `name` **MUST** match `^[a-z][a-z0-9-]*$` (lowercase letters/digits/hyphens, starting with a
    letter). `version` **MUST** be a positive integer. `soulTemplate`/`agentsTemplate` **MUST NOT**
    be blank.
-7. `toolProfile` and `description` are open prose — any non-empty (for `toolProfile`) or any
-   (for `description`, including empty) string is valid; docket does not validate or enforce
-   their content. Per ROADMAP Phase 16's explicit anti-overengineering rule: "archetype prose and
-   rosters are user-extensible, but gate contracts, edit rights, and scope stay closed typed sets
-   docket can reason about" — `scope`, `modelClass`, `gateContract.kind`, and `editRights` are the
-   closed sets; `name` (which roles exist), `soulTemplate`, `agentsTemplate`, `toolProfile`, and
-   `description` are open.
+7. `toolProfile`, `description`, and `deniedTools` are open — any non-empty (for `toolProfile`)
+   or any (for `description`, including empty) string is valid for the two prose fields; docket
+   does not validate `deniedTools`' entries against any live tool registry (a name that does not
+   exist in a given registry is simply a no-op removal — see "Per-role tool sets"). Per ROADMAP
+   Phase 16's explicit anti-overengineering rule: "archetype prose and rosters are
+   user-extensible, but gate contracts, edit rights, and scope stay closed typed sets docket can
+   reason about" — `scope`, `modelClass`, `gateContract.kind`, and `editRights` are the closed
+   sets; `name` (which roles exist), `soulTemplate`, `agentsTemplate`, `toolProfile`,
+   `description`, and `deniedTools` are open.
 8. An archetype definition that violates any of the above **MUST** be rejected with a clear error
    naming the offending field (`ArchetypeError`) — never silently coerced or truncated to a valid
    value.
@@ -147,6 +162,28 @@ This specification does NOT cover:
    `members_of` **MUST** produce identical results for the four legacy roles as before this
    registry existed — same accepted role strings (including the `programmer` → `implementer`
    alias), same member-id shape (`<project>-<role>[-N]`), same sort order (Lead first).
+
+### Per-role tool sets (ROADMAP Phase 19 P19-12)
+
+1. `denied_tools` **MUST** be a tuple of built-in tool names (e.g. `"write"`, `"edit"`, `"bash"` —
+   `core.tools.builtin_registry()`'s names) an archetype's agent may never call. It defaults to
+   `()` for any archetype that does not declare one.
+2. `core.archetypes.registry_for_role(base, role)` **MUST** look *role* up in the live archetype
+   registry and, when found with a non-empty `denied_tools`, return
+   `base.without(*archetype.denied_tools)` — the public `ToolRegistry.without()` API, never a
+   private/parallel narrowing mechanism. An unrecognized *role* (empty string, a bare project id,
+   any name absent from the registry) or one whose `denied_tools` is empty **MUST** return *base*
+   unchanged.
+3. No caller **MUST** branch on a role's name (e.g. `if role == "reviewer"`) to decide what to
+   narrow — the denylist is data on the archetype; `registry_for_role` is the single, generic
+   function every caller uses.
+4. The four legacy archetypes' `denied_tools` **MUST** match their documented SOUL.md contract:
+   `lead` and `reviewer` = `("write", "edit", "bash")` ("never edits code, runs git, or executes
+   the build" / "read-only: no write/edit/exec"); `tester` = `("write", "edit")` (read-only, but
+   keeps `bash` — it must actually run the test suite it reports PASS/FAIL on); `implementer` =
+   `()` (full-repo). See "Built-in archetypes" below for the full table.
+5. This field is independent of `editRights` (requirement 5 under "Archetype schema") — a user
+   archetype **MAY** set any combination of the two; nothing computes one from the other.
 
 ### Starter library
 
@@ -261,6 +298,7 @@ editRights: write
 toolProfile: content-ops
 description: coordinates content production across writer/critic
 tokenBudget: 6000
+deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only role
 gateContract:
   kind: none
 soulTemplate: |
@@ -283,23 +321,23 @@ agentsTemplate: |
 
 ### Built-in archetypes (byte-identical to pre-W-6)
 
-| Name | Scope | modelClass | policyRole | gateContract | editRights | tokenBudget |
-| --- | --- | --- | --- | --- | --- | --- |
-| `lead` | pod | cheap | manager | none | none | 2000 |
-| `implementer` | pod | strong | programmer | mechanical | write | 8000 |
-| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | read-only | 6000 |
-| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | read-only | 4000 |
+| Name | Scope | modelClass | policyRole | gateContract | editRights | tokenBudget | deniedTools |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `lead` | pod | cheap | manager | none | none | 2000 | write, edit, bash |
+| `implementer` | pod | strong | programmer | mechanical | write | 8000 | *(none)* |
+| `reviewer` | pod | cheap | reviewer | verdict (APPROVE\|REQUEST-CHANGES) | read-only | 6000 | write, edit, bash |
+| `tester` | pod | cheap | tester | verdict (PASS\|FAIL) | read-only | 4000 | write, edit |
 
 ### Starter library
 
-| Name | Scope | modelClass | gateContract | editRights | tokenBudget |
-| --- | --- | --- | --- | --- | --- |
-| `researcher` | pod | strong | none | write | 8000 |
-| `analyst` | pod | strong | none | write | 8000 |
-| `writer` | pod | cheap | none | write | 6000 |
-| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | read-only | 6000 |
-| `operator` | pod | strong | mechanical | write | 8000 |
-| `monitor` | pod | cheap | approval | read-only | 4000 |
+| Name | Scope | modelClass | gateContract | editRights | tokenBudget | deniedTools |
+| --- | --- | --- | --- | --- | --- | --- |
+| `researcher` | pod | strong | none | write | 8000 | *(none)* |
+| `analyst` | pod | strong | none | write | 8000 | *(none)* |
+| `writer` | pod | cheap | none | write | 6000 | *(none)* |
+| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | read-only | 6000 | write, edit, bash |
+| `operator` | pod | strong | mechanical | write | 8000 | *(none)* |
+| `monitor` | pod | cheap | approval | read-only | 4000 | write, edit, bash |
 
 ### User overlay file
 
@@ -358,6 +396,26 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-02)
+
+- **ROADMAP Phase 19, card P19-12 (per-role tool sets + identity composition).** Added
+  `deniedTools` (open tuple of built-in tool names) to the archetype schema — see "Archetype
+  schema" requirements 1/7, the revised requirement 5 (clarifying it is independent of
+  `editRights`, not derived from it), and the new "Per-role tool sets" section. Added
+  `core.archetypes.registry_for_role(base, role)`, the one function that turns this data into an
+  actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API — `core/agent_loop.py`
+  calls it once per turn (see `agent-loop.spec.md`'s Version 1.1.0). Set `deniedTools` on every
+  built-in/starter archetype matching its documented SOUL.md contract: `lead`/`reviewer`/`critic`/
+  `monitor` = `write, edit, bash`; `tester` = `write, edit` (keeps `bash` to run the test suite);
+  `implementer`/`researcher`/`analyst`/`writer`/`operator` = none (full access) — see the updated
+  "Built-in archetypes"/"Starter library" tables. Unlike `tokenBudget` or `toolProfile`, this
+  field is the first archetype field this spec claims is genuinely *enforced*, not merely
+  descriptive — proven at the dispatch level, not by inspecting the data (see
+  `agent-loop.spec.md`'s new Invariants). No change to rendered SOUL.md/AGENTS.md content
+  (`deniedTools` doesn't participate in template rendering), no change to the CLI surface
+  (`docket roles show` renders it as one more field in the existing YAML/JSON dump when
+  non-empty), no golden impact.
 
 ### Version 1.3.0 (2026-07-30)
 
