@@ -457,6 +457,7 @@ def builtin_registry() -> ToolRegistry:
     so the dependency direction reads as "core reaches out to edges for I/O"
     at exactly one point.
     """
+    from docket.edges.adapters import fetch as _fetch
     from docket.edges.adapters import toolbox
 
     registry = ToolRegistry()
@@ -600,6 +601,31 @@ def builtin_registry() -> ToolRegistry:
                 ctx.sandbox,
             ),
             kind="exec",
+        )
+    )
+
+    registry.register(
+        Tool(
+            name="fetch",
+            description=(
+                "Fetch a URL over HTTP(S). Only domains on the fetch allowlist "
+                "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped and "
+                "time-limited. Network egress is otherwise open for this fleet (see "
+                "security-gates.spec.md) -- this tool exists so reaching the network never "
+                "has to mean reaching for bash + curl/python3/node instead."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "http:// or https:// URL to fetch."},
+                    "timeout": {"type": "integer", "description": "Seconds before it is killed."},
+                },
+                "required": ["url"],
+            },
+            handler=lambda args, ctx: _fetch.fetch_url(
+                _str_arg(args, "url"), _int_arg(args, "timeout")
+            ),
+            kind="read",
         )
     )
 
