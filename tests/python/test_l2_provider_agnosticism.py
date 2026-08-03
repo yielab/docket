@@ -212,6 +212,7 @@ def _make_env(oc_dir: Path, extra_path: Path | None = None) -> dict[str, str]:
     env = {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
     if extra_path is not None:

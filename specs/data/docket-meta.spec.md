@@ -1,8 +1,8 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -19,11 +19,15 @@ This specification covers:
 
 - The fields stored in `.docket-meta.json`, their types, and their meaning
 - Which fields are required versus optional
-- The sync class of each field (`synced` vs `local`) and what that means
 - Validation rules applied on write by `meta_set`
 
 It does NOT cover the OpenClaw daemon's own configuration schema (`openclaw.json`), which is
-owned by the daemon; docket mirrors only `synced` fields into it.
+owned by the daemon, nor docket's own fleet registry (`fleet.json`, `core/fleet.py`) — agent
+registration, channel bindings, gates/isolation flags, and the org-wide default model (see
+agent-lifecycle.spec.md and security-gates.spec.md). ROADMAP Phase 19 P19-6: **no field in this
+file is mirrored anywhere else.** Every field here, including `model` and `sessionKey`, is
+docket's single source of truth for that value — see "Sync contract (retired)" below for why
+that is a behavior change worth calling out explicitly, not just a quiet edit.
 
 ## Structure
 
@@ -41,8 +45,9 @@ is the one every writer in `src/docket/` targets, backed by the `AgentMeta` Pyda
 `meta_set` does not reject an undeclared field name. `maxReworkCycles` and `requireApprovalRoles`
 (see their rows) are the shipped fields that rely on this: neither has a dedicated `AgentMeta`
 attribute yet, and both survive only because unknown keys are allowed through, not rejected. The
-file is docket's source of truth for an agent; the daemon's `openclaw.json` mirrors only the
-`synced` fields (see Sync contract).
+file is docket's **single** source of truth for an agent's model, session key, and every other
+field below — none of them are mirrored anywhere else (ROADMAP Phase 19 P19-6; see "Sync
+contract (retired)").
 
 ## Schema
 
@@ -50,10 +55,13 @@ The field table below is the authoritative source. The same set is declared as t
 model in `src/docket/core/models.py`; the model validates every write, so a field that drifts from
 this table fails type-checking or the test suite.
 
-**Sync classes:**
-
-- `synced` — docket mirrors this field into `openclaw.json`; `docket doctor` detects drift.
-- `local` — docket-only state; never expected in `openclaw.json`; not checked for drift.
+**Sync classes (retired, ROADMAP Phase 19 P19-6):** every row below is `local` now. Before this
+card, `model` and `sessionKey` were `synced` — mirrored into `openclaw.json` and compared for
+drift by `docket doctor`. `openclaw.json`'s agent registry was replaced by docket's own
+`fleet.json` (see agent-lifecycle.spec.md), and `fleet.json` does not duplicate `model`/
+`sessionKey` at all — this file is their one home. The `Sync` column is kept (rather than
+reshaping the table) so the historical distinction stays visible, but no value in it is anything
+but `local` today, and there is no drift check left to run.
 
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
@@ -67,11 +75,11 @@ this table fails type-checking or the test suite.
 | `workDir` | string | absolute path | local | `workdir`-kind pod members | `add` (pod blueprints only) | The pod's shared working directory (ROADMAP Phase 16 W-7). Mutually exclusive with `codebase` — present only when `workspaceKind: workdir` |
 | `blueprint` | string | — | local | No | `add` (pod blueprints only) | Name of the pod blueprint that provisioned this agent (`software`, `research`, `content`, `ops`, …) — see pod-blueprints.spec.md. Absent for any agent not provisioned through a blueprint |
 | `stack` | string | — | local | No | `add` | Comma-separated detected stack (e.g. `Docker,git`); not auto-detected for a `workdir`-kind agent (no codebase to inspect) |
-| `model` | string | `provider/model-id` | **synced** | Yes | `add`, `profile` | Provider-qualified model id mirrored to `openclaw.json` |
+| `model` | string | `provider/model-id` | local | Yes | `add`, `profile` | Provider-qualified model id. Not mirrored anywhere (P19-6) — this is its one home |
 | `modelSource` | enum | `policy` or `pinned` | local | Yes | `add`, `profile` | Whether the model follows the role policy or is pinned |
 | `description` | string | — | local | No | `add` | Free-text purpose |
 | `created` | string | ISO-8601 | local | Yes | `add` | Creation timestamp |
-| `sessionKey` | string | `agent:<id>:<project>` | **synced** | Yes | `add`, `scope` | Isolation key; mirrored to `openclaw.json` agent metadata |
+| `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
 | `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when the pod's spend (recorded, or estimated when the daemon recorded none) reaches its `budgetUsd` cap (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
@@ -87,18 +95,26 @@ this table fails type-checking or the test suite.
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 | `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
 
-## Sync contract
+## Sync contract (retired, ROADMAP Phase 19 P19-6)
 
-Only **`model`** and **`sessionKey`** are mirrored to `openclaw.json`:
+Before this card, **`model`** and **`sessionKey`** were mirrored to `openclaw.json`:
 
 - `model` — written to `agents.list[id].model` by `set_agent_model()` (via `docket profile`).
 - `sessionKey` — written to `agents.list[id].metadata.sessionKey` by `sync_session_key()` (via
-  `docket scope`); `projectKey` is written alongside it to `metadata.projectKey` for convenience.
+  `docket scope`); `projectKey` was written alongside it to `metadata.projectKey`.
+- `docket doctor` compared every `synced` field between `.docket-meta.json` and `openclaw.json`
+  and reported drift; `--fix` re-synced from `.docket-meta.json`.
 
-All other fields are **local** to docket. Do not expect them in `openclaw.json`.
-
-`docket doctor` compares every `synced` field between `.docket-meta.json` and `openclaw.json`
-and reports drift. `--fix` re-syncs from `.docket-meta.json` (the source of truth).
+**None of this exists anymore.** `set_agent_model`, `sync_session_key`, `core/sync.py`
+(`check_agent`/`check_all`/`Drift`), and `docket doctor`'s config-drift check are all deleted, not
+ported. Agent registration moved to docket's own `fleet.json` (`core/fleet.py`), and — this is
+the part worth stating plainly — **`fleet.json` does not track `model` or `sessionKey` at all**.
+It was never a design goal to give them a *new* second home; the goal was one home. `.docket-meta.json`
+is that home for every field in the schema table above, unconditionally. See
+agent-lifecycle.spec.md's registration requirements and `core/fleet.py`'s module docstring for the
+full rationale (a second writer — the daemon, a raw `openclaw` CLI call, an older docket version —
+was the actual source of the drift this section used to describe; a single-writer JSON file
+docket alone touches cannot drift from itself).
 
 ## Runtime environment injection (FD-0)
 
@@ -133,8 +149,8 @@ before it's written):
 
 On read, a missing file is treated as "agent not found" (return code 2), not an empty object.
 
-`sessionKey` and `projectKey` MUST stay consistent; `docket scope` updates both atomically and
-calls `sync_session_key()` to mirror the value into `openclaw.json`.
+`sessionKey` and `projectKey` MUST stay consistent; `docket scope` updates both atomically in
+this one file (P19-6: there is no longer a second file to mirror either into).
 
 ## Field rules
 
@@ -220,6 +236,19 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 2.8.0 (2026-08-02)
+
+- ROADMAP Phase 19 P19-6 (docket-native fleet registry): retired the `synced`/`local` field-sync
+  contract. `model` and `sessionKey` are no longer mirrored into `openclaw.json` — agent
+  registration moved to docket's own `fleet.json` (`core/fleet.py`), which does not track
+  per-agent `model`/`sessionKey` at all, so this file is now the unconditional single source for
+  both. `set_agent_model`, `sync_session_key`, and `core/sync.py` (the `check_agent`/`check_all`
+  drift comparison `docket doctor` rendered) are deleted, not ported — there is nothing left to
+  compare. Flipped both fields' Schema-table `Sync` column to `local` and rewrote "Sync contract"
+  as a retirement note rather than deleting it outright, since the history (why the drift used to
+  be possible, and why it no longer is) is worth keeping. Cross-referenced agent-lifecycle.spec.md
+  for the fleet.json side of this split.
 
 ### Version 2.7.0 (2026-07-30)
 

@@ -34,6 +34,74 @@ def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "_autouse_audit.log", raising=True)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Safety net: default FLEET_FILE to an ephemeral path for every test.
+
+    ROADMAP Phase 19 P19-6 decoupled ``DOCKET_HOME`` (fleet.json's home) from
+    ``OPENCLAW_DIR`` -- pre-P19-6, a test that repointed ``OPENCLAW_DIR``/
+    ``CONFIG_FILE`` for hermeticity got fleet-registry isolation "for free"
+    (docket-models.json etc. still don't). Since the two are independent now,
+    the same test would otherwise read/write the developer's real
+    ``~/.docket/fleet.json`` -- or worse, leak agent-registration state
+    between unrelated tests that happen to share that real default path.
+    Mirrors ``_isolate_audit_log`` above for the identical reason; a test
+    that wants a specific fleet.json still repoints ``_cfg.FLEET_FILE`` (and
+    ``edges.adapters.openclaw.FLEET_FILE``, bound at import time) itself,
+    which simply overrides this default.
+    """
+    fleet_file = tmp_path / "_autouse_fleet.json"
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    from docket.edges.adapters import openclaw as _oc
+
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
+
+
+# Every ``DOCKET_HOME``-derived path, and the config attribute each is read
+# through at call time. Verified by grep at the time this was written: nothing
+# under ``src/docket/`` binds these at import (no ``from docket.config import
+# TRACES_DIR`` etc.), so patching the config module alone is sufficient --
+# ``FLEET_FILE`` above is the one exception, and it patches its rebinding too.
+_DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
+    ("TRACES_DIR", "traces"),
+    ("APPROVALS_DIR", "approvals"),
+    ("POLICIES_DIR", "policies"),
+    ("SESSIONS_DIR", "sessions"),
+    ("PORT_ALLOC_FILE", "port-allocations.json"),
+    ("CONVERSATIONS_FILE", "docket-conversations.json"),
+    ("SCHEDULE_FILE", "docket-schedules.json"),
+    ("RUNS_FILE", "docket-runs.json"),
+    ("MCP_SERVERS_FILE", "docket-mcp-servers.json"),
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Safety net: default every ``DOCKET_HOME``-derived path to a tmp dir.
+
+    Same reasoning as ``_isolate_fleet_file`` above, which covered exactly one
+    of the ten constants that changed meaning. **Measured, not assumed:** with
+    only ``FLEET_FILE`` isolated, a full ``uv run pytest`` wrote real approval
+    records, trace JSONL, ``docket-conversations.json`` and
+    ``port-allocations.json`` into the developer's actual ``~/.docket``
+    (verified by snapshotting the directory either side of a run).
+
+    Before P19-6, ``DOCKET_HOME`` aliased ``OPENCLAW_DIR``, so any test that
+    repointed ``OPENCLAW_DIR`` for hermeticity isolated all of these for free.
+    Decoupling the two silently removed that safety net from every test that
+    relied on it. Two of these constants -- ``PORT_ALLOC_FILE`` and
+    ``CONVERSATIONS_FILE`` -- have no environment override at all, so a test
+    cannot opt out of the real path even deliberately; that is what makes this
+    an autouse default rather than each test's responsibility.
+
+    A test wanting a specific location still repoints the constant itself,
+    which simply overrides this default.
+    """
+    home = tmp_path / "_autouse_docket_home"
+    for attr, leaf in _DOCKET_HOME_PATHS:
+        monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
+
+
 def write_fake_openclaw(bindir: Path) -> Path:
     """Write a minimal `openclaw` shim that answers the read-only probes docket
     makes during install/doctor (``--version``; everything else exits 0)."""

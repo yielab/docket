@@ -386,7 +386,7 @@ pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 By the numbers:
 
 - **2,096 tests** in the pytest suite (`tests/python/`)
-- **~27,800 lines** of Python in the shipped `docket` package
+- **~27,600 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 

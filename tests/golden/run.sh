@@ -76,9 +76,16 @@ run_docket() {
   exit_code_file="$(mktemp)"
 
   # Prepend fakes/ so our stubs intercept openclaw/systemctl/docker
+  # DOCKET_HOME (Phase 19 P19-6) pinned to the same fake .openclaw dir the
+  # fixtures already seed -- its real default is now ~/.docket, independent
+  # of OPENCLAW_DIR, but seed.sh's traces/policies/approvals/fleet.json all
+  # live under $fake_home/.openclaw, and pinning here keeps every golden case
+  # unaffected by that default (this harness tests command OUTPUT, not the
+  # new home's default path -- that is covered by a pytest instead).
   PATH="$FAKES_DIR:$PATH" \
   HOME="$fake_home" \
   OPENCLAW_DIR="$fake_home/.openclaw" \
+  DOCKET_HOME="$fake_home/.openclaw" \
   DOCKET_FAKE_HOME="$fake_home" \
   DOCKET_NO_COLOR=1 \
   NO_COLOR=1 \

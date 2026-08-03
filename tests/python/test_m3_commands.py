@@ -45,10 +45,25 @@ OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings live in fleet.json now, not
+# openclaw.json's `agents`/`bindings` above (kept for the pieces that stay
+# genuinely daemon-owned until P19-7).
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
-    """Build subprocess env with OPENCLAW_DIR overridden."""
-    return {**os.environ, "OPENCLAW_DIR": str(oc_dir)}
+    """Build subprocess env with OPENCLAW_DIR (+ DOCKET_HOME) overridden.
+
+    P19-6: DOCKET_HOME (fleet.json's home) no longer defaults from
+    OPENCLAW_DIR, so a real subprocess needs both pinned to the same temp dir
+    or it would fall back to the real ~/.docket.
+    """
+    return {**os.environ, "OPENCLAW_DIR": str(oc_dir), "DOCKET_HOME": str(oc_dir)}
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
@@ -64,6 +79,7 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     (agent_ws / "MEMORY.md").write_text("# MEMORY\n")
 
     (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
+    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     return oc_dir
 
@@ -111,9 +127,9 @@ class TestCmdList:
 
     def test_list_json_unregistered_agent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        # Write openclaw.json with empty agents list
-        (oc_dir / "openclaw.json").write_text(
-            json.dumps({"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []})
+        # Write fleet.json with an empty agents list (P19-6: registration lives here)
+        (oc_dir / "fleet.json").write_text(
+            json.dumps({"agents": [], "bindings": [], "defaults": {"model": ""}})
         )
         rc, out, _ = _run(["list", "--json"], oc_dir)
         assert rc == 0
@@ -122,16 +138,18 @@ class TestCmdList:
 
     def test_list_json_telegram_binding(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        oc = {
-            **OC_CONFIG,
+        fleet = {
+            **FLEET_CONFIG,
             "bindings": [
                 {
                     "agentId": "myshop",
-                    "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-123456"}},
+                    "channel": "telegram",
+                    "peerKind": "group",
+                    "peerId": "-123456",
                 }
             ],
         }
-        (oc_dir / "openclaw.json").write_text(json.dumps(oc))
+        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
         rc, out, _ = _run(["list", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)

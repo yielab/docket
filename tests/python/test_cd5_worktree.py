@@ -184,10 +184,6 @@ def _fake_add_agent(member_id: str, model: str, session_key: str, project_key: s
     pass
 
 
-def _fake_sync(member_id: str, session_key: str, project_key: str) -> None:
-    pass
-
-
 class TestProvisionMemberWorktree:
     def _provision(
         self,
@@ -198,7 +194,6 @@ class TestProvisionMemberWorktree:
         with (
             mock.patch("shutil.which", return_value=None),
             mock.patch.object(_oc, "add_agent", side_effect=_fake_add_agent),
-            mock.patch.object(_oc, "sync_session_key", side_effect=_fake_sync),
         ):
             ok, msg = provision_member(
                 member,

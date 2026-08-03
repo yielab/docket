@@ -17,7 +17,6 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _doctor
 from docket.edges.adapters import openclaw as _oc
-from docket.edges.adapters import system as _sys
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -54,6 +53,17 @@ _OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings + gates/isolation flags live in
+# fleet.json now, not openclaw.json's `agents`/`bindings`/`security` above
+# (which the daemon still owns until P19-7 and stays in `_OC_CONFIG`, used
+# only for the pieces that are still genuinely daemon-owned, e.g. `channels`).
+_FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [],
+    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 @pytest.fixture(autouse=True)
 def _no_restart(monkeypatch: pytest.MonkeyPatch, fake_openclaw: Path) -> None:
@@ -75,12 +85,15 @@ def _point_config_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     what is on PATH.
     """
     cfg_file = oc_dir / "openclaw.json"
+    fleet_file = oc_dir / "fleet.json"
     projects = oc_dir / "workspaces" / "projects"
     monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
     monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects, raising=True)
-    # ACL bound CONFIG_FILE / meta_path directly at import — rebind them.
+    # ACL bound CONFIG_FILE / FLEET_FILE / meta_path directly at import — rebind them.
     monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
+    monkeypatch.setattr(_oc, "FLEET_FILE", fleet_file, raising=True)
     monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
     # Keep security probes hermetic (no real openclaw CLI invocation).
     monkeypatch.setattr(
@@ -97,7 +110,6 @@ def _seed(
     budget: str | None = None,
     register: bool = True,
     meta_model: str = "anthropic/claude-sonnet-4-6",
-    oc_model: str = "anthropic/claude-sonnet-4-6",
     secrets: dict[str, str] | None = None,
 ) -> Path:
     """Create a temp ~/.openclaw with one myshop agent and repoint config."""
@@ -114,13 +126,16 @@ def _seed(
     for f in files:
         (ws / f).write_text(f"# {f}\n")
 
-    oc = json.loads(json.dumps(_OC_CONFIG))
-    oc["agents"]["list"][0]["model"] = oc_model
-    if not register:
-        oc["agents"]["list"] = []
     cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps(oc))
+    cfg_file.write_text(json.dumps(_OC_CONFIG))
     cfg_file.chmod(0o600)
+
+    fleet = json.loads(json.dumps(_FLEET_CONFIG))
+    if not register:
+        fleet["agents"] = []
+    fleet_file = oc_dir / "fleet.json"
+    fleet_file.write_text(json.dumps(fleet))
+    fleet_file.chmod(0o600)
 
     if secrets is not None:
         sfile = oc_dir / "secrets.json"
@@ -175,7 +190,6 @@ class TestJsonProbe:
             "telegram",
             "agents",
             "modelConfig",
-            "drift",
             "budget",
             "runaway",
             "keyHygiene",
@@ -238,14 +252,11 @@ class TestChecks:
     ) -> None:
         oc_dir = _seed(tmp_path, monkeypatch)
         # Add a Telegram binding so the agent hits the success (stdout) path.
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        cfg["bindings"] = [
-            {
-                "agentId": "myshop",
-                "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-100"}},
-            }
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        fleet["bindings"] = [
+            {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
         ]
-        (oc_dir / "openclaw.json").write_text(json.dumps(cfg))
+        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
         assert _doctor._check_project_agents(["myshop"]) == 0
         assert "OK  →  group -100" in capsys.readouterr().out
 
@@ -267,9 +278,9 @@ class TestChecks:
         # requires the `<project>-<role>` shape).
         pod_ws = oc_dir / "workspaces" / "projects" / "demo-lead"
         ws.rename(pod_ws)
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        cfg["agents"]["list"][0]["id"] = "demo-lead"
-        (oc_dir / "openclaw.json").write_text(json.dumps(cfg))
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        fleet["agents"][0]["id"] = "demo-lead"
+        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
 
         issues = _doctor._check_project_agents(["demo-lead"])
         out = capsys.readouterr().out
@@ -290,9 +301,9 @@ class TestChecks:
         meta_p.write_text(json.dumps(data))
         pod_ws = oc_dir / "workspaces" / "projects" / "demo-implementer"
         ws.rename(pod_ws)
-        cfg = json.loads((oc_dir / "openclaw.json").read_text())
-        cfg["agents"]["list"][0]["id"] = "demo-implementer"
-        (oc_dir / "openclaw.json").write_text(json.dumps(cfg))
+        fleet = json.loads((oc_dir / "fleet.json").read_text())
+        fleet["agents"][0]["id"] = "demo-implementer"
+        (oc_dir / "fleet.json").write_text(json.dumps(fleet))
 
         issues = _doctor._check_project_agents(["demo-implementer"])
         out = capsys.readouterr().out
@@ -302,7 +313,7 @@ class TestChecks:
     def test_models_stale_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _seed(tmp_path, monkeypatch, oc_model="anthropic/claude-haiku-3-5")
+        _seed(tmp_path, monkeypatch, meta_model="anthropic/claude-haiku-3-5")
         issues = _doctor._check_models()
         out = capsys.readouterr().out
         assert issues == 1
@@ -314,44 +325,6 @@ class TestChecks:
         _seed(tmp_path, monkeypatch)
         assert _doctor._check_models() == 0
         assert "All agent models are valid" in capsys.readouterr().out
-
-    def test_drift_detected(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(
-            tmp_path,
-            monkeypatch,
-            meta_model="anthropic/claude-sonnet-4-6",
-            oc_model="anthropic/claude-haiku-4-5",
-        )
-        issues = _doctor._check_drift(["myshop"], do_fix=False)
-        out = capsys.readouterr().out
-        assert issues == 1
-        assert "drift" in out
-
-    def test_drift_fix_resyncs_and_clears_issue(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _seed(
-            tmp_path,
-            monkeypatch,
-            meta_model="anthropic/claude-sonnet-4-6",
-            oc_model="anthropic/claude-haiku-4-5",
-        )
-        monkeypatch.setattr(
-            _doctor, "restart_gateway", lambda: _sys.RestartResult(status="restarted", ok=True)
-        )
-        issues = _doctor._check_drift(["myshop"], do_fix=True)
-        assert issues == 0
-        # openclaw.json model now matches meta.
-        assert _oc.get_agent("myshop").model == "anthropic/claude-sonnet-4-6"  # type: ignore[union-attr]
-
-    def test_drift_in_sync(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        _seed(tmp_path, monkeypatch)
-        assert _doctor._check_drift(["myshop"], do_fix=False) == 0
-        assert "in sync" in capsys.readouterr().out
 
     def test_budget_no_cap(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

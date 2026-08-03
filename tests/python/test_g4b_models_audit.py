@@ -59,6 +59,7 @@ def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
 

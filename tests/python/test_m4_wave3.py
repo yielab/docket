@@ -52,11 +52,23 @@ OC_CONFIG: dict[str, Any] = {
     "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
 }
 
+# P19-6: agent registration + channel bindings live in fleet.json now, not
+# openclaw.json's `agents`/`bindings` above.
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "myshop"}],
+    "bindings": [
+        {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-999"}
+    ],
+    "defaults": {"model": ""},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+}
+
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
+        "DOCKET_HOME": str(oc_dir),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -75,6 +87,7 @@ def _setup_agent(
     for fname in workspace_files or []:
         (ws / fname).write_text(f"# {agent_id}\n")
     (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
+    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
     return oc_dir
 
 
@@ -288,7 +301,13 @@ class TestCmdSnapshot:
             json.dumps({"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []})
         )
         rc, out, _ = _run(
-            ["snapshot"], {**os.environ, "OPENCLAW_DIR": str(oc_dir), "DOCKET_NO_RESTART": "1"}
+            ["snapshot"],
+            {
+                **os.environ,
+                "OPENCLAW_DIR": str(oc_dir),
+                "DOCKET_HOME": str(oc_dir),
+                "DOCKET_NO_RESTART": "1",
+            },
         )
         assert rc == 0
         data = json.loads(out)

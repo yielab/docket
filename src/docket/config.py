@@ -21,7 +21,16 @@ PROJECTS_DIR = OPENCLAW_DIR / "workspaces" / "projects"
 SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
 LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
 
-DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", OPENCLAW_DIR))
+# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root,
+# independent of OPENCLAW_DIR -- the daemon's directory, which P19-7 deletes.
+# Before this card DOCKET_HOME aliased OPENCLAW_DIR (same physical directory,
+# convenient while docket's files and the daemon's lived side by side); now it
+# is genuinely docket's own home. Every file already resolved via DOCKET_HOME
+# (traces/policies/approvals/schedules/runs/sessions/conversations/mcp-servers/
+# FLEET_FILE below) moves with it automatically -- no other constant changes.
+# Files that remain daemon-owned (openclaw.json, auth-profiles, workspaces,
+# session JSONL) stay under OPENCLAW_DIR until P19-7 deletes that tree outright.
+DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
 AUDIT_LOG = OPENCLAW_DIR / "audit.log"
 # AUDIT_LOG_MAX_BYTES: audit.log rotates to a single-generation backup
@@ -338,3 +347,15 @@ FETCH_MAX_RESPONSE_BYTES = int(os.environ.get("FETCH_MAX_RESPONSE_BYTES", str(20
 # FETCH_TIMEOUT_S: default per-call wall-clock bound, overridable per call via
 # the tool's own `timeout` argument up to this same order of magnitude.
 FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
+
+# ── P19-6: docket-native fleet registry (core/fleet.py, edges/adapters/openclaw.py) ──
+# FLEET_FILE replaces openclaw.json as the source of truth for agent
+# registration, channel bindings, gates/isolation flags, and the org-wide
+# default model. Docket-owned JSON, so it is read/written only through
+# edges/store.py (atomic, filelocked, 0600) -- never through the ACL's raw
+# openclaw.json helpers. Per-agent facts that already have a home in
+# .docket-meta.json (model, sessionKey, projectKey) are NOT duplicated here;
+# the fleet registry tracks only what has no other home (see core/fleet.py's
+# module docstring for the full rationale — this is what makes the old
+# meta<->openclaw.json drift check obsolete rather than merely relocated).
+FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))

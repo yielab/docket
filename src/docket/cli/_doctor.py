@@ -22,8 +22,7 @@ import docket.config as _cfg
 from docket import ui
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
-from docket.core import sync as _sync
-from docket.core.utils import aggregate_cost, gateway_active, project_ids, restart_gateway
+from docket.core.utils import aggregate_cost, gateway_active, project_ids
 from docket.edges import store
 from docket.edges.adapters import openclaw as _oc
 
@@ -115,13 +114,19 @@ def _check_binaries() -> int:
 
 
 def _check_config() -> int:
-    """openclaw.json presence + JSON validity."""
+    """openclaw.json presence + JSON validity.
+
+    Checks the raw file directly rather than through `_oc.load_config()` —
+    since P19-6 that function reads the docket-owned fleet registry
+    (fleet.json), a different file with its own always-valid defaults; it can
+    no longer stand in for openclaw.json's own JSON-validity check.
+    """
     if not _cfg.CONFIG_FILE.is_file():
         ui.console.print(f"[red]✗[/red] Config missing: {_cfg.CONFIG_FILE}")
         ui.console.print("  Run: openclaw onboard")
         return 1
     try:
-        _oc.load_config()
+        store.read_json(_cfg.CONFIG_FILE)
     except Exception:
         ui.console.print(f"[red]✗[/red] Config JSON is invalid: {_cfg.CONFIG_FILE}")
         ui.console.print("  Run: openclaw doctor")
@@ -259,13 +264,14 @@ def _check_today_log() -> int:
 
 
 def _check_models() -> int:
-    """Flag stale/aliased model names in openclaw.json agents.list."""
+    """Flag stale/aliased model names across every registered agent's meta."""
     ui.console.print()
     ui.console.print("[bold]Model Configuration[/bold]")
     invalid: list[str] = []
     for a in _oc.list_agents():
-        if a.model in _STALE_MODELS:
-            invalid.append(f"{a.id}: {a.model}")
+        model = _oc.meta_get(a.id, "model", "")
+        if model in _STALE_MODELS:
+            invalid.append(f"{a.id}: {model}")
     if not invalid:
         ui.success("  All agent models are valid")
         return 0
@@ -352,60 +358,6 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
             issues -= 1
         else:
             ui.console.print("    Fix with: docket doctor --fix")
-    return issues
-
-
-def _check_drift(ids: list[str], do_fix: bool) -> int:
-    """Config drift (meta ↔ openclaw.json) on model + sessionKey.
-
-    The comparison itself is `core/sync.py`'s `check_agent` (the single
-    implementation of this logic); this function only renders the result and
-    drives the `--fix` re-sync, since `core/` never prints.
-    """
-    if not ids:
-        return 0
-    ui.console.print()
-    ui.console.print("[bold]Config drift check (meta ↔ openclaw.json):[/bold]")
-
-    oc = _oc.load_config()
-    drift_agents: list[str] = []
-    issues = 0
-
-    for aid in ids:
-        if not _cfg.meta_path(aid).is_file():
-            continue
-        drifts = _sync.check_agent(aid, oc)
-
-        if drifts:
-            summary = "; ".join(
-                f"{d.field} meta={d.meta_value} openclaw={d.oc_value}" for d in drifts
-            )
-            ui.console.print(f"[red]✗[/red]   {aid}: drift — {summary}")
-            issues += 1
-            drift_agents.append(aid)
-        else:
-            ui.success(f"  {aid}: in sync")
-
-    if drift_agents:
-        if do_fix:
-            ui.console.print("  Fixing drift (re-syncing from .docket-meta.json)...")
-            for aid in drift_agents:
-                fix_model = _oc.meta_get(aid, "model", "")
-                fix_sk = _oc.meta_get(aid, "sessionKey", "")
-                if fix_model:
-                    with contextlib.suppress(Exception):
-                        _oc.set_agent_model(aid, fix_model)
-                if fix_sk:
-                    with contextlib.suppress(Exception):
-                        _oc.set_agent_session_key(aid, fix_sk)
-                ui.success(f"  {aid}: re-synced")
-            with contextlib.suppress(Exception):
-                from docket.cli import _render_restart_result
-
-                _render_restart_result(restart_gateway())
-            issues -= len(drift_agents)
-        else:
-            ui.console.print("  Fix with: docket doctor --fix")
     return issues
 
 
@@ -615,8 +567,7 @@ def _check_metadata_backfill(ids: list[str]) -> int:
             continue
         if (sdir / _cfg.META_FILE).is_file():
             continue
-        oc_a = _oc.get_agent(spec)
-        sm = oc_a.model if oc_a and oc_a.model else _mp.resolve_role_model(spec)
+        sm = _mp.resolve_role_model(spec)
         meta = {
             "kind": "specialist",
             "role": spec,
@@ -907,19 +858,17 @@ def _doctor_json() -> dict[str, Any]:
         issues += 1
 
     config_data: dict[str, Any]
-    config_ok = False
     oc = None
     try:
         oc = _oc.load_config()
-        config_ok = True
         config_data = {
             "ok": True,
-            "path": str(_cfg.CONFIG_FILE),
-            "agents": len(oc.agents.items),
+            "path": str(_cfg.FLEET_FILE),
+            "agents": len(oc.agents),
             "bindings": len(oc.bindings),
         }
     except Exception as ex:
-        config_data = {"ok": False, "path": str(_cfg.CONFIG_FILE), "error": str(ex)}
+        config_data = {"ok": False, "path": str(_cfg.FLEET_FILE), "error": str(ex)}
         issues += 1
 
     gw_ok = gateway_active()
@@ -927,14 +876,14 @@ def _doctor_json() -> dict[str, Any]:
     if not gw_ok:
         issues += 1
 
-    tg_enabled = _oc.get_telegram_enabled() if config_ok else False
+    tg_enabled = _oc.get_telegram_enabled() if _cfg.CONFIG_FILE.is_file() else False
 
-    oc_agent_map = {a.id: a for a in oc.agents.items} if oc else {}
+    oc_agent_map = {a.id: a for a in oc.agents} if oc else {}
     tg_map: dict[str, str] = {}
     if oc:
         for b in oc.bindings:
-            if b.match.channel == "telegram":
-                tg_map[b.agent_id] = b.match.peer.id
+            if b.channel == "telegram":
+                tg_map[b.agent_id] = b.peer_id
 
     agents_json: list[dict[str, Any]] = []
     for aid in ids:
@@ -954,9 +903,10 @@ def _doctor_json() -> dict[str, Any]:
         )
 
     invalid_models: list[dict[str, str]] = []
-    for a in oc.agents.items if oc else []:
-        if a.model in _STALE_MODELS:
-            invalid_models.append({"id": a.id, "model": a.model, "suggest": _STALE_MODELS[a.model]})
+    for a in oc.agents if oc else []:
+        model = _oc.meta_get(a.id, "model", "")
+        if model in _STALE_MODELS:
+            invalid_models.append({"id": a.id, "model": model, "suggest": _STALE_MODELS[model]})
             issues += 1
 
     legacy_migration_note = _mp.migrate_legacy_profiles()
@@ -982,21 +932,6 @@ def _doctor_json() -> dict[str, Any]:
             issues += 1
         dispatch_ledger_results.append(
             {"project": project, "ok": ok, "missingFromLedger": missing, "staleInLedger": stale}
-        )
-
-    drift_results: list[dict[str, Any]] = []
-    for aid in ids:
-        meta = store.read_json(_cfg.meta_path(aid))
-        meta_model = str(meta.get("model", ""))
-        if not meta_model:
-            continue
-        oc_a = oc_agent_map.get(aid)
-        oc_model = oc_a.model if oc_a else ""
-        synced = not oc_model or meta_model == oc_model
-        if not synced:
-            issues += 1
-        drift_results.append(
-            {"id": aid, "metaModel": meta_model, "ocModel": oc_model, "synced": synced}
         )
 
     cost = _batch_cost(ids)
@@ -1090,7 +1025,6 @@ def _doctor_json() -> dict[str, Any]:
             "modelConfig": {"ok": not invalid_models, "invalid": invalid_models},
             "modelRegistry": model_registry,
             "dispatchLedger": dispatch_ledger_results,
-            "drift": drift_results,
             "budget": budget_results,
             "runaway": runaway_results,
             "keyHygiene": {"keys": keys_list, "missingForAgents": missing_keys},
@@ -1104,7 +1038,7 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     """Run all health checks. Return 0 when healthy, 1 when issues are flagged.
 
     json_out: emit the machine-readable report and use it as a health probe.
-    do_fix:   auto-fix config drift (re-sync from .docket-meta.json).
+    do_fix:   auto-fix the dispatch task ledger (re-sync from TASK_LIST.json).
     """
     if json_out:
         report = _doctor_json()
@@ -1128,7 +1062,6 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     issues += _check_models()
     _check_legacy_model_registry()
     issues += _check_dispatch_ledger(do_fix)
-    issues += _check_drift(ids, do_fix)
     issues += _check_budget(ids, cost)
     issues += _check_runaway(ids, cost)
     _check_key_hygiene()
