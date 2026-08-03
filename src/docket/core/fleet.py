@@ -258,6 +258,23 @@ def remove_binding(agent_id: str, channel: str | None = None) -> None:
     _save_fleet(cfg)
 
 
+def find_binding(channel: str, peer_id: str, cfg: FleetConfig | None = None) -> FleetBinding | None:
+    """Reverse lookup: the binding (if any) a channel peer is wired to.
+
+    The authorization primitive P19-8's Telegram channel is built on --
+    ``get_binding``/``agent_bindings`` above answer "what peer is *this
+    agent* bound to"; an inbound channel message needs the opposite
+    direction, "what agent (if any) is *this peer* bound to". A peer maps to
+    at most one agent per channel (``upsert_binding`` replaces, never
+    appends, for a given (agent_id, channel) pair), so the first match is the
+    only match.
+    """
+    for b in (cfg or load_fleet()).bindings:
+        if b.channel == channel and b.peer_id == peer_id:
+            return b
+    return None
+
+
 def agent_bindings(agent_id: str, cfg: FleetConfig | None = None) -> list[dict[str, str]]:
     """Return [{channel, peerId}, ...] for one agent's bindings."""
     return [

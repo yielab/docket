@@ -483,9 +483,7 @@ def cmd_wire(
 
     # Phase 19 P19-7b: log-based Telegram group discovery (`scan_telegram_groups`)
     # depended on the daemon's gateway log, which no longer exists. Every
-    # channel — telegram included — is now manual entry only. A docket-owned
-    # Telegram channel is P19-8's job; until it lands, this only records a
-    # binding in fleet.json, it does not make docket listen on it.
+    # channel — telegram included — is now manual entry only.
     ui.dim(f"Enter the peer/group ID from your {channel} setup.")
     ui.console.print()
     peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
@@ -496,9 +494,16 @@ def cmd_wire(
     _fleet.upsert_binding(aid, peer_id, channel)
     ui.success(f"Binding: {aid} ← {channel} group {peer_id}")
     if channel == "telegram":
+        # P19-8: docket owns its own bot now (`docket serve --telegram`, once
+        # `docket keys add TELEGRAM_BOT_TOKEN` is set) — this binding is the
+        # ENTIRE authorization boundary for it: anyone who can post to this
+        # chat can /approve, /deny, /status, or /delegate as '{aid}' the
+        # moment the bot is running. There is no second allowlist step.
         ui.dim(
-            "  No daemon exists to answer this channel yet — the binding is recorded, but"
-            " nothing listens on it until docket owns its own Telegram bot (P19-8)."
+            "  This binding is the whole authorization story: whoever can post in this chat"
+            f" can now /approve, /deny, /status, or /delegate for '{aid}' once docket's own"
+            " bot is running (docket serve --telegram, with TELEGRAM_BOT_TOKEN configured)."
+            " Keep the chat restricted to people who should hold that power."
         )
 
     # Register the thread in the docket-owned conversation registry so it is
@@ -1567,6 +1572,14 @@ def cmd_serve(
         "--dispatch",
         help="Also drive each pod's queued tasks through its pipeline (real, costed agent turns)",
     ),
+    telegram: bool = typer.Option(
+        False,
+        "--telegram",
+        help=(
+            "Long-poll docket's own Telegram bot for /approve /deny /status /delegate "
+            "(needs: docket keys add TELEGRAM_BOT_TOKEN)"
+        ),
+    ),
     token_file: str | None = typer.Option(
         None,
         "--token-file",
@@ -1581,11 +1594,16 @@ def cmd_serve(
     Binds to 127.0.0.1 (loopback-only) — not reachable off this host. With
     --dispatch, each refresh also runs every pod's queue through the
     Lead→Implementer→Reviewer→Tester pipeline. Each hop is a real agent
-    turn and is budget-gated; leave it off for a read-only monitor.
+    turn and is budget-gated; leave it off for a read-only monitor. With
+    --telegram, also polls docket's own Telegram bot (ROADMAP Phase 19
+    P19-8) so a chat bound via `docket wire` can /approve, /deny, /status,
+    or /delegate — idle until a bot token is stored.
     """
     from docket.serve import run_serve
 
-    run_serve(port=port, interval=interval, dispatch=dispatch, token_file=token_file)
+    run_serve(
+        port=port, interval=interval, dispatch=dispatch, telegram=telegram, token_file=token_file
+    )
 
 
 @app.command("completions")

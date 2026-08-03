@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.11.0
+**Version**: 0.12.0
 **Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, **unlike** the in-turn tool-call gate above (now live), still has no live-path caller: `DocketDriver`'s `ToolContext` construction never sets `sandbox="auto"`, so nothing in production requests a jail yet even though the gate that decides whether a `bash` call may run at all is itself now unconditionally live. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
 **Last Updated**: 2026-08-03
 
@@ -27,8 +27,9 @@ both configures and enforces this gate itself.
 > **approval-routing** is turned on (`core/security.py`'s `apply_approval_routing`/
 > `disable_approval_routing`, recorded via `core/fleet.py`'s `FleetSecurity`) — i.e. whether a
 > `require_approval`/`ask` verdict's prompt is routed to each channel-bound agent's session,
-> answerable via `docket approve`/`docket deny`, `POST /approvals/<token>`, or (once a
-> docket-owned channel bot exists — P19-8, not shipped) a chat reply. `docket gates isolate
+> answerable via `docket approve`/`docket deny`, `POST /approvals/<token>`, or — since ROADMAP
+> Phase 19 P19-8 — a `/approve`/`/deny` reply in a chat bound via `docket wire`, answered by
+> docket's own bot (`docket serve --telegram`). `docket gates isolate
 > on`/`off` separately records (`core/security.py`'s `apply_workspace_isolation`/
 > `disable_workspace_isolation`) whether tool execution should be confined to a per-agent Docker
 > sandbox — recorded today, **not yet consulted by the turn loop** (`DocketDriver` always runs
@@ -52,6 +53,13 @@ both configures and enforces this gate itself.
 >   automation vote on a pending approval without a human at a keyboard.
 >
 > Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
+> **Since ROADMAP Phase 19 P19-8, Telegram itself is also headless** — docket's own bot
+> (`docket serve --telegram`) answers a bound chat's `/approve`/`/deny` with no interactive
+> session or daemon in the loop, the same "session-mode delivery only works interactively"
+> limitation this paragraph originally cited no longer applies to it either. Counting the MCP
+> channel below (`cli/_mcp.py`'s `approve`/`deny` tools, `channel="mcp"`), docket's approval
+> store now has **four** headless channels — CLI, HTTP, MCP, Telegram — all calling the same
+> `approval_grant`/`approval_deny` + `resolve_waiting_approval` pair.
 >
 > **Superseded by Phase 19 P19-7b (2026-08-03): the daemon side of this seam no longer exists.**
 > The two paragraphs immediately below describe a two-system world — the daemon's own
@@ -61,8 +69,9 @@ both configures and enforces this gate itself.
 > record of why no such bridge was ever built; read every present-tense claim about "the daemon's
 > exec-approval prompt" in them as **historical**, describing a system this codebase no longer
 > ships, not a live gap. The `telegram` audit-channel tag referenced throughout is likewise no
-> longer "reserved for a future daemon bridge" — there is no daemon left to bridge to; it remains
-> reserved for a future docket-owned channel bot (P19-8, not yet shipped).
+> longer "reserved for a future daemon bridge" — there is no daemon left to bridge to, and as of
+> ROADMAP Phase 19 P19-8 it is no longer reserved for anything: docket's own bot writes it on
+> every real grant/deny (`core/telegram.py`, see the requirement above).
 >
 > **The approval seam (updated 2026-07-30 — G-1 shipped, G-5 concluded "no bridge"; historical
 > as of P19-7b, see note above).** There are two approval systems in play, and **the daemon-facing
@@ -157,14 +166,18 @@ are owned here, not there.
    see "High-risk action classes" below for how the `pre_tool_call` policy engine closes that
    specific, narrower gap on the same dispatcher.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
-   channel (CLI `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`). Since Phase 19
-   P19-7b deleted the daemon, docket's store is the **only** approval system left — the
+   channel (CLI `docket approve`/`docket deny`, HTTP `POST /approvals/<token>`, or — since
+   ROADMAP Phase 19 P19-8 — Telegram, itself headless: a bound chat's `/approve`/`/deny` reply is
+   answered by `docket serve --telegram`'s poll loop with no interactive session required). Since
+   Phase 19 P19-7b deleted the daemon, docket's store is the **only** approval system left — the
    "daemon's own gate prompt, unbridged" caveat that used to qualify this requirement no longer
    applies to anything real; see the approval-seam note above. Since ROADMAP Phase 15 G-1, one
-   real producer exists for this store — `core/dispatch.py`'s require_approval gate — and both
-   headless channels **MUST** genuinely resume or kill the dispatch task a gate stopped, not
+   real producer exists for this store — `core/dispatch.py`'s require_approval gate — and every
+   headless channel **MUST** genuinely resume or kill the dispatch task a gate stopped, not
    merely flip the approval record's own state; see `pod-dispatch.spec.md`'s
-   `resolve_waiting_approval`.
+   `resolve_waiting_approval`. Telegram's `core/telegram.py`'s `_handle_decision` calls the
+   identical `approval_grant`/`approval_deny` + `resolve_waiting_approval` sequence
+   `cli/_approve.py`/`cli/_deny.py` use — one approval implementation, four callers.
 3. A gate prompt with no approver **MUST** fail closed. With the daemon gone, this is entirely
    docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
    `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in
@@ -174,10 +187,12 @@ are owned here, not there.
    fail the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
    log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
-   through (`cli`, `http`, or `timeout` for the expiry sweep's own fail-closed denial). The
-   `telegram` tag is reserved for a future docket-owned channel bot (P19-8, not yet shipped) —
-   not, as previously described here, a bridge to the daemon's own `/approve`, since there is no
-   longer a daemon for that mechanism to belong to.
+   through (`cli`, `http`, `telegram`, or `timeout` for the expiry sweep's own fail-closed
+   denial). **Since ROADMAP Phase 19 P19-8, the `telegram` tag is live**: it is docket's own bot
+   (`docket serve --telegram`, `core/telegram.py`) answering through docket's own approval store —
+   never, as this spec used to (mis)describe before a daemon existed for the ambiguity to matter,
+   a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
+   one; see the G-5 findings section below for why that path was investigated and closed.
 
 ### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged; historical — the daemon this investigated was deleted by P19-7b)
 
@@ -777,9 +792,13 @@ GET  /approvals                # docket serve: list pending approvals (bearer au
 POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (bearer auth)
                                 #   (G-1: same resume/kill behavior as the CLI channel)
 
-# There is no longer a daemon-side gate prompt to contrast this with (P19-7b deleted the daemon
-# outright). A future docket-owned channel bot (P19-8, not yet shipped) is the planned third
-# way to answer a pending approval, alongside the CLI/HTTP channels above.
+# /approve <token> and /deny <token> in a chat bound via `docket wire`, answered by docket's
+# own bot (`docket serve --telegram`, ROADMAP Phase 19 P19-8) -- same resume/kill behavior,
+# same audit trail, tagged channel="telegram". See telegram-integration.spec.md.
+#
+# There is no longer a daemon-side gate prompt to contrast any of the above with (P19-7b
+# deleted the daemon outright); every channel above answers the same, single, docket-owned
+# approval store.
 ```
 
 ### `docket policies` command (implemented, ROADMAP Phase 15 G-2)
@@ -1197,6 +1216,29 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.12.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-8 — docket owns its own Telegram bot; `telegram` is now a live audit
+  channel, not a reserved one.** `docket serve --telegram` long-polls the Bot API
+  (`edges/adapters/telegram.py`) and routes `/approve`/`/deny` through `core/telegram.py`'s
+  `_handle_decision`, which calls the identical `approval_grant`/`approval_deny` +
+  `resolve_waiting_approval` sequence `cli/_approve.py`/`cli/_deny.py` already use — one
+  approval implementation, now four callers (CLI, HTTP, MCP, Telegram). Every grant/deny through
+  it writes `audit_log(..., channel="telegram")`.
+  - Corrected every "`telegram` is reserved for a future docket-owned channel bot (P19-8, not
+    yet shipped)" claim this spec carried since 0.11.0 — that bot is what this version ships.
+  - **Authorization is the channel's own contract, documented here because it is a gate-adjacent
+    property**: only a chat id with an existing `fleet.json` binding
+    (`docket wire`/`core.fleet.find_binding`) may approve/deny/status/delegate anything; an
+    unbound chat is refused and the attempt is audited (`telegram.unauthorized`), never
+    silently dropped. See telegram-integration.spec.md for the full command grammar and
+    security model — this spec only tracks the approval-channel consequence.
+  - "Why on-by-default now" is updated: Telegram itself is now headless-capable (no interactive
+    session or daemon required), so the reasoning that justified gates-on-by-default for
+    CLI/HTTP applies to it too.
+  - No change to the tool-call gate, high-risk classifier, or workspace isolation — this card
+    touched only the approval-channel surface.
 
 ### Version 0.11.0 (2026-08-03)
 

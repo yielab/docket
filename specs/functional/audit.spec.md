@@ -1,10 +1,12 @@
 # Audit Log Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped, now including `models.*`, `runs.cancel`, and `mcp_servers.*` — see
-Requirement 2 for what audit still does NOT see). **ROADMAP Phase 19 P19-7a** moved the log file
-itself from `$OPENCLAW_DIR/audit.log` to `$DOCKET_HOME/audit.log` — see Requirement 5.
+removal below are all shipped, now including `models.*`, `runs.cancel`, `mcp_servers.*`, and
+`telegram.*` — see Requirement 2 for what audit still does NOT see). **ROADMAP Phase 19 P19-7a**
+moved the log file itself from `$OPENCLAW_DIR/audit.log` to `$DOCKET_HOME/audit.log` — see
+Requirement 5. **ROADMAP Phase 19 P19-8** gave the `channel=telegram` tag on `approval.grant`/
+`approval.deny` a real producer for the first time — see Requirement 1's `telegram.*` family.
 **Last Updated**: 2026-08-03
 
 ## Purpose
@@ -92,6 +94,16 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      happened when docket *connected* to a server; this family records the CLI operator *changing
      the configured server list*, the same client/server split `mcp.<tool>` vs. `mcp_client.*`
      already draws above.
+   - `telegram.unauthorized` / `telegram.delegate_blocked` / `telegram.delegate_warn`
+     (`core/telegram.py`, ROADMAP Phase 19 P19-8) — the docket-owned Telegram bot's own audit
+     family, the same client-side shape as `mcp_client.*` above: `telegram.unauthorized` fires
+     when a message arrives on a chat id with no `fleet.json` binding (`detail` names the chat id
+     and update id — never the message text); `telegram.delegate_blocked`/`_warn` fire when a
+     `/delegate` message's text trips the `pre_input` policy hook (`detail` names the project and
+     policy id — never the message text). **A grant/deny answered through Telegram writes no
+     entry in this family** — it writes the ordinary `approval.grant`/`approval.deny` entry
+     (below) tagged `channel=telegram`, exactly as a CLI or HTTP grant would; this family exists
+     only for the channel-specific events (a refusal) that have no other home.
 2. **What the log does NOT see (scope boundary, not a backlog item).** Both gaps tracked through
    Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version
    2.3.0; the two cards that closed them (Phase 15 G-4b, Phase 16 W-4) landed in the same wave.
@@ -278,6 +290,16 @@ redundant.
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.6.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-8 — the docket-owned Telegram bot is a real audit producer.** Added the
+  `telegram.unauthorized` / `telegram.delegate_blocked` / `telegram.delegate_warn` action family
+  (`core/telegram.py`) to Requirement 1's implemented-families list. `channel=telegram` on
+  `approval.grant`/`approval.deny` is no longer a reserved-but-unwritten tag (security-gates.spec.md
+  v0.11.0 and earlier described it that way) — it is written on every real grant/deny answered
+  through a `docket wire`-bound chat, via the same `approval_grant`/`approval_deny` producer every
+  other channel calls. No schema change: this is a new *producer*, not a new entry shape.
 
 ### Version 2.5.0 (2026-08-03)
 

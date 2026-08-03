@@ -344,6 +344,59 @@ def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) ->
         _run_sweeps(dispatch)
 
 
+# P19-8: the Telegram long-poll loop. `core.telegram.poll_once` already never
+# raises for an unconfigured bot or a network failure (it returns a typed
+# summary) -- the `except Exception` below is a last-resort backstop for a
+# genuinely unexpected bug in that call chain, and it prints rather than
+# swallows (D-17: `contextlib.suppress(Exception)` around dispatch is
+# banned; a delegate action reaching `core.dispatch.enqueue_task` is exactly
+# that "dispatch" this loop must not hide a failure from).
+_TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
+_TELEGRAM_ERROR_BACKOFF_S = 5
+
+
+def _telegram_poll_loop(stop: threading.Event) -> None:
+    """Long-poll Telegram until *stop* is set, handling one batch per call.
+
+    Paced by Telegram's own long-poll wait
+    (`config.TELEGRAM_POLL_TIMEOUT_S`) when a bot token is configured and
+    the previous call succeeded -- `getUpdates` itself blocks server-side, so
+    no extra sleep is needed on the happy path. Backs off on an unconfigured
+    bot (checked again every `_TELEGRAM_UNCONFIGURED_BACKOFF_S`, in case
+    `docket keys add TELEGRAM_BOT_TOKEN` runs while `docket serve` is up) or
+    a transport failure (`_TELEGRAM_ERROR_BACKOFF_S`) so either case never
+    busy-loops.
+    """
+    from docket.core import telegram as _telegram
+
+    printed_unconfigured = False
+    while not stop.is_set():
+        try:
+            summary = _telegram.poll_once()
+        except Exception as exc:  # pragma: no cover - backstop, see docstring above
+            print(f"[serve] telegram: poll failed: {type(exc).__name__}: {exc}")
+            if stop.wait(_TELEGRAM_ERROR_BACKOFF_S):
+                return
+            continue
+
+        if not summary.configured:
+            if not printed_unconfigured:
+                print(
+                    "[serve] telegram: no TELEGRAM_BOT_TOKEN configured "
+                    "(docket keys add TELEGRAM_BOT_TOKEN) -- channel idle"
+                )
+                printed_unconfigured = True
+            if stop.wait(_TELEGRAM_UNCONFIGURED_BACKOFF_S):
+                return
+            continue
+
+        printed_unconfigured = False
+        if not summary.ok:
+            print(f"[serve] telegram: {summary.error}")
+            if stop.wait(_TELEGRAM_ERROR_BACKOFF_S):
+                return
+
+
 class _DocketHandler(BaseHTTPRequestHandler):
     """Serves the docket endpoints; builds responses on demand.
 
@@ -555,6 +608,7 @@ def run_serve(
     bind: str = "127.0.0.1",
     interval: int = DEFAULT_INTERVAL,
     dispatch: bool = False,
+    telegram: bool = False,
     token_file: str | None = None,
 ) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
@@ -565,6 +619,14 @@ def run_serve(
     /status.json, /metrics, /health. Responses are built on each request
     (cheap, index-backed). Runs sweeps once at startup and then every
     *interval* seconds in a daemon thread. Runs until interrupted.
+
+    ``telegram``, when set (``docket serve --telegram``), also starts the
+    docket-owned Telegram long-poll loop (ROADMAP Phase 19 P19-8) in its own
+    daemon thread — opt-in, matching ``dispatch``, since it is a real
+    externally-reachable channel once a bot token is configured. Degrades to
+    an idle, periodically-retried wait if no ``TELEGRAM_BOT_TOKEN`` is
+    stored (``docket keys add TELEGRAM_BOT_TOKEN``) rather than failing to
+    start — see ``core/telegram.py``.
 
     ``token_file``, when given, writes the bearer token required by
     /approvals and /dispatch to that path (0600 perms) instead of printing it
@@ -583,9 +645,14 @@ def run_serve(
     sweeper = threading.Thread(target=_sweep_loop, args=(interval, stop, dispatch), daemon=True)
     sweeper.start()
 
+    if telegram:
+        tg_thread = threading.Thread(target=_telegram_poll_loop, args=(stop,), daemon=True)
+        tg_thread.start()
+
     server = ThreadingHTTPServer((bind, actual_port), _BoundHandler)
     disp = "  dispatch=on" if dispatch else ""
-    print(f"docket serve  port={actual_port}  refresh={interval}s{disp}  (Ctrl-C to stop)")
+    tg = "  telegram=on" if telegram else ""
+    print(f"docket serve  port={actual_port}  refresh={interval}s{disp}{tg}  (Ctrl-C to stop)")
     print(
         f"Endpoints: /status.json  /metrics  /health  /approvals  /runs  /dispatch"
         f"  ->  http://localhost:{actual_port}/"

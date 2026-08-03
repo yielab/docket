@@ -217,9 +217,10 @@ class TestCmdUnwire:
 class TestCmdWire:
     """P19-7b: `scan_telegram_groups` depended on the daemon's gateway log,
     which no longer exists -- `docket wire` is manual entry only now (see
-    cli/__init__.py's cmd_wire). A docket-owned Telegram channel is P19-8's
-    job; until it lands this only records a peer id in fleet.json, honestly
-    warning that nothing listens on it yet.
+    cli/__init__.py's cmd_wire). P19-8 gave docket its own Telegram bot
+    (`docket serve --telegram`); the binding this command records is now the
+    *entire* authorization boundary for it (see core/telegram.py), so the
+    output says that plainly instead of "nothing listens on it yet".
     """
 
     def test_wire_unknown_agent_exits_1(self, tmp_path: Path) -> None:
@@ -249,9 +250,9 @@ class TestCmdWire:
         binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
         assert binding["peerId"] == "-999888777"
-        # Honest: no daemon exists yet to actually listen on this channel.
+        # Honest (P19-8): the binding IS the authorization boundary now.
         combined = out + err
-        assert "no daemon exists" in combined.lower()
+        assert "whole authorization story" in combined.lower()
 
     def test_wire_shows_existing_binding_warning(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_binding=True)
