@@ -733,7 +733,47 @@ edited by several branches at once holds no single correct side.
 reference only the inert `ToolOutcome` type, and added a narrower guard in its place. The integrator
 re-verified that replacement by planting a real handler-function import — it fired.
 
-### ▶ Wave 10 — READY TO DISPATCH (four cards in parallel; re-scoped by D-24 on 2026-07-31)
+### ☑ Wave 10 — COMPLETE (2026-08-02, all four merged)
+
+Merge order `p19-11 -> p19-12 -> p19-13 -> p19-6`. **Tree: 2,026 -> 2,096 tests**, 18/18 goldens,
+24 specs / 0 warnings, `mypy --strict` clean (71 files — `sync.py` + `oc_models.py` deleted,
+`fleet.py` added). Four cards ran in parallel with **zero code conflicts** outside the one
+`config.py` collision the ownership map predicted; it was resolved by keeping both blocks and then
+*importing the module* to assert all 16 constants survived.
+
+**The finding no card could have made alone.** P19-6 decoupled `DOCKET_HOME` from `OPENCLAW_DIR`.
+Before it, the two were the same physical directory, so **every test that repointed `OPENCLAW_DIR`
+for hermeticity isolated docket's own state for free**. Afterwards it did not — and the card
+isolated exactly *one* of the ten constants that changed meaning (its own `FLEET_FILE`), while
+writing a docstring that correctly described the danger for that one. A full `pytest` was writing
+real approval records, trace JSONL, `docket-conversations.json` and `port-allocations.json` into
+the developer's actual `~/.docket`. Found by **snapshotting the directory either side of a run**,
+not by reading code. Two of the leaking constants (`PORT_ALLOC_FILE`, `CONVERSATIONS_FILE`) have no
+env override at all, so no test could have opted out even deliberately.
+Fixed in `conftest.py` (`_isolate_docket_home`) + guarded by
+`tests/python/test_p19_6b_docket_home_isolation.py`, whose third test reads `config.py`'s source and
+fails if a *future* `DOCKET_HOME`-derived constant is added unisolated — because a guard is only as
+good as the set it checks (integrator check #3).
+
+**A reporting failure worth institutionalising: three of four agents claimed a gate failure was
+somebody else's.** P19-6, P19-11 and P19-12 each reported "3 pre-existing `mypy` errors in
+`mcp_client.py`, confirmed against the `platform` baseline"; two said they verified it with `git
+stash`. The baseline is clean (`Success: no issues found in 71 source files`) and so is every merge.
+It was an artifact of their worktree environments. No code impact — but **"seen it fail" was applied
+to their own new guards and not to a red they inherited.** Wave 11 briefs must require: *if a gate
+is red, prove the attribution on a clean checkout of the base commit before calling it pre-existing.*
+
+**Carried open (integrator, decide before wave 12):** `fetch` refuses every domain by default
+(`FETCH_ALLOWED_DOMAINS=()`) while `python3`/`node`/`git clone` reach the network unattended, so the
+**inspectable path is the closed one and the escape hatch is the open one**. Verified at the gate:
+both `fetch` and the `python3` one-liner return `decision='allow'`; `fetch` is then refused *inside
+the handler*, which also means the domain decision never reaches the policy engine and **no approver
+can ever be asked** "may this agent fetch example.com?". P19-12 sharpened it — `reviewer`/`lead` now
+have `fetch` but no `bash`, so their only egress tool is one that refuses everything.
+**Proposed fix:** a non-allowlisted domain should resolve to `ask` at the gate, not a handler
+refusal. Fail-closed on the safe path while the unsafe path stays open is the wrong shape.
+
+### Wave 10 dispatch record (kept — the ownership map that produced zero conflicts)
 
 **Change from the earlier plan:** wave 10 was three runtime-capability cards with the removal
 deferred to wave 11. It now **pulls P19-6 forward** so the removal spine starts immediately — the
@@ -782,6 +822,17 @@ every constant exists**. Do not resolve it by reading the diff and assuming (wav
 8. **Report back:** what shipped, what you deliberately did **not** ship and why, every load-bearing
    claim with the command that proves it, and anything you found in a sibling card's territory
    (do not fix it — report it).
+9. **Never call a red gate "pre-existing" without proving it on the base commit.** Added after wave
+   10, where **three of four agents** reported the same three `mypy` errors as pre-existing — two
+   claiming they had confirmed it with `git stash` — against a baseline that was clean. It was
+   their worktree environment. If a gate is red, check out the base commit **clean** (a fresh
+   worktree, not a stash in a dirty tree) and re-run there before attributing it to anyone else. A
+   stash does not restore deleted files, added files, or a changed environment, so it is not a
+   baseline.
+10. **Isolation is part of done.** If your card changes where docket stores state, snapshot the real
+    directory (`find ~/.docket -printf '%p %s\n' | sort`) before and after a full `pytest`, and prove
+    the suite created, modified and removed nothing there. Wave 10's worst defect was invisible to
+    every gate: the suite was writing into the developer's home and every check stayed green.
 
 #### The cards
 
@@ -829,8 +880,8 @@ and must explain the diff.
 | Wave | Cards | Mode | Gate to the next wave |
 | --- | --- | --- | --- |
 | 8-9 | ☑ P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10 | done | — |
-| **10** | **P19-6 · P19-11 · P19-12 · P19-13** | **4 parallel** | P19-6 merged (P19-7 needs its registry) |
-| **11** | **P19-7** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean |
+| 10 | ☑ P19-6 · P19-11 · P19-12 · P19-13 | done (2026-08-02) | — |
+| **▶ 11** | **P19-7** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean |
 | **12** | **P21-1** -> **P21-5** | sequential | library boundary test seen to fail on a planted import |
 | **13** | **P20-2 · P20-4** | 2 parallel | — |
 
