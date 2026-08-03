@@ -38,7 +38,6 @@ import docket.serve as _serve
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
-from docket.edges.adapters import openclaw as _oc
 from docket.serve import _DocketHandler
 
 _TEST_TOKEN = "test-serve-token-r3-runs"
@@ -53,44 +52,24 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", oc_dir / "docket-runs.json", raising=True)
-    monkeypatch.setattr(_cfg, "SCHEDULE_FILE", oc_dir / "docket-schedules.json", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Register/unregister mutate agents.list directly (no real openclaw)."""
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "RUNS_FILE", home / "docket-runs.json", raising=True)
+    monkeypatch.setattr(_cfg, "SCHEDULE_FILE", home / "docket-schedules.json", raising=True)
 
 
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return oc_dir
+    return home
 
 
 def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -171,8 +150,8 @@ def _post(
 
 @pytest.fixture()
 def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    _point_at(tmp_path / ".openclaw", monkeypatch)
-    (tmp_path / ".openclaw").mkdir(exist_ok=True)
+    _point_at(tmp_path / ".docket", monkeypatch)
+    (tmp_path / ".docket").mkdir(exist_ok=True)
     d = tmp_path / "approvals"
     d.mkdir()
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", d, raising=True)
@@ -303,8 +282,8 @@ class TestScheduleDispatchPath:
     def test_due_schedule_creates_a_run_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projA": "@every 1s"}}))
 
         def _fake_dispatch_pod(proj: str, **kw: object) -> list[_dispatch.TaskResult]:
@@ -329,8 +308,8 @@ class TestScheduleDispatchPath:
     def test_exception_in_scheduled_dispatch_is_recorded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".openclaw", monkeypatch)
-        (tmp_path / ".openclaw").mkdir(exist_ok=True)
+        _point_at(tmp_path / ".docket", monkeypatch)
+        (tmp_path / ".docket").mkdir(exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projB": "@every 1s"}}))
 
         def _boom(proj: str, **kw: object) -> list[_dispatch.TaskResult]:

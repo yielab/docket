@@ -1,7 +1,7 @@
 """Runtime path and constant resolution.
 
 All path lookups funnel through here so the rest of the codebase stays
-independent of the on-disk layout. Override OPENCLAW_DIR in tests or CI.
+independent of the on-disk layout. Override DOCKET_HOME in tests or CI.
 """
 
 from __future__ import annotations
@@ -9,40 +9,37 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-OPENCLAW_DIR = Path(os.environ.get("OPENCLAW_DIR", Path.home() / ".openclaw"))
-
-# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root,
-# independent of OPENCLAW_DIR -- the daemon's directory, which P19-7b deletes.
-# Defined ahead of CONFIG_FILE/MODEL_REGISTRY_FILE/etc. below so the four
-# still-docket-owned constants P19-7a (the runtime cutover) moved out of
-# OPENCLAW_DIR can resolve under it directly. Before P19-6, DOCKET_HOME
-# aliased OPENCLAW_DIR (same physical directory, convenient while docket's
-# files and the daemon's lived side by side); now it is genuinely docket's
-# own home. Every file already resolved via DOCKET_HOME
-# (traces/policies/approvals/schedules/runs/sessions/conversations/mcp-servers/
-# FLEET_FILE below, plus MODEL_REGISTRY_FILE/ARCHETYPE_REGISTRY_FILE/
-# PROJECTS_DIR/AUDIT_LOG as of P19-7a) moves with it automatically. Files
-# that remain daemon-owned (openclaw.json, auth-profiles, specialist/pod
-# workspaces under OPENCLAW_DIR/workspaces/<specialist|pods>, session JSONL)
-# stay under OPENCLAW_DIR until P19-7b deletes that tree outright.
+# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root.
+# Phase 19 P19-7b deleted the daemon's directory (formerly OPENCLAW_DIR,
+# ~/.openclaw) outright along with openclaw.json, auth-profiles and every
+# `openclaw` shell-out -- there is no external daemon any more, so
+# DOCKET_HOME is the only state root left. Every docket-owned path in this
+# file resolves under it.
 DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 
-# CONFIG_FILE stays under OPENCLAW_DIR: it is genuinely daemon-owned (the
-# daemon's own config file) and P19-7b deletes it outright, not migrates it.
-CONFIG_FILE = OPENCLAW_DIR / "openclaw.json"
-# MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG:
-# docket-owned, not daemon-owned -- the last docket state still living under
-# OPENCLAW_DIR before P19-7a (the runtime cutover) moved it under DOCKET_HOME.
-# Per D-19's clean break, no migration/fallback: a pre-existing install's
-# files at the old OPENCLAW_DIR-relative paths are simply not read again.
+# MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG /
+# WORKSPACES_DIR / PODS_DIR: all docket-owned, all under DOCKET_HOME. Per
+# D-19's clean break, no migration/fallback: a pre-existing install's files at
+# old daemon-relative paths are simply not read again -- `docket install`
+# re-creates a docket-native home from scratch.
 MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
 # ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes (ROADMAP Phase 16 W-6) —
 # the same overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
 # overlaid by a user `roles:` map). See core/archetypes.py.
 ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
-PROJECTS_DIR = DOCKET_HOME / "workspaces" / "projects"
+# WORKSPACES_DIR: root of every managed workspace -- project pods live at
+# WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); org specialists and pod
+# members live directly at WORKSPACES_DIR/<role-or-project>/... Pre-P19-7b
+# this was OPENCLAW_DIR/workspaces (the daemon's own workspace root, which
+# docket's specialist/pod agents happened to share); now it is docket's own.
+WORKSPACES_DIR = DOCKET_HOME / "workspaces"
+PROJECTS_DIR = WORKSPACES_DIR / "projects"
+# PODS_DIR: per-pod runtime resources (scratch dir, workdir) -- see
+# pod_scratch_dir()/pod_work_dir() below. Distinct from a pod's *workspace*
+# (WORKSPACES_DIR/projects/<pod>-<role>), which is per-member, not per-pod.
+PODS_DIR = WORKSPACES_DIR / "pods"
 SITES_DIR = Path(os.environ.get("SITES_DIR", Path.home() / "Sites"))
-LOG_DIR = Path(os.environ.get("OPENCLAW_LOG_DIR", "/tmp/openclaw"))
+LOG_DIR = Path(os.environ.get("DOCKET_LOG_DIR", "/tmp/docket"))
 
 TRACES_DIR = Path(os.environ.get("TRACES_DIR", DOCKET_HOME / "traces"))
 AUDIT_LOG = DOCKET_HOME / "audit.log"
@@ -88,19 +85,15 @@ CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 # METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
-# docket cannot trim a live prompt (OpenClaw owns inference), but it CAN keep the
-# artifacts OpenClaw re-feeds every turn small. These power the token guards in
-# `maintain check` / `maintain sessions`. Token counts are a rough bytes/divisor
-# estimate — good enough to catch runaway context, not a billing figure.
+# These constants bound the *static* context re-sent every turn (SOUL/AGENTS/
+# TOOLS/HEARTBEAT/MEMORY.md) and power the token guards in `maintain check`.
+# Token counts are a rough bytes/divisor estimate -- good enough to catch
+# runaway context, not a billing figure (see core/session.py's real measured
+# counts for the turn loop's own message history, a separate concern).
 CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "4")))
 # CONTEXT_TOKEN_BUDGET: soft cap on the static context re-sent every turn
 # (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md). `maintain check` warns past this.
 CONTEXT_TOKEN_BUDGET = int(os.environ.get("CONTEXT_TOKEN_BUDGET", "6000"))
-# SESSION_WARN_BYTES: a transcript past this is re-read in full on every resume —
-# flag it for trim/archive. 256 KB ≈ 64k tokens.
-SESSION_WARN_BYTES = int(os.environ.get("SESSION_WARN_BYTES", str(256 * 1024)))
-# SESSION_TRIM_KEEP_TURNS: recent message lines kept when trimming a transcript.
-SESSION_TRIM_KEEP_TURNS = max(1, int(os.environ.get("SESSION_TRIM_KEEP_TURNS", "40")))
 
 
 # DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: ROADMAP Phase 17 C-2 — `docket
@@ -220,7 +213,7 @@ def workspace_dir(agent_id: str) -> Path:
     if project_path.is_dir():
         return project_path
     if is_specialist(agent_id):
-        specialist_path = OPENCLAW_DIR / "workspaces" / agent_id
+        specialist_path = WORKSPACES_DIR / agent_id
         if specialist_path.is_dir():
             return specialist_path
     return project_path
@@ -228,10 +221,6 @@ def workspace_dir(agent_id: str) -> Path:
 
 def meta_path(agent_id: str) -> Path:
     return workspace_dir(agent_id) / META_FILE
-
-
-def auth_profiles_path(agent_id: str = "main") -> Path:
-    return OPENCLAW_DIR / "agents" / agent_id / "agent" / "auth-profiles.json"
 
 
 def cli_root() -> Path:
@@ -254,9 +243,10 @@ def policy_templates_dir() -> Path:
 
 PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 
-# docket-owned registry of channel conversations (Telegram threads etc.). OpenClaw
-# persists no durable transcript, so docket tracks conversation state here for
-# resume/visibility. See internal-docs/telegram-conversation-memory.md.
+# docket-owned registry of channel conversations (Telegram threads etc.). No
+# agent runtime docket drives persists a durable transcript, so docket tracks
+# conversation state here for resume/visibility. See
+# internal-docs/telegram-conversation-memory.md.
 CONVERSATIONS_FILE = DOCKET_HOME / "docket-conversations.json"
 
 # SESSIONS_DIR: durable per-session turn history (ROADMAP Phase 19 P19-4,
@@ -274,7 +264,7 @@ def pod_scratch_dir(project: str) -> Path:
     Created by docket at pod provisioning (0700); removed on pod teardown.
     Injected into the Implementer's TOOLS.md as $DOCKET_SCRATCH_DIR.
     """
-    return OPENCLAW_DIR / "workspaces" / "pods" / project / ".scratch"
+    return PODS_DIR / project / ".scratch"
 
 
 def pod_work_dir(project: str) -> Path:
@@ -287,7 +277,7 @@ def pod_work_dir(project: str) -> Path:
     a `workdir` blueprint). Shared by the whole pod, mirroring how a
     `codebase` path is shared by every member of a `software` pod.
     """
-    return OPENCLAW_DIR / "workspaces" / "pods" / project / "workdir"
+    return PODS_DIR / project / "workdir"
 
 
 # ── Phase 19 P19-5: the turn loop (core/agent_loop.py, edges/adapters/docket_runtime.py) ──
@@ -361,14 +351,12 @@ FETCH_MAX_RESPONSE_BYTES = int(os.environ.get("FETCH_MAX_RESPONSE_BYTES", str(20
 # the tool's own `timeout` argument up to this same order of magnitude.
 FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
 
-# ── P19-6: docket-native fleet registry (core/fleet.py, edges/adapters/openclaw.py) ──
-# FLEET_FILE replaces openclaw.json as the source of truth for agent
-# registration, channel bindings, gates/isolation flags, and the org-wide
-# default model. Docket-owned JSON, so it is read/written only through
-# edges/store.py (atomic, filelocked, 0600) -- never through the ACL's raw
-# openclaw.json helpers. Per-agent facts that already have a home in
+# ── P19-6: docket-native fleet registry (core/fleet.py) ──
+# FLEET_FILE is the source of truth for agent registration, channel bindings,
+# gates/isolation flags, local provider endpoints, and the org-wide default
+# model. Docket-owned JSON, so it is read/written only through edges/store.py
+# (atomic, filelocked, 0600). Per-agent facts that already have a home in
 # .docket-meta.json (model, sessionKey, projectKey) are NOT duplicated here;
 # the fleet registry tracks only what has no other home (see core/fleet.py's
-# module docstring for the full rationale — this is what makes the old
-# meta<->openclaw.json drift check obsolete rather than merely relocated).
+# module docstring for the full rationale).
 FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))

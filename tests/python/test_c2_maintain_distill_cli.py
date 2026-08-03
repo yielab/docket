@@ -36,9 +36,9 @@ from .fakes import FakeDriver
 
 
 def _make_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agent_id: str = "demo") -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
+    home = tmp_path / ".docket"
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
     ws = _cfg.PROJECTS_DIR / agent_id
     (ws / "memory").mkdir(parents=True)
     meta = {
@@ -141,9 +141,9 @@ class TestMaintainDistillCommand:
     def test_unknown_agent_is_not_found(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        oc_dir = tmp_path / ".openclaw"
-        monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
+        home = tmp_path / ".docket"
+        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
 
         rc = _agents.run_maintain("nonexistent", "distill")
 

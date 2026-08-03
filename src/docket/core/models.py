@@ -58,7 +58,7 @@ class Persona(BaseModel):
     """Optional, operator-assigned cosmetic identity for an agent.
 
     docket owns this and renders it into ``SOUL.md`` — it is **not** read from a
-    self-authored OpenClaw ``IDENTITY.md``. Keeping the persona as docket metadata
+    self-authored ``IDENTITY.md``. Keeping the persona as docket metadata
     (re-derivable, re-renderable, healable) is what keeps a friendly name like
     "Orion" congruent with docket's "identity = a pure function of metadata" model
     (see ``internal-docs/agent-structure-analysis.md`` §6). An agent's *role* is its
@@ -120,7 +120,7 @@ class AgentMeta(BaseModel):
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS")
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS")
 
-    # Implementer-only; allocated at pod provisioning; never synced to openclaw.json.
+    # Implementer-only; allocated at pod provisioning; lives only in .docket-meta.json.
     port_range_start: int | None = Field(None, alias="portRangeStart")
     port_range_count: int | None = Field(None, alias="portRangeCount")
     scratch_dir: str | None = Field(None, alias="scratchDir")

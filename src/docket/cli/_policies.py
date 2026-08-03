@@ -7,7 +7,7 @@
   docket policies validate [id|file.json]       Schema-check installed policies, one, or a file
 
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
-docket-owned artefacts read/written directly (not openclaw config).
+docket-owned artefacts read/written directly.
 
 ``validate`` (ROADMAP Phase 15 G-2) wires ``core/policy.py``'s ``validate_policy`` — CL-2 had
 left it tested-but-unwired specifically to keep the completions goldens byte-identical that

@@ -82,8 +82,10 @@ MODEL_ALIASES: dict[str, str] = {
 _MODEL_ID_RE = re.compile(r"^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$")
 
 # Pricing snapshot: input, output, cache_read, cache_write (per M tokens).
-# SOURCE: OpenClaw 2026.2.23 catalog.  Recorded spend in `docket cost` comes from
-# the daemon's session logs — this table only powers comparative estimates.
+# A manual snapshot, not a live price feed. `docket cost` reports real,
+# measured token counts (`core/session.py`'s MeasuredUsage) but never a
+# dollar figure of its own -- this table only powers comparative *estimates*
+# (see CLAUDE.md's standing no-fabricated-dollar-figures rule).
 MODEL_PRICING_AS_OF = "2026-06-11"
 MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "anthropic/claude-haiku-4-5": (0.80, 4.00, 0.08, 1.00),
@@ -344,11 +346,11 @@ def agent_role(agent_id: str) -> str:
     right policy. Otherwise: specialist id, or ``repo`` for a plain project
     agent (every project agent is a repo agent).
     """
-    from docket.edges.adapters import openclaw as _oc
+    from docket.core import fleet as _fleet
 
     if cfg.is_specialist(agent_id):
         return agent_id
-    pod_role = _oc.meta_get(agent_id, "role", "")
+    pod_role = _fleet.meta_get(agent_id, "role", "")
     if pod_role:
         from docket.core import pod
 
@@ -358,13 +360,13 @@ def agent_role(agent_id: str) -> str:
 
 def agent_model_source(agent_id: str) -> str:
     """Return 'policy' or 'pinned' for this agent."""
-    from docket.edges.adapters import openclaw as _oc
+    from docket.core import fleet as _fleet
 
-    src = _oc.meta_get(agent_id, "modelSource", "")
+    src = _fleet.meta_get(agent_id, "modelSource", "")
     if src:
         return src
     role = agent_role(agent_id)
-    model = _oc.meta_get(agent_id, "model", "")
+    model = _fleet.meta_get(agent_id, "model", "")
     if not model or model == resolve_role_model(role):
         return "policy"
     return "pinned"
@@ -438,7 +440,7 @@ def policy_agent_ids() -> list[str]:
 
     ids: list[str] = list(project_ids())
     for spec in cfg.SPECIALIST_ORDER:
-        if (cfg.OPENCLAW_DIR / "workspaces" / spec).is_dir():
+        if (cfg.WORKSPACES_DIR / spec).is_dir():
             ids.append(spec)
     return ids
 
@@ -448,7 +450,7 @@ def reapply_role_policy() -> int:
 
     Pinned agents are never touched. Returns count of agents updated.
     """
-    from docket.edges.adapters import openclaw as _oc
+    from docket.core import fleet as _fleet
 
     role_models, _, _ = load_registry()
     changed = 0
@@ -458,14 +460,14 @@ def reapply_role_policy() -> int:
             continue
         role = agent_role(aid)
         target = role_models.get(role, cfg.DEFAULT_MODEL)
-        current = _oc.meta_get(aid, "model", "")
+        current = _fleet.meta_get(aid, "model", "")
         if target == current:
             continue
         try:
-            _oc.set_model_both(aid, target)
+            _fleet.set_model_both(aid, target)
         except KeyError:
-            _oc.meta_set(aid, "model", target)
-        _oc.meta_set(aid, "modelSource", "policy")
+            _fleet.meta_set(aid, "model", target)
+        _fleet.meta_set(aid, "modelSource", "policy")
         changed += 1
     return changed
 

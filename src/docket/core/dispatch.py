@@ -91,6 +91,7 @@ import docket.config as _cfg
 from docket.core import approval as _ap
 from docket.core import archetypes as _archetypes
 from docket.core import conversations as _conv
+from docket.core import fleet as _fleet
 from docket.core import handoff as _handoff
 from docket.core import memory as _mem
 from docket.core import models as _models
@@ -105,7 +106,6 @@ from docket.core import trace as _trace
 from docket.core import utils as _utils
 from docket.edges import store as _store
 from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 # Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
@@ -114,7 +114,7 @@ PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 # Injectable runner for tests (matches the ACL ``agent_run`` signature). The 4th
 # positional arg is always the *agent-turn* timeout (never the verify timeout).
 # W-5/Phase 18 CL-1: spells the canonical ``core.runtime_driver.TurnResult`` name
-# directly — ``edges.adapters.openclaw.AgentRunResult`` (the alias this used to
+# directly — ``AgentRunResult`` (the alias this used to
 # read, kept only because this exact line bound it at import time) has been
 # retired now that every call site across the test suite has been swept too.
 Runner = Callable[[str, str, str, int, dict[str, str] | None], _rd.TurnResult]
@@ -424,7 +424,7 @@ def pod_pipeline(project: str) -> list[tuple[str, str]]:
     DispatchError otherwise. Duplicate implementers collapse to the first one for
     v1 (a single doer per role per task).
     """
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     members = _pod.members_of(all_ids, project)
     if not members:
         raise DispatchError(f"no pod found for '{project}'")
@@ -447,7 +447,7 @@ def pod_full_roster(project: str) -> dict[str, str]:
     ``researcher``) and have it resolve against the pod's real roster. Same
     "first member of a role wins" convention as ``pod_pipeline``.
     """
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
         by_role.setdefault(role, mid)
@@ -500,7 +500,7 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
 
 def pod_recorded_cost(project: str) -> float:
     """Sum the daemon-recorded spend across all of the pod's members."""
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     total = 0.0
     for mid, _role, _idx in _pod.members_of(all_ids, project):
         total += float(_utils.aggregate_cost(mid).cost_usd)
@@ -510,7 +510,7 @@ def pod_recorded_cost(project: str) -> float:
 def pod_budget(project: str) -> float:
     """The pod's USD budget cap (Lead's ``budgetUsd``), 0.0 = unlimited."""
     lead_id = _pod.member_id(project, "lead")
-    raw = _oc.meta_get(lead_id, "budgetUsd", "")
+    raw = _fleet.meta_get(lead_id, "budgetUsd", "")
     try:
         return float(raw) if raw else 0.0
     except ValueError:
@@ -528,7 +528,7 @@ def pod_max_rework_cycles(project: str) -> int:
     the Reviewer becomes a hard gate with no retry.
     """
     lead_id = _pod.member_id(project, "lead")
-    raw = _oc.meta_get(lead_id, "maxReworkCycles", "")
+    raw = _fleet.meta_get(lead_id, "maxReworkCycles", "")
     if not raw:
         return 1
     try:
@@ -545,7 +545,7 @@ def _retries_for_role(role: str) -> int:
 def _lead_meta_timeout(project: str, field_name: str) -> int | None:
     """Read a positive-int timeout field from the pod's Lead meta, if set validly."""
     lead_id = _pod.member_id(project, "lead")
-    raw = _oc.meta_get(lead_id, field_name, "")
+    raw = _fleet.meta_get(lead_id, field_name, "")
     if not raw:
         return None
     try:
@@ -596,14 +596,14 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
     if recorded > 0.0:
         return recorded, False
 
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     total_est = 0.0
     any_estimate = False
     for mid, _role, _idx in _pod.members_of(all_ids, project):
         totals = _utils.aggregate_cost(mid)
         if totals.input_tokens == 0 and totals.output_tokens == 0:
             continue
-        model = str(_oc.meta_get(mid, "model", "") or "")
+        model = str(_fleet.meta_get(mid, "model", "") or "")
         est = _utils.estimate_cost_usd(model, totals)
         if est is not None:
             total_est += est
@@ -625,8 +625,8 @@ def _pause_lead_for_budget(project: str) -> None:
     --resume``).
     """
     lead_id = _pod.member_id(project, "lead")
-    _oc.meta_set(lead_id, "paused", True)
-    _oc.meta_set(lead_id, "pausedReason", "budget")
+    _fleet.meta_set(lead_id, "paused", True)
+    _fleet.meta_set(lead_id, "pausedReason", "budget")
 
 
 @dataclass
@@ -796,11 +796,11 @@ def _hop_env(member_id: str, role: str) -> dict[str, str] | None:
     """
     if role != "implementer":
         return None
-    port_start = _oc.meta_get(member_id, "portRangeStart", "")
+    port_start = _fleet.meta_get(member_id, "portRangeStart", "")
     if not port_start:
         return None
-    port_count = _oc.meta_get(member_id, "portRangeCount", "")
-    scratch_dir = _oc.meta_get(member_id, "scratchDir", "")
+    port_count = _fleet.meta_get(member_id, "portRangeCount", "")
+    scratch_dir = _fleet.meta_get(member_id, "scratchDir", "")
     return {
         "DOCKET_PORT_BASE": port_start,
         "DOCKET_PORT_COUNT": port_count,
@@ -830,8 +830,8 @@ def _implementer_diff_probe(member_id: str, role: str) -> tuple[list[str], str |
     """
     if role != "implementer":
         return [], None
-    worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
-    member_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
+    worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
+    member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
     cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
     if not _sys.git_available() or not _sys.git_is_repo(cwd):
         return [], None
@@ -1016,7 +1016,7 @@ def _pod_requires_approval(project: str, role: str) -> bool:
     or missing → no pod-level gate for any role.
     """
     lead_id = _pod.member_id(project, "lead")
-    raw = _oc.meta_get(lead_id, "requireApprovalRoles", "")
+    raw = _fleet.meta_get(lead_id, "requireApprovalRoles", "")
     if not raw:
         return False
     roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
@@ -1293,7 +1293,7 @@ def dispatch_task(
             spent, estimated = pod_gating_cost(project)
             if spent >= cap:
                 spent_label = (
-                    f"~${spent:.2f} (estimated — daemon recorded no cost)"
+                    f"~${spent:.2f} (estimated — no cost recorded)"
                     if estimated
                     else f"${spent:.2f}"
                 )
@@ -1580,15 +1580,15 @@ def dispatch_task(
             return _UnitOutcome(kind="advance", hops=[hop])
 
         if isinstance(gate, _pipeline.MechanicalGate):
-            verify_cmd = gate.command or str(_oc.meta_get(member_id, "verifyCmd", "") or "")
+            verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
             if verify_cmd:
                 # R-6/W-8: verify in the member's own worktree when it has one —
                 # else the shared codebase root — else its workspace dir. Shared
                 # with cli/_pod.py's _regenerate_member_tools via core/pod.py so
                 # the two can't disagree about which tree is being checked — now
                 # applied to any mechanically-gated step, not just "implementer".
-                worktree_dir = str(_oc.meta_get(member_id, "worktreeDir", "") or "")
-                member_codebase = str(_oc.meta_get(member_id, "codebase", "") or "")
+                worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
+                member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
                 cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
                 # R-2: the verify command gets its own timeout, decoupled from the
                 # agent-turn timeout above — a 20-minute test suite and a hung LLM
@@ -1892,13 +1892,13 @@ def _claim_next_task(
     would have written that down itself.
     """
     lead_id = _pod.member_id(project, "lead")
-    if _models.AgentMeta.coerce_paused(_oc.meta_get(lead_id, "paused", "")):
+    if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
         _trace.trace_event(
             project,
             f"agent:{project}:dispatch",
             "lead",
             "paused_refused",
-            _json.dumps({"reason": _oc.meta_get(lead_id, "pausedReason", "") or "budget"}),
+            _json.dumps({"reason": _fleet.meta_get(lead_id, "pausedReason", "") or "budget"}),
         )
         return None
 
@@ -2334,7 +2334,7 @@ def dispatch_pod(
 
 def dispatchable_pods() -> list[str]:
     """Projects that have a provisioned Lead (and therefore a dispatchable pod)."""
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     projects: list[str] = []
     for aid in all_ids:
         proj = _pod.pod_of(aid)
@@ -2354,7 +2354,7 @@ def pod_roster() -> list[dict[str, Any]]:
     (Phase 18 L-3); ``core/pod.py`` stays I/O-free, so this assembly lives here
     alongside ``dispatchable_pods()`` rather than there.
     """
-    all_ids = [a.id for a in _oc.list_agents()]
+    all_ids = [a.id for a in _fleet.list_agents()]
     projects = sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 
     out: list[dict[str, Any]] = []
@@ -2364,7 +2364,7 @@ def pod_roster() -> list[dict[str, Any]]:
             {
                 "project": project,
                 "members": [
-                    {"id": mid, "role": role, "model": _oc.meta_get(mid, "model", "")}
+                    {"id": mid, "role": role, "model": _fleet.meta_get(mid, "model", "")}
                     for mid, role, _idx in members
                 ],
             }

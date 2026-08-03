@@ -1,7 +1,8 @@
 EXIT:0
 
-Exec-approval gates
+Tool-call gate
 
-Status unavailable: approvals snapshot unavailable
+✓ Policy engine + high-risk command classifier: always active (Phase 19 P19-3)
+
 Approval routing: not configured
 Workspace isolation: not configured — docket gates isolate on

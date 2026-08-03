@@ -9,6 +9,6 @@ myshop           claude-sonnet-4-6          0          0      $0.0000  policy   
 
                                                                Total:      $0.0000
 
-  Recorded spend from session data in ~/.openclaw/agents/*/sessions/*.jsonl
+  Recorded spend from session data in <HOME>/.openclaw/sessions/*/session.json
   Comparative estimates use a price snapshot (as of <DATE>) — see: docket models
 

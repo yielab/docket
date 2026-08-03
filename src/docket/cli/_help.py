@@ -26,7 +26,7 @@ def run_help() -> int:
     strong = _mp.resolve_role_model("programmer")
 
     text = f"""
-{B}docket — OpenClaw project manager{R}
+{B}docket — agent fleet control plane{R}
 
 {B}AGENT TYPES{R}
   {C}Org Specialists{R}     Created by 'docket install' — shared across all projects
@@ -44,7 +44,7 @@ def run_help() -> int:
   If agent-id is omitted an interactive picker is shown (fzf or numbered list).
 
 {B}SETUP{R}
-  {G}install{R}            Bootstrap OpenClaw + create specialist agents
+  {G}install{R}            Bootstrap a docket-native home + create specialist agents
 
 {B}LIFECYCLE{R}
   {G}list{R}               List all project agents and their status
@@ -59,7 +59,7 @@ def run_help() -> int:
   {G}clean{R}              Clear memory logs only (distills first; --no-distill-first skips)
   {G}reset{R}              Clear memory + heartbeat (distills first; --no-distill-first skips)
   {G}rebuild{R}            Deep rebuild from .docket-meta.json
-  {G}sessions{R}           Archive large/old sessions (>5 MB or >30 days)
+  {G}sessions{R}           Report per-session storage size (compaction is now automatic)
   {G}distill{R}            Summarize memory logs into MEMORY.md; archive originals
 
 {B}TELEGRAM{R}
@@ -71,7 +71,7 @@ def run_help() -> int:
                         follow the role policy; --budget <USD> sets a spending cap
   {G}models{R}             View/change the role→model policy; switch provider presets
   {G}scope{R}    [id] [a]  Manage session scopes for multi-project isolation
-  {G}auth{R}     <action>  Configure model-provider auth (subscription or API key)
+  {G}auth{R}     <action>  Show which provider credentials are stored (no login flow yet)
   {G}keys{R}     <action>  Manage workspace secrets — syncs to all agents
 
 {B}CONTEXT & MEMORY  (docket context [id] <subcommand>){R}
@@ -80,8 +80,8 @@ def run_help() -> int:
 
 {B}MONITORING{R}
   {G}cost{R}     [id]      Token usage and cost breakdown with budget status
-  {G}doctor{R}             System health: gateway, config, drift, budget, runaway
-  {G}gates{R}              Exec-approval gates: status / enable / disable (on by default)
+  {G}doctor{R}             System health: fleet registry, drift, budget, runaway
+  {G}gates{R}              Tool-call gate status (always on); approval routing / isolation
   {G}audit{R}    [N]       Recent mutating operations (keys, gates, profile, agents)
   {G}eval{R}               Specialist-role evals: structural checks + live golden tasks
 
@@ -89,7 +89,7 @@ def run_help() -> int:
   {G}trace{R}    <session>  Render one agent-action trace human-readable
   {G}trace tail{R} <proj>   Follow the most-recent session live
   {G}trace export{R} <proj> Export raw JSONL (--since YYYY-MM-DD)
-  {G}trace ingest{R} <proj> Ingest daemon session logs into traces
+  {G}trace ingest{R} <proj> Ingest the driver's session history into traces
   {G}metrics{R}            Success rate, latency, cost, guardrail trips (--role --window)
   {G}policies list{R}      List installed guardrail policies
   {G}policies init{R}      Install baseline policies (block-destructive, injection, redact)
@@ -106,7 +106,7 @@ def run_help() -> int:
                         + starter library); {G}roles add/validate{R} for custom ones
 
 {B}UTILITIES{R}
-  {G}logs{R}      [id]     View memory logs and gateway entries
+  {G}logs{R}      [id]     View memory logs
   {G}edit{R}      [id]     Open workspace files in $EDITOR
   {G}snapshot{R}           JSON dump of all agents, bindings, costs (--output <file>)
   {G}serve{R}              Live JSON endpoint for dashboards (--port 7331 --interval 30)
@@ -142,9 +142,9 @@ def run_help() -> int:
   docket pod myproject dispatch     # run queued tasks
 
 {B}PATHS{R}
-  Workspaces:  ~/.openclaw/workspaces/projects/
-  Config:      ~/.openclaw/openclaw.json
-  Logs:        /tmp/openclaw/openclaw-YYYY-MM-DD.log
+  Workspaces:  ~/.docket/workspaces/projects/
+  Fleet:       ~/.docket/fleet.json
+  Secrets:     ~/.docket/secrets.json
 """
     print(text)
     return 0

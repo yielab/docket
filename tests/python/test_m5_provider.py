@@ -1,12 +1,15 @@
 """M5 T5.6 tests: local provider registration (models provider add).
 
-Port of scripts/wire-local-provider.sh. `core.provider.register_local_provider`
-is the pure ping->register orchestration (no output, returns a
-ProviderRegistration); `cli._provider.run_provider_add` renders it — this is
-the split introduced by CH-3 ("core has no knowledge of terminals"). We assert
-the resulting models.providers block matches the script's output, that a
-re-run is a no-op, and that the cli layer prints the same wording as the
-pre-split flow.
+`core.provider.register_local_provider` is the pure ping->register
+orchestration (no output, returns a ProviderRegistration); `cli._provider.
+run_provider_add` renders it — this is the split introduced by CH-3 ("core
+has no knowledge of terminals"). We assert the resulting fleet.json
+`providers` block, that a re-run is a no-op, and that the cli layer prints
+the expected wording.
+
+Phase 19 P19-7b: local providers are registered in docket's own fleet.json
+(`core/fleet.py`'s `add_local_provider`/`get_local_provider`), not the
+deleted daemon's openclaw.json.
 """
 
 from __future__ import annotations
@@ -19,48 +22,43 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli import _provider as _cliprov
+from docket.core import fleet as _fleet
 from docket.core import provider as _prov
-from docket.edges.adapters import openclaw as _oc
 
-# Minimal openclaw.json seed (no providers yet).
-_OC_CONFIG: dict[str, Any] = {
-    "agents": {"defaults": {"model": "anthropic/claude-sonnet-4-6"}, "list": []},
+# Minimal fleet.json seed (no providers yet).
+_FLEET_CONFIG: dict[str, Any] = {
+    "agents": [],
     "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
+    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
 
 
-def _point_config_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-
-
 def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir()
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps(_OC_CONFIG))
-    cfg_file.chmod(0o600)
-    _point_config_at(oc_dir, monkeypatch)
+    home = tmp_path / ".docket"
+    home.mkdir()
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps(_FLEET_CONFIG))
+    fleet_file.chmod(0o600)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
     # Default: ping fails (offline) so tests never hit the network.
     monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: False)
-    return oc_dir
+    return home
 
 
-def _providers(oc_dir: Path) -> dict[str, Any]:
-    cfg = json.loads((oc_dir / "openclaw.json").read_text())
-    providers = cfg.get("models", {}).get("providers", {})
+def _providers(home: Path) -> dict[str, Any]:
+    cfg = json.loads((home / "fleet.json").read_text())
+    providers = cfg.get("providers", {})
     assert isinstance(providers, dict)
     return providers
 
 
-# ── ACL config shape: must match the script's PROVIDER_JSON exactly ────────────
+# ── fleet.json provider shape ────────────────────────────────────────────────────
 
 
 def test_local_provider_config_matches_script() -> None:
-    cfg = _oc.local_provider_config(
+    cfg = _prov.local_provider_config(
         "http://127.0.0.1:8080/v1", "qwen3-30b-a3b", "Qwen3 30B-A3B (local)", 16384, 8192
     )
     assert cfg == {
@@ -99,7 +97,7 @@ def test_register_local_provider_returns_typed_result(
 
 
 def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
+    home = _seed(tmp_path, monkeypatch)
     reg = _prov.register_local_provider(
         name="lab",
         base_url="http://10.0.0.5:1234/v1",
@@ -109,7 +107,7 @@ def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         max_tokens=4096,
     )
     assert reg.changed is True
-    entry = _providers(oc_dir)["lab"]
+    entry = _providers(home)["lab"]
     assert entry["baseUrl"] == "http://10.0.0.5:1234/v1"
     assert entry["models"][0]["id"] == "llama-3.3-70b"
     assert entry["models"][0]["contextWindow"] == 32768
@@ -117,21 +115,21 @@ def test_register_custom_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_other_config_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
+    home = _seed(tmp_path, monkeypatch)
     _prov.register_local_provider()
-    cfg = json.loads((oc_dir / "openclaw.json").read_text())
+    cfg = json.loads((home / "fleet.json").read_text())
     # Unrelated top-level keys survive the providers write.
-    assert cfg["agents"]["defaults"]["model"] == "anthropic/claude-sonnet-4-6"
-    assert cfg["security"]["gates"]["enabled"] is False
+    assert cfg["defaults"]["model"] == "anthropic/claude-sonnet-4-6"
+    assert cfg["security"]["gatesEnabled"] is False
 
 
 def test_update_existing_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _seed(tmp_path, monkeypatch)
-    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 8192, 4096) is True
+    assert _fleet.add_local_provider("local", "http://a/v1", "m", "M", 8192, 4096) is True
     # Changing the context window is a real change.
-    assert _oc.add_local_provider("local", "http://a/v1", "m", "M", 16384, 4096) is True
-    assert _oc.get_local_provider("local") is not None
-    assert _oc.get_local_provider("local")["models"][0]["contextWindow"] == 16384  # type: ignore[index]
+    assert _fleet.add_local_provider("local", "http://a/v1", "m", "M", 16384, 4096) is True
+    assert _fleet.get_local_provider("local") is not None
+    assert _fleet.get_local_provider("local")["models"][0]["contextWindow"] == 16384  # type: ignore[index]
 
 
 # ── cli: renders the result, wording matches the pre-split flow ────────────────
@@ -140,13 +138,13 @@ def test_update_existing_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_run_provider_add_writes_provider_block(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
+    home = _seed(tmp_path, monkeypatch)
     rc = _cliprov.run_provider_add()
     assert rc == 0
 
-    providers = _providers(oc_dir)
+    providers = _providers(home)
     assert set(providers) == {"local"}
-    assert providers["local"] == _oc.local_provider_config(
+    assert providers["local"] == _prov.local_provider_config(
         _prov.DEFAULT_BASE_URL,
         _prov.DEFAULT_MODEL_ID,
         _prov.DEFAULT_MODEL_NAME,
@@ -163,17 +161,19 @@ def test_run_provider_add_writes_provider_block(
 def test_rerun_is_noop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)
-    assert _oc.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is True
+    home = _seed(tmp_path, monkeypatch)
+    assert _fleet.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is True
     # Mtime-independent check: the ACL reports no change on identical re-run.
-    assert _oc.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is False
+    assert (
+        _fleet.add_local_provider("local", _prov.DEFAULT_BASE_URL, "q", "Q", 16384, 8192) is False
+    )
 
-    before = (oc_dir / "openclaw.json").read_text()
+    before = (home / "fleet.json").read_text()
     _cliprov.run_provider_add(model_id="q", model_name="Q")
     capsys.readouterr()
     _cliprov.run_provider_add(model_id="q", model_name="Q")
     out = capsys.readouterr().out
-    after = (oc_dir / "openclaw.json").read_text()
+    after = (home / "fleet.json").read_text()
     assert before == after
     assert "no change" in out
 
@@ -181,10 +181,10 @@ def test_rerun_is_noop(
 def test_ping_failure_is_non_fatal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    oc_dir = _seed(tmp_path, monkeypatch)  # ping already stubbed to False
+    home = _seed(tmp_path, monkeypatch)  # ping already stubbed to False
     rc = _cliprov.run_provider_add()
     assert rc == 0
-    assert "local" in _providers(oc_dir)
+    assert "local" in _providers(home)
     out = capsys.readouterr().out
     assert "Could not reach" in out  # warn() → stdout (mirrors Bash)
 

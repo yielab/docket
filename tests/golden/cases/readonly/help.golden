@@ -1,6 +1,6 @@
 EXIT:0
 
-docket — OpenClaw project manager
+docket — agent fleet control plane
 
 AGENT TYPES
   Org Specialists     Created by 'docket install' — shared across all projects
@@ -18,7 +18,7 @@ USAGE
   If agent-id is omitted an interactive picker is shown (fzf or numbered list).
 
 SETUP
-  install            Bootstrap OpenClaw + create specialist agents
+  install            Bootstrap a docket-native home + create specialist agents
 
 LIFECYCLE
   list               List all project agents and their status
@@ -33,7 +33,7 @@ MAINTENANCE  (docket maintain [id] <subcommand>)
   clean              Clear memory logs only (distills first; --no-distill-first skips)
   reset              Clear memory + heartbeat (distills first; --no-distill-first skips)
   rebuild            Deep rebuild from .docket-meta.json
-  sessions           Archive large/old sessions (>5 MB or >30 days)
+  sessions           Report per-session storage size (compaction is now automatic)
   distill            Summarize memory logs into MEMORY.md; archive originals
 
 TELEGRAM
@@ -45,7 +45,7 @@ CONFIGURATION
                         follow the role policy; --budget <USD> sets a spending cap
   models             View/change the role→model policy; switch provider presets
   scope    [id] [a]  Manage session scopes for multi-project isolation
-  auth     <action>  Configure model-provider auth (subscription or API key)
+  auth     <action>  Show which provider credentials are stored (no login flow yet)
   keys     <action>  Manage workspace secrets — syncs to all agents
 
 CONTEXT & MEMORY  (docket context [id] <subcommand>)
@@ -54,8 +54,8 @@ CONTEXT & MEMORY  (docket context [id] <subcommand>)
 
 MONITORING
   cost     [id]      Token usage and cost breakdown with budget status
-  doctor             System health: gateway, config, drift, budget, runaway
-  gates              Exec-approval gates: status / enable / disable (on by default)
+  doctor             System health: fleet registry, drift, budget, runaway
+  gates              Tool-call gate status (always on); approval routing / isolation
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
   eval               Specialist-role evals: structural checks + live golden tasks
 
@@ -63,7 +63,7 @@ OBSERVABILITY
   trace    <session>  Render one agent-action trace human-readable
   trace tail <proj>   Follow the most-recent session live
   trace export <proj> Export raw JSONL (--since YYYY-MM-DD)
-  trace ingest <proj> Ingest daemon session logs into traces
+  trace ingest <proj> Ingest the driver's session history into traces
   metrics            Success rate, latency, cost, guardrail trips (--role --window)
   policies list      List installed guardrail policies
   policies init      Install baseline policies (block-destructive, injection, redact)
@@ -80,7 +80,7 @@ PODS & QUEUE
                         + starter library); roles add/validate for custom ones
 
 UTILITIES
-  logs      [id]     View memory logs and gateway entries
+  logs      [id]     View memory logs
   edit      [id]     Open workspace files in $EDITOR
   snapshot           JSON dump of all agents, bindings, costs (--output <file>)
   serve              Live JSON endpoint for dashboards (--port 7331 --interval 30)
@@ -116,7 +116,7 @@ EXAMPLES
   docket pod myproject dispatch     # run queued tasks
 
 PATHS
-  Workspaces:  ~/.openclaw/workspaces/projects/
-  Config:      ~/.openclaw/openclaw.json
-  Logs:        <TMP>
+  Workspaces:  ~/.docket/workspaces/projects/
+  Fleet:       ~/.docket/fleet.json
+  Secrets:     ~/.docket/secrets.json
 

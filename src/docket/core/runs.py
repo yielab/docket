@@ -225,10 +225,13 @@ def add_hop_pid(run_id: str, pid: int) -> None:
 
     A run's ``pids`` field is a *list*, not a scalar — a ``parallel``
     pipeline step can have more than one hop genuinely in flight at once
-    (W-2). Called from ``edges.adapters.openclaw.agent_run``'s ``on_spawn``
-    hook via ``core/dispatch.py``'s production-driver hop call site (never
-    for an injected test runner — see that module's ``dispatch_task``).
-    No-op if *run_id* is unknown (e.g. a stale/racing caller).
+    (W-2). Called from a driver's ``run_turn``'s ``on_spawn`` hook via
+    ``core/dispatch.py``'s production-driver hop call site (never for an
+    injected test runner — see that module's ``dispatch_task``); the
+    production ``DocketDriver`` (Phase 19 P19-7a) ignores ``on_spawn`` since
+    it backs onto no OS process for this to ever fire against, so this stays
+    reachable only through a driver that does spawn one. No-op if *run_id*
+    is unknown (e.g. a stale/racing caller).
     """
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:

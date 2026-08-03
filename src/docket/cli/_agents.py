@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
-import gzip as _gzip
 import json as _json
 import re as _re
 import shutil as _shutil
@@ -22,15 +21,16 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import provisioning as _prov
+from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.core.models import AgentMeta
 from docket.core.utils import last_activity, project_ids
 from docket.edges import store
 from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters import openclaw as _oc
 
 # Flags that consume the following token as their value (skipped when scanning
 # for bare positionals). --with/--pod are handled by parse_pod_roles.
@@ -211,7 +211,7 @@ def run_add(all_args: list[str]) -> int:
 
     lead_id = f"{aid}-lead"
     if tg_group:
-        _oc.upsert_binding(lead_id, tg_group, "telegram", "group")
+        _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
         ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
 
         from docket.cli import _do_restart_gateway
@@ -273,7 +273,7 @@ def _provision_pod_from_spec(
 
     if budget and budget != "0":
         with contextlib.suppress(Exception):
-            _oc.meta_set(f"{aid}-lead", "budgetUsd", budget)
+            _fleet.meta_set(f"{aid}-lead", "budgetUsd", budget)
 
     audit_log(
         "agent.add",
@@ -348,7 +348,7 @@ def _cmd_add_declarative(from_file: str) -> int:
             tg_group = str(spec.get("telegram", "")).strip()
             if tg_group:
                 lead_id = f"{aid}-lead"
-                _oc.upsert_binding(lead_id, tg_group, "telegram", "group")
+                _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
                 ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
                 wired = True
             continue
@@ -381,7 +381,7 @@ def _cmd_add_declarative(from_file: str) -> int:
         created.append(aid)
 
         if tg_group:
-            _oc.upsert_binding(aid, tg_group, "telegram", "group")
+            _fleet.upsert_binding(aid, tg_group, "telegram", "group")
             ui.success(f"Telegram binding: {aid} ← group {tg_group}")
             wired = True
 
@@ -465,7 +465,7 @@ def _create_workspace(
         "- Never push to main/master without HITL approval.\n"
         "- Never delete files without explicit instruction.\n"
     )
-    # Section names matter: the openclaw runtime re-injects the "Session Startup"
+    # Section names matter: the turn loop re-injects the "Session Startup"
     # and "Red Lines" H2 blocks after every compaction (readPostCompactionContext).
     # Keep these headings verbatim or the injection silently stops firing.
     agents = (
@@ -533,10 +533,10 @@ def _create_workspace(
         fpath.write_text(text, encoding="utf-8")
         fpath.chmod(0o600)
 
-    # Seed the files the openclaw post-compaction audit re-reads every reset.
+    # Seed the files the turn loop's system-prompt composition re-reads every turn.
     _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)
 
-    # Quarantine any OpenClaw base-assistant scaffolding so identity stays
+    # Quarantine any self-authoring base-assistant scaffolding so identity stays
     # docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
     from docket.core import identity as _identity
 
@@ -557,7 +557,7 @@ def _provision_agent(
     budget: str,
     source: str,
 ) -> None:
-    """Create workspace, write metadata, register with openclaw."""
+    """Create workspace, write metadata, register in the fleet registry."""
     if not model:
         model = _mp.resolve_role_model("repo")
         model_source_val = "policy"
@@ -590,33 +590,16 @@ def _provision_agent(
     meta_file = _cfg.PROJECTS_DIR / agent_id / ".docket-meta.json"
     store.write_json(meta_file, meta_data)
 
-    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-
-    ws_path = str(_cfg.PROJECTS_DIR / agent_id)
-    add_result = _oc.agents_add(agent_id, ws_path, model)
-    if add_result.found:
-        if add_result.ok:
-            ui.success(f"Registered '{agent_id}' with openclaw")
-        elif add_result.timed_out:
-            ui.warn("openclaw agent add timed out — register manually if needed")
-        else:
-            ui.warn(
-                f"openclaw agent add exited {add_result.returncode} — register manually if needed"
-            )
-
-    # P19-6: fleet.json is docket's own registry, never written by the daemon
-    # CLI above — register unconditionally regardless of whether `openclaw
-    # agents add` was found/succeeded (previously this only ran as a fallback
-    # when the CLI was unavailable, back when openclaw.json was the one
-    # registry both sides shared).
+    # Phase 19 P19-7b: registration is fleet.json only now -- there is no
+    # daemon CLI to shell out to (and no daemon session directory to
+    # pre-create; core/session.py creates a session's storage lazily).
     with contextlib.suppress(Exception):
-        _oc.add_agent(agent_id, model, session_key, project_key)
+        _fleet.add_agent(agent_id, model, session_key, project_key)
 
     audit_log("agent.add", f"{agent_id} model={model} source={source}")
 
-    if not _oc.has_usable_profile():
-        ui.warn("No usable auth profile found. Run: docket auth login")
+    if not _secrets.secrets_keys():
+        ui.warn("No model-provider credential stored. Run: docket keys add <PROVIDER>_API_KEY")
 
 
 def run_info(agent_id: str | None, json_out: bool) -> int:
@@ -662,8 +645,8 @@ def run_info(agent_id: str | None, json_out: bool) -> int:
 
 def _cmd_info_json(agent_id: str) -> None:
     raw = store.read_json(_cfg.meta_path(agent_id))
-    registered = _oc.agent_registered(agent_id)
-    tg = _oc.get_binding(agent_id)
+    registered = _fleet.agent_registered(agent_id)
+    tg = _fleet.get_binding(agent_id)
     activity = last_activity(agent_id)
 
     print(
@@ -701,8 +684,8 @@ def _cmd_info_human(agent_id: str) -> None:
     session_key = str(raw.get("sessionKey", f"agent:{agent_id}:default"))
     project_key = str(raw.get("projectKey", "default"))
 
-    registered = _oc.agent_registered(agent_id)
-    tg = _oc.get_binding(agent_id)
+    registered = _fleet.agent_registered(agent_id)
+    tg = _fleet.get_binding(agent_id)
     activity = last_activity(agent_id)
 
     mem_count = sum(1 for _ in (ws / "memory").glob("*.md")) if (ws / "memory").is_dir() else 0
@@ -791,9 +774,9 @@ def run_delete(agent_id: str | None) -> int:
         ui.error(f"Project '{aid}' not found.")
         return 1
 
-    name = _oc.meta_get(aid, "name", aid)
-    tg = _oc.get_binding(aid)
-    registered = _oc.agent_registered(aid)
+    name = _fleet.meta_get(aid, "name", aid)
+    tg = _fleet.get_binding(aid)
+    registered = _fleet.agent_registered(aid)
 
     ui.header(f"Delete: {name} ({aid})")
     ui.console.print()
@@ -802,7 +785,7 @@ def run_delete(agent_id: str | None) -> int:
     ui.console.print(f"  Telegram:     {tg or 'none'}")
     ui.console.print()
     ui.warn("This will:")
-    ui.console.print("  - Remove agent registration from openclaw.json")
+    ui.console.print("  - Remove agent registration from the fleet registry")
     ui.console.print("  - Remove Telegram binding (if any)")
     ui.console.print()
 
@@ -814,12 +797,12 @@ def run_delete(agent_id: str | None) -> int:
         ui.warn("Aborted.")
         return 0
 
-    _oc.remove_agent(aid)
+    _fleet.remove_agent(aid)
     audit_log("agent.delete", aid)
     ui.success("Removed from agent registry")
 
     if tg:
-        _oc.remove_binding(aid)
+        _fleet.remove_binding(aid)
         ui.success("Telegram binding removed")
 
     from docket.core import conversations as _conv
@@ -939,7 +922,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     else:
         ui.console.print("  [green]✓[/green] Required files: all present")
 
-    meta_session = _oc.meta_get(agent_id, "sessionKey", "")
+    meta_session = _fleet.meta_get(agent_id, "sessionKey", "")
     soul_path = ws / "SOUL.md"
     soul_session = ""
     if soul_path.is_file():
@@ -970,7 +953,7 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
         mem_dir.chmod(0o700)
         ui.console.print("       → created memory/")
 
-    # Per-turn context footprint: the artifacts OpenClaw re-feeds every turn.
+    # Per-turn context footprint: the artifacts the turn loop re-feeds every turn.
     # docket can't trim the live prompt, but oversized SOUL/AGENTS/MEMORY here
     # means every turn pays for it — flag it so the user can prune/rebuild.
     per_turn_files = ["SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE, "MEMORY.md"]
@@ -1013,7 +996,7 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
 
     Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
     -- docket's first self-originated LLM call (D-18) now genuinely runs
-    through docket's own gated loop rather than the ACL's ``OpenClawDriver``.
+    through docket's own gated loop.
     """
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
@@ -1212,124 +1195,51 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
     ui.success(f"Workspace rebuilt for '{agent_id}'.")
 
 
-def _trim_session_file(path: Path, keep_lines: int) -> tuple[int, int]:
-    """Keep the last ``keep_lines`` records of a JSONL transcript, back up the rest.
-
-    Each line is an independent usage record, so a tail window is a safe rolling
-    context: it drops the oldest turns (the bulk re-sent on every resume) while
-    preserving recent conversation. Writes a one-shot ``.bak`` first.
-
-    Returns ``(lines_before, lines_after)``; a no-op returns equal counts.
-    """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return (0, 0)
-    before = len(lines)
-    if before <= keep_lines:
-        return (before, before)
-    bak = path.with_suffix(path.suffix + ".bak")
-    bak.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    with contextlib.suppress(OSError):
-        bak.chmod(0o600)
-    kept = lines[-keep_lines:]
-    path.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
-    return (before, len(kept))
-
-
 def _maintain_sessions(agent_id: str) -> None:
-    """sessions: trim oversized transcripts and archive old ones (token hygiene).
+    """sessions: report on this agent's durable session storage.
 
-    A transcript is re-read in full on every resume, so an oversized file is paid
-    for on every turn. Large+recent files are *trimmed* to a recent-tail window
-    (keeps the conversation, drops the costly old middle); old files are archived.
+    Phase 19 P19-7b: this used to trim/archive the daemon's growing
+    per-turn JSONL transcripts (a real token-hygiene problem, since a
+    transcript was re-read in full on every resume). That storage shape is
+    gone — ``core/session.py`` stores one JSON document per session key and
+    already compacts it automatically inside the turn loop when it grows past
+    budget (Phase 19 P19-4's ``plan_compaction``/``compact_session``), so
+    there is no equivalent manual "trim large files" step to port faithfully.
+    This reports current session sizes; it does not fabricate a trim/archive
+    action against a storage shape that no longer has the problem those
+    actions existed to fix.
     """
-    sessions_dir = _cfg.OPENCLAW_DIR / "agents" / agent_id / "sessions"
-    if not sessions_dir.is_dir():
-        ui.info(f"No sessions directory found for '{agent_id}'.")
-        return
+    from urllib.parse import unquote as _url_unquote
 
-    now = _dt.datetime.now()
-    cutoff_days = 30
-    size_threshold = _cfg.SESSION_WARN_BYTES
-
-    files = sorted(
-        sessions_dir.glob("*.jsonl"),
-        key=lambda p: p.stat().st_mtime if p.exists() else 0.0,
-    )
-    # The newest file is likely the live session — never rewrite it in place.
-    active = files[-1] if files else None
-
-    old: list[Path] = []
-    large: list[Path] = []
-    for f in files:
-        try:
-            size = f.stat().st_size
-            age_days = (now - _dt.datetime.fromtimestamp(f.stat().st_mtime)).days
-        except OSError:
-            continue
-        if age_days > cutoff_days:
-            old.append(f)
-        elif size > size_threshold and f is not active:
-            large.append(f)
+    from docket.core import session as _session
 
     ui.header(f"Sessions: {agent_id}")
     ui.console.print()
-
-    if not old and not large:
-        if active is not None and active.stat().st_size > size_threshold:
-            kb = active.stat().st_size // 1024
-            est = active.stat().st_size // _cfg.CONTEXT_BYTES_PER_TOKEN
-            ui.warn(
-                f"  Active session {active.name} is large ({kb}KB, ~{est:,} tok re-read"
-                " per resume) but is the live session — left untouched."
-            )
-            ui.console.print()
-        ui.info("No trimmable or archivable session files found.")
-        return
-
-    for f in large:
-        size = f.stat().st_size
-        est = size // _cfg.CONTEXT_BYTES_PER_TOKEN
-        ui.console.print(f"  [trim]    {f.name}  ({size // 1024}KB, ~{est:,} tok)")
-    for f in old:
-        size = f.stat().st_size
-        age = (now - _dt.datetime.fromtimestamp(f.stat().st_mtime)).days
-        ui.console.print(f"  [archive] {f.name}  ({size // 1024}KB, {age}d old)")
-
-    ui.console.print()
-    ui.console.print(
-        f"  {len(large)} to trim (keep last {_cfg.SESSION_TRIM_KEEP_TURNS} turns),"
-        f" {len(old)} to archive"
+    ui.dim(
+        "  Per-session compaction is automatic now (Phase 19 P19-4) -- there is nothing"
+        " to trim or archive manually."
     )
+    ui.console.print()
 
-    if not sys.stdin.isatty():
-        ui.info("Non-interactive mode — reported only (no changes).")
+    if not _cfg.SESSIONS_DIR.is_dir():
+        ui.info("No session storage found yet.")
         return
 
-    ans = input("Apply (trim large + archive old)? [y/N]: ").strip().lower()
-    if ans != "y":
-        ui.warn("Cancelled.")
-        return
-
-    trimmed = 0
-    for f in large:
-        before, after = _trim_session_file(f, _cfg.SESSION_TRIM_KEEP_TURNS)
-        if after < before:
-            trimmed += 1
-            ui.console.print(f"  trimmed {f.name}: {before} → {after} records (.bak kept)")
-
-    archived = 0
-    if old:
-        archive_dir = sessions_dir / "archive"
-        archive_dir.mkdir(exist_ok=True)
-        for f in old:
-            dest = archive_dir / (f.name + ".gz")
-            with f.open("rb") as f_in, _gzip.open(dest, "wb") as f_out:
-                _shutil.copyfileobj(f_in, f_out)
-            f.unlink()
-            archived += 1
-
-    ui.success(f"Trimmed {trimmed} session(s); archived {archived} to sessions/archive/")
+    prefix = f"agent:{agent_id}:"
+    found = False
+    for entry in sorted(_cfg.SESSIONS_DIR.iterdir()):
+        if not entry.is_dir():
+            continue
+        key = _url_unquote(entry.name)
+        if not key.startswith(prefix):
+            continue
+        found = True
+        record = _session.load_session(key)
+        session_file = entry / "session.json"
+        size_kb = session_file.stat().st_size // 1024 if session_file.is_file() else 0
+        ui.console.print(
+            f"  {key}: {len(record.messages)} message(s), {size_kb}KB, "
+            f"last active {record.updated or 'never'}"
+        )
+    if not found:
+        ui.info(f"No session storage found for '{agent_id}'.")

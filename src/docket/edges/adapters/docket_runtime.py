@@ -6,13 +6,14 @@ programs against the Protocol work unchanged.
 
 P19-5 shipped this driver fully tested but unused in production: nothing yet
 repointed the callers that resolve a driver, so every real turn still ran
-through ``edges/adapters/openclaw.py``'s ``OpenClawDriver``. **P19-7a (the
-runtime cutover) is what flips it** -- this module's own ``default_driver()``
-below is now the single resolution point every production caller uses, so a
-production pod-dispatch hop (and every other driver-backed turn: distillation,
-cost aggregation, trace ingestion) executes here, on docket's own gated loop,
-not the daemon. ``edges/adapters/openclaw.py`` and its ``OpenClawDriver`` are
-untouched and still importable directly -- deleting them is P19-7b.
+through the external daemon (reached via what was then a driver in
+``edges/adapters/``). **P19-7a (the runtime cutover) is what flipped it** --
+this module's own ``default_driver()`` below became the single resolution
+point every production caller uses, so a production pod-dispatch hop (and
+every other driver-backed turn: distillation, cost aggregation, trace
+ingestion) executes here, on docket's own gated loop, not the daemon.
+**P19-7b then deleted the daemon-facing driver and every other daemon
+shell-out outright** -- there is no external runtime left at all.
 
 Every ``run_turn`` goes through ``core.agent_loop.run_agent_turn``, which in
 turn dispatches every tool call through ``core.tools.dispatch_tool`` — the one
@@ -54,13 +55,11 @@ __all__ = ["DocketDriver"]
 def _load_agent_meta(agent_id: str) -> tuple[AgentMeta | None, str]:
     """Read *agent_id*'s ``.docket-meta.json`` directly through ``edges/store.py``.
 
-    Deliberately bypasses ``edges/adapters/openclaw.py``'s ``meta_get`` helper:
-    that module owns the OpenClaw ACL boundary (openclaw.json / auth-profiles /
-    provider config) and is slated for deletion in P19-7, while
-    ``.docket-meta.json`` is docket's own metadata and has never needed the
-    ACL to read. Returns ``(None, "")`` for a missing or malformed record
-    rather than raising — every driver method here follows the Protocol's
-    "never raises for an ordinary failure" contract.
+    ``.docket-meta.json`` is docket's own metadata and has never needed
+    anything beyond ``edges/store.py`` to read. Returns ``(None, "")`` for a
+    missing or malformed record rather than raising — every driver method
+    here follows the Protocol's "never raises for an ordinary failure"
+    contract.
     """
     raw = _store.read_json(_cfg.meta_path(agent_id))
     if not raw:
@@ -191,8 +190,8 @@ class DocketDriver:
         ``.docket-meta.json`` and resolves an endpoint fresh on every call,
         and ``core/session.py`` creates a session's storage lazily on first
         ``append_messages``. ``capabilities().supports_provisioning`` is
-        ``False`` precisely so a caller does not mistake this for the real
-        registration step it can rely on from ``OpenClawDriver``.
+        ``False`` precisely so a caller does not mistake this for a real
+        registration step -- no driver has one any more.
         """
         return ProvisionResult(
             ok=True,
@@ -326,9 +325,9 @@ class DocketDriver:
 
         ``by_day`` is always empty: a session's stored usage is one running
         total for its whole lifetime (``core.session.MeasuredUsage`` has no
-        per-turn timestamp to bucket by day), unlike the daemon JSONL
-        ``OpenClawDriver.usage`` reads, which timestamps every record. Adding
-        a per-turn usage log to fabricate a daily breakdown would be new
+        per-turn timestamp to bucket by day), unlike the pre-Phase-19-P19-7b
+        daemon-facing driver, whose session JSONL timestamped every record.
+        Adding a per-turn usage log to fabricate a daily breakdown would be new
         scope for ``core/session.py`` (not owned by this card); reporting an
         honest empty list beats a single-bucket approximation mislabeled as
         a real daily breakdown.
@@ -366,19 +365,13 @@ _DRIVER: DocketDriver | None = None
 def default_driver() -> DocketDriver:
     """Return the process-wide ``DocketDriver`` singleton (P19-7a: the runtime cutover).
 
-    Mirrors ``edges.adapters.openclaw.default_driver()``'s singleton pattern --
-    stateless, so a fresh instance would behave identically; this just gives
-    every real caller one named object. This is now the driver every
-    production turn resolves through: ``core/dispatch.py``'s two pod-dispatch
-    hop-execution call sites, ``core/trace.py``'s session-ingestion sweep,
-    ``core/utils.py``'s cost aggregation, and ``cli/_agents.py``'s
-    distillation turn (D-18's first self-originated LLM call) all resolve
-    the driver here rather than through the ACL.
-
-    ``edges.adapters.openclaw.default_driver()`` still exists and still
-    resolves ``OpenClawDriver`` -- nothing outside its own module and test
-    file calls it anymore after this card, which is exactly what leaves it
-    for P19-7b to delete outright along with the rest of the ACL.
+    Stateless, so a fresh instance would behave identically; this just gives
+    every real caller one named object. This is the only driver docket ships
+    (P19-7b deleted the daemon-facing one outright): ``core/dispatch.py``'s
+    two pod-dispatch hop-execution call sites, ``core/trace.py``'s
+    session-ingestion sweep, ``core/utils.py``'s cost aggregation, and
+    ``cli/_agents.py``'s distillation turn (D-18's first self-originated LLM
+    call) all resolve the driver here.
     """
     global _DRIVER
     if _DRIVER is None:

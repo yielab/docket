@@ -21,6 +21,7 @@ import typer
 import docket.config as _cfg
 from docket import ui
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod as _pod_core
 from docket.core.audit import audit_log
@@ -28,18 +29,15 @@ from docket.core.utils import (
     aggregate_cost,
     gateway_active,
     last_activity,
-    openclaw_version,
     project_ids,
     restart_gateway,
-    scan_telegram_groups,
 )
 from docket.edges import store
-from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters import system as _sys
 
 app = typer.Typer(
     name="docket",
-    help="OpenClaw project agent manager",
+    help="docket project agent manager",
     add_completion=False,
     no_args_is_help=False,
     invoke_without_command=True,
@@ -47,14 +45,19 @@ app = typer.Typer(
 
 
 def _render_restart_result(result: _sys.RestartResult) -> None:
-    """Render a RestartResult exactly as system.restart_gateway() used to print it.
+    """Render a RestartResult.
 
     edges/ no longer prints (it has no knowledge of terminals); this is the
-    single place that reproduces the old wording so every call site stays
-    byte-identical. Shared by the other cli/ modules that trigger a restart.
+    single place that renders the result. Shared by the other cli/ modules
+    that used to trigger a gateway restart -- there is no daemon gateway any
+    more (Phase 19 P19-7b), so ``no_daemon`` is the only status a real call
+    ever returns; the other branches are kept only so ``DOCKET_NO_RESTART=1``
+    (a pre-existing test knob) still prints something recognisable.
     """
     if result.status == "dry_run":
         print("[dry-run] restart_gateway called")
+    elif result.status == "no_daemon":
+        return
     elif result.status == "not_running":
         ui.warn("Gateway not running. Start it with:")
         print(f"  {result.hint}")
@@ -101,12 +104,9 @@ def _resolve_version() -> str:
     try:
         return version("docket")
     except PackageNotFoundError:
-        for cand in (
-            Path(__file__).resolve().parents[3] / "VERSION",
-            _cfg.OPENCLAW_DIR / "VERSION",
-        ):
-            if cand.is_file():
-                return cand.read_text(encoding="utf-8").strip()
+        cand = Path(__file__).resolve().parents[3] / "VERSION"
+        if cand.is_file():
+            return cand.read_text(encoding="utf-8").strip()
     return "unknown"
 
 
@@ -142,7 +142,7 @@ def cmd_install(
         False, "--portfolio", help="Also provision the optional org Portfolio Manager"
     ),
 ) -> None:
-    """Bootstrap OpenClaw + specialist agents."""
+    """Bootstrap a docket-native home + specialist agents."""
     from docket.cli._install import run_install
 
     raise typer.Exit(run_install(want_gates=gates, assume_yes=yes, want_portfolio=portfolio))
@@ -158,10 +158,10 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
 
 
 def _cmd_list_json() -> None:
-    oc = _oc.load_config()
-    registered = {a.id for a in _oc.list_agents(oc)}
+    fleet = _fleet.load_fleet()
+    registered = {a.id for a in _fleet.list_agents(fleet)}
     tg_bindings: dict[str, str | None] = {}
-    for b in oc.bindings:
+    for b in fleet.bindings:
         if b.channel == "telegram":
             tg_bindings[b.agent_id] = b.peer_id or None
 
@@ -197,26 +197,20 @@ def _cmd_list_human() -> None:
         ui.console.print("Run: docket add")
         raise typer.Exit(0)
 
-    oc = _oc.load_config()
-    registered_ids = {a.id for a in _oc.list_agents(oc)}
+    fleet = _fleet.load_fleet()
+    registered_ids = {a.id for a in _fleet.list_agents(fleet)}
     tg_bindings: dict[str, str] = {}
-    for b in oc.bindings:
+    for b in fleet.bindings:
         if b.channel == "telegram":
             tg_bindings[b.agent_id] = b.peer_id
 
-    total_agents = len(oc.agents)
-    tg_binding_count = sum(1 for b in oc.bindings if b.channel == "telegram")
-    gw_up = gateway_active()
-    tg_on = _oc.get_telegram_enabled()
-
-    gw_badge = "[green]● gateway up[/green]" if gw_up else "[red]○ gateway down[/red]"
-    tg_badge = "[green]● telegram on[/green]" if tg_on else "[yellow]○ telegram off[/yellow]"
+    total_agents = len(fleet.agents)
+    tg_binding_count = sum(1 for b in fleet.bindings if b.channel == "telegram")
 
     ui.console.print()
     ui.console.print(
-        f"  [bold]OpenClaw[/bold]  {gw_badge}  {tg_badge}  [dim]│[/dim]"
-        f"  {total_agents} agents  {tg_binding_count} binding(s)"
-        f"  [dim]│[/dim]  v{openclaw_version()}"
+        f"  [bold]docket[/bold]  {total_agents} agent(s)  {tg_binding_count} channel binding(s)"
+        f"  [dim]│[/dim]  v{_resolve_version()}"
     )
     ui.console.print(f"  [dim]{'─' * 66}[/dim]")
     ui.console.print(
@@ -312,7 +306,7 @@ def _cmd_list_human() -> None:
     ui.console.print()
 
     for spec in _cfg.ORG_DISPLAY_ORDER:
-        spec_ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        spec_ws = _cfg.WORKSPACES_DIR / spec
         if not spec_ws.is_dir():
             continue
         spec_meta = spec_ws / _cfg.META_FILE
@@ -380,7 +374,7 @@ def _delete_pod(project: str, members: list[str]) -> int:
     ui.header(f"Delete pod: {project}  ({len(members)} members)")
     ui.console.print()
     for mid in members:
-        role = _oc.meta_get(mid, "role", "?")
+        role = _fleet.meta_get(mid, "role", "?")
         ui.console.print(f"  - {mid}  [{role}]")
     ui.console.print()
     ui.warn("This removes every member's registration, binding, and workspace.")
@@ -396,8 +390,8 @@ def _delete_pod(project: str, members: list[str]) -> int:
 
     reg = _conv.load()
     for mid in members:
-        if _oc.get_binding(mid):
-            _oc.remove_binding(mid)
+        if _fleet.get_binding(mid):
+            _fleet.remove_binding(mid)
         reg = _conv.remove_agent(reg, mid)
         ok, msg = _pod.teardown_member(mid)
         if ok:
@@ -479,135 +473,36 @@ def cmd_wire(
         ui.error(f"Agent '{aid}' not found.")
         raise typer.Exit(1)
 
-    name = _oc.meta_get(aid, "name", aid)
-    existing = _oc.get_binding(aid, channel)
+    name = _fleet.meta_get(aid, "name", aid)
+    existing = _fleet.get_binding(aid, channel)
 
     ui.header(f"Wire {channel.capitalize()}: {name} ({aid})")
     ui.console.print()
     if existing:
         ui.warn(f"Currently wired to: {existing}")
 
-    peer_id = ""
+    # Phase 19 P19-7b: log-based Telegram group discovery (`scan_telegram_groups`)
+    # depended on the daemon's gateway log, which no longer exists. Every
+    # channel — telegram included — is now manual entry only. A docket-owned
+    # Telegram channel is P19-8's job; until it lands, this only records a
+    # binding in fleet.json, it does not make docket listen on it.
+    ui.dim(f"Enter the peer/group ID from your {channel} setup.")
+    ui.console.print()
+    peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
+    if not peer_id:
+        ui.warn("Aborted.")
+        raise typer.Exit(0)
 
-    if channel == "telegram":
-        groups = scan_telegram_groups()
-
-        if not groups:
-            ui.warn("No Telegram groups found in OpenClaw logs.")
-            ui.console.print()
-            ui.console.print("[bold]To wire a group:[/bold]")
-            ui.console.print("  1. Create a Telegram group")
-            ui.console.print("  2. Add your OpenClaw bot to the group")
-            ui.console.print("  3. Send a message in the group")
-            ui.console.print(f"  4. Wait a few seconds, then run: docket wire {aid}")
-            ui.console.print()
-            ui.warn("Aborted - no groups available.")
-            raise typer.Exit(0)
-
-        unbound = [(gid, title) for gid, title, bound in groups if not bound]
-
-        if not unbound:
-            # All groups are already bound — show all and allow override.
-            ui.console.print("[yellow]All groups are already bound:[/yellow]")
-            ui.console.print()
-            for i, (gid, title, bound) in enumerate(groups, 1):
-                ui.console.print(
-                    f"  [bold]{i:2}.[/bold] {gid:<22} {title:<28}"
-                    f" → [cyan]{bound or '<unbound>'}[/cyan]"
-                )
-            ui.console.print()
-            ui.console.print("You can:")
-            ui.console.print(
-                f"  • Create a new Telegram group, add bot, send message,"
-                f" then run: docket wire {aid}"
-            )
-            ui.console.print("  • Unbind an existing group: docket unwire <agent-id>")
-            ui.console.print("  • Override an existing binding (select number above)")
-            ui.console.print()
-            choice = input(f"Select group (1-{len(groups)}) or press Enter to cancel: ").strip()
-            if not choice:
-                ui.warn("Aborted.")
-                raise typer.Exit(0)
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(groups):
-                    peer_id = groups[idx][0]
-                    prev_bound = groups[idx][2]
-                    if prev_bound:
-                        ui.warn(f"This will unbind '{prev_bound}' from group '{groups[idx][1]}'")
-                        ok = input("Continue? [y/N]: ").strip()
-                        if ok.lower() != "y":
-                            ui.warn("Aborted.")
-                            raise typer.Exit(0)
-                else:
-                    ui.warn("Invalid choice. Aborted.")
-                    raise typer.Exit(0)
-            except ValueError:
-                ui.warn("Invalid choice. Aborted.")
-                raise typer.Exit(0) from None
-
-        elif len(unbound) == 1:
-            gid, title = unbound[0]
-            ui.console.print("[green]Found 1 unbound group:[/green]")
-            ui.console.print(f"  {gid} - {title}")
-            ui.console.print()
-            ok = input("Wire to this group? [Y/n]: ").strip()
-            if ok.lower() == "n":
-                ui.warn("Aborted.")
-                raise typer.Exit(0)
-            peer_id = gid
-
-        else:
-            ui.console.print("[green]Available unbound groups:[/green]")
-            ui.console.print()
-            for i, (gid, title) in enumerate(unbound, 1):
-                ui.console.print(f"  [bold]{i:2}.[/bold] {gid:<22} {title}")
-            ui.console.print()
-            ui.console.print("  [bold] 0.[/bold] Enter group ID manually")
-            ui.console.print()
-            while True:
-                choice = input(
-                    f"Select group (1-{len(unbound)}, 0 for manual, or Enter to cancel): "
-                ).strip()
-                if not choice:
-                    ui.warn("Aborted.")
-                    raise typer.Exit(0)
-                if choice == "0":
-                    peer_id = input("Telegram group ID: ").strip()
-                    if not peer_id:
-                        ui.warn("Aborted.")
-                        raise typer.Exit(0)
-                    break
-                try:
-                    idx = int(choice) - 1
-                    if 0 <= idx < len(unbound):
-                        peer_id = unbound[idx][0]
-                        break
-                    else:
-                        ui.warn(f"Invalid choice. Please enter 1-{len(unbound)} or 0.")
-                except ValueError:
-                    ui.warn(f"Invalid choice. Please enter 1-{len(unbound)} or 0.")
-
-    else:
-        ui.dim(
-            f"No log-based discovery for {channel}."
-            f" Enter the peer/group ID from your {channel} setup."
-        )
-        ui.console.print()
-        peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
-        if not peer_id:
-            ui.warn("Aborted.")
-            raise typer.Exit(0)
-
-    allowlist_ok = _oc.wire_group(aid, peer_id, channel)
-    if allowlist_ok:
-        ui.success(f"Group {peer_id} added to allowlist")
-    else:
-        ui.warn("Could not set allowlist entry — check manually")
+    _fleet.upsert_binding(aid, peer_id, channel)
     ui.success(f"Binding: {aid} ← {channel} group {peer_id}")
+    if channel == "telegram":
+        ui.dim(
+            "  No daemon exists to answer this channel yet — the binding is recorded, but"
+            " nothing listens on it until docket owns its own Telegram bot (P19-8)."
+        )
 
     # Register the thread in the docket-owned conversation registry so it is
-    # tracked/resumable (OpenClaw keeps no durable transcript).
+    # tracked/resumable.
     from datetime import UTC, datetime
 
     from docket.core import conversations as _conv
@@ -618,7 +513,6 @@ def cmd_wire(
     )
     _conv.save(reg)
 
-    _do_restart_gateway()
     ui.success(f"Done. '{aid}' is now wired to {channel} peer {peer_id}")
 
 
@@ -642,8 +536,8 @@ def cmd_unwire(
         ui.error(f"Agent '{aid}' not found.")
         raise typer.Exit(1)
 
-    name = _oc.meta_get(aid, "name", aid)
-    peer = _oc.get_binding(aid, channel)
+    name = _fleet.meta_get(aid, "name", aid)
+    peer = _fleet.get_binding(aid, channel)
 
     if not peer:
         ui.warn(f"'{aid}' has no {channel} binding.")
@@ -658,7 +552,7 @@ def cmd_unwire(
         ui.warn("Aborted.")
         raise typer.Exit(0)
 
-    _oc.remove_binding(aid, channel)
+    _fleet.remove_binding(aid, channel)
     ui.success("Binding removed")
     _do_restart_gateway()
 
@@ -683,9 +577,9 @@ def cmd_scope(
         raise typer.Exit(1)
 
     action = sub or "show"
-    name = _oc.meta_get(aid, "name", aid)
-    current_key = _oc.meta_get(aid, "projectKey", "default")
-    current_session = _oc.meta_get(aid, "sessionKey", f"agent:{aid}:default")
+    name = _fleet.meta_get(aid, "name", aid)
+    current_key = _fleet.meta_get(aid, "projectKey", "default")
+    current_session = _fleet.meta_get(aid, "sessionKey", f"agent:{aid}:default")
 
     if action == "show":
         ui.header(f"Session Scope: {name} ({aid})")
@@ -708,8 +602,8 @@ def cmd_scope(
             ui.error(f"Project key required. Usage: docket scope {aid} set <project-key>")
             raise typer.Exit(1)
         new_session = f"agent:{aid}:{project_key}"
-        _oc.meta_set(aid, "projectKey", project_key)
-        _oc.meta_set(aid, "sessionKey", new_session)
+        _fleet.meta_set(aid, "projectKey", project_key)
+        _fleet.meta_set(aid, "sessionKey", new_session)
         audit_log("scope.set", f"{aid}={project_key}")
         ui.success(f"Session scope updated: {current_key} → {project_key}")
         ui.success(f"Session key: {new_session}")
@@ -718,8 +612,8 @@ def cmd_scope(
 
     elif action == "reset":
         new_session = f"agent:{aid}:default"
-        _oc.meta_set(aid, "projectKey", "default")
-        _oc.meta_set(aid, "sessionKey", new_session)
+        _fleet.meta_set(aid, "projectKey", "default")
+        _fleet.meta_set(aid, "sessionKey", new_session)
         audit_log("scope.reset", aid)
         ui.success("Session scope reset to: default")
         ui.success(f"Session key: {new_session}")
@@ -758,8 +652,8 @@ def cmd_profile(
         # `--budget` branch below: if the resumed agent is a pod's Lead, also
         # unblock its budget-blocked tasks — a pause with no way to un-stick
         # the tasks that queued up behind it would be a no-op resume.
-        _oc.meta_set(aid, "paused", False)
-        _oc.meta_set(aid, "pausedReason", "")
+        _fleet.meta_set(aid, "paused", False)
+        _fleet.meta_set(aid, "pausedReason", "")
         audit_log("profile.resume", f"agent={aid}")
         pod_project = _pod_core.pod_of(aid)
         if pod_project is not None and _pod_core.member_id(pod_project, "lead") == aid:
@@ -778,7 +672,7 @@ def cmd_profile(
         except ValueError:
             ui.error(f"Invalid budget '{budget}'. Must be a non-negative number (e.g. 5 or 10.50).")
             raise typer.Exit(1) from None
-        _oc.meta_set(aid, "budgetUsd", budget)
+        _fleet.meta_set(aid, "budgetUsd", budget)
         audit_log("profile.budget", f"{aid}=${budget}")
         # R-1: a pod-wide budget change is one of the two sanctioned ways a
         # budget-`blocked` task re-enters `pending` (the other is an explicit
@@ -791,19 +685,19 @@ def cmd_profile(
             if unblocked:
                 ui.info(f"  Unblocked {unblocked} budget-blocked task(s) in pod '{pod_project}'.")
         if budget != "0":
-            _oc.meta_set(aid, "paused", False)
-            _oc.meta_set(aid, "pausedReason", "")
+            _fleet.meta_set(aid, "paused", False)
+            _fleet.meta_set(aid, "pausedReason", "")
             ui.success(f"Budget cap set to ${budget} for '{aid}'.")
         else:
             ui.success(f"Budget cap removed for '{aid}'.")
         if model is None:
             return  # budget-only change, nothing more to do
 
-    name = _oc.meta_get(aid, "name", aid)
-    current = _oc.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
+    name = _fleet.meta_get(aid, "name", aid)
+    current = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
     role = _mp.agent_role(aid)
     src = _mp.agent_model_source(aid)
-    bud = _oc.meta_get(aid, "budgetUsd", "")
+    bud = _fleet.meta_get(aid, "budgetUsd", "")
 
     if model is None:
         role_models, _, _ = _mp.load_registry()
@@ -854,8 +748,8 @@ def cmd_profile(
         ui.warn(f"Already using {new_model} ({new_src}). No change.")
         return
 
-    _oc.set_model_both(aid, new_model)
-    _oc.meta_set(aid, "modelSource", new_src)
+    _fleet.set_model_both(aid, new_model)
+    _fleet.meta_set(aid, "modelSource", new_src)
     audit_log("profile.model", f"{aid}={new_model} ({new_src})")
 
     if new_src == "policy":
@@ -918,7 +812,7 @@ def cmd_persona(
         raise typer.Exit(1)
 
     # 1. Update the docket-owned source of truth (.docket-meta.json).
-    _oc.meta_set(aid, "persona", new_persona.model_dump() if new_persona else None)
+    _fleet.meta_set(aid, "persona", new_persona.model_dump() if new_persona else None)
 
     # 2. Re-render the persona block in SOUL.md (idempotent; role text untouched).
     soul = ws / "SOUL.md"
@@ -961,10 +855,12 @@ def cmd_auth(
     ctx: typer.Context,
     sub: str | None = typer.Argument(None),
 ) -> None:
-    """Model-provider authentication (status/login/key/setup).
+    """Model-provider credential status (no docket-native login flow yet).
 
-    login/key/setup accept `--provider <name>` (default: anthropic) to
-    authenticate a different OpenClaw-supported provider instead.
+    `status` shows which provider API keys are stored; `login`/`key`/`setup`
+    accept `--provider <name>` (default: anthropic) but say plainly that
+    there is no docket-native auth exchange yet — store a credential with
+    `docket keys add <PROVIDER>_API_KEY` instead (see `docket auth --help`).
     """
     from docket.cli._keys import run_auth
 
@@ -1248,15 +1144,9 @@ def _cmd_models_preset(preset: str | None) -> None:
 
     key_name = t.get("key", "")
     if key_name:
-        secrets_path = _cfg.OPENCLAW_DIR / "secrets.json"
-        key_present = False
-        if secrets_path.exists():
-            try:
-                import json as _j
+        from docket.core import secrets as _secrets
 
-                key_present = key_name in _j.loads(secrets_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+        key_present = key_name in _secrets.secrets_keys()
         if not key_present:
             ui.console.print()
             ui.warn(f"API key {key_name} is not stored yet.")
@@ -1373,9 +1263,7 @@ def _test_cmd_for_stack(stack: str) -> str:
 
 @app.command("logs")
 def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
-    """View memory logs and gateway entries."""
-    import datetime as _dt
-
+    """View memory logs."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -1413,24 +1301,10 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     else:
         ui.console.print("  [dim]No memory logs yet.[/dim]")
 
-    tg_peer = _oc.get_binding(aid)
-    if tg_peer:
-        today = _dt.date.today().strftime("%Y-%m-%d")
-        log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
-        if log_file.is_file():
-            try:
-                all_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-            except OSError:
-                all_lines = []
-            matched = [ln for ln in all_lines if tg_peer in ln]
-            ui.console.print()
-            ui.console.print(
-                f"[bold]Gateway log:[/bold] {len(matched)} entries today for group {tg_peer}"
-            )
-            for ln in matched[-10:]:
-                ui.console.print(f"  {ln}")
-            if len(matched) > 10:
-                ui.console.print(f"  [dim]... ({len(matched) - 10} more entries)[/dim]")
+    # Phase 19 P19-7b: this used to also tail the daemon's gateway log for a
+    # channel-bound agent's group traffic. There is no daemon and no gateway
+    # log any more, so that section is gone rather than faked; memory logs
+    # above remain the durable, docket-owned activity record.
     ui.console.print()
 
 
@@ -1489,7 +1363,6 @@ def cmd_edit(agent_id: str | None = typer.Argument(None)) -> None:
 
     ui.success("Edits saved.")
     ui.console.print()
-    ui.info("Restart gateway to apply changes: systemctl --user restart openclaw-gateway.service")
 
 
 @app.command("cost")
@@ -1611,15 +1484,9 @@ def cmd_snapshot(
     import datetime as _dt
 
     gw = "active" if gateway_active() else "inactive"
-
-    try:
-        raw_cfg: dict[str, Any] = store.read_json(_cfg.CONFIG_FILE)
-        channels = list(raw_cfg.get("channels", {}).keys())
-    except Exception:
-        channels = []
-
-    oc = _oc.load_config()
-    registered_ids = {a.id for a in _oc.list_agents(oc)}
+    oc = _fleet.load_fleet()
+    channels = _fleet.channel_names(oc)
+    registered_ids = {a.id for a in _fleet.list_agents(oc)}
 
     def _agent_bindings(aid: str) -> list[dict[str, Any]]:
         return [
@@ -1650,7 +1517,7 @@ def cmd_snapshot(
         )
 
     for spec in _cfg.SPECIALIST_ORDER:
-        ws = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        ws = _cfg.WORKSPACES_DIR / spec
         if not ws.is_dir():
             continue
         try:
@@ -1827,27 +1694,17 @@ def cmd_json(ctx: typer.Context) -> None:
         if verb == "meta-get":
             if len(a) < 2:
                 _die("usage: meta-get <id> <field> [default]")
-            print(_oc.meta_get(a[0], a[1], a[2] if len(a) > 2 else ""))
+            print(_fleet.meta_get(a[0], a[1], a[2] if len(a) > 2 else ""))
 
         elif verb == "meta-set":
             if len(a) < 3:
                 _die("usage: meta-set <id> <field> <value>")
-            _oc.meta_set(a[0], a[1], a[2])
-
-        elif verb == "oc-get":
-            if not a:
-                _die("usage: oc-get <dotpath> [default]")
-            print(_oc.oc_get_path(a[0], a[1] if len(a) > 1 else ""))
-
-        elif verb == "oc-set":
-            if len(a) < 2:
-                _die("usage: oc-set <dotpath> <json-value>")
-            _oc.oc_set_path(a[0], a[1])
+            _fleet.meta_set(a[0], a[1], a[2])
 
         elif verb == "agent-registered":
             if not a:
                 _die("usage: agent-registered <id>")
-            if _oc.agent_registered(a[0]):
+            if _fleet.agent_registered(a[0]):
                 print("1")
             else:
                 print("0")
@@ -1856,27 +1713,27 @@ def cmd_json(ctx: typer.Context) -> None:
         elif verb == "agent-add":
             if len(a) < 2:
                 _die("usage: agent-add <id> <model> [session_key] [project_key]")
-            _oc.add_agent(a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else "")
+            _fleet.add_agent(a[0], a[1], a[2] if len(a) > 2 else "", a[3] if len(a) > 3 else "")
 
         elif verb == "agent-remove":
             if not a:
                 _die("usage: agent-remove <id>")
-            _oc.remove_agent(a[0])
+            _fleet.remove_agent(a[0])
 
         elif verb == "model-set-both":
             if len(a) < 2:
                 _die("usage: model-set-both <id> <model>")
-            _oc.set_model_both(a[0], a[1])
+            _fleet.set_model_both(a[0], a[1])
 
         elif verb == "binding-get":
             if not a:
                 _die("usage: binding-get <id> [channel]")
-            print(_oc.get_binding(a[0], a[1] if len(a) > 1 else "telegram"))
+            print(_fleet.get_binding(a[0], a[1] if len(a) > 1 else "telegram"))
 
         elif verb == "binding-upsert":
             if len(a) < 2:
                 _die("usage: binding-upsert <id> <peer_id> [channel] [peer_kind]")
-            _oc.upsert_binding(
+            _fleet.upsert_binding(
                 a[0],
                 a[1],
                 a[2] if len(a) > 2 else "telegram",
@@ -1886,42 +1743,31 @@ def cmd_json(ctx: typer.Context) -> None:
         elif verb == "binding-remove":
             if not a:
                 _die("usage: binding-remove <id> [channel]")
-            _oc.remove_binding(a[0], a[1] if len(a) > 1 else None)
+            _fleet.remove_binding(a[0], a[1] if len(a) > 1 else None)
 
         elif verb == "gates-get":
-            print(_json.dumps(_oc.get_gates_enabled()))
+            print(_json.dumps(_fleet.get_gates_enabled()))
 
         elif verb == "gates-set":
             if not a:
                 _die("usage: gates-set <true|false>")
-            _oc.set_gates_enabled(a[0].lower() in ("1", "true", "yes"))
+            _fleet.set_gates_enabled(a[0].lower() in ("1", "true", "yes"))
 
         elif verb == "isolation-get":
-            print(_json.dumps(_oc.get_isolation_enabled()))
+            print(_json.dumps(_fleet.get_isolation_enabled()))
 
         elif verb == "isolation-set":
             if not a:
                 _die("usage: isolation-set <true|false>")
-            _oc.set_isolation_enabled(a[0].lower() in ("1", "true", "yes"))
+            _fleet.set_isolation_enabled(a[0].lower() in ("1", "true", "yes"))
 
         elif verb == "default-model-get":
-            print(_oc.get_default_model())
+            print(_fleet.get_default_model())
 
         elif verb == "default-model-set":
             if not a:
                 _die("usage: default-model-set <model>")
-            _oc.set_default_model(a[0])
-
-        elif verb == "auth-summary":
-            agent = a[0] if a else "main"
-            for p in _oc.auth_profiles_summary(agent):
-                state = f"disabled:{p.disabled_reason}" if p.disabled else "ok"
-                print(f"{p.id}|{p.provider}|{p.type}|{state}")
-
-        elif verb == "auth-has-usable":
-            agent = a[0] if a else "main"
-            if not _oc.has_usable_profile(agent):
-                raise typer.Exit(1)
+            _fleet.set_default_model(a[0])
 
         else:
             print(f"_json: unknown verb '{verb}'", file=sys.stderr)

@@ -230,11 +230,13 @@ def decode_response(data: dict[str, Any]) -> ChatResponse:
 def _classify_http_status(status: int) -> FailureKind:
     """Map an HTTP status onto docket's retry vocabulary.
 
-    ``nonzero_exit`` reads oddly for HTTP; it is reused because
-    ``core/dispatch.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on the existing
-    ``FailureKind`` literals, and inventing a synonym would mean either a
-    parallel retry table or a rename across 62 test modules for no behavioural
-    gain. P19-7 renames the whole vocabulary once the daemon words go.
+    ``nonzero_exit``/``daemon_error`` read oddly for HTTP; they are reused
+    because ``core/dispatch.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on
+    the existing ``FailureKind`` literals, and inventing a synonym would mean
+    either a parallel retry table or a rename across dozens of test modules
+    for no behavioural gain. Phase 19 P19-7b deleted the daemon these names
+    originally described; renaming the vocabulary itself is a separate,
+    not-yet-scheduled cleanup, not part of this card.
     """
     return "daemon_error" if status in _RETRYABLE_STATUS else "nonzero_exit"
 
@@ -357,8 +359,9 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     ``None`` when no base URL can be found, so callers report an actionable
     "no endpoint configured" rather than posting into the void.
 
-    P19-6 re-points the stored-config lookup at docket's own fleet config; the
-    signature and precedence stay as they are.
+    Phase 19 P19-7b: the stored-config lookup reads docket's own fleet
+    registry (``core/fleet.py``'s ``get_local_provider``) directly -- there
+    is no daemon config file left to have ever pointed at.
     """
     provider, _, model_id = model.partition("/")
     if not model_id:
@@ -369,9 +372,9 @@ def resolve_endpoint(model: str) -> Endpoint | None:
 
     stored: dict[str, Any] = {}
     if provider and not env_base:
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import fleet as _fleet
 
-        stored = _oc.get_local_provider(provider) or {}
+        stored = _fleet.get_local_provider(provider) or {}
 
     base_url = env_base or str(stored.get("baseUrl") or "").strip()
     if not base_url:

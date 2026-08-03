@@ -1,71 +1,51 @@
-"""docket keys / docket auth — API key management and model-provider auth.
+"""docket keys / docket auth — API key management + honest model-provider-auth status.
 
 ``run_keys(sub, extra)`` and ``run_auth(sub, extra)`` return the process exit
 code; the coordinator wraps each in a Typer command and raises
-``typer.Exit(code)``. Secrets live in ``~/.openclaw/secrets.json`` /
-``secrets.meta.json`` — docket-owned JSON written through ``edges/store.py``,
-never openclaw.json.
+``typer.Exit(code)``. Secrets live in ``~/.docket/secrets.json`` /
+``secrets.meta.json`` (``core/secrets.py``) — docket-owned JSON written
+through ``edges/store.py``.
+
+Phase 19 P19-7b: ``docket auth``'s ``login``/``key``/``setup`` used to shell
+out to ``openclaw models auth setup-token``/``paste-token`` so the daemon
+would own the credential exchange. There is no daemon and no docket-native
+replacement for an interactive OAuth-style provider login flow yet — rather
+than silently no-op or pretend to succeed, every subcommand says so plainly
+and points at ``docket keys add <PROVIDER>_API_KEY`` as the one credential
+path that is real today (``edges/adapters/llm.py``'s ``resolve_endpoint``
+reads ``<PROVIDER>_API_KEY`` from the environment as one of its lookup
+precedence steps).
 """
 
 from __future__ import annotations
 
-import datetime as _dt
 import getpass as _getpass
-import json as _json
 import re as _re
-import shutil
 import sys
-from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
 from docket.core.utils import project_ids
 from docket.edges import store
-from docket.edges.adapters import openclaw as _oc
-
-
-def _secrets_path() -> Path:
-    return _cfg.OPENCLAW_DIR / "secrets.json"
-
-
-def _secrets_meta_path() -> Path:
-    return _cfg.OPENCLAW_DIR / "secrets.meta.json"
 
 
 def _load_secrets() -> dict[str, str]:
-    try:
-        data: dict[str, str] = _json.loads(_secrets_path().read_text(encoding="utf-8"))
-        return data
-    except Exception:
-        return {}
+    return _secrets.load_secrets()
 
 
 def _save_secrets(secrets: dict[str, str]) -> None:
-    store.write_json(_secrets_path(), secrets)
+    _secrets.save_secrets(secrets)
 
 
 def _load_secrets_meta() -> dict[str, Any]:
-    try:
-        data: dict[str, Any] = _json.loads(_secrets_meta_path().read_text(encoding="utf-8"))
-        return data
-    except Exception:
-        return {}
+    return _secrets.load_secrets_meta()
 
 
 def _touch_secrets_meta(name: str, event: str) -> None:
-    meta = _load_secrets_meta()
-    now = _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if event == "removed":
-        meta.pop(name, None)
-    else:
-        entry: dict[str, Any] = meta.get(name) or {}
-        entry.setdefault("added_at", now)
-        if event == "rotated":
-            entry["rotated_at"] = now
-        meta[name] = entry
-    store.write_json(_secrets_meta_path(), meta)
+    _secrets.touch_meta(name, event)
 
 
 _PROVIDER_KEYS: dict[str, str] = {
@@ -413,12 +393,8 @@ def run_keys(sub: str | None, extra: list[str]) -> int:
 def _extract_provider(extra: list[str], default: str = "anthropic") -> tuple[str, list[str]]:
     """Pull a `--provider <name>` / `--provider=<name>` flag out of ``extra``.
 
-    Returns (provider, remaining_extra) — ``remaining_extra`` has the flag
-    (and its value) stripped so it is never duplicated onto the openclaw
-    argv the ACL builds (which already places `--provider <provider>` itself;
-    see `edges/adapters/openclaw.py`'s `auth_setup_token`/`auth_paste_token`).
-    Defaults to "anthropic" when no flag is present, for backward
-    compatibility with every pre-Phase-18 invocation.
+    Returns (provider, remaining_extra). Defaults to "anthropic" when no flag
+    is present, for backward compatibility with every pre-Phase-19 invocation.
     """
     provider = default
     remaining: list[str] = []
@@ -438,117 +414,70 @@ def _extract_provider(extra: list[str], default: str = "anthropic") -> tuple[str
     return provider, remaining
 
 
+_AUTH_GONE_MESSAGE = (
+    "No docket-native provider-auth flow exists yet (Phase 19 P19-7b deleted the daemon"
+    " this used to shell out to for an OAuth-like token exchange).\n"
+    "  What works today: store a credential directly and docket's own chat client reads it —\n"
+    "    docket keys add {env_var}\n"
+    "  edges/adapters/llm.py's resolve_endpoint falls back to the <PROVIDER>_API_KEY\n"
+    "  environment variable, so exporting {env_var} (or storing it via 'docket keys add' and\n"
+    "  sourcing 'docket keys export') is the real, working credential path."
+)
+
+_PROVIDER_ENV_VAR: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_AI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "xai": "XAI_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+}
+
+
 def run_auth(sub: str | None, extra: list[str]) -> int:
     """Dispatch the auth subcommand. Returns the process exit code.
 
     sub:   status (default) | login | key | setup | choose
-    extra: trailing positional args forwarded to the openclaw auth helpers;
-           may include `--provider <name>` (defaults to "anthropic" — see
-           `_extract_provider`).
+    extra: may include `--provider <name>` (defaults to "anthropic").
+
+    Phase 19 P19-7b: every subcommand here used to shell out to
+    `openclaw models auth setup-token`/`paste-token` so the (now-deleted)
+    daemon owned the credential exchange. There is no docket-native
+    replacement for an interactive provider-login flow, so every path below
+    says that plainly rather than silently no-op'ing or reporting a fake
+    success — see the module docstring.
     """
     action = sub or "status"
+    provider, _rest = _extract_provider(extra)
+    env_var = _PROVIDER_ENV_VAR.get(provider, f"{provider.upper()}_API_KEY")
 
     if action == "status":
-        profiles = _oc.auth_profiles_summary()
-        if not profiles:
-            ui.warn("No auth profiles configured.")
-            ui.console.print("  Run: docket auth login")
-            return 0
-
-        ui.console.print()
-        any_ok = False
-        for p in profiles:
-            if p.disabled:
-                badge = "[yellow]●[/yellow]"
-                detail = f"(disabled: {p.disabled_reason})" if p.disabled_reason else "(disabled)"
-            else:
-                badge = "[green]●[/green]"
-                detail = ""
-                any_ok = True
-            ui.console.print(f"  {badge} {p.id}  ({p.provider}, {p.type}) {detail}")
-
-        ui.console.print()
-        if any_ok:
-            ui.success("At least one profile is usable.")
+        stored = _secrets.secrets_keys()
+        present = [name for name in _PROVIDER_ENV_VAR.values() if name in stored]
+        if present:
+            ui.console.print()
+            for name in present:
+                ui.console.print(f"  [green]●[/green] {name}  (stored via 'docket keys')")
+            ui.console.print()
+            ui.success("At least one provider credential is stored.")
         else:
-            ui.warn("All profiles are disabled.")
+            ui.warn("No provider API keys stored yet.")
+        ui.dim(
+            f"  No docket-native subscription/OAuth auth exists yet — see: docket auth {provider}"
+        )
         return 0
 
-    if action == "login":
-        if not shutil.which("openclaw"):
-            ui.error("'openclaw' not found in PATH. Is it installed?")
-            return 1
-        provider, rest = _extract_provider(extra)
-        ui.info(f"Authenticating with {provider} (setup-token)...")
-        result = _oc.auth_setup_token(rest, provider=provider)
-        if result.returncode == 0:
-            ui.success("Authentication successful.")
-
-            from docket.cli import _do_restart_gateway
-
-            _do_restart_gateway()
-            return 0
-        ui.error(f"Authentication failed (exit {result.returncode}).")
-        return 1
-
-    if action == "key":
-        if not shutil.which("openclaw"):
-            ui.error("'openclaw' not found in PATH. Is it installed?")
-            return 1
-        provider, rest = _extract_provider(extra)
-        ui.info(f"Authenticating with {provider} (paste-token)...")
-        result = _oc.auth_paste_token(rest, provider=provider)
-        if result.returncode == 0:
-            ui.success("Key stored successfully.")
-
-            from docket.cli import _do_restart_gateway
-
-            _do_restart_gateway()
-            return 0
-        ui.error(f"Key storage failed (exit {result.returncode}).")
-        return 1
-
-    if action in ("setup", "choose"):
-        if not shutil.which("openclaw"):
-            ui.error("'openclaw' not found in PATH. Is it installed?")
-            return 1
-        if not sys.stdin.isatty():
-            ui.error("docket auth setup requires an interactive TTY.")
-            return 1
-        provider, _rest = _extract_provider(extra)
-        ui.console.print()
-        ui.console.print(f"[bold]Authentication setup ({provider}):[/bold]")
-        ui.console.print("  1) Setup token (recommended — automatic token refresh)")
-        ui.console.print("  2) Paste API key (manual — no refresh)")
-        ui.console.print("  3) Cancel")
-        ui.console.print()
-        choice = input("Choose [1]: ").strip() or "1"
-        if choice == "3":
-            ui.warn("Cancelled.")
-            return 0
-        method = "paste-token" if choice == "2" else "setup-token"
-        result = (
-            _oc.auth_paste_token(provider=provider)
-            if method == "paste-token"
-            else _oc.auth_setup_token(provider=provider)
-        )
-        if result.returncode == 0:
-            ui.success("Authentication configured.")
-
-            from docket.cli import _do_restart_gateway
-
-            _do_restart_gateway()
-            return 0
-        ui.error(f"Authentication failed (exit {result.returncode}).")
+    if action in ("login", "key", "setup", "choose"):
+        ui.error(_AUTH_GONE_MESSAGE.format(env_var=env_var))
         return 1
 
     ui.error(
         f"Unknown auth subcommand '{action}'.\n"
         "Usage:\n"
-        "  docket auth                        — show auth profile status\n"
-        "  docket auth login [--provider <p>] — setup-token (OAuth-like refresh)\n"
-        "  docket auth key [--provider <p>]   — paste-token (manual API key)\n"
-        "  docket auth setup [--provider <p>] — interactive choice\n"
-        "  <p> defaults to 'anthropic'."
+        "  docket auth                        — show which provider keys are stored\n"
+        "  docket keys add <PROVIDER>_API_KEY — the real, working credential path\n"
+        "  docket auth login|key|setup        — no docket-native replacement yet (Phase 19 P19-7b)"
     )
     return 1

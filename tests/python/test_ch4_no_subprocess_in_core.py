@@ -3,8 +3,10 @@
 The layering rule (CLAUDE.md) is that ``core/`` is pure domain logic and ``edges/``
 is the only side-effecting layer — every shell-out goes through ``edges/adapters/``.
 ``core/dispatch.py`` in particular *orchestrates* agent turns but delegates the
-actual process execution to the ACL (``_oc.agent_run``) and the system adapter
-(``_sys.run_verify_cmd``). A 2026-07-20 design-pattern audit wrongly claimed dispatch
+actual process execution to a driver (``edges/adapters/docket_runtime.py``'s
+``DocketDriver``, which itself never shells out -- it makes in-process HTTP
+calls) and the system adapter (``_sys.run_verify_cmd``). A 2026-07-20
+design-pattern audit wrongly claimed dispatch
 ran subprocesses itself; this test locks in the real invariant so that concern can
 never become true by regression. (Sibling of ``test_ch3_no_ui_in_core_edges.py``.)
 """
@@ -49,6 +51,5 @@ def _shells_out(path: Path) -> bool:
 def test_core_never_shells_out() -> None:
     offenders = [str(p) for p in _python_files("core") if _shells_out(p)]
     assert not offenders, (
-        "core/ must be process-free — delegate execution to edges/adapters "
-        f"(_oc.agent_run / _sys.*): {offenders}"
+        f"core/ must be process-free — delegate execution to edges/adapters (_sys.*): {offenders}"
     )

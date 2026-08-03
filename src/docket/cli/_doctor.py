@@ -5,8 +5,12 @@ code: 0 when healthy, 1 when the report flags issues. The coordinator wraps
 this in a Typer command and raises typer.Exit(code).
 
 Each health check is its own small function so it can be tested in isolation.
-All openclaw.json / agent state is read through the ACL (`_oc`) and `store`;
-this module never opens openclaw.json directly.
+All fleet/agent state is read through `core/fleet.py` and `store`; this
+module never opens a daemon config file (there is no daemon any more —
+Phase 19 P19-7b deleted it, along with the checks here that only ever made
+sense against it: binary presence, gateway status, daemon config validity,
+the daemon's own security-audit/exec-approval report, and the gateway-log
+scans. What replaced each is noted at its former call site in `run_doctor`.
 """
 
 from __future__ import annotations
@@ -20,11 +24,12 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
-from docket.core.utils import aggregate_cost, gateway_active, project_ids
+from docket.core import secrets as _secrets
+from docket.core.utils import aggregate_cost, project_ids
 from docket.edges import store
-from docket.edges.adapters import openclaw as _oc
 
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
 RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
@@ -65,7 +70,7 @@ def _required_workspace_files(aid: str) -> tuple[str, ...]:
     """
     from docket.core import pod as _pod
 
-    if _pod.pod_of(aid) is not None and _oc.meta_get(aid, "role", "") != "implementer":
+    if _pod.pod_of(aid) is not None and _fleet.meta_get(aid, "role", "") != "implementer":
         return tuple(f for f in _WORKSPACE_FILES if f != "TOOLS.md")
     return _WORKSPACE_FILES
 
@@ -84,17 +89,13 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
     return out
 
 
-def _check_binaries() -> int:
-    """openclaw, python3 (required) and fzf (optional)."""
-    issues = 0
+def _check_dependencies() -> int:
+    """python3 (required) and fzf (optional).
 
-    oc = shutil.which("openclaw")
-    if oc:
-        ui.success(f"openclaw: {oc}")
-    else:
-        ui.console.print("[red]✗[/red] openclaw not found in PATH")
-        ui.console.print("  Install from: https://openclaw.dev")
-        issues += 1
+    Phase 19 P19-7b: this used to also check for the `openclaw` binary
+    (deleted along with the daemon it probed for).
+    """
+    issues = 0
 
     py = shutil.which("python3")
     if py:
@@ -113,52 +114,8 @@ def _check_binaries() -> int:
     return issues
 
 
-def _check_config() -> int:
-    """openclaw.json presence + JSON validity.
-
-    Checks the raw file directly rather than through `_oc.load_config()` —
-    since P19-6 that function reads the docket-owned fleet registry
-    (fleet.json), a different file with its own always-valid defaults; it can
-    no longer stand in for openclaw.json's own JSON-validity check.
-    """
-    if not _cfg.CONFIG_FILE.is_file():
-        ui.console.print(f"[red]✗[/red] Config missing: {_cfg.CONFIG_FILE}")
-        ui.console.print("  Run: openclaw onboard")
-        return 1
-    try:
-        store.read_json(_cfg.CONFIG_FILE)
-    except Exception:
-        ui.console.print(f"[red]✗[/red] Config JSON is invalid: {_cfg.CONFIG_FILE}")
-        ui.console.print("  Run: openclaw doctor")
-        return 1
-    ui.success(f"Config JSON valid: {_cfg.CONFIG_FILE}")
-    return 0
-
-
-def _check_gateway() -> int:
-    """openclaw-gateway.service status."""
-    if gateway_active():
-        ui.success("Gateway service: active")
-        return 0
-    ui.console.print("[red]✗[/red] Gateway service: inactive")
-    ui.console.print("  Run: systemctl --user start openclaw-gateway.service")
-    return 1
-
-
-def _check_telegram() -> int:
-    """Telegram channel enabled (advisory — never fails)."""
-    if not _cfg.CONFIG_FILE.is_file():
-        return 0
-    if _oc.get_telegram_enabled():
-        ui.success("Telegram channel: enabled")
-    else:
-        ui.warn("Telegram channel: disabled or not configured")
-        ui.console.print("  Run: openclaw onboard  (to configure Telegram)")
-    return 0
-
-
 def _check_project_agents(ids: list[str]) -> int:
-    """Per-project workspace files, registration, and Telegram binding."""
+    """Per-project workspace files, fleet registration, and channel binding."""
     if not ids:
         ui.console.print()
         ui.warn("No project agents found — run: docket add")
@@ -167,12 +124,12 @@ def _check_project_agents(ids: list[str]) -> int:
     ui.console.print()
     ui.console.print("[bold]Project agents:[/bold]")
     issues = 0
-    oc = _oc.load_config()
-    registered = {a.id for a in _oc.list_agents(oc)}
+    fleet = _fleet.load_fleet()
+    registered = {a.id for a in _fleet.list_agents(fleet)}
 
     for aid in ids:
         ws = _cfg.PROJECTS_DIR / aid
-        tg = _oc.get_binding(aid, cfg=oc)
+        tg = _fleet.get_binding(aid, cfg=fleet)
         proj_issues: list[str] = []
         for f in _required_workspace_files(aid):
             if not (ws / f).is_file():
@@ -180,87 +137,17 @@ def _check_project_agents(ids: list[str]) -> int:
         if not (ws / _cfg.META_FILE).is_file():
             proj_issues.append(f"no {_cfg.META_FILE}")
         if aid not in registered:
-            proj_issues.append("not registered in openclaw")
+            proj_issues.append("not registered in fleet")
 
         if proj_issues:
             ui.console.print(f"[red]✗[/red]   {aid}: {' '.join(proj_issues)}")
             ui.console.print(f"    Fix with: docket repair {aid}")
             issues += 1
         elif not tg:
-            ui.warn(f"  {aid}: OK, no Telegram binding  →  docket wire {aid}")
+            ui.warn(f"  {aid}: OK, no channel binding  →  docket wire {aid}")
         else:
             ui.success(f"  {aid}: OK  →  group {tg}")
     return issues
-
-
-def _check_brave_browser() -> int:
-    """Brave-browser process scan for the OpenClaw web UI (advisory).
-
-    Counts `openclaw/browser` processes via ps, warns when the oldest is stale
-    (>2 days). Never bumps the issue count (returns 0).
-    """
-    import subprocess as _sp
-
-    ui.console.print()
-
-    def _ps() -> str:
-        try:
-            return _sp.run(["ps", "aux"], capture_output=True, text=True, timeout=10).stdout
-        except (OSError, _sp.SubprocessError):
-            return ""
-
-    procs = [ln for ln in _ps().splitlines() if "openclaw/browser" in ln and "grep" not in ln]
-    count = len(procs)
-    if count <= 0:
-        ui.dim("  Brave browser: not running (OpenClaw will auto-start when needed)")
-        return 0
-
-    oldest_etimes = 0
-    try:
-        out = _sp.run(
-            ["ps", "-eo", "pid,etimes,cmd"], capture_output=True, text=True, timeout=10
-        ).stdout
-    except (OSError, _sp.SubprocessError):
-        out = ""
-    for ln in out.splitlines():
-        if "openclaw/browser" not in ln or "grep" in ln:
-            continue
-        parts = ln.split()
-        if len(parts) >= 2 and parts[1].isdigit():
-            oldest_etimes = max(oldest_etimes, int(parts[1]))
-    days_old = oldest_etimes // 86400
-
-    if days_old > 2:
-        ui.warn(f"Brave browser: {count} processes (oldest: {days_old} days old)")
-        ui.dim("  Old browser processes can cause disconnections")
-        ui.console.print("  [yellow]Fix: DOCKET_EXPERIMENTAL=1 docket browser restart[/yellow]")
-    else:
-        ui.success(f"Brave browser: {count} processes running")
-    return 0
-
-
-def _check_today_log() -> int:
-    """Today's gateway log presence + disconnect scan (advisory)."""
-    import datetime as _dt
-
-    ui.console.print()
-    today = _dt.date.today().strftime("%Y-%m-%d")
-    log_file = _cfg.LOG_DIR / f"openclaw-{today}.log"
-    if log_file.is_file():
-        try:
-            text = log_file.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        lines = text.count("\n")
-        ui.success(f"Today's log: {log_file} ({lines} lines)")
-        low = text.lower()
-        disc = sum(low.count(pat) for pat in ("disconnect", "timeout", "connection"))
-        if disc:
-            ui.warn(f"  Found {disc} disconnect/timeout events in log")
-    else:
-        ui.dim(f"  No log today: {log_file}")
-        ui.dim("  (Normal if the gateway hasn't received messages yet)")
-    return 0
 
 
 def _check_models() -> int:
@@ -268,8 +155,8 @@ def _check_models() -> int:
     ui.console.print()
     ui.console.print("[bold]Model Configuration[/bold]")
     invalid: list[str] = []
-    for a in _oc.list_agents():
-        model = _oc.meta_get(a.id, "model", "")
+    for a in _fleet.list_agents():
+        model = _fleet.meta_get(a.id, "model", "")
         if model in _STALE_MODELS:
             invalid.append(f"{a.id}: {model}")
     if not invalid:
@@ -416,9 +303,7 @@ def _check_key_hygiene() -> int:
     if _secrets_backend() == "keyring":
         ui.success("  Backend: keyring (values in OS keyring, not plaintext at rest)")
     else:
-        ui.warn(
-            f"  Backend: file — secrets are plaintext at rest in {_cfg.OPENCLAW_DIR}/secrets.json"
-        )
+        ui.warn(f"  Backend: file — secrets are plaintext at rest in {_secrets.SECRETS_FILE}")
         ui.dim("    For at-rest protection: DOCKET_SECRETS_BACKEND=keyring (libsecret)")
     stale = 0
     for state, name, detail in report:
@@ -436,10 +321,10 @@ def _check_key_hygiene() -> int:
 
 def _check_provider_coverage(ids: list[str]) -> int:
     """Warn (and count) when an agent's model provider has no stored key."""
-    stored = _oc.secrets_keys()
+    stored = _secrets.secrets_keys()
     missing: list[tuple[str, str, str]] = []
     for aid in ids:
-        model = _oc.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
+        model = _fleet.meta_get(aid, "model", _cfg.DEFAULT_MODEL)
         provider = model.split("/")[0] if "/" in model else ""
         expected = _PROVIDER_KEY.get(provider, "")
         if not expected:
@@ -457,71 +342,38 @@ def _check_provider_coverage(ids: list[str]) -> int:
 
 
 def _check_security_gates() -> int:
-    """Config-perms hardening + daemon gate/audit/routing/isolation summary."""
+    """Approval-routing/isolation posture + the always-on tool-call gate.
+
+    Phase 19 P19-7b: the daemon's own exec-approval config (security=
+    allowlist/ask/askFallback), its config-perms check, and its
+    `openclaw security audit` report are all gone with the daemon. What
+    replaced them: `core/tools.py`'s `pre_tool_call` policy hook and
+    `core/security.py`'s argument-aware command classifier are
+    unconditionally active on every tool call docket dispatches (Phase 19
+    P19-3) — there is no "is it enabled" question left to ask about the gate
+    itself, only about where an approval prompt is routed and whether
+    execution is sandboxed.
+    """
     ui.console.print()
     ui.console.print("[bold]Security gates:[/bold]")
-    issues = 0
 
-    audit = _oc.security_audit_report()
+    ui.success("  Tool-call gate: always active (policy engine + high-risk command classifier)")
 
-    cfg_mode = _oc.get_config_perms()
-    if cfg_mode and cfg_mode[-2:] != "00":
-        ui.console.print(
-            f"[red]✗[/red]   Config group/other-accessible (mode {cfg_mode}): {_cfg.CONFIG_FILE}"
-        )
-        ui.console.print(
-            "    Another local user could change tool/auth policy. "
-            f'Fix: chmod 600 "{_cfg.CONFIG_FILE}"'
-        )
-        issues += 1
-    elif cfg_mode:
-        ui.success(f"  Config perms: {cfg_mode} (owner-only)")
-
-    gs_state, gs_policy, gs_counts = _oc.security_gate_report()
-    if gs_state == "OK":
-        ui.success(f"  Exec approvals: {gs_policy} ({gs_counts})")
-    elif gs_state == "OPEN":
-        ui.warn(f"  Exec approvals: {gs_policy} — host exec is ungated ({gs_counts})")
-    elif gs_state == "UNSET":
-        ui.warn("  Exec approvals: not configured — gates inactive")
-        ui.dim("    Enable via docket gates enable (spec: specs/functional/security-gates.spec.md)")
-    else:
-        ui.dim(f"  Exec approvals: {gs_policy or 'status unavailable'}")
-
-    r_state, r_mode = _oc.get_approval_routing()
+    r_state, r_mode = _fleet.get_approval_routing()
     if r_state == "on":
         ui.success(f"  Approval routing: on (mode={r_mode or '?'})")
     elif r_state == "off":
-        if gs_state == "OK":
-            ui.warn("  Approval routing: off — gated prompts won't reach chat")
+        ui.warn("  Approval routing: off — gated prompts have nowhere configured to go")
     else:
-        if gs_state == "OK":
-            ui.dim("  Approval routing: not configured — docket gates enable")
+        ui.dim("  Approval routing: not configured — docket gates enable")
 
-    iso = _oc.get_isolation_mode()
+    iso = _fleet.get_isolation_mode()
     if iso in ("non-main", "all"):
-        ui.success(f"  Workspace isolation: {iso} (Docker sandbox)")
+        ui.dim(f"  Workspace isolation: recorded {iso}, but not yet consulted by the turn loop")
     else:
         ui.dim("  Workspace isolation: off — docket gates isolate on (needs Docker)")
 
-    if audit.available:
-        if audit.critical > 0:
-            ui.console.print(
-                f"[red]✗[/red]   openclaw security audit: {audit.critical} critical, "
-                f"{audit.warn} warning(s)"
-            )
-            issues += audit.critical
-            for finding in audit.findings:
-                ui.console.print(f"    [red]•[/red] {finding.title}")
-                if finding.remediation:
-                    ui.dim(f"      fix: {finding.remediation}")
-            ui.dim("    Remediate: openclaw security audit --fix")
-        elif audit.warn > 0:
-            ui.warn(f"  openclaw security audit: {audit.warn} warning(s), 0 critical")
-            ui.dim("    Details: openclaw security audit")
-        else:
-            ui.success("  openclaw security audit: clean")
-    return issues
+    return 0
 
 
 def _check_template_version(ids: list[str]) -> int:
@@ -539,7 +391,7 @@ def _check_template_version(ids: list[str]) -> int:
         # templates and would clobber the pod-role SOULs). Skip them here.
         if _pod.pod_of(aid) is not None:
             continue
-        tv = _oc.meta_get(aid, "templateVersion", "")
+        tv = _fleet.meta_get(aid, "templateVersion", "")
         if not tv:
             ui.warn(f"  {aid}: unstamped (pre-versioning) — docket maintain {aid} rebuild")
             drift += 1
@@ -562,7 +414,7 @@ def _check_metadata_backfill(ids: list[str]) -> int:
     backfilled = 0
 
     for spec in _cfg.SPECIALIST_ORDER:
-        sdir = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        sdir = _cfg.WORKSPACES_DIR / spec
         if not sdir.is_dir():
             continue
         if (sdir / _cfg.META_FILE).is_file():
@@ -582,21 +434,21 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
     for aid in ids:
         fixed: list[str] = []
-        if not _oc.meta_get(aid, "kind", ""):
-            _oc.meta_set(aid, "kind", "project")
+        if not _fleet.meta_get(aid, "kind", ""):
+            _fleet.meta_set(aid, "kind", "project")
             fixed.append("kind")
-        if not _oc.meta_get(aid, "modelSource", ""):
-            _oc.meta_set(aid, "modelSource", _mp.agent_model_source(aid))
+        if not _fleet.meta_get(aid, "modelSource", ""):
+            _fleet.meta_set(aid, "modelSource", _mp.agent_model_source(aid))
             fixed.append("modelSource")
-        if not _oc.meta_get(aid, "scope", ""):
-            _oc.meta_set(aid, "scope", "project")
+        if not _fleet.meta_get(aid, "scope", ""):
+            _fleet.meta_set(aid, "scope", "project")
             fixed.append("scope")
         if fixed:
             ui.success(f"  {aid}: backfilled {' '.join(fixed)}")
             backfilled += 1
 
     for role in sorted(_cfg.PROJECT_ROLES):
-        if (_cfg.OPENCLAW_DIR / "workspaces" / role).is_dir():
+        if (_cfg.WORKSPACES_DIR / role).is_dir():
             ui.warn(
                 f"  {role}: legacy shared specialist — project roles now live in "
                 f"pods. Recreate via a pod (docket pod <project> add {role}) and "
@@ -610,19 +462,16 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
 def _check_runtime_contract(ids: list[str]) -> int:
     """Ensure each managed workspace — project agents **and** org specialists —
-    satisfies the openclaw post-compaction contract (``WORKFLOW_AUTO.md``
-    re-read on every reset).
+    satisfies the turn-loop's durability contract (``WORKFLOW_AUTO.md``,
+    composed into the system prompt on every turn by ``core/agent_loop.py``).
 
     Heals agents whose contract file is missing *or* stale/legacy (detected via
-    the embedded contract-version marker): without a current file the runtime
-    audit demands it forever, and a weak model loops offering to create it
-    instead of working. Re-seeds (idempotent) from the agent's stored
-    codebase/stack — a specialist has neither, so those fields are simply
-    absent from its re-seeded ``WORKFLOW_AUTO.md``. Advisory — never fails the
-    run. Org specialists joined this healer in ROADMAP Phase 17 C-4; before
-    that they had no contract files at all and this check never saw them
-    (`_cfg.PROJECTS_DIR`-only enumeration, `_check_scaffolding`'s enumeration
-    below is the precedent this now follows).
+    the embedded contract-version marker): without a current file the loop
+    composes a stale or absent resume contract, and a weak model loops
+    offering to create it instead of working. Re-seeds (idempotent) from the
+    agent's stored codebase/stack — a specialist has neither, so those fields
+    are simply absent from its re-seeded ``WORKFLOW_AUTO.md``. Advisory —
+    never fails the run.
     """
     from docket.core import memory as _mem
 
@@ -649,10 +498,9 @@ def _check_runtime_contract(ids: list[str]) -> int:
 def _managed_workspace_ids(ids: list[str]) -> list[str]:
     """Project pod members plus any provisioned org specialists — all docket-managed.
 
-    Excludes the base ``~/.openclaw/workspace`` personal assistant, which docket does
-    not manage and must not touch. Includes the opt-in Portfolio Manager when it
-    has been provisioned (``docket install --portfolio``) — it is docket-managed
-    too, just never auto-installed.
+    Includes the opt-in Portfolio Manager when it has been provisioned
+    (``docket install --portfolio``) — it is docket-managed too, just never
+    auto-installed.
     """
     specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
     if _cfg.workspace_dir(_cfg.PORTFOLIO_MANAGER_ROLE).is_dir():
@@ -661,7 +509,7 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
 
 
 def _check_scaffolding(ids: list[str]) -> int:
-    """Quarantine OpenClaw base-assistant scaffolding leaking into managed workspaces.
+    """Quarantine self-authoring base-assistant scaffolding leaking into managed workspaces.
 
     ``IDENTITY.md``/``BOOTSTRAP.md`` self-author a drifting identity that fights
     docket's role-derived ``SOUL.md`` (agent-structure-analysis.md §6). Moves them to
@@ -684,35 +532,7 @@ def _check_scaffolding(ids: list[str]) -> int:
             )
             cleaned += 1
     if cleaned == 0:
-        ui.success("  No stray OpenClaw scaffolding in managed workspaces")
-    return 0
-
-
-def _check_memory_index(ids: list[str]) -> int:
-    """Advisory: report channel-bound agents with no OpenClaw memory index yet.
-
-    OpenClaw's ``~/.openclaw/memory/<id>.sqlite`` is a **rebuildable RAG index** over
-    the workspace memory files, built lazily on first recall use — not a durable
-    transcript and not a file docket fabricates (TC-3, POD-DAEMON-NOTES.md). Its
-    absence is normal for an agent that hasn't used recall yet; durable conversation
-    state lives in the docket-owned registry + workspace files. Purely informational —
-    never fails the run, never creates the file.
-    """
-    ui.console.print()
-    ui.console.print("[bold]Conversation memory backend (advisory):[/bold]")
-    mem_dir = _cfg.OPENCLAW_DIR / "memory"
-    missing = 0
-    for aid in ids:
-        if not _oc.get_binding(aid):
-            continue  # only channel-bound agents converse
-        if not (mem_dir / f"{aid}.sqlite").exists():
-            missing += 1
-            ui.dim(
-                f"  {aid}: no memory index yet (built on first recall use; "
-                "durable state is the docket registry + workspace memory files)"
-            )
-    if missing == 0:
-        ui.success("  All channel-bound agents have a memory index (or none are bound)")
+        ui.success("  No stray self-authored scaffolding in managed workspaces")
     return 0
 
 
@@ -816,10 +636,10 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
     """
     import datetime as _dt
 
-    keys = _oc.secrets_keys()
+    keys = _secrets.secrets_keys()
     if not keys:
         return []
-    meta = _oc.secrets_meta()
+    meta = _secrets.secrets_meta()
     now = _dt.datetime.now(_dt.UTC)
 
     def parse(ts: str) -> _dt.datetime | None:
@@ -845,43 +665,40 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
 
 
 def _doctor_json() -> dict[str, Any]:
-    """Assemble the machine-readable health report."""
+    """Assemble the machine-readable health report.
+
+    Phase 19 P19-7b: the ``openclaw``/``gateway``/``telegram`` keys this
+    payload used to carry are gone (no binary, no gateway, and channel
+    binding presence is already covered per-agent below) — this is a
+    breaking change to a public contract (``docket doctor --json``); see the
+    card's report for the full accounting.
+    """
     issues = 0
     ids = project_ids()
 
-    has_oc = shutil.which("openclaw")
     has_py = shutil.which("python3")
     has_fzf = shutil.which("fzf")
-    if not has_oc:
-        issues += 1
     if not has_py:
         issues += 1
 
-    config_data: dict[str, Any]
-    oc = None
+    fleet_data: dict[str, Any]
+    fleet = None
     try:
-        oc = _oc.load_config()
-        config_data = {
+        fleet = _fleet.load_fleet()
+        fleet_data = {
             "ok": True,
             "path": str(_cfg.FLEET_FILE),
-            "agents": len(oc.agents),
-            "bindings": len(oc.bindings),
+            "agents": len(fleet.agents),
+            "bindings": len(fleet.bindings),
         }
     except Exception as ex:
-        config_data = {"ok": False, "path": str(_cfg.FLEET_FILE), "error": str(ex)}
+        fleet_data = {"ok": False, "path": str(_cfg.FLEET_FILE), "error": str(ex)}
         issues += 1
 
-    gw_ok = gateway_active()
-    gw_status = "active" if gw_ok else "inactive"
-    if not gw_ok:
-        issues += 1
-
-    tg_enabled = _oc.get_telegram_enabled() if _cfg.CONFIG_FILE.is_file() else False
-
-    oc_agent_map = {a.id: a for a in oc.agents} if oc else {}
+    fleet_agent_map = {a.id: a for a in fleet.agents} if fleet else {}
     tg_map: dict[str, str] = {}
-    if oc:
-        for b in oc.bindings:
+    if fleet:
+        for b in fleet.bindings:
             if b.channel == "telegram":
                 tg_map[b.agent_id] = b.peer_id
 
@@ -894,8 +711,8 @@ def _doctor_json() -> dict[str, Any]:
                 a_issues.append(f"missing {f}")
         if not (ws / _cfg.META_FILE).exists():
             a_issues.append(f"no {_cfg.META_FILE}")
-        if aid not in oc_agent_map:
-            a_issues.append("not registered in openclaw")
+        if aid not in fleet_agent_map:
+            a_issues.append("not registered in fleet")
         if a_issues:
             issues += 1
         agents_json.append(
@@ -903,8 +720,8 @@ def _doctor_json() -> dict[str, Any]:
         )
 
     invalid_models: list[dict[str, str]] = []
-    for a in oc.agents if oc else []:
-        model = _oc.meta_get(a.id, "model", "")
+    for a in fleet.agents if fleet else []:
+        model = _fleet.meta_get(a.id, "model", "")
         if model in _STALE_MODELS:
             invalid_models.append({"id": a.id, "model": model, "suggest": _STALE_MODELS[model]})
             issues += 1
@@ -966,7 +783,7 @@ def _doctor_json() -> dict[str, Any]:
 
     keys_list = [{"name": n, "state": s, "detail": d} for s, n, d in _keys_age_report()]
 
-    stored = _oc.secrets_keys()
+    stored = _secrets.secrets_keys()
     missing_keys: list[dict[str, str]] = []
     for aid in ids:
         model = str(store.read_json(_cfg.meta_path(aid)).get("model", ""))
@@ -976,21 +793,12 @@ def _doctor_json() -> dict[str, Any]:
             missing_keys.append({"agent": aid, "model": model, "needsKey": expected})
             issues += 1
 
-    cfg_mode = _oc.get_config_perms()
-    perms_ok = not (cfg_mode and cfg_mode[-2:] != "00")
-    if not perms_ok:
-        issues += 1
-    gs_state, gs_policy, gs_counts = _oc.security_gate_report()
-    r_state, r_mode = _oc.get_approval_routing()
+    r_state, r_mode = _fleet.get_approval_routing()
     security = {
-        "configPerms": cfg_mode or None,
-        "permsOk": perms_ok,
-        "gateState": gs_state,
-        "policy": gs_policy,
-        "gateCounts": gs_counts,
+        "toolCallGate": "always-on",
         "approvalRouting": r_state,
         "routingMode": r_mode,
-        "isolation": _oc.get_isolation_mode(),
+        "isolation": _fleet.get_isolation_mode(),
     }
 
     from docket.core import pod as _pod_mod
@@ -1015,12 +823,9 @@ def _doctor_json() -> dict[str, Any]:
         "healthy": issues == 0,
         "issues": issues,
         "checks": {
-            "openclaw": {"ok": bool(has_oc), "path": has_oc or None},
             "python3": {"ok": bool(has_py), "path": has_py or None},
             "fzf": {"available": bool(has_fzf), "path": has_fzf or None},
-            "config": config_data,
-            "gateway": {"ok": gw_ok, "status": gw_status},
-            "telegram": {"enabled": tg_enabled},
+            "fleet": fleet_data,
             "agents": agents_json,
             "modelConfig": {"ok": not invalid_models, "invalid": invalid_models},
             "modelRegistry": model_registry,
@@ -1052,13 +857,8 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     cost = _batch_cost(ids)
 
     issues = 0
-    issues += _check_binaries()
-    issues += _check_config()
-    issues += _check_gateway()
-    issues += _check_telegram()
+    issues += _check_dependencies()
     issues += _check_project_agents(ids)
-    _check_brave_browser()
-    _check_today_log()
     issues += _check_models()
     _check_legacy_model_registry()
     issues += _check_dispatch_ledger(do_fix)
@@ -1071,7 +871,6 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
     _check_scaffolding(ids)
-    _check_memory_index(ids)
     _check_eval_results()
 
     ui.console.print()
@@ -1080,6 +879,5 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
         return 0
     ui.console.print(f"[red][bold]{issues} critical issue(s) found.[/bold][/red]")
     ui.console.print("  Project issues:  docket repair [id]")
-    ui.console.print("  Gateway issues:  openclaw doctor")
     ui.console.print("  Model issues:    docket doctor --fix")
     return 1

@@ -16,6 +16,7 @@ framework).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from docket.core.runtime_driver import (
@@ -73,7 +74,14 @@ class FakeDriver:
         message: str,
         timeout: int,
         env: dict[str, str] | None = None,
+        *,
+        on_spawn: Callable[[int], None] | None = None,
     ) -> TurnResult:
+        """``on_spawn`` is accepted (per the ``RuntimeDriver`` Protocol's own
+        signature) and ignored, matching every real driver that backs onto no
+        OS process a caller could report a pid for -- this fake never has one
+        either. Not recorded in ``calls`` (a 5-tuple, unchanged) since no
+        existing assertion needs it; add a field if a test ever does."""
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
         if self.fail_role and role == self.fail_role:

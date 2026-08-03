@@ -59,7 +59,7 @@ integer, defaulting to 6000 for any archetype that doesn't set one
 (hand-built in a test, or parsed from a pre-C-1 user overlay file with no
 `tokenBudget` key) — see `core/context.py` for how it's actually spent.
 
-User archetypes overlay built-ins via `~/.openclaw/docket-roles.json` (the
+User archetypes overlay built-ins via `~/.docket/docket-roles.json` (the
 same overlay pattern as `docket-models.json`; see `core/models_policy.py`) —
 tolerant on load (a malformed entry is skipped, never crashes a live fleet;
 `docket roles validate` is how an operator finds out why). The *authoring*
@@ -699,7 +699,7 @@ def _read_overlay_raw() -> dict[str, Any]:
 
 
 def load_registry() -> ArchetypeRegistry:
-    """Built-ins + starter library, overlaid by `~/.openclaw/docket-roles.json`.
+    """Built-ins + starter library, overlaid by `~/.docket/docket-roles.json`.
 
     Not cached — read fresh every call (mirrors `models_policy.load_registry`),
     so a CLI process that reads the registry more than once (or a test that

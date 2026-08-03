@@ -1,26 +1,42 @@
 # Security Gates Specification
 
-**Version**: 0.10.0
-**Status**: Implemented (on by default for new installs; daemon-enforced for everything the OpenClaw daemon still executes — see the approval-seam note below). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge is confirmed **not available** today — the G-5 spike investigated it against a live daemon and concluded no practical bridge exists (see the approval-seam note and the G-5 findings section). **`pre_tool_call` is no longer universally daemon-gated and unevaluated.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`) — the first time any of them has ever been evaluated. **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; it is not an enforcement daemon over anything else.** As of this version, nothing in the live pod-dispatch hop path calls `core/tools.py` yet — every hop today still runs as a full daemon turn, and the daemon's own native tool-calling loop (unbridged per the G-5 findings below) remains entirely outside docket's interception, unchanged from every prior version of this spec. `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase 19 P19-5 (`core/agent_loop.py` + `DocketDriver`); until then this is real, tested, additive infrastructure with no live-path caller — see "In-turn tool-call gate" below for the full contract and what is and is not true today. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, like the in-turn tool-call gate, has no live-path caller yet: nothing constructs a `ToolContext` with `sandbox="auto"` in production until ROADMAP Phase 19 P19-5 wires a real agent loop. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
-**Last Updated**: 2026-08-02
+**Version**: 0.11.0
+**Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, **unlike** the in-turn tool-call gate above (now live), still has no live-path caller: `DocketDriver`'s `ToolContext` construction never sets `sandbox="auto"`, so nothing in production requests a jail yet even though the gate that decides whether a `bash` call may run at all is itself now unconditionally live. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
 This specification defines the tool-approval and workspace-isolation model for docket agents:
 requiring explicit approval before dangerous tool calls and confining agents to their own
-workspace. It is implemented on the OpenClaw daemon's native exec-approval, approval-routing,
-and sandbox primitives — docket configures and verifies; the daemon enforces.
+workspace. **Phase 19 P19-7b deleted the OpenClaw daemon outright — there is no external
+enforcer left to defer to.** The gate is docket's own: `core/tools.py`'s `dispatch_tool` — the
+single chokepoint every `DocketDriver`-backed turn routes through (`edges/adapters/
+docket_runtime.py`) — evaluates the argument-aware command classifier (`core/security.py`'s
+`classify_command`) and the `pre_tool_call` policy hooks on every tool call docket dispatches.
+Approval-routing and workspace-isolation are `core/fleet.py`-recorded posture flags (`docket
+gates enable`/`disable`, `docket gates isolate on`/`off`), not daemon configuration — docket now
+both configures and enforces this gate itself.
 
-> **Implementation status.** `docket install` applies exec-approval gates **by default**
-> (`--no-gates` opts out; `--gates` is the explicit, redundant form of the default). `docket
-> gates enable [--force]` remains available to (re-)apply the same configuration to an
-> already-installed fleet, or one that opted out at install time. Gates
-> write conservative exec-approval defaults (`security: allowlist`, `ask: on-miss`,
-> `askFallback: deny`) with a curated allowlist; enabling gates also routes approval prompts to
-> each agent's session (`approvals.exec`, answerable via `docket approve`/`docket deny` or, when
-> Telegram-bound, `/approve`); `docket gates isolate on` applies Docker workspace isolation.
-> `docket doctor` reports gate status, approval routing, isolation, and config-permission
-> hardening.
+> **Implementation status.** `docket install` applies the tool-call gate unconditionally: there
+> is nothing left to "enable" there — Phase 19 P19-3 already made `core/tools.py`'s policy engine
+> and high-risk command classifier always active on every tool call docket dispatches, and Phase
+> 19 P19-7b removed the daemon that used to need a separate exec-approval configuration step
+> (the old `security: allowlist`/`ask: on-miss`/`askFallback: deny` config plus a curated-allowlist
+> seed file — deleted with the daemon, no successor). What `--no-gates`/`--gates` at install time
+> (and `docket gates enable`/`disable` afterward) actually control is narrower: whether
+> **approval-routing** is turned on (`core/security.py`'s `apply_approval_routing`/
+> `disable_approval_routing`, recorded via `core/fleet.py`'s `FleetSecurity`) — i.e. whether a
+> `require_approval`/`ask` verdict's prompt is routed to each channel-bound agent's session,
+> answerable via `docket approve`/`docket deny`, `POST /approvals/<token>`, or (once a
+> docket-owned channel bot exists — P19-8, not shipped) a chat reply. `docket gates isolate
+> on`/`off` separately records (`core/security.py`'s `apply_workspace_isolation`/
+> `disable_workspace_isolation`) whether tool execution should be confined to a per-agent Docker
+> sandbox — recorded today, **not yet consulted by the turn loop** (`DocketDriver` always runs
+> tools unsandboxed, `ToolContext.sandbox="off"`, regardless of this flag). `docket doctor`
+> reports gate status (always-active), approval routing, isolation, and config-permission
+> hardening. `docket gates enable [--force]` keeps the `--force` flag for CLI compatibility, but
+> there is no longer an existing-config idempotency distinction for it to force over — routing is
+> either on or off, full stop.
 >
 > **Why on-by-default now.** The previous version of this spec deferred on-by-default pending
 > "per-agent headless approval routing," reasoning that session-mode (Telegram) delivery "only
@@ -37,8 +53,20 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 >
 > Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
 >
-> **The approval seam (updated 2026-07-30 — G-1 shipped, G-5 concluded "no bridge").** There are
-> two approval systems in play, and **the daemon-facing half of the seam is still not bridged**:
+> **Superseded by Phase 19 P19-7b (2026-08-03): the daemon side of this seam no longer exists.**
+> The two paragraphs immediately below describe a two-system world — the daemon's own
+> exec-approval prompt versus docket's `apr-*` token store — that was real when G-1/G-5 shipped.
+> P19-7b deleted the daemon outright, so there is now only **one** approval system: docket's own.
+> The G-5 investigation and its "no bridge" verdict are kept verbatim below as the evidenced
+> record of why no such bridge was ever built; read every present-tense claim about "the daemon's
+> exec-approval prompt" in them as **historical**, describing a system this codebase no longer
+> ships, not a live gap. The `telegram` audit-channel tag referenced throughout is likewise no
+> longer "reserved for a future daemon bridge" — there is no daemon left to bridge to; it remains
+> reserved for a future docket-owned channel bot (P19-8, not yet shipped).
+>
+> **The approval seam (updated 2026-07-30 — G-1 shipped, G-5 concluded "no bridge"; historical
+> as of P19-7b, see note above).** There are two approval systems in play, and **the daemon-facing
+> half of the seam is still not bridged**:
 > (a) the **daemon's** exec-approval prompt — the thing that actually fires when a gated binary
 > is invoked — which is delivered to the agent's chat session and answered with the daemon's own
 > `/approve <id>` mechanism; and (b) **docket's** approval store (`apr-*` tokens under
@@ -68,14 +96,17 @@ and sandbox primitives — docket configures and verifies; the daemon enforces.
 > `pre_input` guardrail policy match evaluated once at task enqueue, not per hop (see "Policy
 > engine on the live path" below and `pod-dispatch.spec.md`).
 >
-> **Why on-by-default is still safe:** the fail-closed property for an unattended agent's
-> *daemon-side* gate is the daemon's own `askFallback: deny` — a prompt nobody answers is denied
-> by the daemon, full stop; that is unchanged by G-1. Separately, `approval_sweep_expired` now
-> resolves a stale pending record in docket's own store to **denied** (fail-closed) after
-> `APPROVAL_TIMEOUT`, not the prior, read-by-nobody `"expired"` state — and, for a G-1-originated
-> record specifically, that resolution also fails the waiting dispatch task, so an unanswered
-> gate on a pod dispatch hop now genuinely fail-closes end to end, not just on paper. This sweep
-> still runs only while `docket serve` is up.
+> **Why on-by-default is still safe:** at the time this was written, the fail-closed property for
+> an unattended agent's *daemon-side* gate was the daemon's own `askFallback: deny` — a prompt
+> nobody answers denied by the daemon, full stop. **That daemon-side backstop no longer exists
+> (P19-7b) because the daemon it belonged to doesn't.** Its replacement is docket's own: an
+> unanswered in-turn tool call fails closed via `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call
+> gate" below), the same fail-closed contract, just owned by docket instead of an external daemon.
+> Separately, `approval_sweep_expired` now resolves a stale pending record in docket's own store to
+> **denied** (fail-closed) after `APPROVAL_TIMEOUT`, not the prior, read-by-nobody `"expired"`
+> state — and, for a G-1-originated record specifically, that resolution also fails the waiting
+> dispatch task, so an unanswered gate on a pod dispatch hop now genuinely fail-closes end to end,
+> not just on paper. This sweep still runs only while `docket serve` is up.
 
 ## Scope
 
@@ -102,36 +133,53 @@ are owned here, not there.
 
 ## Requirements
 
+> **Reading note (added P19-7b, 2026-08-03).** Several requirement blocks below were written
+> against the pre-P19-7b world, where docket configured a daemon-enforced exec-approval
+> allowlist and the daemon itself decided ask/allow by binary path. That daemon is deleted.
+> Where a block below still states a daemon-enforced requirement as current, read it as the
+> **historical record of the enforcement model this spec superseded** (kept so the FD-3/G-3
+> high-risk-class reasoning that was built against it is not lost), not as a live contract.
+> "Enablement" and "High-risk action classes" items 3-4 immediately below are corrected inline;
+> the "Examples" section's "daemon-enforced"/"target state" headings further down are historical
+> for the same reason. The live contract is "In-turn tool-call gate" and its own Examples
+> subsection: `core/tools.py`'s `dispatch_tool` is the one enforcement point now, for every
+> tool call any `DocketDriver`-backed turn makes.
+
 ### Tool-approval gates (implemented)
 
 1. Dangerous operations not on the curated allowlist (e.g. `rm`, `dd`, `docker`, `systemctl`)
-   **MUST** require explicit approval before execution once gates are enabled (the default for
-   new installs). Note: `git`/`npm` ARE on the curated allowlist (they're used constantly for
-   benign work) and so do NOT prompt by default even for a high-risk invocation like
-   `git push origin main` — see "High-risk action classes" below for that specific, narrower gap.
+   **MUST** require explicit approval before execution — since Phase 19 P19-3 this is the
+   command classifier + `pre_tool_call` gate at `core/tools.py`'s `dispatch_tool`, unconditionally
+   active on every tool call docket dispatches (there is no install-time "enable the gate" choice
+   any more; see the Purpose section). Note: `git`/`npm` ARE on the curated allowlist
+   (`core/security.py`'s `SAFE_BINS`, used constantly for benign work) and so do NOT prompt by
+   default even for a high-risk invocation like `git push origin main` at the *classifier* level —
+   see "High-risk action classes" below for how the `pre_tool_call` policy engine closes that
+   specific, narrower gap on the same dispatcher.
 2. Approvals in **docket's approval store MUST** be answerable via at least one headless
-   channel (CLI `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`). The
-   daemon's own gate prompt is answered in the agent's session via the daemon's `/approve`;
-   it is **not** answerable through docket's channels until the Phase 15 G-5 bridge lands
-   (see the approval-seam note above). Since ROADMAP Phase 15 G-1, one real producer exists for
-   this store — `core/dispatch.py`'s require_approval gate — and both headless channels
-   **MUST** genuinely resume or kill the dispatch task a gate stopped, not merely flip the
-   approval record's own state; see `pod-dispatch.spec.md`'s `resolve_waiting_approval`.
-3. A gate prompt with no approver **MUST** fail closed. For the daemon's own exec-approval
-   prompt this is enforced by `askFallback: deny`. Separately, a stale **pending** record in
-   docket's own store **MUST** resolve to **denied** (not the pre-G-1 `"expired"` state) after
-   `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket serve` is up.
-   For a G-1-originated record (one gating a dispatch task), that resolution **MUST** also fail
-   the waiting task terminally (`failureKind: "approval_denied"`) — this sweep is bookkeeping
-   for the daemon's own gate, but real enforcement for docket's own require_approval gate.
+   channel (CLI `docket approve`/`docket deny`, or HTTP `POST /approvals/<token>`). Since Phase 19
+   P19-7b deleted the daemon, docket's store is the **only** approval system left — the
+   "daemon's own gate prompt, unbridged" caveat that used to qualify this requirement no longer
+   applies to anything real; see the approval-seam note above. Since ROADMAP Phase 15 G-1, one
+   real producer exists for this store — `core/dispatch.py`'s require_approval gate — and both
+   headless channels **MUST** genuinely resume or kill the dispatch task a gate stopped, not
+   merely flip the approval record's own state; see `pod-dispatch.spec.md`'s
+   `resolve_waiting_approval`.
+3. A gate prompt with no approver **MUST** fail closed. With the daemon gone, this is entirely
+   docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
+   `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in
+   the async approval store **MUST** resolve to **denied** (not the pre-G-1 `"expired"` state)
+   after `APPROVAL_TIMEOUT` via `approval_sweep_expired` — which runs only while `docket serve` is
+   up. For a G-1-originated record (one gating a dispatch task), that resolution **MUST** also
+   fail the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial **through docket's approval store MUST** be recorded in the audit
    log (`audit_log("approval.grant"|"approval.deny", ...)`), tagged with the channel it came
    through (`cli`, `http`, or `timeout` for the expiry sweep's own fail-closed denial). The
-   `telegram` tag is reserved for a future daemon bridge, which the G-5 spike (below) concluded
-   is not currently practical to build: today a daemon-side `/approve` writes **no** docket
-   audit entry.
+   `telegram` tag is reserved for a future docket-owned channel bot (P19-8, not yet shipped) —
+   not, as previously described here, a bridge to the daemon's own `/approve`, since there is no
+   longer a daemon for that mechanism to belong to.
 
-### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged)
+### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged; historical — the daemon this investigated was deleted by P19-7b)
 
 1. **Question.** Can the daemon's native exec-approval prompt notify an external hook, so docket
    could bridge it into its own `apr-*` token store and answer it via `docket approve`/`docket
@@ -214,13 +262,23 @@ are owned here, not there.
 3. Docker workspace isolation (`docket gates isolate on`) remains **opt-in** — it requires
    Docker and is not part of the gates-default-on flip (which covers exec-approval only).
 
-### Enablement (implemented)
+### Enablement (implemented; corrected for P19-7b)
 
-1. `docket install` **MUST** apply exec-approval gates by default; `--no-gates` **MUST** be
-   available as an explicit escape hatch that skips gate application entirely.
-2. `docket gates enable [--force]` **MUST** remain available to apply (or re-apply) the same
-   configuration to an already-installed fleet, or one that opted out at install time.
-3. There **MUST** be a way to verify gate status (`docket doctor`, `docket gates status`).
+1. The tool-call gate itself (`core/tools.py`'s policy engine + argument-aware command
+   classifier) **MUST** be unconditionally active on every tool call docket dispatches — there
+   is nothing to "enable" here since Phase 19 P19-3; `docket install` never skips it, and
+   `--no-gates` does not turn it off (superseded requirement: pre-P19-7b this item described
+   `docket install` applying a daemon exec-approval allowlist by default, with `--no-gates` as
+   an escape hatch that skipped that daemon config entirely — that daemon config no longer
+   exists to skip).
+2. What `--gates`/`--no-gates` at install time, and `docket gates enable`/`disable` afterward,
+   actually control is **approval routing** (`core/fleet.py`'s `FleetSecurity.approval_routing_state`):
+   whether a `require_approval`/`ask` verdict's prompt is routed to a channel-bound agent's
+   session. `docket gates enable [--force]` **MUST** remain available for CLI compatibility;
+   `--force` is accepted but is a no-op today — there is no longer an existing-config
+   idempotency state for it to override.
+3. There **MUST** be a way to verify gate status (`docket doctor`, `docket gates status`) —
+   reporting the gate as always-active plus current routing/isolation posture.
 
 ### High-risk action classes (implemented, FD-3)
 
@@ -243,38 +301,29 @@ are owned here, not there.
    > has no hook to consult docket. A never-called decision function in a security module is
    > the precise defect this phase existed to remove, so the requirement now constrains the
    > real paths instead of a helper nothing invoked.
-3. **Money-movement** and **secret-access** classes **MUST** be treated as fully enforced by
-   the shipped allowlist gate today: none of their named bins (`stripe`, `paypal`,
-   `ssh-keygen`, `vault`, etc.) are members of the curated `SAFE_BINS` allowlist, so any live
-   agent invocation matching these classes already falls through to `ask` under
-   `docket gates enable`'s existing exec-approval config — no additional wiring was needed.
-4. **Prod-deploy** is a documented policy, **not fully daemon-enforced**, for its two bins that
-   overlap the curated allowlist (`git`, `npm`): the OpenClaw daemon's own exec-approval
-   allowlist gates by resolved binary path only, with no argument-aware matching (confirmed via
-   `openclaw approvals allowlist --help` — entries are bare glob paths like `/usr/bin/git`, no
-   denylist concept). It genuinely cannot distinguish `git push origin main` from
-   `git status`, or `npm publish` from `npm test`, at the binary-path level the daemon actually
-   gates on. Excluding `git`/`npm` from the allowlist wholesale to force prod-deploy
-   invocations to `ask` was evaluated and rejected — it would also force every benign,
-   constant-use invocation of those tools to `ask`, an unacceptable usability regression. **This
-   MUST NOT be described as fully enforced** in user-facing material; per-argument enforcement
-   for allowlisted bins **at the daemon's own exec-allowlist** is deferred pending a daemon-side
-   capability that does not exist today, and is tracked as a backlog item, not shipped behavior.
-
-   > **Narrowed by ROADMAP Phase 19 P19-3.** This deferral is now true of the daemon-side half
-   > only. `core/tools.py`'s own dispatcher (see "In-turn tool-call gate" below) classifies a
-   > `bash` tool call's full command line via `core.security.classify_command` — which already
-   > distinguishes `git push origin main` from `git status` by argument, not just binary path —
-   > and separately evaluates it against the `high-risk-deploy` `pre_tool_call` template, which
-   > does the same by regex. Both are argument-aware and both apply to any call routed through
-   > that dispatcher. **Scope, stated precisely: this is enforcement over the tool calls docket
-   > itself dispatches, not a new capability added to the daemon's exec-allowlist.** As of this
-   > version nothing in the live pod-dispatch hop path calls that dispatcher yet (see the Status
-   > line and "In-turn tool-call gate" below), so today's actual pod-dispatch hops still run
-   > through the daemon's binary-path-only gate exactly as described above.
+3. **Money-movement** and **secret-access** classes **MUST** be treated as fully enforced:
+   none of their named bins (`stripe`, `paypal`, `ssh-keygen`, `vault`, etc.) are members of
+   the curated `SAFE_BINS` allowlist, so `classify_command` already routes any matching
+   invocation to `ask`/`require_approval` — no additional wiring was needed. (Pre-P19-7b this
+   item described the daemon's own exec-approval allowlist reaching the same outcome; the
+   mechanism changed at P19-7b, the enforcement claim did not.)
+4. **Prod-deploy is now fully enforced, corrected for P19-7b.** Its two bins that overlap the
+   curated allowlist (`git`, `npm`) were, pre-P19-7b, gated only by the OpenClaw daemon's own
+   exec-approval allowlist — binary-path-only, unable to distinguish `git push origin main`
+   from `git status` — so this item used to say prod-deploy **MUST NOT** be described as fully
+   enforced. **That daemon no longer exists.** Since P19-7b, `core/tools.py`'s `dispatch_tool`
+   is the *only* execution path any pod-dispatch hop runs through (`DocketDriver` ->
+   `run_agent_turn` -> `dispatch_tool`, no daemon alternative left to fall back to), and it
+   classifies a `bash` tool call's full command line via `core.security.classify_command` —
+   which distinguishes `git push origin main` from `git status` by argument, not just binary
+   path — and separately evaluates it against the `high-risk-deploy` `pre_tool_call` template.
+   Both are argument-aware and both apply to every call routed through that dispatcher, which
+   is now every call. Prod-deploy **MUST** now be described as fully enforced, on the same
+   footing as money-movement and secret-access above.
 5. The full high-risk class list — name, description, pattern, and (for prod-deploy) which
-   allowlisted bins it overlaps and therefore does not yet fully gate — **MUST** be visible,
-   read-only, via `docket gates classes`. This command **MUST NOT** change any configuration.
+   allowlisted bins it overlaps, and that the classifier's own argument-awareness is what still
+   gates it despite the overlap — **MUST** be visible, read-only, via `docket gates classes`.
+   This command **MUST NOT** change any configuration.
 
 ### Docket-launched process classification (implemented, ROADMAP Phase 15 G-3)
 
@@ -309,16 +358,19 @@ requirement 2 above for why `resolve_command_action` in particular could never h
    **MUST** name the matched class and point at `docket gates classes`. Refusing outright is a
    stronger posture than routing to an approval prompt, and it is the only honest one available
    here: `run_verify_cmd` runs synchronously inside a dispatch hop with no interactive approver
-   reachable to answer — the same posture the daemon's own `askFallback: deny` takes when nobody
-   answers a live prompt.
+   reachable to answer — the same fail-closed philosophy `TOOL_APPROVAL_TIMEOUT` and
+   `approval_sweep_expired` apply elsewhere in this spec (formerly the OpenClaw daemon's own
+   `askFallback: deny`, before P19-7b deleted it) when nobody answers a live prompt.
 3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
    **MUST** also classify each hop's real output against `core.security.match_high_risk`,
    independently of the JSON policy engine — the shipped `high-risk-*.json` templates are hooked
-   on `pre_tool_call`, which (since ROADMAP Phase 19 P19-3) docket evaluates on calls made
-   through its own `core/tools.py` dispatcher, but a pod-dispatch hop does not route through that
-   dispatcher yet (see "In-turn tool-call gate" below) — so without this `pre_output` scan, a hop
-   that reports having run a money-movement or secret-access command still trips nothing on the
-   path a hop actually runs today.
+   on `pre_tool_call`, which (since ROADMAP Phase 19 P19-3, live on every real hop since
+   P19-5/P19-7a) docket evaluates on every call made through its own `core/tools.py` dispatcher.
+   This `pre_output` scan is a second, independent layer on top of that — it inspects what a hop
+   *reports having run* after the fact, which is not the same signal as gating a call before it
+   runs: a hop's self-reported summary can name a command that was never actually dispatched as a
+   distinct tool call (e.g. embedded in free-text output), so this scan still has real value even
+   though `pre_tool_call` now also covers the in-turn path.
 4. A `HIGH_RISK_PATTERNS` match on a hop's output **MUST NOT** downgrade an already-stronger
    `policy_eval_detail` verdict (`redact`/`block`/`require_approval` all outrank a bare
    `allow`) — it **MUST** only raise a plain `allow` to `warn`. It **MUST NOT** go further than
@@ -329,15 +381,17 @@ requirement 2 above for why `resolve_command_action` in particular could never h
    redacting or blocking anything by itself. It is a visibility signal (a `guardrail_check`
    trace event tagged `high-risk:<class-name>`), not an enforcement action, and **MUST NOT** be
    claimed as one in user-facing material.
-5. **What remains advisory.** `pre_tool_call` interception of the *daemon's own* live tool-call
-   gate is unchanged by this card and remains out of scope per D-15 — G-3 does not make docket a
-   per-argument enforcement daemon on the daemon's own exec path, and neither does ROADMAP Phase
-   19 P19-3's later work (see "In-turn tool-call gate" below): that card makes `pre_tool_call`
-   evaluate for calls docket dispatches through its own `core/tools.py`, which is a different
-   surface, not an extension of daemon enforcement. The daemon's exec-allowlist itself still
-   gates by binary path only (see "High-risk action classes" above); G-3 adds two new, real
-   classification points under docket's *own* control, it does not change what the daemon
-   enforces.
+5. **What this card added, and what superseded it later.** At the time G-3 shipped, this
+   classifier's two wired call sites (`run_verify_cmd`, `pre_output`) were real but narrow —
+   `pre_tool_call` itself was still unevaluated on any live path (D-15's daemon owned that
+   decision, by binary path only, with no hook for docket to consult). **That daemon is deleted
+   (P19-7b)**, and ROADMAP Phase 19 P19-3's `pre_tool_call` wiring is now live on every real
+   pod-dispatch hop (P19-5/P19-7a) — see "In-turn tool-call gate" below. This section's two
+   classification points remain real and additive (`run_verify_cmd`'s fail-closed refusal,
+   `pre_output`'s post-hoc scan of a hop's self-reported output), but they are no longer the
+   *only* place `HIGH_RISK_PATTERNS`-adjacent enforcement happens on a live hop — the
+   `high-risk-deploy` `pre_tool_call` template and the command classifier inside `dispatch_tool`
+   now also gate the call itself, before it runs.
 
 ### Policy engine on the live path (implemented, ROADMAP Phase 15 G-2)
 
@@ -398,12 +452,14 @@ nothing" shape G-1 fixed for the approval store one card earlier.
    collapsed into one undifferentiated row. `guardrail_check` is deliberately **not** tallied by
    that reader — tallying both would double-count the same trip a `block` already reports via
    `guardrail_block`.
-5. `pre_tool_call` **MUST NOT** be evaluated anywhere in *this* flow — `core/dispatch.py`'s
-   `enqueue_task`/`dispatch_task` orchestrate hops between daemon turns and remain outside any
-   individual tool call the daemon makes during one; that boundary is unchanged by ROADMAP Phase
-   19 P19-3. What P19-3 changed is that `pre_tool_call` is no longer *universally* unevaluated —
-   see "In-turn tool-call gate" below for the separate surface (`core/tools.py`) where it now
-   genuinely fires, and the Status line above for exactly what that does and does not cover today.
+5. `pre_tool_call` **MUST NOT** be evaluated a second time in *this* flow — `core/dispatch.py`'s
+   `enqueue_task`/`dispatch_task` orchestrate hops *between* turns and remain outside any
+   individual tool call made *during* one; that boundary is unchanged by ROADMAP Phase 19 P19-3
+   (only which engine runs inside a turn changed, from an unbridgeable daemon to docket's own
+   `DocketDriver`, P19-5/P19-7a/P19-7b). What P19-3 changed is that `pre_tool_call` is no longer
+   *universally* unevaluated — see "In-turn tool-call gate" below for the separate surface
+   (`core/tools.py`) where it now genuinely fires on every turn, and the Status line above for
+   exactly what that does and does not cover today.
 6. `docket policies validate [id|file.json]` **MUST** wire `core.policy.validate_policy` — a
    schema check (required fields, valid hook/action, a compilable regex pattern) previously
    implemented and unit-tested but callable only from tests, not the CLI. No argument validates
@@ -417,8 +473,11 @@ daemon-gated, never evaluated here." That was true of every path docket controll
 docket orchestrated hops *between* daemon turns and had no dispatcher of its own *inside* one.
 ROADMAP Phase 19 gives it one (`core/tools.py`'s `dispatch_tool`, P19-2's gated tool registry).
 This section is what finally evaluates the four `pre_tool_call` templates docket has shipped
-since Phase 11 against real calls made through that dispatcher — **not** against anything the
-daemon still executes; see the scope note that closes this section.
+since Phase 11 against real calls made through that dispatcher. **Corrected for P19-5/P19-7a/
+P19-7b (see the scope note that closes this section): that dispatcher is no longer a second path
+alongside a daemon — Phase 19 P19-5/P19-7a wired it onto every real pod-dispatch hop via
+`DocketDriver`, and P19-7b then deleted the daemon outright, so there is no other path left for a
+tool call to take.**
 
 1. **Rendering a call for the policy engine.** `core/tools.py`'s `render_tool_call(name, args)`
    renders one tool call as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the
@@ -477,19 +536,22 @@ daemon still executes; see the scope note that closes this section.
    (grant, explicit deny, or timeout-deny) continues to be recorded by `core/approval.py`'s
    existing `approval.grant`/`approval.deny` audit entries, so a fully gated call leaves **both**
    the gate's own decision and its resolution in `docket audit`.
-7. **Scope — stated precisely, matching the Status line.** This section governs `core/tools.py`'s
-   `dispatch_tool` and nothing else. As of this version:
-   - Nothing in the live pod-dispatch hop path (`core/dispatch.py`) calls `core/tools.py` —
-     `grep`-verified zero production callers outside `core/tools.py` itself. A pod-dispatch hop
-     today still runs as a full daemon turn, unintercepted, exactly as every prior version of
-     this spec described.
-   - The daemon's own native tool-calling loop remains entirely outside docket's reach — the G-5
-     findings below (no bridge to the daemon's live exec-approval prompt) are unaffected by this
-     card; P19-3 did not attempt to close that gap, and does not.
-   - `core/tools.py` becomes the thing a pod-dispatch hop actually runs through at ROADMAP Phase
-     19 P19-5 (`core/agent_loop.py` + `DocketDriver`) — this section documents a real, tested,
-     additive capability, not yet a live-path one. Do not cite this section as evidence that a
-     pod dispatch hop today is gated by `pre_tool_call`; it is not, until P19-5 lands.
+7. **Scope — stated precisely, matching the Status line (corrected for P19-5/P19-7a/P19-7b).**
+   This section governs `core/tools.py`'s `dispatch_tool` and nothing else. As of this version:
+   - **Every** pod-dispatch hop now calls `core/tools.py`: `core/dispatch.py`'s hop-execution call
+     sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`,
+     `edges/adapters/docket_runtime.py`), whose `run_turn` runs `core.agent_loop.run_agent_turn`,
+     which dispatches every tool call through `dispatch_tool`. This is a change from every prior
+     version of this spec, which described this dispatcher as real but not yet on the live path —
+     Phase 19 P19-5 built the wiring and P19-7a (the runtime cutover) made it the one every
+     production caller resolves.
+   - There is no more daemon tool-calling loop to contrast this with. Phase 19 P19-7b deleted the
+     daemon outright, so the G-5 findings below (no bridge to *the daemon's* live exec-approval
+     prompt) are now a historical record of a question that no longer has a live subject, not a
+     description of a gap in today's coverage.
+   - `core/tools.py` is the thing a pod-dispatch hop actually runs through, full stop — this
+     section can now be cited as evidence that a pod-dispatch hop today is gated by
+     `pre_tool_call` and the command classifier; that was not true before P19-5/P19-7a landed.
 
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
@@ -600,20 +662,23 @@ either.
    larger, separate decision this card does not make — a network-isolated mode is a natural future
    addition, not a gap being silently left open. This **MUST NOT** be described as network isolation
    anywhere in user-facing material; this section governs filesystem and process containment only.
-9. **Scope — stated precisely, matching the Status line.** This section governs
-   `edges/adapters/toolbox.py`'s `run_bash` and the `bash` tool registration in `core/tools.py`
-   only. As of this version:
+9. **Scope — stated precisely, matching the Status line (corrected for P19-7b: unlike the gate
+   above, this piece is still not live).** This section governs `edges/adapters/toolbox.py`'s
+   `run_bash` and the `bash` tool registration in `core/tools.py` only. As of this version:
    - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed today —
-     `grep`-verified zero production call sites pass `sandbox="auto"`. This is real, tested,
-     additive infrastructure with no live-path caller yet, the same shape P19-2/P19-3's
-     `core/tools.py` had before P19-5 — not a claim that any agent is sandboxed today.
+     `grep`-verified zero production call sites pass `sandbox="auto"`, including `DocketDriver`'s
+     own construction of it (`edges/adapters/docket_runtime.py`'s `run_turn`). Unlike the
+     `pre_tool_call`/command-classifier gate above (now live on every real hop since P19-5/P19-7a),
+     this is still real, tested, additive infrastructure with no live-path caller — not a claim
+     that any agent is sandboxed today.
    - `docket doctor`/`docket gates classes` do not yet surface `sandbox_availability()` — this wave
      owns the mechanism (`edges/adapters/system.py`, `edges/adapters/toolbox.py`, the
      `ToolContext`/`bash`-registration slice of `core/tools.py`) and leaves CLI wiring to whichever
      card touches those command modules next.
-   - This section does not change anything about the daemon's own exec path, the G-5 findings, or
-     the `pre_tool_call`/command-classifier gate above — it is a second, independent layer
-     underneath calls that already cleared that gate, exactly as requirement 3 states.
+   - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
+     what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
+     above — a second, independent layer on top of calls that already cleared that gate, exactly
+     as requirement 3 states.
 
 ### Network egress and the `fetch` tool (implemented, ROADMAP Phase 19 P19-11, decisions D-23/D-24)
 
@@ -680,22 +745,29 @@ otherwise.
 ### `docket gates` command (implemented)
 
 ```bash
-docket gates status            # MUST report exec-approval policy, routing, isolation, audit
-docket gates enable [--force]  # MUST apply conservative exec-approval defaults + curated
-                             #   allowlist and enable approval routing
-docket gates disable           # MUST reset gate defaults + routing (reversible escape hatch)
-docket gates isolate [on|off]  # MUST set/clear Docker workspace isolation (requires Docker; opt-in)
+# The tool-call gate itself (policy engine + high-risk command classifier) is unconditionally
+# active (Phase 19 P19-3) -- nothing below turns IT on or off. These commands manage
+# approval-routing and isolation posture only (core/fleet.py's FleetSecurity), per cli/_gates.py.
+docket gates status            # MUST report the gate as always-active, plus routing/isolation posture
+docket gates enable [--force]  # MUST turn approval routing on (--force kept for CLI
+                                #   compatibility; no existing-config state left to force over)
+docket gates disable           # MUST turn approval routing off (reversible)
+docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (requires Docker to
+                                #   turn on; recorded only -- DocketDriver does not yet consult it,
+                                #   so tools still run unsandboxed regardless of this setting)
 docket gates classes           # MUST list the documented high-risk action classes, read-only
-docket install                 # MUST apply the gate configuration by default
-docket install --no-gates      # MUST skip gate application (explicit opt-out)
-docket doctor                  # MUST report whether security gates are configured
+docket install                 # the tool-call gate needs no install step (always active); this
+                                #   MUST apply approval routing by default
+docket install --no-gates      # MUST skip the approval-routing step only (explicit opt-out)
+docket doctor                  # MUST report gate status, approval routing, and isolation posture
 ```
 
 ### Approval channels
 
 ```bash
-# docket's approval store (production producer since Phase 15 G-1: core/dispatch.py's
-# require_approval gate — see pod-dispatch.spec.md)
+# docket's approval store -- the only approval system that exists since Phase 19 P19-7b deleted
+# the daemon (production producer since Phase 15 G-1: core/dispatch.py's require_approval gate,
+# plus P19-3's in-turn core/tools.py gate -- see pod-dispatch.spec.md)
 docket approve                 # List pending approvals in docket's store
 docket approve <token>         # Grant a pending approval — headless, no chat session needed
                                 #   (G-1: also resumes any dispatch task it gated)
@@ -705,9 +777,9 @@ GET  /approvals                # docket serve: list pending approvals (bearer au
 POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (bearer auth)
                                 #   (G-1: same resume/kill behavior as the CLI channel)
 
-# the daemon's own gate prompt (what actually fires on a gated binary today)
-/approve <id> allow-once|deny  # answered in the agent's chat session, daemon-side
-                                #   — NOT bridged to docket's store yet (G-5, not implemented)
+# There is no longer a daemon-side gate prompt to contrast this with (P19-7b deleted the daemon
+# outright). A future docket-owned channel bot (P19-8, not yet shipped) is the planned third
+# way to answer a pending approval, alongside the CLI/HTTP channels above.
 ```
 
 ### `docket policies` command (implemented, ROADMAP Phase 15 G-2)
@@ -724,15 +796,16 @@ docket policies validate [id|file.json]     # MUST schema-check installed polici
 
 ## Examples
 
-### Gate flow today (daemon-enforced)
+### Gate flow, pre-P19-7b (historical — the daemon this describes no longer exists)
 
-An agent invoking a non-allowlisted binary (e.g. `docker stop mywebsite-db`) is stopped by
-the daemon's exec-approval gate; the prompt is delivered to the agent's session and answered
-with the daemon's `/approve <id>` (or denied by `askFallback: deny` when nobody answers).
-`git push origin main` does *not* trigger this prompt by default — see "High-risk action
-classes" above for why.
+An agent invoking a non-allowlisted binary (e.g. `docker stop mywebsite-db`) used to be stopped
+by the daemon's exec-approval gate; the prompt was delivered to the agent's session and
+answered with the daemon's `/approve <id>` (or denied by `askFallback: deny` when nobody
+answered). Kept as the historical record of what P19-7b deleted; see "In-turn tool-call gate —
+examples" below for the live equivalent (`core/tools.py`'s `dispatch_tool`, which now gates
+`git push origin main` too — see "High-risk action classes" above for the P19-7b correction).
 
-### Approval flow — target state (daemon-gated; investigated by G-5, confirmed not practical today)
+### Approval flow — pre-P19-7b target state (historical: investigated by G-5, never bridged, and the daemon it targeted is now deleted)
 
 ```text
 [GATE] Agent 'mywebsite' requested: docker stop mywebsite-db
@@ -825,17 +898,17 @@ money-movement — Payment/financial operations: charges, refunds, payouts, tran
 
 prod-deploy — Production deploys and release pushes
   pattern: git\s+push\s+.*\b(main|master|production|prod)\b|npm\s+publish|...
-  overlaps curated allowlist bins: git, npm — daemon gates by binary path only, so these
-  bins stay allowlisted; per-argument enforcement is not yet available (deferred)
+  overlaps allowlisted bins: git, npm — classify_command reads the whole command line, so
+  a high-risk invocation still asks even though the bin itself is allowlisted
 
 secret-access — Secret/credential writes and key generation
   pattern: vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa|...
   none of this class's bins are in the curated allowlist — always asks today
 
   This seed list is intentionally small and built-in (not yet user-configurable).
-  Wired (G-3): docket's own run_verify_cmd refuses a matching verify command outright
-  (fails closed, never runs it); a hop's real output is also scanned for a match on
-  every pipeline step (pre_output) — a hit is logged, not blocked/redacted by itself.
+  Wired: core/tools.py's dispatch_tool classifies every shell command before it runs;
+  run_verify_cmd separately refuses a matching verify command outright (fails closed);
+  a hop's real output is also scanned for a match on pre_output (logged, not blocked).
 ```
 
 ### Docket-launched process classification — examples (implemented, ROADMAP Phase 15 G-3)
@@ -864,10 +937,12 @@ $ docket trace myapp <session-id>
 
 ### In-turn tool-call gate — examples (implemented, ROADMAP Phase 19 P19-3)
 
-There is no `docket` CLI command that exercises this today — `core/tools.py`'s dispatcher has no
-live-path caller yet (see the scope note in "In-turn tool-call gate" above) — so these are
-`dispatch_tool` call shapes, not shell transcripts a user can run yet. Each is exactly what
-`tests/python/test_p19_3_pre_tool_call.py` asserts.
+These are `dispatch_tool` call shapes, not shell transcripts, because the gate operates one tool
+call at a time inside a turn — there is no separate `docket` CLI command that exercises it in
+isolation. Since Phase 19 P19-5/P19-7a wired `DocketDriver` onto every real pod-dispatch hop (see
+the scope note in "In-turn tool-call gate" above), this is exactly what happens on every real
+`bash`/`write`/etc. call a hop makes today, not merely a future contract. Each shape below is
+exactly what `tests/python/test_p19_3_pre_tool_call.py` asserts.
 
 A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
 
@@ -1007,19 +1082,26 @@ $ git clone https://anywhere.example/repo.git
 
 ### Pre-conditions
 
-- The OpenClaw daemon **MUST** support tool-approval hooks for this to be enforceable.
+- None external — since Phase 19 P19-7b deleted the daemon, this gate depends on no external
+  process or its capabilities. `core/tools.py`'s policy engine and high-risk command classifier
+  are unconditionally active on every tool call docket dispatches (Phase 19 P19-3); every
+  `DocketDriver`-backed turn routes through it (Phase 19 P19-5/P19-7a). (Pre-P19-7b, this
+  precondition read "The OpenClaw daemon MUST support tool-approval hooks for this to be
+  enforceable" — kept here only as the historical contrast.)
 
 ### Post-conditions
 
-- After a default install (no `--no-gates`), dangerous operations **MUST** be gated
-  (daemon-enforced).
+- Dangerous operations **MUST** be gated on every tool call docket dispatches — unconditionally,
+  not contingent on an install flag (`core/tools.py`'s `dispatch_tool`, live on every pod-dispatch
+  hop via `DocketDriver`).
 - Grants and denials through docket's approval store **MUST** appear in the audit log
-  (`cli`/`http`/`timeout` channels). Daemon-side `/approve` responses write no docket audit
-  entry until the G-5 bridge lands.
-- A gate prompt with no approver **MUST** resolve to denied (daemon `askFallback: deny`).
-  Stale docket-store records additionally resolve to **denied** (fail-closed, not merely
-  "expire") while `docket serve` runs, and — since G-1 — a dispatch task waiting on such a
-  record is failed terminally as part of that same resolution.
+  (`cli`/`http`/`timeout` channels). There is no daemon-side `/approve` left to write a
+  competing, un-audited response — docket's store is the only approval system (P19-7b).
+- A gate prompt with no approver **MUST** resolve to denied. For an in-turn `core/tools.py` call
+  this is `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate"); for an async dispatch-level
+  gate, stale docket-store records resolve to **denied** (fail-closed, not merely "expire") while
+  `docket serve` runs, and — since G-1 — a dispatch task waiting on such a record is failed
+  terminally as part of that same resolution.
 - Since ROADMAP Phase 19 P19-3, every non-`allow` decision `core/tools.py`'s `dispatch_tool`
   makes (`deny`, `ask`, and a `warn`/`redact` hit that still allows the call) **MUST** appear in
   the audit log, with the gated call's rendered arguments passed through `core.trace.redact`
@@ -1030,34 +1112,33 @@ $ git clone https://anywhere.example/repo.git
 
 ### Invariants
 
-- A denied or timed-out request **MUST NOT** execute (enforced by the daemon for its own
-  exec-approval prompt; enforced by `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
-  require_approval gate on a pod dispatch hop).
+- A denied or timed-out request **MUST NOT** execute — enforced entirely by docket now that
+  P19-7b removed the daemon: `core/tools.py`'s `wait_for_approval`/`TOOL_APPROVAL_TIMEOUT` for an
+  in-turn tool call, and `core/dispatch.py`'s `resolve_waiting_approval` for a G-1
+  require_approval gate on a pod dispatch hop.
 - Audit log entries **SHOULD NOT** be silently editable by the agent. As of ROADMAP Phase 15
   G-4, the log carries a `seq`/`prev_hash` tamper-evidence chain (`docket audit verify` detects
   an altered line) and the prior `DOCKET_NO_AUDIT=1` kill switch has been removed entirely — see
   audit.spec.md.
 - A high-risk pattern match **MUST NOT** be bypassed by allowlist status on any path docket
-  controls. For classes with no allowlist overlap (money-movement, secret-access) this is
-  fully enforced today. Prod-deploy's `git`/`npm` overlap at the **daemon's own exec-allowlist**
-  **MUST NOT** be claimed as enforced until per-argument daemon support exists; it remains a
-  documented policy only there. It **MUST NOT** be described as unenforced anywhere, however —
-  since ROADMAP Phase 19 P19-3, a `git push origin main`-shaped command routed through
-  `core/tools.py`'s dispatcher is genuinely gated by argument, by both the command classifier and
-  the `high-risk-deploy` policy template; see "In-turn tool-call gate" above for the scope that
-  applies to.
+  controls. All three classes — money-movement, secret-access, and (since P19-7b removed the
+  daemon's binary-path-only exec-allowlist this used to be qualified against) prod-deploy — are
+  now **fully enforced**: a `git push origin main`-shaped command routed through `core/tools.py`'s
+  dispatcher, which is now every real pod-dispatch hop, is genuinely gated by argument, by both
+  the command classifier and the `high-risk-deploy` policy template; see "In-turn tool-call gate"
+  above for the scope this applies to.
 - A task rejected by a `pre_input` `block` policy **MUST NOT** be written to the pod's queue —
   `enqueue_task` **MUST** raise before the locked read-modify-write, not after. A `pre_output`
   `block` **MUST NOT** let a later pipeline step run — the hop that tripped it **MUST** be the
   task's last recorded hop when it fails.
-- `pre_tool_call` **MUST NOT** be evaluated anywhere in `core/dispatch.py`'s hop-orchestration
-  flow, or by the daemon's own live tool-calling loop (unbridged — see the G-5 findings). It
-  **MUST** be evaluated on every call made through `core/tools.py`'s `dispatch_tool` (ROADMAP
-  Phase 19 P19-3) — a call that reaches that function and is not gated by `evaluate_tool_call` is
-  the specific regression `tests/python/test_p19_3_pre_tool_call.py` exists to catch. These two
-  statements are not in tension: they describe different, non-overlapping surfaces, and neither
-  implies the other is also true (see the Status line for which one covers today's actual
-  pod-dispatch hops).
+- `pre_tool_call` **MUST NOT** be evaluated a second time inside `core/dispatch.py`'s
+  hop-orchestration flow itself — that module orchestrates hops, it does not re-gate a call
+  `core/tools.py` already gated. It **MUST** be evaluated on every call made through
+  `core/tools.py`'s `dispatch_tool` (ROADMAP Phase 19 P19-3), which — since Phase 19 P19-5/P19-7a
+  wired `DocketDriver` onto every real hop, and P19-7b removed the daemon that used to be the
+  only alternative execution path — is now every tool call any pod-dispatch hop makes. A call
+  that reaches that function and is not gated by `evaluate_tool_call` is the specific regression
+  `tests/python/test_p19_3_pre_tool_call.py` exists to catch.
 - A `require_approval`/`ask`-gated tool call through `core/tools.py` **MUST NOT** execute before
   its approval resolves, and **MUST NOT** be left waiting indefinitely — `wait_for_approval`
   **MUST** eventually return `granted` or `denied`, the latter both for an explicit deny and for
@@ -1116,6 +1197,39 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.11.0 (2026-08-03)
+
+- **ROADMAP Phase 19 P19-7b — the OpenClaw daemon is deleted; docket is the only enforcer.**
+  `edges/adapters/openclaw.py` (the ACL), every `openclaw` binary shell-out, `openclaw.json`,
+  and daemon auth-profiles are gone outright — no compatibility layer, no migration (D-19).
+  This closes the two-system "approval seam" G-1/G-5 documented: there is no longer a daemon
+  exec-approval prompt to bridge to, so the G-5 "no bridge" verdict is retired from live-gap
+  status to historical record (the reasoning is kept verbatim, marked historical, so the
+  FD-3/G-3 high-risk-class work built against it is not orphaned).
+  - **The tool-call gate is now the *only* execution path, not one of two.** Every
+    pod-dispatch hop resolves `core.runtime_driver.default_driver()` (`DocketDriver`, the sole
+    shipped driver since P19-5/P19-7a) whose `run_turn` -> `run_agent_turn` -> `dispatch_tool`
+    chokepoint is what runs. There is no more daemon-executed hop falling outside docket's
+    interception — "High-risk action classes" item 4 (prod-deploy) is corrected from "not
+    fully enforced" to fully enforced on that basis: `git`/`npm` no longer have a
+    daemon-binary-path-only escape hatch to fall back to.
+  - **`docket gates enable/disable` no longer configures a daemon exec-approval allowlist** —
+    that config format (`security: allowlist`/`ask: on-miss`/`askFallback: deny` plus a seeded
+    curated-allowlist JSON file, `core/security.py`'s `resolve_safe_bin_paths`/
+    `build_exec_approvals`) is deleted, no successor. What remains is strictly narrower:
+    flipping `core/fleet.py`'s `FleetSecurity.approval_routing_state`
+    (`core/security.py`'s `apply_approval_routing`/`disable_approval_routing`). "Enablement"
+    is corrected accordingly; `--force` is kept for CLI compatibility but is now a no-op (no
+    existing-config idempotency state left to override).
+  - **Workspace isolation** (`docket gates isolate on/off`) is unaffected in mechanism (still
+    `core/fleet.py`-recorded, still not yet consulted by the turn loop) — only its Purpose-
+    section framing as "daemon Docker primitives" is corrected to "docket-recorded posture,
+    docket's own turn loop is what would consult it."
+  - Docs-only card: no test changes. Verified against the shipped `cli/_gates.py` (read in
+    full — `_enable`/`_disable`/`_isolate`/`_status`/`_classes`), `core/security.py`'s
+    `apply_approval_routing`/`disable_approval_routing`/`apply_workspace_isolation`/
+    `disable_workspace_isolation`, and `core/dispatch.py`'s hop-execution call sites.
 
 ### Version 0.10.0 (2026-08-02)
 

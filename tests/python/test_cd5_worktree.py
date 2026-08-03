@@ -22,7 +22,6 @@ from unittest import mock
 import pytest
 
 import docket.config as _cfg
-import docket.edges.adapters.openclaw as _oc
 import docket.edges.adapters.system as _sys
 from docket.cli._pod import (
     _provision_worktree,
@@ -71,33 +70,30 @@ def _init_git_repo(path: Path) -> None:
     )
 
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [],
-    },
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [],
     "bindings": [],
-    "channels": {},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "defaults": {"model": ""},
 }
 
 
 @pytest.fixture()
 def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir()
-    projects = oc_dir / "workspaces" / "projects"
+    home = tmp_path / ".docket"
+    home.mkdir()
+    projects = home / "workspaces" / "projects"
     projects.mkdir(parents=True)
-    config_file = oc_dir / "openclaw.json"
-    config_file.write_text(json.dumps(OC_CONFIG))
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps(FLEET_CONFIG))
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
     monkeypatch.setattr(
         _sys, "restart_gateway", lambda: _sys.RestartResult(status="dry_run", ok=True)
     )
-    return oc_dir
+    return home
 
 
 @pytest.fixture()
@@ -176,14 +172,6 @@ class TestProvisionWorktreeHelper:
 # ── TestProvisionMemberWorktree ───────────────────────────────────────────────
 
 
-def _fake_register(member_id: str, ws: str, model: str) -> tuple[bool, str]:
-    return True, ""
-
-
-def _fake_add_agent(member_id: str, model: str, session_key: str, project_key: str) -> None:
-    pass
-
-
 class TestProvisionMemberWorktree:
     def _provision(
         self,
@@ -191,18 +179,14 @@ class TestProvisionMemberWorktree:
         codebase: str,
         projects_dir: Path,
     ) -> dict[str, Any]:
-        with (
-            mock.patch("shutil.which", return_value=None),
-            mock.patch.object(_oc, "add_agent", side_effect=_fake_add_agent),
-        ):
-            ok, msg = provision_member(
-                member,
-                codebase=codebase,
-                stack="Python",
-                description="Test project",
-                project=member.project,
-                project_key="default",
-            )
+        ok, msg = provision_member(
+            member,
+            codebase=codebase,
+            stack="Python",
+            description="Test project",
+            project=member.project,
+            project_key="default",
+        )
         assert ok, msg
         meta_path = projects_dir / member.member_id / _cfg.META_FILE
         return json.loads(meta_path.read_text())
@@ -264,11 +248,7 @@ class TestTeardownMemberWorktree:
                 "worktreeBranch": _worktree_branch("myapp", m.member_id),
             },
         )
-        with (
-            mock.patch("shutil.which", return_value=None),
-            mock.patch.object(_oc, "remove_agent"),
-        ):
-            ok, _ = teardown_member(m.member_id)
+        ok, _ = teardown_member(m.member_id)
         assert ok
         assert not wt.exists()
 
@@ -277,11 +257,7 @@ class TestTeardownMemberWorktree:
         ws = _cfg.PROJECTS_DIR / m.member_id
         self._write_meta(ws, {"codebase": "", "role": "implementer"})
         remove_calls: list[str] = []
-        with (
-            mock.patch("shutil.which", return_value=None),
-            mock.patch.object(_oc, "remove_agent"),
-            mock.patch.object(_sys, "git_worktree_remove", side_effect=remove_calls.append),
-        ):
+        with mock.patch.object(_sys, "git_worktree_remove", side_effect=remove_calls.append):
             ok, _ = teardown_member(m.member_id)
         assert ok
         assert remove_calls == []
@@ -298,11 +274,7 @@ class TestTeardownMemberWorktree:
                 "codebase": str(git_repo),
             },
         )
-        with (
-            mock.patch("shutil.which", return_value=None),
-            mock.patch.object(_oc, "remove_agent"),
-        ):
-            ok, _ = teardown_member(m.member_id)
+        ok, _ = teardown_member(m.member_id)
         assert ok
         assert not ws.exists()
 

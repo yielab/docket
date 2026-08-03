@@ -1,14 +1,17 @@
 """Local provider registration.
 
 Registers a local OpenAI-compatible model endpoint (llama.cpp / LM Studio /
-vLLM) with the OpenClaw daemon so docket can route agent roles to it, e.g.
-`docket models set programmer local/qwen3-30b-a3b`.
+vLLM) with docket's own fleet registry so docket can route agent roles to it,
+e.g. `docket models set programmer local/qwen3-30b-a3b`.
 
 Run once, after the local inference server is up and answering on its /v1
 endpoint. Idempotent — safe to re-run to update the model / context.
 
-All openclaw.json knowledge lives in the ACL (edges/adapters/openclaw.py); this
-module only orchestrates the ping → register step. It has no knowledge of
+Phase 19 P19-7b: this used to register the provider in openclaw.json (the
+daemon's file) via the ACL; the daemon is gone, so the definition now lives in
+fleet.json (`core/fleet.py`'s `add_local_provider`/`get_local_provider`),
+which is what `edges/adapters/llm.py`'s `resolve_endpoint` reads to build a
+chat client for docket's own turn loop. This module still has no knowledge of
 terminals (ROADMAP §2) — it returns a typed result; `cli/_provider.py` renders
 it and prints the next-steps guidance.
 """
@@ -19,7 +22,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from docket.edges.adapters import openclaw as _oc
+from docket.core import fleet as _fleet
 
 # Defaults match the Qwen3-30B-A3B llama.cpp setup (server on :8080, -c 16384).
 DEFAULT_PROVIDER = "local"
@@ -41,6 +44,38 @@ def ping_endpoint(base_url: str, timeout: float = 5.0) -> bool:
             return True
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+def local_provider_config(
+    base_url: str,
+    model_id: str,
+    model_name: str,
+    ctx: int,
+    max_tokens: int,
+) -> dict[str, object]:
+    """Build the provider definition for a local OpenAI-compatible endpoint.
+
+    apiKey is a literal dummy ("local") — llama.cpp ignores it, but the shape
+    mirrors what a provider block has always looked like so
+    ``edges/adapters/llm.py``'s ``resolve_endpoint`` needs no special-casing.
+    Cost is zero (local inference).
+    """
+    return {
+        "baseUrl": base_url,
+        "apiKey": "local",
+        "api": "openai-completions",
+        "models": [
+            {
+                "id": model_id,
+                "name": model_name,
+                "reasoning": False,
+                "input": ["text"],
+                "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                "contextWindow": int(ctx),
+                "maxTokens": int(max_tokens),
+            }
+        ],
+    }
 
 
 @dataclass(frozen=True)
@@ -65,13 +100,13 @@ def register_local_provider(
     ctx: int = DEFAULT_CTX,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> ProviderRegistration:
-    """Ping the endpoint and register the provider in openclaw.json.
+    """Ping the endpoint and register the provider in docket's fleet registry.
 
     Pure orchestration — no output. Idempotent: re-running with the same
     arguments writes nothing (``changed`` comes back False).
     """
     reachable = ping_endpoint(base_url)
-    changed = _oc.add_local_provider(name, base_url, model_id, model_name, ctx, max_tokens)
+    changed = _fleet.add_local_provider(name, base_url, model_id, model_name, ctx, max_tokens)
     return ProviderRegistration(
         name=name,
         base_url=base_url,

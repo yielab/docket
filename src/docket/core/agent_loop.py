@@ -1,7 +1,8 @@
 """The turn loop docket now owns (ROADMAP Phase 19 P19-5 / decision D-19).
 
-This is the card that makes the OpenClaw daemon unused. Everything it needs
-already shipped and was, until now, unwired:
+This is the card that makes the external daemon unused (Phase 19 P19-7b
+deleted it outright). Everything it needs already shipped and was, until
+now, unwired:
 
 - ``core/llm.py`` (P19-1) — the ``ChatBackend`` port: one request/response
   exchange, nothing more.

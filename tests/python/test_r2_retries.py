@@ -17,9 +17,6 @@ Three layers:
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +25,9 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
-from docket.edges.adapters import openclaw as _oc
 
 # ── hermetic environment (mirrors test_cd2_verify.py / test_r7_hop_carryover.py) ──
 
@@ -41,18 +38,17 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    cfg_file = oc_dir / "openclaw.json"
-    cfg_file.write_text(json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}}))
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
 
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
 
 
 def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
@@ -74,7 +70,7 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     if extra:
         meta.update(extra)
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _oc.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
+    _fleet.add_agent(member_id, meta["model"], meta["sessionKey"], "default")
 
 
 def _trace_events(project: str) -> list[dict[str, Any]]:
@@ -91,109 +87,29 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "d
     """Full pod via ``build_pod`` (a real persisted TASK_LIST.json queue) — used
     only by the ``dispatch_pod``-level integration tests (stale-claim + timeouts
     that read the Lead's meta), not the direct ``dispatch_task`` unit tests."""
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    return _cfg.OPENCLAW_DIR
+    return _cfg.DOCKET_HOME
 
 
 def _no_sleep(_seconds: float) -> None:
     """Injected in place of time.sleep so retry-loop tests run instantly."""
 
 
-# ── ACL: failure_kind classification on the real agent_run/fake-binary path ───────
-
-
-def _write_fake_openclaw(bindir: Path, mode: str) -> Path:
-    bindir.mkdir(parents=True, exist_ok=True)
-    script = bindir / "openclaw"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys, json\n"
-        f"mode = {mode!r}\n"
-        "if mode == 'fail':\n"
-        "    sys.stderr.write('boom'); sys.exit(1)\n"
-        "if mode == 'ok':\n"
-        "    print(json.dumps({'output': 'done', 'cost': 0.0}))\n"
-    )
-    script.chmod(0o755)
-    return script
-
-
-class _FakeTimeoutPopen:
-    """A ``subprocess.Popen`` stand-in whose ``communicate`` times out once.
-
-    W-2: ``agent_run`` switched from ``subprocess.run`` to
-    ``subprocess.Popen``/``.communicate()`` (so it can report the child's pid
-    via ``on_spawn`` before blocking, and kill its *process group* — not just
-    the immediate child — on a real timeout). The second ``communicate`` call
-    is ``agent_run``'s own best-effort post-kill cleanup read and must not
-    raise, or the test would be exercising a different code path than a real
-    timeout does.
-    """
-
-    def __init__(self, *_a: Any, **_kw: Any) -> None:
-        self.pid = 999_999_999  # never a real process/group — safe to "kill"
-        self._calls = 0
-
-    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-        self._calls += 1
-        if self._calls == 1:
-            raise subprocess.TimeoutExpired(cmd=["openclaw"], timeout=timeout or 1)
-        return "", ""
+# ── failure_kind classification ────────────────────────────────────────────────
+#
+# Phase 19 P19-7b deleted the daemon-facing driver whose real subprocess-backed
+# `agent_run` this class used to classify failures through (a fake `openclaw`
+# binary simulating timeout/missing-CLI/non-zero-exit/success). The successor
+# is `edges/adapters/llm.py`'s `OpenAIChatClient` (the one shipped `ChatBackend`
+# DocketDriver calls through) -- its own failure_kind classification
+# (timeout / HTTP-status-based daemon_error/nonzero_exit / invalid_output) is
+# already covered by test_p19_1_llm_port.py's `TestFailureKindClassification`-
+# equivalent cases, so this class is not re-created against a fake subprocess
+# with no successor; only the one test with no ACL dependency at all
+# (`TurnResult`'s own backward-compat default) is kept below.
 
 
 class TestFailureKindClassification:
-    def test_timeout_sets_timeout_failure_kind(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # A real timed-out subprocess would need to outlive agent_run's own
-        # `timeout + 15`s grace window to reliably raise — instead, force the
-        # exact exception agent_run's own except-clause handles, same as a
-        # real timeout would, without an actual multi-second sleep.
-        monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/openclaw")
-        monkeypatch.setattr(subprocess, "Popen", _FakeTimeoutPopen)
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 1)
-        assert not res.ok
-        assert res.failure_kind == "timeout"
-
-    def test_missing_cli_sets_daemon_error_failure_kind(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        monkeypatch.setenv("PATH", str(empty))
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert not res.ok
-        assert res.failure_kind == "daemon_error"
-
-    def test_nonzero_exit_sets_nonzero_exit_failure_kind(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "fail")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert not res.ok
-        assert res.failure_kind == "nonzero_exit"
-
-    def test_success_has_no_failure_kind(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "ok")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert res.ok
-        assert res.failure_kind is None
-
     def test_positional_construction_still_works_without_failure_kind(self) -> None:
         """Backward compat: every pre-R-2 call site constructs positionally with
         4-5 args and never mentions failure_kind — it must still default sanely."""

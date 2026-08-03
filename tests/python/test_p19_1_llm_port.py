@@ -390,10 +390,10 @@ class TestEndpointResolution:
     def test_stored_provider_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import fleet as _fleet
 
         monkeypatch.setattr(
-            _oc, "get_local_provider", lambda name: {"baseUrl": "http://127.0.0.1:8081/v1"}
+            _fleet, "get_local_provider", lambda name: {"baseUrl": "http://127.0.0.1:8081/v1"}
         )
         ep = adapter.resolve_endpoint("local/qwen3.6-35b-a3b")
         assert ep is not None
@@ -407,10 +407,10 @@ class TestEndpointResolution:
     ) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import fleet as _fleet
 
         monkeypatch.setattr(
-            _oc,
+            _fleet,
             "get_local_provider",
             lambda name: {"baseUrl": "http://127.0.0.1:8081/v1", "apiKey": "local"},
         )
@@ -421,19 +421,19 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import fleet as _fleet
 
         monkeypatch.setattr(
-            _oc, "get_local_provider", lambda name: {"baseUrl": "https://openrouter.ai/api/v1"}
+            _fleet, "get_local_provider", lambda name: {"baseUrl": "https://openrouter.ai/api/v1"}
         )
         ep = adapter.resolve_endpoint("openrouter/some-model")
         assert ep is not None and ep.api_key == "sk-or"
 
     def test_unknown_provider_resolves_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-        from docket.edges.adapters import openclaw as _oc
+        from docket.core import fleet as _fleet
 
-        monkeypatch.setattr(_oc, "get_local_provider", lambda name: None)
+        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
         assert adapter.resolve_endpoint("nosuch/model") is None
         assert adapter.client_for("nosuch/model") is None
 

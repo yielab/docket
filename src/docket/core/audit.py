@@ -21,10 +21,9 @@ specs/functional/audit.spec.md for the full rationale and schema.
 Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
 line-independent, not a read-modify-write of a whole document, so this module
 writes JSONL directly rather than through ``edges/store.py``. The log is a
-docket-owned artefact (Phase 19 P19-7a moved it from OPENCLAW_DIR to
-DOCKET_HOME, alongside the model/archetype registries and PROJECTS_DIR — the
-last docket state still living in the daemon's directory), so it does not go
-through the ACL either.
+docket-owned artefact under DOCKET_HOME (Phase 19 P19-7a moved it there
+alongside the model/archetype registries and PROJECTS_DIR; Phase 19 P19-7b
+then deleted the daemon's directory it used to live under).
 """
 
 from __future__ import annotations
@@ -141,9 +140,10 @@ def audit_log(action: str, detail: str = "") -> None:
     cannot be disabled by environment variable — there is no kill switch (see
     module docstring).
 
-    Phase 19 P19-7a: AUDIT_LOG moved from OPENCLAW_DIR (the daemon's own
-    directory, guaranteed to exist by something outside docket's control) to
-    DOCKET_HOME (genuinely docket-owned). Nothing external bootstraps
+    Phase 19 P19-7a: AUDIT_LOG moved from the daemon's own directory
+    (guaranteed to exist by something outside docket's control, before that
+    directory was deleted outright in P19-7b) to DOCKET_HOME (genuinely
+    docket-owned). Nothing external bootstraps
     DOCKET_HOME anymore, so this creates its parent directory itself, exactly
     like every other DOCKET_HOME-derived writer already does
     (``core/trace.py``'s ``project_dir.mkdir(parents=True, exist_ok=True)``,
@@ -224,7 +224,7 @@ class VerifyResult:
 
 
 def verify_chain() -> VerifyResult:
-    """Walk ``$OPENCLAW_DIR/audit.log`` and verify its tamper-evidence chain.
+    """Walk ``$DOCKET_HOME/audit.log`` and verify its tamper-evidence chain.
 
     Only the *current* file is checked — a rotation starts a fresh chain, so
     there is nothing to bridge across the boundary (``rotated_backup`` tells

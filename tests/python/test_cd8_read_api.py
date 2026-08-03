@@ -19,7 +19,6 @@ from typing import Any
 import pytest
 
 import docket.config as _cfg
-import docket.edges.adapters.openclaw as _oc
 import docket.serve as serve
 
 # ── test fixtures (mirrors test_m5_serve.py fake_home) ───────────────────────
@@ -34,42 +33,33 @@ META: dict[str, Any] = {
     "budgetUsd": "5.0",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "apitest",
-                "model": "anthropic/claude-haiku-4-5-20251001",
-                "metadata": {"sessionKey": "agent:apitest:default"},
-            }
-        ],
-    },
+FLEET_CONFIG: dict[str, Any] = {
+    "agents": [{"id": "apitest"}],
     "bindings": [],
-    "channels": {},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
+    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "defaults": {"model": ""},
 }
 
 
 @pytest.fixture()
 def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    oc_dir.mkdir()
-    ws = oc_dir / "workspaces" / "projects" / "apitest"
+    home = tmp_path / ".docket"
+    home.mkdir()
+    ws = home / "workspaces" / "projects" / "apitest"
     ws.mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
 
-    config_file = oc_dir / "openclaw.json"
-    monkeypatch.setenv("OPENCLAW_DIR", str(oc_dir))
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", config_file)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects")
-    monkeypatch.setattr(_oc, "CONFIG_FILE", config_file)
+    fleet_file = home / "fleet.json"
+    fleet_file.write_text(json.dumps(FLEET_CONFIG))
+
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects")
     monkeypatch.setattr(serve.utils, "gateway_active", lambda: True)
     # No approvals dir — list_pending() returns [] gracefully
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals")
-    return oc_dir
+    return home
 
 
 # ── TestApiContract: machine-readable contract pins ───────────────────────────

@@ -164,15 +164,12 @@ def _cmd_cost_all() -> None:
             ui.warn(f"  Runaway session: {r}")
 
     ui.console.print()
-    # NOTE (P19-7a): this footer's literal ~/.openclaw path is now stale for
-    # the production DocketDriver path (real data lives under
-    # DOCKET_HOME/sessions instead) -- left unchanged deliberately, because
-    # this exact line is golden-pinned (tests/golden/cases/readonly/cost.golden)
-    # and this card adds no new CLI surface to justify a golden diff. Flagged
-    # in the P19-7a report as a known, deliberately-deferred inaccuracy, not
-    # fixed here; a spec/docs-owning card should correct the wording without
-    # also touching cost logic.
-    ui.dim("  Recorded spend from session data in ~/.openclaw/agents/*/sessions/*.jsonl")
+    # Phase 19 P19-7b: the daemon (and its ~/.openclaw session JSONL) is
+    # deleted outright, so this footer now names the real, current source --
+    # docket's own durable per-session storage (core/session.py). This is a
+    # deliberate golden diff (see the card's report for the regenerated
+    # cost.golden).
+    ui.dim(f"  Recorded spend from session data in {_cfg.SESSIONS_DIR}/*/session.json")
     ui.dim(
         f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"
         " — see: docket models"

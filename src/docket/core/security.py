@@ -1,14 +1,19 @@
-"""Security-gate logic — pure assembly of exec-approval config.
+"""Security-gate logic: docket's own command classifier + approval/isolation config.
 
-docket configures; the OpenClaw daemon enforces. These helpers build the
-exec-approval config and decide what to seed, returning structured results
-the CLI renders. All openclaw-owned reads/writes — exec-approvals.json, the
-daemon ``openclaw approvals set`` apply, approvals.exec routing, and the
-sandbox-isolation config — go through the ACL (``edges/adapters/openclaw.py``).
+Phase 19 P19-2/P19-3 made ``core/tools.py``'s ``dispatch_tool`` the single
+chokepoint every tool call passes through, and the ``pre_tool_call`` policy
+hook (plus ``classify_command`` below) unconditionally live on it — there is
+no separate "enable the gate" step any more, and (since Phase 19 P19-7b) no
+daemon-side exec-approval mechanism to configure at all. What remains
+configurable is docket's own approval-routing and workspace-isolation state
+(``core/fleet.py``'s ``FleetSecurity``, ``docket gates enable/disable``,
+``docket gates isolate``) — not whether tool calls are gated, only where a
+resulting prompt is routed and whether tool execution runs sandboxed.
 
-This module owns only the pure assembly: resolving the curated safe-bin
-allowlist to absolute paths and merging it into the exec-approval document while
-preserving existing config.
+This module also owns ``classify_command``/``match_high_risk``: the
+argument-aware classifier that decides ``allow``/``ask``/``deny`` for a shell
+command, used by both ``core/tools.py``'s live gate and
+``edges/adapters/system.py``'s ``run_verify_cmd``.
 """
 
 from __future__ import annotations
@@ -16,21 +21,16 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import shutil
-import uuid
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
-from docket.edges.adapters import openclaw as _oc
+from docket.core import fleet as _fleet
 
-# Curated set of common, lower-risk binaries that skip the approval prompt.
-# Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and shell
-# interpreters are deliberately OMITTED so they fall through the allowlist gate.
+# Curated set of common, lower-risk binaries `classify_command` allows
+# unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
+# shell interpreters are deliberately OMITTED so they fall through to `ask`.
 # NOTE: a bin listed here (e.g. git, npm) can still have a HIGH_RISK_PATTERNS
-# class attached for documentation/visibility (`docket gates classes`) — that
-# does NOT exclude it from the seeded allowlist. See `HighRiskClass`'s
-# docstring for why: the daemon's allowlist gates by binary path, not
-# argument text, so excluding a whole bin would also block its benign uses.
+# class attached for documentation/visibility (`docket gates classes`) — see
+# `HighRiskClass`'s docstring for why that does not exclude it from this list.
 SAFE_BINS: tuple[str, ...] = (
     "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "nl",
     "grep", "egrep", "rg", "fd", "find", "file", "stat", "tree", "realpath",
@@ -52,20 +52,17 @@ class HighRiskClass:
 
     ``bins`` names the SAFE_BINS members this class can be performed through,
     for documentation/visibility only (``docket gates classes``) — it does
-    **not** exclude them from the seeded allowlist. The daemon's exec-
-    allowlist can only gate by binary path (confirmed via
-    ``openclaw approvals allowlist --help``: entries are bare glob paths like
-    ``/usr/bin/uptime``, with no argument-aware matching and no denylist
-    concept), so it genuinely cannot tell ``git push origin main`` apart from
-    ``git status``. Excluding a bin like ``git``/``npm`` wholesale to force
-    its high-risk invocations to ask would also force every benign invocation
-    to ask — an unacceptable usability regression for tools used constantly.
-    Per-argument enforcement of these classes is deferred pending a daemon-
-    side capability that doesn't exist today (tracked as a backlog item,
-    similar to the deferred S2 redaction work). ``match_high_risk`` is the
-    live classifier for the paths docket *does* control — G-3 wired it into
-    ``run_verify_cmd`` (refuse before the shell starts) and into dispatch's
-    ``pre_output`` scan.
+    **not** exclude them from ``SAFE_BINS``. Excluding a bin like
+    ``git``/``npm`` wholesale to force its high-risk invocations to ask would
+    also force every benign invocation to ask — an unacceptable usability
+    regression for tools used constantly. Per-argument enforcement of these
+    classes is exactly what ``classify_command`` below provides instead: it
+    reads the whole command line, so ``git push origin production`` asks
+    while ``git status`` does not, without excluding ``git`` from
+    ``SAFE_BINS`` at all. ``match_high_risk`` is the underlying classification
+    entry point — wired into ``run_verify_cmd`` (refuse before the shell
+    starts) and into dispatch's ``pre_output`` scan, in addition to
+    ``classify_command``'s own live use in ``core/tools.py``'s gate.
     """
 
     name: str
@@ -77,12 +74,8 @@ class HighRiskClass:
 # Seed list of high-risk action classes: money-movement, prod-deploy, and
 # secret-access. Intentionally small and named — a policy foundation, not
 # exhaustive coverage. Not user-configurable yet (see FD-3 "out of scope");
-# a config-file override is a natural follow-up. NOTE: matching these
-# patterns is currently advisory/visible only for classes whose bins overlap
-# SAFE_BINS (git, npm) — see HighRiskClass's docstring for why full
-# enforcement needs a daemon capability that doesn't exist yet. Classes with
-# no SAFE_BINS overlap (money-movement, secret-access) are already fully
-# enforced today, since their bins were never allowlisted to begin with.
+# a config-file override is a natural follow-up. All three classes are fully
+# enforced today via `classify_command` (argument-aware, Phase 19 P19-2).
 HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
     HighRiskClass(
         name="money-movement",
@@ -296,149 +289,40 @@ def classify_command(command: str) -> CommandVerdict:
     )
 
 
-@dataclass
-class GateResult:
-    """Outcome of applying exec-approval gates."""
-
-    mode: str  # "applied-via-daemon" | "applied-direct"
-    defaults_changed: bool
-    seeded: list[str] = field(default_factory=list)
-    bins: int = 0
-
-
-def resolve_safe_bin_paths() -> list[str]:
-    """Resolve the curated safe bins to absolute, symlink-resolved paths.
-
-    Bins that are not on PATH are skipped (Bash ``command -v ... || continue``).
-    Every SAFE_BINS member is seeded here, including ``git``/``npm`` — see
-    `HighRiskClass`'s docstring for why they are *not* excluded despite
-    having an attached HIGH_RISK_PATTERNS class.
-    """
-    paths: list[str] = []
-    for name in SAFE_BINS:
-        resolved = shutil.which(name)
-        if not resolved:
-            continue
-        paths.append(os.path.realpath(resolved))
-    return paths
-
-
-def _make_allowlist(paths: list[str]) -> list[dict[str, str]]:
-    return [{"id": str(uuid.uuid4()), "pattern": p} for p in paths]
-
-
-def build_exec_approvals(
-    existing: dict[str, Any],
-    paths: list[str],
-    agent_ids: list[str],
-    *,
-    force: bool,
-) -> tuple[dict[str, Any], bool, list[str]]:
-    """Merge curated gate defaults + per-agent allowlists into *existing*.
-
-    Returns (merged_doc, defaults_changed, seeded_ids). Existing config
-    (version / socket / agents) is preserved; defaults are only overwritten when
-    empty unless *force*.
-    """
-    data: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
-    data.setdefault("version", 1)  # socket (if present) preserved untouched
-
-    defaults = data.get("defaults") or {}
-    defaults_changed = False
-    if not defaults or force:
-        data["defaults"] = {
-            "security": "allowlist",
-            "ask": "on-miss",
-            "askFallback": "deny",
-            "autoAllowSkills": False,
-        }
-        defaults_changed = True
-    else:
-        data["defaults"] = defaults
-
-    agents = data.get("agents") or {}
-    if not isinstance(agents, dict):
-        agents = {}
-    # Dedupe, ensure 'main' is present (dict.fromkeys keeps first-seen order).
-    ids = list(dict.fromkeys([*agent_ids, "main"]))
-    seeded: list[str] = []
-    for aid in ids:
-        a = agents.get(aid) or {}
-        if not isinstance(a, dict):
-            a = {}
-        if not a.get("allowlist") or force:
-            a["security"] = a.get("security") or "allowlist"
-            a["ask"] = a.get("ask") or "on-miss"
-            a["askFallback"] = a.get("askFallback") or "deny"
-            a["allowlist"] = _make_allowlist(paths)
-            seeded.append(aid)
-        agents[aid] = a
-    data["agents"] = agents
-    return data, defaults_changed, seeded
-
-
-def apply_exec_approval_gates(force: bool = False) -> GateResult:
-    """Apply conservative exec-approval enforcement (opt-in).
-
-    Writes defaults {security: allowlist, ask: on-miss, askFallback: deny} and
-    seeds each agent the curated safe-bin allowlist. The merged file is applied
-    via the daemon when reachable, else written directly.
-    """
-    paths = resolve_safe_bin_paths()
-    existing = _oc.read_exec_approvals()
-    agent_ids = _oc.all_agent_ids()
-
-    merged, defaults_changed, seeded = build_exec_approvals(existing, paths, agent_ids, force=force)
-    via_daemon = _oc.write_exec_approvals(merged)
-    return GateResult(
-        mode="applied-via-daemon" if via_daemon else "applied-direct",
-        defaults_changed=defaults_changed,
-        seeded=seeded,
-        bins=len(paths),
-    )
-
-
-def disable_exec_approval_gates() -> bool:
-    """Reset exec-approval defaults to empty so the daemon falls back to tools.exec.
-
-    Returns False when there is nothing to disable (no exec-approvals file).
-    Seeded allowlists are left in place.
-    """
-    if not _oc.exec_approvals_path().exists():
-        return False
-    data = _oc.read_exec_approvals()
-    data["defaults"] = {}
-    _oc.write_exec_approvals(data)
-    return True
-
-
 def apply_approval_routing() -> int:
-    """Route exec-approval prompts to each agent's session channel.
+    """Route gated-tool-call approval prompts to each agent's session channel.
 
-    Writes approvals.exec = {enabled, mode:session}. Returns the count of
-    Telegram-bound agents (informational).
+    Writes fleet.json's approval-routing state to on/session. Returns the
+    count of channel-bound agents (informational) -- until docket owns a
+    live channel (P19-8), a bound agent has nowhere to actually receive a
+    prompt, so this count is a readiness signal, not a guarantee.
     """
-    _oc.set_approval_routing(enabled=True, mode="session")
+    _fleet.set_approval_routing(enabled=True, mode="session")
     count = 0
-    for aid in _oc.all_agent_ids():
-        if _oc.get_binding(aid):
+    for aid in _fleet.all_agent_ids():
+        if _fleet.get_binding(aid):
             count += 1
     return count
 
 
 def disable_approval_routing() -> None:
-    """Turn approval forwarding off (approvals.exec.enabled=false)."""
-    _oc.disable_approval_routing()
+    """Turn approval-routing off in fleet.json."""
+    _fleet.disable_approval_routing()
 
 
 def apply_workspace_isolation() -> None:
-    """Enable per-agent Docker sandbox for non-main sessions.
+    """Record that per-agent Docker sandbox isolation is desired.
 
-    The Docker capability check and gateway restart are the caller's responsibility.
+    The Docker capability check is the caller's responsibility. Writes
+    fleet.json's isolation mode; **not yet consulted by the turn loop** —
+    ``edges/adapters/docket_runtime.py``'s ``DocketDriver`` always constructs
+    its ``ToolContext`` with ``sandbox="off"``, so this flag does not yet
+    change what a real tool call does. Recorded honestly here so the state
+    exists for a future card to wire, not silently dropped.
     """
-    _oc.set_sandbox_isolation(mode="non-main", scope="agent", workspace_access="rw")
+    _fleet.set_sandbox_isolation(mode="non-main")
 
 
 def disable_workspace_isolation() -> None:
-    """Turn sandbox isolation off (mode: off)."""
-    _oc.disable_sandbox_isolation()
+    """Turn the recorded sandbox-isolation mode off (mode: off)."""
+    _fleet.disable_sandbox_isolation()

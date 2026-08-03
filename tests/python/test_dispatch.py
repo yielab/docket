@@ -20,7 +20,6 @@ thread-race regression this whole card exists to close), ``TestCrashRecovery``
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from collections import Counter
@@ -32,11 +31,11 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import resources as _res
 from docket.core import runtime_driver as _rd
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _dr
-from docket.edges.adapters import openclaw as _oc
 from docket.edges.adapters.docket_runtime import DocketDriver
 
 from .fakes import FakeDriver
@@ -50,30 +49,13 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    cfg_file = oc_dir / "openclaw.json"
-    monkeypatch.setattr(_cfg, "OPENCLAW_DIR", oc_dir, raising=True)
-    monkeypatch.setattr(_cfg, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", oc_dir / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", oc_dir / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", oc_dir / "traces", raising=True)
-    monkeypatch.setattr(_oc, "CONFIG_FILE", cfg_file, raising=True)
-    monkeypatch.setattr(_oc, "meta_path", _cfg.meta_path, raising=True)
-
-
-def _fake_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Register/unregister mutate agents.list directly (no real openclaw)."""
-    monkeypatch.setattr(_pod.shutil, "which", lambda _name: "/usr/bin/openclaw")
-
-    def _register(agent_id: str, workspace: str, model: str) -> tuple[bool, str]:
-        raw = json.loads(_cfg.CONFIG_FILE.read_text())
-        raw.setdefault("agents", {}).setdefault("list", []).append(
-            {"id": agent_id, "model": model, "metadata": {}}
-        )
-        _cfg.CONFIG_FILE.write_text(json.dumps(raw))
-        return (True, "")
-
-    monkeypatch.setattr(_oc, "register_agent_cli", _register)
+def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
+    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
 
 
 def _seed_pod(
@@ -82,15 +64,12 @@ def _seed_pod(
     project: str = "demo",
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
 ) -> Path:
-    oc_dir = tmp_path / ".openclaw"
-    (oc_dir / "workspaces" / "projects").mkdir(parents=True)
-    (oc_dir / "openclaw.json").write_text(
-        json.dumps({"agents": {"list": []}, "bindings": [], "channels": {}})
-    )
-    _point_at(oc_dir, monkeypatch)
-    _fake_daemon(monkeypatch)
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    _point_at(home, monkeypatch)
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
-    return oc_dir
+    return home
 
 
 # Phase 18 L-1: the pipeline-semantics tests below inject `FakeDriver` (the one
@@ -100,124 +79,16 @@ def _seed_pod(
 # `FakeDriver` shim.
 
 
-# ── ACL agent_run against a fake binary ──────────────────────────────────────────
-
-
-def _write_fake_openclaw(bindir: Path, mode: str = "ok") -> Path:
-    bindir.mkdir(parents=True, exist_ok=True)
-    script = bindir / "openclaw"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys, json\n"
-        f"mode = {mode!r}\n"
-        "if mode == 'fail':\n"
-        "    sys.stderr.write('boom'); sys.exit(1)\n"
-        "if mode == 'nonjson':\n"
-        "    sys.stdout.write('plain reply'); sys.exit(0)\n"
-        "agent = ''\n"
-        "a = sys.argv\n"
-        "for i, t in enumerate(a):\n"
-        "    if t == '--agent' and i + 1 < len(a):\n"
-        "        agent = a[i + 1]\n"
-        "print(json.dumps({'output': 'done by ' + agent, 'cost': 0.02}))\n"
-    )
-    script.chmod(0o755)
-    return script
-
-
-class TestAgentRun:
-    def test_success_parses_output_and_cost(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "ok")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("demo-implementer", "agent:demo:t1", "do it", 30)
-        assert res.ok
-        assert res.output == "done by demo-implementer"
-        assert res.cost_usd == 0.02
-        assert res.raw.get("output")
-
-    def test_nonzero_exit_is_not_ok(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "fail")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert not res.ok
-        assert "boom" in res.error
-
-    def test_non_json_output_still_surfaces_text(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "nonjson")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert res.ok
-        assert res.output == "plain reply"
-
-    def test_missing_cli_is_not_ok(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        empty = tmp_path / "empty"
-        empty.mkdir()
-        monkeypatch.setenv("PATH", str(empty))  # no openclaw anywhere
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert not res.ok
-        assert "not found" in res.error
-
-
-# ── FD-0: env override actually reaches the real subprocess ──────────────────────
-
-
-class TestAgentRunEnv:
-    def test_env_kwarg_merges_into_subprocess(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The whole point of FD-0: env=... is not just plumbed, it lands in the child."""
-        bindir = tmp_path / "bin"
-        bindir.mkdir(parents=True, exist_ok=True)
-        script = bindir / "openclaw"
-        script.write_text(
-            "#!/usr/bin/env python3\n"
-            "import os, json\n"
-            "print(json.dumps({\n"
-            "    'output': 'env seen',\n"
-            "    'cost': 0.0,\n"
-            "    'port_base': os.environ.get('DOCKET_PORT_BASE'),\n"
-            "    'scratch': os.environ.get('DOCKET_SCRATCH_DIR'),\n"
-            "}))\n"
-        )
-        script.chmod(0o755)
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run(
-            "demo-implementer",
-            "agent:demo:t1",
-            "do it",
-            30,
-            env={"DOCKET_PORT_BASE": "3000", "DOCKET_SCRATCH_DIR": "/tmp/demo-scratch"},
-        )
-        assert res.ok
-        assert res.raw.get("port_base") == "3000"
-        assert res.raw.get("scratch") == "/tmp/demo-scratch"
-
-    def test_no_env_kwarg_inherits_parent_env_unchanged(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """No env override (the default) behaves exactly as before FD-0."""
-        bindir = tmp_path / "bin"
-        bindir.mkdir(parents=True, exist_ok=True)
-        script = bindir / "openclaw"
-        script.write_text(
-            "#!/usr/bin/env python3\n"
-            "import os, json\n"
-            "print(json.dumps({'output': 'x', 'cost': 0.0, "
-            "'marker': os.environ.get('DOCKET_TEST_MARKER', '')}))\n"
-        )
-        script.chmod(0o755)
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        monkeypatch.setenv("DOCKET_TEST_MARKER", "inherited")
-        res = _oc.agent_run("demo-lead", "agent:demo:t1", "plan", 30)
-        assert res.ok
-        assert res.raw.get("marker") == "inherited"
+# Phase 19 P19-7b deleted the daemon-facing driver whose real subprocess-backed
+# `agent_run` `TestAgentRun`/`TestAgentRunEnv`/`TestAgentRunRealShape` used to
+# exercise (against a fake `openclaw` binary on PATH, and canned real daemon
+# JSON per CD-0). The successor path is `edges/adapters/llm.py`'s
+# `OpenAIChatClient` (response parsing, already covered by
+# test_p19_1_llm_port.py) and `edges/adapters/docket_runtime.py`'s
+# `DocketDriver` (env passed through to a tool call, covered by
+# test_p19_5_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
+# `test_on_spawn_is_accepted_and_ignored`) -- neither reads a daemon JSON
+# shape or shells out at all, so those classes are not re-created here.
 
 
 # ── pipeline driver (injected runner) ────────────────────────────────────────────
@@ -312,7 +183,7 @@ class TestPipeline:
         _seed_pod(tmp_path, monkeypatch)
         # Remove the lead from the fleet registry → no dispatchable pod
         # (P19-6: registration lives in fleet.json now, not openclaw.json).
-        _oc.remove_agent("demo-lead")
+        _fleet.remove_agent("demo-lead")
         with pytest.raises(_dispatch.DispatchError):
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
@@ -388,85 +259,13 @@ class TestHopEnvInjection:
         assert by_role["implementer"] is None
 
 
-# ── CD-0: canned real daemon JSON shape ──────────────────────────────────────────
-
-# Captured 2026-06-25 from daemon v2026.2.23 using agent `knowledge`
-# (opencode-go/glm-5.2). sessionId and runId are redacted. systemPromptReport
-# omitted — irrelevant to parsing. See internal-docs/POD-DAEMON-NOTES.md §CD-0.
-_REAL_DAEMON_RESPONSE: dict[str, Any] = {
-    "runId": "<redacted-uuid>",
-    "status": "ok",
-    "summary": "completed",
-    "result": {
-        "payloads": [{"text": "OK", "mediaUrl": None}],
-        "meta": {
-            "durationMs": 21258,
-            "agentMeta": {
-                "sessionId": "<redacted-uuid>",
-                "provider": "opencode-go",
-                "model": "glm-5.2",
-                "usage": {
-                    "input": 14010,
-                    "output": 3,
-                    "cacheRead": 128,
-                    "total": 14141,
-                },
-                "promptTokens": 14138,
-            },
-            "aborted": False,
-        },
-    },
-}
-
-
-class TestAgentRunRealShape:
-    """Verify parsing against the confirmed real daemon JSON schema (CD-0)."""
-
-    def test_real_shape_extracts_text_from_payloads(self) -> None:
-        output = _oc._extract_run_output(_REAL_DAEMON_RESPONSE)
-        assert output == "OK"
-
-    def test_real_shape_cost_is_zero(self) -> None:
-        # Daemon v2026.2.23 returns token counts only — no USD cost field.
-        cost = _oc._extract_run_cost(_REAL_DAEMON_RESPONSE)
-        assert cost == 0.0
-
-    def test_full_agent_run_with_real_shape(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Fake binary emitting the real daemon shape yields the correct result."""
-        bindir = tmp_path / "bin"
-        bindir.mkdir(parents=True, exist_ok=True)
-        script = bindir / "openclaw"
-        script.write_text(
-            f"#!/usr/bin/env python3\nimport json\nprint(json.dumps({_REAL_DAEMON_RESPONSE!r}))\n"
-        )
-        script.chmod(0o755)
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
-        res = _oc.agent_run("knowledge", "docket-schema-probe", "OK", 30)
-        assert res.ok
-        assert res.output == "OK"
-        assert res.cost_usd == 0.0
-
-    def test_flat_fallback_still_works(self) -> None:
-        """Old flat shape (used in test shims) still parses via the fallback."""
-        flat: dict[str, Any] = {"output": "flat reply", "cost": 0.02}
-        assert _oc._extract_run_output(flat) == "flat reply"
-        assert _oc._extract_run_cost(flat) == pytest.approx(0.02)
-
-
 # ── end-to-end: driver → real agent_loop → real gated tool chokepoint ────────────
 #
-# Phase 19 P19-7a (the runtime cutover): before this card, no injected runner
-# meant `dispatch_pod` resolved the ACL's `agent_run`, which shelled a real
-# subprocess to `openclaw` -- proven above by `_write_fake_openclaw`. After
-# this card, the *same* "no injected runner" path resolves
-# `edges.adapters.docket_runtime.default_driver()` instead: docket's own
-# `core/agent_loop.py`, dispatching every tool call through
-# `core/tools.py`'s gated chokepoint. `TestAgentRun` above still proves the
-# ACL's subprocess wrapper works (P19-7b deletes it, not this card) --
-# `TestEndToEnd` below proves it is no longer what a real dispatch actually
-# calls.
+# No injected runner means `dispatch_pod` resolves
+# `edges.adapters.docket_runtime.default_driver()`: docket's own
+# `core/agent_loop.py`, dispatching every tool call through `core/tools.py`'s
+# gated chokepoint. `TestEndToEnd` below proves a real dispatch actually
+# executes through it.
 
 
 class _ScriptedBackend:
@@ -501,16 +300,8 @@ class TestEndToEnd:
     def test_full_stack_through_docket_driver(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No injected runner -> a real pod-dispatch hop executes through
-        `DocketDriver`, not the ACL. A "fail"-mode fake `openclaw` binary is
-        left on PATH and never invoked: if dispatch still shelled out to it,
-        this test would fail on that binary's non-zero exit, not merely pass
-        by coincidence.
-        """
+        """No injected runner -> a real pod-dispatch hop executes through `DocketDriver`."""
         oc_dir = _seed_pod(tmp_path, monkeypatch)
-        bindir = tmp_path / "bin"
-        _write_fake_openclaw(bindir, "fail")
-        monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
         backend = _ScriptedBackend(
             [_final_response("lead plan"), _final_response("implementer done")]
@@ -785,12 +576,12 @@ class TestBlockedStaysBlocked:
         # `docket profile <lead> --resume`/`--budget` would do) so the second
         # call can claim and block it too, exercising the same
         # `unblock_pod` contract the original (pre-R-5) test covered.
-        _oc.meta_set(lead_id, "paused", False)
+        _fleet.meta_set(lead_id, "paused", False)
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == 2
         assert all(t["status"] == "blocked" for t in tasks)
-        assert _oc.meta_read(lead_id).is_paused()  # re-paused by the second breach
+        assert _fleet.meta_read(lead_id).is_paused()  # re-paused by the second breach
 
         assert _dispatch.unblock_pod("demo") == 2
         tasks = _dispatch.read_tasks("demo")

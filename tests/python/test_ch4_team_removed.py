@@ -27,8 +27,7 @@ def _run(args: list[str], env: dict[str, str]) -> tuple[int, str, str]:
 def _env(tmp_path: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(tmp_path / ".openclaw"),
-        "DOCKET_HOME": str(tmp_path / ".openclaw"),
+        "DOCKET_HOME": str(tmp_path / ".docket"),
         "DOCKET_NO_RESTART": "1",
     }
 
@@ -51,4 +50,4 @@ def test_team_old_queue_file_preserved_language(tmp_path: Path) -> None:
     rc, out, _ = _run(["team"], _env(tmp_path))
     assert rc == 1
     assert "TASK_LIST.json" in out
-    assert "preserved" in out.lower()
+    assert "untouched" in out.lower()

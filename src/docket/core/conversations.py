@@ -1,9 +1,10 @@
 """Conversation registry — docket's durable index of channel conversations.
 
-Option B from ``internal-docs/telegram-conversation-memory.md``. OpenClaw persists
-**no** durable conversation transcript (TC-3 in ``internal-docs/POD-DAEMON-NOTES.md``):
-its per-agent sqlite is only a rebuildable RAG index over workspace files, and live
-conversation context is lost on reset/compaction. So docket owns a small registry
+Option B from ``internal-docs/telegram-conversation-memory.md``. No agent runtime
+docket has driven persists a durable conversation transcript (TC-3 in
+``internal-docs/POD-DAEMON-NOTES.md``): a per-agent recall index is at best a
+rebuildable RAG index over workspace files, and live conversation context is lost
+on reset/compaction. So docket owns a small registry
 mapping each channel thread → the agent handling it, its topic, status, and a resume
 pointer — deterministic resume that does **not** depend on the runtime's ephemeral
 session.

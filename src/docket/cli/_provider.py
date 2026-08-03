@@ -21,7 +21,7 @@ def run_provider_add(
     ctx: int = _prov.DEFAULT_CTX,
     max_tokens: int = _prov.DEFAULT_MAX_TOKENS,
 ) -> int:
-    """Ping the endpoint, register the provider in openclaw.json, print next steps.
+    """Ping the endpoint, register the provider in docket's fleet registry, print next steps.
 
     Idempotent: re-running with the same arguments writes nothing. Returns a
     process exit code (0 on success).
@@ -48,7 +48,7 @@ def _render_registration(reg: _prov.ProviderRegistration) -> None:
             "server is running first. Continuing to write config anyway."
         )
 
-    ui.info(f"Registering provider '{reg.name}' with OpenClaw")
+    ui.info(f"Registering provider '{reg.name}'")
     if reg.changed:
         ui.success(f"Local provider wired: {reg.name}/{reg.model_id}  →  {reg.base_url}")
     else:

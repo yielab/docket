@@ -1,20 +1,23 @@
-"""docket install — bootstrap OpenClaw + specialist agents.
+"""docket install — bootstrap a docket-native home + specialist agents.
 
 `run_install(want_gates, assume_yes)`
 returns the process exit code (0 on success, 1 when a hard preflight fails); the
 coordinator wraps it in a Typer command and raises typer.Exit(code).
 
-All openclaw.json / daemon knowledge funnels through the ACL (`_oc`) and the
-system adapter (`_sys`); this module never opens openclaw.json directly.
+Phase 19 P19-7b: there is no external daemon any more. Every step that used
+to shell out to (or wait on) `openclaw` — onboarding, agent registration,
+gateway start, provider-auth token exchange — is deleted outright, not
+stubbed. `docket install` now provisions a purely docket-native home:
+directory structure under `DOCKET_HOME`, the fleet registry (`fleet.json`),
+specialist agents (fleet registration + workspace + meta), and the baseline
+guardrail policy templates. `.docket-meta.json`/`fleet.json` reads and writes
+go through `core/fleet.py` and `edges/store.py`; nothing here opens a daemon
+config file, because none exists.
 
-Two steps genuinely depend on a live OpenClaw daemon and cannot be exercised in
-a hermetic unit test:
-  * Step 2 — `openclaw onboard` (only invoked when openclaw.json is absent).
-  * Step 6 — the interactive auth chooser (`openclaw models auth ...`), only
-    reached when no usable auth profile exists *and* stdin is a TTY.
-Both are isolated behind small functions (`_run_onboard`, `_auth_setup_interactive`)
-so the surrounding orchestration stays testable; tests drive the "auth already
-configured" and "auth missing, non-TTY" branches.
+There is no longer a step that depends on a live external process, so this
+module is fully exercisable in a hermetic unit test — the pre-Phase-19
+docstring's carve-out for "steps that need a live OpenClaw daemon" no longer
+applies to anything here.
 """
 
 from __future__ import annotations
@@ -23,34 +26,28 @@ import contextlib
 import os
 import shutil
 import subprocess
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _policy
-from docket.core.audit import audit_log
-from docket.core.security import apply_approval_routing, apply_exec_approval_gates
+from docket.core import secrets as _secrets
+from docket.core.security import apply_approval_routing
 from docket.edges import store
-from docket.edges.adapters import openclaw as _oc
-from docket.edges.adapters import system as _sys
 
 
 def _check_dependencies() -> list[str]:
-    """Report required (openclaw/python3/git) + optional (fzf) tools.
+    """Report required (python3/git) + optional (fzf) tools.
 
     Returns the list of MISSING required dependencies (empty when all present).
+    Phase 19 P19-7b: no longer checks for `openclaw` — there is no daemon
+    binary to depend on.
     """
     missing: list[str] = []
-
-    oc = shutil.which("openclaw")
-    if oc:
-        ui.success(f"openclaw: {_openclaw_version()}")
-    else:
-        missing.append("openclaw")
 
     py = shutil.which("python3") or shutil.which("python")
     if py:
@@ -79,200 +76,94 @@ def _check_dependencies() -> list[str]:
     return missing
 
 
-def _openclaw_version() -> str:
-    probe = _oc.openclaw_version()
-    return probe.output or "found"
-
-
-def _run_onboard() -> None:
-    """Run `openclaw onboard` (only when openclaw.json is absent).
-
-    Live-daemon path; isolated so the orchestration around it stays testable.
-    """
-    _oc.onboard()
-
-
-def _auth_print_profiles() -> None:
-    """Pretty-print the auth-profile summary."""
-    for p in _oc.auth_profiles_summary():
-        if p.disabled:
-            reason = p.disabled_reason or "?"
-            ui.console.print(
-                f"  [yellow]●[/yellow] {p.id}  [dim]({p.provider}, {p.type})[/dim] "
-                f"— [yellow]{reason} disabled[/yellow]"
-            )
-        else:
-            ui.console.print(f"  [green]●[/green] {p.id}  [dim]({p.provider}, {p.type})[/dim]")
-
-
-def _auth_setup_interactive() -> bool:
-    """Interactive Claude-auth chooser.
-
-    Returns True if a usable profile was configured. Shells out to
-    `openclaw models auth` so OpenClaw owns the credential format. Live path —
-    reached only with no usable profile and a TTY.
-    """
-    if not shutil.which("openclaw"):
-        ui.warn("openclaw CLI not found — cannot configure auth.")
-        return False
-
-    ui.console.print()
-    ui.console.print("[bold]How should agents authenticate to Claude?[/bold]")
-    ui.console.print(
-        "  1) Claude subscription (Pro/Max) — uses your plan; runs the provider token flow"
-    )
-    ui.console.print(
-        "     [dim]Note: third-party/agent use draws from your extra usage, not plan limits.[/dim]"
-    )
-    ui.console.print("  2) API key (pay-as-you-go)        — paste an sk-ant-… key")
-    ui.console.print("  3) Skip for now")
-    ui.console.print()
-    try:
-        choice = input("Choice [1/2/3]: ").strip()
-    except EOFError:
-        choice = "3"
-
-    if choice == "1":
-        ui.info("Starting subscription token flow (openclaw models auth setup-token)...")
-        ok = _run_openclaw_auth("setup-token")
-        if ok:
-            ui.success("Subscription token configured.")
-            audit_log("auth.setup", "anthropic subscription (setup-token)")
-        else:
-            ui.warn(
-                "Token flow did not complete. Retry later: "
-                "openclaw models auth setup-token --provider anthropic"
-            )
-            return False
-    elif choice == "2":
-        ui.info("Starting API-key flow (openclaw models auth paste-token)...")
-        ui.dim("  Get a key: https://console.anthropic.com/settings/keys")
-        ok = _run_openclaw_auth("paste-token")
-        if ok:
-            ui.success("API key configured.")
-            audit_log("auth.setup", "anthropic api-key (paste-token)")
-        else:
-            ui.warn(
-                "Paste-token flow did not complete. Retry later: "
-                "openclaw models auth paste-token --provider anthropic"
-            )
-            return False
-    else:
-        ui.dim("  Skipped — configure later with: docket auth (or openclaw models auth).")
-        return False
-
-    from docket.cli import _render_restart_result
-
-    _render_restart_result(_sys.restart_gateway())
-    return True
-
-
-def _run_openclaw_auth(method: str) -> bool:
-    try:
-        res = (
-            _oc.auth_paste_token(timeout=600)
-            if method == "paste-token"
-            else _oc.auth_setup_token(timeout=600)
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return res.returncode == 0
-
-
 def _step_auth() -> int:
-    """Step 6 — model authentication. Returns 0 if auth is usable, else 1.
+    """Step 5 — model authentication. Returns 0 if a credential looks available.
 
-    Detect existing profiles, warn when all are disabled, and run the interactive
-    chooser when none exist.
+    Phase 19 P19-7b: there is no docket-native provider-login flow (the
+    daemon this used to shell out to for an OAuth-like token exchange is
+    deleted). The real, working credential path is `docket keys add
+    <PROVIDER>_API_KEY` — `edges/adapters/llm.py`'s `resolve_endpoint` falls
+    back to that env var. This step only checks whether one is already
+    stored or exported, and says plainly what to do if not.
     """
-    profiles = _oc.auth_profiles_summary()
-    has_usable = any(not p.disabled for p in profiles)
+    stored = _secrets.secrets_keys()
+    known_env_vars = (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_AI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "DOCKET_LLM_API_KEY",
+    )
+    present = sorted(stored) + [v for v in known_env_vars if v in os.environ and v not in stored]
 
-    if has_usable:
-        ui.success("Claude auth already configured:")
-        _auth_print_profiles()
+    if present:
+        ui.success("Model credential(s) available:")
+        for name in present:
+            source = "stored" if name in stored else "environment"
+            ui.console.print(f"  • {name}  ({source})")
         return 0
 
-    if profiles:
-        ui.warn("All Claude auth profiles are currently disabled (usage/billing):")
-        _auth_print_profiles()
-        ui.dim(
-            "  Add subscription usage: https://claude.ai/settings/usage  "
-            "·  or re-fund your API key."
-        )
-        ui.console.print("  Reconfigure anytime: [green]docket auth[/green]")
-        return 1
+    ui.warn("No model-provider credential found yet — agents cannot reply without one.")
+    ui.console.print("  Store one: [green]docket keys add ANTHROPIC_API_KEY[/green]")
+    ui.console.print(
+        "  (or export it directly: ANTHROPIC_API_KEY=sk-ant-... in your shell environment)"
+    )
+    return 1
 
-    ui.warn("No Claude auth configured — agents cannot answer yet.")
-    if not sys.stdin.isatty():
-        ui.dim("  Non-interactive shell — configure later with: docket auth")
-        return 1
-    _auth_setup_interactive()
-    return 0 if any(not p.disabled for p in _oc.auth_profiles_summary()) else 1
+
+def _harden_perms() -> None:
+    """Harden docket-owned secrets/config file permissions to 0600.
+
+    Always runs regardless of --gates/--no-gates -- this is basic file
+    hygiene, not exec-approval policy.
+    """
+    hardened: list[str] = []
+    for path in (_cfg.FLEET_FILE, _secrets.SECRETS_FILE, _secrets.SECRETS_META_FILE):
+        if not path.is_file():
+            continue
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except OSError:
+            continue
+        if mode & 0o077:
+            with contextlib.suppress(OSError):
+                os.chmod(path, 0o600)
+                hardened.append(str(path))
+    if hardened:
+        for hardened_path in hardened:
+            ui.success(f"Tightened permissions to 600: {hardened_path}")
+    else:
+        ui.success("Docket-owned config/secrets permissions already owner-only (600)")
 
 
 def _step_security(want_gates: bool) -> None:
-    """Step 7 — harden config perms and apply exec gates (on by default; --no-gates skips)."""
-    hardened = _oc.harden_config_perms()
-    if hardened:
-        for path in hardened:
-            ui.success(f"Tightened permissions to 600: {path}")
-    else:
-        ui.success("Config and secrets permissions already owner-only (600)")
-    ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
+    """Step 6 — harden docket-owned secrets/config perms + approval routing.
+
+    Phase 19 P19-7b: the daemon's own exec-approval config (security=
+    allowlist/ask-on-miss/askFallback=deny, a curated allowlist seed) is
+    gone with the daemon — `core/tools.py`'s policy engine + high-risk
+    command classifier are unconditionally active on every tool call docket
+    dispatches (Phase 19 P19-3), so there is nothing left to "enable". What
+    remains configurable is where an approval prompt is routed, and that is
+    the one piece --no-gates actually opts out of.
+    """
+    _harden_perms()
+
+    ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
+    ui.dim("  Nothing to enable/disable there — see: docket gates status")
 
     if not want_gates:
-        ui.dim(
-            "  Exec-approval enforcement skipped (--no-gates). Enable later: 'docket gates enable'."
-        )
-        ui.dim("  Spec: specs/functional/security-gates.spec.md.")
+        ui.dim("Approval-routing setup skipped (--no-gates).")
+        ui.console.print("  Enable later: 'docket gates enable'.")
         return
 
-    ui.console.print()
-    try:
-        result = apply_exec_approval_gates()
-    except Exception:
-        ui.warn("Could not apply exec-approval gates (see 'docket gates enable')")
-        return
-    ui.success("Exec-approval gates applied (security=allowlist, ask=on-miss, askFallback=deny)")
-    if result.seeded:
-        ui.console.print(f"  Seeded allowlist ({result.bins} bins) for: {','.join(result.seeded)}")
-    try:
-        tg = apply_approval_routing()
-        ui.success(f"Approval routing on (mode=session); {tg} Telegram-bound agent(s)")
-    except Exception:
-        pass
-    ui.warn("Fail-closed: non-allowlisted commands are denied without an approver.")
-    ui.console.print(
-        "  Tune: [green]openclaw approvals allowlist add <glob>[/green]  "
-        "·  Disable: [green]docket gates disable[/green]"
-    )
-
-
-def _step_gateway() -> None:
-    """Step 8 — start/restart the gateway service (best-effort)."""
-    if _sys.service_manager() == "none":
-        ui.warn("No service manager detected — start the OpenClaw gateway yourself:")
-        ui.console.print(f"  {_sys.service_hint('start')}")
-        return
-
-    if _sys.gateway_active():
-        ui.success("Gateway already running")
-        ui.info("Restarting to apply changes...")
-        _sys.systemctl_restart()
-    else:
-        ui.info("Starting gateway service...")
-        _sys.systemctl_start()
-
-    if _sys.gateway_active():
-        ui.success("Gateway service: active")
-    else:
-        ui.warn("Gateway service not started")
-        ui.console.print(f"  Start manually: {_sys.service_hint('start')}")
+    tg = apply_approval_routing()
+    ui.success(f"Approval routing on (mode=session); {tg} channel-bound agent(s)")
+    ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
 
 
 def _step_policies() -> None:
-    """Step 9 — install the baseline guardrail policy templates (ROADMAP Phase 15 G-2).
+    """Step 7 — install the baseline guardrail policy templates (ROADMAP Phase 15 G-2).
 
     Idempotent (same producer as ``docket policies init``): a repeat install skips files
     already present rather than overwriting local edits. This is what puts the policy
@@ -328,14 +219,14 @@ def _specialist_agents_md(role: str) -> str:
     project agent gets (see ``cli/_agents.py``'s ``_create_workspace``), minus
     the codebase/stack sections a specialist has neither of.
 
-    Section names matter: the openclaw runtime re-injects the "Session Startup"
+    Section names matter: the turn loop re-injects the "Session Startup"
     and "Red Lines" H2 blocks after every compaction — keep them verbatim.
     """
     return (
         f"# AGENTS.md — {role}\n\n"
         "## Session Startup\n"
         "_Lean — re-sent every turn._\n"
-        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol (the runtime "
+        f"1. Read {_mem.REQUIRED_STARTUP_FILE} — startup protocol (the turn loop "
         "requires this after every context reset).\n"
         f"2. Read {_mem.HEARTBEAT_FILE} — active tasks/decisions (small; always). Unchecked\n"
         "   items mean you were interrupted mid-task: resume them, don't greet idle.\n"
@@ -411,17 +302,18 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
         with contextlib.suppress(OSError):
             fpath.chmod(0o600)
 
-    # Seed the files the openclaw post-compaction audit re-reads every reset.
-    # Specialists have no codebase — say so plainly rather than the project
-    # default's "ask the human for the repo path" (which would be misleading).
+    # Seed the files the turn loop's system-prompt composition re-reads every
+    # turn. Specialists have no codebase — say so plainly rather than the
+    # project default's "ask the human for the repo path" (which would be
+    # misleading).
     _mem.seed_contract(
         ws,
         project=role,
         codebase="(none — shared org specialist, not scoped to one project)",
     )
 
-    # Quarantine any OpenClaw base-assistant scaffolding so identity stays
-    # docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
+    # Quarantine any self-authoring base-assistant scaffolding so identity
+    # stays docket-owned (SOUL.md), not self-authored (IDENTITY.md/BOOTSTRAP.md).
     from docket.core import identity as _identity
 
     _identity.quarantine_scaffolding(ws)
@@ -432,7 +324,7 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
 
 
 def _provision_specialists() -> None:
-    """Step 5 — register the shared **org** specialist agents + backfill their
+    """Step 4 — register the shared **org** specialist agents + backfill their
     meta and full workspace contract.
 
     Install provisions only the cross-cutting org roles (security, knowledge,
@@ -445,23 +337,16 @@ def _provision_specialists() -> None:
     """
     for spec in _cfg.ORG_SPECIALIST_ORDER:
         spec_model = _mp.resolve_role_model(spec)
-        spec_dir = _cfg.OPENCLAW_DIR / "workspaces" / spec
+        spec_dir = _cfg.WORKSPACES_DIR / spec
 
-        if _oc.agent_registered(spec):
+        if _fleet.agent_registered(spec):
             ui.success(f"{spec}: already registered")
         else:
             ui.info(f"Creating {spec} agent...")
             spec_dir.mkdir(parents=True, exist_ok=True)
-            ok, message = _oc.register_agent_cli(spec, str(spec_dir), spec_model)
-            # P19-6: fleet.json is docket's own registry, never written by the
-            # daemon CLI above — register unconditionally (mirrors
-            # cli/_agents.py's run_add / cli/_pod.py's _register_agent).
-            _oc.add_agent(spec, spec_model)
+            _fleet.add_agent(spec, spec_model)
             why = _cfg.ROLE_WHY.get(spec, "")
-            if ok:
-                ui.success(f"{spec}: created ({spec_model} — {why})")
-            else:
-                ui.warn(f"{spec}: registration failed — {message}")
+            ui.success(f"{spec}: created ({spec_model} — {why})")
 
         # Specialists are first-class meta citizens: stamp .docket-meta.json so
         # list/profile/doctor manage them like any other agent.
@@ -522,21 +407,15 @@ def _provision_portfolio_manager() -> None:
     """
     role = _cfg.PORTFOLIO_MANAGER_ROLE
     model = _mp.resolve_role_model(role)
-    ws = _cfg.OPENCLAW_DIR / "workspaces" / role
+    ws = _cfg.WORKSPACES_DIR / role
 
-    if _oc.agent_registered(role):
+    if _fleet.agent_registered(role):
         ui.success(f"{role}: already registered")
     else:
         ui.info(f"Creating {role} agent...")
         ws.mkdir(parents=True, exist_ok=True)
-        ok, message = _oc.register_agent_cli(role, str(ws), model)
-        # P19-6: fleet.json is docket's own registry — register unconditionally
-        # regardless of the daemon CLI outcome (see _provision_specialists).
-        _oc.add_agent(role, model)
-        if ok:
-            ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
-        else:
-            ui.warn(f"{role}: registration failed — {message}")
+        _fleet.add_agent(role, model)
+        ui.success(f"{role}: created ({model} — {_cfg.ROLE_WHY.get(role, '')})")
 
     if ws.is_dir():
         meta_file = ws / _cfg.META_FILE
@@ -562,34 +441,36 @@ def _provision_portfolio_manager() -> None:
 def run_install(
     want_gates: bool = True, assume_yes: bool = False, want_portfolio: bool = False
 ) -> int:
-    """Bootstrap OpenClaw + specialist agents. Returns the process exit code.
+    """Bootstrap a docket-native home + specialist agents. Returns the process exit code.
 
-    want_gates:      apply exec-approval enforcement (on by default; False when the
-                     caller passed --no-gates).
+    want_gates:      apply approval routing (on by default; False when the caller
+                     passed --no-gates). The tool-call gate itself (policy engine +
+                     high-risk command classifier) is always active regardless —
+                     see `_step_security`'s docstring.
     assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
     want_portfolio:  also provision the opt-in org Portfolio Manager.
     """
-    ui.header("Docket Installation — OpenClaw Setup")
+    ui.header("Docket Installation")
     ui.console.print()
 
-    if _oc.config_exists():
-        ui.info("Existing OpenClaw installation detected")
+    if _cfg.FLEET_FILE.is_file():
+        ui.info("Existing docket installation detected")
         ui.console.print()
 
-        needs_update: list[str] = []
-        if not _oc.has_agent_defaults():
-            needs_update.append("agent defaults")
-        missing_specialists = [s for s in _cfg.ORG_SPECIALIST_ORDER if not _oc.agent_registered(s)]
-        if missing_specialists:
-            needs_update.append("specialist agents: " + " ".join(missing_specialists))
+        missing_specialists = [
+            s for s in _cfg.ORG_SPECIALIST_ORDER if not _fleet.agent_registered(s)
+        ]
+        needs_update = (
+            [f"specialist agents: {' '.join(missing_specialists)}"] if missing_specialists else []
+        )
 
         if not needs_update:
-            ui.success("OpenClaw is fully configured!")
+            ui.success("Docket is fully configured!")
             ui.console.print()
             ui.console.print("Current setup:")
-            ui.console.print(f"  • Config: {_cfg.CONFIG_FILE}")
+            ui.console.print(f"  • Fleet registry: {_cfg.FLEET_FILE}")
             ui.console.print(f"  • Projects: {_cfg.PROJECTS_DIR}")
-            ui.console.print(f"  • Agents: {_oc.agent_count()}")
+            ui.console.print(f"  • Agents: {_fleet.agent_count()}")
             ui.console.print()
             if not assume_yes and not _confirm("Reconfigure anyway? [y/N]: ", default_yes=False):
                 ui.info("Nothing to do. Run 'docket doctor' to verify health.")
@@ -607,42 +488,28 @@ def run_install(
     missing = _check_dependencies()
     if missing:
         ui.error(f"Missing dependencies: {' '.join(missing)}")
-        ui.console.print()
-        ui.console.print("Install OpenClaw from: https://openclaw.dev")
         return 1
     ui.console.print()
 
-    ui.header("Step 2: OpenClaw initialization")
-    if not _oc.config_exists():
-        ui.info("Running openclaw onboard...")
-        ui.console.print()
-        _run_onboard()
-        ui.console.print()
-        ui.success("OpenClaw initialized")
-    else:
-        ui.success("OpenClaw already initialized")
-
-    ui.header("Step 3: Creating directory structure")
+    ui.header("Step 2: Creating directory structure")
     _cfg.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
     _cfg.SITES_DIR.mkdir(parents=True, exist_ok=True)
     _cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
-        os.chmod(_cfg.OPENCLAW_DIR, 0o700)
+        os.chmod(_cfg.DOCKET_HOME, 0o700)
         os.chmod(_cfg.PROJECTS_DIR, 0o700)
     ui.success("Directories created")
     ui.console.print(f"  {_cfg.PROJECTS_DIR}")
     ui.console.print(f"  {_cfg.SITES_DIR}")
     ui.console.print()
 
-    ui.header("Step 4: Configuring agent defaults")
-    _oc.configure_agent_defaults(_cfg.DEFAULT_MODEL)
-    ui.success("Agent defaults configured")
+    ui.header("Step 3: Configuring the default model")
+    _fleet.set_default_model(_cfg.DEFAULT_MODEL)
+    ui.success("Default model configured")
     ui.console.print(f"  Default model: {_cfg.DEFAULT_MODEL}")
-    ui.console.print("  Compaction: safeguard mode")
-    ui.console.print("  Max concurrent: 4 agents")
     ui.console.print()
 
-    ui.header("Step 5: Setting up specialist agents")
+    ui.header("Step 4: Setting up specialist agents")
     _provision_specialists()
     if want_portfolio:
         ui.console.print()
@@ -650,19 +517,15 @@ def run_install(
         _provision_portfolio_manager()
     ui.console.print()
 
-    ui.header("Step 6: Model authentication")
+    ui.header("Step 5: Model authentication")
     auth_missing = _step_auth() != 0
     ui.console.print()
 
-    ui.header("Step 7: Configuring security best practices")
+    ui.header("Step 6: Configuring security best practices")
     _step_security(want_gates)
     ui.console.print()
 
-    ui.header("Step 8: Gateway service")
-    _step_gateway()
-    ui.console.print()
-
-    ui.header("Step 9: Guardrail policies")
+    ui.header("Step 7: Guardrail policies")
     _step_policies()
     ui.console.print()
 
@@ -671,25 +534,27 @@ def run_install(
 
 
 def _print_summary(auth_missing: bool) -> None:
-    """Step 9 — closing summary + next steps."""
+    """Closing summary + next steps."""
     ui.header("Installation Complete!")
     ui.console.print()
     ui.console.print("[bold]Next Steps:[/bold]")
     ui.console.print()
     step = 1
     if auth_missing:
-        ui.console.print(f"  {step}. Set up Claude auth (agents can't reply without it):")
-        ui.console.print("     [green]docket auth[/green]   [dim](subscription or API key)[/dim]")
+        ui.console.print(
+            f"  {step}. Store a model-provider credential (agents can't reply without it):"
+        )
+        ui.console.print("     [green]docket keys add ANTHROPIC_API_KEY[/green]")
         ui.console.print()
         step += 1
     ui.console.print(f"  {step}. Add your first project agent:")
     ui.console.print("     [green]docket add[/green]")
     ui.console.print()
     step += 1
-    ui.console.print(f"  {step}. Configure Telegram (optional but recommended):")
-    ui.console.print("     - Create groups for each agent (manager, your pod leads, etc.)")
-    ui.console.print("     - Add your bot to each group")
-    ui.console.print("     - Wire agents: [green]docket wire <agent-id>[/green]")
+    ui.console.print(
+        f"  {step}. Wire a channel binding (optional; no live channel exists yet — P19-8):"
+    )
+    ui.console.print("     [green]docket wire <agent-id>[/green]")
     ui.console.print()
     step += 1
     ui.console.print(f"  {step}. Check system health:")
@@ -704,7 +569,7 @@ def _print_summary(auth_missing: bool) -> None:
     ui.console.print("[dim]members — run 'docket add <project>' to create a pod.[/dim]")
     ui.console.print()
     ui.console.print("[bold]Configuration:[/bold]")
-    ui.console.print(f"  Config: {_cfg.CONFIG_FILE}")
+    ui.console.print(f"  Fleet registry: {_cfg.FLEET_FILE}")
     ui.console.print(f"  Projects: {_cfg.PROJECTS_DIR}")
     ui.console.print(f"  Sites: {_cfg.SITES_DIR}")
     ui.console.print()
