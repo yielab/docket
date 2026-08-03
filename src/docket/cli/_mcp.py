@@ -1,4 +1,35 @@
-"""docket mcp — expose the control plane as an MCP server (stdio).
+"""docket mcp — expose the control plane as an MCP server, or configure the
+external MCP tool servers docket connects to as a *client*.
+
+This module has two, deliberately unrelated halves:
+
+- `docket mcp serve` (ROADMAP Phase 18 L-3): docket **as a server** — starts
+  an MCP (Model Context Protocol) stdio server so any MCP client (Claude
+  Code, Codex, ...) can drive docket's control plane *through* the same
+  governance spine a CLI invocation goes through — not around it.
+- `docket mcp servers add/list/remove` (ROADMAP Phase 19 P19-13): docket **as
+  a client** — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
+  `load_mcp_servers`/`remove_mcp_server` (P19-10), which shipped as tested,
+  uncalled library functions. This half is pure presentation: it validates
+  flags, builds an `McpServerConfig`, and calls the existing `core/`
+  functions — it does not talk to a remote server itself (that happens later,
+  when `core/agent_loop.py`, P19-5, calls `load_mcp_tools` to build a turn's
+  registry) and it never touches `core/tools.py`.
+
+**The payoff this CLI exists to unlock: browser support is configuration, not
+code.** Point docket at the Playwright MCP server
+(`docket mcp servers add playwright -- npx -y @playwright/mcp@latest`) and
+P19-10's client gates every tool it advertises exactly like a built-in —
+namespaced `mcp__playwright__<tool>`, so a remote server can never shadow
+`bash`, still screened through the `prompt-injection` policy before
+registration, still dispatched through the one chokepoint. The same is true
+of a web-search MCP server. This is what decision D-19's "rent the protocol"
+buys, and it is precisely why hand-rolling browser automation or a search
+tool is on the never-build list (decision D-24) — see the recipe in
+`specs/functional/mcp-client.spec.md`.
+
+The `serve` half's own docstring below (unchanged from L-3) continues to
+describe only that half:
 
 ROADMAP Phase 18 L-3. `docket mcp serve` starts an MCP (Model Context
 Protocol) stdio server so any MCP client (Claude Code, Codex, ...) can drive
@@ -54,8 +85,10 @@ import sys
 import threading
 from typing import Any
 
+import docket.config as _cfg
 from docket.core import approval as _approval
 from docket.core import dispatch as _dispatch
+from docket.core import mcp_tools as _mcp_tools
 from docket.core import runs as _runs
 from docket.core.audit import audit_log
 
@@ -323,19 +356,217 @@ def serve_stdio() -> int:
     return 0
 
 
+# ── `docket mcp servers` — CLI over core/mcp_tools.py's client config (P19-13) ──
+#
+# Pure presentation: every function below validates input, builds/reads
+# McpServerConfig objects, and calls the existing core/mcp_tools.py functions
+# (add_mcp_server/load_mcp_servers/remove_mcp_server) unchanged. Nothing here
+# connects to a server or touches core/tools.py — that happens later, when
+# core/agent_loop.py (P19-5) calls load_mcp_tools to build a turn's registry.
+#
+# Deliberately plain print(), never docket.ui: this file also hosts
+# serve_stdio()'s JSON-RPC session, and test_l6_mcp_sdk_v2.py's
+# TestNoUiImportEvenWithTheSdkInstalled pins "cli/_mcp.py never imports
+# docket.ui" at the whole-module level (simpler to guarantee than "only when
+# a JSON-RPC session isn't live"). These helpers keep the same glyphs
+# ui.py's success/warn/error/info use, without the Rich dependency.
+
+
+def _pinfo(text: str) -> None:
+    print(f"→ {text}")
+
+
+def _pok(text: str) -> None:
+    print(f"✓ {text}")
+
+
+def _pwarn(text: str) -> None:
+    print(f"⚠ {text}")
+
+
+def _perror(text: str) -> None:
+    print(f"✗ Error: {text}", file=sys.stderr)
+
+
+_SERVERS_USAGE = """\
+Usage: docket mcp servers <list|add|remove> [args...]
+
+  list                                        Show configured MCP tool servers
+  add <name> [--env KEY=VALUE ...] [--timeout SECONDS] -- <command> [args...]
+                                               Configure a new server (stdio transport)
+  remove <name>                               Remove a configured server
+
+Everything after "--" is passed to the server verbatim as its launch command
+and arguments; --env/--timeout must come before "--".
+
+Example — browser automation as configuration, not code (see
+specs/functional/mcp-client.spec.md's "Recipe" section):
+  docket mcp servers add playwright -- npx -y @playwright/mcp@latest
+
+Its tools then register as mcp__playwright__<tool> and are gated by the same
+pre_tool_call policy and dispatch_tool chokepoint as any built-in tool — a
+remote server can never shadow bash/read/write/edit/glob/grep.
+"""
+
+
+def _servers_list() -> int:
+    servers = _mcp_tools.load_mcp_servers()
+    if not servers:
+        _pinfo("No MCP servers configured.")
+        print("  Add one: docket mcp servers add <name> -- <command> [args...]")
+        return 0
+
+    print("\nConfigured MCP Servers\n")
+    for cfg in servers:
+        cmdline = " ".join([cfg.command, *cfg.args])
+        print(f"  {cfg.name}  {cmdline}")
+        if cfg.env:
+            masked = ", ".join(f"{k}=****" for k in sorted(cfg.env))
+            print(f"      env: {masked}")
+        timeout_note = f"{cfg.timeout:.0f}s (pinned)" if cfg.timeout > 0 else "default"
+        print(f"      timeout: {timeout_note}")
+    print(f"\n  Config file: {_cfg.MCP_SERVERS_FILE}")
+    return 0
+
+
+def _parse_server_add_flags(
+    flags: list[str],
+) -> tuple[dict[str, str], float] | None:
+    """Parse the ``--env KEY=VALUE`` / ``--timeout SECONDS`` flags that may
+    precede the ``--`` separator in ``docket mcp servers add``. Returns
+    ``None`` (after printing an error) on any malformed flag."""
+    env: dict[str, str] = {}
+    timeout = 0.0
+    i = 0
+    while i < len(flags):
+        tok = flags[i]
+        if tok in ("--env", "-e") and i + 1 < len(flags):
+            raw, i = flags[i + 1], i + 2
+        elif tok.startswith("--env="):
+            raw, i = tok[len("--env=") :], i + 1
+        elif tok == "--timeout" and i + 1 < len(flags):
+            try:
+                timeout = float(flags[i + 1])
+            except ValueError:
+                _perror(f"--timeout must be a number of seconds, got '{flags[i + 1]}'")
+                return None
+            i += 2
+            continue
+        elif tok.startswith("--timeout="):
+            value = tok[len("--timeout=") :]
+            try:
+                timeout = float(value)
+            except ValueError:
+                _perror(f"--timeout must be a number of seconds, got '{value}'")
+                return None
+            i += 1
+            continue
+        else:
+            _perror(f"Unknown flag '{tok}' before '--'. See: docket mcp servers")
+            return None
+
+        if "=" not in raw:
+            _perror(f"--env expects KEY=VALUE, got '{raw}'")
+            return None
+        key, _, value = raw.partition("=")
+        if not key:
+            _perror(f"--env expects KEY=VALUE, got '{raw}'")
+            return None
+        env[key] = value
+    return env, timeout
+
+
+def _servers_add(rest: list[str]) -> int:
+    if not rest:
+        _perror(
+            "Usage: docket mcp servers add <name> [--env K=V ...] [--timeout S] -- <command> [args...]"
+        )
+        return 1
+
+    name, tail = rest[0], rest[1:]
+    if "--" not in tail:
+        _perror(
+            "Missing '--' separator before the server's launch command.\n"
+            "  Usage: docket mcp servers add <name> [--env K=V ...] [--timeout S] -- <command> [args...]\n"
+            "  Example: docket mcp servers add playwright -- npx -y @playwright/mcp@latest"
+        )
+        return 1
+
+    sep = tail.index("--")
+    flags, command_parts = tail[:sep], tail[sep + 1 :]
+    if not command_parts:
+        _perror("No command given after '--'.")
+        return 1
+
+    parsed = _parse_server_add_flags(flags)
+    if parsed is None:
+        return 1
+    env, timeout = parsed
+    command, command_args = command_parts[0], command_parts[1:]
+
+    try:
+        _mcp_tools.add_mcp_server(
+            _mcp_tools.McpServerConfig(
+                name=name, command=command, args=command_args, env=env, timeout=timeout
+            )
+        )
+    except ValueError as exc:
+        _perror(str(exc))
+        return 1
+
+    audit_log("mcp_servers.add", f"name={name!r} command={command!r}")
+    cmdline = " ".join([command, *command_args])
+    _pok(f"MCP server '{name}' added ({cmdline}).")
+    print(f"  Its tools register as mcp__{name}__<tool> — gated exactly like a built-in tool.")
+    return 0
+
+
+def _servers_remove(rest: list[str]) -> int:
+    if not rest:
+        _perror("Usage: docket mcp servers remove <name>")
+        return 1
+    name = rest[0]
+    if not _mcp_tools.remove_mcp_server(name):
+        _pwarn(f"No MCP server named '{name}' is configured.")
+        return 1
+    audit_log("mcp_servers.remove", f"name={name!r}")
+    _pok(f"MCP server '{name}' removed.")
+    return 0
+
+
+def _run_servers(sub2: str | None, rest: list[str]) -> int:
+    if sub2 == "list":
+        return _servers_list()
+    if sub2 == "add":
+        return _servers_add(rest)
+    if sub2 == "remove":
+        return _servers_remove(rest)
+    print(_SERVERS_USAGE, file=sys.stderr if sub2 is not None else sys.stdout, end="")
+    return 0 if sub2 is None else 1
+
+
 def run_mcp(sub: str | None, args: list[str]) -> int:
     """Dispatch `docket mcp <sub>`. Returns the process exit code.
 
-    Only one subcommand exists today: ``serve``. Anything else prints usage
-    to stderr (never stdout — see module docstring) and returns 1.
+    Two subcommands: ``serve`` (docket as an MCP server) and ``servers``
+    (manage the external MCP servers docket connects to as a client — see
+    ``_run_servers`` above). Anything else prints usage to stderr (never
+    stdout — see module docstring's stdio-discipline note, which applies once
+    ``serve`` is actually running) and returns 1.
     """
-    del args  # no flags yet; kept for the shared cli/*.py dispatch signature
     if sub == "serve":
+        del args  # no flags yet for serve
         return serve_stdio()
+    if sub == "servers":
+        sub2 = args[0] if args else None
+        return _run_servers(sub2, args[1:])
     print(
-        "Usage: docket mcp serve\n"
-        "  Start an MCP (Model Context Protocol) stdio server exposing docket's\n"
-        "  control plane as tools: " + ", ".join(_TOOL_NAMES),
+        "Usage: docket mcp <serve|servers>\n"
+        "  docket mcp serve                     Start an MCP (Model Context Protocol) stdio\n"
+        "                                        server exposing docket's control plane as\n"
+        "                                        tools: " + ", ".join(_TOOL_NAMES) + "\n"
+        "  docket mcp servers <list|add|remove>  Manage external MCP tool servers docket\n"
+        "                                        connects to as a client (see: docket mcp servers)",
         file=sys.stderr,
     )
     return 0 if sub is None else 1

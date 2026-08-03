@@ -1567,7 +1567,7 @@ def cmd_runs(ctx: typer.Context) -> None:
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def cmd_mcp(ctx: typer.Context) -> None:
-    """Expose the control plane as an MCP server (stdio) — `docket mcp serve`."""
+    """Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)."""
     from docket.cli._mcp import run_mcp
 
     args = list(ctx.args)

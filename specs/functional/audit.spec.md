@@ -1,10 +1,10 @@
 # Audit Log Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped, now including both `models.*` and `runs.cancel` — the two gaps
-tracked through Version 2.1.0 are closed; see Requirement 2 for what audit still does NOT see)
-**Last Updated**: 2026-07-30
+removal below are all shipped, now including `models.*`, `runs.cancel`, and `mcp_servers.*` — see
+Requirement 2 for what audit still does NOT see)
+**Last Updated**: 2026-08-02
 
 ## Purpose
 
@@ -82,6 +82,15 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
      cancellation (`was=`), and how many process groups were actually killed (`killed=`) — see
      `cli-interface.spec.md`'s `docket runs` entry. This and `approval.*` are the only families
      written from `core/` rather than `cli/`.
+   - `mcp_servers.add` / `mcp_servers.remove` (`cli/_mcp.py`'s `docket mcp servers add|remove`,
+     ROADMAP Phase 19 P19-13) — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
+     `remove_mcp_server` (P19-10). `detail` names the server and, for `add`, the launch command —
+     never the server's `env` values, matching `keys.add`'s convention of naming a secret's key,
+     not its value. Distinct from the `mcp_client.*` family `core/mcp_tools.py` itself writes
+     (`unavailable`, `tool_description_blocked`, `tool_description_warn`) — those record what
+     happened when docket *connected* to a server; this family records the CLI operator *changing
+     the configured server list*, the same client/server split `mcp.<tool>` vs. `mcp_client.*`
+     already draws above.
 2. **What the log does NOT see (scope boundary, not a backlog item).** Both gaps tracked through
    Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version
    2.3.0; the two cards that closed them (Phase 15 G-4b, Phase 16 W-4) landed in the same wave.
@@ -262,6 +271,15 @@ redundant.
 - A legacy or chain-restart line is never reported as tampering.
 
 ## Changelog
+
+### Version 2.4.0 (2026-08-02)
+
+- **ROADMAP Phase 19, card P19-13 (`docket mcp servers` CLI).** Added the `mcp_servers.add` /
+  `mcp_servers.remove` action family: `docket mcp servers add|remove` now write an entry naming
+  the server (and, for `add`, its launch command — never `env` values), the same "name the thing
+  changed, not its secret material" convention `keys.add` already established. `docket mcp
+  servers list` is read-only and writes nothing, matching every other read-only listing command
+  in this project.
 
 ### Version 2.3.0 (2026-07-30)
 

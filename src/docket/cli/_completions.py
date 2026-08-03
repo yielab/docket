@@ -90,7 +90,7 @@ _docket_complete() {
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
     pod)             [[ $cword -eq 2 ]] && words="$_ids" || words="list add remove delegate queue dispatch" ;;
-    mcp)             words="serve" ;;
+    mcp)             words="serve servers" ;;
     pipeline)        words="validate plan run" ;;
     runs|run)        words="list show cancel" ;;
     conversations|conv) words="list show resume set" ;;
@@ -143,7 +143,7 @@ __ZSH_COMMANDS__
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;
     pod)             (( CURRENT == 3 )) && _docket_ids || compadd list add remove delegate queue dispatch ;;
-    mcp)             compadd serve ;;
+    mcp)             compadd serve servers ;;
     pipeline)        compadd validate plan run ;;
     runs|run)        compadd list show cancel ;;
     conversations|conv) compadd list show resume set ;;
