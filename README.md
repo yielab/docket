@@ -118,11 +118,13 @@ this three-layer stack running reliably:
   [Cost reporting and its limits](#cost-reporting-and-its-limits)). Dispatch refuses a paused
   pod's tasks outright; `docket profile <id> --resume` clears the pause. A role→cheapest-adequate-
   model policy and `docket cost` reporting round it out.
-- **An API for an external plan-of-record**: `docket serve` exposes a versioned API
-  (`/status.json`, `/metrics`, `/health`, `/runs`, `/approvals`, plus `POST /dispatch/<project>` and
-  `POST /approvals/<token>`). **docket deliberately does not build a dashboard** — it competes on
-  the write and governance side and feeds a planner that holds the roadmap, board and sprints.
-  See [What's next](#whats-next) for the write routes that close the CLI/HTTP asymmetry.
+- **An API for an external plan-of-record**: `docket serve` exposes a versioned, Bearer-gated API —
+  reads (`/status.json`, `/metrics`, `/health`, `/runs`, `/approvals`, `GET /tasks/<project>`,
+  `GET /traces/<project>?since=`) and writes (`POST /tasks/<project>` to enqueue,
+  `POST /dispatch/<project>` to run a queue, `POST /approvals/<token>` to decide one).
+  **docket deliberately does not build a dashboard** — it competes on the write and governance side
+  and feeds a planner that holds the roadmap, board and sprints. The trace read is cursor'd so a
+  consumer resumes exactly where it stopped; docket aggregates nothing on its behalf.
 
 ## The gated turn
 
@@ -430,13 +432,13 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,079 tests** in the pytest suite (`tests/python/`)
-- **~26,253 lines** of Python in the shipped `docket` package
+- **2,141 tests** in the pytest suite (`tests/python/`)
+- **~26,784 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,079-test Python suite
+uv run pytest                                        # 2,141-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -506,24 +508,33 @@ See [ROADMAP.md](ROADMAP.md) for the full phased plan.
 
 **Phase 22 — a control-plane write API, so an external planner can drive docket.** docket has said
 since Phase 11 that it does not build a dashboard of its own; it competes on the write and
-governance side and feeds one. That consumer now exists, so the near-term work is closing the
-CLI/HTTP asymmetry — everything below is reachable from the CLI or MCP today but not over HTTP:
+governance side and feeds one. That consumer now exists, so the work is closing the CLI/HTTP
+asymmetry — things reachable from the CLI or MCP but not over HTTP.
 
-| | |
-|---|---|
-| `POST /tasks/<project>` | Enqueue a task. There is currently **no HTTP way to enqueue** — `POST /dispatch/<project>` only runs an *existing* queue. Honours the `pre_input` gate exactly as the CLI does. |
-| `GET /tasks/<project>` | The pod queue as JSON — queue depth is currently only reachable by shelling out. |
-| `GET /traces/<project>?since=` | Cursor'd trace read, raw events out. |
-| `POST /pods` | Provisioning over HTTP. `docket add` is CLI-only. |
-| approval channel label | So an approval granted from a board is distinguishable in the audit chain from a CI job's. |
+| Route | What it closes | Status |
+| --- | --- | --- |
+| `POST /tasks/<project>` | Enqueue a task | ✅ shipped |
+| `GET /tasks/<project>` | The pod queue as JSON | ✅ shipped |
+| `GET /traces/<project>?since=` | Cursor'd trace read, raw events out | ✅ shipped |
+| approval `channel` label | So a board-granted approval is distinguishable in the audit chain from a CI job's | ✅ shipped |
+| `POST /pods` | Provisioning over HTTP — `docket add` is CLI-only | in progress |
 
-The design rule for that phase is deliberately narrow: **expose what `core/` already does, add no
-new behaviour** — same auth, same policy hooks, same audit entries the CLI path produces.
+The design rule is deliberately narrow: **expose what `core/` already does, add no new behaviour** —
+same auth, same policy hooks, same audit entries the CLI path produces. `POST /tasks` honours the
+`pre_input` gate exactly as the CLI does: a blocking policy returns a 4xx naming the policy, and a
+policy demanding approval returns the task as `waiting_approval` with its token rather than a 200
+pretending it is queued to run.
 
-Also queued: **trace retention** (the reasoning changed — once an external consumer durably ingests
-trace events, docket's JSONL becomes a cache rather than the only copy, which makes expiring it safe
-rather than lossy), and **closing the egress gap** so `fetch` is the only network path rather than
-merely the inspectable one.
+**Trace retention** also shipped (`docket trace expire`, 30-day default). The reasoning changed
+rather than being re-argued: once an external consumer durably ingests trace events, docket's JSONL
+becomes a cache rather than the only copy, which makes expiring it safe rather than lossy. Two
+consequences worth knowing: retention is measured from when a session *ended*, not from last
+activity, and `/metrics` counters derived from traces are now lifetime-of-current-storage counts
+rather than monotonic totals — don't build an alert that assumes otherwise. The audit log is
+deliberately excluded; telemetry may be lossy, an audit log may not.
+
+Still open: **closing the egress gap** so `fetch` is the only network path rather than merely the
+inspectable one, and **wiring MCP tools into a live turn** (see the caveat above).
 
 ## Contributing
 
