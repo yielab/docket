@@ -1701,9 +1701,14 @@ a snapshot of measured-token agents, not of billed dollars.
 ### mcp
 
 Two independent things live under `docket mcp`: **serving** docket's own control plane as an
-MCP server (`mcp serve`), and **configuring external MCP tool servers** whose tools an agent's
-own turn can call (`mcp servers`) — decision D-19's "rent the protocol": external tools are
-configuration, not code, gated exactly like a built-in.
+MCP server (`mcp serve`), and **configuring external MCP tool servers** (`mcp servers`) — the
+"rent the protocol" idea, where external tools are configuration rather than code.
+
+> **Status:** `mcp serve` is fully live. `mcp servers` registers a server and makes it
+> inspectable, and the client that loads its tools namespaces them `mcp__<server>__<tool>` and
+> routes them through the same gate as a built-in — but **the turn loop does not yet build its
+> registry from them**, so a configured server's tools are not reachable by a running agent.
+> See `specs/functional/mcp-client.spec.md`.
 
 #### serve
 

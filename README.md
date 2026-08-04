@@ -148,9 +148,15 @@ docket runs the agent turn itself, which is what makes the guardrails real rathe
 ```
 
 **Built-in tools:** `read`, `write`, `edit`, `glob`, `grep`, `bash` (sandboxed exec), and `fetch`
-(domain-allowlisted, size-capped, timeout-bounded). External tools are **configuration, not code**:
-point `docket mcp servers add` at any MCP server and its tools are gated exactly like a built-in,
-namespaced `mcp__<server>__<tool>` so a remote server cannot shadow `bash`.
+(domain-allowlisted, size-capped, timeout-bounded).
+
+> [!NOTE]
+> **External MCP tools are configured and gated, but not yet reachable in a turn.**
+> `docket mcp servers add` registers a server, and the client that loads its tools namespaces them
+> `mcp__<server>__<tool>` (so a remote server cannot shadow `bash`) and routes them through the same
+> gate as a built-in. What is missing is the last wire: the turn loop builds its registry from the
+> built-ins alone, so a configured server's tools do not reach a running agent yet. Stated plainly
+> because "browser support is just an MCP config" is only true once that wire exists.
 
 The model endpoint is any **OpenAI-compatible** chat-completions API — OpenAI, Groq, Together,
 OpenRouter, or a local llama.cpp / vLLM / LM Studio server. The adapter is stdlib `urllib`; no
@@ -278,7 +284,7 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 | Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health`, `/runs`, `/approvals` |
-| External tools without writing code | varies | ✅ MCP servers, gated identically to built-ins |
+| External tools without writing code | varies | ⚠ MCP servers register and gate identically to built-ins, but are **not yet wired into a running turn** |
 
 If a row isn't true for your setup, treat it as aspirational — honesty is the point of this table.
 
@@ -422,7 +428,7 @@ pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 By the numbers:
 
 - **2,074 tests** in the pytest suite (`tests/python/`)
-- **~26,500 lines** of Python in the shipped `docket` package
+- **~26,400 lines** of Python in the shipped `docket` package
 - **25 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
