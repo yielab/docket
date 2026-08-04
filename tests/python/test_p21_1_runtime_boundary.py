@@ -1,16 +1,16 @@
-"""P21-1 guard: the `docket-runtime` library stays CLI-free and dependency-thin.
+"""Guard: the `docket-runtime` library stays CLI-free and dependency-thin.
 
-ROADMAP Phase 21 / decision D-21 splits the runtime slice (`core/llm.py`,
-`core/tools.py`, `core/session.py`, `core/agent_loop.py`, `core/policy.py`,
-`core/approval.py`, `core/security.py`, `core/audit.py`, `core/trace.py`,
+The runtime slice (`core/llm.py`, `core/tools.py`, `core/session.py`,
+`core/agent_loop.py`, `core/policy.py`, `core/approval.py`,
+`core/security.py`, `core/audit.py`, `core/trace.py`,
 `core/runtime_driver.py`, their real transitive dependencies, and
-`edges/store.py` + the relevant `edges/adapters/*`) into a separately
-installable distribution, `docket-runtime`, packaged from
+`edges/store.py` + the relevant `edges/adapters/*`) is packaged as a
+separately installable distribution, `docket-runtime`, packaged from
 ``packages/docket-runtime/pyproject.toml`` via hatchling's `force-include` --
 no files move or duplicate in the repository; that file just maps existing
-``src/docket/...`` paths into the wheel. D-21 is explicit that this card is
-**packaging only**: a boundary drawn around code that already exists, pinned
-by a test, not a redesign.
+``src/docket/...`` paths into the wheel. This is **packaging only**: a
+boundary drawn around code that already exists, pinned by a test, not a
+redesign.
 
 This guard does not hand-maintain a second copy of "the file list" -- it
 parses the packaging config's own `force-include` table, so the set of files
@@ -42,21 +42,21 @@ the runtime slice's own call surface (agent_loop/tools/session/policy/
 approval/security/audit/trace) reaches. It was verified, not assumed: a bare
 venv with only this distribution's two declared dependencies installed
 imports every shipped module and exercises `dispatch_tool` end-to-end with
-`yaml` absent from `sys.modules` entirely (see the P21-1 card report). Module
-scoping is what keeps this test asserting a fact that is actually true
-("nothing shipped here needs a third package to *import*") rather than a
-stricter-sounding claim that isn't ("nothing shipped here ever mentions a
-third package"), which would force either declaring an unneeded dependency
-or deleting optional, already-guarded functionality -- both barred by D-21's
-"packaging only" constraint. The CLI-facing-import check has no such
-exception and applies at *any* depth, lazy or not: there is no legitimate
-optional use of `docket.cli`/`docket.ui`/`docket.serve`/`docket.__main__`
-from inside a library file.
+`yaml` absent from `sys.modules` entirely. Module scoping is what keeps this
+test asserting a fact that is actually true ("nothing shipped here needs a
+third package to *import*") rather than a stricter-sounding claim that isn't
+("nothing shipped here ever mentions a third package"), which would force
+either declaring an unneeded dependency or deleting optional, already-guarded
+functionality -- both barred by the "packaging only" constraint. The
+CLI-facing-import check has no such exception and applies at *any* depth,
+lazy or not: there is no legitimate optional use of
+`docket.cli`/`docket.ui`/`docket.serve`/`docket.__main__` from inside a
+library file.
 
-Proven RED before being trusted (see the P21-1 card report for the exact
-commands): a bare `import docket.ui` line and an unguarded, module-level
-`import yaml` were planted, one at a time, into `src/docket/core/llm.py` (a
-file this table ships) -- both were caught, then the plant was reverted and
+Proven RED before being trusted: a bare `import docket.ui` line and an
+unguarded, module-level `import yaml` were planted, one at a time, into
+`src/docket/core/llm.py` (a file this table ships) -- both were caught, then
+the plant was reverted and
 this test passed again.
 """
 

@@ -1,10 +1,10 @@
-"""P19-2: the gated tool registry, its chokepoint, and the built-in tools.
+"""The gated tool registry, its chokepoint, and the built-in tools.
 
 Three things are pinned here, in order of how much they matter:
 
 1. **The command classifier is argument-aware.** `git` is allowlisted and
    `git push origin production` is a production deploy; a gate that cannot tell
-   those apart is the gap docket has documented as deferred since Phase 13.
+   those apart lets a destructive command through under a benign-looking name.
 2. **There is exactly one path to tool execution.** A test walks the source
    tree to prove no module reaches around `dispatch_tool` into the handlers.
 3. **Containment holds at the handler**, not only at the chokepoint, so a
@@ -39,12 +39,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """P19-3: `dispatch_tool` now also consults `core/policy.py` and, on an
-    `ask` verdict, blocks on `core/approval.py`'s real store. Isolate both so
-    this file's tests (which predate the policy hook and don't care about it)
-    never read a developer's real ``~/.openclaw/policies``, and set the
-    in-turn timeout to 0 so a gated call nothing ever grants resolves
-    immediately (fail-closed to denied) instead of really waiting.
+    """`dispatch_tool` also consults `core/policy.py` and, on an `ask`
+    verdict, blocks on `core/approval.py`'s real store. Isolate both so this
+    file's tests (which don't care about the policy hook) never read a
+    developer's real ``~/.docket/policies``, and set the in-turn timeout to 0
+    so a gated call nothing ever grants resolves immediately (fail-closed to
+    denied) instead of really waiting.
     """
     monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
@@ -278,10 +278,9 @@ class TestDispatchChokepoint:
         assert res.content.startswith("alpha")
 
     def test_gated_command_is_not_executed(self, ctx: ToolContext) -> None:
-        """P19-3: an `ask` verdict now blocks on the real approval store
-        (`_isolate_gates` above pins TOOL_APPROVAL_TIMEOUT to 0) rather than
-        just being reported, so with nothing ever granting it, it resolves
-        to a fail-closed deny before `dispatch_tool` returns."""
+        """An `ask` verdict blocks on the real approval store (`_isolate_gates`
+        above pins TOOL_APPROVAL_TIMEOUT to 0), so with nothing ever granting
+        it, it resolves to a fail-closed deny before `dispatch_tool` returns."""
         marker = ctx.roots[0] / "should-not-exist"
         res = dispatch_tool(
             _call("bash", '{"command": "rm -rf /tmp/x && touch ' + str(marker) + '"}'),
@@ -313,7 +312,7 @@ class TestDispatchChokepoint:
         be able to tell them apart."""
         refused = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
         failed = dispatch_tool(_call("read", '{"path": "nope.md"}'), ctx, builtin_registry())
-        # P19-3: an `ask` verdict resolves before dispatch_tool returns (see
+        # An `ask` verdict resolves before dispatch_tool returns (see
         # test_gated_command_is_not_executed) -- unresolved here too.
         assert (refused.decision, refused.executed) == ("deny", False)
         assert (failed.decision, failed.executed, failed.ok) == ("allow", True, False)
@@ -369,7 +368,7 @@ class TestSinglePathToExecution:
     asserted in prose: if a second module can call a handler directly, the gate
     is optional, and an optional gate is not a gate."""
 
-    # core/mcp_tools.py / edges/adapters/mcp_client.py (ROADMAP Phase 19 P19-10):
+    # core/mcp_tools.py / edges/adapters/mcp_client.py:
     # both reference toolbox.py's `ToolOutcome` -- the inert "what happened"
     # result dataclass every Tool.handler must return -- so an MCP-adapted
     # tool's handler can construct one, exactly as core/tools.py's own
@@ -382,7 +381,7 @@ class TestSinglePathToExecution:
     # which dispatches an MCP-adapted tool through the real, unmodified
     # `dispatch_tool` and proves a `pre_tool_call` policy gates it.
     #
-    # edges/adapters/fetch.py (ROADMAP Phase 19 P19-11): same shape again --
+    # edges/adapters/fetch.py: same shape again --
     # it imports `ToolOutcome` only, to construct the return value its own
     # `fetch_url` handler function produces. `core/tools.py`'s `fetch`
     # registration calls `fetch_url` directly (the same way it calls

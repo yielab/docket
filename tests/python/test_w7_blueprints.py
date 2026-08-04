@@ -1,6 +1,6 @@
-"""W-7: pod blueprints — the format itself (`core/blueprints.py`).
+"""Pod blueprints — the format itself (`core/blueprints.py`).
 
-Covers the registry (five built-ins as of ROADMAP Phase 21 P21-5), the closed
+Covers the registry (five built-ins), the closed
 `workspace_kind` enum, the structural validation `PodBlueprint.__post_init__`
 enforces, and the cross-check that every gated step in a blueprint's
 `default_pipeline` matches the gated role's own archetype `gateContract.kind`
@@ -184,8 +184,8 @@ class TestPipelineGateFidelity:
 
 
 class TestAgenticProduct:
-    """ROADMAP Phase 21 P21-5: `agentic-product` is a fifth row of data, not
-    new machinery — same `default_pipeline()` object `software` attaches, a
+    """`agentic-product` is a fifth row of data, not new machinery — same
+    `default_pipeline()` object `software` attaches, a
     `codebase` workspace kind, and the one deliberate difference from
     `software`: a full (Lead, Implementer, Reviewer, Tester) roster so the
     Reviewer/Tester gates already present in `default_pipeline()` actually

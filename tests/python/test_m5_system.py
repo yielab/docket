@@ -7,19 +7,16 @@ ever invoked. They cover:
   * git branch lookup
   * git changed-files probe (W-5b)
 
-Phase 19 P19-7b deleted the daemon's gateway systemd unit and every
-service_manager/service_hint/systemctl_* helper that only ever existed to
-start/restart/probe it -- there is nothing left to manage, so their tests
-are deleted, not adapted (see edges/adapters/system.py's module docstring).
-gateway_active survives as a stable, always-honest stub because
-`docket snapshot` and the `serve` read API still expose a `gateway` field to
-external consumers (specs/data/serve-read-api.spec.md) -- covered below.
-
-CL-C (wave 14): restart_gateway()/RestartResult were deleted outright, not
-kept as a stub -- unlike gateway_active, nothing external ever observed
-restart_gateway's return value, so every call site was pure ceremony. Their
-tests (test_restart_gateway_dry_run/test_restart_gateway_no_daemon) are
-deleted along with the function, not adapted.
+There is no daemon gateway to start/restart/probe any more, and no
+service_manager/service_hint/systemctl_* helper left that tried to (see
+edges/adapters/system.py's module docstring). gateway_active survives as a
+stable, always-honest stub because `docket snapshot` and the `serve` read API
+still expose a `gateway` field to external consumers
+(specs/data/serve-read-api.spec.md) -- covered below. restart_gateway()/
+RestartResult were deleted outright rather than kept as a stub: unlike
+gateway_active, nothing external ever observed restart_gateway's return
+value, so every call site was pure ceremony -- there is accordingly no test
+for it here.
 """
 
 from __future__ import annotations

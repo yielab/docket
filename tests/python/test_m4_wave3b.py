@@ -1,15 +1,9 @@
 """M4 wave-3b tests: logs.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made. Phase 19 P19-7b: the
-daemon and openclaw.json are gone -- fleet.json is the only registry left,
-and `docket logs`' old "Gateway log" section (which scanned the daemon's
-gateway log for a bound peer's activity) has no successor -- there is no
-gateway log to scan any more, so the section is simply gone (see
-cli/__init__.py's cmd_logs).
-
-(The `docket workflow` coverage this module used to carry was deleted when
-that command was retired — see tests/python/test_w3_workflow_removed.py.)
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
+fleet.json is docket's only agent/binding registry, so `docket logs` has no
+"Gateway log" section (there is no gateway log to scan) -- see cli/__init__.py's
+cmd_logs.
 """
 
 from __future__ import annotations
@@ -54,7 +48,6 @@ def _make_env(home: Path) -> dict[str, str]:
     return {
         **os.environ,
         "DOCKET_HOME": str(home),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
@@ -136,10 +129,9 @@ class TestCmdLogs:
         assert "required" in err.lower()
 
     def test_no_gateway_section_daemon_is_gone(self, tmp_path: Path) -> None:
-        # P19-7b: there is no daemon gateway log left to scan for a bound
-        # peer's activity, so the section is gone outright -- not
-        # conditional on a binding any more. No successor; deliberately
-        # verified absent regardless of binding state.
+        # There is no daemon gateway log to scan for a bound peer's
+        # activity, so the section is gone outright -- not conditional on a
+        # binding. Deliberately verified absent regardless of binding state.
         home = _setup_agent(tmp_path)
         rc, out, _ = _run(["logs", "myshop"], _make_env(home))
         assert rc == 0

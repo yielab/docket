@@ -1,4 +1,4 @@
-"""R-3: `docket runs list` / `docket runs show <id>` CLI surface.
+"""`docket runs list` / `docket runs show <id>` CLI surface.
 
 Exercises ``cli/_runs.py``'s ``run_runs`` dispatcher directly (the same layer
 ``cli/__init__.py``'s ``cmd_runs`` delegates to) — Rich table + ``--json``
@@ -87,7 +87,7 @@ class TestRunsShowCli:
 
 
 class TestRunsCancelCli:
-    """ROADMAP Phase 16 W-2: `docket runs cancel <id>`."""
+    """`docket runs cancel <id>`."""
 
     def test_cancel_missing_arg_is_an_error(self, runs_file: Path) -> None:
         assert run_runs("cancel", []) == 1
@@ -111,7 +111,7 @@ class TestRunsCancelCli:
 
 
 class TestRunsCancelAuditEntry:
-    """W-4: `docket runs cancel` was the one carried-forward gap in W-2's
+    """`docket runs cancel` was the one carried-forward gap in W-2's
     otherwise-audited surface -- every other privileged action writes an
     audit entry (see ``core/audit.py``); cancellation shipped without one.
     ``_isolate_audit_log`` (conftest.py, autouse) already repoints

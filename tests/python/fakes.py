@@ -1,6 +1,6 @@
 """Shared test doubles for the docket Python suite.
 
-``FakeDriver`` (Phase 18 L-1) is the one test double for
+``FakeDriver`` is the one test double for
 ``docket.core.runtime_driver.RuntimeDriver`` — it exists so tests exercising
 ``core/dispatch.py``'s pipeline (or anything else that takes a
 ``RuntimeDriver``/``Runner``) don't each hand-roll their own ad-hoc stub
@@ -9,9 +9,8 @@ via the constructor fields, and either pass the instance directly (it is
 callable, matching dispatch.py's ``Runner`` type) or pass its bound
 ``run_turn`` method explicitly — both work identically.
 
-This is deliberately the *only* fake in the suite for this port (ROADMAP §4.5 /
-decision D-14: one typed port, one shipped driver, one fake — no test-double
-framework).
+This is deliberately the *only* fake in the suite for this port (ROADMAP §4.5:
+one typed port, one shipped driver, one fake — no test-double framework).
 """
 
 from __future__ import annotations

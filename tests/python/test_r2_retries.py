@@ -1,9 +1,10 @@
-"""R-2: retries + configurable timeouts (turn vs verify decoupled).
+"""Retries + configurable timeouts (turn vs verify decoupled).
 
 Three layers:
-  * TestFailureKindClassification — the ACL's real ``agent_run`` against a fake
-    ``openclaw`` binary: timeout / missing-CLI / non-zero-exit map to the right
-    ``TurnResult.failure_kind``; a successful call carries none.
+  * TestFailureKindClassification — ``TurnResult``'s own backward-compat
+    default for callers that construct it positionally without mentioning
+    ``failure_kind`` (see the failure_kind classification note below for
+    where the real classifier coverage now lives).
   * TestHopRetryLoop — ``dispatch_task`` driven directly (no persisted queue,
     mirrors test_cd2_verify.py's pattern): a retryable failure (timeout/
     daemon_error) retries up to the role's budget with ``attempts`` persisted
@@ -11,7 +12,7 @@ Three layers:
     unretryable kind never retries.
   * TestTimeoutResolution / TestDispatchPodRetryIntegration — turn vs verify
     timeouts are independently resolved and applied, and a retrying task never
-    trips R-1's stale-claim sweep (the subtle correctness point of this card).
+    trips the stale-claim sweep (the subtle correctness point here).
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ from docket.core import trace as _trace
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -97,16 +97,14 @@ def _no_sleep(_seconds: float) -> None:
 
 # ── failure_kind classification ────────────────────────────────────────────────
 #
-# Phase 19 P19-7b deleted the daemon-facing driver whose real subprocess-backed
-# `agent_run` this class used to classify failures through (a fake `openclaw`
-# binary simulating timeout/missing-CLI/non-zero-exit/success). The successor
-# is `edges/adapters/llm.py`'s `OpenAIChatClient` (the one shipped `ChatBackend`
-# DocketDriver calls through) -- its own failure_kind classification
+# There is no daemon-facing driver and no subprocess-backed `agent_run` to
+# classify failures through. `edges/adapters/llm.py`'s `OpenAIChatClient`
+# (the one shipped `ChatBackend` DocketDriver calls through) is the only
+# failure_kind classifier now; its coverage
 # (timeout / HTTP-status-based daemon_error/nonzero_exit / invalid_output) is
-# already covered by test_p19_1_llm_port.py's `TestFailureKindClassification`-
-# equivalent cases, so this class is not re-created against a fake subprocess
-# with no successor; only the one test with no ACL dependency at all
-# (`TurnResult`'s own backward-compat default) is kept below.
+# in test_p19_1_llm_port.py's `TestFailureKindClassification`. Only the one
+# test below with no dependency on the deleted driver (`TurnResult`'s own
+# backward-compat default) is kept.
 
 
 class TestFailureKindClassification:

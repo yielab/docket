@@ -1,4 +1,4 @@
-"""CH-9: prove scripts/metrics.py's --check gate actually catches drift.
+"""Prove scripts/metrics.py's --check gate actually catches drift.
 
 scripts/metrics.py replaces the Bash-era scripts/metrics.sh, which counted
 `lib/commands/*.sh` — deleted at the M6 Bash→Python cutover — so its counts

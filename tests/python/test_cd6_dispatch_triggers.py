@@ -1,4 +1,4 @@
-"""CD-6: Scheduled & webhook-triggered dispatch.
+"""Scheduled & webhook-triggered dispatch.
 
 Acceptance criteria:
   - A scheduled time fires a dispatch
@@ -6,13 +6,13 @@ Acceptance criteria:
   - Unauthorized requests are rejected
   - suite green
 
-R-3 (D-17) updated this file: the last-run bookkeeping ``TestCheckSchedules``
-exercises moved from an in-memory ``_serve._schedule_state`` dict (reset on
-every ``docket serve`` restart — the bug that made every schedule re-fire
-immediately after one) to durable state persisted in the schedules file
-itself (``core.schedule.load_last_run``/``record_last_run``). The dedicated
-restart-survival test lives here too; per-dispatch run-record coverage (the
-rest of R-3's surface) lives in ``test_r3_dispatch_paths.py``.
+The last-run bookkeeping ``TestCheckSchedules`` exercises is durable state
+persisted in the schedules file itself
+(``core.schedule.load_last_run``/``record_last_run``), not an in-memory
+``_serve._schedule_state`` dict — an in-memory dict resets on every ``docket
+serve`` restart, which was a real bug that made every schedule re-fire
+immediately after one. The dedicated restart-survival test lives here too;
+per-dispatch run-record coverage lives in ``test_r3_dispatch_paths.py``.
 """
 
 from __future__ import annotations
@@ -258,7 +258,7 @@ class TestCheckSchedules:
     def test_last_run_recorded_durably_after_dispatch(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R-3: the last-run timestamp is written into the schedules FILE
+        """The last-run timestamp is written into the schedules FILE
         (not an in-memory dict), so it is readable by a fresh
         `load_last_run` call — the same read path a restarted `docket serve`
         process would use."""

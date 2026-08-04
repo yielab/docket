@@ -198,7 +198,7 @@ class TestMetrics:
     def test_guardrail_block_reported_from_a_real_g2_producer(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """G-2: `guardrail_block` is the live-path producer this reader was
+        """`guardrail_block` is the live-path producer this reader was
         waiting for — bucketed by the tripped policy's id (the reader's own
         `payload.get("action", etype)` convention, fed the policy id rather
         than the generic word "block" so the table names which policy fired)."""

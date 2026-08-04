@@ -1,4 +1,4 @@
-"""W-2: `core/orchestrator.py` — the pipeline executor's planning layer.
+"""`core/orchestrator.py` — the pipeline executor's planning layer.
 
 Covers: `resolve_plan`'s determinism contract (same spec + roster + registry
 => a byte-identical `ExecutionPlan`, independent of wall clock, dict

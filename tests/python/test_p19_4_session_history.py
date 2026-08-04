@@ -1,11 +1,11 @@
-"""ROADMAP Phase 19 P19-4: durable turn history + compaction (`core/session.py`).
+"""Durable turn history + compaction (`core/session.py`).
 
 Pure `core/` coverage -- no CLI, no subprocess, no live daemon, no OpenClaw
 format knowledge. Mirrors `test_c2_memory_distillation.py`'s style (custom
 driver functions matching the `DistillRunner`/`SessionSummaryRunner` 5-arg
 shape) since compaction's summarisation step is the same call pattern.
 
-Covers the card's explicit contract:
+Covers:
 
 * **Isolation** -- one session's history never bleeds into another's, even
   for session keys that share characters a naive encoding could collide on.

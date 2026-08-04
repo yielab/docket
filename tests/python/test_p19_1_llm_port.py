@@ -1,4 +1,4 @@
-"""P19-1: the chat-completion port and its OpenAI-compatible adapter.
+"""The chat-completion port and its OpenAI-compatible adapter.
 
 Everything here runs without a network. The transport tests monkeypatch
 ``urlopen`` inside the adapter's namespace; the encode/decode tests call
@@ -362,8 +362,8 @@ class TestTransport:
 
 
 class TestRetryVocabularyStaysAlignedWithDispatch:
-    """P19-5 slots this backend under the existing dispatch state machine, so
-    the failure kinds it emits have to mean the same thing there."""
+    """This backend slots under the existing dispatch state machine, so the
+    failure kinds it emits have to mean the same thing there."""
 
     def test_transport_failures_are_retryable_and_answers_are_not(self) -> None:
         assert adapter._classify_http_status(429) in _RETRYABLE_FAILURE_KINDS

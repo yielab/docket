@@ -1,17 +1,16 @@
-"""W-6: the four legacy pod roles must render byte-identical SOUL.md/AGENTS.md
+"""The four legacy pod roles must render byte-identical SOUL.md/AGENTS.md
 after core/pod.py's role model moved from a hardcoded 4-tuple to the
 `core/archetypes.py` registry.
 
-This is the card's single hard requirement: "Today's four roles ship as
-built-in archetypes producing byte-identical workspace output." Rather than
-diffing the current `cli/_pod.py` output against itself (which would not
-catch a regression introduced by editing both sides together), this file
-embeds a FROZEN, independent copy of the pre-W-6 hand-written generators
+The hard requirement: "Today's four roles ship as built-in archetypes
+producing byte-identical workspace output." Rather than diffing the current
+`cli/_pod.py` output against itself (which would not catch a regression
+introduced by editing both sides together), this file embeds a FROZEN,
+independent copy of the original hand-written generators
 (`_legacy_member_soul`/`_legacy_member_agents`, copied verbatim from the
-`cli/_pod.py` implementation that shipped through ROADMAP Phase 14) and
-compares them against `cli/_pod.py`'s current archetype-driven
-`_member_soul`/`_member_agents` across a range of inputs, for every legacy
-role.
+pre-archetype `cli/_pod.py` implementation) and compares them against
+`cli/_pod.py`'s current archetype-driven `_member_soul`/`_member_agents`
+across a range of inputs, for every legacy role.
 """
 
 from __future__ import annotations

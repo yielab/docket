@@ -1,15 +1,14 @@
-"""P19-3: turning on the `pre_tool_call` policy hook (ROADMAP Phase 19 / D-19).
+"""The `pre_tool_call` policy hook is live.
 
-docket has shipped four `pre_tool_call` policy templates since Phase 11 and
-never evaluated one of them -- `core/dispatch.py` said so in three places.
-This card wires `core/policy.py`'s `policy_eval_detail` into
-`core/tools.py`'s single decision point (`evaluate_tool_call`), combines it
-with P19-2's command classifier (most-restrictive-wins), and routes an `ask`
-verdict to a new synchronous waiter on the real approval store
-(`core/approval.py`'s `wait_for_approval`) so an in-turn tool call actually
-blocks on a human instead of the daemon-gated no-op it was before.
+docket used to ship four `pre_tool_call` policy templates and never evaluate
+any of them -- `core/dispatch.py` said so in three places. `core/policy.py`'s
+`policy_eval_detail` is wired into `core/tools.py`'s single decision point
+(`evaluate_tool_call`), combined with the command classifier
+(most-restrictive-wins), and an `ask` verdict routes to a synchronous waiter
+on the real approval store (`core/approval.py`'s `wait_for_approval`) so an
+in-turn tool call actually blocks on a human instead of being a no-op.
 
-What's pinned here, matching the card's acceptance criteria:
+What's pinned here:
 
 1. `render_tool_call`'s exact shape -- every shipped policy pattern depends
    on it, so it is a contract, not an implementation detail.
@@ -175,7 +174,7 @@ class TestBlockDestructiveShippedTemplate:
     def test_policy_gates_a_write_call_the_command_classifier_never_inspects(
         self, ctx: ToolContext
     ) -> None:
-        """Proves the *policy engine*, not just P19-2's exec classifier, is
+        """Proves the *policy engine*, not just the exec classifier, is
         what fires: `write` is a non-exec tool, so `classify_command` never
         runs on it -- only the block-destructive `.env` clause can gate this.
         This is also the regression test for the pattern fix: the template's

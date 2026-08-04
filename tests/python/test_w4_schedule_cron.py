@@ -1,4 +1,4 @@
-"""ROADMAP Phase 16 W-4: cron-expression scheduling.
+"""Cron-expression scheduling.
 
 ``core/schedule.py`` previously understood only ``@every <N><unit>`` and a
 single daily ``HH:MM`` — this is the missing "real cron spec" support: a

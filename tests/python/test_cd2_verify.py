@@ -1,12 +1,11 @@
-"""CD-2: deterministic pre-merge verification gate.
+"""Deterministic pre-merge verification gate.
 
 Three layers:
   * TestRunVerifyCmd      — system adapter: pass/fail/timeout/error cases.
   * TestDispatchVerifyGate — dispatch integration: verifyCmd wired into the
     pipeline (pass→done, fail→verification_failed trace + task failed,
-    unset→a traced skip plus the hop's own ``verification_skipped`` flag
-    (W-5: no longer a bare ``print()`` — see ``core/dispatch.py``'s dead-code
-    register fix), output redacted in trace).
+    unset→a traced skip plus the hop's own ``verification_skipped`` flag,
+    never a bare ``print()``, output redacted in trace).
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from docket.edges.adapters import system as _sys
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -299,7 +297,7 @@ class TestDispatchVerifyGate:
 
 
 class TestDispatchTesterGate:
-    """FD-2: the Tester hop's PASS/FAIL first line is parsed and gates the pipeline.
+    """The Tester hop's PASS/FAIL first line is parsed and gates the pipeline.
 
     A successful subprocess call (``run_res.ok``) only means the Tester agent ran —
     it says nothing about what the Tester found. These tests exercise the marker

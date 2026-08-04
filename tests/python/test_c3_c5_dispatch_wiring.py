@@ -1,17 +1,17 @@
-"""ROADMAP Phase 17 C-3/C-5: dispatch mechanically maintains the pod Lead's
-HEARTBEAT.md task ledger and keeps the conversation registry current.
+"""Dispatch mechanically maintains the pod Lead's HEARTBEAT.md task ledger
+and keeps the conversation registry current.
 
-C-3: ``core/dispatch.py``'s ``_claim_next_task``/``_persist_hop``/
+``core/dispatch.py``'s ``_claim_next_task``/``_persist_hop``/
 ``_touch_claim``/``_finalize_task`` call ``core/memory.py``'s
 ``sync_dispatch_tasks`` at each task-state-persistence point, so the durable
 ledger is true whether or not the agent ever wrote anything there itself.
 
-C-5: ``_persist_hop`` calls ``core/conversations.py``'s ``touch_for_hop`` so a
+``_persist_hop`` calls ``core/conversations.py``'s ``touch_for_hop`` so a
 wired channel thread's ``last_message``/``task_ref`` reflect the task dispatch
 is actually working, not just whatever ``docket wire`` seeded once.
 
-Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (fake daemon,
-injected ``FakeDriver``/plain runner callables — no real openclaw binary, no
+Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
+``FakeDriver``/plain runner callables — no real openclaw binary, no
 subprocess).
 """
 
@@ -36,7 +36,6 @@ from .fakes import FakeDriver
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

@@ -1,4 +1,4 @@
-"""ROADMAP Phase 17 C-3: the dispatch task ledger inside HEARTBEAT.md.
+"""The dispatch task ledger inside HEARTBEAT.md.
 
 Guards ``core/memory.py``'s docket-owned dispatch region: rendering, the
 insert/replace write path (and its co-authorship contract — everything

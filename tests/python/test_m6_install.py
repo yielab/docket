@@ -1,10 +1,10 @@
 """M6 tests: install — docket-native home + specialist bootstrap.
 
-Phase 19 P19-7b: there is no external daemon any more. These tests call
-``run_install()`` in-process with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched
-to a temp seed; specialist registration writes straight to fleet.json (no
-shell-out to stub), and Step 5 (model credentials) is driven by seeding
-``core/secrets.py``'s store directly.
+There is no external daemon. These tests call ``run_install()`` in-process
+with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched to a temp seed; specialist
+registration writes straight to fleet.json (no shell-out to stub), and Step 5
+(model credentials) is driven by seeding ``core/secrets.py``'s store
+directly.
 """
 
 from __future__ import annotations
@@ -22,15 +22,14 @@ from docket.core import secrets as _secrets
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
-# Phase 10 (AA-2): install provisions only the shared **org** roles. The project
-# roles (programmer/reviewer/tester) become per-pod workers via `docket add` (AA-3).
+# install provisions only the shared **org** roles. The project roles
+# (programmer/reviewer/tester) become per-pod workers via `docket add`.
 _ORG_SPECIALISTS = ("manager", "knowledge", "security")
 _PROJECT_ROLES = ("programmer", "reviewer", "tester")
 
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     # No registry file → built-in role→model defaults apply.
 
@@ -74,7 +73,7 @@ def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_install_creates_only_org_specialists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # AA-2: install registers the org roles only; project roles are NOT global.
+    # install registers the org roles only; project roles are NOT global.
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
@@ -83,7 +82,7 @@ def test_install_creates_only_org_specialists(
 
     ids = {a.id for a in _fleet.list_agents()}
     assert ids == set(_ORG_SPECIALISTS)
-    # No global programmer/reviewer/tester singleton (the Defect-B fix).
+    # No global programmer/reviewer/tester singleton.
     assert not (ids & set(_PROJECT_ROLES))
 
 
@@ -98,7 +97,7 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
         assert meta_file.is_file(), f"missing meta for {spec}"
         meta: dict[str, Any] = json.loads(meta_file.read_text())
         assert meta["kind"] == "specialist"
-        assert meta["scope"] == "org"  # AA-2: stamped at provisioning
+        assert meta["scope"] == "org"  # stamped at provisioning
         assert meta["role"] == spec
         assert meta["name"] == spec
         assert meta["modelSource"] == "policy"
@@ -110,16 +109,16 @@ def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.Monkey
         assert not (home / "workspaces" / role / _cfg.META_FILE).is_file()
 
 
-# ── C-4: specialists join the workspace contract ────────────────────────────────
+# ── specialists join the workspace contract ────────────────────────────────
 
 
 def test_specialist_gets_full_workspace_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Phase 17 C-4: a freshly provisioned specialist gets the same durable
-    workspace set a project agent gets — SOUL/AGENTS/HEARTBEAT plus the
-    WORKFLOW_AUTO/MEMORY/daily-log contract — with 700/600 permissions and a
-    current-version contract marker.
+    """A freshly provisioned specialist gets the same durable workspace set a
+    project agent gets — SOUL/AGENTS/HEARTBEAT plus the WORKFLOW_AUTO/MEMORY/
+    daily-log contract — with 700/600 permissions and a current-version
+    contract marker.
     """
     from docket.core import memory as _mem
 
@@ -185,16 +184,16 @@ def test_specialist_reprovisioning_preserves_real_content(
 def test_specialist_backfills_bare_legacy_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A pre-C-4 install left specialists with only `.docket-meta.json` (the
-    exact defect this card fixes) — a subsequent `docket install` must backfill
-    the full workspace set without needing a fresh agent registration.
+    """A legacy install could leave specialists with only `.docket-meta.json`
+    — a subsequent `docket install` must backfill the full workspace set
+    without needing a fresh agent registration.
     """
     from docket.core import memory as _mem
 
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    # Simulate the pre-C-4 state: registered + meta only, nothing else.
+    # Simulate that legacy state: registered + meta only, nothing else.
     ws = home / "workspaces" / "knowledge"
     ws.mkdir(parents=True)
     ws.chmod(0o700)
@@ -335,8 +334,8 @@ def test_install_always_reports_tool_call_gate_always_active(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Regardless of --gates/--no-gates, the real tool-call gate (policy engine +
-    high-risk classifier) is unconditionally active (Phase 19 P19-3) — install
-    must never imply otherwise."""
+    high-risk classifier) is unconditionally active -- install must never
+    imply otherwise."""
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
@@ -423,7 +422,7 @@ def test_install_reports_already_hardened(
 def test_install_seeds_guardrail_policies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """G-2: `docket install` runs the same producer as `docket policies init` —
+    """`docket install` runs the same producer as `docket policies init` —
     the policy engine has nothing to evaluate against an empty $POLICIES_DIR."""
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()

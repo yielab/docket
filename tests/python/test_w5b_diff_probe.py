@@ -1,16 +1,13 @@
-"""W-5b: real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
+"""The real `files_changed`/`diff_ref` producer for an Implementer hop's artifact.
 
-ROADMAP Phase 16 card W-5 shipped `HandoffArtifact.files_changed`/`.diff_ref` as
-real, structurally-typed fields with **no producer** -- an explicit, documented
-seam (`core/handoff.py`'s module docstring) because the git shell-out surface
-(`edges/adapters/system.py`) belonged to a different in-flight card that wave.
-This suite closes it:
+`HandoffArtifact.files_changed`/`.diff_ref` are real, structurally-typed
+fields (`core/handoff.py`'s module docstring documents the seam):
 
   * TestImplementerDiffProbeUnit -- `core/dispatch.py`'s `_implementer_diff_probe`
     in isolation, with `edges/adapters/system.py`'s git calls monkeypatched out
     (no real git, no real filesystem).
   * TestDispatchPopulatesRealDiff -- end to end through a real `dispatch_task`
-    call against a real git repo (and the real git worktree CD-5 provisions for
+    call against a real git repo (and the real git worktree provisioned for
     a repo pod's Implementer): the hop's artifact carries the actual changed
     file and the actual checked-out branch.
   * TestDegradePaths -- the three ways this must degrade to an empty (never
@@ -164,7 +161,6 @@ def _seed_pod(
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 

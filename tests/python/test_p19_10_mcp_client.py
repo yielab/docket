@@ -1,18 +1,18 @@
-"""P19-10: MCP client -- pluggable external tool servers (ROADMAP Phase 19 / D-19).
+"""MCP client -- pluggable external tool servers.
 
-docket already ships an MCP *server* (Phase 18 L-3); this is the client half:
-connect to a configured external MCP server, enumerate its tools, adapt each
-into an ordinary ``core.tools.Tool``, and register it into a
-``core.tools.ToolRegistry`` via the existing public API only (``register``) --
-``core/tools.py`` is out of scope for this card and is never edited.
+docket already ships an MCP *server*; this is the client half: connect to a
+configured external MCP server, enumerate its tools, adapt each into an
+ordinary ``core.tools.Tool``, and register it into a ``core.tools.
+ToolRegistry`` via the existing public API only (``register``) --
+``core/tools.py`` itself is never edited to support this.
 
-What's pinned here, matching the card's own acceptance criteria:
+What's pinned here:
 
 1. **The chokepoint holds for an MCP-provided tool exactly as it does for a
    built-in one** -- a `pre_tool_call` policy gates an adapted tool through
    the real `dispatch_tool`, with the handler proven never to run
-   (`TestGatedExactlyLikeABuiltin`). This is the test the card says the work
-   is not done without.
+   (`TestGatedExactlyLikeABuiltin`). This is the test the work is not done
+   without.
 2. **Namespacing makes a built-in collision structurally impossible** -- every
    adapted name carries the `mcp__` prefix plus the configured server name;
    no built-in name can ever equal one (`TestNamespacing`,

@@ -1,13 +1,7 @@
 """The test suite must never read or write the developer's real ``~/.docket``.
 
-Phase 19 P19-6 decoupled ``DOCKET_HOME`` from ``OPENCLAW_DIR``. Before that
-card the two were the same physical directory, so every test that repointed
-``OPENCLAW_DIR`` for hermeticity isolated docket's own state -- traces,
-approvals, sessions, conversations, port allocations -- **for free**.
-Decoupling them silently removed that safety net from every such test.
-
-This was not theoretical. Measured on the wave-10 integration merge: a full
-``uv run pytest`` created real approval records, trace JSONL files,
+This was not theoretical: a full ``uv run pytest`` run without this guard's
+fixture created real approval records, trace JSONL files,
 ``docket-conversations.json`` and ``port-allocations.json`` under the
 developer's actual ``~/.docket``, found by snapshotting the directory either
 side of a run. ``conftest.py``'s ``_isolate_docket_home`` autouse fixture is
@@ -67,17 +61,17 @@ class TestNoConfigPathResolvesIntoTheRealDocketHome:
         A future constant added to ``config.py`` as ``DOCKET_HOME / "..."``
         must also be added to ``_DOCKET_HOME_PATHS``, or it silently escapes
         both the fixture and the two tests above. This parses ``config.py``
-        and fails on any such constant the list does not name -- the same
-        "ask what set the guard actually checks" discipline that caught two
-        guards verifying the wrong set in Phase 16 wave 7.
+        and fails on any such constant the list does not name -- ask what set
+        a guard actually checks, don't assume it checks the right one.
 
         **Parsed with ast, not scanned line by line.** The original version of
         this test split ``config.py`` into lines and looked for the literal
         ``DOCKET_HOME /``, which meant a constant whose assignment wrapped
         across lines -- exactly what a formatter does to a long one -- evaded
-        it completely. P19-8 hit that for real: its first draft of
-        ``TELEGRAM_OFFSET_FILE`` wrapped, the guard stayed green, and the
-        constant would have written to the developer's real ``~/.docket``.
+        it completely. This is not a hypothetical failure mode: a real draft
+        of ``TELEGRAM_OFFSET_FILE`` wrapped, the line-based guard stayed
+        green, and the constant would have written to the developer's real
+        ``~/.docket``.
         The card reformatted its constant to one line to get the guard to
         fire, which fixed that instance and left the hole. An ast walk sees
         the assignment regardless of how it is formatted.

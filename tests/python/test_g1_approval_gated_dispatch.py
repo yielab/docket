@@ -1,4 +1,4 @@
-"""G-1: approval-gated dispatch — the approval store's missing producer.
+"""Approval-gated dispatch — the approval store's missing producer.
 
 Before this card ``core/approval.py``'s ``approval_create`` had zero production
 callers: the approval store and the daemon's exec prompt were disconnected
@@ -60,7 +60,6 @@ from docket.serve import _DocketHandler
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"

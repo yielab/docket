@@ -1,4 +1,4 @@
-"""G-2: policy engine on the live path.
+"""Policy engine on the live path.
 
 Before this card, ``core/policy.py`` was fully built and tested but had exactly
 one caller: the CLI's own dry-run printer (``docket policies test``).
@@ -48,7 +48,6 @@ from docket.core import trace as _trace
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"

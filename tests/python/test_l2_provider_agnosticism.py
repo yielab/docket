@@ -1,13 +1,13 @@
-"""Phase 18 L-2: finish provider agnosticism.
+"""Provider agnosticism.
 
-Covers the verified gaps left after Phase 6:
+Covers:
   - the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from
     the user's docket-models.json, and a non-Anthropic preset leaves no
     Claude residue in `docket models`'s display
   - the "fallback" label was a false claim (nothing degrades to a cheaper
     model on failure) — it is now "rank anchors", with an honest caption
-  - `docket auth login/key/setup` accept `--provider <name>` and thread it
-    through to the ACL instead of hardcoding "anthropic"
+  - `docket auth login/key/setup` has no docket-native replacement and says
+    so plainly (rc=1, naming the real working path) rather than faking success
   - a `local` preset exists and prices as "$0 (local)", never a fabricated
     dollar figure
   - unpriced models (including OpenRouter's non-curated routes) render an
@@ -202,7 +202,6 @@ def _make_env(home: Path, extra_path: Path | None = None) -> dict[str, str]:
     env = {
         **os.environ,
         "DOCKET_HOME": str(home),
-        "DOCKET_NO_RESTART": "1",
     }
     if extra_path is not None:
         env["PATH"] = f"{extra_path}{os.pathsep}{env['PATH']}"
@@ -282,12 +281,12 @@ class TestLocalPresetCli:
 
 
 class TestAuthProviderGoneHonestly:
-    """P19-7b deleted the daemon `docket auth login/key/setup` used to shell
-    out to for the OAuth-like token exchange -- there is no docket-native
-    replacement. Every subcommand must say so plainly (rc=1, a message naming
-    the real working path: `docket keys add <PROVIDER>_API_KEY`), never
-    silently no-op or report a fake success. See cli/_keys.py's run_auth
-    docstring and _AUTH_GONE_MESSAGE.
+    """There is no docket-native replacement for the OAuth-like token
+    exchange `docket auth login/key/setup` used to shell out for. Every
+    subcommand must say so plainly (rc=1, a message naming the real working
+    path: `docket keys add <PROVIDER>_API_KEY`), never silently no-op or
+    report a fake success. See cli/_keys.py's run_auth docstring and
+    _AUTH_GONE_MESSAGE.
     """
 
     def test_login_reports_gone_not_fake_success(self, tmp_path: Path) -> None:

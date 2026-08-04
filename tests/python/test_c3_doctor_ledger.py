@@ -1,5 +1,5 @@
-"""ROADMAP Phase 17 C-3: ``docket doctor``'s TASK_LIST.json <-> HEARTBEAT.md
-dispatch-ledger divergence check (``cli/_doctor.py``'s ``_check_dispatch_ledger``).
+"""``docket doctor``'s TASK_LIST.json <-> HEARTBEAT.md dispatch-ledger
+divergence check (``cli/_doctor.py``'s ``_check_dispatch_ledger``).
 
 Dispatch itself keeps the two in sync mechanically (see
 ``test_c3_c5_dispatch_wiring.py``); this file proves the *doctor* side: it
@@ -25,7 +25,6 @@ from docket.core import memory as _mem
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

@@ -1,8 +1,8 @@
 """M5 T5.4a tests: trace + audit.
 
 Both subsystems read paths from docket.config at call time, so we repoint the
-already-imported config attributes (TRACES_DIR, AUDIT_LOG, OPENCLAW_DIR,
-SESSION_TIMEOUT) at a temp seed and drive the public surfaces in-process.
+already-imported config attributes (TRACES_DIR, AUDIT_LOG, SESSION_TIMEOUT)
+at a temp seed and drive the public surfaces in-process.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class TestAudit:
     def test_no_audit_env_no_longer_disables(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """G-4: DOCKET_NO_AUDIT was an unauthenticated kill switch — removed.
+        """DOCKET_NO_AUDIT was an unauthenticated kill switch — removed.
 
         Setting it now has no effect; recording is best-effort but can no
         longer be silently switched off.
@@ -78,15 +78,12 @@ class TestAudit:
         assert entries[0]["action"] == "keys.add"
 
     def test_missing_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Phase 19 P19-7a: AUDIT_LOG moved from OPENCLAW_DIR (guaranteed to
-        exist by something outside docket's control -- the daemon's own
-        directory) to DOCKET_HOME (genuinely docket-owned, nothing external
-        bootstraps it). Before this card a missing parent meant "OpenClaw was
-        never installed" and audit_log correctly no-op'd; now it just means
-        "first-ever docket write", so it creates its own parent directory,
-        matching every other DOCKET_HOME-derived writer (core/trace.py,
-        core/session.py) — the log would otherwise silently lose its very
-        first entry on a fresh ~/.docket.
+        """A missing AUDIT_LOG parent means "first-ever docket write", not
+        "docket isn't installed" -- nothing external bootstraps DOCKET_HOME,
+        so audit_log must create its own parent directory itself, matching
+        every other DOCKET_HOME-derived writer (core/trace.py, core/session.py).
+        Without this the log would silently lose its very first entry on a
+        fresh ~/.docket.
         """
         monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "fresh" / "audit.log", raising=True)
         audit_core.audit_log("keys.add", "X")  # must not raise
@@ -169,7 +166,7 @@ class TestTraceRecord:
         assert rec["duration_ms"] == 120
 
     def test_no_trace_env_disables(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """G-4: a suppressed write is now distinguishable from a real one."""
+        """A suppressed write is now distinguishable from a real one."""
         monkeypatch.setenv("DOCKET_NO_TRACE", "1")
         assert trace_core.trace_event("p", "s", "r", "tool_call", "{}") == "suppressed"
         assert not (oc_dir / "traces").exists()
@@ -242,15 +239,10 @@ def _seed_docket_session(session_key: str, lines: list[ChatMessage]) -> None:
 class TestTraceIngest:
     """`trace_ingest`'s idempotent-offset / timeout-session_end mechanics.
 
-    Phase 19 P19-7b deleted the daemon-facing driver this class used to seed
-    daemon-shaped session JSONL against and monkeypatch back in as the
-    resolution point. `trace_ingest` itself only ever sees a driver's
-    neutral `SessionSummary`/`SessionSlice` shapes (see `core/trace.py`'s
-    module docstring), so these tests now seed a real docket-owned session
-    (`core/session.py`) and drive ingestion through the real production
-    `DocketDriver` -- the mechanics under test (offset tracking, idempotent
-    re-ingest, synthetic session_end on timeout) are unchanged; only the
-    session format producing the input changed.
+    `trace_ingest` only ever sees a driver's neutral `SessionSummary`/
+    `SessionSlice` shapes (see `core/trace.py`'s module docstring), so these
+    tests seed a real docket-owned session (`core/session.py`) and drive
+    ingestion through the real production `DocketDriver`.
     """
 
     def test_ingest_projects_turns(self, oc_dir: Path) -> None:

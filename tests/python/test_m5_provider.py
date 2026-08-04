@@ -7,9 +7,8 @@ has no knowledge of terminals"). We assert the resulting fleet.json
 `providers` block, that a re-run is a no-op, and that the cli layer prints
 the expected wording.
 
-Phase 19 P19-7b: local providers are registered in docket's own fleet.json
-(`core/fleet.py`'s `add_local_provider`/`get_local_provider`), not the
-deleted daemon's openclaw.json.
+Local providers are registered in docket's own fleet.json (`core/fleet.py`'s
+`add_local_provider`/`get_local_provider`).
 """
 
 from __future__ import annotations

@@ -1,26 +1,18 @@
-"""P19-6: docket-native home + fleet registry.
+"""docket-native home + fleet registry.
 
-Three invariants are pinned here, in order of how much they matter:
+Two invariants are pinned here, in order of how much they matter:
 
 1. **fleet.json has exactly one writer.** Agent registration, channel
-   bindings, and gates/isolation flags used to live in `openclaw.json`, a
-   file the daemon (or a raw `openclaw` CLI call, or an older docket version)
-   could also write — that second writer was the actual mechanism behind
-   every drift `core/sync.py` ever caught. `fleet.json` is docket-owned and
-   read/written **only** through `edges/adapters/openclaw.py`'s ACL
-   functions, which in turn go through `edges/store.py`; a second module
-   reaching for `config.FLEET_FILE` directly would reopen exactly the
-   second-writer shape this card exists to close.
+   bindings, and gates/isolation flags are docket-owned and read/written
+   through `core/fleet.py`, which in turn goes through `edges/store.py`; a
+   second module reaching for `config.FLEET_FILE` directly would reopen the
+   second-writer drift this registry exists to prevent.
 2. **The fleet registry does not duplicate what `.docket-meta.json` already
    owns.** `FleetAgent` tracks only the bare registration fact (`id`) — no
-   `model`, no `sessionKey`. Re-adding either field would recreate the
-   drift-by-construction this card removes, even though nothing would look
-   obviously wrong at a glance (the schema is `extra="allow"`, so a stray
-   field round-trips silently).
-3. **Registering/unregistering an agent never touches `openclaw.json`.** Pre-
-   P19-6, `add_agent`/`remove_agent` wrote `agents.list` there. Post-P19-6,
-   `openclaw.json` is entirely the daemon's business (until P19-7 deletes it)
-   and these calls must leave it byte-for-byte alone.
+   `model`, no `sessionKey`. Re-adding either field would recreate
+   drift-by-construction, even though nothing would look obviously wrong at
+   a glance (the schema is `extra="allow"`, so a stray field round-trips
+   silently).
 """
 
 from __future__ import annotations
@@ -38,13 +30,13 @@ DOCKET_SRC = REPO_ROOT / "src" / "docket"
 
 
 class TestFleetSingleWriter:
-    """Only the ACL (and config.py, which just defines the constant) may
+    """Only core/fleet.py (and config.py, which just defines the constant) may
     reference FLEET_FILE. Mirrors test_p19_2_tool_registry.py's
     'only the chokepoint imports the handler module' guard."""
 
     ALLOWED_REFERRERS: ClassVar[set[str]] = {
         "config.py",
-        "edges/adapters/openclaw.py",
+        "core/fleet.py",
     }
 
     @staticmethod
@@ -78,13 +70,6 @@ class TestFleetAgentSchemaMinimal:
         agent = FleetAgent(id="myshop")
         assert not hasattr(agent, "model")
         assert not hasattr(agent, "session_key")
-
-
-# TestRegistrationNeverTouchesOpenclawJson deleted (Phase 19 P19-7b):
-# openclaw.json itself -- not just fleet registration's non-interference with
-# it -- is gone. P19-6 proved add_agent/remove_agent left the daemon's file
-# byte-identical; P19-7b closes the loop by deleting that file format
-# outright, so there is no longer anything for this test to leave untouched.
 
 
 class TestDualSourceModulesDeleted:

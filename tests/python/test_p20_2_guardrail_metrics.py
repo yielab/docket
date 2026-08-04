@@ -1,6 +1,6 @@
-"""P20-2: guardrail + loop metrics on the existing Prometheus surface.
+"""Guardrail + loop metrics on the existing Prometheus surface.
 
-Extends `docket serve`'s `/metrics` (ROADMAP Phase 20) with denial rate,
+Extends `docket serve`'s `/metrics` with denial rate,
 approvals granted/denied/timed-out by channel, policy-hit counts by policy
 id, tool-call rate and turn latency -- all recomputed fresh, on every
 scrape, from durable state already on disk (trace JSONL + the audit log),

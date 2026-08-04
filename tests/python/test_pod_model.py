@@ -1,4 +1,4 @@
-"""AA-3: pod composition model (core/pod.py) — pure-logic unit tests."""
+"""Pod composition model (core/pod.py) — pure-logic unit tests."""
 
 from __future__ import annotations
 

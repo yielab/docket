@@ -1,4 +1,4 @@
-"""``docket pipeline`` CLI surface (ROADMAP Phase 16 W-1 format / W-2 executor).
+"""``docket pipeline`` CLI surface.
 
 Exercises ``cli/_pipeline.py``'s ``run_pipeline`` dispatcher directly (the
 same layer ``cli/__init__.py``'s ``cmd_pipeline`` delegates to) — validate,
@@ -45,7 +45,6 @@ steps:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -182,9 +181,8 @@ class TestPipelineRunCli:
         # elsewhere with `runner=FakeDriver(...)`) -- it always resolves the
         # production driver internally, so proving it wires through to a
         # real dispatch means monkeypatching that resolution point itself.
-        # Phase 19 P19-7b deleted the daemon-facing driver this test used to
-        # monkeypatch back in for that purpose; FakeDriver is the one
-        # supported test double for a RuntimeDriver (see fakes.py).
+        # FakeDriver is the one supported test double for a RuntimeDriver
+        # (see fakes.py).
         monkeypatch.setattr(
             "docket.edges.adapters.docket_runtime.default_driver",
             lambda: FakeDriver(ok=True, cost=0.0),

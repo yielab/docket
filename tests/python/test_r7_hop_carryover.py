@@ -1,18 +1,15 @@
-"""R-7 (retired) / ROADMAP Phase 17 C-1: bounded hop prompts.
+"""Bounded hop prompts.
 
-``core/dispatch.py``'s ``_hop_message`` used to concatenate every prior hop's
-*full* raw output into the next hop's prompt with no cap at all (pre-R-7),
-then (R-7) capped the total *bytes* threaded forward with one process-wide
-constant and truncated blindly (head+tail, no regard for structure) once a
-hop's share was exceeded. **C-1 retires that mechanism entirely**: every prior
-hop's rendered ``HandoffArtifact`` is now fit to a per-role *token* budget via
-``core/context.py``'s ``compile_artifact``, which sheds the artifact's own
-less-valuable fields (``HandoffArtifact.DROP_ORDER``) before ever truncating
-``summary`` itself. R-7's ``_hop_carryover_budget``/``_truncate_carryover``
-helpers and ``config.HOP_CARRYOVER_BYTES`` were deleted on merge (C-1's
-file-ownership carve-out let it edit only ``_hop_message``, so it correctly
-left them in place and flagged them for the integrator), along with the two
-test classes that pinned them. See ``tests/python/test_c1_context_compiler.py``
+``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior
+hop's *full* raw output into the next hop's prompt, and does not cap the
+total *bytes* threaded forward with one process-wide constant and truncate
+blindly (head+tail, no regard for structure) once a hop's share is exceeded.
+Instead, every prior hop's rendered ``HandoffArtifact`` is fit to a per-role
+*token* budget via ``core/context.py``'s ``compile_artifact``, which sheds
+the artifact's own less-valuable fields (``HandoffArtifact.DROP_ORDER``)
+before ever truncating ``summary`` itself. There is no
+``_hop_carryover_budget``/``_truncate_carryover`` byte-cap machinery and no
+``config.HOP_CARRYOVER_BYTES``. See ``tests/python/test_c1_context_compiler.py``
 for the compiler's own unit tests; this file covers:
   * TestHopMessageCap      — ``_hop_message`` itself, against the new
     token-budget compiler: small tasks unchanged, the task description never
@@ -43,7 +40,6 @@ from docket.core import runtime_driver as _rd
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -77,7 +73,8 @@ def _hop(role: str, output: str, member_id: str = "") -> _dispatch.HopResult:
 
 class TestHopMessageCap:
     def test_small_task_byte_identical_to_pre_cap_behaviour(self) -> None:
-        """Regression pin: below-budget content composes exactly as before R-7/C-1."""
+        """Regression pin: below-budget content composes exactly as before
+        any cap/budget mechanism existed."""
         task = {"description": "Fix the bug"}
         prior = [_hop("lead", "Plan: do X.")]
         message, comp = _dispatch._hop_message(task, "implementer", prior)

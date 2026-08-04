@@ -1,4 +1,4 @@
-"""Phase 18 L-1 (D-14): the RuntimeDriver port.
+"""The RuntimeDriver port.
 
 Covers:
   * Protocol conformance — both ``DocketDriver`` and ``FakeDriver`` satisfy
@@ -11,15 +11,10 @@ Covers:
   * ``FakeDriver`` — the one test double, exercised directly (dispatch.py's
     own pipeline-semantics coverage of it lives in test_dispatch.py).
 
-Phase 19 P19-7b deleted the daemon-facing ``OpenClawDriver`` this file used to
-cover in full (protocol conformance, ``run_turn``/``provision``/``teardown``
-delegation to the ACL's free functions, ``list_sessions``/``usage``/
-``read_new_turns`` parsing the daemon's session-JSONL format, and
-``trace_ingest`` driven through it directly) — none of that has a successor
-to test against, since ``DocketDriver`` backs onto no OS process and no
-daemon-shaped file at all. See ``edges/adapters/llm.py``'s test coverage
-(test_p19_1_llm_port.py) for the successor to the daemon-response-parsing
-half, and test_p19_5_docket_driver.py for ``DocketDriver.run_turn`` itself.
+``DocketDriver`` backs onto no OS process and no daemon-shaped file at all.
+See ``edges/adapters/llm.py``'s test coverage (test_p19_1_llm_port.py) for
+the driver's own response-parsing half, and test_p19_5_docket_driver.py for
+``DocketDriver.run_turn`` itself.
 """
 
 from __future__ import annotations

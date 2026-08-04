@@ -1,4 +1,4 @@
-"""Phase 15 G-6: serve auth hardening.
+"""Serve auth hardening.
 
 Covers:
   - `_DocketHandler._check_auth` compares the bearer token with

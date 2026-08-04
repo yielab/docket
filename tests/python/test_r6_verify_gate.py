@@ -1,4 +1,4 @@
-"""R-6: verifyCmd correctness — worktree cwd, bounded shell surface, audited setter.
+"""VerifyCmd correctness — worktree cwd, bounded shell surface, audited setter.
 
 Two verified defects fixed by this card:
   1. ``core/dispatch.py``'s verify gate ran in ``meta["codebase"]`` (the shared repo
@@ -124,7 +124,6 @@ class TestDispatchVerifyCwd:
 
     @pytest.fixture(autouse=True)
     def _hermetic(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setenv("DOCKET_NO_RESTART", "1")
         monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
         monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
@@ -221,7 +220,6 @@ def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     _point_at(home, monkeypatch)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)

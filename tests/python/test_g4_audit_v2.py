@@ -1,4 +1,4 @@
-"""G-4: Audit v2 — coverage expansion, tamper-evidence chain, kill-switch removal.
+"""Audit v2 — coverage expansion, tamper-evidence chain, kill-switch removal.
 
 Covers:
   - New audit_log() call sites (keys.*, profile.*, scope.*, agent.add/delete,
@@ -71,7 +71,6 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
     monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     return home
 
 
@@ -272,7 +271,6 @@ class TestKeysAudit:
         d.mkdir()
         monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
         monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
-        monkeypatch.setenv("DOCKET_NO_RESTART", "1")
         monkeypatch.setattr(
             keys_cli._getpass, "getpass", lambda *a, **k: "sk-ant-testvalue00000000000000"
         )
@@ -378,8 +376,6 @@ class TestAgentAddDeleteAudit:
         monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
         monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
         monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-        monkeypatch.setenv("DOCKET_NO_RESTART", "1")
-
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(
             json.dumps(

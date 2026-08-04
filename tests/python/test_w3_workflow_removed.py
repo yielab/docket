@@ -1,12 +1,12 @@
-"""W-3: `docket workflow` is retired — it must exit 1 with the pipeline mapping.
+"""`docket workflow` is retired — it must exit 1 with the pipeline mapping.
 
 `docket workflow` used to manage a Lobster YAML dialect docket could lint but
 not fully execute (the validator silently ignored four constructs its own
-template emitted). ROADMAP decision D-16 retires it in favor of a single
-pipeline dialect docket actually executes (`core/pipeline.py`, W-1/W-2). This
-test locks in the removed-command notice added to `src/docket/__main__.py`'s
-`_REMOVED` map — the same pattern used for the D-11 `docket team` retirement
-(see test_ch4_team_removed.py).
+template emitted). It is retired in favor of a single pipeline dialect
+docket actually executes (`core/pipeline.py`). This test locks in the
+removed-command notice added to `src/docket/__main__.py`'s `_REMOVED` map —
+the same pattern used for the `docket team` retirement (see
+test_ch4_team_removed.py).
 """
 
 from __future__ import annotations
@@ -30,9 +30,7 @@ def _run(args: list[str], env: dict[str, str]) -> tuple[int, str, str]:
 def _env(tmp_path: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(tmp_path / ".openclaw"),
-        "DOCKET_HOME": str(tmp_path / ".openclaw"),
-        "DOCKET_NO_RESTART": "1",
+        "DOCKET_HOME": str(tmp_path / ".docket"),
     }
 
 
@@ -43,7 +41,7 @@ def test_workflow_exits_1(tmp_path: Path) -> None:
 
 
 def test_workflow_matches_team_exit_code(tmp_path: Path) -> None:
-    """Same removed-command convention (and exit code) as the D-11 `team` retirement."""
+    """Same removed-command convention (and exit code) as the `team` retirement."""
     env = _env(tmp_path)
     workflow_rc, _, _ = _run(["workflow", "myshop"], env)
     team_rc, _, _ = _run(["team", "queue"], env)
@@ -89,7 +87,7 @@ def test_lobster_module_is_gone() -> None:
             importlib.import_module(name)
         except ModuleNotFoundError:
             continue
-        raise AssertionError(f"{name} still imports — it should have been deleted (W-3, D-16)")
+        raise AssertionError(f"{name} still imports — it should have been deleted")
 
 
 def test_workflow_not_a_registered_typer_command() -> None:

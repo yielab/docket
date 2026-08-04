@@ -1,4 +1,4 @@
-"""FD-4: audit-log parity for approval grant/deny across all channels.
+"""Audit-log parity for approval grant/deny across all channels.
 
 ``approval_grant``/``approval_deny`` already emitted a trace event; they now
 also write an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``,
@@ -210,7 +210,7 @@ class TestAuditFailureNeverBreaksApproval:
     def test_audit_kill_switch_removed_still_never_raises(
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """G-4: DOCKET_NO_AUDIT is no longer a kill switch.
+        """DOCKET_NO_AUDIT is no longer a kill switch.
 
         Setting it has no effect — the grant still writes its audit entry.
         What's preserved is best-effort: an audit write failure (missing
@@ -229,10 +229,9 @@ class TestAuditFailureNeverBreaksApproval:
         self, home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A missing AUDIT_LOG parent dir best-effort creates it rather than
-        raising or losing the entry (Phase 19 P19-7a: AUDIT_LOG is now under
-        genuinely docket-owned DOCKET_HOME, not the daemon's OPENCLAW_DIR, so
-        a missing parent means "first write", not "OpenClaw never installed"
-        -- see core/audit.py's audit_log() docstring)."""
+        raising or losing the entry -- nothing external bootstraps
+        DOCKET_HOME, so a missing parent just means "first write" (see
+        core/audit.py's audit_log() docstring)."""
         monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "nope" / "audit.log", raising=True)
         token = _ap.approval_create("proj-missing-dir", "implementer", "x")
         _ap.approval_grant(token, channel="cli")  # must not raise

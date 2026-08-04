@@ -1,4 +1,4 @@
-"""CH-4: `docket team` is retired — it must exit 1 with the pod-delegation mapping.
+"""`docket team` is retired — it must exit 1 with the pod-delegation mapping.
 
 `docket team` used to be a second, manual task queue that nothing ever dispatched.
 Pods now own delegation with real execution (`docket pod <project> delegate/queue/
@@ -28,7 +28,6 @@ def _env(tmp_path: Path) -> dict[str, str]:
     return {
         **os.environ,
         "DOCKET_HOME": str(tmp_path / ".docket"),
-        "DOCKET_NO_RESTART": "1",
     }
 
 

@@ -1,13 +1,11 @@
-"""P19-11: the `fetch` tool -- an inspectable, allowlisted egress path
-(ROADMAP Phase 19 / decisions D-23, D-24).
+"""The `fetch` tool -- an inspectable, allowlisted egress path.
 
-D-23 measured docket's real network-egress gap: `curl`/`wget` correctly ask
-through the `bash` command classifier, but `python3 -c "import urllib..."`,
-`node`, and `git clone <url>` are curated-allowlist escape hatches that reach
-the network unattended. D-24 re-scoped this card to ship the tool, not a
-`--network none` lockdown (deferred -- it breaks `npm install`/`pip`/`git
-clone` when on, for no measured need). What this file pins, in order of how
-much it matters:
+docket's real network-egress gap: `curl`/`wget` correctly ask through the
+`bash` command classifier, but `python3 -c "import urllib..."`, `node`, and
+`git clone <url>` are curated-allowlist escape hatches that reach the network
+unattended. `fetch` closes that gap without a `--network none` lockdown
+(deferred -- it breaks `npm install`/`pip`/`git clone` when on, for no
+measured need). What this file pins, in order of how much it matters:
 
 1. **The domain allowlist is real containment, not decoration.** A host off
    the allowlist is refused *before* a socket is ever opened -- proven by
@@ -20,8 +18,8 @@ much it matters:
 3. **`fetch` is gated exactly like every other built-in.** It is registered
    in `core/tools.py`'s `builtin_registry()`, `kind="read"`, and a
    `pre_tool_call` policy denies a `fetch` call through the real,
-   unmodified `dispatch_tool` -- proving this card created no second
-   execution path around P19-3's chokepoint.
+   unmodified `dispatch_tool` -- proving there is no second execution path
+   around the chokepoint.
 
 A real local HTTP server (stdlib `http.server`) backs every network-shaped
 test here rather than mocking `urlopen` internals, so the redirect-refusal
@@ -244,7 +242,7 @@ class TestGatedExactlyLikeABuiltin:
 
     def test_a_pre_tool_call_policy_gates_fetch_exactly_like_a_builtin(self) -> None:
         """A `pre_tool_call` policy denies a fetch call before the handler
-        ever runs -- proof this card runs through P19-3's existing gate
+        ever runs -- proof `fetch` runs through the existing gate
         (`evaluate_tool_call`) rather than around it."""
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
         doc = {

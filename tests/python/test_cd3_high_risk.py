@@ -1,4 +1,4 @@
-"""CD-3: high-risk action classes.
+"""High-risk action classes.
 
 Tests that high-risk policy templates fire require_approval for payment,
 production-deploy, and credential-write patterns — including on binaries that

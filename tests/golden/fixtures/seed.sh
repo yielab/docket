@@ -18,14 +18,8 @@
 #
 # All timestamps are fixed to 2026-03-05T12:00:00-03:00 for determinism.
 #
-# CL-C (wave 14): this fixture used to also write an openclaw.json file
-# (the pre-P19-7b daemon config format) alongside fleet.json. docket has not
-# read openclaw.json since P19-7b deleted the ACL that parsed it -- fleet.json
-# has been the only registry this suite (or docket itself) consults since
-# P19-6 -- so seeding it was dead weight left behind by that migration, not a
-# real fixture requirement. Removed, along with the fake `openclaw` binary
-# (tests/golden/fakes/openclaw) that read it back and the unused
-# OPENCLAW_DIR env export in run.sh's run_docket().
+# fleet.json is the only registry this suite (or docket itself) consults --
+# docket does not read an openclaw.json.
 
 set -euo pipefail
 

@@ -1,4 +1,4 @@
-"""CD-5: Git-worktree-native Implementer isolation.
+"""Git-worktree-native Implementer isolation.
 
 Acceptance criteria:
   - provision_member() provisions the Implementer's workspace in a git worktree

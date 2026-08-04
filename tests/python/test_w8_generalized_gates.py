@@ -1,4 +1,4 @@
-"""W-8: generalized gates, exercised through the real R-1 state machine.
+"""Generalized gates, exercised through the real R-1 state machine.
 
 `core/dispatch.py`'s gate execution reads a step's *resolved* gate — its own
 declared `gate`, or (only when a step omits one) its archetype's
@@ -40,7 +40,6 @@ from docket.core import trace as _trace
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 

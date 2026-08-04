@@ -1,27 +1,25 @@
-"""W-5: structured handoff artifacts replace raw-text hop concatenation.
+"""Structured handoff artifacts replace raw-text hop concatenation.
 
-Before this card, ``core/dispatch.py``'s ``_hop_message`` threaded a prior
-hop's *raw* ``output`` string straight into the next hop's prompt. This suite
-covers the typed replacement:
+``core/dispatch.py``'s ``_hop_message`` does not thread a prior hop's *raw*
+``output`` string straight into the next hop's prompt. This suite covers the
+typed replacement:
 
   * TestHandoffArtifactModel   — ``core/handoff.py``'s ``HandoffArtifact`` in
     isolation: ``render()``'s default-vs-populated shape, ``from_legacy_output``,
     ``dropped()``, and the model's own invariants (frozen, no extra fields).
   * TestHopResultArtifactBackfill — every ``HopResult`` always carries a real
     artifact, whether built explicitly or backfilled from ``output`` alone
-    (``__post_init__``) — the same shape every pre-W-5 hand-built test hop
+    (``__post_init__``) — the same shape every hand-built test hop
     (``_hop()`` helpers across the suite) still produces.
   * TestHopRecordRoundTrip     — the persisted-queue-file shape: a new-format
-    record round-trips its artifact exactly; a pre-W-5 record with no
+    record round-trips its artifact exactly; a legacy record with no
     ``artifact`` key at all (or a malformed one) degrades to
-    ``from_legacy_output`` — the card's explicit backward-compatibility
-    requirement.
+    ``from_legacy_output`` — the backward-compatibility requirement.
   * TestDispatchBuildsTypedArtifacts — end to end through a real
     ``dispatch_task`` call: a verdict-gated hop's artifact carries a real
     ``verdict`` (not just raw text), the next hop's composed message is built
-    from the *rendered* artifact, and (ROADMAP Phase 17 C-1) the token-budget
-    compiler that replaced R-7's blind byte cap still checks that rendered
-    text, not the summary alone.
+    from the *rendered* artifact, and the token-budget compiler still checks
+    that rendered text, not the summary alone.
 """
 
 from __future__ import annotations
@@ -243,7 +241,6 @@ def _seed_pod(
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
@@ -350,12 +347,12 @@ class TestDispatchBuildsTypedArtifacts:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A verdict-bearing artifact's *rendered* text (summary + the
-        appended ``Verdict:`` line) is what ROADMAP Phase 17 C-1's compiler
-        checks against budget -- not the summary alone. Unlike the R-7 blind
-        byte cap this replaced, the compiler sheds the less-valuable
-        ``verdict`` field first (``HandoffArtifact.DROP_ORDER``) rather than
-        truncating ``summary`` -- so the reviewer's actual review text
-        reaches the tester intact even though the artifact didn't fit as-is.
+        appended ``Verdict:`` line) is what the token-budget compiler checks
+        against budget -- not the summary alone. Unlike a blind byte cap, the
+        compiler sheds the less-valuable ``verdict`` field first
+        (``HandoffArtifact.DROP_ORDER``) rather than truncating ``summary``
+        -- so the reviewer's actual review text reaches the tester intact
+        even though the artifact didn't fit as-is.
         """
         _seed_pod(tmp_path, monkeypatch, full=True)
         # Force every prior hop's carryover share down to just enough room

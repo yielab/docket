@@ -1,4 +1,4 @@
-"""CD-8: Stable read API — contract shape pinning.
+"""Stable read API — contract shape pinning.
 
 These tests are the machine-readable counterpart to specs/data/serve-read-api.spec.md.
 Any test break here is a breaking API change and must bump SERVE_API_VERSION.

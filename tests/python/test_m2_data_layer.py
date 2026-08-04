@@ -1,4 +1,4 @@
-"""M2 tests: data layer — models, store, ACL, sync, _json bridge."""
+"""M2 tests: data layer — models, store, fleet registry, _json bridge."""
 
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ import pytest
 
 
 def _make_fleet(home: Path) -> Path:
-    """Write a minimal fleet.json (P19-6/P19-7b) and return its path.
+    """Write a minimal fleet.json and return its path.
 
-    Agent registration and channel bindings live here — fleet.json is the
-    only registry now, since openclaw.json was deleted at P19-7b.
+    Agent registration and channel bindings live here — fleet.json is
+    docket's only registry; there is no openclaw.json.
     """
     fleet = {
         "agents": [{"id": "myshop"}],
@@ -102,7 +102,7 @@ class TestAgentMeta:
         assert meta.kind == AgentKind.specialist
         assert meta.role == "security"
 
-    # ── AA-1: the scope axis (Phase 10) ──────────────────────────────────────
+    # ── the scope axis ──────────────────────────────────────
 
     def test_scope_round_trips_when_explicit(self) -> None:
         from docket.core.models import AgentMeta, AgentScope
@@ -152,12 +152,11 @@ class TestAgentMeta:
             assert meta.scope == AgentScope.project, role
 
 
-# ── T2.2: fleet + auth-profiles models ────────────────────────────────────────
+# ── T2.2: fleet models ────────────────────────────────────────
 
 
 class TestFleetConfig:
-    """ROADMAP Phase 19 P19-6: core/fleet.py's FleetConfig, replacing the
-    deleted core/oc_models.py's OpenClawConfig for docket's own registry."""
+    """core/fleet.py's FleetConfig -- docket's own agent/binding registry."""
 
     def test_parse_fixture(self, tmp_path: Path) -> None:
         from docket.core.fleet import FleetConfig
@@ -184,11 +183,9 @@ class TestFleetConfig:
         dumped = cfg.model_dump(by_alias=True)
         assert dumped["newTopLevelKey"] == 42
 
-    # test_auth_profiles_parse deleted (Phase 19 P19-7b): AuthProfiles lived
-    # in edges/adapters/openclaw.py, the now fully-deleted ACL. Auth-profiles
-    # were a daemon-owned concept with no docket-native replacement -- per
-    # the card, deleted outright, not moved. See cli/_keys.py's run_auth for
-    # the honest "gone" message this capability now surfaces.
+    # Auth-profiles were a daemon-owned concept with no docket-native
+    # replacement -- deleted outright, not moved. See cli/_keys.py's
+    # run_auth for the honest "gone" message this capability now surfaces.
 
 
 # ── T2.3: store ────────────────────────────────────────────────────────────────
@@ -365,7 +362,7 @@ class TestFleet:
         agent = _fleet.get_agent("myshop")
         assert agent is not None
         assert agent.id == "myshop"
-        # P19-6: the fleet registry tracks bare registration only — model and
+        # The fleet registry tracks bare registration only — model and
         # sessionKey are .docket-meta.json's job (core/fleet.py's rationale).
         assert not hasattr(agent, "model")
         assert _fleet.meta_get("myshop", "sessionKey") == "agent:myshop:default"
@@ -454,11 +451,10 @@ class TestFleet:
         assert _fleet.meta_get("myshop", "model") == "anthropic/claude-haiku-4-5"
 
 
-# P19-6: core/sync.py (meta<->openclaw.json drift check) is deleted, not
-# ported — with fleet.json as the single source of truth for registration/
-# bindings/gates/defaults, and .docket-meta.json the single source for
-# model/sessionKey, there is nothing left to drift between. TestSync (which
-# exercised core.sync.check_agent/check_all) is removed along with it.
+# core/sync.py (meta<->openclaw.json drift check) does not exist -- with
+# fleet.json as the single source of truth for registration/bindings/gates/
+# defaults, and .docket-meta.json the single source for model/sessionKey,
+# there is nothing left to drift between.
 
 # ── T2.6: _json bridge (CLI) ──────────────────────────────────────────────────
 

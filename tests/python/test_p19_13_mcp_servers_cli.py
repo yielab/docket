@@ -1,12 +1,12 @@
-"""P19-13: `docket mcp servers add/list/remove` -- a CLI over P19-10's client config.
+"""`docket mcp servers add/list/remove` -- a CLI over the MCP client config.
 
-P19-10 shipped `add_mcp_server`/`load_mcp_servers`/`remove_mcp_server` (`core/mcp_tools.py`) as
-tested, uncalled library functions. This card's entire job is to give them a CLI --
-`cli/_mcp.py`'s `_servers_list`/`_servers_add`/`_servers_remove`, dispatched from `run_mcp`. This
-module is pure presentation: it validates flags and calls the existing `core/mcp_tools.py`
-functions unchanged. It never talks to a remote server and never touches `core/tools.py` or any
-built-in tool registration -- see `TestServersCliNeverReachesTheToolboxOrCoreTools` below, which
-is the guard this card's own instructions call out by name ("stay inside your ownership row").
+`add_mcp_server`/`load_mcp_servers`/`remove_mcp_server` (`core/mcp_tools.py`) are tested library
+functions; `cli/_mcp.py`'s `_servers_list`/`_servers_add`/`_servers_remove`, dispatched from
+`run_mcp`, give them a CLI. This module is pure presentation: it validates flags and calls the
+existing `core/mcp_tools.py` functions unchanged. It never talks to a remote server and never
+touches `core/tools.py` or any built-in tool registration -- see
+`TestServersCliNeverReachesTheToolboxOrCoreTools` below, which guards "stay inside your
+ownership row".
 
 What's pinned here:
 
@@ -293,12 +293,13 @@ class TestRunMcpServersDispatch:
 
 
 class TestServersCliNeverReachesTheToolboxOrCoreTools:
-    """This card's own ownership row: 'you may NOT touch core/tools.py at all,
-    nor any built-in tool registration... work through the public Tool/
-    ToolRegistry.register API, exactly as P19-10 did.' `docket mcp servers`
-    doesn't even need the public API -- it never builds a Tool at all, only
-    configuration -- so the bar here is stricter: cli/_mcp.py's servers
-    commands must not import core.tools or a toolbox handler function at all.
+    """The ownership row: you may NOT touch core/tools.py at all, nor any
+    built-in tool registration -- work through the public Tool/
+    ToolRegistry.register API, exactly as the MCP client itself does.
+    `docket mcp servers` doesn't even need the public API -- it never builds
+    a Tool at all, only configuration -- so the bar here is stricter:
+    cli/_mcp.py's servers commands must not import core.tools or a toolbox
+    handler function at all.
 
     This mirrors test_p19_10_mcp_client.py's TestOnlyTheInertResultTypeIsImported
     for this card's own file.

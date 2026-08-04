@@ -63,16 +63,13 @@ eval_run_task() {
 
   # Parse the JSON response with Python for robustness.
   #
-  # Shape reconciled against the ACL (edges/adapters/openclaw.py's
-  # _extract_run_output/_extract_run_cost, confirmed against a live daemon
-  # v2026.2.23 response — see tests/python/test_dispatch.py's
-  # _REAL_DAEMON_RESPONSE, CD-0): text lives at result.payloads[0].text, and
-  # token usage lives at result.meta.agentMeta.usage (this harness used to
-  # read top-level payloads/meta and a lastCallUsage key that doesn't exist
-  # in the real shape — Phase 18 L-2 fixed the drift). Note usage.total is a
-  # TOKEN count (input+output+cacheRead), not a USD figure — the daemon has
-  # no USD cost field (see the ACL's agent_run/TurnResult docstring); it is kept
-  # here only as a relative, same-units cost-proxy across eval runs.
+  # Confirmed against a live daemon response: text lives at
+  # result.payloads[0].text, and token usage lives at
+  # result.meta.agentMeta.usage (not top-level payloads/meta, and not a
+  # lastCallUsage key -- neither exists in the real shape). Note usage.total
+  # is a TOKEN count (input+output+cacheRead), not a USD figure — the daemon
+  # has no USD cost field; it is kept here only as a relative, same-units
+  # cost-proxy across eval runs.
   local parsed
   parsed=$(python3 -c "
 import json, sys
