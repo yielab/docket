@@ -77,7 +77,59 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ☑ CURRENT STATE (2026-08-04) — the board is CLEAR. Wave 13 closed; nothing is scheduled
+## ▶ ACTIVE — WAVE 16: Phase 22, the control-plane write API (opened 2026-08-04)
+
+**Read [ROADMAP.md](ROADMAP.md) §PHASE 22 before claiming anything here.** The phase exists because
+a real consumer (**Tack**, holding the plan of record) is blocked on each card by name. The design
+rule governs every card:
+
+> **Expose what `core/` already does; add no new behaviour.** Every card is a `serve.py` route over
+> an existing `core/` function, with the same Bearer auth, the same policy hooks and the same audit
+> entries the CLI path produces. **A card that starts designing new semantics has stopped being this
+> phase.**
+
+### Scheduling — ownership is by HTTP method, not by file
+
+`serve.py` is this wave's hotspot the way `core/dispatch.py` was Phase 14's and `core/tools.py` was
+Phase 19's. Five of six cards add a branch to the *same two* methods, so the split is:
+
+| Round | Card(s) | Owns | Must not touch |
+| --- | --- | --- | --- |
+| 1 | P22-1 + P22-4 | `serve.py::do_POST`, `core/dispatch.py::enqueue_task`, `core/approval.py` | `do_GET`, `core/trace.py` |
+| 1 | P22-2 + P22-3 | `serve.py::do_GET` | `do_POST`, `core/trace.py`, `core/dispatch.py` |
+| 1 | P22-6 | `core/trace.py`, `cli/_trace.py`, `config.py` | `serve.py` entirely |
+| 2 | P22-5 | provisioning extraction + `do_POST` | — (runs alone) |
+
+**Why P22-5 is alone and second.** It is the card ROADMAP already flags as the one that can grow, and
+a measurement confirms it: `serve.py` imports `docket.config`, `docket.core.*` and `docket.edges.*`
+and **never `docket.cli`** — but the real provisioning path is `cli/_pod.py::build_pod_from_blueprint`
+→ `build_pod` → `cli/_agents.py::_provision_agent`, which prints through `ui.py`. So `POST /pods` is
+not a route over an existing `core/` function; it is *an extraction into `core/` first*, then a thin
+route. That makes it structurally different from the other five and it gets its own round.
+
+### Cards
+
+- **P22-1 · `POST /tasks/<project>`** — TODO · S · *blocks Tack Phase 35*
+- **P22-2 · `GET /tasks/<project>`** — TODO · XS
+- **P22-3 · `GET /traces/<project>?since=`** — TODO · S · *P20-3's deferral trigger firing*
+- **P22-4 · `channel="tack"` on approval decisions** — TODO · XS
+- **P22-5 · `POST /pods`** — TODO · M · *blocks Tack Phase 37* · **round 2, alone**
+- **P22-6 · Trace retention** — TODO · S · *un-defers P20-3's retention half*
+- **P22-7** — not a card. Recorded in ROADMAP for its consequence (agents cannot self-report onto
+  Tack's board until MCP-in-a-live-turn lands).
+
+### Two constraints this wave will be judged on
+
+1. **`enqueue_task` hardcodes `source="operator"` and therefore `trusted=True`.** P22-1's body names
+   a `trusted` field. Threading it is acceptable *only* as an optional parameter wired to the
+   `trusted=` argument `core/policy.py::policy_eval_detail` already takes — with a default that
+   leaves the CLI and MCP paths byte-identical. Inventing a new trust concept is out of phase.
+2. **Retention must not touch `audit.log`.** Telemetry is sampled and lossy by design; an audit log
+   must be neither. Conflating them is the mistake Phase 20's design rule already names.
+
+---
+
+## ☑ Wave 13 close (2026-08-04) — Phases 19, 20 and 21 all shipped
 
 **Every scheduled card is done.** Phase 19 (13 cards), Phase 21's surviving two (P21-1, P21-5) and
 Phase 20's surviving one (P20-2) have all shipped. P20-4 was dispatched and came back a **no-op** —
@@ -88,11 +140,10 @@ ROADMAP's P20-4 card; the lesson is that a gap list is a claim about the tree an
 byte-identical, **25 specs** valid / 0 warnings, 37 commands, ~26,700 lines, `ruff` + `ruff format`
 + `mypy --strict` (73 files) clean, `metrics.py --check` in sync across all five claims.
 
-**Do not start the next thing from this file.** Everything remaining in the plan was deliberately
-**cut or deferred by D-24 with a named trigger** — OpenTelemetry, streaming, the tenant axis, fleet
-trace query + retention, egress lockdown, the build-agent profile. A trigger firing is a fact about
-the world (a second operator, a disk that fills, a cross-pod question asked twice), not a queue to
-work down. The right next move is to reassess against a real product, not to re-claim cut scope.
+**What was cut stays cut.** OpenTelemetry, streaming and the tenant axis were cut by D-24 and Phase
+22 does not reopen them. The two D-24 deferrals Phase 22 *does* pick up are picked up because a
+trigger fired (P22-3) or the reasoning genuinely changed (P22-6) — not because the list was
+re-litigated. Egress lockdown and the build-agent profile remain deferred with their triggers intact.
 
 ## ☑ WAVE 14 — the cleanup wave (2026-08-04). Docs re-trued, dead code gone, archaeology stripped
 

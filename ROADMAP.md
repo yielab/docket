@@ -11,7 +11,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
 
 **Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **The whole program is COMPLETE ☑** — Phases 14, 15, 16, 17 and 18 all closed, the last three branches merged 2026-07-31 (see the `☑ Wave 7 shipped` record in the Phase 16 section, which carries every wave's history). 38 cards across 7 waves (R-1…R-8, G-1…G-6 + G-4b, W-1…W-8 + W-5b, C-1…C-5, L-1…L-6, CL-1…CL-3). `platform` green at close: **1,735 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical, 21 specs / 0 warnings, 37 commands, ~22,880 lines, `ruff` + `ruff format` + `mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims, and the dependency floors measured and CI-enforced for the first time. TODO.md now holds only the closing record and the carried-forward gaps; every wave's per-card history lives in the Phase 16 section here. Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
-**Last Updated:** 2026-07-30
+**Phase 22 added 2026-08-04 — Control-plane write API for an external plan-of-record.** The read-API consumer the Phase 11 backlog ruling always assumed ("docket feeds a dashboard rather than building a worse one") now exists and is ours: **Tack** (a sibling single-binary Rust/SolidJS project manager) is building an agent-factory control center on top of docket, holding the plan of record (roadmap, board, sprints, dependency DAG) while docket executes. Five small cards close the CLI/HTTP asymmetry — enqueue, queue read, cursor'd trace read, an approval channel label, and pod provisioning. Tack's Phases 33–38 and its per-agent task cards live in that repo's `docs/book/src/roadmap.md` and `TODO.md`. See §PHASE 22 below.
+**Last Updated:** 2026-08-04
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -86,66 +87,102 @@ Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned
 
 ## 1. Mission (do not lose this)
 
-Make docket-cli **trustworthy and honest** before adding any new capability. docket is a thin
-opinionated wrapper around the OpenClaw gateway; its job is to manage multi-project agent
-workspaces with correct state, real cost control, and zero features that lie about what they do.
+> **Rewritten 2026-08-04.** The original mission ("docket is a thin opinionated wrapper around the
+> OpenClaw gateway") was authored in Phase 0 and was true until **D-19**, which took the runtime.
+> It is preserved in git history; leaving it here would have told every new agent to protect a
+> boundary that no longer exists. The *honesty* half of it is the part that survived, and it is
+> restated below unchanged in spirit.
 
-**The final approach in one sentence:**
-> Fix correctness → enforce cost → finish the half-done refactor and resolve/remove the placebo
-> "smart routing" → park experiments. Lean on OpenClaw's native features; delete docket code that
-> duplicates them.
+**docket runs teams of autonomous coding agents across multiple projects, and governs what they are
+allowed to do.** Trustworthy and honest before any new capability: correct state, real cost control,
+and **zero features that lie about what they do.**
 
-**Out of scope (do NOT do these now):** new channels, new agent types, rewriting in another
-language, replacing OpenClaw, adding features not listed here. If tempted, stop and add it to
-§7 "Backlog" instead.
+**The approach in one sentence:**
+> **Own the loop, rent the protocols.** docket owns the turn loop, the tool registry, all three
+> policy hooks, approvals, audit and sessions — because whoever owns the loop owns the interception
+> points. It rents only protocols: an OpenAI-compatible HTTP endpoint, MCP for pluggable tool
+> servers, containers for isolation.
+
+**The three honesty rules that have the most teeth**, because each was earned by catching a false
+claim already in the tree:
+
+1. **Token counts are measured; dollars are estimated.** `core.llm.TokenUsage` is real. There is no
+   recorded dollar spend — `DocketDriver` reports `cost_usd = 0.0` by design. Never relabel an
+   estimate as spend, and never project dollar savings.
+2. **Context budgets use a characters-per-token approximation.** Never claim exact token counts
+   from them.
+3. **A capability is what the code does, not what the docs say.** The known-true limits are listed
+   in [CLAUDE.md](CLAUDE.md) and must not be overclaimed — most recently, both README and
+   `docs/commands.md` claimed MCP tools were callable inside a live turn while
+   `DocketDriver.registry_factory` still defaulted to `builtin_registry`. **The spec had it right;
+   the marketing prose did not.**
+
+**Out of scope (do NOT do these now):** anything in the hosted-SaaS half — multi-tenancy, authn for
+external callers, queues/workers, streaming, per-customer quota (see D-20 and D-22). Also: a
+dashboard of docket's own (Phase 11 ruling, reaffirmed by Phase 22), and rewriting in another
+language. If tempted, stop and add it to §7 "Backlog" instead.
 
 ---
 
 ## 2. Ground truth about the system (read once)
 
-> **Post-M6 (Python core).** Phases 0–9 below were authored against the **Bash** codebase;
-> their file paths (`lib/**/*.sh`) refer to the pre-cutover tree, now **deleted**. They are
-> retained verbatim as completed-work record. **For any new work (Phase 10+), the ground truth
-> is the Python package described here**, and the canonical source is [CLAUDE.md](CLAUDE.md).
+> **Re-trued 2026-08-04, post-D-19.** Phases 0–9 were authored against the **Bash** codebase; their
+> file paths (`lib/**/*.sh`) refer to the pre-cutover tree, now deleted. Phases 10–18 were authored
+> against a Python core that still wrapped an external daemon behind an Anti-Corruption Layer —
+> **that layer is also gone.** Both are retained verbatim below as completed-work record. **For any
+> new work the ground truth is what this section describes**, and the canonical source is
+> [CLAUDE.md](CLAUDE.md). Where a historical phase contradicts this section, this section wins.
 
-- **Language/stack:** Python 3.11+ (`docket` package under `src/docket/`), Typer + Rich + Pydantic + pydantic-settings + filelock. Installed via `uv`/pip; `bin/docket` is a thin Bash launcher that execs `python -m docket "$@"`. Gated by `ruff` + `mypy --strict` + `pytest`.
-- **Three layers, dependencies point inward only** — `cli/` → `core/` → `edges/`. A CLI command may call core and edges; core never imports cli; **nothing imports OpenClaw config except the ACL**.
-  - `cli/` ([src/docket/cli/](src/docket/cli/)) — Typer commands; the only layer that talks to the user. `__main__.py` maps aliases/removed-commands then hands to the Typer `app` in `cli/__init__.py`. Larger groups split out (`_install.py`, `_doctor.py`, `_gates.py`, `_trace.py`, …).
-  - `core/` ([src/docket/core/](src/docket/core/)) — Pydantic models + pure services: `models.py` (`AgentMeta`, `AgentKind`, `ModelSource`), `oc_models.py`, `policy.py`/`provider.py`/`models_policy.py` (role→model), `sync.py`, `security.py`, `approval.py`, `audit.py`, `trace.py`, `utils.py`.
-  - `edges/` ([src/docket/edges/](src/docket/edges/)) — the only side-effecting layer: `store.py` (atomic, filelocked, 0600 JSON I/O — the single chokepoint for docket-owned JSON), `adapters/openclaw.py` (**the ACL**), `adapters/system.py` (typed systemctl/docker/git wrappers, degrade gracefully).
-- **Two config sources that must stay in sync** (via the ACL + `core/sync.py`):
-  - `~/.openclaw/openclaw.json` — the OpenClaw daemon's truth. **`agents` has subkeys `defaults` and `list`** (an array of `{id, model, workspace, …}`). Reached **only** through `edges/adapters/openclaw.py`.
-  - `~/.openclaw/workspaces/projects/<id>/.docket-meta.json` — docket's per-agent truth (`kind`, `type`/`role`, `name`, `codebase`, `stack`, `model`, `modelSource`, `sessionKey`, `projectKey`, …). Read/written **only** through `edges/store.py`. Specialists have one too (`kind: specialist`, under `~/.openclaw/workspaces/<role>/`).
-- **The ACL invariant (hard boundary):** `edges/adapters/openclaw.py` is the **only** module that knows OpenClaw's file formats (`openclaw.json`, auth-profiles, provider config). No other module may import or reference those formats. Extend the ACL; never reach around it.
-- **Tests** (`tests/`):
-  - `tests/python/` — pytest suite (416 tests). `uv run pytest`.
-  - `tests/golden/` — byte-parity golden suite (`bash tests/golden/run.sh verify-all`, 17 cases) — the net that catches a behaviour change.
-  - `tests/evals/` — specialist-role eval stubs (non-blocking). CI gates on `ruff check` + `ruff format --check` + `mypy src` + `pytest` + goldens.
+- **Language/stack:** Python 3.11+ (`docket` package under `src/docket/`), Typer + Rich + Pydantic + pydantic-settings + filelock. Installed via `uv`/pip; `bin/docket` is a thin Bash launcher that execs `python -m docket "$@"`. Gated by `ruff` + `mypy --strict` + `pytest`. **There is no daemon and no `systemctl` dependency.**
+- **Three layers, dependencies point inward only** — `cli/` → `core/` → `edges/`. A CLI command may call core and edges; core never imports cli, never imports `ui.py`, and never prints.
+  - `cli/` ([src/docket/cli/](src/docket/cli/)) — Typer commands; the only layer that talks to the user. `__main__.py` maps aliases/removed-commands then hands to the Typer `app` in `cli/__init__.py`. Larger groups split out (`_install.py`, `_doctor.py`, `_gates.py`, `_trace.py`, `_pod.py`, …).
+  - `core/` ([src/docket/core/](src/docket/core/)) — Pydantic models + pure services. The load-bearing ones: `agent_loop.py` (**the turn loop**), `tools.py` (**the chokepoint**), `llm.py` (the chat port), `session.py`, `dispatch.py` (the pod state machine), `fleet.py`, `policy.py`/`security.py`/`approval.py`/`audit.py`/`trace.py`, `archetypes.py`/`blueprints.py`/`pod.py`, `handoff.py`/`context.py`, `runtime_driver.py`.
+  - `edges/` ([src/docket/edges/](src/docket/edges/)) — the only side-effecting layer: `store.py` (atomic, filelocked, 0600 JSON I/O — the single chokepoint for docket-owned JSON) and `adapters/` (`llm.py` — the only module that knows the OpenAI-compatible wire format; `toolbox.py` — the built-in tool handlers, deliberately holding **no** policy; `docket_runtime.py`, `telegram.py`, `fetch.py`, `mcp_client.py`, `system.py`).
+- **One state root, one writer per file.** Everything docket owns lives under `~/.docket/` (`DOCKET_HOME`): `fleet.json`, `secrets.json`, the `docket-*.json` registries, `audit.log`, `traces/`, `sessions/`, `approvals/`, `policies/`, `workspaces/`. Per-agent facts live in `.docket-meta.json` in each workspace. **These are not duplicated** — unlike the pre-Phase-19 dual-source world there is no drift to detect, and no sync step.
+- **The two invariants that replaced the ACL invariant**, both machine-enforced:
+  - **Every tool call goes through `core/tools.py`'s dispatcher**, where `pre_input`, `pre_tool_call` and `pre_output` all evaluate. A second execution path is a hole. Enforced by an AST test (`tests/python/test_tool_registry.py::test_only_the_chokepoint_imports_the_handler_module`).
+  - **Docket-owned JSON goes through `edges/store.py`.** Append-only JSONL (`core/trace.py`, `core/audit.py`) writes directly, per the documented **D-12** exemption.
+- **Tests** (`tests/`) — the counts here drift; `uv run python scripts/metrics.py --check` is the guard that fails CI when a README or doc number stops matching the tree. **Fix the claim, never the guard.**
+  - `tests/python/` — the pytest suite. `uv run pytest`. Files are named by **subject**, not by card id.
+  - `tests/golden/` — byte-parity golden suite (`bash tests/golden/run.sh verify-all`) — the net that catches a behaviour change. **Never regenerate a golden to hide one.**
+  - `scripts/validate-specs.sh` — the spec suite, CI-blocking. CI also runs a `floors` job that resolves the **lowest** versions `pyproject.toml` permits: two of six advertised bounds were false when first measured, so do not move a floor without re-measuring.
 
 ---
 
 ## 3. Conventions (follow exactly)
 
-> Python-core conventions (Phase 10+). The Bash-era rules below this list are preserved inside the
-> historical phases; do not apply them to new Python work.
+> Current conventions. The Bash-era and ACL-era rules are preserved inside the historical phases;
+> do not apply them to new work.
 
 - **Typed, gated:** `ruff check .`, `ruff format --check .`, `mypy src` must all pass. No new `# type: ignore` without a reason.
-- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600), except append-only JSONL logs (`core/trace.py`, `core/audit.py`), which write directly (D-12); `openclaw.json` / auth-profiles / provider config go **only** through the ACL ([edges/adapters/openclaw.py](src/docket/edges/adapters/openclaw.py)).
-- **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no file-format knowledge.
-- **Shell-out invariant scope (D-13):** every `openclaw`/`git`/`docker`/`systemctl` shell-out funnels through `edges/adapters/openclaw.py` or `edges/adapters/system.py` — no other module invokes those four binaries directly. Other shell-outs (`bash` in `cli/_eval.py`, `tail -f` in `cli/_trace.py`, `$EDITOR` in `cli/__init__.py` `cmd_edit`, `python --version` in `cli/_install.py`) are CLI-only, one-off, and out of scope for this invariant — they stay where they are.
-- After any change to `openclaw.json`, restart the gateway **once** via `system.restart_gateway()` ([edges/adapters/system.py](src/docket/edges/adapters/system.py)); it degrades gracefully on non-systemd hosts.
+- **Never write JSON by hand** — docket-owned JSON goes through [edges/store.py](src/docket/edges/store.py) (atomic, filelocked, 0600). Append-only JSONL logs (`core/trace.py`, `core/audit.py`) write directly; that is the **D-12** exemption and the only one.
+- **Respect the layer rule:** `cli/` → `core/` → `edges/`, inward only. `core/` has no Typer, no subprocess, no `ui.py`, no `print`.
+- **Shell-out invariant scope (D-13):** every `git`/`docker`/`bwrap`/`systemctl` shell-out funnels through [edges/adapters/system.py](src/docket/edges/adapters/system.py) — no other module invokes those binaries directly, and it degrades gracefully when one is missing. The sandboxed `bash` tool is not an exception: it reaches the same module through the chokepoint. Remaining CLI-only one-offs (`tail -f` in `cli/_trace.py`, `$EDITOR` in `cli/__init__.py`'s `cmd_edit`, `python --version` in `cli/_install.py`) are out of scope and stay where they are.
 - User-facing status goes through the Rich helpers in [ui.py](src/docket/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.
+- **Removed commands get a notice, not an unknown-command error** — `__main__.py`'s `_REMOVED` map. Precedent: `docket workflow` (D-16), `docket team` (D-11), `docket eval` (2026-08-04).
 - Permissions: workspace dirs `700`, files `600`.
-- Commit style: `Type: description` (`Add:`/`Fix:`/`Docs:`/`Refactor:`/`Test:`), detailed body. One task ≈ one commit. **Public repo** — scrub real client names, `/home/<user>` paths, and usernames before committing.
+- Commit style: `Type: description` (`Add:`/`Fix:`/`Docs:`/`Feat:`/`Refactor:`/`Chore:`/`Test:`/`Merge:`/`Remove:`), detailed body. One task ≈ one commit. **No AI/assistant attribution trailers of any kind; ASCII only.** **Public repo** — scrub real client names, `/home/<user>` paths, and usernames before committing.
 - **Every code task adds or updates a test** (pytest; add a golden case when output changes).
+- **Comments: keep rationale, delete archaeology.** Delete card ids, phase numbers, dates, provenance, and narration of what a deleted thing used to do — git history and this file hold all of it. Keep any sentence whose loss would let someone introduce a bug. **When in doubt, keep.**
+- **A guard is not evidence until you have seen it fail.** Plant the drift, watch it go red, restore, watch it go green. Guards that verified the wrong set have shipped here more than once.
 
 ---
 
 ## 4. Definition of Done (per task)
 
-A task is done when: (a) acceptance criteria all pass, (b) a test covers the change, (c)
-`./tests/run-all-tests.sh` is green, (d) `DEBUG=1 docket doctor` runs without regression, (e)
-committed with a conventional message. Tick the box in §5 and move on.
+A task is done when:
+
+1. Acceptance criteria all pass, and a pytest covers the change.
+2. `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest` is green.
+3. `bash tests/golden/run.sh verify-all` is byte-identical — **or** the card deliberately changed CLI surface and the regenerated diff is explained line by line.
+4. `bash scripts/validate-specs.sh` is green and the card's own spec carries a version bump, a changelog entry, and a **Status line matching what actually shipped**.
+5. `uv run python scripts/metrics.py --check` is in sync.
+6. Committed with a conventional message, privacy-scrubbed.
+
+Two rules that override any of the above when they conflict:
+
+- **Never edit `scripts/metrics.py` or `scripts/validate-specs.sh` counting logic to make numbers agree.** Fix the claim, never the guard.
+- **Prove "pre-existing" before claiming it.** Check out the base commit in a clean worktree — a `git stash` does not restore deleted files or a changed environment, so it is not a baseline. In an agent worktree run `uv sync --all-extras` **first**: a missing `anyio` produces three phantom mypy errors in `mcp_client.py` that are not real, and five agents have now reported them as pre-existing failures.
 
 ---
 
@@ -154,7 +191,25 @@ committed with a conventional message. Tick the box in §5 and move on.
 > Folded from the removed audit/migration docs. These outlive any single phase; a PR that violates
 > one needs an explicit decision entry in §6, not a silent exception.
 
-### Build vs. wrap: docket wraps OpenClaw, decisively — but wraps *cleanly*
+### Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19**
+
+> **Read this box before the section it introduces.** D-19 (2026-07-31) **took the runtime**. docket
+> now owns the turn loop, the tool registry, all three policy hooks, approvals, audit and sessions,
+> and rents protocols only. The ACL is gone; so is the daemon. The section below is kept **because
+> the reasoning was sound and the trigger it named is exactly what fired** — not as live guidance.
+>
+> **What actually forced the reversal, and it is the durable lesson:** docket shipped four
+> `pre_tool_call` policy templates that had **never once been evaluated**, because the daemon owned
+> the inside of a turn. The wrap boundary was not merely limiting the roadmap; it was making the
+> product's central claim false. *Whoever owns the loop owns the interception points* — which is
+> also why agent frameworks (LangGraph/CrewAI/AutoGen) are rejected on principle: they own the loop,
+> and therefore the gates.
+>
+> **What survived the reversal, unchanged:** the "one typed port, one shipped driver" discipline
+> (`core/runtime_driver.py`, `DocketDriver` — **not** a plugin framework), no DI/ORM/event-bus,
+> boring typed Python, and the rule that a *second* driver needs a named trigger. The
+> anti-overengineering table below still governs, with its "one backend (OpenClaw)" row read as
+> "one runtime, ours".
 
 - **The moat is the control plane, not the engine.** OpenClaw owns the *execution plane* (the agent
   loop, LLM/provider calls + model routing, tool execution + sandbox, the gateway, session/channel
@@ -2073,26 +2128,139 @@ assumption that quietly wrecks a roadmap.
 
 ---
 
-## 7. Backlog (deferred indefinitely)
+## PHASE 22 — Control-plane write API for an external plan-of-record (Tack) (planned, 2026-08-04)
 
-- New channel auth flows (Discord OAuth, Slack app install) — OpenClaw owns this entirely; docket just writes bindings.
-- Rewrite in Go/TS — no benefit until docket reaches complexity that Bash can't handle.
-- Multi-tenant agent sharing — requires identity layer not present in OpenClaw today.
-- **A full web UI / dashboard of our own** (deferred from Phase 11) — the OpenClaw space already has
-  4–5k★ mission-control UIs; docket competes on the *write/governance* side and **feeds** them via a
-  read API (Phase 11 CD-8) rather than building a worse dashboard.
-- **microVM / gVisor workspace isolation** (deferred from Phase 11) — competitors running *untrusted*
-  code use Firecracker (E2B/Vercel) or gVisor (Modal); docket's optional Docker shares the host
-  kernel. Revisit only if docket targets untrusted-code execution; large lift.
-- **Multi-host / remote provisioning** (deferred from Phase 11) — manage agents across more than one
-  daemon/host (OpenHands-style). The ceiling on the "fleet" claim; defer until single-host value is
-  saturated.
-- **Cross-runtime (non-OpenClaw) adapters** (deferred from Phase 11) — Fleet/builderz-labs span
-  Claude Code/Codex/CrewAI/etc. A trend to watch, not a near-term bet; docket stays OpenClaw-anchored.
+**What triggered this.** The backlog has said since Phase 11 that docket **does not build a
+dashboard of its own** — it "competes on the *write/governance* side and **feeds** them via a read
+API". That consumer now exists and is ours: **Tack** (a sibling repository, the single-binary
+Rust/SolidJS project manager) is adding an agent-factory control center — Phases 33–38 in its
+roadmap, with executable cards in its `TODO.md`. Tack holds the plan of record (roadmap, board,
+sprints, dependency DAG, per-project vocabulary); docket executes. A reconciler on Tack's side
+polls docket and folds runs, approvals, traces and metrics back onto the board.
+
+This phase is docket's half of that contract. It is deliberately **five small cards**, and it is
+scored against §4.5 and D-24 the same way everything else is: *does a measured need in this system
+ask for it* — here, yes, because a real consumer is blocked on each card, by name, today.
+
+**What already exists and must not be rebuilt.** The read side is essentially complete:
+`/status.json`, `/health`, `/metrics`, `/runs`, `/runs/<id>`, `/approvals`, plus
+`POST /dispatch/<project>` and `POST /approvals/<token>`. Tack's Phases 33, 34 (partly), 36 and 38
+consume that surface **unchanged** and ship without any docket change at all. What follows is only
+the asymmetry: things reachable from the CLI or MCP but not over HTTP.
+
+**The design rule for this phase: expose what `core/` already does, add no new behaviour.** Every
+card below is a `serve.py` route over an existing `core/` function, with the same Bearer auth, the
+same policy hooks and the same audit entries the CLI path produces. A card that starts designing new
+semantics has stopped being this phase.
+
+### Cards (Phase 22)
+
+**P22-1 · `POST /tasks/<project>` — enqueue over HTTP** — *TODO · S · **blocks Tack Phase 35***
+The gap that matters most: **there is no HTTP way to enqueue a task.** `POST /dispatch/<project>`
+dispatches an *existing* queue (`effective_pipeline` → `resolve_variables` → `dispatch_pod`);
+creation lives only in `core/dispatch.py::enqueue_task`, reachable from the CLI (`docket pod X
+delegate`) and the MCP `delegate` tool. Body `{description, priority, trusted}` → `enqueue_task` →
+`{taskId}`. Must honour the `pre_input` policy gate exactly as the CLI path does: a `block` verdict
+returns 4xx naming the policy id, and a `require_approval` verdict returns the task in
+`waiting_approval` with its token — not a 200 that pretends the task is queued.
+
+**P22-2 · `GET /tasks/<project>` — the pod queue as JSON** — *TODO · XS*
+`read_tasks(project)` already returns exactly the normalized shape. A route over it, Bearer-gated.
+Tack shows queue depth per pod in its fleet view; today that number is only reachable by shelling
+out.
+
+**P22-3 · `GET /traces/<project>?since=<cursor>` — cursor'd trace read** — *TODO · S*
+**This is P20-3's trigger firing, and it should be recorded as such rather than quietly
+re-litigated.** P20-3 (fleet trace query) was deferred by D-24 on the reasoning that "`grep` over
+JSONL is adequate at this fleet size" — which was true for a human operator and is false for a
+programmatic consumer that needs to resume from where it stopped. Cursor-based, returning the JSONL
+events verbatim. Do **not** build the fleet-wide query UI P20-3 described; one project, one cursor,
+raw events out. Tack does the aggregation, which is the whole point of feeding a consumer instead of
+building a dashboard.
+
+**P22-4 · `channel="tack"` on approval decisions** — *TODO · XS*
+`POST /approvals/<token>` hardcodes `channel="http"`. Accept an optional channel label from a
+recognised set and record it. Without this, every approval granted from Tack's board is
+indistinguishable in the audit chain from a CI job's — and the audit chain's whole value is that its
+provenance is honest. Approvals are already the one place docket tags the channel; this keeps that
+true as a fifth surface appears.
+
+**P22-5 · `POST /pods` — provisioning over HTTP** — *TODO · M · **blocks Tack Phase 37***
+`docket add` is CLI-only. Tack's "one click creates a product" flow needs `{project, path,
+blueprint, pod, budget, verifyCmd}` → the pod roster. **This is the one card here that can grow, and
+it should be watched:** provisioning touches workspace creation, port-range and scratch allocation,
+git worktrees and the startup contract. Constraint — it calls the same `core/` provisioning path
+`cli/_agents.py` calls, and adds no options that the CLI does not already have. If it starts
+growing its own flags, stop and reconsider. A partial failure must leave nothing behind; Tack rolls
+back its own project on a non-2xx, and cannot roll back a half-created pod for us.
+
+**P22-6 · Trace retention** — *TODO · S*
+Un-defers the retention half of P20-3, and the reasoning has genuinely changed rather than merely
+been re-argued: once Tack durably ingests trace events (P22-3), docket's JSONL becomes a cache
+rather than the only copy, which makes deleting it **safe** rather than lossy. Bounded by age, with
+the audit log explicitly out of scope — telemetry is sampled and lossy by design, an audit log must
+be neither, and conflating them is the mistake Phase 20's design rule already names.
+
+**P22-7 · MCP tools in a live turn** — *not new scope; recorded for its consequence*
+The known defect (CL-wave record: `load_mcp_tools` is never called, `DocketDriver.registry_factory`
+defaults to `builtin_registry`) means **docket's agents cannot call Tack's MCP server from inside a
+turn**, so they cannot self-report progress onto the board. Tack's design deliberately does not
+depend on this — its reporting comes from the dispatch lifecycle (runs + traces), and its
+`orch_tasks` link table makes agent self-reporting a drop-in the day the wire lands. Recorded here
+so the dependency is visible, not to re-card work that is already tracked.
+
+### What this phase does *not* do
+
+- **No dashboard.** Unchanged from the Phase 11 backlog ruling. Tack renders; docket serves data.
+- **No push/webhook to Tack.** Tack polls. Pull survives docket restarts, missed deliveries and Tack
+  downtime with no queue and no replay logic on either side. Revisit only if a measured latency
+  complaint appears — one poll interval (10s default) has not produced one.
+- **No auth model change.** Same single Bearer token, same 0600 token file. Tack stores it
+  write-only, the way it already stores its S3 secret.
+- **No tenant axis.** D-22/D-24 stand. Tack is one operator's control center, not a tenant.
+
+**Definition of done:** Tack's Phase 35 sprint dispatch drives a real pod through Lead → Implementer
+→ Reviewer → Tester and the card lands in Done by itself; a Tack-granted approval shows up in
+`docket audit verify` tagged `channel="tack"`; `docket list` and Tack's fleet view agree after a
+wizard-provisioned product.
 
 ---
 
-## 8. How to start (current — Phases 14–18 COMPLETE; Phase 19 in flight on the `platform` branch, wave 10 ready)
+## 7. Backlog (deferred indefinitely)
+
+> **Re-trued 2026-08-04.** Three entries here deferred work *to a daemon docket no longer has*, and
+> one deferred the read API that Phase 11 promised and Phase 22 is now finishing. Corrected below;
+> the originals are in git history.
+
+- **New channel auth flows (Discord OAuth, Slack app install)** — docket owns its channels now
+  (`core/telegram.py` is docket's own approval channel, not a daemon's prompt), so this is real work
+  rather than someone else's. **Trigger:** an operator who will not use Telegram. One channel that
+  audit-logs honestly beats three that half-work.
+- **Rewrite in Go/Rust as a single binary** — reserved, not planned. Revisit **only** if
+  zero-runtime-deps single-artifact distribution becomes a hard product requirement. Python is the
+  destination until then (see §0).
+- **Multi-tenancy** — **CUT, not deferred** (D-22, reaffirmed by D-24 and by Phase 22). The bet is
+  that docket serves *products*, and each product serves its own customers; the substrate is a
+  library a product embeds, and the product owns its serving layer. **Trigger if the bet is wrong:**
+  docket itself serving more than one end customer from one host. Retrofitting the tenant key is
+  expensive — this is a genuine bet, not a free cut.
+- ~~**A full web UI / dashboard of our own**~~ — **the ruling stands; the consumer arrived.** docket
+  competes on the *write/governance* side and **feeds** a dashboard rather than building a worse one.
+  Phase 11 shipped the read half (CD-8); **Phase 22 ships the write half** for an external
+  plan-of-record. docket still renders nothing.
+- **microVM / gVisor workspace isolation** (deferred from Phase 11) — competitors running *untrusted*
+  code use Firecracker (E2B/Vercel) or gVisor (Modal); docket's optional Docker/bwrap shares the host
+  kernel. **Trigger:** docket targeting untrusted-code execution. Large lift.
+- **Multi-host / remote provisioning** (deferred from Phase 11) — manage agents across more than one
+  host. The ceiling on the "fleet" claim; defer until single-host value is saturated.
+- **A second `RuntimeDriver`** (supersedes the old "cross-runtime adapters" entry) — the port exists
+  and is typed (`core/runtime_driver.py`), with exactly **one** shipped driver by design. It is a
+  port, **not** a plugin framework, and a second driver needs a named trigger — not a hypothetical
+  about breadth.
+
+---
+
+## 8. How to start (current — Phases 0–21 COMPLETE; **Phase 22 active**, wave 16 on the `platform` branch)
 
 Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
 and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
@@ -2100,44 +2268,60 @@ pre-release suffix (not a bare version) for as long as the project stays beta/ea
 README's warning banner; `v0.1.0` predates this convention and stays as-is.
 
 **The Platformization program (Phases 14–18) is COMPLETE** — 38 cards across 7 waves; see those
-phase sections, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5. Rationale audit:
-`internal-docs/agent-platform-audit-and-build-plan.md` (gitignored, local-only; the phase sections
-are self-contained without it). Each phase's board was cleared from TODO.md per convention.
+phase sections, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5. Each phase's board
+was cleared from TODO.md per convention.
 
-**The active work is Phase 19 — docket takes the runtime (D-19).** Waves 8–9 shipped seven cards
-(P19-1…P19-5, P19-9, P19-10): docket can now run a fully gated agent turn end to end. **It does not
-yet, because `core/dispatch.py` still resolves `OpenClawDriver`** — the cutover is the removal spine,
-P19-6 (wave 10) then P19-7 (wave 11). Do not report Phase 19 complete until
-`command grep -ril openclaw src/` is clean.
+**Phase 19 — docket takes the runtime (D-19) — is COMPLETE.** All 13 cards shipped across waves
+8–11. The phase's own acceptance test (`command grep -ril openclaw src/` returning no live string
+literals) passes. docket owns the loop, the tool registry, all three policy hooks, approvals, audit
+and sessions, and rents protocols only. **The claim the phase existed to make true:** four
+`pre_tool_call` policy templates that had never once been evaluated are live, and Telegram is a
+**real** approval channel writing `channel="telegram"` to the hash-chained audit log.
 
-**The goal is now stated and it settled the open decisions (2026-07-31): a factory for agentic
-products.** That answers **D-20** (both — factory first, embeddable substrate second), confirms
-**D-21** (the package split, *packaging only*), **cuts D-22** (no tenant axis), re-scopes **D-23**
-(ship `fetch`, defer the lockdown), and produced **D-24**, the prioritization ruling that cut roughly
-half of Phases 20 and 21 — including OpenTelemetry, which had been recommended hours earlier. Read
-D-20 and D-24 before scoping anything in Phase 20 or 21. **The live schedule — waves 10 through 13,
-with a function-level ownership map — is the wave-10 block in TODO.md.**
+**Phases 20 and 21 are closed at their surviving scope.** D-24 cut roughly half of both — see §4.5's
+prioritization rule and the deferral triggers on each cut card. One card (P20-4) was dispatched and
+came back a **no-op**: the gap it was written against had already been closed and never re-trued.
+**A gap list is a claim about the tree and decays like one — re-verify before scheduling against it.**
 
-**Execution model from here: waves scheduled by file contention, not by phase number.** Phase 18 is
-marked independent of 15–17 (except L-5) and Phase 16 needs only Phase 14 plus G-1 for approval steps,
-so cards from Phases 15, 16 and 18 run concurrently. The scheduling rule Phase 14 taught us:
-`core/dispatch.py` is the contention hotspot (nine remaining cards touch it), so **at most one
-in-flight card may own it per wave** — cards with disjoint footprints merged cleanly in Phase 14,
-while the two that both edited `serve.py`'s dispatch call sites produced the phase's only dangerous
-merge. **Wave 3 ☑** (G-1 the dispatch owner, W-1, W-6, L-1, L-3, G-5) and **wave 4 ☑** (W-2 the
-dispatch owner, CL-1, L-6, W-3, W-7 — W-8 rode with W-2) are both merged; see the `☑ Waves 3–4
-shipped` record in the Phase 16 section. Four cards were pulled forward earlier with no Phase 14
-dependency (G-4, G-6, C-4, L-2 — see each card's note). **Wave 5 ☑** (W-5 the dispatch
-owner, CL-2, W-4, G-4b, L-4) completed Phase 16; waves 6–7 closed Phases 15, 17 and 18. The per-card
-boards, blockers and carried-forward gaps live in TODO.md.
+**The active work is Phase 22 — the control-plane write API.** The goal's third part: docket
+executes, and something else holds the plan of record. The board is the `▶ ACTIVE — WAVE 16` block
+in TODO.md. **Read the phase's design rule before scoping any card in it:** *expose what `core/`
+already does, add no new behaviour.*
 
-**The rule re-earned in Phase 19: when a file is hot, state ownership at *function* level.**
-`core/dispatch.py` was Phase 14's hotspot; `core/tools.py` is Phase 19's. Wave 9 ran three cards
-against it by giving P19-9 only `ToolContext` plus the `bash` registration, forbidding P19-10 the
-file entirely, and letting P19-5 import it unchanged — **zero code conflicts**. The one real conflict
-(`config.py`, two cards each appending a constants block) was resolved by keeping **both** blocks and
-then *importing the module* to assert nothing was lost, rather than reading the diff and assuming.
-Wave 10 carries the same map forward for four concurrent cards.
+**The goal, stated 2026-07-31 and unchanged: a factory for agentic products** — in three parts, in
+order. (1) The factory: docket itself, exists. (2) The embeddable substrate:
+`packages/docket-runtime/`, shipped by P21-1 — *if every product is agentic, the runtime is the
+common part of every product*. (3) The control-plane write API: Phase 22. That framing answered
+**D-20**, confirmed **D-21** (packaging only), **cut D-22** (no tenant axis), re-scoped **D-23**
+(ship `fetch`, defer the lockdown), and produced **D-24**. **What the goal explicitly does not buy:**
+the hosted-SaaS half — multi-tenancy, authn for external callers, queues/workers, streaming,
+per-customer quota. Conflating "embeddable library" with "hosted product runtime" is the failure
+mode D-20 exists to prevent.
+
+### Execution model: waves scheduled by file contention, not by phase number
+
+Four scheduling rules, each earned by a merge that went badly before it went well:
+
+1. **At most one in-flight card may own a hot file per wave** (Phase 14). `core/dispatch.py` was
+   that phase's hotspot; cards with disjoint footprints merged cleanly, while the two that both
+   edited `serve.py`'s dispatch call sites produced the phase's only dangerous merge.
+2. **When a file is hot, state ownership at *function* level** (Phase 19). `core/tools.py` was that
+   phase's hotspot; wave 9 ran three cards against it by giving P19-9 only `ToolContext` plus the
+   `bash` registration, forbidding P19-10 the file entirely, and letting P19-5 import it unchanged —
+   **zero code conflicts.** Wave 16 applies the same rule to `serve.py`, splitting ownership by HTTP
+   **method** (`do_GET` vs `do_POST`) across concurrent cards.
+3. **An index or roll-up table that several branches edit in parallel cannot be merged by picking a
+   side** (waves 3–4), because no side holds every branch's change. `specs/README.md`'s status
+   table, README's metric counts, a golden's command list: **regenerate from ground truth** — the
+   spec headers, the real CLI, the actual suite — and verify the diff. This caught real regressions
+   on three consecutive merges.
+4. **Resolve an append-only conflict by keeping both sides and then importing the module** to assert
+   nothing was lost (Phase 19's one real conflict: `config.py`, two cards each appending a constants
+   block). Do not read the diff and assume.
+
+Central files — `ROADMAP.md`, `TODO.md`, `README.md` and their metric counts — are **integrator-owned**.
+Card branches report what they shipped instead of editing the board; Phase 14 lost time to roll-up
+checkboxes and README test counts conflicting on nearly every merge.
 
 **A second scheduling rule, learned in waves 3–4 (keep it):** an index or roll-up table that several
 branches edit in parallel — `specs/README.md`'s status table, README's metric counts, a golden's
