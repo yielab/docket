@@ -1,7 +1,7 @@
 """Cutover guard: every command is ported — no `_not_ported` stubs remain.
 
-This file used to assert that un-ported commands exited 127. After M6 every
-command (including `install`) dispatches to Python, so the inverse is now the
+This file used to assert that un-ported commands exited 127. Every
+command (including `install`) now dispatches to Python, so the inverse is the
 invariant: the CLI module must contain zero `_not_ported(` call sites.
 """
 

@@ -1,9 +1,9 @@
 """Guard: no hardcoded Telegram chat IDs in tracked files (they stay dynamic).
 
-Telegram group/chat IDs are runtime data — they live only in
-``~/.openclaw/openclaw.json`` and reach docket through the ACL. A real ID once
-slipped into a test fixture and was published to the public repo; this scan makes
-that impossible to repeat silently.
+Telegram group/chat IDs are runtime data — they live only in docket's own
+``fleet.json`` bindings (``core/fleet.py``). A real ID once slipped into a
+test fixture and was published to the public repo; this scan makes that
+impossible to repeat silently.
 
 Rules:
 - ``src/`` must contain **no** Telegram-ID-shaped literal at all (the code reads
@@ -14,7 +14,7 @@ Rules:
 
 Scans **tracked** files only (``git ls-files``), so gitignored analysis notes that
 legitimately reference real IDs are out of scope. Sibling of
-``test_ch3_no_ui_in_core_edges.py`` / ``test_ch4_no_subprocess_in_core.py``.
+``test_no_ui_in_core_edges.py`` / ``test_no_subprocess_in_core.py``.
 """
 
 from __future__ import annotations

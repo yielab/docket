@@ -1,8 +1,9 @@
 """Memory runtime-contract + `docket add` UX-helper + arg parsing.
 
-Guards the fix for the failure where agents looped forever because the openclaw
-post-compaction audit demanded WORKFLOW_AUTO.md / memory/<date>.md that docket
-never created, and never learned their codebase path.
+Guards the fix for the failure where agents looped forever because the
+runtime's own post-compaction check demanded WORKFLOW_AUTO.md /
+memory/<date>.md that docket never created, and never learned their
+codebase path.
 """
 
 from __future__ import annotations

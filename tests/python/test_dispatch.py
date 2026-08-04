@@ -78,9 +78,9 @@ def _seed_pod(
 # There is no daemon-facing driver, no subprocess-backed `agent_run`, and no
 # daemon JSON shape to shell out to any more. The equivalent coverage lives
 # in `edges/adapters/llm.py`'s `OpenAIChatClient` (response parsing, see
-# test_p19_1_llm_port.py) and `edges/adapters/docket_runtime.py`'s
+# test_llm_port.py) and `edges/adapters/docket_runtime.py`'s
 # `DocketDriver` (env passed through to a tool call, see
-# test_p19_5_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
+# test_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
 # `test_on_spawn_is_accepted_and_ignored`).
 
 
@@ -126,11 +126,11 @@ class TestPipeline:
         types = [e["event_type"] for e in events]
         assert "session_start" in types
         assert types.count("tool_call") == 2
-        # W-5: 3, not 2 — lead's turn, implementer's turn, plus a third
+        # 3, not 2 — lead's turn, implementer's turn, plus a third
         # `tool_result` for the implementer's mechanical gate itself (no
         # `verifyCmd` set on this seeded pod, so it is the "skipped" outcome,
         # traced for parity with the "passed" case — see
-        # test_cd2_verify.py's TestDispatchVerifyGate for both outcomes).
+        # test_verify_gate.py's TestDispatchVerifyGate for both outcomes).
         assert types.count("tool_result") == 3
         assert "session_end" in types
 
@@ -180,11 +180,12 @@ class TestPipeline:
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
 
 
-# ── FD-0: pod port range / scratch dir reach the implementer hop's real env ──────
+# ── pod port range / scratch dir reach the implementer hop's real env ───────────
 
 
 class TestHopEnvInjection:
-    """completes P1: the implementer subprocess's actual env, not just TOOLS.md prose."""
+    """The pod's allocated resources reach the implementer subprocess's
+    actual env, not just TOOLS.md prose."""
 
     def test_hop_env_none_for_lead(self) -> None:
         assert _dispatch._hop_env("demo-lead", "lead") is None
@@ -261,7 +262,7 @@ class TestHopEnvInjection:
 
 
 class _ScriptedBackend:
-    """Replays a fixed script of `ChatResponse`s -- see test_p19_5_docket_driver.py
+    """Replays a fixed script of `ChatResponse`s -- see test_docket_driver.py
     for the identical pattern; redefined locally per this suite's convention
     of self-contained per-file test doubles rather than a shared fake."""
 
@@ -415,8 +416,8 @@ class _CrashOnRoleRunner:
 
 class _VerdictAwareRunner:
     """Like FakeDriver, but Reviewer/Tester hops carry a real verdict so a
-    full pod can finish `done` (R-4 parses the Reviewer's APPROVE/REQUEST-CHANGES
-    first line the same way FD-2 parses the Tester's PASS/FAIL)."""
+    full pod can finish `done` (the Reviewer's APPROVE/REQUEST-CHANGES first
+    line is parsed the same way the Tester's PASS/FAIL is)."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
@@ -562,12 +563,12 @@ class TestBlockedStaysBlocked:
         lead_id = _pod.pod.member_id("demo", "lead")
 
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
-        # R-5: the first cap breach also pauses the Lead, so a second dispatch
+        # The first cap breach also pauses the Lead, so a second dispatch
         # call is refused outright at claim time — task Two is never even
         # attempted (still "pending"). Clear the pause (what a real
         # `docket profile <lead> --resume`/`--budget` would do) so the second
         # call can claim and block it too, exercising the same
-        # `unblock_pod` contract the original (pre-R-5) test covered.
+        # `unblock_pod` contract the original test covered.
         _fleet.meta_set(lead_id, "paused", False)
         _dispatch.dispatch_pod("demo", runner=FakeDriver())
         tasks = _dispatch.read_tasks("demo")
