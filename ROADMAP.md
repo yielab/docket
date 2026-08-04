@@ -2156,6 +2156,36 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-04 (wave 15) — the last legacy sweep, and one real bug.** Four cards; full per-card
+  record in TODO.md. **The bug: `TELEGRAM_REQUEST_TIMEOUT_S` was documented, env-overridable and
+  wired to nothing.** The adapter fell back to a hardcoded 35s socket timeout, so the env var did
+  nothing — and raising `TELEGRAM_POLL_TIMEOUT_S` above 35, which Telegram permits, would put the
+  socket timeout *below* the poll wait and make every empty long-poll read as a local failure. That
+  is precisely what the constant's own comment warned about: **the invariant was written down and
+  never enforced.** Now resolved in `core/` and threaded through, clamping to poll + 10s with a
+  warning on violation (following `MCP_CLIENT_MAX_TIMEOUT_S`'s precedent, since this is not a
+  security decision), proven red before green.
+  **`docket eval` and `tests/evals/` removed outright, no replacement — record this alongside D-11
+  and D-16.** The harness could not run: it shelled out to the deleted daemon and **skipped silently**
+  rather than failing, so it read as coverage while doing nothing, and CONTRIBUTING and README both
+  cited it as a real gate. Repair was rejected on evidence, not preference: no CLI entry point runs a
+  single agent turn (`run_turn` is reached only from pod dispatch and distillation), so repointing it
+  meant inventing surface against a private port; and three of the six scripts assume the
+  pre-Phase-10 global `programmer`/`reviewer`/`tester` roles that `doctor` now flags as legacy debt.
+  Removed coherently — module, command, doctor advisory, spec (per the retire-by-deletion
+  convention), every doc/CI reference — with a removed-command notice exiting 1, matching
+  `workflow`/`team`. **Commands 37 -> 36 and specs 25 -> 24 as a result; both counts falling is the
+  work landing, not drift.**
+  **The test suite is now named for what it tests**, not which card built it: 94 of 104 files
+  renamed via `git mv` (`test_m4_wave1.py` -> `test_profile_scope_models.py`, and so on), with the
+  29 references outside `tests/` repointed from the rename map git itself recorded.
+  **Two guards proved themselves on unrelated work**, which is the useful kind of evidence:
+  `test_no_openclaw_references.py` failed CL-J's first draft of the removed-command notice (a live
+  string, not a comment), and CL-G found `test_store_writer.py` silently exempting `core/drift.py`, a
+  module deleted long ago — its own docstring had said to remove the entry once that happened.
+  Also reported and deliberately not fixed: `METRICS_WINDOW` is declared in `config.py` while
+  `cli/_metrics.py` keeps an independent `os.environ.get` copy — a drift risk rather than a silent
+  failure. Housekeeping: 52 stale agent worktrees pruned, 114 fully-merged card branches deleted.
 - **2026-08-04 (wave 14) — the cleanup wave.** Six cards in two rounds re-trued every document,
   deleted the dead code the Phase 19 removal left behind, and stripped the changelog that had grown
   inside the source comments. Net ~2,900 lines removed. Full per-card record in TODO.md.

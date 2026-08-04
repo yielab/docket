@@ -128,11 +128,57 @@ exists to prevent plus any note that a guard was proven RED before being trusted
 3. **All four `examples/configs/*-agent-meta.json` failed `AgentMeta` validation**, and
    `agents.yaml` silently dropped 2 of its 3 entries through `docket add --from`.
 
-**Carried forward, NOT carded — the eval harness is dead code.** `tests/evals/` is entirely coupled
-to the deleted daemon: workspaces at `$HOME/.openclaw/workspaces/<role>`, and `eval_run_task` shells
-out to `openclaw agent --local --json`. It survived because `eval_skip_unless_command openclaw`
-makes it **skip silently** rather than fail. Re-pointing it at docket's own driver is a redesign, not
-a cleanup — decide whether the harness is worth keeping before rebuilding it.
+~~**Carried forward, NOT carded — the eval harness is dead code.**~~ — **resolved by CL-J** (wave 15):
+the feature was removed outright. See the wave 15 block below.
+
+---
+
+## ☑ WAVE 15 — the last legacy sweep (2026-08-04)
+
+Four cards. **CL-G** renamed 94 of 104 test files from card ids to subjects. **CL-H** fixed a real
+bug and finished the `src/` prose sweep. **CL-I** measured the eval harness and recommended deletion;
+**CL-J** executed it completely.
+
+**CL-G — the suite now says what it tests.** `test_m4_wave1.py` → `test_profile_scope_models.py`,
+`test_ch6_tier_shims.py` → `test_tier_shims_removed.py`, and 92 more, all via `git mv` so history
+follows. Its one collision (two files both stripping to `test_verify_gate.py`) was resolved by
+subject, not by number. Remaining card-id archaeology in `tests/` is now zero except protected
+`D-12` (a live rule named in CLAUDE.md) and `ROADMAP §4.5` pointers. It also found a guard silently
+exempting `core/drift.py`, a module deleted long ago — the test's own docstring had said to remove
+the entry once that happened. **Integrator follow-up:** 29 files outside `tests/` still named the old
+paths; repointed mechanically from the rename map git recorded, then verified zero survivors.
+
+**CL-H — a documented invariant that was never wired.** `TELEGRAM_REQUEST_TIMEOUT_S` was defined,
+documented and env-overridable but referenced nowhere, so the adapter used a hardcoded 35s socket
+timeout. Setting the env var did nothing, and raising `TELEGRAM_POLL_TIMEOUT_S` above 35 (Telegram
+permits it) would put the socket timeout *below* the poll wait — making every empty long-poll read as
+a local failure, exactly what the constant's own comment warned about. Now resolved in `core/` and
+threaded through; on violation it **clamps to poll + 10s with a warning** rather than refusing,
+following `MCP_CLIENT_MAX_TIMEOUT_S`'s precedent (this is not a security decision, and a one-line env
+mistake should not take the approval channel down). Proven red before green. **Reported not fixed:**
+`METRICS_WINDOW` is declared in `config.py` but `cli/_metrics.py` keeps its own `os.environ.get`
+copy — a drift risk, not the same silent failure.
+
+**CL-I/CL-J — `docket eval` removed outright, no replacement.** The harness could not run: it shelled
+out to the deleted daemon and **skipped silently** rather than failing, so it read as coverage while
+doing nothing, and CONTRIBUTING and README both cited it as a real gate. Two findings settled
+repair-vs-delete: no CLI entry point runs a single agent turn (`run_turn` is reached only from pod
+dispatch and distillation), and three of six eval scripts assume the pre-Phase-10 global
+`programmer`/`reviewer`/`tester` roles that `doctor` now flags as legacy debt. Removed coherently —
+module, command, doctor advisory, spec (per the retire-by-deletion convention), and every doc/CI
+reference. `docket eval` prints a removed-command notice and exits 1, matching `workflow`/`team`.
+CL-J also found `config.py`'s `cli_root()` existed only to serve the deleted module and removed it.
+
+**A guard earned its keep on unrelated work:** CL-J's first draft of the notice tripped
+`test_no_openclaw_references.py` — the AST guard forbids that word outside comments and docstrings,
+and the notice is a live string. pytest caught it.
+
+**Repo cruft:** 52 stale agent worktrees pruned and 114 fully-merged card branches deleted
+(`git branch --no-merged platform` was empty first, so nothing was lost).
+
+**Tree at close:** 2,079 tests · 26,253 lines · **36 commands** · **24 specs** · 18/18 goldens ·
+all guards in sync. Command and spec counts *fell* because a feature was removed; that is the work
+landing, not drift.
 
 ---
 
