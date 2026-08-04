@@ -2156,6 +2156,33 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-04 (wave 14) — the cleanup wave.** Six cards in two rounds re-trued every document,
+  deleted the dead code the Phase 19 removal left behind, and stripped the changelog that had grown
+  inside the source comments. Net ~2,900 lines removed. Full per-card record in TODO.md.
+  **The largest deletion was ceremony:** `restart_gateway()` had been a documented no-op since
+  P19-7b, and ~15 call sites across `cli/` still called it and rendered a result for a restart that
+  never happened. **The most valuable half was not the archaeology** (`Phase 1X` 204→3, `P19-`
+  163→1, `D-1X` 57→0 in `src/`) but the comments that had become **false** — four modules still
+  claimed `pre_tool_call` "stays daemon-gated" and that "docket is not inside a turn to intercept a
+  tool call", which is precisely the belief Phase 19 existed to falsify.
+  **Three real defects surfaced.** (1) **MCP tools are not reachable in a live turn**:
+  `load_mcp_tools` is never called and `DocketDriver.registry_factory` defaults to
+  `builtin_registry`. Configuring a server registers and gates it; the last wire is absent. README
+  and `docs/commands.md` overclaimed it — `mcp-client.spec.md` had it right all along, so the docs
+  were the outlier. Note the consequence for planning: *"browser support is just an MCP config"* has
+  been used more than once here to justify **not** building something, and it is only true once that
+  wire exists. (2) `NOTICE` declared the project MIT-licensed while LICENSE, the CHANGELOG relicense
+  entry and the README badge all say Apache 2.0. (3) All four `examples/configs/*-agent-meta.json`
+  failed `AgentMeta` validation outright, and `agents.yaml` silently dropped two of its three entries
+  through `docket add --from` — silent partial success being the worst failure mode an example has.
+  **A refusal worth recording:** CL-C was briefed to standardise the version on `0.2.0-beta.17` and
+  **declined**, having verified that value exists nowhere in the tree or the tags — the integrator's
+  premise was wrong, and the agent checked rather than complied. Two other AST-flagged "dead"
+  functions were likewise kept after being identified as pydantic `model_validator`s.
+  **Deliberately left, not carded:** `tests/evals/` is entirely coupled to the deleted daemon
+  (`$HOME/.openclaw/workspaces/<role>`, `openclaw agent --local --json`) and survives only because
+  it **skips silently** when the binary is absent. Re-pointing it at docket's own driver is a
+  redesign; decide whether the harness is worth keeping first.
 - **2026-08-04 (wave 13) — THE BOARD IS CLEAR.** Phases 19, 20 and 21 are all closed; nothing is
   scheduled. **P20-2 shipped** the guardrail + loop metrics: four families on the existing Prometheus
   surface (`docket_tool_calls_total{decision}`, `docket_policy_hits_total{policy_id,hook,action}`,

@@ -94,11 +94,45 @@ trace query + retention, egress lockdown, the build-agent profile. A trigger fir
 the world (a second operator, a disk that fills, a cross-pod question asked twice), not a queue to
 work down. The right next move is to reassess against a real product, not to re-claim cut scope.
 
-**Known doc debt, integrator-owned, not yet carded:** the README was re-trued for the post-daemon
-world on 2026-08-03, but `docs/commands.md` (54 stale refs), `COMPATIBILITY.md` (premise false),
-`CONTRIBUTING.md` (points at the deleted ACL), `docs/DOCKET.md`, `docs/troubleshooting.md`,
-`docs/QUICK-START-DOCKET.md` and `docs/SECURITY-SIMPLE.md` still describe an external daemon that no
-longer exists. ROADMAP/TODO/CHANGELOG references are historical record and should stay.
+## ☑ WAVE 14 — the cleanup wave (2026-08-04). Docs re-trued, dead code gone, archaeology stripped
+
+Six cards, two rounds. **Round 1:** CL-A (`docs/**`), CL-B (root `*.md`), CL-C (dead code in
+`src/`+`tests/`), CL-D (repo hygiene: `examples/`, `Formula/`, `install.sh`, `.github/`, `scripts/`).
+**Round 2:** CL-E (`src/` comments), CL-F (`tests/` ceremony + comments).
+
+**What it removed:** `restart_gateway()` and its ~15 ceremonial call sites (a documented no-op each
+one rendered a result for); `ToolResult.needs_approval`; `save_mcp_servers`; the golden suite's fake
+`openclaw` binary; two `.lobster.yml` examples for a removed command; `scripts/wire-local-provider.sh`
+(shelled out to `openclaw config set`); `DOCKET_NO_RESTART` in 37 test files; `OPENCLAW_DIR`/
+`openclaw.json` fixture setup in 11; two genuinely dead tests. ~2,900 lines net.
+
+**Comment archaeology, `src/`:** `Phase 1X` 204→3 · `P19-` 163→1 · `ROADMAP` 142→5 · `W-N` 147→2 ·
+`D-1X` 57→0. `tests/`: `P19-` 109→1 · `Phase NN` 86→0. Survivors are golden-pinned strings or live
+pointers to standing rules (§4.5), not shipped-card records.
+
+**The policy applied, worth keeping for the next sweep:** delete card ids, phase numbers, dates,
+provenance, and narration of deleted things — git history and ROADMAP hold all of it. **Keep** any
+sentence whose loss would let someone introduce a bug: why a constant has its value, why something
+fails closed, why two similar things differ deliberately, and (in tests) which regression a guard
+exists to prevent plus any note that a guard was proven RED before being trusted. When in doubt, keep.
+
+**Three findings that were defects, not staleness:**
+1. **MCP tools are not reachable in a live turn.** `load_mcp_tools` is never called; `DocketDriver`'s
+   `registry_factory` defaults to `builtin_registry` and nothing overrides it. Configuring a server
+   registers and gates it; the last wire is missing. README and `commands.md` both overclaimed this
+   (text written the same session) and were corrected. **The spec had it right all along.**
+   *"Browser support is just an MCP config" is only true once that wire exists — do not reuse that
+   argument to decline work until then.*
+2. **`NOTICE` declared the project MIT-licensed** while `LICENSE`, the CHANGELOG relicense entry and
+   the README badge all say Apache 2.0.
+3. **All four `examples/configs/*-agent-meta.json` failed `AgentMeta` validation**, and
+   `agents.yaml` silently dropped 2 of its 3 entries through `docket add --from`.
+
+**Carried forward, NOT carded — the eval harness is dead code.** `tests/evals/` is entirely coupled
+to the deleted daemon: workspaces at `$HOME/.openclaw/workspaces/<role>`, and `eval_run_task` shells
+out to `openclaw agent --local --json`. It survived because `eval_skip_unless_command openclaw`
+makes it **skip silently** rather than fail. Re-pointing it at docket's own driver is a redesign, not
+a cleanup — decide whether the harness is worth keeping before rebuilding it.
 
 ---
 
