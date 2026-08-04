@@ -397,13 +397,13 @@ pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 
 By the numbers:
 
-- **2,052 tests** in the pytest suite (`tests/python/`)
+- **2,054 tests** in the pytest suite (`tests/python/`)
 - **~26,400 lines** of Python in the shipped `docket` package
-- **24 specifications** (RFC 2119), validated in CI
+- **25 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,052-test Python suite
+uv run pytest                                        # 2,054-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```

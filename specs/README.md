@@ -33,7 +33,8 @@ specs/
 │   └── workspace-structure.spec.md       # Per-agent workspace layout
 ├── api/                                   # API contracts
 │   ├── cli-interface.spec.md             # CLI command contracts and return codes
-│   └── mcp-server.spec.md                # docket mcp serve — MCP tool surface (Phase 18 L-3)
+│   ├── mcp-server.spec.md                # docket mcp serve — MCP tool surface (Phase 18 L-3)
+│   └── runtime-library.spec.md           # docket-runtime: the embeddable substrate (Phase 21 P21-1)
 ├── data/                                  # Data specifications
 │   ├── cli-json-shapes.spec.md           # --json output shapes per command
 │   ├── docket-meta.spec.md               # .docket-meta.json schema
@@ -144,6 +145,7 @@ Each specification document must include:
 | Workspace Structure | 1.7.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
 | CLI Interface | 1.13.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4) |
 | MCP Client | 1.1.0 | Implemented, not yet on a live agent-turn path | `core/mcp_tools.py` + `edges/adapters/mcp_client.py` (Phase 19 P19-10): external MCP tool servers adapted into docket's registry, namespaced `mcp__<server>__<tool>` so a remote tool can never shadow a built-in, and dispatched through the same gated chokepoint; `docket mcp servers add/list/remove` CLI (Phase 19 P19-13) |
+| Runtime Library | 1.0.0 | Implemented (packaging + boundary test; **not published to any index**) | `packages/docket-runtime/pyproject.toml` (Phase 21 P21-1): the runtime slice built as a second wheel over the *same* source tree via `force-include` — **zero files moved or duplicated**. Verified standalone: the wheel installs into a clean venv pulling only `pydantic` + `filelock`, and a real `dispatch_tool` call, path containment and argument-aware `classify_command` all work there. Public surface is deliberately "every non-underscore name in a shipped module" — D-21 forbids designing a facade. `uv build` sdist round-trip does **not** work (force-include paths are monorepo-relative); `--wheel` is the supported path |
 | MCP Server | 1.3.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.8.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
