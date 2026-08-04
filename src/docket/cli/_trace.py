@@ -6,6 +6,8 @@
   docket trace tail <project>          follow the most-recent session
   docket trace export <project>        raw JSONL passthrough  [--since DATE]
   docket trace ingest <project>        manually ingest new session turns
+  docket trace expire [project]        delete terminated traces past retention
+                                        [--dry-run] [--days N]
 """
 
 from __future__ import annotations
@@ -48,8 +50,17 @@ def _help() -> None:
     ui.console.print("  docket trace export <project>          Raw JSONL passthrough")
     ui.console.print("    [--since YYYY-MM-DD]                 Filter by date")
     ui.console.print("  docket trace ingest <project>          Manually ingest new session turns")
+    # Rich treats '[' as markup — escape it, same reasoning as _render_event's extras_markup.
+    ui.console.print(
+        r"  docket trace expire \[project]          Delete terminated traces past retention"
+    )
+    ui.console.print("    [--dry-run]                          Preview without deleting")
+    ui.console.print("    [--days N]                           Override the retention window")
     ui.console.print()
     ui.console.print(f"  Traces live at: {_cfg.TRACES_DIR}/<project>/<session_id>.jsonl")
+    ui.console.print(
+        f"  Default retention: {_cfg.TRACE_RETENTION_DAYS} days (TRACE_RETENTION_DAYS)"
+    )
     ui.console.print()
 
 
@@ -160,16 +171,55 @@ def _ingest(project: str) -> int:
     return 0
 
 
+def _expire(project: str | None, dry_run: bool, days: int | None) -> int:
+    retention_s = days * 86400 if days is not None else None
+    report = _trace.expire_old_traces(
+        retention_s=retention_s, dry_run=dry_run, project=project or None
+    )
+
+    scope = f" for project: {project}" if project else " across all projects"
+    verb = "Would delete" if dry_run else "Deleted"
+    ui.header(f"docket trace expire{scope}")
+    ui.console.print()
+    ui.console.print(f"  Retention window: {report.retention_s // 86400} days")
+    ui.console.print(
+        f"  Scanned: {report.scanned}  Kept (open): {report.kept_open}  "
+        f"Kept (recent): {report.kept_recent}"
+    )
+    if not report.expired:
+        ui.info("Nothing past retention.")
+        return 0
+
+    for item in report.expired:
+        ui.console.print(
+            f"  {verb}: {item.project}/{item.session_id}.jsonl"
+            f"  (age {item.age_days:.1f}d, last event {item.last_event_ts}, {item.bytes} bytes)"
+        )
+    ui.console.print()
+    kb = report.bytes_reclaimed / 1024.0
+    if dry_run:
+        ui.info(
+            f"{report.expired_count} trace file(s) would be deleted ({kb:.1f} KB). Re-run without --dry-run to delete."
+        )
+    else:
+        ui.success(f"{report.expired_count} trace file(s) deleted ({kb:.1f} KB reclaimed).")
+    return 0
+
+
 def run_trace(
     sub: str | None = None,
     target: str | None = None,
     since: str | None = None,
+    dry_run: bool = False,
+    days: int | None = None,
 ) -> int:
     """Dispatch the trace subcommand.
 
-    sub: subcommand or, when not one of tail/export/ingest, a session_id.
+    sub: subcommand or, when not one of tail/export/ingest/expire, a session_id.
     target: project/session argument for the subcommand.
     since: --since YYYY-MM-DD filter (export only).
+    dry_run: --dry-run flag (expire only).
+    days: --days N retention override (expire only).
     """
     if sub is None or sub in ("", "-h", "--help"):
         _help()
@@ -180,5 +230,7 @@ def run_trace(
         return _export(target or "", since or "")
     if sub == "ingest":
         return _ingest(target or "")
+    if sub == "expire":
+        return _expire(target or None, dry_run, days)
     # Anything else is treated as a session_id.
     return _show(sub)

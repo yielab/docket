@@ -23,6 +23,7 @@ import datetime as _dt
 import json
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -371,6 +372,168 @@ def sweep_all() -> None:
             project = "unknown"
         session_id = tf.name[: -len(".jsonl")]
         _append(tf, [_end_record(project, session_id)])
+
+
+@dataclass
+class ExpiredTrace:
+    """One trace file the retention sweep deleted (or would delete, dry-run)."""
+
+    project: str
+    session_id: str
+    path: Path
+    last_event_ts: str
+    age_days: float
+    bytes: int
+
+
+@dataclass
+class TraceExpiryReport:
+    """Result of one ``expire_old_traces`` run -- always returned, never printed.
+
+    ``core/`` never prints; ``cli/_trace.py`` renders this.
+    """
+
+    dry_run: bool
+    retention_s: int
+    scanned: int = 0
+    expired: list[ExpiredTrace] = field(default_factory=list)
+    kept_open: int = 0
+    kept_recent: int = 0
+    bytes_reclaimed: int = 0
+
+    @property
+    def expired_count(self) -> int:
+        return len(self.expired)
+
+
+def _prune_index(project_dir: Path, removed_session_ids: set[str]) -> None:
+    """Drop *removed_session_ids* from a project's ``.ingest-index.json``, if present.
+
+    Keeps the ingest offset index consistent with what expiry deleted -- an
+    index entry pointing at a deleted trace file is a bug, not a no-op: a
+    future ``trace_ingest`` would read a stale offset for a session_id that
+    can never be re-created (session_ids are not reused).
+    """
+    index_file = project_dir / ".ingest-index.json"
+    if not index_file.is_file():
+        return
+    try:
+        index: dict[str, int] = json.loads(index_file.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    changed = False
+    for sid in removed_session_ids:
+        if index.pop(sid, None) is not None:
+            changed = True
+    if changed:
+        _write_index(index_file, index)
+
+
+def expire_old_traces(
+    retention_s: int | None = None,
+    dry_run: bool = False,
+    project: str | None = None,
+) -> TraceExpiryReport:
+    """Delete TERMINATED trace files whose last event is older than the retention window.
+
+    Reuses the same liveness reasoning as ``sweep_all``/``_has_session_end``:
+    a trace file is eligible for deletion only when it already has a
+    ``session_end`` event -- real, or the synthetic ``"aborted"`` one
+    ``sweep_all`` appends once a session has been idle past
+    ``SESSION_TIMEOUT``. A trace with **no** ``session_end`` is presumed to
+    belong to a session that may still be appending to it right now, and is
+    always kept regardless of age -- deleting a file a live turn is writing
+    to is the one failure mode this function must never produce. Callers
+    that want stale-but-open traces to become eligible should run
+    ``sweep_all()`` first (``docket serve``'s periodic sweep already does,
+    independently of this function).
+
+    *retention_s* defaults to ``config.TRACE_RETENTION_S``. *dry_run* reports
+    what would be deleted without deleting anything or touching any index.
+    *project* restricts the sweep to one project's trace directory.
+
+    Never touches ``audit.log`` -- audit is out of scope by design (see
+    ``core/audit.py``); this function only ever globs ``TRACES_DIR``.
+    """
+    window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
+    traces_root = _cfg.TRACES_DIR
+    report = TraceExpiryReport(dry_run=dry_run, retention_s=window)
+    if not traces_root.is_dir():
+        return report
+
+    now = _dt.datetime.now(_dt.UTC).timestamp()
+    pattern = f"{project}/*.jsonl" if project else "*/*.jsonl"
+    removed_by_dir: dict[Path, set[str]] = {}
+
+    for tf in sorted(traces_root.glob(pattern)):
+        report.scanned += 1
+        has_end = False
+        last_ts_str: str | None = None
+        try:
+            for line in tf.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r: dict[str, Any] = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("event_type") == "session_end":
+                    has_end = True
+                ts = r.get("ts")
+                if ts:
+                    last_ts_str = str(ts)
+        except OSError:
+            continue
+
+        if not has_end:
+            report.kept_open += 1
+            continue
+        last_epoch = _epoch_from_iso(last_ts_str) if last_ts_str else None
+        if last_epoch is None:
+            # Terminated but no parseable timestamp anywhere -- can't judge
+            # age, so keep it rather than guess.
+            report.kept_open += 1
+            continue
+        age_s = now - last_epoch
+        if age_s <= window:
+            report.kept_recent += 1
+            continue
+        assert last_ts_str is not None  # last_epoch above is only set from a real last_ts_str
+
+        try:
+            proj = tf.relative_to(traces_root).parts[0]
+        except ValueError:
+            proj = "unknown"
+        session_id = tf.name[: -len(".jsonl")]
+        try:
+            size = tf.stat().st_size
+        except OSError:
+            size = 0
+
+        if not dry_run:
+            try:
+                tf.unlink()
+            except OSError:
+                continue
+            removed_by_dir.setdefault(tf.parent, set()).add(session_id)
+            report.bytes_reclaimed += size
+
+        report.expired.append(
+            ExpiredTrace(
+                project=proj,
+                session_id=session_id,
+                path=tf,
+                last_event_ts=last_ts_str,
+                age_days=age_s / 86400.0,
+                bytes=size,
+            )
+        )
+
+    for pdir, sids in removed_by_dir.items():
+        _prune_index(pdir, sids)
+
+    return report
 
 
 def find_trace(session_id: str) -> Path | None:

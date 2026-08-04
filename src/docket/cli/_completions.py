@@ -100,7 +100,7 @@ _docket_complete() {
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
     auth)            words="status login key setup" ;;
-    trace)           words="tail export ingest" ;;
+    trace)           words="tail export ingest expire" ;;
     policies|policy) words="list show init test validate" ;;
     roles|role)      words="list show add validate" ;;
     completions|completion) words="bash zsh" ;;
@@ -153,7 +153,7 @@ __ZSH_COMMANDS__
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     auth)            compadd status login key setup ;;
-    trace)           compadd tail export ingest ;;
+    trace)           compadd tail export ingest expire ;;
     policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;

@@ -44,7 +44,7 @@ _docket_complete() {
     keys|key|secret) words="add list remove rotate setup validate export" ;;
     models)          words="list set preset reset provider" ;;
     auth)            words="status login key setup" ;;
-    trace)           words="tail export ingest" ;;
+    trace)           words="tail export ingest expire" ;;
     policies|policy) words="list show init test validate" ;;
     roles|role)      words="list show add validate" ;;
     completions|completion) words="bash zsh" ;;
