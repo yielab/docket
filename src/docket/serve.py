@@ -604,10 +604,17 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
     `docket keys add TELEGRAM_BOT_TOKEN` runs while `docket serve` is up) or
     a transport failure (`_TELEGRAM_ERROR_BACKOFF_S`) so either case never
     busy-loops.
+
+    `summary.warning` (set when `TELEGRAM_REQUEST_TIMEOUT_S` is misconfigured
+    against `TELEGRAM_POLL_TIMEOUT_S` -- see `core.telegram._resolved_request_
+    timeout`) is printed once, not every poll: the underlying env var cannot
+    change without a restart, so the same warning would otherwise repeat
+    every `TELEGRAM_POLL_TIMEOUT_S` seconds for the life of the process.
     """
     from docket.core import telegram as _telegram
 
     printed_unconfigured = False
+    printed_timeout_warning = False
     while not stop.is_set():
         try:
             summary = _telegram.poll_once()
@@ -629,6 +636,9 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
             continue
 
         printed_unconfigured = False
+        if summary.warning and not printed_timeout_warning:
+            print(f"[serve] telegram: {summary.warning}")
+            printed_timeout_warning = True
         if not summary.ok:
             print(f"[serve] telegram: {summary.error}")
             if stop.wait(_TELEGRAM_ERROR_BACKOFF_S):

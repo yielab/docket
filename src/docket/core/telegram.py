@@ -310,6 +310,12 @@ class PollSummary:
     configured: bool
     processed: int = 0
     error: str = ""
+    # Non-fatal: set when `_resolved_request_timeout` had to override a
+    # misconfigured `TELEGRAM_REQUEST_TIMEOUT_S` (see that function). The
+    # poll still proceeds with the corrected value -- this is surfaced so
+    # `serve.py` can tell the operator their env var is not doing what they
+    # think, not to abort a channel that is in fact working.
+    warning: str = ""
 
 
 def _load_token() -> str:
@@ -346,6 +352,43 @@ def _default_send_message() -> SendMessageFn:
     return _client.send_message
 
 
+# The gap the built-in defaults (poll=25, request=35) leave above the poll
+# wait -- applied when a configured `TELEGRAM_REQUEST_TIMEOUT_S` violates the
+# invariant `config.py` documents on the pair (request MUST exceed poll).
+# Room for the getUpdates round trip itself (connect + TLS + the response
+# arriving after the server-side wait ends), not just the wait.
+_REQUEST_TIMEOUT_MARGIN_S = 10.0
+
+
+def _resolved_request_timeout() -> tuple[float, str]:
+    """This process's own `getUpdates` socket timeout, honouring
+    ``config.TELEGRAM_REQUEST_TIMEOUT_S`` but never letting it violate the
+    invariant documented on that constant: it MUST exceed
+    ``TELEGRAM_POLL_TIMEOUT_S``, or a legitimately empty long-poll reads as a
+    local socket timeout instead of "nothing happened".
+
+    Clamped up, not refused: unlike an unconfigured token (nothing this
+    process can do about that), a bad pair of timeouts has an obvious safe
+    correction, and refusing to poll at all would take the whole approval
+    channel down over what is, for the operator, a one-line env var fix.
+    Returns ``(value, warning)`` -- ``warning`` is empty when the configured
+    value already satisfied the invariant and was used as-is.
+    """
+    poll = _cfg.TELEGRAM_POLL_TIMEOUT_S
+    configured = _cfg.TELEGRAM_REQUEST_TIMEOUT_S
+    if configured > poll:
+        return configured, ""
+    clamped = poll + _REQUEST_TIMEOUT_MARGIN_S
+    warning = (
+        f"TELEGRAM_REQUEST_TIMEOUT_S={configured}s does not exceed "
+        f"TELEGRAM_POLL_TIMEOUT_S={poll}s -- an empty long-poll would look "
+        f"like a local timeout; using {clamped}s for this process's own "
+        "socket timeout instead. Fix TELEGRAM_REQUEST_TIMEOUT_S so it "
+        "exceeds TELEGRAM_POLL_TIMEOUT_S."
+    )
+    return clamped, warning
+
+
 def poll_once(
     *,
     get_updates: GetUpdatesFn | None = None,
@@ -372,9 +415,15 @@ def poll_once(
     send_message_fn = send_message if send_message is not None else _default_send_message()
 
     offset = _load_offset()
-    result = get_updates_fn(token, offset=offset, timeout=_cfg.TELEGRAM_POLL_TIMEOUT_S)
+    request_timeout, timeout_warning = _resolved_request_timeout()
+    result = get_updates_fn(
+        token,
+        offset=offset,
+        timeout=_cfg.TELEGRAM_POLL_TIMEOUT_S,
+        request_timeout=request_timeout,
+    )
     if not result.ok:
-        return PollSummary(ok=False, configured=True, error=result.error)
+        return PollSummary(ok=False, configured=True, error=result.error, warning=timeout_warning)
 
     processed = 0
     max_update_id = offset - 1
@@ -394,4 +443,4 @@ def poll_once(
     if result.updates:
         _save_offset(max_update_id + 1)
 
-    return PollSummary(ok=True, configured=True, processed=processed)
+    return PollSummary(ok=True, configured=True, processed=processed, warning=timeout_warning)

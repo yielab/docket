@@ -1,11 +1,11 @@
-"""docket approve — grant a pending HITL approval by token (T5.3 port of approve.sh).
+"""docket approve — grant a pending HITL approval by token.
 
   docket approve <token>    Grant a pending HITL approval
   docket approve            List pending approvals
 
 ``run_approve(token)`` returns the process exit code.
 
-G-1: a grant is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
+A grant is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
 if *token* gated a dispatch task (``waiting_approval``, this exact token), that
 task moves back to ``pending`` with the exact hop it stopped on handed to the
 next dispatch run. A no-op for any other approval (or an already-resolved one).

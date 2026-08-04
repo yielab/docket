@@ -5,7 +5,7 @@
   docket trace <session_id>            render one trace human-readable
   docket trace tail <project>          follow the most-recent session
   docket trace export <project>        raw JSONL passthrough  [--since DATE]
-  docket trace ingest <project>        manually ingest daemon session logs
+  docket trace ingest <project>        manually ingest new session turns
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _help() -> None:
     ui.console.print("  docket trace tail <project>            Follow the most-recent session")
     ui.console.print("  docket trace export <project>          Raw JSONL passthrough")
     ui.console.print("    [--since YYYY-MM-DD]                 Filter by date")
-    ui.console.print("  docket trace ingest <project>          Manually ingest daemon session logs")
+    ui.console.print("  docket trace ingest <project>          Manually ingest new session turns")
     ui.console.print()
     ui.console.print(f"  Traces live at: {_cfg.TRACES_DIR}/<project>/<session_id>.jsonl")
     ui.console.print()

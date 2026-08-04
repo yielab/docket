@@ -3,11 +3,10 @@
 docket owns the durable state that survives *between* turns: the
 ``HEARTBEAT.md`` task ledger (``core/memory.py``), the conversation registry
 (``core/conversations.py``), memory logs, traces. This module is the durable
-store for the message history *inside* a turn — the piece docket did not
-own until it took the turn loop back from the daemon. ``core/agent_loop.py``
-loads a session's history via this module before each turn and appends to it
-after, keyed on docket's existing session coordinate (``agent:<id>:<project>``,
-see ``specs/functional/session-scoping.spec.md``).
+store for the message history *inside* a turn. ``core/agent_loop.py`` loads a
+session's history via this module before each turn and appends to it after,
+keyed on docket's existing session coordinate (``agent:<id>:<project>``, see
+``specs/functional/session-scoping.spec.md``).
 
 There is no speculative API surface here beyond what that loop demonstrably
 needs: load a session's history, append new turns to it, and compact it when

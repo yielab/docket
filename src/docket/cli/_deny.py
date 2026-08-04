@@ -1,10 +1,10 @@
-"""docket deny — deny a pending HITL approval by token (T5.3 port of deny.sh).
+"""docket deny — deny a pending HITL approval by token.
 
   docket deny <token>    Deny a pending HITL approval
 
 ``run_deny(token)`` returns the process exit code.
 
-G-1: a deny is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
+A deny is followed by ``core/dispatch.py``'s ``resolve_waiting_approval`` —
 if *token* gated a dispatch task (``waiting_approval``, this exact token), that
 task fails terminally right away (``failureKind: "approval_denied"``). A no-op
 for any other approval (or an already-resolved one).

@@ -39,6 +39,7 @@ from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
 
 
@@ -353,3 +354,130 @@ class TestTokenNeverTouchedHere:
 
         src = inspect.getsource(_tg.handle_message)
         assert "token" not in src.lower()
+
+
+# ── poll_once's request_timeout is actually threaded, and the documented
+# TELEGRAM_REQUEST_TIMEOUT_S > TELEGRAM_POLL_TIMEOUT_S invariant is enforced,
+# not just described in a comment ──────────────────────────────────────────
+
+
+def _fake_get_updates_capturing(
+    calls: list[dict[str, object]],
+) -> _tg.GetUpdatesFn:
+    def _fake(
+        token: str, *, offset: int = 0, timeout: int = 25, request_timeout: float = 35
+    ) -> _tg.GetUpdatesResult:
+        calls.append({"offset": offset, "timeout": timeout, "request_timeout": request_timeout})
+        return _tg.GetUpdatesResult(True, updates=())
+
+    return _fake
+
+
+class TestRequestTimeoutIsThreadedFromConfig:
+    def test_configured_request_timeout_reaches_the_adapter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A well-formed pair (request > poll) must reach `get_updates`
+        unmodified -- proving `TELEGRAM_REQUEST_TIMEOUT_S` is not a dead
+        constant. Break the wiring (stop passing `request_timeout` in
+        `poll_once`) and this goes red: it would see the adapter's own
+        hardcoded default (35.0) instead of the configured 99.0."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 25, raising=True)
+        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 99.0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+
+        calls: list[dict[str, object]] = []
+        summary = _tg.poll_once(
+            get_updates=_fake_get_updates_capturing(calls),
+            send_message=lambda *a, **k: True,
+        )
+
+        assert summary.ok
+        assert summary.warning == ""
+        assert len(calls) == 1
+        assert calls[0]["request_timeout"] == 99.0
+        assert calls[0]["timeout"] == 25
+
+    def test_a_different_configured_value_also_reaches_the_adapter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second, distinct value to rule out a coincidental match with
+        the adapter's own hardcoded default."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 10, raising=True)
+        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 40.0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+
+        calls: list[dict[str, object]] = []
+        summary = _tg.poll_once(
+            get_updates=_fake_get_updates_capturing(calls),
+            send_message=lambda *a, **k: True,
+        )
+
+        assert summary.ok
+        assert summary.warning == ""
+        assert calls[0]["request_timeout"] == 40.0
+
+
+class TestRequestTimeoutInvariantIsEnforced:
+    def test_request_timeout_not_exceeding_poll_timeout_is_clamped_with_a_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The documented invariant (`config.py`: TELEGRAM_REQUEST_TIMEOUT_S
+        MUST exceed TELEGRAM_POLL_TIMEOUT_S) is enforced, not merely stated.
+        A misconfigured pair must not reach the adapter as-is -- that would
+        reproduce exactly the failure the comment warns about (every
+        legitimately-empty long-poll looking like a local timeout)."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
+        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 35.0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+
+        calls: list[dict[str, object]] = []
+        summary = _tg.poll_once(
+            get_updates=_fake_get_updates_capturing(calls),
+            send_message=lambda *a, **k: True,
+        )
+
+        assert summary.ok
+        assert summary.warning != ""
+        assert "TELEGRAM_REQUEST_TIMEOUT_S" in summary.warning
+        assert "TELEGRAM_POLL_TIMEOUT_S" in summary.warning
+        request_timeout = calls[0]["request_timeout"]
+        assert isinstance(request_timeout, float)
+        assert request_timeout > 50
+
+    def test_equal_values_also_violate_the_invariant(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`>` not `>=`: equal values still leave zero margin for the round
+        trip and must also be corrected."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 30, raising=True)
+        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 30.0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+
+        calls: list[dict[str, object]] = []
+        summary = _tg.poll_once(
+            get_updates=_fake_get_updates_capturing(calls),
+            send_message=lambda *a, **k: True,
+        )
+
+        assert summary.warning != ""
+        request_timeout = calls[0]["request_timeout"]
+        assert isinstance(request_timeout, float)
+        assert request_timeout > 30
+
+    def test_warning_is_carried_even_on_a_failed_poll(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The misconfiguration warning must not be lost just because the
+        same poll also failed for an unrelated (e.g. network) reason --
+        `serve.py`'s loop should still learn about a bad config on the very
+        first poll, not only once the network happens to succeed."""
+        monkeypatch.setattr(_cfg, "TELEGRAM_POLL_TIMEOUT_S", 50, raising=True)
+        monkeypatch.setattr(_cfg, "TELEGRAM_REQUEST_TIMEOUT_S", 5.0, raising=True)
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+
+        def _failing(token: str, **kwargs: object) -> _tg.GetUpdatesResult:
+            return _tg.GetUpdatesResult(False, error="cannot reach Telegram: boom")
+
+        summary = _tg.poll_once(get_updates=_failing, send_message=lambda *a, **k: True)
+
+        assert not summary.ok
+        assert summary.warning != ""

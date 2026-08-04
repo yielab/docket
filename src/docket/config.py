@@ -384,7 +384,10 @@ TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN"
 # getUpdates -- an empty reply after this many seconds is normal, not a
 # failure. TELEGRAM_REQUEST_TIMEOUT_S is this process's own socket timeout
 # and MUST exceed it, or a legitimately empty long-poll would look like a
-# local timeout.
+# local timeout. Both values are just read here; the invariant is enforced
+# by core/telegram.py's `_resolved_request_timeout`, which clamps a
+# violating TELEGRAM_REQUEST_TIMEOUT_S up (with a warning surfaced through
+# PollSummary) rather than trusting it outright.
 TELEGRAM_POLL_TIMEOUT_S = int(os.environ.get("TELEGRAM_POLL_TIMEOUT_S", "25"))
 TELEGRAM_REQUEST_TIMEOUT_S = float(os.environ.get("TELEGRAM_REQUEST_TIMEOUT_S", "35"))
 # TELEGRAM_OFFSET_FILE: the last-processed `update_id` + 1, persisted so a
