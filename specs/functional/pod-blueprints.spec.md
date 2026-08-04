@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -20,8 +20,8 @@ This specification covers:
 
 - The blueprint schema: `name`, `version`, `workspaceKind`, `roles`, `defaultPipeline`,
   `defaultBudgetUsd`, and `description` — which fields are closed typed enums and which are open
-- The four built-in blueprints (`software`, `research`, `content`, `ops`) and the byte-identical
-  guarantee `software` carries over the pre-W-7 default `docket add`
+- The five built-in blueprints (`software`, `research`, `content`, `ops`, `agentic-product`) and
+  the byte-identical guarantee `software` carries over the pre-W-7 default `docket add`
 - The `workspaceKind` (`codebase` | `workdir`) distinction and how a `workdir` blueprint's shared
   working directory is resolved/auto-provisioned
 - How `docket add --blueprint <name>` and the extended `docket add --from <spec.yaml>` select and
@@ -43,7 +43,7 @@ This specification does NOT cover:
   pod's blueprint or attached pipeline. Tracked as ROADMAP Phase 16 W-2 (executor) / W-8
   (generalized gates); out of scope here
 - User-authored blueprint definitions. Unlike `docket roles add` for archetypes, there is no
-  `docket blueprints add <file.yaml>` yet — the four built-ins are the whole registry today (see
+  `docket blueprints add <file.yaml>` yet — the five built-ins are the whole registry today (see
   Requirements, "User-authored blueprints" below)
 - Per-role org-vs-pod scope as a blueprint-level concept — scope is a property of the *archetype*
   a role name resolves to (`role-archetypes.spec.md`), inherited by a blueprint's roster, not
@@ -80,8 +80,9 @@ This specification does NOT cover:
 
 ### Built-in blueprints
 
-1. Four blueprints **MUST** ship (`core/blueprints.py`'s `BUILTIN_BLUEPRINTS`): `software`,
-   `research`, `content`, `ops` (see Interface Contracts for their exact rosters/kinds/budgets).
+1. Five blueprints **MUST** ship (`core/blueprints.py`'s `BUILTIN_BLUEPRINTS`): `software`,
+   `research`, `content`, `ops`, `agentic-product` (see Interface Contracts for their exact
+   rosters/kinds/budgets).
 2. `software` **MUST** be byte-identical to the pre-W-7 default `docket add` pod for any given
    input: same roster (`lead`, `implementer` — `core/pod.py`'s pre-existing `DEFAULT_POD_ROLES`),
    same `workspaceKind` (`codebase`), no default budget cap, and a `defaultPipeline` that is
@@ -95,6 +96,19 @@ This specification does NOT cover:
 4. `docket add <project>` with **no** `--blueprint` **MUST** resolve to `software`
    (`core.blueprints.DEFAULT_BLUEPRINT`) — omitting the flag and passing `--blueprint software`
    explicitly **MUST** be behaviorally indistinguishable.
+5. `agentic-product` (ROADMAP Phase 21 P21-5) **MUST** be `workspaceKind: "codebase"` and its
+   roster **MUST** be `core/pod.py`'s `FULL_POD_ROLES` (`lead`, `implementer`, `reviewer`,
+   `tester`) — a product that ships an agent to end users carries more risk than an internal tool,
+   so Reviewer and Tester run by default rather than being opt-in the way `software`'s `--pod
+   full`/`--with` leaves them. Its `defaultPipeline` **MUST** be the same
+   `core.pipeline.default_pipeline()` object `software` attaches (no second, blueprint-specific
+   pipeline) — the difference from `software` is entirely in the roster, not the pipeline: the
+   same Reviewer/Tester steps that a lean `software` pod never reaches at dispatch time actually
+   gate a hop here because the roles are present. It carries no `defaultBudgetUsd`, matching
+   `software`, the other `codebase`-kind blueprint. This blueprint is declarative data only — it
+   does not scaffold repository contents; a pod provisioned from it is expected (by convention, not
+   mechanically enforced by this schema) to embed the `docket-runtime` library (ROADMAP Phase 21
+   P21-1) as its own guardrail substrate.
 
 ### Workspace kind and the working directory
 
@@ -165,11 +179,13 @@ docket add --from <spec.yaml>       # spec entries may carry a `blueprint` field
 | `research` | workdir | lead, researcher, analyst, writer, critic | 20.0 | critic: verdict (APPROVE\|REJECT), rework → writer |
 | `content` | workdir | lead, writer, critic | 15.0 | critic: verdict (APPROVE\|REJECT), rework → writer |
 | `ops` | workdir | lead, operator, monitor | 30.0 | operator: mechanical (own `verifyCmd`); monitor: approval |
+| `agentic-product` | codebase | lead, implementer, reviewer, tester | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework → implementer; tester: verdict (PASS\|FAIL) |
 
 `software`'s `defaultPipeline` additionally declares `reviewer`/`tester` steps (inherited verbatim
 from `core.pipeline.default_pipeline()`) that a lean `software` pod never reaches at dispatch time
 — which roles a pod actually has is a runtime/executor concern, unchanged by this spec (see
-`pipeline-format.spec.md`).
+`pipeline-format.spec.md`). `agentic-product` attaches the exact same `defaultPipeline` object; its
+roster is the only difference, and it is precisely what makes the Reviewer/Tester steps reachable.
 
 ### `.docket-meta.json` fields this spec adds (schema authority: `docket-meta.spec.md`)
 
@@ -218,7 +234,7 @@ docket add --from spec.yaml
 
 ```bash
 docket add myproj --blueprint wizard-pod
-# [ERROR] unknown blueprint 'wizard-pod'; valid blueprints: software, research, content, ops
+# [ERROR] unknown blueprint 'wizard-pod'; valid blueprints: software, research, content, ops, agentic-product
 ```
 
 ## Validation
@@ -248,6 +264,15 @@ docket add myproj --blueprint wizard-pod
   `tests/python/test_w7_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.1.0 (2026-08-03)
+
+- Added the fifth built-in blueprint, `agentic-product` (ROADMAP Phase 21 P21-5): `codebase`-kind,
+  `core/pod.py`'s `FULL_POD_ROLES` roster (lead, implementer, reviewer, tester), the same
+  `core.pipeline.default_pipeline()` object `software` attaches, no `defaultBudgetUsd`. Declarative
+  data only — a fifth row in `BUILTIN_BLUEPRINTS`, not a new pipeline, gate, or role archetype, and
+  no repository-scaffolding machinery. Updated the built-in-blueprint requirement, the Interface
+  Contracts table, and the unknown-blueprint example's valid-blueprints list accordingly.
 
 ### Version 1.0.0 (2026-07-30)
 
