@@ -69,7 +69,7 @@ def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 # noted in its own fixture's docstring.
 #
 # ``AUDIT_LOG`` already has its own dedicated ``_isolate_audit_log`` fixture
-# above; it is listed here too so ``test_p19_6b_docket_home_isolation.py``'s
+# above; it is listed here too so ``test_docket_home_isolation.py``'s
 # source-scanning guard (which does not know about that separate fixture)
 # stays green. Both fixtures isolate it to a safe tmp path, so the
 # redundancy is harmless.

@@ -25,7 +25,7 @@ def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    # G-4: audit_log() has no kill switch, and pod add/remove/delete now write
+    # audit_log() has no kill switch, and pod add/remove/delete now write
     # entries — repoint AUDIT_LOG alongside everything else this pod sandbox owns.
     monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
 

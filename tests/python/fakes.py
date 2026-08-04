@@ -35,7 +35,7 @@ from docket.core.runtime_driver import (
 class FakeDriver:
     """In-memory ``RuntimeDriver`` double — deterministic, no subprocess, no disk.
 
-    ``ok``/``cost``/``fail_role`` mirror the pre-L-1 ``_RecordingRunner`` shims'
+    ``ok``/``cost``/``fail_role`` mirror the original ``_RecordingRunner`` shims'
     constructor exactly, so existing call sites port over by substituting the
     class name. ``run_turn`` records every call in ``calls`` for assertions.
     """
