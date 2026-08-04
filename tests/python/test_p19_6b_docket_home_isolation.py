@@ -22,6 +22,7 @@ guard asserts on the whole set rather than a sample.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import docket.config as _cfg
@@ -65,21 +66,41 @@ class TestNoConfigPathResolvesIntoTheRealDocketHome:
 
         A future constant added to ``config.py`` as ``DOCKET_HOME / "..."``
         must also be added to ``_DOCKET_HOME_PATHS``, or it silently escapes
-        both the fixture and the two tests above. This reads ``config.py``'s
-        source and fails on any such constant the list does not name --
-        the same "ask what set the guard actually checks" discipline that
-        caught two guards verifying the wrong set in Phase 16 wave 7.
+        both the fixture and the two tests above. This parses ``config.py``
+        and fails on any such constant the list does not name -- the same
+        "ask what set the guard actually checks" discipline that caught two
+        guards verifying the wrong set in Phase 16 wave 7.
+
+        **Parsed with ast, not scanned line by line.** The original version of
+        this test split ``config.py`` into lines and looked for the literal
+        ``DOCKET_HOME /``, which meant a constant whose assignment wrapped
+        across lines -- exactly what a formatter does to a long one -- evaded
+        it completely. P19-8 hit that for real: its first draft of
+        ``TELEGRAM_OFFSET_FILE`` wrapped, the guard stayed green, and the
+        constant would have written to the developer's real ``~/.docket``.
+        The card reformatted its constant to one line to get the guard to
+        fire, which fixed that instance and left the hole. An ast walk sees
+        the assignment regardless of how it is formatted.
         """
-        source = Path(_cfg.__file__).read_text()
+        tree = ast.parse(Path(_cfg.__file__).read_text())
         declared = {attr for attr, _leaf in _DOCKET_HOME_PATHS} | {"FLEET_FILE"}
         found: set[str] = set()
-        for line in source.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#") or "DOCKET_HOME /" not in stripped:
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
                 continue
-            name = stripped.split("=", 1)[0].strip().split(":", 1)[0].strip()
-            if name.isupper():
-                found.add(name)
+            # Any mention of DOCKET_HOME anywhere in the assigned value --
+            # `DOCKET_HOME / "x"`, `Path(os.environ.get(..., DOCKET_HOME / "x"))`,
+            # or any future nesting -- counts as deriving from it.
+            if not any(
+                isinstance(sub, ast.Name) and sub.id == "DOCKET_HOME"
+                for sub in ast.walk(node.value)
+                if node.value is not None
+            ):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    found.add(target.id)
         missing = found - declared
         assert not missing, (
             f"config.py derives {sorted(missing)} from DOCKET_HOME but "

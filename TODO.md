@@ -13,7 +13,18 @@
 >
 > ---
 >
-> ## Active: PHASE 19 — docket takes the runtime (D-19), then Phase 21 (the substrate), then what survives of Phase 20
+> ## ☑ PHASE 19 COMPLETE (2026-08-03) — docket owns the runtime; the daemon is gone. Next: Phase 21 (the substrate), then what survives of Phase 20
+>
+> **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
+> `command grep -ril openclaw src/` — returns only comments and docstrings narrating the removal;
+> zero live string literals. docket now owns the loop, the tool registry, all three policy hooks,
+> approvals, audit and sessions, and rents only protocols (OpenAI-compatible HTTP, MCP, containers,
+> the Telegram Bot API).
+>
+> **The claim this phase existed to make true:** docket shipped four `pre_tool_call` policy templates
+> that had **never once been evaluated**, because the daemon owned the inside of a turn. They are
+> live now. So is Telegram as a **real** approval channel — a grant writes `channel="telegram"` to
+> the hash-chained audit log, reversing a caveat carried since Phase 15.
 >
 > Executable board for **Phase 19** in [ROADMAP.md](ROADMAP.md) — read that section first, plus
 > decisions **D-19** (own the loop, rent the protocols; clean break, no migration), **D-20**
@@ -899,7 +910,7 @@ and must explain the diff.
 | --- | --- | --- | --- |
 | 8-9 | ☑ P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10 | done | — |
 | 10 | ☑ P19-6 · P19-11 · P19-12 · P19-13 | done (2026-08-02) | — |
-| **▶ 11** | **P19-7a** -> **P19-7b** -> **P19-8** | sequential | `command grep -ril openclaw src/` clean (after P19-7b) |
+| 11 | ☑ P19-7a -> P19-7b -> P19-8 | done (2026-08-03) | **PHASE 19 CLOSED** — acceptance grep clean |
 | **12** | **P21-1** -> **P21-5** | sequential | library boundary test seen to fail on a planted import |
 | **13** | **P20-2 · P20-4** | 2 parallel | — |
 
