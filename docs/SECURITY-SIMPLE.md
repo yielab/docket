@@ -2,11 +2,37 @@
 
 **Philosophy:** Security comes from layered defaults — agent instructions, a reviewer role, and human git review — so that the common cases are covered without extra commands.
 
-> **Status / honesty note.** docket layers two things: instruction-level agent constraints (SOUL.md, a reviewer role, human git review) plus **enforced tool-approval gates, which are ON by default for new installs** (`docket install`, unless you pass `--no-gates`). When gates are on, a dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, ...) is stopped by the **OpenClaw daemon's own** exec-approval prompt, delivered to the agent's chat session and answered there with the daemon's own `/approve <id>`; if nobody answers, the daemon denies it by itself (`askFallback: deny`). `git`/`npm` stay on the allowlist for usability, so a `git push` isn't gated by this layer alone — see "High-Risk Actions" below.
+> **Status / honesty note.** docket runs the agent turn itself (`core/agent_loop.py`), and every
+> tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
+> it executes — there is no external daemon in the loop any more, and nothing to bypass it. That
+> chokepoint is **always active**: an argument-aware command classifier plus the `pre_tool_call`
+> policy hook decide `allow`/`ask`/`deny` for every call, regardless of `--gates`/`--no-gates`. A
+> dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
+> shell interpreter, ...) is routed to **docket's own approval store** and blocks the call until a
+> human answers — the same store a pod-dispatch hop held on a `requireApprovalRoles`/pipeline
+> `approval` step, or a task a guardrail policy flagged at enqueue, also uses (see "Guardrail
+> Policies" below). `git`/`npm` stay on the curated allowlist for usability, so a plain `git push`
+> isn't gated by itself — see "High-Risk Actions" below for the argument-aware exception.
 >
-> Separately, **docket keeps its own approval store** for things docket itself gates — a pod-dispatch hop held on a `requireApprovalRoles`/pipeline `approval` step, or a task a guardrail policy flagged at enqueue (see "Guardrail Policies" below). That one *is* answerable headlessly, from any shell or CI job: `docket approve`/`docket deny`, or `docket serve`'s `POST /approvals/<token>`. Both genuinely resume or kill the task they gated, both write an audit-log entry, and an unanswered one fail-closes to denied after a timeout (while `docket serve` is running to sweep it).
+> **There is exactly one approval system, and it is answerable from four places** — all
+> audit-logged, tagged with the channel that answered: a CLI channel (`docket approve`/
+> `docket deny`), a headless HTTP endpoint (`docket serve`'s `POST /approvals/<token>`), MCP, and
+> Telegram (docket's own bot, wired with `docket wire` — a decision there lands in the same audit
+> chain as a CLI one, tagged `channel="telegram"`). The headless channels mean CI jobs and
+> automation can vote without a chat account. **Approvals fail closed on timeout** — an in-turn
+> "ask" (blocking a live tool call) denies itself after 120 seconds with nobody watching; an
+> async dispatch-level approval denies after 15 minutes.
 >
-> **These two approval systems are not connected.** `docket approve`/`docket deny` cannot answer a live daemon exec-approval prompt — there's no bridge today (investigated and found not practically buildable against the current OpenClaw daemon; see the spec). Answering the daemon's own prompt in Telegram works, but writes nothing to docket's audit log, because docket never sees it happen. Docker **workspace isolation** (`docket gates isolate on`) is a separate, still-**opt-in** layer on top. See [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md) (Status: Implemented, on by default). If you ran `docket install --no-gates`, treat the constraints below as strong defaults, not guarantees — re-enable anytime with `docket gates enable`.
+> `--no-gates` (at install, or `docket gates disable`) does **not** turn the tool-call gate off —
+> it cannot be turned off. What it skips is **approval routing**: without it, an "ask" verdict
+> still blocks the call, but there is no channel actively watching for it, so it simply times out
+> to denied unless a human happens to run `docket approve` in time. Turn routing on anytime with
+> `docket gates enable`. Docker **workspace isolation** (`docket gates isolate on`) is a separate,
+> still-**opt-in** layer on top — and, as of this writing, recorded but not yet consulted by the
+> turn loop (`docket gates isolate on` sets the flag; every tool call still runs unsandboxed until
+> that wiring lands — `docket gates status` says so plainly). See
+> [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md)
+> (Status: Implemented, on by default).
 
 ---
 
@@ -24,7 +50,12 @@
 5. NEVER store secrets
 ```
 
-These are **prompt-level constraints**: agents are instructed to follow them. On top of that, a fresh `docket install` also turns on the enforced tool-approval gates layer by default, so non-allowlisted dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require the daemon's own approval prompt regardless of what the prompt says — see the status note above for exactly who answers that prompt, and for the `git`/`npm` carve-out. If you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
+These are **prompt-level constraints**: agents are instructed to follow them. On top of that,
+docket's own tool-call chokepoint is always active regardless of the prompt: non-allowlisted
+dangerous operations (`rm`, `dd`, `docker`, `systemctl`, ...) require approval before they run —
+see the status note above for who can answer, and for the `git`/`npm` carve-out. A fresh `docket
+install` also turns on approval **routing** by default so a prompt actually reaches a channel; if
+you opted out at install (`--no-gates`), turn it on anytime with `docket gates enable`.
 
 ### 2. Reviewer Checks Everything (Automatic)
 
@@ -101,17 +132,22 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - `docket policies list` to see what's installed, `docket policies test <hook> <role> "<text>"`
   to dry-run one without touching anything real.
 
-### Layer 5: High-Risk Action Classes (Automatic, narrow, and honestly incomplete)
+### Layer 5: High-Risk Action Classes (Automatic, and — since Phase 19 — argument-aware)
 - A small, built-in list of especially consequential command patterns: money-movement,
   prod-deploy, secret-access (`docket gates classes` prints all of them).
-- Wired onto exactly two things docket itself runs: a pod's `verifyCmd` refuses outright if it
-  matches (the command never even starts), and a hop's real reply is scanned for one on the way
-  through the pipeline (flagged, not blocked, by itself).
-- **What this does NOT do:** stop a live agent's own tool call. The daemon's own exec-approval
-  gate (top of this doc) only ever looks at the *binary path* — `git`, `npm`, ... — never its
-  arguments, so it cannot tell `git push origin production` apart from `git status`. A live agent
-  can still run either. Per-argument enforcement isn't available from the daemon today; this is a
-  documented gap, not a bug docket is hiding.
+- **Wired onto every `bash` call docket dispatches**, not just a pod's `verifyCmd`. Since docket
+  runs the turn loop itself, `core/tools.py`'s `dispatch_tool` classifies the *whole command
+  line* — including every segment behind a `;`/`&&`/`||`/pipe — before a call is allowed to run.
+  `git status` is allowed; `git push origin production` asks, because the classifier reads the
+  arguments, not just the binary name. A pod's `verifyCmd` still refuses outright on a match
+  (fails closed, before the shell even starts) since it runs synchronously with no approver
+  reachable mid-hop; a hop's real output is separately scanned for a match on the way through
+  the pipeline (flagged, not blocked, by itself).
+- **What this does NOT do:** lock down network egress. `bash` can still reach the network through
+  interpreters and package managers on the curated allowlist (`python3`, `node`, `git clone`, ...)
+  — the `fetch` tool is domain-allowlisted and the *inspectable* path, but not yet the *only* one.
+  Tracked as an open gap, not glossed over. It is also scoped to what docket itself dispatches: a
+  process started outside docket's turn loop is outside this gate entirely.
 
 ---
 
@@ -120,7 +156,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 ### Test 1: Can Agent Commit?
 ```bash
 # Check the implementer's constraints (replace "myapp" with your project name)
-grep "NEVER commit" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
+grep "NEVER commit" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
 
 # Should find: "NEVER commit to git"
 ```
@@ -128,7 +164,7 @@ grep "NEVER commit" ~/.openclaw/workspaces/projects/myapp-implementer/SOUL.md
 ### Test 2: Does Reviewer Check Security?
 ```bash
 # Check the reviewer's checklist (replace "myapp" with your project name)
-grep "prompt injection\|hardcoded secret" ~/.openclaw/workspaces/projects/myapp-reviewer/SOUL.md
+grep "prompt injection\|hardcoded secret" ~/.docket/workspaces/projects/myapp-reviewer/SOUL.md
 
 # Should find: 6-point checklist
 ```
@@ -174,7 +210,7 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 ## The Audit Log (`docket audit`)
 
 Every gate flip, approval grant/deny, key/model/profile/pod change docket makes writes one line
-to `~/.openclaw/audit.log` — who, what, when. Secret **values** are never written, only names
+to `~/.docket/audit.log` — who, what, when. Secret **values** are never written, only names
 (a key's NAME, a model id, an agent id).
 
 ```bash
@@ -187,10 +223,14 @@ The log is hash-chained: each line records a hash of the one before it, so `dock
 can tell you the exact line where something stopped matching — i.e., where a line was edited or
 removed after the fact. There's no environment switch to turn recording off.
 
-**What it can't see.** The log only records what **docket** does. A raw Telegram conversation
-with an agent, a human editing `openclaw.json` by hand, or the `openclaw` CLI used directly —
-none of that goes through docket, so none of it is in this log. That's a structural boundary of
-what docket can observe, not a gap a future version quietly closes.
+**What it can't see.** The log only records what **docket** does. Since docket now owns the
+Telegram bot itself, a bound chat's `/approve`, `/deny`, `/status`, and `/delegate` all go through
+docket and land in this log, tagged `channel="telegram"`, the same as a CLI or HTTP decision. What
+it genuinely can't see: a human editing docket's own JSON files (`fleet.json`, `.docket-meta.json`,
+...) directly with a text editor instead of a docket command, or any process a user starts entirely
+outside docket's turn loop — docket gates the tool calls **it** dispatches, not every process on
+the host. That's a structural boundary of what docket can observe, not a gap a future version
+quietly closes.
 
 ---
 

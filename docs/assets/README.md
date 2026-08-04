@@ -37,6 +37,6 @@ headline. When regenerating the hero GIF, do not make a
 python3 scripts/render-hero.py   # writes docs/assets/hero.gif (needs Pillow + FiraCode Nerd Font)
 ```
 
-The renderer draws canned demo output — no live OpenClaw install required. It uses only
+The renderer draws canned demo output — no live docket install required. It uses only
 anonymized agent names (webapp / api / blog); never put real client names or local paths in it.
 Edit the `BLOCKS` list in the script to change the on-screen narrative.

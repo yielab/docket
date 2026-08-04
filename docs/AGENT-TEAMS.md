@@ -102,7 +102,7 @@ ships six more you can drop into any pod without writing a line of YAML:
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod <project> add researcher`. A user-authored archetype (a standalone YAML file,
 `docket roles add`) can add a brand-new role name or override an existing one — merged into
-`~/.openclaw/docket-roles.json`, "user wins" by name.
+`~/.docket/docket-roles.json`, "user wins" by name.
 
 Composing several starter roles into one pod shape, in a single command, is a **pod blueprint** —
 next section.
@@ -190,8 +190,8 @@ Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
 ```
 
 Only the roles a pod actually has take part (a lean pod runs two hops). docket stays the
-orchestrator — it invokes each hop via the OpenClaw daemon, captures the result, and threads it to
-the next role. This is the **real fix for "delegation wasn't real."**
+orchestrator — it invokes each hop through its own turn loop (`core/agent_loop.py`), captures the
+result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
 
 ```bash
 docket pod myapp delegate "Fix the null-token login crash"   # queue a task
@@ -218,9 +218,10 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
 
 Three guarantees hold on every dispatch:
 
-- **Budget-gated.** Before *each* hop docket checks the pod's recorded spend against the Lead's
-  budget cap (`docket profile <project>-lead --budget N`). Over budget → the task is left
-  **pending** (blocked), not run.
+- **Budget-gated.** Before *each* hop docket checks the pod's token-based dollar estimate against
+  the Lead's budget cap (`docket profile <project>-lead --budget N`) — docket's own turn loop
+  reports no billed spend, so the gate always runs off this labelled estimate. Over budget → the
+  task is left **pending** (blocked), not run.
 - **Traced.** Every hop emits a Phase-8 trace event (`docket trace`), on a per-task session
   `agent:<project>:<task_id>` — so a run is fully auditable, with no manual Telegram relay.
 - **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
@@ -285,10 +286,10 @@ docket persona myapp-lead clear            # back to role-only
 The persona lives in a marked block inside `SOUL.md` (it survives `docket maintain rebuild`) and
 never replaces the role itself — a persona-carrying agent is still, structurally, "the
 Implementer." Display names (`docket list`/`info`) resolve persona → name → role, never from a
-self-authored `IDENTITY.md`. docket also quarantines OpenClaw's own self-authoring scaffolding
-(`IDENTITY.md`, `BOOTSTRAP.md`) out of managed workspaces — on provisioning, and again on
-`docket doctor` — moving any that appear into `.docket-archive/`. Identity in a docket-managed
-workspace is docket-owned, never self-written by the agent.
+self-authored `IDENTITY.md`. docket also quarantines the base-assistant self-authoring scaffolding
+a model may leave behind (`IDENTITY.md`, `BOOTSTRAP.md`) out of managed workspaces — on
+provisioning, and again on `docket doctor` — moving any that appear into `.docket-archive/`.
+Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
 ---
 

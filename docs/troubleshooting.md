@@ -7,35 +7,36 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 
 ### Common Causes
 
-#### 1. **Invalid Model Name** (MOST COMMON)
-**Error in logs:** `FailoverError: Unknown model: anthropic/claude-haiku-3-5`
+#### 1. **Invalid Model Name**
 
-**Root cause:** OpenClaw config has invalid model names (e.g., `haiku-3-5` instead of `haiku-4-5`)
+**Error you might see:** `HTTP 404 from https://api.anthropic.com/v1/...: model not found` (or
+similar — the exact text comes straight from the model provider's error response, since docket's
+own turn loop calls the endpoint directly and does not pre-validate model names against a
+catalog).
+
+**Root cause:** a stale or misspelled model id in an agent's `.docket-meta.json` (e.g.
+`haiku-3-5` instead of `haiku-4-5`).
 
 **How to diagnose:**
 ```bash
 docket doctor
-# Look for "Model Configuration" section
+# Look for a flagged stale/aliased model name
 ```
 
 **How to fix:**
 ```bash
-# Auto-fix with docket (updates openclaw.json through the proper interface)
-docket doctor
+# Auto-fix with docket
+docket doctor --fix
 
 # Or update each agent's model individually
 docket profile <agent-id> anthropic/claude-haiku-4-5
 
 # Re-resolve all policy-following agents at once
 docket models preset anthropic
-
-# Restart gateway after changes
-systemctl --user restart openclaw-gateway
 ```
 
-> **Never edit `~/.openclaw/openclaw.json` directly.** All writes to that file must go through
-> docket commands — direct edits bypass the Anti-Corruption Layer and can leave config in an
-> inconsistent state that `docket doctor` will flag as an error.
+> **Never edit an agent's `.docket-meta.json` model field directly** — go through `docket profile`
+> or `docket models` so the change is validated, applied consistently, and audit-logged.
 
 **Valid model names (Anthropic defaults):**
 - `anthropic/claude-haiku-4-5` (cheap class — manager, reviewer, tester, knowledge, task)
@@ -56,12 +57,15 @@ docket list
 docket wire <agent-id>
 ```
 
-#### 3. **Group Not in Allowlist**
-**Error in logs:** `{"reason":"not-allowed", "chatId":-1001234567890}`
+#### 3. **Unbound / unauthorized chat**
+Since docket owns the Telegram bot itself, the `docket wire` binding **is** the entire
+authorization boundary — there is no separate daemon-side allowlist to also configure. A message
+from a chat that isn't bound to an agent gets a plain refusal, and the attempt is audit-logged
+(`telegram.unauthorized`) rather than silently dropped.
 
 **How to diagnose:**
 ```bash
-# Check which groups are wired to agents
+docket audit | grep telegram.unauthorized
 docket list
 # Look for agents with "✓ Wired" and matching group IDs
 ```
@@ -69,27 +73,32 @@ docket list
 **How to fix:**
 ```bash
 docket wire <agent-id>
-# This automatically adds the group to the allowlist via the proper config interface
 ```
 
-#### 4. **Gateway Not Running**
+#### 4. **The Telegram poller isn't running, or no bot token is stored**
+Telegram is docket's own bot (ROADMAP Phase 19 P19-8) — there is no external gateway process to
+be "down." Two things have to both be true for a wired chat to get an answer:
+
 **How to diagnose:**
 ```bash
-systemctl --user status openclaw-gateway
+docket keys list                    # is TELEGRAM_BOT_TOKEN stored?
+# and: is a `docket serve --telegram` process actually running?
 ```
 
 **How to fix:**
 ```bash
-systemctl --user start openclaw-gateway
+docket keys add TELEGRAM_BOT_TOKEN  # if not already stored
+docket serve --telegram             # or: docket serve --dispatch --telegram
 ```
 
 ## High Costs / Context Bloat
 
 ### Symptom
-Session costs $28+ from massive cache reads (21M+ tokens)
+A session accumulates an unusually large context, or an agent's turn count keeps climbing.
 
 ### Root Cause
-OpenClaw keeps full conversation history in context. With 258+ turns, cached context grows to 2.4MB.
+docket's turn loop keeps a growing message history for a session across turns. With enough turns,
+cached/re-sent context grows — the same shape of problem any long-lived chat session has.
 
 ### Solutions
 
@@ -119,11 +128,14 @@ docket profile <agent-id> anthropic/claude-haiku-4-5
 
 See `docket models` for the current role→model table and all available presets.
 
-#### 3. **Monitor Costs**
+#### 3. **Monitor token usage**
 ```bash
 docket cost <agent-id>
 docket cost  # All agents
 ```
+Token counts here are real and measured; the dollar column is not — docket's own turn loop
+reports no billed spend today. See
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 #### 4. **Check the per-turn context footprint**
 `docket maintain <agent-id> check` estimates the tokens re-sent every turn from the files that
@@ -139,38 +151,48 @@ If it's over budget, summarize the daily logs into MEMORY.md and archive them in
 docket maintain <agent-id> distill
 ```
 
-## Model Errors
+#### 5. **A single turn is running away**
+docket's own turn loop bounds every turn: a hard cap on model round-trips
+(`AGENT_LOOP_MAX_ITERATIONS`, default 20), a hard cap on total tool calls
+(`AGENT_LOOP_MAX_TOOL_CALLS`, default 40), a wall-clock timeout
+(`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, default 300s), and a measured-token budget
+(`AGENT_LOOP_TOKEN_BUDGET`, default 100,000). These are deliberate stop conditions, not
+throughput knobs — if you're hitting one legitimately, override it via its environment variable
+rather than assuming something is broken.
 
-### Invalid Model Name
-**Error:** `Unknown model: anthropic/claude-haiku-3-5`
-**Fix:** See "Agents Not Responding" → "Invalid Model Name" above
+## Model / Endpoint Errors
 
-### Model Fallback Not Working
-**Issue:** OpenClaw v2026.2.23 doesn't support custom fallback config
+### "no endpoint configured for this model"
+**Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
+provider — no `DOCKET_LLM_BASE_URL`, no stored local-provider entry, and (for a hosted provider)
+this error specifically means the provider block itself isn't registered.
 
-**Workaround:** Use docket's model validation:
+**Fix:** for a hosted provider, store a credential (`docket keys add <PROVIDER>_API_KEY`); for a
+local server, register it first (`docket models provider add <name> <base-url>`).
+
+### "cannot reach `<url>`: ..." / "timed out after Ns calling `<url>`"
+**Cause:** the configured endpoint (hosted or local) isn't reachable — wrong URL, the local
+server isn't running, or a network/firewall issue.
+
+**Fix:** confirm the endpoint is up (`curl <base-url>/models`), check for typos from
+`docket models provider add`, and re-run.
+
+### "HTTP 4xx/5xx from `<url>`: ..."
+**Cause:** the provider itself rejected the request — most commonly an invalid model id, an
+invalid/expired API key, or a context-length overflow. The detail text in the error is the
+provider's own response body, truncated to 500 characters.
+
+**Fix:** see "Invalid Model Name" above for a bad model id; `docket keys rotate <KEY>` for a bad
+credential; `docket maintain <agent-id> distill` (or `clean`/`reset`) if the context has grown
+past what the model accepts.
+
+### "docket doctor" flags a model but a turn otherwise succeeds
 ```bash
-# Validate all models
-docket doctor
-
-# Auto-fix invalid models
-docket doctor --fix
+docket doctor          # look for the flagged stale/aliased model name
+docket doctor --fix    # apply the fix
 ```
 
-## Gateway Crashes
-
-### Config Validation Error
-**Error:** `Unrecognized keys: contextPruning, compaction`
-
-**Cause:** Trying to use config keys not supported in OpenClaw v2026.2.23
-
-**Fix:**
-```bash
-openclaw doctor --fix
-systemctl --user restart openclaw-gateway
-```
-
-### Permission Denied Errors
+## Permission Denied Errors
 **Fix:**
 ```bash
 docket maintain <agent-id> check
@@ -186,24 +208,23 @@ This fixes:
 ### Bot Not Receiving Messages
 **Diagnose:**
 ```bash
-# Check if bot is in group
-# Check if gateway is running
-systemctl --user status openclaw-gateway
+# Is the bot actually in the group?
+# Is TELEGRAM_BOT_TOKEN stored?
+docket keys list
 
-# Check recent logs
-tail -100 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | grep telegram
+# Is a docket serve --telegram process actually running?
+# (docket has no separate gateway process or log to check instead)
 ```
 
 ### Messages Not Being Sent
-**Check logs for:**
-- Rate limiting: `"rate_limited"`
-- API errors: `"telegram.*error"`
-- Send failures: `"send.*fail"`
+Since docket owns the Telegram integration directly, a send failure surfaces in whatever terminal
+is running `docket serve --telegram` (or in `docket audit`/`docket trace` for the triggering
+action), not in a separate daemon log.
 
 **Fix:**
 ```bash
-# Restart gateway
-systemctl --user restart openclaw-gateway
+# Confirm the poller is actually running
+docket serve --telegram
 
 # Re-wire agent
 docket unwire <agent-id>
@@ -240,8 +261,9 @@ docket pod <p> queue               # check what's pending
 
 ### A dispatched task stays "blocked" (budget cap reached)
 
-Dispatch checks the pod's recorded (or estimated) spend against the Lead's budget cap before
-*every* hop. Once the cap is reached, the task is left `blocked` (never silently retried or
+Dispatch checks the pod's token-based dollar estimate against the Lead's budget cap before
+*every* hop (docket's own turn loop reports no billed spend, so the gate always runs off this
+estimate). Once the cap is reached, the task is left `blocked` (never silently retried or
 rewritten back to `pending`) **and the pod's Lead is marked paused** — every further claim
 against this pod is refused outright (`paused_refused`) until the pause is explicitly cleared,
 not just re-blocked hop by hop:
@@ -251,11 +273,11 @@ $ docket pod myapp dispatch
   [task-c410e91a-...] blocked — pod budget reached ($5.12 ≥ $5.00) before implementer
 ```
 
-Check the recorded spend, then either raise the cap or resume from the pause. Resuming a pod's
+Check the estimated spend, then either raise the cap or resume from the pause. Resuming a pod's
 Lead also un-blocks every `blocked` task in that pod at once:
 
 ```bash
-docket cost myapp-lead                    # see recorded spend
+docket cost myapp-lead                    # see measured token usage
 docket profile myapp-lead --budget <N>    # raise the cap (USD), if the spend is expected
 docket profile myapp-lead --resume        # clear the auto-pause + unblock the pod's queue
 # → Unblocked 1 budget-blocked task(s) in pod 'myapp'.
@@ -270,7 +292,7 @@ To retry a single blocked task without touching the pod-wide pause, use `docket 
 The Implementer's hop is gated on its `verifyCmd` (if one is set — see `docket pod <p> add
 --verify`/`set-verify`). A non-zero exit from that command fails the hop and leaves the task
 `pending` with a `verification_failed` trace event; it is **not** retried automatically (only a
-timeout or a daemon hiccup on the *agent turn* itself is retried — a real, deterministic
+timeout or an endpoint hiccup on the *agent turn* itself is retried — a real, deterministic
 non-zero exit or a bad verdict never is). Inspect the recorded output and either fix the
 underlying failure or clear/adjust the gate:
 
@@ -326,7 +348,7 @@ Check its session key / scope, and reset if needed:
 ```bash
 docket scope <p>-implementer show
 docket scope <p>-implementer reset
-grep "Session Key" ~/.openclaw/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
+grep "Session Key" ~/.docket/workspaces/projects/<p>-implementer/SOUL.md   # verify identity
 ```
 
 ### Leftover global `programmer`/`reviewer`/`tester`?
@@ -339,10 +361,13 @@ docket doctor
 ## Memory & Context
 
 There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and `docket context` has no
-`search`/`index`/`snapshot`/`compress` subcommand — those were removed (the OpenClaw runtime
-does semantic memory search itself; see [Removed Commands](commands.md#removed-commands)). The
-real per-agent memory contract is: `WORKFLOW_AUTO.md` (the runtime-forced startup file, re-read
-after every context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
+`search`/`index`/`snapshot`/`compress` subcommand — those were removed because the per-agent
+index/snapshot artifacts they wrote were read by nothing else (see
+[Removed Commands](commands.md#removed-commands)). There is also no separate semantic memory
+index today: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
+its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
+memory contract is: `WORKFLOW_AUTO.md` (the runtime-forced startup file, re-read after every
+context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
 `memory/YYYY-MM-DD.md` logs.
 
 ### Agents still using large context?
@@ -354,12 +379,11 @@ after every context reset), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md
    docket maintain <agent-id> distill   # summarize memory/*.md into MEMORY.md, archive originals
    ```
 
-2. **Verify the fleet is healthy, then restart:**
+2. **Verify the fleet is healthy:**
 
    ```bash
    docket list
    docket doctor
-   systemctl --user restart openclaw-gateway.service
    ```
 
 ### Agent stuck re-reading/re-creating its startup file, or ignoring HEARTBEAT.md on resume?
@@ -386,13 +410,13 @@ docket maintain <agent-id> rebuild
 1. **Run diagnostics:**
    ```bash
    docket doctor
-   openclaw doctor
    ```
 
 2. **Check logs:**
    ```bash
-   docket logs <agent-id>
-   journalctl --user -u openclaw-gateway --since "1 hour ago"
+   docket logs <agent-id>       # latest memory log
+   docket trace tail <project>  # live dispatch trace, if it's pod-related
+   docket audit                 # recent docket-initiated changes
    ```
 
 3. **Verify configuration:**
@@ -403,13 +427,13 @@ docket maintain <agent-id> rebuild
 
 4. **Test agent:**
    ```bash
-   # Send test message in Telegram group
-   # Agent should respond within 5-10 seconds
+   # Send a test message in Telegram (if wired), or:
+   docket pod <project> delegate "test task"
+   docket pod <project> dispatch
    ```
 
 5. **Emergency reset:**
    ```bash
    # If all else fails
    docket maintain <agent-id> rebuild
-   systemctl --user restart openclaw-gateway
    ```

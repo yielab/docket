@@ -1,9 +1,11 @@
 # docket Documentation
 
-**docket** is a Python CLI (Typer + Rich + Pydantic) for provisioning and isolating **teams** of
-OpenClaw autonomous agents — an isolated per-project pod (Lead + Implementer, optionally Reviewer
-+ Tester) for each codebase, not just single agents — with role-based model routing and budget
-guardrails.
+**docket** is a Python CLI (Typer + Rich + Pydantic) — a governed runtime and control plane for
+provisioning and isolating **teams** of autonomous coding agents: an isolated per-project pod
+(Lead + Implementer, optionally Reviewer + Tester) for each codebase, not just single agents —
+with role-based model routing, budget guardrails, and every tool call gated through one policy
+chokepoint. docket owns the agent turn loop itself; it has no external daemon dependency, and
+talks to any OpenAI-compatible chat-completions endpoint.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
@@ -18,7 +20,7 @@ guardrails.
 > **docket is early-stage / beta software.** Features described in these guides are implemented
 > and automated-test-backed, but have not been QA-hardened in production — automated tests catch
 > regressions, they don't replace hands-on verification. Expect rough edges and breaking changes
-> between versions, and **verify anything important against your own OpenClaw install**. All cost
+> between versions, and **verify anything important against your own install**. All cost
 > and dollar figures are accounting estimates, not your provider's bill — see
 > [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
@@ -43,7 +45,7 @@ For how features are specified before implementation, see the specs under
 
 ```bash
 # Setup (once)
-docket install                 # Install OpenClaw + specialist agents
+docket install                 # Bootstrap docket's home + org specialist agents
 
 # Daily use
 docket add                     # Create a project agent
@@ -70,8 +72,8 @@ docket doctor                  # System-wide diagnostics (add --fix to apply aut
 
 # Keys, auth & security (see Command Reference for the full surface)
 docket keys setup              # Interactive API key wizard
-docket auth status             # Model-provider auth profiles
-docket gates enable            # (Re-)apply enforced tool-approval gates (on by default at install)
+docket auth status             # Which provider credentials are stored (docket keys is the store)
+docket gates enable            # (Re-)apply approval routing (the tool-call gate is always on)
 docket audit                   # Recent docket-initiated changes
 ```
 
@@ -81,12 +83,25 @@ See the [Command Reference](commands.md) for the full set.
 
 ## File layout
 
+Everything docket owns lives under `~/.docket/` (`DOCKET_HOME` to relocate) — there is no external
+daemon and no second config file anywhere else:
+
 ```
-~/.openclaw/
-├── openclaw.json                  # OpenClaw daemon config
+~/.docket/
+├── fleet.json                     # Agent registration, channel bindings, gate/isolation flags,
+│                                   # provider endpoints, the org default model
+├── secrets.json                   # Stored provider API keys (0600)
+├── docket-models.json             # Role→model policy overrides
+├── docket-roles.json              # User-defined role archetypes
 ├── docket-conversations.json      # docket's own channel-thread registry
 ├── docket-runs.json               # docket's own dispatch run registry
-├── audit.log                      # hash-chained audit log (docket audit verify)
+├── docket-schedules.json          # Cron/interval pipeline schedules
+├── docket-mcp-servers.json        # Configured external MCP tool servers
+├── audit.log                      # Hash-chained audit log (docket audit verify)
+├── traces/                        # Per-session JSONL execution traces
+├── sessions/                      # Durable per-session turn history
+├── approvals/                     # docket's own approval-token store
+├── policies/                      # Installed guardrail policies
 └── workspaces/
     ├── manager/                   # Org specialist: orchestrator (delegation only)
     ├── knowledge/                 # Org specialist: docs / research
@@ -105,7 +120,7 @@ See the [Command Reference](commands.md) for the full set.
 ```
 
 > Org specialists (`manager`, `knowledge`, `security`, and the opt-in `portfolio-manager`) have
-> one shared workspace at `~/.openclaw/workspaces/<role>/`. Project pod members
+> one shared workspace at `~/.docket/workspaces/<role>/`. Project pod members
 > (`<project>-lead`, `<project>-implementer`, etc.) each get an **isolated** workspace under
 > `projects/` — no role is ever shared between projects.
 

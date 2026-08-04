@@ -17,7 +17,7 @@ The human who:
 - Sends tasks (CLI `docket pod … delegate`, or Telegram to a pod's Lead)
 - Reviews diffs and commits the code
 - Makes architectural decisions and approves any HITL gates
-- Sets budget caps and watches recorded spend
+- Sets budget caps and watches measured token usage
 
 ### 2. Project Pods
 One **pod per project/codebase**, created with `docket add`. A pod is a small team of
@@ -103,11 +103,13 @@ A lean pod is the right default for prototyping and low-risk changes: one owner 
 Dispatch is budget-gated against the **Lead's** cap, so set it before you run work:
 
 ```bash
-docket profile myapp-lead --budget 5     # cap pod spend at $5 (recorded spend)
+docket profile myapp-lead --budget 5     # cap pod spend at $5 (token-based estimate)
 ```
 
-Before *each* hop, docket compares the pod's recorded spend to this cap. Over budget → the task
-stays **pending** (blocked), never silently run.
+Before *each* hop, docket compares the pod's token-based dollar estimate to this cap — docket's
+own turn loop reports real, measured token counts but no billed dollar figure, so the gate always
+runs off the labelled estimate (`core/dispatch.py`'s `pod_gating_cost`), never a claimed "recorded
+spend". Over budget → the task stays **pending** (blocked), never silently run.
 
 ### Step 3 — Grow the pod when the work warrants it
 
@@ -178,9 +180,10 @@ Lead  →  Implementer  →  Reviewer  →  Tester
   ✓ t-02 complete   pod spend now $0.43 / $5.00
 ```
 
-docket stays the orchestrator: it invokes each hop via the OpenClaw daemon, captures the
-result, and threads it to the next role. The Lead plans, the Implementer is the **single
-writer**, the Reviewer can **veto** the diff, the Tester gives an independent PASS/FAIL.
+docket stays the orchestrator: it invokes each hop through its own turn loop
+(`core/agent_loop.py`), captures the result, and threads it to the next role. The Lead plans,
+the Implementer is the **single writer**, the Reviewer can **veto** the diff, the Tester gives
+an independent PASS/FAIL.
 
 ### Step 7 — Budget gating in action
 
@@ -228,13 +231,16 @@ agent:myapp:t-02
 ### Step 9 — Check the cost
 
 ```bash
-docket pod myapp queue     # per-task status + recorded cost, vs the cap
-docket cost                # recorded spend across the whole fleet
-docket cost myapp-implementer   # one agent's recorded spend
+docket pod myapp queue     # per-task status + estimated cost, vs the cap
+docket cost                # measured token usage across the whole fleet
+docket cost myapp-implementer   # one agent's measured tokens + a labelled estimate
 ```
 
-Dollar figures are the daemon's **recorded** spend, not a projection. (The bundled pricing
-table only powers comparative model estimates — docket never projects dollar *savings*.)
+Token counts are real and measured. Dollar figures are **not** — docket's own turn loop reports
+no billed spend, so `docket cost` shows a clearly labelled estimate rather than a number claimed
+as recorded. (The bundled pricing table only powers that estimate and `docket models`' comparative
+display — docket never projects dollar *savings*.) See
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
 ### Step 10 — Review and commit
 
@@ -249,7 +255,7 @@ git push
 ```
 
 The Lead records the outcome in the pod's memory log
-(`~/.openclaw/workspaces/projects/myapp-lead/memory/YYYY-MM-DD.md`).
+(`~/.docket/workspaces/projects/myapp-lead/memory/YYYY-MM-DD.md`).
 
 ---
 
@@ -490,7 +496,7 @@ Two ways to trigger a pod's pipeline without a human typing `dispatch`:
 
 ### Schedules — cron, a daily time, or a fixed interval
 
-Schedules live in `~/.openclaw/docket-schedules.json` — there is no CLI writer for this file yet,
+Schedules live in `~/.docket/docket-schedules.json` — there is no CLI writer for this file yet,
 so you edit it directly:
 
 ```json
@@ -605,7 +611,7 @@ Each member is an ordinary registered agent with its **own** permission-locked w
 `docket list` / `info` / `cost` / `doctor` see every member for free.
 
 ```
-~/.openclaw/workspaces/projects/myapp-implementer/
+~/.docket/workspaces/projects/myapp-implementer/
 ├── SOUL.md              # identity + scope + session key
 ├── AGENTS.md            # session protocol, role boundaries
 ├── TOOLS.md             # project-specific commands
@@ -662,6 +668,8 @@ docket list                     # every pod member + org specialist
 docket doctor                   # health + auto-fix; flags legacy global workers
 ```
 
+
+
 ### Assign and run work
 
 ```bash
@@ -695,7 +703,7 @@ git add -p && git commit -m "Feature: contact form" && git push
 ### End of day
 
 ```bash
-docket cost                     # recorded spend across the fleet
+docket cost                     # measured token usage across the fleet
 docket doctor                   # any alerts?
 ```
 
@@ -704,7 +712,7 @@ docket doctor                   # any alerts?
 ## Token & cost notes
 
 These are **token** estimates — the thing docket's routing actually controls. For dollars, read
-your **recorded** spend with `docket cost`; it depends on your models and current pricing, so we
+the **labelled estimate** with `docket cost`; it depends on your models and current pricing, so we
 don't project it here. See
 [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits).
 
@@ -739,7 +747,7 @@ cap is enforced between hops on every dispatch.
 
 ## Troubleshooting
 
-Pod/dispatch, scope, and gateway/Telegram issues (including "pod not running a delegated task,"
+Pod/dispatch, scope, and Telegram issues (including "pod not running a delegated task,"
 "pipeline stops after the Implementer," and leftover pre-pods global roles) are all covered in
 **[troubleshooting.md](troubleshooting.md)**'s "Pods & Dispatch" and "Agents Not Responding in
 Telegram" sections — kept in one place rather than duplicated here.

@@ -23,57 +23,77 @@ Complete reference for all docket commands with detailed examples and options.
 
 ### install
 
-Bootstrap a complete OpenClaw setup from scratch, including the shared **org specialists**.
+Bootstrap a docket-native home under `~/.docket/` (`DOCKET_HOME`) from scratch, including the
+shared **org specialists**. docket has no external daemon dependency — there is no separate
+runtime to install or configure; this command provisions docket's own state directly.
 
 **Syntax:**
 ```bash
 docket install                  # manager, knowledge, security — exec-approval gates ON by default
 docket install --portfolio      # + the optional org Portfolio Manager
-docket install --no-gates       # opt out of exec-approval gates at install time
+docket install --no-gates       # opt out of approval routing at install time
 docket install --yes            # skip confirmation prompts (non-interactive/CI)
 ```
 
-**What it does:**
-1. Checks for required dependencies (python3 3.11+, openclaw, systemctl; bash for the launcher)
-2. Initializes OpenClaw configuration at `~/.openclaw/openclaw.json`
-3. Creates the org specialists (`scope: org`): **manager**, **knowledge**, **security**
-4. Sets up specialist agents and best-practice defaults
-5. Sets up workspace directories with proper permissions (700)
-6. Starts the openclaw-gateway.service systemd unit
+**What it does** (`cli/_install.py`'s `run_install`, step by step):
+1. Checks for required dependencies: `python3` and `git` (both required — missing either aborts
+   before anything is written); `fzf` is optional (interactive pickers fall back to a numbered
+   list without it)
+2. Creates the directory structure under `DOCKET_HOME` (`~/.docket/projects/`, and
+   `~/Sites/` if it doesn't exist yet), permissioned 700
+3. Sets the org-wide default model in docket's own fleet registry (`~/.docket/fleet.json`)
+4. Creates the org specialists (`scope: org`): **manager**, **knowledge**, **security** — fleet
+   registration, `.docket-meta.json`, and the full workspace contract (`SOUL.md`, `AGENTS.md`,
+   `HEARTBEAT.md`, `WORKFLOW_AUTO.md`, `MEMORY.md`) for each; idempotent, so re-running only
+   backfills what's missing
+5. Checks whether a model-provider credential is already stored or exported (does **not** run a
+   login flow — there isn't one; see [`auth`](#auth) below) and tells you plainly if none is found
+6. Hardens permissions on docket-owned secrets/config files to 0600, and (unless `--no-gates`)
+   turns on approval **routing** — the tool-call gate itself (policy engine + high-risk command
+   classifier) is unconditionally active on every tool call regardless of this flag; there is
+   nothing to "enable" there. See [`gates`](#gates).
+7. Installs the baseline guardrail policy templates (idempotent — skips files already present)
 
 **Flags:**
 - **`--portfolio`**: also provision the optional org **Portfolio Manager** — one
   `portfolio-manager` agent (`scope: org`) that is an advisory cross-pod planner over fleet
   *metadata* (which pods exist, their queues, budgets, health). It never edits code, never
   dispatches into a pod, and is never a pod member. Opt-in.
-- **`--gates`/`--no-gates`** (default `--gates`, i.e. **on**): the enforced tool-approval gates
-  for dangerous operations are applied automatically; pass `--no-gates` to explicitly opt out.
-  Re-apply or reverse anytime with `docket gates enable`/`docket gates disable` — see
-  `specs/functional/security-gates.spec.md`.
+- **`--gates`/`--no-gates`** (default `--gates`, i.e. **on**): applies approval routing so a
+  gated tool call's "ask" verdict reaches a channel; pass `--no-gates` to skip that (the call
+  still blocks on docket's approval store either way — it just times out to denied faster with
+  nobody watching for it). Re-apply or reverse anytime with `docket gates enable`/
+  `docket gates disable` — see `specs/functional/security-gates.spec.md`.
 - **`--yes`/`-y`**: skip interactive confirmation prompts — for scripted/CI installs.
 
 **Example:**
 ```bash
-# First-time setup (gates on by default)
+# First-time setup (approval routing on by default)
 docket install
 
-# With the org Portfolio Manager, opting out of gates
+# With the org Portfolio Manager, opting out of approval routing
 docket install --portfolio --no-gates
 
 # Non-interactive (CI)
 docket install --yes
 
 # Output:
-# → Checking dependencies...
-# ✓ python3 3.11+ found
-# ✓ openclaw 0.4.2 found
-# → Creating OpenClaw config...
-# → Creating org specialists...
-# ✓ manager agent created
-# ✓ knowledge agent created
-# ✓ security agent created
-# ...
-# ✓ Installation complete!
+# Step 1: Checking dependencies
+# ✓ python3: 3.11.9
+# ✓ git: found
+# Step 2: Creating directory structure
+# ✓ Directories created
+# Step 3: Configuring the default model
+# Step 4: Setting up specialist agents
+# ✓ manager: created (anthropic/claude-haiku-4-5 — ...)
+# ✓ knowledge: created (...)
+# ✓ security: created (anthropic/claude-sonnet-4-6 — ...)
+# Step 5: Model authentication
+# Step 6: Configuring security best practices
+# ✓ Tool-call gate: always active (policy engine + high-risk command classifier)
+# Step 7: Guardrail policies
+# ✓ Installed 6 baseline policies
+# Installation Complete!
 ```
 
 **Aliases:** `setup`
@@ -124,7 +144,7 @@ DEBUG=1 docket list
 
 **Notes:**
 - Shows all registered agents: org specialists (manager, knowledge, security) and all pod members
-- Telegram status checks openclaw.json bindings
+- Telegram status checks docket's own channel bindings (`~/.docket/fleet.json`)
 - Session shows current project key
 
 ---
@@ -211,10 +231,9 @@ docket add myapp ~/code/myapp --with reviewer
 
 **Notes:**
 - Member ids auto-generated via slugification (`<project>-<role>[-N]`)
-- Each member gets its own workspace at `~/.openclaw/workspaces/projects/<member-id>/`
+- Each member gets its own workspace at `~/.docket/workspaces/projects/<member-id>/`
 - Generates SOUL.md, AGENTS.md, TOOLS.md, HEARTBEAT.md per member
 - Sets permissions to 700 (dirs) and 600 (files)
-- Restarts gateway after creation
 - Pod members are ordinary registered agents, so `docket list`/`info`/`cost`/`doctor` see them
 
 #### Pod Blueprints
@@ -233,7 +252,7 @@ A **codebase** blueprint (`software`) treats the location argument as an existin
 (never auto-created) and auto-detects its stack. A **workdir** blueprint (`research`/`content`/
 `ops`) treats the location as the pod's one shared working directory instead — no codebase is
 assumed and no stack is auto-detected; if you don't pass one, docket provisions
-`~/.openclaw/workspaces/pods/<project>/` for you. `--blueprint` also changes the interactive
+`~/.docket/workspaces/pods/<project>/` for you. `--blueprint` also changes the interactive
 prompt label ("Working directory" instead of "Codebase path").
 
 ```bash
@@ -324,7 +343,7 @@ Description:       My project description
 Session Key:       agent:myproject:default
 Project Key:       default
 Created:           2026-02-25T10:00:00Z
-Workspace:         ~/.openclaw/workspaces/projects/myproject-implementer/
+Workspace:         ~/.docket/workspaces/projects/myproject-implementer/
 Telegram:          ✓ Wired to group -1001234567890
 ```
 
@@ -378,9 +397,8 @@ docket delete myproject
 **Aliases:** `remove`, `rm`
 
 **Notes:**
-- Removes agent from openclaw.json
-- Optionally deletes `~/.openclaw/workspaces/projects/<id>/`
-- Restarts gateway after deletion
+- Removes agent registration from docket's fleet registry (`~/.docket/fleet.json`)
+- Optionally deletes `~/.docket/workspaces/projects/<id>/`
 - Cannot be undone (backup first if unsure)
 - Given a pod id (not a single member id), removes the whole pod — see [`docket pod`](#pod) to
   remove one member instead
@@ -403,9 +421,8 @@ docket maintain [agent-id] [mode] [--no-distill-first]
 
 **Modes:**
 - **`check`** (default): Health check and auto-fix — permissions (700/600), missing workspace
-  files, session-key sync between `.docket-meta.json` and `openclaw.json`, memory directory, and
-  a per-turn context-footprint estimate (warns if SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together
-  exceed the configured token budget)
+  files, fleet registration, memory directory, and a per-turn context-footprint estimate (warns
+  if SOUL/AGENTS/TOOLS/HEARTBEAT/MEMORY together exceed the configured token budget)
 - **`clean`**: Clear memory logs only (`memory/*.md`) — **distills first by default** (see below)
 - **`reset`**: Clear memory + MEMORY.md + HEARTBEAT.md — **distills first by default**
 - **`rebuild`**: Deep rebuild — regenerate SOUL.md, AGENTS.md, TOOLS.md from metadata
@@ -465,16 +482,17 @@ docket maintain myproject clean
 # ✗ Distillation failed (timeout): the turn did not complete -- nothing deleted.
 ```
 `failure_kind` (`timeout`, `daemon_error`, `invalid_output`) tells you whether to just retry or
-whether the model's output needs a closer look. Pass `--no-distill-first` to skip this and
+whether the model's output needs a closer look (`daemon_error` is the failure-kind name's literal
+value — a name that predates Phase 19's removal of the daemon and now just means "the turn didn't
+complete cleanly," not a live external process). Pass `--no-distill-first` to skip this and
 delete/clear undistilled — you'll be warned that it's happening. When a `reset` runs a real
 distillation, MEMORY.md is left as freshly distilled rather than immediately cleared again in
 the same breath.
 
 **Notes:**
-- Preserves identity (`.docket-meta.json`, `openclaw.json`)
+- Preserves identity (`.docket-meta.json`, fleet registration)
 - `clean`/`reset`/`rebuild` prompt for confirmation and require a TTY (non-interactive calls are
   cancelled, not silently applied)
-- Restarts the gateway after structural changes
 
 ---
 
@@ -512,17 +530,17 @@ docket scope myproject reset
 
 **Notes:**
 - Prevents cross-project contamination
-- Updates .docket-meta.json, openclaw.json, and SOUL.md
-- Restarts gateway to apply changes
+- Updates `.docket-meta.json` and `SOUL.md`
 - Use different keys for parallel project work
 
 ---
 
 ### context
 
-Read-only views over an agent's memory and working context. Semantic *search* over an agent's
-memory is the OpenClaw runtime's job (its `memory_search`/`memory_get` tools) — docket does not
-maintain a rival keyword index, so `context` is just two dashboards.
+Read-only views over an agent's memory and working context. There is no separate semantic memory
+index — docket's own turn loop has no `memory_search` tool of its own, so an agent (and this
+command) searches memory files the same way it reads any other file — so `context` is just two
+dashboards.
 
 **Syntax:**
 ```bash
@@ -535,8 +553,8 @@ docket context <agent-id> project         # project/stack-focused view (codebase
 
 #### show (default)
 Dashboard: the last 3 memory-log files (last 5 lines each), active tasks parsed from
-`HEARTBEAT.md`, today's gateway log lines mentioning the agent, and quick stats (memory-log
-count, session size, last-active timestamp).
+`HEARTBEAT.md`, and quick stats (memory-log count, session size read from docket's own durable
+per-session storage, last-active timestamp).
 
 ```bash
 docket context myproject
@@ -556,10 +574,11 @@ docket context myproject project
 
 **Notes:**
 - Both subcommands are read-only and touch only the named agent's own workspace.
-- The `search`/`index`/`snapshot`/`compress` subcommands were **removed**: the runtime does
-  semantic memory search itself, and the snapshot/gzip-archive files were read by nothing (the
-  archive even hid old logs from the runtime's own recall). Use `docket snapshot` for a
-  whole-fleet JSON export.
+- The `search`/`index`/`snapshot`/`compress` subcommands were **removed**: the per-agent index/
+  snapshot/gzip-archive artifacts they wrote were read by nothing else in docket (the archive
+  even hid old logs from an agent's own `read`/`grep`-based recall). There is no separate semantic
+  memory index to replace them with — an agent searches its own memory files directly. Use
+  `docket snapshot` for a whole-fleet JSON export.
 
 ---
 
@@ -578,9 +597,9 @@ docket persona <agent-id> clear           # remove it (back to role/name)
 
 **Notes:**
 - Stored in `.docket-meta.json` (`persona`) and rendered into `SOUL.md`; survives `maintain rebuild`.
-- `docket doctor` quarantines OpenClaw's `IDENTITY.md`/`BOOTSTRAP.md` scaffolding from managed
-  workspaces — use this command instead to give an agent a friendly name.
-- Restarts the gateway after a change.
+- `docket doctor` quarantines the base-assistant self-authoring scaffolding a model may leave
+  behind (`IDENTITY.md`/`BOOTSTRAP.md`) from managed workspaces — use this command instead to
+  give an agent a friendly name.
 
 ---
 
@@ -689,7 +708,7 @@ docket pod myapp delegate --priority high "Patch the auth bypass"
 
 #### queue
 Show the pod's task queue with per-task status (`pending`/`running`/`done`/`failed`/`blocked`)
-and recorded cost. `--retry <task-id>` moves one `blocked` task back to `pending` — the explicit,
+and estimated cost. `--retry <task-id>` moves one `blocked` task back to `pending` — the explicit,
 single-task way around a reached budget cap (a pod-wide budget change, `docket profile
 <lead-id> --budget`/`--resume`, un-blocks every task in the pod at once instead).
 
@@ -710,8 +729,8 @@ docket pod myapp queue --retry t-003
 Run the pod's **pending** (and, with `--resume`, crash-recoverable) tasks through its pipeline —
 **one real agent turn per hop**: `Lead → Implementer → Reviewer (if present) → Tester (if
 present)`. Only the roles the pod actually has take part (a lean pod runs two hops). docket
-invokes each hop via the OpenClaw daemon, captures the result, and threads it to the next role.
-Each task is claimed under a filelock before its first hop runs, so two dispatchers (e.g. a
+invokes each hop through its own turn loop (`core/agent_loop.py`), captures the result, and
+threads it to the next role. Each task is claimed under a filelock before its first hop runs, so two dispatchers (e.g. a
 manual run and the `docket serve --dispatch` sweep) can never double-run the same task, and each
 hop is persisted to the queue as it completes so a crash loses at most the in-flight hop.
 
@@ -730,9 +749,10 @@ docket pod myapp dispatch
 
 Guarantees that hold on every dispatch:
 
-- **Budget-gated, with real auto-pause.** Before *each* hop, docket checks the pod's recorded (or,
-  when the daemon recorded none, estimated) spend against the Lead's budget cap (`docket profile
-  <project>-lead --budget N`). Over budget → the task is left **blocked** (not silently retried)
+- **Budget-gated, with real auto-pause.** Before *each* hop, docket checks the pod's token-based
+  dollar estimate against the Lead's budget cap (`docket profile <project>-lead --budget N`) —
+  docket's own turn loop reports no billed spend, so the gate always runs off this labelled
+  estimate, never a claimed "recorded" figure. Over budget → the task is left **blocked** (not silently retried)
   and the pod's Lead is marked paused — every further claim against this pod is refused outright
   until `docket profile <project>-lead --resume` clears it.
 - **Retried on a transient hiccup.** A timed-out or daemon-error hop retries in place (linear
@@ -892,7 +912,7 @@ docket roles show reviewer
 
 #### add
 Registers a new archetype from a standalone YAML file into the user overlay
-(`~/.openclaw/docket-roles.json`) — built-ins are never edited, only shadowed by name.
+(`~/.docket/docket-roles.json`) — built-ins are never edited, only shadowed by name.
 
 ```bash
 docket roles add ./producer.yaml
@@ -914,7 +934,7 @@ docket roles validate ./producer.yaml   # dry-run without persisting
 
 **Notes:**
 - Built-ins (`lead`/`implementer`/`reviewer`/`tester`) and the 6-role starter library are Python
-  literals, never loaded from files; a user archetype in `~/.openclaw/docket-roles.json` overlays
+  literals, never loaded from files; a user archetype in `~/.docket/docket-roles.json` overlays
   by name, and a malformed overlay entry is skipped rather than crashing a live fleet
 - See [role-archetypes.spec.md](../specs/functional/role-archetypes.spec.md)
 
@@ -939,34 +959,39 @@ docket wire             # Interactive picker
   breaking change to `wire`'s syntax.
 
 **Interactive prompts:**
-1. Enter Telegram group ID (get from logs)
+1. Enter the Telegram peer/group ID — manual entry only; docket has no daemon gateway log to
+   discover a group id from, so create the bot, add it to a group, and get the group's chat id
+   from Telegram itself (e.g. forward a message from the group to `@userinfobot`, or check the
+   Bot API's `getUpdates` response) before running `wire`.
 
 **Example:**
 ```bash
-# Step 1: Create Telegram group and add bot
-# Step 2: Send test message
-# Step 3: Get group ID from logs
-tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
-# Look for: "New group: -1001234567890"
+# Step 1: docket keys add TELEGRAM_BOT_TOKEN, create a bot, add it to a group
+# Step 2: get the group's chat id from Telegram directly (see above)
 
-# Step 4: Wire agent
+# Step 3: Wire agent
 docket wire myproject
-# → Enter Telegram group ID: -1001234567890
-# ✓ Agent wired to group -1001234567890
+# → Enter the peer/group ID from your telegram setup.
+# Telegram peer/group ID: -1001234567890
+# ✓ Binding: myproject ← telegram group -1001234567890
+# ✓ Done. 'myproject' is now wired to telegram peer -1001234567890
 ```
 
 **Aliases:** `telegram`
 
 **Notes:**
-- Updates openclaw.json bindings
-- Enables mobile approvals for dangerous operations
-- Restarts gateway after wiring
+- Updates docket's own fleet registry (`~/.docket/fleet.json`) bindings, and seeds an entry in
+  the conversation registry (`docket conversations`)
+- Enables mobile approvals via docket's own Telegram bot (`docket serve --telegram`, once
+  `TELEGRAM_BOT_TOKEN` is stored) — the binding is the **entire authorization boundary**: anyone
+  who can post in that chat can `/approve`, `/deny`, `/status`, or `/delegate` as this agent the
+  moment the bot is running
 
 ---
 
 ### unwire
 
-Remove Telegram binding from an agent.
+Remove a channel binding from an agent.
 
 **Syntax:**
 ```bash
@@ -988,18 +1013,17 @@ docket unwire myproject
 **Aliases:** None
 
 **Notes:**
-- Removes entry from openclaw.json bindings
+- Removes the entry from docket's own fleet registry (`~/.docket/fleet.json`)
 - Agent can still function without Telegram
-- Approvals will require CLI interaction
-- Restarts gateway after unwiring
+- Approvals will require CLI, HTTP, or MCP interaction
 
 ---
 
 ### conversations
 
 Inspect and resume the **conversation registry** — docket's durable index of channel
-threads. OpenClaw keeps no durable transcript, so docket tracks which agent handles
-each thread, its topic, status, and a resume pointer.
+threads. docket's own turn loop keeps no durable transcript of its own, so docket tracks which
+agent handles each thread, its topic, status, and a resume pointer.
 
 **Syntax:**
 ```bash
@@ -1048,7 +1072,7 @@ docket keys list
 #### add
 Key name must be `UPPERCASE_WITH_UNDERSCORES` (e.g. `ANTHROPIC_API_KEY`). Prompts for the hidden
 value via `getpass`; errors (exit 1) if the name already exists — use `rotate` instead. On
-success: stores it, re-syncs `.env` files into every agent workspace, and restarts the gateway.
+success: stores it and re-syncs `.env` files into every agent workspace.
 
 ```bash
 docket keys add ANTHROPIC_API_KEY
@@ -1098,77 +1122,63 @@ docket keys setup
 **Aliases:** `key`, `secret`
 
 **Notes:**
-- Stored in `~/.openclaw/secrets.json` (values, 0600) and `secrets.meta.json` (added/rotated
-  timestamps) — docket-owned JSON, written through `edges/store.py`, never `openclaw.json`
+- Stored in `~/.docket/secrets.json` (values, 0600) and `secrets.meta.json` (added/rotated
+  timestamps) — docket-owned JSON, written through `edges/store.py`
 - Recognized provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`,
   `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`,
   `HUGGINGFACE_TOKEN`
-- `add`/`remove`/`rotate` all re-sync `.env` files to agent workspaces and restart the gateway
+- `add`/`remove`/`rotate` all re-sync `.env` files to agent workspaces
 
 ---
 
 ### auth
 
-Manage model-provider authentication profiles (separate from `docket keys` — this drives
-OpenClaw's own auth-profile store via the `openclaw` CLI, not the `secrets.json` file).
+Model-provider credential **status** — separate from `docket keys` only in name today. Before
+Phase 19, `auth login`/`key`/`setup` shelled out to the (now-deleted) daemon for an OAuth-like
+setup-token exchange. **That flow no longer exists, and there is no docket-native replacement.**
+`docket keys add <PROVIDER>_API_KEY` is the real, working credential path —
+`edges/adapters/llm.py`'s `resolve_endpoint` reads it (or the bare `<PROVIDER>_API_KEY`
+environment variable) directly.
 
 **Syntax:**
 ```bash
 docket auth                              # status (default)
-docket auth status                       # list configured auth profiles
-docket auth login [--provider <name>]    # OAuth-style refreshable setup-token flow
-docket auth key [--provider <name>]      # paste a static API key as an auth profile
-docket auth setup [--provider <name>]    # interactive menu (login vs key vs cancel)
+docket auth status                       # which provider keys are stored
+docket auth login | key | setup | choose # print the "no docket-native flow" message and exit 1
 ```
-
-`--provider <name>` defaults to `anthropic` when omitted (backward compatible with every
-pre-Phase-18 invocation) — pass any provider the OpenClaw daemon supports, e.g. `openai`,
-`google`, `openrouter`.
 
 **Subcommands:**
 
 #### status (default)
-Lists auth profiles (`● id (provider, type) [disabled: reason]`); green ● if usable, yellow ●
-if disabled.
+Lists which recognized provider env-var-named keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...)
+are stored via `docket keys`.
 
 ```bash
 docket auth status
-# No auth profiles configured.
-#   Run: docket auth login
+#   ● ANTHROPIC_API_KEY  (stored via 'docket keys')
+#
+# At least one provider credential is stored.
 ```
 
-#### login
-Requires the `openclaw` binary on PATH. Runs the refreshable OAuth-style setup-token flow;
-restarts the gateway on success.
+#### login / key / setup / choose
+All four print the same message and exit 1 — they are kept as named subcommands only so a
+pre-Phase-19 script gets an explicit, actionable error instead of "unknown command":
 
 ```bash
 docket auth login
-docket auth login --provider openai
-```
-
-#### key
-Requires `openclaw` on PATH. Pastes a static (non-refreshing) API key as an auth profile.
-
-```bash
-docket auth key
-docket auth key --provider openrouter
-```
-
-#### setup
-Requires `openclaw` on PATH **and** an interactive TTY. Presents a menu: setup-token / paste-key
-/ cancel (default: setup-token). `choose` is accepted as an alias for this subcommand word.
-
-```bash
-docket auth setup
-docket auth setup --provider google
+# ✗ No docket-native provider-auth flow exists yet (Phase 19 P19-7b deleted the daemon
+#   this used to shell out to for an OAuth-like token exchange).
+#   What works today: store a credential directly and docket's own chat client reads it —
+#     docket keys add ANTHROPIC_API_KEY
 ```
 
 **Aliases:** None
 
 **Notes:**
-- Delegated entirely to `openclaw`'s own auth-profile store via the ACL
-  (`edges/adapters/openclaw.py`) — this command never reads/writes an auth file directly
-- Separate concept from `docket keys` (raw provider API keys in `secrets.json`)
+- `docket auth status` never writes anything — read-only
+- `login`/`key`/`setup`/`choose` accept `--provider <name>` (default `anthropic`) purely to name
+  the right env var in their error message; none of them perform an auth exchange
+- Use [`docket keys`](#keys) for the credential path that actually works
 
 ---
 
@@ -1176,7 +1186,7 @@ docket auth setup --provider google
 
 ### logs
 
-View memory logs and gateway entries for an agent.
+View an agent's latest memory log.
 
 **Syntax:**
 ```bash
@@ -1185,38 +1195,30 @@ docket logs             # Interactive picker
 ```
 
 **What it shows:**
-1. Recent memory logs from `memory/YYYY-MM-DD.md`
-2. Gateway log entries for the agent
-3. Active tasks from HEARTBEAT.md
+The most recent `memory/YYYY-MM-DD.md` file's first 40 lines (with a note if there are more).
+There is no gateway or daemon log to tail any more — docket has no external process producing
+one; memory logs are the durable, docket-owned activity record. For active tasks, read
+`HEARTBEAT.md` directly (`docket edit <id>`) or use `docket context <id> show`.
 
 **Example:**
 ```bash
 docket logs myproject
 
 # Output:
-# Memory Logs (2026-02-25)
-# ────────────────────────────────────────
-# 10:00 - Started work on authentication
-# 10:15 - Implemented JWT middleware
-# 10:30 - Added tests for auth flow
+# Logs: My Awesome Project (myproject)
 #
-# Gateway Logs
-# ────────────────────────────────────────
-# [10:00:12] Message received from myproject
-# [10:05:34] Tool approval requested: git push
-# [10:06:01] Approval granted
-#
-# Active Tasks (HEARTBEAT.md)
-# ────────────────────────────────────────
-# - Refactor authentication module
-# - Add integration tests
+# Latest memory log: 2026-02-25.md
+#   10:00 - Started work on authentication
+#   10:15 - Implemented JWT middleware
+#   10:30 - Added tests for auth flow
 ```
 
 **Aliases:** `log`
 
 **Notes:**
-- Tails last 50 lines by default
-- Use `tail -f` on log files for live monitoring
+- Shows the single latest memory log file only, not a rolling tail across days
+- Use `tail -f` on the file directly (under the agent's workspace `memory/` directory) for live
+  monitoring while an agent is working
 - Memory logs rotate daily
 
 ---
@@ -1304,8 +1306,7 @@ docket profile myproject-lead --resume
   `docket profile <id> premium` fails with "Invalid model" and exits 1. They are not "deprecated
   but accepted"; there is no shim. Use a full `provider/model` ID, or `docket models` to see/set
   the role policy's model classes.
-- Updates .docket-meta.json and openclaw.json
-- Restarts gateway after change
+- Updates `.docket-meta.json`
 - `--resume` clears `paused`/`pausedReason` (set by the pod-dispatch budget gate when a pod's
   Lead reaches its cap) and writes a `profile.resume` audit entry; when the target is a pod's
   Lead it also un-blocks that pod's `blocked` tasks so dispatch can claim them again
@@ -1352,16 +1353,17 @@ docket models provider add homelab http://localhost:8000/v1 --model llama-3.1-70
 ```
 
 **Notes:**
-- Policy changes are **live**: every policy-following agent is re-resolved and the gateway restarts once. Pinned agents (`docket profile <id> <model>`) are never touched
-- Overrides persist in `~/.openclaw/docket-models.json` (`roles:` map); delete it or run `docket models reset` to restore built-ins
+- Policy changes are **live**: every policy-following agent is re-resolved immediately. Pinned agents (`docket profile <id> <model>`) are never touched
+- Overrides persist in `~/.docket/docket-models.json` (`roles:` map); delete it or run `docket models reset` to restore built-ins
 - `docket models reset` prompts `Continue? [y/N]` before touching anything — a non-interactive
   call that can't answer aborts rather than silently resetting the fleet
 - Applying a preset does more than swap models: it also writes the preset's own
   economy/standard/premium anchors into `docket-models.json`, re-resolves every policy-following
-  agent, restarts the gateway once, and warns (with a `docket keys add <KEY>` hint, or
-  "register your endpoint" for `local`) if the preset's required key isn't stored yet
-- Unknown models are accepted if well-formed (`provider/model`) — the daemon validates the
-  actual model; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter route
+  agent, and warns (with a `docket keys add <KEY>` hint, or "register your endpoint" for `local`)
+  if the preset's required key isn't stored yet
+- Unknown models are accepted if well-formed (`provider/model`) — docket has no provider-side
+  catalog to validate against, so a bad model id only surfaces the first time an agent actually
+  calls the endpoint; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter route
   outside docket's curated free-tier rows, and `$0 (local)` for a local/ollama/lmstudio
   provider — never a fabricated dollar figure)
 - Tier names (`economy`/`standard`/`premium`) are rejected everywhere a model/role value is
@@ -1404,12 +1406,20 @@ Output:            45,000 tokens
 Cache read:        50,000 tokens
 Cache write:       10,000 tokens
 
-Total cost:       $1.11 (recorded)
+Total cost:       none recorded for these sessions
 ```
 
-The dollar total is the **recorded** spend reported by the OpenClaw daemon — not an estimate.
-docket does not print a projected "savings if you switched models" figure: that would depend on
-its hand-maintained pricing table, which has no live feed. For model choice, see `docket models`.
+**Token counts are real and measured** — reported by the model endpoint per call and accumulated
+by docket's own session storage. **The dollar total is not.** docket's own turn loop
+(`DocketDriver`) reports no billed spend at all — `Total cost` today always reads as above rather
+than a dollar figure, because there is nothing to attribute one to honestly. This is a known,
+plainly-stated gap, not a bug: converting a token count into a dollar figure is exactly the
+estimate-to-billing-claim conversion docket refuses to make inside this command. For a
+comparative, clearly-labelled *estimate* (never presented as billed spend), and for how the
+budget-auto-pause gate uses that same estimate, see `docket models` and
+[Cost reporting and its limits](../README.md#cost-reporting-and-its-limits). docket does not print
+a projected "savings if you switched models" figure either — that would compound one estimate on
+top of another.
 
 **Example:**
 ```bash
@@ -1428,18 +1438,24 @@ docket cost myproject --history --days 7
 # Output:
 # Token Usage (All Agents)
 # ────────────────────────────────────────
-# myproject:     $1.11
-# taskagent:     $0.45
-# Total:         $1.56
+# myproject:     $0.0000
+# taskagent:     $0.0000
+# Total:         $0.0000
 ```
 
 **Aliases:** `usage`
 
 **Notes:**
-- Dollar total is the **recorded** spend reported by the OpenClaw daemon — not an estimate
-- Pricing from the bundled MODEL_PRICING snapshot (manual; not a live feed)
-- docket does not print projected savings — exact spend depends on your models and pricing
-- Useful for budget management and detecting runaway sessions
+- Token counts (input/output/cache read/cache write, turns) are real and measured
+- The dollar total is **not** recorded spend today — docket's own turn loop reports none; treat
+  `$0.0000`/"none recorded" as an honest gap, not a claim that nothing was spent
+- `--history`/`--days` currently return **no rows** against the production driver: per-day
+  breakdowns aren't tracked by docket's own session store (a session's usage is one running
+  total for its lifetime, not timestamped per turn) — a documented, known limitation
+- Pricing table (`docket models`) is a manual snapshot, not a live feed, and is not surfaced
+  inside `docket cost` itself
+- Useful for detecting runaway sessions by turn count; budget management works off the
+  token-based estimate the pod-dispatch gate itself computes, not this command's dollar column
 
 ---
 
@@ -1461,58 +1477,51 @@ docket doctor --fix        # Apply auto-fixes for detected drift (mutates state)
 
 **What it checks:**
 
-`docket doctor` runs roughly twenty checks, not a fixed short list — the most load-bearing ones:
-1. Required dependencies (openclaw, python3; fzf optional)
-2. OpenClaw config file exists and is valid JSON
-3. Gateway service status
-4. Telegram bindings and today's gateway log
-5. Workspace permissions (700/600), missing/corrupted files
-6. Session key consistency (config drift between `.docket-meta.json` and `openclaw.json`)
-7. **Dispatch task ledger** — `TASK_LIST.json` (`status: "running"`) vs. the pod Lead's
+`docket doctor` runs fifteen checks (`cli/_doctor.py`'s `run_doctor`), not a fixed short list —
+in order:
+1. Required dependencies — `python3` (required), `fzf` (optional); docket has no external
+   daemon binary to check for any more
+2. Per-project agents — workspace files present, `.docket-meta.json` present, registered in the
+   fleet registry (`~/.docket/fleet.json`), and (advisory) whether a channel is bound
+3. Model validity — flags stale/aliased model names across every registered agent's meta
+4. Legacy `docket-models.json` `profiles:` key left over after a `roles:`-only migration
+   (advisory; doesn't count as a failure)
+5. **Dispatch task ledger** — `TASK_LIST.json` (`status: "running"`) vs. the pod Lead's
    `HEARTBEAT.md` dispatch ledger must agree; a mismatch prints exactly which task ids are
    `missing from ledger`/`stale in ledger`, and `--fix` re-syncs the ledger from `TASK_LIST.json`
    (always safe — `TASK_LIST.json` is dispatch's own source of truth)
-8. Legacy `docket-models.json` `profiles:` key left over after a `roles:`-only migration
-   (advisory; doesn't count as a failure)
-9. Budget/runaway-session detection, key hygiene, provider coverage, security-gate configuration
-10. Template/runtime-contract version — reseeds a missing or stale `WORKFLOW_AUTO.md`
-11. Agent metadata taxonomy — flags a leftover pre-Phase-10 global `programmer`/`reviewer`/
+6. Budget-cap sanity and runaway-session detection (high turn count or high estimated cost)
+7. Key hygiene, provider coverage
+8. Security-gate configuration (approval routing, isolation mode)
+9. Template/runtime-contract version — reseeds a missing or stale `WORKFLOW_AUTO.md`
+10. Agent metadata taxonomy — flags a leftover pre-Phase-10 global `programmer`/`reviewer`/
     `tester` workspace (advisory: "legacy shared specialist — project roles now live in pods";
     recreate via `docket pod <project> add <role>` and remove the global workspace)
-12. Scaffolding quarantine (OpenClaw's self-authored `IDENTITY.md`/`BOOTSTRAP.md`), memory index,
-    eval-results freshness
+11. Scaffolding quarantine — the base-assistant self-authoring files a model may leave behind
+    (`IDENTITY.md`/`BOOTSTRAP.md`)
+12. Eval-results freshness
+
+There is no more "config file valid JSON"/"gateway service running" check — docket has no
+external daemon or gateway process to validate, and no `openclaw.json` to detect drift against
+`.docket-meta.json` (both docket-owned files are now written by docket alone, through one code
+path, so that drift can no longer occur — see [DOCKET.md](DOCKET.md#configuration--one-owner-one-writer)).
 
 **Example:**
 ```bash
 docket doctor
 
 # Output:
-# System Health Check
+# Docket Doctor — System Health Check
 # ════════════════════════════════════════
-# Dependencies
-# ✓ openclaw: /usr/local/bin/openclaw
 # ✓ python3: /usr/bin/python3
 # ✓ fzf: /usr/bin/fzf
 #
-# OpenClaw
-# ✓ Config file exists
-# ✓ Valid JSON
-# ✓ Gateway service running
+# Project agents:
+# ✓   myproject: OK  →  group -1001234567890
+# ⚠   taskagent: OK, no channel binding  →  docket wire taskagent
 #
-# Specialists
-# ✓ knowledge OK
-# ⚠ security - Missing HEARTBEAT.md (run: docket maintain security check)
-#
-# Projects
-# ✓ myproject - OK
-# ⚠ taskagent - Permission issue (run: docket maintain taskagent check)
-#
-# Summary
-# ────────────────────────────────────────
-# Status: Healthy (2 warnings)
-# Recommendations:
-#   - Fix security agent HEARTBEAT.md
-#   - Repair taskagent permissions
+# ...
+# All checks passed — docket is healthy.
 
 # Apply the fixes it found
 docket doctor --fix
@@ -1526,8 +1535,8 @@ docket doctor --json
 **Notes:**
 - Run after installation to verify setup
 - **`doctor` is diagnostic-only by default; `--fix` is not read-only — it mutates workspace
-  files, permissions, and session-key sync to correct detected drift.** Review its findings
-  before running with `--fix` on a workspace you haven't backed up.
+  files and permissions to correct detected drift.** Review its findings before running with
+  `--fix` on a workspace you haven't backed up.
 - Useful for troubleshooting
 
 ---
@@ -1541,6 +1550,7 @@ By default it is **read-only**: it observes and reports, it does not run any age
 ```bash
 docket serve                        # read-only monitor (status / metrics / health only)
 docket serve --dispatch             # also drive every pod's queue through its pipeline each refresh
+docket serve --telegram             # also long-poll docket's own Telegram bot
 docket serve --port 8080            # bind a different port (default 7331)
 docket serve --interval 10          # refresh every 10s instead of the default 30s
 docket serve --token-file <path>    # write the bearer token to a 0600 file instead of stdout
@@ -1554,11 +1564,15 @@ docket serve --token-file <path>    # write the bearer token to a 0600 file inst
   (the same `Lead → Implementer → Reviewer → Tester` hops as [`docket pod <project> dispatch`](#pod)).
   These are **real, costed LLM turns** and are **budget-gated** per hop (against each pod's Lead
   budget cap) and traced. Each pod's dispatch is **pod-local** — there is no cross-pod path.
+- **`--telegram`**: long-poll docket's own Telegram bot (ROADMAP Phase 19 P19-8) so a chat bound
+  via `docket wire` can `/approve`, `/deny`, `/status`, or `/delegate`. Idle until a bot token is
+  stored (`docket keys add TELEGRAM_BOT_TOKEN`). Independent of `--dispatch` — you can poll
+  Telegram without autonomously draining every pod's queue, or vice versa.
 - **`--token-file <path>`**: write the bearer token needed for `/approvals`/`/dispatch`/`/runs`
   to this file (mode 0600) instead of printing it to stdout.
 
-Plain `docket serve` never dispatches; driving agents is opt-in via `--dispatch`. See
-[Agent Teams (Pods)](AGENT-TEAMS.md) for the dispatch model.
+Plain `docket serve` never dispatches and never polls Telegram; both are opt-in via `--dispatch`
+and `--telegram`. See [Agent Teams (Pods)](AGENT-TEAMS.md) for the dispatch model.
 
 **Example:**
 ```bash
@@ -1567,6 +1581,9 @@ docket serve
 
 # Autonomous operation: drive every pod's queue continuously
 docket serve --dispatch
+
+# Also answer Telegram approvals/status/delegate for wired chats
+docket serve --dispatch --telegram
 ```
 
 **HTTP endpoints** (while running):
@@ -1637,8 +1654,7 @@ echo 'eval "$(docket completions zsh)"'  >> ~/.zshrc
 ### snapshot
 
 Export the whole fleet's state as a single JSON document — every project agent and specialist,
-its model, registration/binding status, last activity, and recorded cost, plus gateway status and
-channel list.
+its model, registration/binding status, last activity, and measured cost, plus channel list.
 
 **Syntax:**
 ```bash
@@ -1660,15 +1676,19 @@ docket snapshot -o /tmp/fleet-state.json
 ```json
 {
   "timestamp": "2026-07-02T12:00:00Z",
-  "gateway": "active",
+  "gateway": "inactive",
   "channels": ["telegram"],
   "agents": [
     {"id": "myproject-lead", "kind": "project", "model": "...", "registered": true,
-     "bindings": [], "lastActivity": "...", "costUsd": 1.11}
+     "bindings": [], "lastActivity": "...", "costUsd": 0.0}
   ],
-  "totalCostUsd": 1.56
+  "totalCostUsd": 0.0
 }
 ```
+`gateway` is a legacy field kept for shape stability — docket has no external gateway process, so
+it always reads `"inactive"`. `costUsd`/`totalCostUsd` are `0.0` for the same reason `docket cost`
+shows no recorded spend today (docket's own turn loop reports no billed dollar figure) — this is
+a snapshot of measured-token agents, not of billed dollars.
 
 **Aliases:** `export`
 
@@ -1680,10 +1700,16 @@ docket snapshot -o /tmp/fleet-state.json
 
 ### mcp
 
+Two independent things live under `docket mcp`: **serving** docket's own control plane as an
+MCP server (`mcp serve`), and **configuring external MCP tool servers** whose tools an agent's
+own turn can call (`mcp servers`) — decision D-19's "rent the protocol": external tools are
+configuration, not code, gated exactly like a built-in.
+
+#### serve
+
 Expose docket's own control plane as an **MCP server** over stdio, so an external MCP client
 (an IDE, another agent runtime) can inspect and drive the fleet through typed tool calls instead
-of shelling out to the CLI. This is a server only — `docket mcp serve` does not make docket
-consume other MCP servers' tools inside an agent turn; that is a separate, unbuilt concern.
+of shelling out to the CLI.
 
 **Syntax:**
 ```bash
@@ -1714,7 +1740,7 @@ bearer token (unlike `docket serve`); the trust boundary is whoever can spawn th
 | `approvals_list` | `docket approve` (list) |
 | `approvals_grant(token)` | `docket approve <token>` |
 | `approvals_deny(token)` | `docket deny <token>` |
-| `cost(agent_id=None)` | `docket cost [id]` — recorded spend only, never a projection |
+| `cost(agent_id=None)` | `docket cost [id]` — measured tokens, never a projected dollar figure |
 
 Every mutating tool calls the exact same `core/` function as the equivalent CLI/HTTP path — no
 parallel logic, no auto-approve. `dispatch` creates a run record and returns its id immediately,
@@ -1726,13 +1752,44 @@ pip install 'docket[mcp]'
 docket mcp serve
 ```
 
+#### servers
+
+Configure external MCP tool servers (stdio transport) so their tools become available to an
+agent's turn, gated by the same `pre_tool_call` policy and `dispatch_tool` chokepoint as any
+built-in — a remote server can never shadow `bash`/`read`/`write`/`edit`/`glob`/`grep`.
+
+**Syntax:**
+```bash
+docket mcp servers list                                              # show configured servers
+docket mcp servers add <name> [--env K=V ...] [--timeout S] -- <command> [args...]
+docket mcp servers remove <name>
+```
+
+Everything after `--` is passed to the server verbatim as its launch command and arguments;
+`--env`/`--timeout` must come before `--`.
+
+```bash
+# Browser automation as configuration, not code
+docket mcp servers add playwright -- npx -y @playwright/mcp@latest
+# ✓ MCP server 'playwright' added (npx -y @playwright/mcp@latest).
+#   Its tools register as mcp__playwright__<tool> — gated exactly like a built-in tool.
+
+docket mcp servers list
+docket mcp servers remove playwright
+```
+
 **Aliases:** None
 
 **Notes:**
-- `docket mcp` alone (no `serve`) prints usage and exits 0; an unrecognized subcommand exits 1
+- `docket mcp` alone (no `serve`/`servers`) prints usage and exits 0; an unrecognized subcommand
+  exits 1
 - A tool call's own success/failure is expressed inside the MCP protocol (`isError`), never as a
   process exit code
-- See [mcp-server.spec.md](../specs/api/mcp-server.spec.md)
+- Configured servers persist in `~/.docket/docket-mcp-servers.json` (docket-owned JSON via
+  `edges/store.py`); env values are masked when listed
+- Every `mcp servers add`/`remove` is audit-logged (`mcp_servers.add`/`mcp_servers.remove`)
+- See [mcp-server.spec.md](../specs/api/mcp-server.spec.md) and
+  [mcp-client.spec.md](../specs/functional/mcp-client.spec.md)
 
 ---
 
@@ -1740,60 +1797,67 @@ docket mcp serve
 
 ### gates
 
-Manage the enforced tool-approval gates for dangerous operations (`rm`, `git push`,
-`docker stop`, …) and Docker workspace isolation. Exec-approval gates are **on by default**
-for new installs (`docket install`, unless `--no-gates`); this command re-applies, tunes, or
-reverses that configuration on an existing fleet. Docker workspace isolation
-(`gates isolate`) stays opt-in. See `specs/functional/security-gates.spec.md`.
+Manage docket's approval-routing and workspace-isolation posture. **The tool-call gate itself —
+the policy engine plus the argument-aware high-risk command classifier, both evaluated in
+`core/tools.py`'s `dispatch_tool` chokepoint on every call docket's turn loop makes — is always
+active and cannot be turned off** (Phase 19 P19-3). There is no "enable the gate" step any more;
+what this command manages is narrower: where an approval prompt is **routed** (`enable`/
+`disable`) and whether tool execution runs inside a Docker sandbox (`isolate`). See
+`specs/functional/security-gates.spec.md`.
 
 **Syntax:**
 ```bash
 docket gates                       # status (default)
-docket gates status                # report current gate/approval/isolation state
-docket gates enable [--force]      # turn on conservative exec-approval defaults + a seeded allowlist
-docket gates disable               # turn exec-approval gates back off
-docket gates isolate on            # turn on Docker workspace isolation (default if no on/off given)
-docket gates isolate off           # turn Docker workspace isolation back off
+docket gates status                # report approval-routing and isolation posture
+docket gates enable [--force]      # turn on approval routing (prompts follow a channel)
+docket gates disable               # turn approval routing off
+docket gates isolate on            # record workspace isolation on (default if no on/off given)
+docket gates isolate off           # record workspace isolation off
 docket gates classes               # list the documented high-risk action classes
 ```
 
 **Subcommands:**
 
 #### status (default)
-Reports the exec-approval policy state (`OK`/`OPEN`/`UNSET`/error), approval-routing on/off/unset,
-and workspace-isolation mode.
+Reports that the tool-call gate is always active, plus approval-routing on/off/unset and
+workspace-isolation mode.
 
 ```bash
 docket gates status
 
-# Exec-approval gates
+# Tool-call gate
 #
-# Status unavailable: approvals snapshot unavailable
-# Approval routing: not configured
-# Workspace isolation: not configured — docket gates isolate on
+# ✓ Policy engine + high-risk command classifier: always active (Phase 19 P19-3)
+#
+# ✓ Approval routing: on (mode=session)
+# Workspace isolation: off
 ```
 
 #### enable
-Applies conservative exec-approval defaults (`security=allowlist, ask=on-miss,
-askFallback=deny`) plus a curated per-agent allowlist, and turns on approval routing. Existing
-non-default settings are left alone unless `--force` is passed. Restarts the gateway.
+Turns on approval routing so a gated call's "ask" verdict reaches a channel (Telegram/HTTP/etc.)
+instead of just sitting on docket's approval store until it times out. `--force` is accepted for
+CLI compatibility but has nothing left to force over — routing has no existing-config distinction
+to preserve.
 
 ```bash
 docket gates enable
-docket gates enable --force   # overwrite existing gate config, not just fill in defaults
 ```
 
 #### disable
-Resets exec-approval gate defaults and turns approval routing back off (any seeded allowlist
-entries are left in place). Restarts the gateway.
+Turns approval routing back off. A gated call still blocks on docket's own approval store either
+way — this only stops a prompt from being actively routed anywhere, so it times out to denied
+faster with nobody watching for it.
 
 ```bash
 docket gates disable
 ```
 
 #### isolate
-Turns Docker-based workspace isolation on or off (`on` is the default target if you omit it).
-`isolate on` requires `docker` on PATH — errors, exit 1, if it's missing.
+Records whether tool execution should run inside a Docker sandbox. `isolate on` requires `docker`
+on PATH — errors, exit 1, if it's missing. **Honestly incomplete today:** the setting is recorded
+in `~/.docket/fleet.json`, but docket's own turn loop (`DocketDriver`) always runs tools
+unsandboxed (`ToolContext.sandbox="off"`) regardless of this flag — `docket gates status` says so
+plainly rather than claiming live enforcement that doesn't exist yet.
 
 ```bash
 docket gates isolate on
@@ -1802,14 +1866,14 @@ docket gates isolate off
 
 #### classes
 Lists the built-in high-risk action classes (`HIGH_RISK_PATTERNS` in `core/security.py`) —
-money-movement, prod-deploy, and secret-access. The daemon's exec-allowlist only gates by binary
-path, not argument text, so today this is fully enforced (always asks, regardless of allowlist
-status) only for classes with no overlap in the curated allowlist (money-movement, secret-access).
-For `prod-deploy`, whose pattern matches specific `git`/`npm` invocations, those bins remain
-allowlisted — excluding them wholesale would also block every benign use (`git status`, `npm
-test`, ...). Per-argument enforcement for allowlisted bins needs a daemon capability that doesn't
-exist yet (deferred; see `specs/functional/security-gates.spec.md`). Read-only; the pattern list
-is not yet user-configurable.
+money-movement, prod-deploy, and secret-access. Since Phase 19, these are wired onto **every**
+`bash` call docket's own turn loop dispatches: `core/tools.py`'s `dispatch_tool` classifies the
+whole command line — including every segment behind a `;`/`&&`/`||`/pipe — before a call is
+allowed to run, so `git push origin production` asks even though `git` itself stays on the
+curated allowlist (`git status` does not). A pod's `verifyCmd` separately refuses a matching
+command outright before the shell starts; a hop's real output is scanned for a match on the way
+through the pipeline (flagged, not blocked, by itself). Read-only; the pattern list is not yet
+user-configurable.
 
 ```bash
 docket gates classes
@@ -1818,10 +1882,11 @@ docket gates classes
 **Aliases:** `security`
 
 **Notes:**
-- `docket install` applies this configuration by default; pass `--no-gates` to opt out
+- `docket install` applies approval routing by default; pass `--no-gates` to opt out
 - Every state change is written to the audit log (`gates.enable`/`gates.disable`/`gates.isolate`)
 - Approvals are answerable headlessly via `docket approve`/`docket deny` or `POST /approvals/<token>`
-  (`docket serve`), in addition to Telegram — see [`approve` / `deny`](#approve--deny)
+  (`docket serve`), or MCP, in addition to Telegram — all four channels are audit-logged. See
+  [`approve` / `deny`](#approve--deny)
 
 ---
 
@@ -1853,7 +1918,7 @@ docket audit 5
 # Audit log — last 5 change(s)
 #
 #   2026-07-01T14:02:11.041Z  alice   keys.add        ANTHROPIC_API_KEY
-#   2026-07-01T14:05:44.902Z  alice   gates.enable    security=allowlist seeded=git,npm,pytest
+#   2026-07-01T14:05:44.902Z  alice   gates.enable    routing=on force=False
 ```
 
 Empty-state example:
@@ -1861,7 +1926,7 @@ Empty-state example:
 docket audit
 # → No audit log yet.
 #   Mutations (keys, gates, profile, scope, add/delete) are recorded to
-#   ~/.openclaw/audit.log once you make a change.
+#   ~/.docket/audit.log once you make a change.
 ```
 
 Verifying the chain:
@@ -1876,7 +1941,7 @@ docket audit verify   # after a line was hand-edited
 **Aliases:** None
 
 **Notes:**
-- Stored at `~/.openclaw/audit.log` — one JSON object per line (`seq`, `ts` (millisecond
+- Stored at `~/.docket/audit.log` — one JSON object per line (`seq`, `ts` (millisecond
   resolution), `user`, `pid`, `action`, `detail`, `prev_hash`), never containing secret values
 - Every line chains to the previous one via a SHA-256 `prev_hash` (stdlib `hashlib`, no new
   dependency); `docket audit verify` detects a hand-tampered line. Lines written before this
@@ -1933,13 +1998,13 @@ docket deny <token>        # Deny the pending approval
   what it already has (e.g. `deny` on an already-granted token). Re-resolving to the **same**
   verdict it already has (e.g. `approve` on an already-granted token) is treated as an idempotent
   no-op — a warning, but **exit 0**
-- **Provenance note:** docket's approval store has no production producer yet — nothing today
-  creates an `apr-*` token from a live daemon exec-approval prompt or a Telegram notification
-  (`approval_create` has no production caller; see ROADMAP Phase 15 G-1/G-5 and
-  `security-gates.spec.md`'s "approval seam" note). These commands answer only tokens something
-  in docket's own code path has created (e.g. a future policy-gated dispatch step, Phase 15 G-1).
-  The daemon's own gate prompt is answered separately, in the agent's chat session, via its own
-  `/approve <id>` — not through this command
+- **Provenance.** An `apr-*` token is created by docket itself, from two live paths: an in-turn
+  `ask` verdict on a tool call (`core/tools.py`'s `dispatch_tool`, blocking that call until
+  answered), and a pod-dispatch hop held on a `requireApprovalRoles`/pipeline `approval` step, or
+  a task a guardrail policy flagged at enqueue. There is no separate daemon prompt any more — this
+  store is the only approval mechanism, and `docket approve`/`docket deny` (plus the HTTP and MCP
+  equivalents, and a Telegram reply in a wired chat) are the only ways to answer it, each
+  audit-logged with the channel that answered
 
 ---
 
@@ -1992,7 +2057,7 @@ docket runs show run-3f2a1c9e-...
 - A `failed` run carries the exception text in `error` — no dispatch call site silently discards
   an exception any more (`docket serve`'s webhook, schedule check, and sweep loop all record their
   outcome here instead of a bare `contextlib.suppress(Exception)`).
-- Persisted to `~/.openclaw/docket-runs.json` (docket-owned JSON via `edges/store.py`).
+- Persisted to `~/.docket/docket-runs.json` (docket-owned JSON via `edges/store.py`).
 - `POST /dispatch/<project>` (see [serve](#serve)) returns `{"run": "<id>"}` immediately, before
   any dispatch work is attempted; `GET /runs/<id>` and `GET /runs?project=` mirror this command
   over HTTP (Bearer-authed, same as `/approvals`).
@@ -2008,7 +2073,7 @@ View, follow, and export agent action traces. Every dispatch hop emits a JSONL t
 docket trace <session-id>                     # Render one session human-readable
 docket trace tail <project>                   # Follow the latest open session live
 docket trace export <project> [--since DATE]  # Raw JSONL passthrough
-docket trace ingest <project>                 # Pull daemon logs into trace store
+docket trace ingest <project>                 # Project docket's own session store into the trace store
 ```
 
 **Example:**
@@ -2021,7 +2086,7 @@ docket trace export myapp --since 2026-06-01
 ```
 
 **Notes:**
-- Traces stored at `~/.openclaw/traces/<project>/<session-id>.jsonl`
+- Traces stored at `~/.docket/traces/<project>/<session-id>.jsonl`
 - Each dispatch hop writes events: `tool_call`, `cost_charged`, `approval_requested`, etc.
 
 ---
@@ -2110,13 +2175,9 @@ docket --debug list
 DEBUG=1 docket add
 ```
 
-**Output:**
-```
-[dbg] Loading config from /home/user/.openclaw/openclaw.json
-[dbg] Found 3 project agents
-[dbg] Reading metadata for myproject
-...
-```
+Sets the `DEBUG` environment variable for the process (`--debug` is sugar for `DEBUG=1`). As of
+this writing, no command in the tree reads it back — there is no `[dbg]`-line output to show.
+Treat this flag as reserved for future use rather than a working verbose mode today.
 
 ### --help / -h
 
@@ -2197,7 +2258,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `tier` | tier names (economy/standard/premium) are no longer accepted anywhere (D-2, 0.2.0) — use `docket profile [id] <provider/model>` or `docket models` |
 | `billing`, `credits`, `monitor`, `mon` | `docket cost [id]` |
 | `memory`, `mem` | `docket context [id] <show\|project>` |
-| `context <id> <search\|index\|snapshot\|compress>` | removed — the OpenClaw runtime does semantic memory search itself; use `docket context [id] <show\|project>` or `docket snapshot` (fleet JSON) |
+| `context <id> <search\|index\|snapshot\|compress>` | removed — the per-agent index/snapshot artifacts they wrote were read by nothing; use `docket context [id] <show\|project>` or `docket snapshot` (fleet JSON) |
 | `smart`, `ai` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |
@@ -2222,11 +2283,13 @@ These command names are **not aliases** — typing them prints a migration notic
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEBUG` | Enable debug output | `0` |
+| `DEBUG` | Set by `--debug`; currently read by no command (reserved) | `0` |
 | `EDITOR` | Text editor for `docket edit` | `vi` |
-| `OPENCLAW_DIR` | OpenClaw directory | `~/.openclaw` |
+| `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
-| `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$OPENCLAW_DIR/approvals` |
+| `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
+| `FETCH_ALLOWED_DOMAINS` | Comma-separated exact hostnames the `fetch` tool may reach | empty (nothing allowed until opted in) |
+| `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher and `docket eval` | package/launcher location |
 | `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
@@ -2281,9 +2344,9 @@ Regular backups:
 ```bash
 # Backup script
 #!/bin/bash
-tar -czf ~/backups/openclaw-$(date +%s).tar.gz \
-  ~/.openclaw/openclaw.json \
-  ~/.openclaw/workspaces/
+tar -czf ~/backups/docket-$(date +%s).tar.gz \
+  ~/.docket/fleet.json \
+  ~/.docket/workspaces/
 
 # Or a single-file fleet snapshot
 docket snapshot -o ~/backups/fleet-$(date +%s).json
