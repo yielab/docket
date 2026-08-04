@@ -1,14 +1,14 @@
-"""Chat-completion port (ROADMAP Phase 19 P19-1 / decision D-19).
+"""Chat-completion port.
 
 The typed boundary between docket's own turn loop and whatever speaks
 inference. This module is the *port*; ``edges/adapters/llm.py`` is the one
 shipped adapter (OpenAI-compatible ``/v1/chat/completions``).
 
-**Why this exists.** D-19 draws one line: docket owns the loop, the tool
-registry and every gate; it rents only *protocols*. Inference is a protocol —
-an HTTP POST with a JSON body — so it is rented. Nothing in this file knows
-what that JSON looks like: the shapes below are docket's own vocabulary, and
-the adapter translates in both directions. That is the same split
+**Why this exists.** docket owns the loop, the tool registry and every gate;
+it rents only *protocols*. Inference is a protocol — an HTTP POST with a JSON
+body — so it is rented. Nothing in this file knows what that JSON looks
+like: the shapes below are docket's own vocabulary, and the adapter
+translates in both directions. That is the same split
 ``core/runtime_driver.py`` (pure typing) / ``edges/adapters/`` (all format
 knowledge) already uses, and it is what keeps a future second endpoint dialect
 from leaking wire fields into ``core/``.
@@ -16,8 +16,8 @@ from leaking wire fields into ``core/``.
 **Deliberately absent:** streaming, and any notion of "an agent". A
 ``ChatBackend`` performs exactly one request/response exchange. Multi-step
 behaviour — feeding tool results back, deciding when a turn is over — belongs
-to ``core/agent_loop.py`` (P19-5), because those are the decisions docket
-refuses to delegate.
+to ``core/agent_loop.py``, because those are the decisions docket refuses to
+delegate.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ class ToolCallArgumentsError(ValueError):
     problem with an empty dict, because the arguments are exactly what
     ``pre_tool_call`` inspects: a command's *arguments* are what make it
     dangerous, not its name. A caller that cannot read them cannot gate them,
-    so P19-2's dispatcher treats this as a denial (fail closed) instead of
-    executing a tool call it could not evaluate.
+    so ``core/tools.py``'s ``dispatch_tool`` treats this as a denial (fail
+    closed) instead of executing a tool call it could not evaluate.
     """
 
 
@@ -105,8 +105,8 @@ class ToolSpec:
 
     ``parameters`` is a JSON Schema object. It is stored as a plain dict rather
     than a modelled type because it is passed through to the endpoint verbatim
-    and docket never reasons about its internals — ``core/tools.py`` (P19-2)
-    owns what a valid tool looks like on docket's side.
+    and docket never reasons about its internals — ``core/tools.py`` owns
+    what a valid tool looks like on docket's side.
     """
 
     name: str
@@ -165,8 +165,8 @@ class TokenUsage:
     Unlike ``config.CONTEXT_BYTES_PER_TOKEN``-based estimates used elsewhere in
     docket (``core/context.py``'s budgets, ``maintain check``'s guards), these
     are real counts off the response body. Keep the distinction in any
-    user-facing wording: everything docket measured before P19-1 was an
-    approximation, and this is not.
+    user-facing wording: everything docket measured before this port existed
+    was an approximation, and this is not.
 
     ``cached_tokens`` is a subset of ``input_tokens`` where the endpoint
     reports one, and 0 where it does not — a zero here means "not reported",
@@ -188,8 +188,8 @@ class ChatResponse:
 
     Mirrors ``TurnResult``'s contract deliberately: ``core/dispatch.py`` already
     has a retry policy keyed on ``FailureKind``, and reusing that vocabulary is
-    what lets P19-5's driver slot in underneath the existing state machine with
-    no changes to it.
+    what lets ``core/agent_loop.py``'s driver slot in underneath the existing
+    state machine with no changes to it.
 
     ``failure_kind`` is ``None`` exactly when ``ok`` is True.
     """

@@ -1,19 +1,17 @@
-"""Durable turn history + compaction (ROADMAP Phase 19 P19-4 / decision D-19).
+"""Durable turn history + compaction.
 
-docket already owns the durable state that survives *between* turns: the
+docket owns the durable state that survives *between* turns: the
 ``HEARTBEAT.md`` task ledger (``core/memory.py``), the conversation registry
-(``core/conversations.py``), memory logs, traces. What it has never owned is
-the message history *inside* a turn, because an external daemon owned the
-loop. Phase 19 takes the loop back (P19-5); this module is the durable store
-that loop replays on every model call, keyed on docket's existing session
-coordinate (``agent:<id>:<project>``, see ``specs/functional/session-scoping.spec.md``).
+(``core/conversations.py``), memory logs, traces. This module is the durable
+store for the message history *inside* a turn — the piece docket did not
+own until it took the turn loop back from the daemon. ``core/agent_loop.py``
+loads a session's history via this module before each turn and appends to it
+after, keyed on docket's existing session coordinate (``agent:<id>:<project>``,
+see ``specs/functional/session-scoping.spec.md``).
 
-**Not yet wired to a live path.** Like ``core/llm.py`` (P19-1) and
-``core/tools.py`` (P19-2) before it, this module ships fully tested and
-unused until ``core/agent_loop.py`` (P19-5) exists to call it — there is no
-speculative API surface here beyond what that loop demonstrably needs: load a
-session's history, append new turns to it, and compact it when it grows past
-budget.
+There is no speculative API surface here beyond what that loop demonstrably
+needs: load a session's history, append new turns to it, and compact it when
+it grows past budget.
 
 ## Storage layout
 
@@ -41,10 +39,10 @@ records) matters for two reasons docket has stated as hard requirements:
    one lock and one JSON blob, so a validation failure on load would either
    wipe every session's data (matching ``load()``'s fail-open-to-empty
    convention elsewhere in this codebase) or need a more complex per-key
-   partial-recovery scheme this card has no evidence it needs yet.
+   partial-recovery scheme there is no evidence is needed yet.
 
-All reads/writes of the per-session JSON go through ``edges/store.py`` (D-12's
-single-writer chokepoint) — this module never opens the file itself.
+All reads/writes of the per-session JSON go through ``edges/store.py``'s
+single-writer chokepoint — this module never opens the file itself.
 
 ## Round-trip serialisation
 
@@ -82,13 +80,13 @@ Two numbers live on a session and must never be conflated:
 - **Measured** — ``core.llm.TokenUsage``, real counts reported by the
   completion endpoint. ``MeasuredUsage`` accumulates these on a
   ``SessionRecord`` across every appended turn. This is docket's first
-  non-estimated token number (P19-1) and retires the daemon's session JSONL
-  as the source of usage data — but it plays **no role** in compaction's
+  non-estimated token number, measured directly instead of read from any
+  daemon-owned log — but it plays **no role** in compaction's
   budget math, which stays on the estimate. Do not let the two merge into one
   field or one docstring claim.
 
 The compaction budget itself is resolved via ``core.context.budget_for_role``
-— the same per-role token-budget compiler ROADMAP Phase 17 C-1 built for
+— the same per-role token-budget compiler built for
 hop-to-hop handoff artifacts — rather than a second, parallel per-role budget
 table. Session compaction does not reuse ``compile_artifact``/``DROP_ORDER``
 directly: those shed a single ``HandoffArtifact``'s *fields*, a shape that
@@ -96,18 +94,18 @@ does not apply to a list of chat messages. The analogous "shed the
 cheapest content first" idea for a message history is summarisation (below),
 which serves the same purpose for a different data shape.
 
-## Fail-closed summarisation (decision D-18)
+## Fail-closed summarisation
 
 Compacting away old units never bare-deletes them: the units being replaced
 are summarised in one call through the injected ``SessionSummaryRunner`` —
 the same ``RuntimeDriver.run_turn`` call shape ``core/memory.py``'s
 ``distill_memory`` already uses for docket's first self-originated LLM call.
-Per D-18 this is never a hand-rolled per-vendor client. If that call fails, or
+This is never a hand-rolled per-vendor client. If that call fails, or
 replies with nothing usable, ``compact_session`` leaves the session's stored
 history **completely unchanged** and reports ``ok=False`` — the same
 fail-closed contract ``distill_memory``'s ``DistillResult`` gives
 ``maintain clean``/``reset --distill-first``. Losing an agent's context to a
-summariser error is exactly the durability failure this phase exists to
+summariser error is exactly the durability failure this module exists to
 prevent, so a failed compaction is a no-op, never a silent truncation.
 """
 
@@ -543,7 +541,7 @@ class CompactionResult:
 
     ``ok=False`` means the session's stored history was left **completely
     untouched** -- the same fail-closed contract ``core.memory.DistillResult``
-    gives ``maintain clean``/``reset`` (ROADMAP Phase 17 C-2). ``compacted``
+    gives ``maintain clean``/``reset``. ``compacted``
     (only ever True alongside ``ok=True``) distinguishes "nothing needed
     compacting" from "compaction ran".
     """
@@ -570,7 +568,7 @@ def compact_session(
     """Compact *session_key*'s stored history in place, if it is over budget.
 
     ``budget_tokens`` defaults to ``core.context.budget_for_role(role)`` --
-    the same per-role token-budget compiler C-1 built for hop-to-hop handoff
+    the same per-role token-budget compiler built for hop-to-hop handoff
     artifacts, reused here rather than a second table (see module docstring).
     Nothing needing compaction is a no-op: ``ok=True, compacted=False``, no
     driver call made.
@@ -582,12 +580,12 @@ def compact_session(
     is never touched, let alone blocked (see module docstring's storage
     layout section).
 
-    Fails closed (ROADMAP Phase 17 C-2 / decision D-18): if the summarisation
+    Fails closed: if the summarisation
     call fails, or replies with nothing usable, or the candidate compacted
     history would contain an orphaned tool call/result (``find_orphaned_tool_messages``/
     ``find_unanswered_tool_calls`` -- should be structurally impossible given
     ``plan_compaction``'s whole-unit guarantee, checked anyway as the explicit
-    post-condition this card calls for), nothing is written and
+    post-condition below), nothing is written and
     ``CompactionResult.ok`` is False.
     """
     budget = budget_tokens if budget_tokens is not None else _context.budget_for_role(role)

@@ -4,20 +4,16 @@
 returns the process exit code (0 on success, 1 when a hard preflight fails); the
 coordinator wraps it in a Typer command and raises typer.Exit(code).
 
-Phase 19 P19-7b: there is no external daemon any more. Every step that used
-to shell out to (or wait on) `openclaw` — onboarding, agent registration,
-gateway start, provider-auth token exchange — is deleted outright, not
-stubbed. `docket install` now provisions a purely docket-native home:
-directory structure under `DOCKET_HOME`, the fleet registry (`fleet.json`),
-specialist agents (fleet registration + workspace + meta), and the baseline
-guardrail policy templates. `.docket-meta.json`/`fleet.json` reads and writes
-go through `core/fleet.py` and `edges/store.py`; nothing here opens a daemon
-config file, because none exists.
+There is no external daemon. `docket install` provisions a purely
+docket-native home: directory structure under `DOCKET_HOME`, the fleet
+registry (`fleet.json`), specialist agents (fleet registration + workspace +
+meta), and the baseline guardrail policy templates. `.docket-meta.json`/
+`fleet.json` reads and writes go through `core/fleet.py` and
+`edges/store.py`; nothing here opens a daemon config file, because none
+exists.
 
-There is no longer a step that depends on a live external process, so this
-module is fully exercisable in a hermetic unit test — the pre-Phase-19
-docstring's carve-out for "steps that need a live OpenClaw daemon" no longer
-applies to anything here.
+No step here depends on a live external process, so this module is fully
+exercisable in a hermetic unit test.
 """
 
 from __future__ import annotations
@@ -44,8 +40,7 @@ def _check_dependencies() -> list[str]:
     """Report required (python3/git) + optional (fzf) tools.
 
     Returns the list of MISSING required dependencies (empty when all present).
-    Phase 19 P19-7b: no longer checks for `openclaw` — there is no daemon
-    binary to depend on.
+    Does not check for `openclaw` — there is no daemon binary to depend on.
     """
     missing: list[str] = []
 
@@ -79,12 +74,12 @@ def _check_dependencies() -> list[str]:
 def _step_auth() -> int:
     """Step 5 — model authentication. Returns 0 if a credential looks available.
 
-    Phase 19 P19-7b: there is no docket-native provider-login flow (the
-    daemon this used to shell out to for an OAuth-like token exchange is
-    deleted). The real, working credential path is `docket keys add
-    <PROVIDER>_API_KEY` — `edges/adapters/llm.py`'s `resolve_endpoint` falls
-    back to that env var. This step only checks whether one is already
-    stored or exported, and says plainly what to do if not.
+    There is no docket-native provider-login flow (no daemon to shell out to
+    for an OAuth-like token exchange). The real, working credential path is
+    `docket keys add <PROVIDER>_API_KEY` — `edges/adapters/llm.py`'s
+    `resolve_endpoint` falls back to that env var. This step only checks
+    whether one is already stored or exported, and says plainly what to do
+    if not.
     """
     stored = _secrets.secrets_keys()
     known_env_vars = (
@@ -139,13 +134,12 @@ def _harden_perms() -> None:
 def _step_security(want_gates: bool) -> None:
     """Step 6 — harden docket-owned secrets/config perms + approval routing.
 
-    Phase 19 P19-7b: the daemon's own exec-approval config (security=
-    allowlist/ask-on-miss/askFallback=deny, a curated allowlist seed) is
-    gone with the daemon — `core/tools.py`'s policy engine + high-risk
-    command classifier are unconditionally active on every tool call docket
-    dispatches (Phase 19 P19-3), so there is nothing left to "enable". What
-    remains configurable is where an approval prompt is routed, and that is
-    the one piece --no-gates actually opts out of.
+    There is no separate daemon exec-approval config to enable/disable:
+    `core/tools.py`'s policy engine + high-risk command classifier are
+    unconditionally active on every tool call docket dispatches, so there is
+    nothing left to "enable". What remains configurable is where an approval
+    prompt is routed, and that is the one piece --no-gates actually opts out
+    of.
     """
     _harden_perms()
 
@@ -163,7 +157,7 @@ def _step_security(want_gates: bool) -> None:
 
 
 def _step_policies() -> None:
-    """Step 7 — install the baseline guardrail policy templates (ROADMAP Phase 15 G-2).
+    """Step 7 — install the baseline guardrail policy templates.
 
     Idempotent (same producer as ``docket policies init``): a repeat install skips files
     already present rather than overwriting local edits. This is what puts the policy
@@ -273,7 +267,7 @@ def _specialist_soul(role: str) -> str:
 
 def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> None:
     """Give an org specialist (or the opt-in Portfolio Manager) the same
-    durable workspace contract a project agent gets (ROADMAP Phase 17 C-4):
+    durable workspace contract a project agent gets:
     ``SOUL.md`` (caller-supplied, role-specific), a generic org-specialist
     ``AGENTS.md``, ``HEARTBEAT.md`` (the durable task ledger), and the
     ``WORKFLOW_AUTO.md``/``MEMORY.md``/daily-log set from
@@ -281,8 +275,8 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
     skipped — a specialist has no fixed codebase or build commands to document.
 
     Idempotent and backfill-safe: ``SOUL.md``/``AGENTS.md``/``HEARTBEAT.md``
-    are written only when absent, so re-running `docket install` (or healing a
-    pre-C-4 install via `docket doctor`) never clobbers an agent-written
+    are written only when absent, so re-running `docket install` (or healing
+    an older install via `docket doctor`) never clobbers an agent-written
     ``HEARTBEAT.md`` or a persona-decorated ``SOUL.md``. ``seed_contract``
     itself only ever creates ``MEMORY.md``/the daily log when absent —
     ``WORKFLOW_AUTO.md`` is wholly derived and always refreshed, never
@@ -368,7 +362,7 @@ def _provision_specialists() -> None:
             )
 
         # Full workspace contract (SOUL/AGENTS/HEARTBEAT + the runtime's
-        # WORKFLOW_AUTO/MEMORY/daily-log set) — ROADMAP Phase 17 C-4.
+        # WORKFLOW_AUTO/MEMORY/daily-log set).
         if spec_dir.is_dir():
             _write_specialist_contract_files(spec, spec_dir, _specialist_soul(spec))
 
@@ -403,7 +397,7 @@ def _provision_portfolio_manager() -> None:
     A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
     over fleet metadata (not project code). Opt-in (`docket install --portfolio`),
     never auto-installed, never a pod member. Idempotent. Gets the same full
-    workspace contract as the other org specialists (ROADMAP Phase 17 C-4).
+    workspace contract as the other org specialists.
     """
     role = _cfg.PORTFOLIO_MANAGER_ROLE
     model = _mp.resolve_role_model(role)
@@ -552,7 +546,8 @@ def _print_summary(auth_missing: bool) -> None:
     ui.console.print()
     step += 1
     ui.console.print(
-        f"  {step}. Wire a channel binding (optional; no live channel exists yet — P19-8):"
+        f"  {step}. Wire a channel binding (optional — enables Telegram approvals via"
+        " 'docket serve --telegram'):"
     )
     ui.console.print("     [green]docket wire <agent-id>[/green]")
     ui.console.print()

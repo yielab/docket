@@ -1,4 +1,4 @@
-"""MCP client adapter (ROADMAP Phase 19 P19-10 / D-19).
+"""MCP client adapter.
 
 The one shipped implementation of ``core/mcp_tools.py``'s two-function port
 (``ListToolsFn``/``CallToolFn``) -- the only module in docket that knows the

@@ -1,5 +1,4 @@
-"""``docket pipeline`` — validate, plan, and run a docket-native pipeline
-(ROADMAP Phase 16 W-1 format / W-2 executor).
+"""``docket pipeline`` — validate, plan, and run a docket-native pipeline.
 
 Four subcommands:
   * ``validate <file>`` — pure structural validation of a pipeline YAML file
@@ -15,7 +14,7 @@ Four subcommands:
     pipeline. This delegates straight to ``cli._pod._pod_dispatch`` (the
     exact same rendering/run-registry logic ``docket pod <project>
     dispatch`` uses) with the loaded spec forwarded — one shared
-    implementation, not a parallel copy. ``--follow`` (ROADMAP Phase 16 W-4)
+    implementation, not a parallel copy. ``--follow``
     runs that same call on a background thread while tailing new trace
     events for *project* to stdout, so an operator watching the command sees
     hop-by-hop progress rather than only the final summary — see
@@ -178,8 +177,8 @@ def _utc_now_iso() -> str:
 
 
 def _run_and_follow(project: str, rest: list[str], spec: _pipeline.PipelineSpec | None) -> int:
-    """``--follow`` (ROADMAP Phase 16 W-4): run the dispatch on a background
-    thread while the foreground thread tails new trace events for *project*
+    """``--follow``: run the dispatch on a background thread while the
+    foreground thread tails new trace events for *project*
     to stdout, so an operator watching the command sees hop-by-hop progress
     instead of only the final summary once dispatch returns.
 

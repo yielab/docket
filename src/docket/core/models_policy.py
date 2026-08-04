@@ -12,18 +12,17 @@ from docket.edges import store as _store
 # Internal rank anchors: per-class defaults (used to seed each role's default
 # model) and the seed values `docket models` displays alongside the policy
 # table. NOT a user-facing vocabulary — "economy"/"standard"/"premium" are no
-# longer accepted as model arguments or registry keys (user-facing tier names
-# removed in 0.2.0, D-2 exit; see ROADMAP.md D-2). This table is the sole
+# longer accepted as model arguments or registry keys. This table is the sole
 # surviving piece of the old tier system, kept private because role-default
 # seeding still reads it. It is NOT a runtime fallback chain — nothing in
-# docket degrades a request to a cheaper model on failure (Phase 18 L-2);
-# `docket models` labels it "rank anchors", never "fallback".
+# docket degrades a request to a cheaper model on failure; `docket models`
+# labels it "rank anchors", never "fallback".
 #
-# Registry-overridable (Phase 18 L-2): a user's docket-models.json MAY carry a
-# top-level ``rankAnchors`` map (``{"economy": "...", "standard": "...",
-# "premium": "..."}``) that overrides these Anthropic defaults before role
-# defaults are derived — see `load_registry`. This is how a fleet on a
-# non-Anthropic preset stops showing Claude residue in the anchor display.
+# Registry-overridable: a user's docket-models.json MAY carry a top-level
+# ``rankAnchors`` map (``{"economy": "...", "standard": "...", "premium":
+# "..."}``) that overrides these Anthropic defaults before role defaults are
+# derived — see `load_registry`. This is how a fleet on a non-Anthropic
+# preset stops showing Claude residue in the anchor display.
 _RANK_ANCHORS: dict[str, str] = {
     "economy": "anthropic/claude-haiku-4-5",
     "standard": "anthropic/claude-sonnet-4-6",
@@ -102,11 +101,11 @@ MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
     # The three models the `openrouter-free` preset pins (below): OpenRouter's
     # own free-tier catalog is advertised at zero per-token cost — that claim
-    # already lives on this preset's `cost`/`note` fields (MA-4, 2026-06-11);
-    # this just makes the pricing table agree with it instead of reporting
-    # "n/a" for a preset docket itself labels "free". Not a sourced live
-    # OpenRouter price lookup — a restatement of docket's own free-tier
-    # selection. Revisit if OpenRouter's free tier changes terms.
+    # already lives on this preset's `cost`/`note` fields; this just makes
+    # the pricing table agree with it instead of reporting "n/a" for a
+    # preset docket itself labels "free". Not a sourced live OpenRouter
+    # price lookup — a restatement of docket's own free-tier selection.
+    # Revisit if OpenRouter's free tier changes terms.
     "openrouter/google/gemini-flash-1.5-8b": (0.0, 0.0, 0.0, 0.0),
     "openrouter/meta-llama/llama-3.3-70b-instruct": (0.0, 0.0, 0.0, 0.0),
     "openrouter/deepseek/deepseek-r1": (0.0, 0.0, 0.0, 0.0),
@@ -262,10 +261,10 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     legacy ``profiles:`` key (see ``migrate_legacy_profiles``) before reading.
 
     ``tiers`` (the rank anchors) are registry-overridable via a top-level
-    ``rankAnchors`` map (Phase 18 L-2) — applied *before* role defaults are
-    derived, so an overridden anchor reshapes every cheap/strong-class role
-    default too, and the value `docket models` displays next to it is never
-    stale Claude residue for a fleet on another provider. Malformed entries
+    ``rankAnchors`` map — applied *before* role defaults are derived, so an
+    overridden anchor reshapes every cheap/strong-class role default too, and
+    the value `docket models` displays next to it is never stale Claude
+    residue for a fleet on another provider. Malformed entries
     (unknown anchor name, not a well-formed model id) are silently ignored,
     matching the tolerance already applied to ``default``/``roles`` below.
     """
@@ -304,9 +303,9 @@ def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> 
     """Return the effective model for a role (loads registry if not supplied).
 
     ``role`` is usually a named policy role (``ALL_ROLES``), but MAY also be a
-    pod *archetype* name that has no row of its own there (ROADMAP Phase 16
-    W-6 — a starter-library or user-defined role like ``researcher``, whose
-    ``policy_role`` was left unset). Those fall through to
+    pod *archetype* name that has no row of its own there — a starter-library
+    or user-defined role like ``researcher``, whose ``policy_role`` was left
+    unset. Those fall through to
     ``_resolve_via_archetype_class``, which resolves the model via the
     archetype's own declared ``modelClass`` (cheap|strong) against the live
     rank anchors — this is what lets `modelClass` genuinely *slot into* this
@@ -473,13 +472,13 @@ def reapply_role_policy() -> int:
 
 
 def write_registry(updates: dict[str, str], reset: bool = False) -> None:
-    """Update docket-models.json via the store.py single-writer chokepoint (D-12).
+    """Update docket-models.json via the store.py single-writer chokepoint.
 
     Key format: 'default', 'role.<name>', 'rank.<economy|standard|premium>'.
-    The 'rank.*' form persists a registry-overridable rank anchor (Phase 18
-    L-2) — used by `docket models preset` so a non-Anthropic preset also
-    replaces the anchor values `docket models` displays, not just the roles.
-    reset=True clears all user overrides (deletes the file if empty).
+    The 'rank.*' form persists a registry-overridable rank anchor — used by
+    `docket models preset` so a non-Anthropic preset also replaces the
+    anchor values `docket models` displays, not just the roles. reset=True
+    clears all user overrides (deletes the file if empty).
     """
     path = cfg.MODEL_REGISTRY_FILE
     try:

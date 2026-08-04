@@ -9,10 +9,7 @@
 ``run_policies(sub, *, args)`` returns the process exit code. Policy files are
 docket-owned artefacts read/written directly.
 
-``validate`` (ROADMAP Phase 15 G-2) wires ``core/policy.py``'s ``validate_policy`` — CL-2 had
-left it tested-but-unwired specifically to keep the completions goldens byte-identical that
-wave; this is new CLI surface, so those goldens were regenerated alongside it (see
-security-gates.spec.md's changelog for the exact diff).
+``validate`` wires ``core/policy.py``'s ``validate_policy`` into this CLI surface.
 """
 
 from __future__ import annotations

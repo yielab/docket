@@ -10,22 +10,23 @@ Actions:  allow | warn | redact | require_approval | block
 
 ``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail``
 returns the full :class:`PolicyHit` (action + which policy id/message won), used by callers
-that need to attribute a trip to a specific policy (``core/dispatch.py``'s live-path producer,
-ROADMAP Phase 15 G-2). The CLI's ``policies test`` path calls ``policy_test`` which is a
+that need to attribute a trip to a specific policy (``core/dispatch.py``'s live-path producer).
+The CLI's ``policies test`` path calls ``policy_test`` which is a
 dry-run with no trace side-effects, so this module itself never emits traces (matching
 DOCKET_NO_TRACE=1) — callers that need a trace record emit it themselves.
 
 Policy files are docket-owned artefacts, so this module reads them directly
-through ``edges/store.py`` rather than through any daemon config path.
+through ``edges/store.py``.
 
-Live-path wiring (G-2, ROADMAP Phase 15): ``pre_input`` is evaluated once, at
-task enqueue (``core/dispatch.py``'s ``enqueue_task``) — not re-evaluated before
-every hop, which would re-gate the same task text at every role a "*"-scoped
+Live-path wiring: ``pre_input`` is evaluated once, at task enqueue
+(``core/dispatch.py``'s ``enqueue_task``) — not re-evaluated before every
+hop, which would re-gate the same task text at every role a "*"-scoped
 policy applies to. ``pre_output`` is evaluated on every hop's real output,
 before it is embedded in the carried-forward artifact or persisted hop record
-(``core/dispatch.py``'s ``_execute_unit``). ``pre_tool_call`` (in-turn, inside a
-daemon turn) stays daemon-gated — docket is not inside a turn to intercept a
-tool call — and is never claimed as enforced here (ROADMAP §4.5).
+(``core/dispatch.py``'s ``_execute_unit``). ``pre_tool_call`` is evaluated
+in-turn, inside ``core/tools.py``'s ``dispatch_tool`` chokepoint, for every
+tool call docket's own agent loop makes — the one hook that used to have no
+live caller now does.
 """
 
 from __future__ import annotations
@@ -59,17 +60,14 @@ _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 def validate_policy(path: Path) -> str:
     """Validate one policy file. Return '' if valid, else an error message.
 
-    2026-07-30 (CL-2 dead-code register): the CLI doesn't call this yet —
-    `cli/_policies.py`'s `_list()`/`_show()` do their own generic JSON parse,
-    they don't schema-check. Kept rather than removed because it is not
-    actually unexercised: `tests/python/test_cd3_high_risk.py` and
-    `test_m5_gates_policy.py` call it directly as the schema-validity guard
-    over the shipped `high-risk-*.json` templates — real regression coverage
-    a plain JSON parse doesn't give. Wiring a `docket policies validate`
-    command (mirroring `docket roles validate`) is the natural next step, but
-    that is new CLI surface (a completions-golden change) and this is a
-    no-behaviour-change cleanup card, so it is left as tested-but-unwired
-    rather than added here.
+    The CLI doesn't call this yet — `cli/_policies.py`'s `_list()`/`_show()` do their own
+    generic JSON parse, they don't schema-check. Kept rather than removed because it is not
+    actually unexercised: `tests/python/test_cd3_high_risk.py` and `test_m5_gates_policy.py`
+    call it directly as the schema-validity guard over the shipped `high-risk-*.json`
+    templates — real regression coverage a plain JSON parse doesn't give. Wiring a
+    `docket policies validate` command (mirroring `docket roles validate`) is the natural
+    next step, but that is new CLI surface, so it is left as tested-but-unwired rather than
+    added here.
     """
     try:
         with path.open(encoding="utf-8") as f:
@@ -209,8 +207,8 @@ def install_policies() -> PolicyInstallResult:
     if that distinction matters to the caller.
 
     Pure logic, no UI: this is the shared producer behind both ``docket policies init`` and
-    ``docket install``'s own policy-provisioning step (ROADMAP Phase 15 G-2) — one
-    implementation, two callers, so the two can never drift on what "installed" means.
+    ``docket install``'s own policy-provisioning step — one implementation, two callers, so
+    the two can never drift on what "installed" means.
     """
     template_dir = _cfg.policy_templates_dir()
     result = PolicyInstallResult(template_dir=template_dir, policies_dir=_cfg.POLICIES_DIR)

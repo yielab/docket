@@ -3,29 +3,26 @@
 Records persist to ``$APPROVALS_DIR/<token>.json`` (atomic, 0600) with the
 shape ``{token, project, role, action, state, created, context}``. The CLI
 ``approve`` / ``deny`` commands transition pending → granted / denied.
-``context`` (ROADMAP Phase 15 G-1) is an optional, caller-supplied dict stored
-verbatim (``{}`` when omitted) — the seam that lets a consumer created
-elsewhere (today: ``core/dispatch.py``'s require_approval gate) find what a
-token gated once it's resolved; see ``approval_create``.
+``context`` is an optional, caller-supplied dict stored verbatim (``{}`` when
+omitted) — the seam that lets a consumer created elsewhere (today:
+``core/dispatch.py``'s require_approval gate) find what a token gated once
+it's resolved; see ``approval_create``.
 
-Approval records are docket-owned artefacts, so writes
-go through the ``edges/store.py`` single-writer chokepoint (D-12) rather than
-the ACL.
+Approval records are docket-owned artefacts, so writes go through the
+``edges/store.py`` single-writer chokepoint.
 Trace emission and secret redaction are best-effort and isolated behind the thin
 ``_emit_trace`` / ``_redact`` hooks so tests can stub them. Grant/deny also write
 an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``) tagged
 with the calling channel (``cli``, ``http``, ``telegram``, ``timeout``, ...) so
 ``docket audit`` has a record of who approved what and through which surface.
 
-G-1: this module now has its first production producer (``core/dispatch.py``'s
-require_approval gate) — previously ``approval_create`` had none. The expiry
-sweep (``approval_sweep_expired``) resolves a stale pending record to
-**denied** (fail-closed), not the prior, read-by-nobody ``"expired"`` state,
+The expiry sweep (``approval_sweep_expired``) resolves a stale pending record
+to **denied** (fail-closed) rather than a read-by-nobody ``"expired"`` state,
 and best-effort notifies ``core/dispatch.py`` so a task waiting on that token
 is actually failed, not left stranded in ``waiting_approval`` forever.
 
-P19-3: ``wait_for_approval`` adds a second, *synchronous* consumer of this
-store for ``core/tools.py``'s in-turn gate. Unlike the async producer above —
+``wait_for_approval`` is a second, *synchronous* consumer of this store for
+``core/tools.py``'s in-turn gate. Unlike the async producer above —
 which creates a token and returns immediately, leaving the task
 ``waiting_approval`` for some later call to resolve — an in-turn tool call has
 nowhere to go while it waits, so this function blocks the calling thread
@@ -129,7 +126,7 @@ def approval_create(
 ) -> str:
     """Persist a pending approval and return its token.
 
-    *context* (G-1) is optional, caller-supplied structured data stored on the
+    *context* is optional, caller-supplied structured data stored on the
     record verbatim (never redacted — callers must not put secrets in it), so
     whatever eventually resolves the grant/deny can find what it gated. The
     only documented consumer today is ``core/dispatch.py``'s require_approval
@@ -266,9 +263,8 @@ def _resolve_timeout_as_denied(data: dict[str, Any]) -> None:
 
 def approval_sweep_expired() -> int:
     """Expire pending approvals older than APPROVAL_TIMEOUT — resolved as
-    **denied** (fail-closed), not the prior, read-by-nobody ``"expired"``
-    state (ROADMAP Phase 15 G-1). Returns the number of records swept. Called
-    by the serve loop.
+    **denied** (fail-closed), not a read-by-nobody ``"expired"``
+    state. Returns the number of records swept. Called by the serve loop.
 
     Each swept record is treated exactly like an explicit ``docket deny`` via
     ``_resolve_timeout_as_denied`` — see that helper for what it writes.

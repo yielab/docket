@@ -2,10 +2,7 @@
 
 Provider API keys `docket keys` manages, and their bookkeeping metadata
 (added/rotated timestamps). Always docket-owned — never an OpenClaw file
-format — but pre-Phase-19-P19-7b this lived under ``OPENCLAW_DIR`` purely
-because that was the daemon's directory and docket colocated its own files
-there. Now that ``OPENCLAW_DIR`` is retired, both files move under
-``DOCKET_HOME``.
+format — and living under ``DOCKET_HOME``.
 
 Three consumers share this module rather than each reading the files
 directly: ``cli/_keys.py`` (add/remove/rotate/list), ``cli/_doctor.py``

@@ -1,4 +1,4 @@
-"""The gated tool registry (ROADMAP Phase 19 P19-2 / D-19).
+"""The gated tool registry.
 
 **One chokepoint.** Every tool call an agent makes passes through
 ``dispatch_tool`` and nowhere else. That is the entire point of this module:
@@ -21,13 +21,13 @@ Order of operations in ``dispatch_tool``, and why each step precedes the next:
    empty dict, because arguments are what the gate inspects.
 3. **Validate required arguments**, so a half-specified call fails before any
    side effect rather than partway through one.
-4. **Gate.** ``evaluate_tool_call`` is the single decision point. P19-3 adds
-   the ``pre_tool_call`` policy hook here — the hook docket has shipped
-   templates for since Phase 11 and never once evaluated.
+4. **Gate.** ``evaluate_tool_call`` is the single decision point: every call
+   is evaluated here, live, against both the command classifier and the
+   ``pre_tool_call`` policy hook, before anything runs.
 5. **Route ``ask``.** A gate verdict of ``ask`` blocks the call on the real
    approval store (``core/approval.py``'s ``wait_for_approval``) rather than
-   just reporting the requirement — the daemon is gone, so nothing else will
-   ever resolve this call if docket does not wait for it here.
+   just reporting the requirement — nothing else will ever resolve this call
+   if docket does not wait for it here.
 6. **Execute**, catching everything, so a broken handler returns a result the
    loop can feed back rather than unwinding the turn.
 
@@ -66,7 +66,7 @@ class ToolContext:
     commands. An empty ``roots`` makes every path-taking tool fail — deliberate,
     since defaulting to the whole filesystem is the failure this guards.
 
-    ``role``/``project`` (P19-3) feed ``policy.policy_eval_detail``'s
+    ``role``/``project`` feed ``policy.policy_eval_detail``'s
     ``applies_to`` matching and ``approval.approval_create``'s record. Both
     default to ``""`` rather than being required: every shipped policy
     template uses ``applies_to: ["*"]``, which matches an empty role, and an
@@ -74,7 +74,7 @@ class ToolContext:
     somewhere — ``dispatch_tool`` falls back to ``"operator"`` for that case
     rather than refusing to gate at all.
 
-    ``sandbox`` (P19-9) is a **mechanism** choice, not a gate decision — it is
+    ``sandbox`` is a **mechanism** choice, not a gate decision — it is
     consulted only by the ``bash`` tool's handler, after ``evaluate_tool_call``
     has already allowed the call, and only changes what an already-permitted
     command can reach while it runs, never whether it runs. Defaults to
@@ -225,8 +225,7 @@ def render_tool_call(name: str, args: dict[str, Any]) -> str:
     command. It is *not* symmetric — a pattern written assuming an argument's
     text appears *before* the verb that acts on it (e.g. a path before the
     word "write") will not match this render; see block-destructive.json's
-    changelog note for the two patterns P19-3 found and fixed for exactly
-    that reason.
+    note on the two patterns fixed for exactly that reason.
     """
     parts = [name]
     for key, value in args.items():
@@ -257,8 +256,8 @@ _POLICY_ACTION_TO_DECISION: dict[str, Decision] = {
 class ToolVerdict:
     """The gate's answer for one call.
 
-    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit
-    (P19-3), independent of which check ended up deciding ``decision`` — so a
+    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit,
+    independent of which check ended up deciding ``decision`` — so a
     caller can tell a policy actually fired a ``warn``/``redact`` even on a
     call whose overall decision is ``allow`` (e.g. the command classifier
     already said allow, but a policy still wants a record). ``policy_action``
@@ -275,15 +274,15 @@ class ToolVerdict:
 def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> ToolVerdict:
     """Decide whether this call may proceed. **The** decision point.
 
-    P19-2 implements the exec gate: a shell command is classified by
+    The exec gate classifies a shell command via
     ``core/security.classify_command``, which reads the whole command line
-    including every segment behind a ``;``/``&&``/pipe. This is the
-    argument-aware enforcement the daemon's binary-path allowlist structurally
-    could not do — ``git`` is allowlisted, ``git push origin production`` is a
-    production deploy, and only a classifier that sees the arguments can tell
-    them apart.
+    including every segment behind a ``;``/``&&``/pipe. This argument-aware
+    enforcement is what makes it useful — a binary-path-only allowlist
+    could not do this — ``git`` is allowlisted, ``git push origin production``
+    is a production deploy, and only a classifier that sees the arguments can
+    tell them apart.
 
-    P19-3 adds the ``pre_tool_call`` policy hook to this function, so a
+    This function also evaluates the ``pre_tool_call`` policy hook, so a
     deny/require_approval rule from a shipped template applies to every tool,
     not just ``bash``. Both checks land in this one function rather than at
     their call sites, so "what gates a tool call" has a single answer. The two
@@ -338,7 +337,7 @@ def _audit_tool_decision(
     ``core.trace.redact`` first, since a tool call's arguments can carry a
     secret (a token in a ``write`` call, a credential in a ``bash`` command).
 
-    ``policy_id``/``policy_action`` (P20-2) are the raw ``pre_tool_call``
+    ``policy_id``/``policy_action`` are the raw ``pre_tool_call``
     policy hit that (co-)decided this call, if any — recorded as a fixed,
     ``repr``-quoted ``policy_id=... policy_action=...`` pair so a reader
     (``docket serve``'s ``/metrics``, most notably) can attribute a policy hit
@@ -390,7 +389,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
 
     if verdict.policy_action in ("warn", "redact"):
         # Allowed to proceed, but a policy still flagged it -- silently
-        # letting this through would waste the policy (P19-3 requirement).
+        # letting this through would waste the policy.
         _audit_tool_decision(
             f"tool.{verdict.policy_action}",
             tool.name,

@@ -4,7 +4,7 @@ Appends one JSON line per change to ``$DOCKET_HOME/audit.log`` (0600) recording
 who/when/what — table stakes for "what changed this agent/binding/key, and when".
 Secret VALUES are never logged: callers pass only the key name / action target.
 
-Tamper evidence (G-4): every line carries a monotonic ``seq`` and a ``prev_hash``
+Tamper evidence: every line carries a monotonic ``seq`` and a ``prev_hash``
 — the SHA-256 of the previous line's canonical JSON form (stdlib ``hashlib``, no
 new dependency). ``verify_chain()`` walks the file and reports the first broken
 link. A missing/empty file, a pre-chain legacy line (no ``seq``/``prev_hash``),
@@ -13,17 +13,15 @@ or the first entry after a size-triggered rotation are honest **chain restarts**
 callers treat them as "unchained (legacy)", never as a break.
 
 There is no environment kill switch: recording is best-effort (a write failure
-never raises, matching the pre-G-4 contract) but can no longer be silently
-switched off — a prior ``DOCKET_NO_AUDIT=1`` escape hatch was an unauthenticated
-way to disable the only tamper record docket keeps. See
-specs/functional/audit.spec.md for the full rationale and schema.
+never raises) but can no longer be silently switched off — a prior
+``DOCKET_NO_AUDIT=1`` escape hatch was an unauthenticated way to disable the
+only tamper record docket keeps. See specs/functional/audit.spec.md for the
+full rationale and schema.
 
-Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
-line-independent, not a read-modify-write of a whole document, so this module
-writes JSONL directly rather than through ``edges/store.py``. The log is a
-docket-owned artefact under DOCKET_HOME (Phase 19 P19-7a moved it there
-alongside the model/archetype registries and PROJECTS_DIR; Phase 19 P19-7b
-then deleted the daemon's directory it used to live under).
+Exempt from the store.py single-writer rule: appends are line-independent, not
+a read-modify-write of a whole document, so this module writes JSONL directly
+rather than through ``edges/store.py``. The log is a docket-owned artefact
+under DOCKET_HOME, alongside the model/archetype registries and PROJECTS_DIR.
 """
 
 from __future__ import annotations
@@ -140,12 +138,9 @@ def audit_log(action: str, detail: str = "") -> None:
     cannot be disabled by environment variable — there is no kill switch (see
     module docstring).
 
-    Phase 19 P19-7a: AUDIT_LOG moved from the daemon's own directory
-    (guaranteed to exist by something outside docket's control, before that
-    directory was deleted outright in P19-7b) to DOCKET_HOME (genuinely
-    docket-owned). Nothing external bootstraps
-    DOCKET_HOME anymore, so this creates its parent directory itself, exactly
-    like every other DOCKET_HOME-derived writer already does
+    AUDIT_LOG lives under DOCKET_HOME, which is genuinely docket-owned but not
+    bootstrapped by anything external, so this creates its parent directory
+    itself, exactly like every other DOCKET_HOME-derived writer already does
     (``core/trace.py``'s ``project_dir.mkdir(parents=True, exist_ok=True)``,
     ``core/session.py``'s ``_ensure_session_dir``) — the log would otherwise
     silently lose its very first entry on a fresh ``~/.docket``.

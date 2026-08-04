@@ -1,14 +1,12 @@
 """docket gates — docket's own tool-call gate + approval routing/isolation.
 
-Phase 19 P19-3 made ``core/tools.py``'s ``pre_tool_call`` policy hook and
-``core/security.py``'s argument-aware command classifier unconditionally
-live on every tool call docket dispatches — there is no "enable the gate"
-step any more; the gate is always on. Phase 19 P19-7b then deleted the
-daemon this front door used to configure, so what ``docket gates`` manages
-now is strictly narrower: where an approval prompt is routed
-(``enable``/``disable``) and whether tool execution runs sandboxed
-(``isolate``). ``run_gates(sub, *, want, force)`` returns the process exit
-code; the coordinator wraps it in a Typer command.
+``core/tools.py``'s ``pre_tool_call`` policy hook and ``core/security.py``'s
+argument-aware command classifier are unconditionally live on every tool call
+docket dispatches — there is no "enable the gate" step; the gate is always
+on. What ``docket gates`` manages is strictly narrower: where an approval
+prompt is routed (``enable``/``disable``) and whether tool execution runs
+sandboxed (``isolate``). ``run_gates(sub, *, want, force)`` returns the
+process exit code; the coordinator wraps it in a Typer command.
 """
 
 from __future__ import annotations
@@ -142,9 +140,8 @@ def _enable(force: bool) -> int:
     else:
         ui.warn("No channel-bound agents yet — wire one (docket wire <id>) so a human can answer.")
     ui.dim(
-        "  No docket-owned channel bot exists yet (P19-8) — a bound agent has nowhere to receive"
-        " a live prompt until then; CLI/HTTP approval (docket approve/deny, POST /approvals) work"
-        " today regardless."
+        "  A wired Telegram bot receives a live prompt for a bound agent; CLI/HTTP approval"
+        " (docket approve/deny, POST /approvals) always work regardless of channel."
     )
 
     audit_log("gates.enable", f"routing=on force={force}")

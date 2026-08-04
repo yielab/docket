@@ -1,36 +1,31 @@
-"""RuntimeDriver port (Phase 18 L-1 / decision D-14).
+"""RuntimeDriver port.
 
-A 2026-07-29 platform audit found the execution slice half-escaping the ACL
-that existed at the time: session-JSONL cost parsing lived in
-``core/utils.py``, ``trace_ingest`` knew the daemon's session-log record
-shapes from inside ``core/trace.py``, and callers shelled out to the daemon's
-CLI through a growing pile of ad-hoc argv shapes. This module is the fix: a
-single typed ``Protocol`` that ``core/`` and ``cli/`` program against, so
-that *no* module outside ``edges/adapters/`` ever needs to know what a
-session JSONL line, a daemon CLI invocation, or a cost record actually looks
+Execution-related state — session records, turn results, cost/usage — tends
+to leak its on-disk/wire shape into every caller that reads it. This module
+is the fix: a single typed ``Protocol`` that ``core/`` and ``cli/`` program
+against, so that *no* module outside ``edges/adapters/`` ever needs to know
+what a session record, a driver invocation, or a cost figure actually looks
 like on disk.
 
-ROADMAP §4.5 has a standing ban on an ``AbstractBackend`` — decision D-14
-*revises* that ban, not repeals it: **one typed port, one shipped driver**
-(``edges.adapters.docket_runtime.DocketDriver``, since Phase 19 P19-7b
-deleted the daemon-facing driver this port originally shipped with), plus a
-``FakeDriver`` test double (``tests/python/fakes.py``). This is containment
-of coupling that already existed, not speculative plugin-framework
-generality. A second real driver still needs a §4.5 trigger (upstream
-stall/breakage) or a paying user — adding driver discovery, entry points, or
-a config-selectable backend here would be scope creep beyond this card.
+ROADMAP §4.5 has a standing ban on an ``AbstractBackend`` — this module
+revises that ban, not repeals it: **one typed port, one shipped driver**
+(``edges.adapters.docket_runtime.DocketDriver``), plus a ``FakeDriver`` test
+double (``tests/python/fakes.py``). This is containment of coupling, not
+speculative plugin-framework generality. A second real driver still needs a
+§4.5 trigger (upstream stall/breakage) or a paying user — adding driver
+discovery, entry points, or a config-selectable backend here would be scope
+creep.
 
 The six required members mirror an agent's whole lifecycle:
 
 - ``run_turn``    — one costed agent turn (the hot path; ``core/dispatch.py``'s
-  pipeline and, per D-18, docket's own first self-originated LLM call go
-  through this).
+  pipeline and docket's own self-originated LLM calls go through this).
 - ``provision`` / ``teardown`` — register/unregister an agent with whatever
   runtime the driver backs onto (an honest no-op for ``DocketDriver``, which
   backs onto no external registry at all).
 - ``list_sessions`` / ``usage`` — durable-session enumeration and token/cost
   aggregation, reading the driver's own on-disk session format — the format
-  knowledge this card pulls out of ``core/``.
+  knowledge this Protocol keeps out of ``core/``.
 - ``capabilities`` — what this driver instance can actually promise (e.g.
   whether it reports real USD cost at all), so callers never have to
   hardcode an assumption about the one shipped driver's quirks.
@@ -48,7 +43,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 # ── run_turn ──────────────────────────────────────────────────────────────────
 
 # Only "timeout"/"daemon_error" are retryable (a transient hiccup talking to the
-# daemon/CLI, not a real answer) — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS.
+# model backend, not a real answer) — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS.
 FailureKind = Literal["timeout", "daemon_error", "nonzero_exit", "invalid_output"]
 
 
@@ -64,8 +59,8 @@ class TurnResult:
 
     ok: bool
     output: str
-    cost_usd: float  # 0.0 when the driver's backing daemon doesn't report a USD cost
-    raw: dict[str, Any]  # full parsed daemon response (empty when unparseable)
+    cost_usd: float  # 0.0 when the driver doesn't report a USD cost
+    raw: dict[str, Any]  # full parsed backend response (empty when unparseable)
     error: str = ""
     failure_kind: FailureKind | None = None
 
@@ -108,25 +103,24 @@ class SessionSummary:
 
 # ── session-turn ingestion (feeds core/trace.py's trace_ingest) ──────────────
 #
-# Not one of the six headline members, but part of closing the same leak:
-# trace_ingest used to open daemon session JSONL directly and switch on its
-# raw record `type` field ("tool_use"/"tool_result"/"message"). That decoding
-# now lives entirely in the driver; core/trace.py only ever sees the neutral
-# ``SessionTurn``/``SessionSlice`` shapes below and applies docket's own
-# trace-event policy (redaction, timeout handling, its own event vocabulary)
-# on top.
+# Not one of the six headline members, but part of the same containment:
+# decoding a session's raw on-disk records lives entirely in the driver;
+# core/trace.py only ever sees the neutral ``SessionTurn``/``SessionSlice``
+# shapes below and applies docket's own trace-event policy (redaction,
+# timeout handling, its own event vocabulary) on top.
 
 
 @dataclass
 class SessionTurn:
-    """One decoded daemon session record, translated to docket's vocabulary.
+    """One decoded session record, translated to docket's vocabulary.
 
     ``kind`` is ``"tool_call"`` / ``"tool_result"`` / ``"other"`` — only the
     first two are ever projected into a trace event. ``daemon_type`` is the
-    *original* raw type string (kept for the ingested trace payload's
-    ``daemon_type`` field) — the one place a raw daemon vocabulary word is
-    allowed to surface outside the driver, since by that point it is inert
-    string data in docket's own trace payload, not something being parsed.
+    *original* raw type string from the driver's own on-disk session record
+    (kept for the ingested trace payload's ``daemon_type`` field) — the one
+    place that raw vocabulary is allowed to surface outside the driver, since
+    by that point it is inert string data in docket's own trace payload, not
+    something being parsed.
     """
 
     ts: str
@@ -199,11 +193,11 @@ class UsageReport:
 class DriverCapabilities:
     """What one driver instance can actually promise.
 
-    Exists so a caller (including C-2's later self-originated LLM call, D-18)
-    never has to hardcode an assumption about the one shipped driver's
-    quirks — ``DocketDriver`` reports only measured token counts, never a
-    USD cost field, so ``reports_cost_usd`` is False even though
-    ``run_turn`` always returns a (zero) ``cost_usd``.
+    Exists so a caller (including docket's own self-originated LLM calls,
+    e.g. memory distillation) never has to hardcode an assumption about the
+    one shipped driver's quirks — ``DocketDriver`` reports only measured
+    token counts, never a USD cost field, so ``reports_cost_usd`` is False
+    even though ``run_turn`` always returns a (zero) ``cost_usd``.
     """
 
     driver_name: str
@@ -238,7 +232,7 @@ class RuntimeDriver(Protocol):
     ) -> TurnResult:
         """Run one real, costed agent turn. Never raises for ordinary failure modes.
 
-        ``on_spawn`` (ROADMAP Phase 16 W-2, cancellation) — if the driver
+        ``on_spawn`` (cancellation support) — if the driver
         backs onto a real OS process, fires with its pid immediately after
         it starts, before this call blocks on its result. A driver with no
         real process to report (or a test double) may simply ignore it —
@@ -262,8 +256,8 @@ class RuntimeDriver(Protocol):
         """Decode session records past *offset* (a driver-defined cursor unit).
 
         Feeds ``core/trace.py``'s ingestion sweep — the one extra member
-        beyond the headline six, needed to fully retire ``trace_ingest``'s
-        former direct parsing of daemon session JSONL.
+        beyond the headline six, needed to keep session-record decoding
+        entirely inside the driver rather than in ``trace_ingest`` itself.
         """
         ...
 

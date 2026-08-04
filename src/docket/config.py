@@ -9,29 +9,24 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# DOCKET_HOME (Phase 19 P19-6, "docket-native home"): docket's own state root.
-# Phase 19 P19-7b deleted the daemon's directory (formerly OPENCLAW_DIR,
-# ~/.openclaw) outright along with openclaw.json, auth-profiles and every
-# `openclaw` shell-out -- there is no external daemon any more, so
-# DOCKET_HOME is the only state root left. Every docket-owned path in this
-# file resolves under it.
+# DOCKET_HOME: docket's own state root. There is no external daemon or
+# daemon-owned directory any more -- DOCKET_HOME is the only state root left.
+# Every docket-owned path in this file resolves under it.
 DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 
 # MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG /
-# WORKSPACES_DIR / PODS_DIR: all docket-owned, all under DOCKET_HOME. Per
-# D-19's clean break, no migration/fallback: a pre-existing install's files at
-# old daemon-relative paths are simply not read again -- `docket install`
+# WORKSPACES_DIR / PODS_DIR: all docket-owned, all under DOCKET_HOME. No
+# migration/fallback by design: a pre-existing install's files at old
+# daemon-relative paths are simply not read again -- `docket install`
 # re-creates a docket-native home from scratch.
 MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
-# ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes (ROADMAP Phase 16 W-6) —
-# the same overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
+# ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes — the same
+# overlay pattern as MODEL_REGISTRY_FILE (built-ins + starter library,
 # overlaid by a user `roles:` map). See core/archetypes.py.
 ARCHETYPE_REGISTRY_FILE = DOCKET_HOME / "docket-roles.json"
 # WORKSPACES_DIR: root of every managed workspace -- project pods live at
 # WORKSPACES_DIR/projects/<id> (PROJECTS_DIR below); org specialists and pod
-# members live directly at WORKSPACES_DIR/<role-or-project>/... Pre-P19-7b
-# this was OPENCLAW_DIR/workspaces (the daemon's own workspace root, which
-# docket's specialist/pod agents happened to share); now it is docket's own.
+# members live directly at WORKSPACES_DIR/<role-or-project>/...
 WORKSPACES_DIR = DOCKET_HOME / "workspaces"
 PROJECTS_DIR = WORKSPACES_DIR / "projects"
 # PODS_DIR: per-pod runtime resources (scratch dir, workdir) -- see
@@ -51,7 +46,7 @@ AUDIT_LOG_MAX_BYTES = int(os.environ.get("AUDIT_LOG_MAX_BYTES", str(5 * 1024 * 1
 POLICIES_DIR = Path(os.environ.get("POLICIES_DIR", DOCKET_HOME / "policies"))
 APPROVALS_DIR = Path(os.environ.get("APPROVALS_DIR", DOCKET_HOME / "approvals"))
 SCHEDULE_FILE = Path(os.environ.get("SCHEDULE_FILE", DOCKET_HOME / "docket-schedules.json"))
-# RUNS_FILE: the persisted dispatch-run registry (R-3 / D-17) — one record per
+# RUNS_FILE: the persisted dispatch-run registry — one record per
 # `dispatch_pod` invocation, whatever triggered it (cli|webhook|schedule|sweep).
 # Docket-owned JSON, so all reads/writes go through edges/store.py.
 RUNS_FILE = Path(os.environ.get("RUNS_FILE", DOCKET_HOME / "docket-runs.json"))
@@ -62,7 +57,7 @@ SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))
 # or turn is blocked on it, so a generous 15 minutes costs nothing but wall
 # clock and gives a human on Telegram/CLI a realistic window to notice.
 APPROVAL_TIMEOUT = int(os.environ.get("APPROVAL_TIMEOUT", "900"))
-# TOOL_APPROVAL_TIMEOUT (P19-3): the IN-TURN path (core/approval.py's
+# TOOL_APPROVAL_TIMEOUT: the IN-TURN path (core/approval.py's
 # wait_for_approval, called from core/tools.py's dispatch_tool). This one
 # blocks a live call -- the model's turn, a real thread, and under `docket
 # serve` a whole dispatch worker slot -- so APPROVAL_TIMEOUT's 15 minutes
@@ -80,7 +75,7 @@ TOOL_APPROVAL_TIMEOUT = int(os.environ.get("TOOL_APPROVAL_TIMEOUT", "120"))
 TOOL_APPROVAL_POLL_INTERVAL_S = float(os.environ.get("TOOL_APPROVAL_POLL_INTERVAL_S", "2"))
 # CLAIM_STALE_TIMEOUT: a pod task 'claimed' (status=running) longer than this
 # without finishing is presumed crashed — the dispatch sweep fails it with a
-# stale_claim trace event so it stops looking active forever (R-1).
+# stale_claim trace event so it stops looking active forever.
 CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 # METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
@@ -96,16 +91,17 @@ CONTEXT_BYTES_PER_TOKEN = max(1, int(os.environ.get("CONTEXT_BYTES_PER_TOKEN", "
 CONTEXT_TOKEN_BUDGET = int(os.environ.get("CONTEXT_TOKEN_BUDGET", "6000"))
 
 
-# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: ROADMAP Phase 17 C-2 — `docket
-# maintain distill`'s one driver-backed turn (D-18, docket's first
-# self-originated LLM call). DISTILL_MAX_INPUT_BYTES bounds how much daily-log
-# content goes into that turn's prompt, using the same bytes estimator as the
-# rest of this file's context guards; it is a safety cap on the prompt docket
-# composes, not token-accurate budgeting (Phase 17 C-1 owns real budgeting).
+# DISTILL_TIMEOUT_S / DISTILL_MAX_INPUT_BYTES: bound `docket maintain
+# distill`'s one driver-backed turn (docket's first self-originated LLM
+# call). DISTILL_MAX_INPUT_BYTES bounds how much daily-log content goes into
+# that turn's prompt, using the same bytes estimator as the rest of this
+# file's context guards; it is a safety cap on the prompt docket composes,
+# not token-accurate budgeting (the per-role token-budget compiler in
+# core/context.py owns real budgeting).
 DISTILL_TIMEOUT_S = int(os.environ.get("DISTILL_TIMEOUT_S", "120"))
 DISTILL_MAX_INPUT_BYTES = int(os.environ.get("DISTILL_MAX_INPUT_BYTES", str(48 * 1024)))
 
-# R-2: per-role retry budget for a *retryable* TurnResult failure (timeout or
+# Per-role retry budget for a *retryable* TurnResult failure (timeout or
 # daemon_error only — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS; a non-zero
 # exit or a bad tester/reviewer verdict is a real answer and is never retried).
 # Value = retry attempts AFTER the first try, so "2" means up to 3 total tries.
@@ -125,7 +121,7 @@ def _optional_int_env(name: str) -> int | None:
     return int(raw) if raw else None
 
 
-# R-2: process-wide timeouts for the serve dispatch loop (the "serve config
+# Process-wide timeouts for the serve dispatch loop (the "serve config
 # knob" — serve.py runs unattended, with no CLI flags to read). These are read
 # *only* by serve.py; the CLI never consults them.
 #
@@ -138,8 +134,8 @@ def _optional_int_env(name: str) -> int | None:
 # timeout for serve-triggered dispatches — it is a process-wide ceiling for
 # unattended runs, not a fallback beneath per-pod config.
 #
-# None (the default) means "no serve-wide override" — unset envs change nothing
-# from pre-R-2 behaviour, and Lead-meta then applies as usual.
+# None (the default) means "no serve-wide override" — an unset env changes
+# nothing, and Lead-meta then applies as usual.
 DISPATCH_TURN_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_TURN_TIMEOUT_S")
 DISPATCH_VERIFY_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_VERIFY_TIMEOUT_S")
 
@@ -152,16 +148,16 @@ TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
 # so it is never auto-provisioned or flagged missing on a default install.
 PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
 
-# CL-C (wave 14): `programmer`/`reviewer`/`tester` are kept in both sets below
-# even though Phase 10 made them per-pod roles, not global specialists
-# (ORG_ROLES/PROJECT_ROLES is the live scope split -- see role_scope() below).
-# This is deliberate, not a leftover: `docket doctor` (`cli/_doctor.py`'s
+# `programmer`/`reviewer`/`tester` are kept in both sets below even though
+# they are per-pod roles, not global specialists (ORG_ROLES/PROJECT_ROLES is
+# the live scope split -- see role_scope() below). This is deliberate, not a
+# leftover: `docket doctor` (`cli/_doctor.py`'s
 # `_check_metadata_backfill`/`_managed_workspace_ids`) and
 # `core/models_policy.py`'s `policy_agent_ids` both walk this set to detect
-# and heal a pre-Phase-10 GLOBAL `~/.docket/workspaces/<role>/` directory left
-# over from before pods existed -- a real, still-possible on-disk state this
-# codebase intentionally still recognizes. Removing these three would blind
-# that detection, not just delete dead code.
+# and heal a GLOBAL `~/.docket/workspaces/<role>/` directory left over from
+# before pods existed -- a real, still-possible on-disk state this codebase
+# intentionally still recognizes. Removing these three would blind that
+# detection, not just delete dead code.
 SPECIALIST_ROLES: frozenset[str] = frozenset(
     ["manager", "programmer", "reviewer", "tester", "knowledge", "security", PORTFOLIO_MANAGER_ROLE]
 )
@@ -261,8 +257,8 @@ PORT_ALLOC_FILE = DOCKET_HOME / "port-allocations.json"
 # internal-docs/telegram-conversation-memory.md.
 CONVERSATIONS_FILE = DOCKET_HOME / "docket-conversations.json"
 
-# SESSIONS_DIR: durable per-session turn history (ROADMAP Phase 19 P19-4,
-# core/session.py). One self-contained subdirectory per session key (its own
+# SESSIONS_DIR: durable per-session turn history (core/session.py). One
+# self-contained subdirectory per session key (its own
 # JSON file, its own edges/store.py lock file) rather than one shared
 # registry, so that appending to or compacting one session's history can
 # never block on, or corrupt, another session's -- see core/session.py's
@@ -280,8 +276,8 @@ def pod_scratch_dir(project: str) -> Path:
 
 
 def pod_work_dir(project: str) -> Path:
-    """Default working directory for a `workdir`-kind pod blueprint (ROADMAP
-    Phase 16 W-7 — research/content/ops pods, which have no codebase).
+    """Default working directory for a `workdir`-kind pod blueprint
+    (research/content/ops pods, which have no codebase).
 
     Auto-provisioned (mkdir -p, 0700) at pod creation the same way
     `pod_scratch_dir` is, unless the operator supplies an explicit path
@@ -292,12 +288,12 @@ def pod_work_dir(project: str) -> Path:
     return PODS_DIR / project / "workdir"
 
 
-# ── Phase 19 P19-5: the turn loop (core/agent_loop.py, edges/adapters/docket_runtime.py) ──
+# ── The turn loop (core/agent_loop.py, edges/adapters/docket_runtime.py) ──
 #
 # Every bound below is a deliberate stop condition, not a throughput knob: an
 # unbounded loop burning money on a confused model is exactly the failure
-# mode P19-5 exists to prevent (ROADMAP Phase 19 / decision D-19). All are
-# env-overridable, matching every other tunable in this file.
+# mode these limits exist to prevent. All are env-overridable, matching every
+# other tunable in this file.
 
 # AGENT_LOOP_MAX_ITERATIONS: hard cap on model round-trips within one
 # run_agent_turn call. One iteration = one ChatBackend.complete() call — the
@@ -323,7 +319,7 @@ AGENT_LOOP_TOKEN_BUDGET = int(os.environ.get("AGENT_LOOP_TOKEN_BUDGET", "100000"
 # ChatBackend.complete(), capped against whatever wall-clock budget remains.
 AGENT_LOOP_REQUEST_TIMEOUT_S = int(os.environ.get("AGENT_LOOP_REQUEST_TIMEOUT_S", "120"))
 
-# ── P19-10: MCP client (D-19 "rent the protocol") ────────────────────────────
+# ── MCP client ("rent the protocol") ──────────────────────────────────────────
 # MCP_SERVERS_FILE: docket-owned registry of configured external MCP tool
 # servers (core/mcp_tools.py's McpServerConfig/McpServerRegistry), written
 # through edges/store.py like every other docket-owned JSON file.
@@ -337,7 +333,7 @@ MCP_CLIENT_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_TIMEOUT_S", "10"))
 # stall a whole turn on one misbehaving external server.
 MCP_CLIENT_MAX_TIMEOUT_S = float(os.environ.get("MCP_CLIENT_MAX_TIMEOUT_S", "60"))
 
-# ── P19-11: the `fetch` tool (decisions D-23/D-24 — ship the tool, not the lockdown) ──
+# ── the `fetch` tool — ship the tool, not the lockdown ──────────────────────
 #
 # Network egress stays open by default (`bash` + curl/wget correctly ask, but
 # python3/node/git-clone are curated-allowlist escape hatches that reach the
@@ -363,7 +359,7 @@ FETCH_MAX_RESPONSE_BYTES = int(os.environ.get("FETCH_MAX_RESPONSE_BYTES", str(20
 # the tool's own `timeout` argument up to this same order of magnitude.
 FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
 
-# ── P19-6: docket-native fleet registry (core/fleet.py) ──
+# ── docket-native fleet registry (core/fleet.py) ──
 # FLEET_FILE is the source of truth for agent registration, channel bindings,
 # gates/isolation flags, local provider endpoints, and the org-wide default
 # model. Docket-owned JSON, so it is read/written only through edges/store.py
@@ -373,7 +369,7 @@ FETCH_TIMEOUT_S = float(os.environ.get("FETCH_TIMEOUT_S", "15"))
 # module docstring for the full rationale).
 FLEET_FILE = Path(os.environ.get("FLEET_FILE", DOCKET_HOME / "fleet.json"))
 
-# ── P19-8: docket-owned Telegram approval channel ──
+# ── docket-owned Telegram approval channel ──
 # The bot token is stored as an ordinary docket-keys secret (core/secrets.py)
 # under this name -- `docket keys add TELEGRAM_BOT_TOKEN` -- rather than a
 # bespoke config file, so it inherits the same at-rest handling (0600 JSON)

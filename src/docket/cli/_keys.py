@@ -6,15 +6,13 @@ code; the coordinator wraps each in a Typer command and raises
 ``secrets.meta.json`` (``core/secrets.py``) — docket-owned JSON written
 through ``edges/store.py``.
 
-Phase 19 P19-7b: ``docket auth``'s ``login``/``key``/``setup`` used to shell
-out to ``openclaw models auth setup-token``/``paste-token`` so the daemon
-would own the credential exchange. There is no daemon and no docket-native
-replacement for an interactive OAuth-style provider login flow yet — rather
-than silently no-op or pretend to succeed, every subcommand says so plainly
-and points at ``docket keys add <PROVIDER>_API_KEY`` as the one credential
-path that is real today (``edges/adapters/llm.py``'s ``resolve_endpoint``
-reads ``<PROVIDER>_API_KEY`` from the environment as one of its lookup
-precedence steps).
+There is no daemon left to own an interactive OAuth-style provider login flow,
+and no docket-native replacement exists yet — rather than silently no-op or
+pretend to succeed, every ``docket auth`` subcommand says so plainly and
+points at ``docket keys add <PROVIDER>_API_KEY`` as the one credential path
+that is real today (``edges/adapters/llm.py``'s ``resolve_endpoint`` reads
+``<PROVIDER>_API_KEY`` from the environment as one of its lookup precedence
+steps).
 """
 
 from __future__ import annotations
@@ -71,9 +69,8 @@ _KEY_PREFIXES: dict[str, tuple[str, int]] = {
 # provider's -- these are excluded from `_sync_keys_to_agents`'s per-agent
 # .env write. Every project agent's workspace is a wider blast radius than
 # the one process that actually needs the credential; `TELEGRAM_BOT_TOKEN`
-# (ROADMAP Phase 19 P19-8) is read by `core/telegram.py`/`docket serve`
-# only, and no agent's own turn has any legitimate use for docket's channel
-# bot's own token.
+# is read by `core/telegram.py`/`docket serve` only, and no agent's own turn
+# has any legitimate use for docket's channel bot's own token.
 _NON_AGENT_KEYS: frozenset[str] = frozenset({_cfg.TELEGRAM_BOT_TOKEN_KEY})
 
 
@@ -391,7 +388,8 @@ def _extract_provider(extra: list[str], default: str = "anthropic") -> tuple[str
     """Pull a `--provider <name>` / `--provider=<name>` flag out of ``extra``.
 
     Returns (provider, remaining_extra). Defaults to "anthropic" when no flag
-    is present, for backward compatibility with every pre-Phase-19 invocation.
+    is present, for backward compatibility with invocations that predate the
+    --provider flag.
     """
     provider = default
     remaining: list[str] = []
@@ -412,8 +410,8 @@ def _extract_provider(extra: list[str], default: str = "anthropic") -> tuple[str
 
 
 _AUTH_GONE_MESSAGE = (
-    "No docket-native provider-auth flow exists yet (Phase 19 P19-7b deleted the daemon"
-    " this used to shell out to for an OAuth-like token exchange).\n"
+    "No docket-native provider-auth flow exists yet (there is no daemon"
+    " left to shell out to for an OAuth-like token exchange).\n"
     "  What works today: store a credential directly and docket's own chat client reads it —\n"
     "    docket keys add {env_var}\n"
     "  edges/adapters/llm.py's resolve_endpoint falls back to the <PROVIDER>_API_KEY\n"
@@ -439,12 +437,9 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
     sub:   status (default) | login | key | setup | choose
     extra: may include `--provider <name>` (defaults to "anthropic").
 
-    Phase 19 P19-7b: every subcommand here used to shell out to
-    `openclaw models auth setup-token`/`paste-token` so the (now-deleted)
-    daemon owned the credential exchange. There is no docket-native
-    replacement for an interactive provider-login flow, so every path below
-    says that plainly rather than silently no-op'ing or reporting a fake
-    success — see the module docstring.
+    There is no docket-native replacement for an interactive provider-login
+    flow, so every path below says that plainly rather than silently
+    no-op'ing or reporting a fake success — see the module docstring.
     """
     action = sub or "status"
     provider, _rest = _extract_provider(extra)
@@ -475,6 +470,6 @@ def run_auth(sub: str | None, extra: list[str]) -> int:
         "Usage:\n"
         "  docket auth                        — show which provider keys are stored\n"
         "  docket keys add <PROVIDER>_API_KEY — the real, working credential path\n"
-        "  docket auth login|key|setup        — no docket-native replacement yet (Phase 19 P19-7b)"
+        "  docket auth login|key|setup        — no docket-native replacement yet"
     )
     return 1

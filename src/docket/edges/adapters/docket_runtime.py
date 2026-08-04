@@ -1,24 +1,18 @@
-"""``DocketDriver``: the daemon-free ``RuntimeDriver`` (Phase 19 P19-5 / D-19).
+"""``DocketDriver``: the ``RuntimeDriver`` implementation.
 
 Implements ``core.runtime_driver.RuntimeDriver`` on top of ``core/agent_loop.py``
 so ``core/dispatch.py``, the pipeline executor and every existing caller that
 programs against the Protocol work unchanged.
 
-P19-5 shipped this driver fully tested but unused in production: nothing yet
-repointed the callers that resolve a driver, so every real turn still ran
-through the external daemon (reached via what was then a driver in
-``edges/adapters/``). **P19-7a (the runtime cutover) is what flipped it** --
-this module's own ``default_driver()`` below became the single resolution
-point every production caller uses, so a production pod-dispatch hop (and
-every other driver-backed turn: distillation, cost aggregation, trace
-ingestion) executes here, on docket's own gated loop, not the daemon.
-**P19-7b then deleted the daemon-facing driver and every other daemon
-shell-out outright** -- there is no external runtime left at all.
+This module's own ``default_driver()`` below is the single resolution point
+every production caller uses, so a production pod-dispatch hop (and every
+other driver-backed turn: distillation, cost aggregation, trace ingestion)
+executes here, on docket's own gated loop.
 
 Every ``run_turn`` goes through ``core.agent_loop.run_agent_turn``, which in
 turn dispatches every tool call through ``core.tools.dispatch_tool`` — the one
-chokepoint every policy/approval/audit guardrail in this phase was built onto.
-This module never calls a tool handler directly and never imports
+chokepoint every policy/approval/audit guardrail is built onto. This module
+never calls a tool handler directly and never imports
 ``edges/adapters/toolbox.py``.
 """
 
@@ -81,8 +75,8 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
     signature has no ``work_dir`` parameter, so a ``workdir`` pod falls
     straight through to the raw workspace dir. Written fresh here, rather
     than reused, because closing that gap in ``core/pod.py`` is out of scope
-    for this card (that module is not owned by P19-5) and this driver should
-    not repeat a known incompleteness in new code it fully controls.
+    for this module, and this driver should not repeat a known incompleteness
+    in new code it fully controls.
     """
     if worktree_dir:
         return (Path(worktree_dir),)
@@ -95,7 +89,7 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
 
 @dataclass
 class DocketDriver:
-    """The daemon-free ``RuntimeDriver``.
+    """The ``RuntimeDriver`` implementation.
 
     ``backend_factory``/``registry_factory`` are the two injection seams a
     test needs (a stubbed ``ChatBackend``, a narrower tool set); both default
@@ -213,8 +207,8 @@ class DocketDriver:
         alone is exactly the kind of silent, unreviewed destructive action
         this codebase's approval/audit stack exists to gate — and
         ``docket delete`` already removes the whole workspace directory
-        directly. Session-file lifecycle tied to fleet deletion belongs to
-        the P19-6/P19-7 fleet-registry cards, not this one.
+        directly. Session-file lifecycle tied to fleet deletion is a
+        separate concern from this driver method.
         """
         return TeardownResult(
             ok=True,
@@ -222,7 +216,7 @@ class DocketDriver:
         )
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
-        """Enumerate this agent's sessions from docket's own store, not daemon JSONL.
+        """Enumerate this agent's sessions from docket's own session store.
 
         A session's directory name is its percent-encoded session KEY
         (``agent:<id>:<project>``), not the bare agent id, so every directory
@@ -262,8 +256,8 @@ class DocketDriver:
 
         ``core/session.py`` records only session-level ``created``/``updated``
         timestamps, not one per message, so every turn in a slice carries the
-        same ``ts`` — coarser than daemon JSONL's per-record timestamps, but
-        this method's only documented consumer (idle/timeout detection over
+        same ``ts`` — coarser than per-record timestamps would be, but this
+        method's only documented consumer (idle/timeout detection over
         ``last_ts``) only ever needs the *last* one.
         """
         record = _session.load_session(session_id)
@@ -325,12 +319,10 @@ class DocketDriver:
 
         ``by_day`` is always empty: a session's stored usage is one running
         total for its whole lifetime (``core.session.MeasuredUsage`` has no
-        per-turn timestamp to bucket by day), unlike the pre-Phase-19-P19-7b
-        daemon-facing driver, whose session JSONL timestamped every record.
-        Adding a per-turn usage log to fabricate a daily breakdown would be new
-        scope for ``core/session.py`` (not owned by this card); reporting an
-        honest empty list beats a single-bucket approximation mislabeled as
-        a real daily breakdown.
+        per-turn timestamp to bucket by day). Adding a per-turn usage log to
+        fabricate a daily breakdown would be new scope for ``core/session.py``;
+        reporting an honest empty list beats a single-bucket approximation
+        mislabeled as a real daily breakdown.
         """
         totals = UsageTotals()
         for summary in self.list_sessions(agent_id):
@@ -353,8 +345,7 @@ class DocketDriver:
             # there is no daemon to register or unregister an agent with.
             supports_provisioning=False,
             # list_sessions/read_new_turns/usage read real, durable
-            # docket-owned session storage (core/session.py), not a daemon
-            # JSONL file that may or may not exist.
+            # docket-owned session storage (core/session.py).
             supports_sessions=True,
         )
 
@@ -363,15 +354,14 @@ _DRIVER: DocketDriver | None = None
 
 
 def default_driver() -> DocketDriver:
-    """Return the process-wide ``DocketDriver`` singleton (P19-7a: the runtime cutover).
+    """Return the process-wide ``DocketDriver`` singleton.
 
     Stateless, so a fresh instance would behave identically; this just gives
-    every real caller one named object. This is the only driver docket ships
-    (P19-7b deleted the daemon-facing one outright): ``core/dispatch.py``'s
-    two pod-dispatch hop-execution call sites, ``core/trace.py``'s
-    session-ingestion sweep, ``core/utils.py``'s cost aggregation, and
-    ``cli/_agents.py``'s distillation turn (D-18's first self-originated LLM
-    call) all resolve the driver here.
+    every real caller one named object. This is the only driver docket ships:
+    ``core/dispatch.py``'s two pod-dispatch hop-execution call sites,
+    ``core/trace.py``'s session-ingestion sweep, ``core/utils.py``'s cost
+    aggregation, and ``cli/_agents.py``'s distillation turn (docket's first
+    self-originated LLM call) all resolve the driver here.
     """
     global _DRIVER
     if _DRIVER is None:

@@ -38,7 +38,7 @@ _REMOVED: dict[str, tuple[str, ...]] = {
     ),
     "tier": (
         "docket tier was removed — tier names (economy/standard/premium) are no longer "
-        "accepted anywhere (D-2 exit, 0.2.0).",
+        "accepted anywhere (removed in 0.2.0).",
         "Use: docket profile [id] <provider/model|default> to pin/unpin one agent, or "
         "docket models for the role policy",
     ),
@@ -82,12 +82,12 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "Use: docket pod <project> queue                (was: team queue)",
         "Use: docket pod <project> dispatch              to actually run queued tasks",
         "Org-wide view: docket install --portfolio       (Portfolio Manager)",
-        "Any old manager TASK_LIST.json from a pre-Phase-19 install is untouched on disk "
+        "Any old manager TASK_LIST.json from a legacy install is untouched on disk "
         "but no longer read by docket.",
     ),
     "workflow": (
         "docket workflow was retired — one pipeline dialect now, not two (the Lobster YAML "
-        "validator ignored four constructs its own template emitted; ROADMAP D-16).",
+        "validator ignored four constructs its own template emitted).",
         "Use: docket pipeline validate   (was: workflow <id> validate <name>)",
         "Use: docket pipeline plan       (was: workflow <id> plan/dry-run <name>)",
         "Use: docket pipeline run        to actually execute a pipeline",

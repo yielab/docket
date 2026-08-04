@@ -13,7 +13,7 @@ Supported formats
     Fire every N seconds (s), minutes (m), or hours (h) since the last run.
 ``HH:MM``
     Fire once daily at the given UTC time.
-``<min> <hour> <dom> <month> <dow>`` (ROADMAP Phase 16 W-4)
+``<min> <hour> <dom> <month> <dow>``
     A standard 5-field cron expression, evaluated in UTC. Each field accepts
     ``*``, a single integer, a comma-separated list, an ``a-b`` range, and a
     ``/n`` step on either ``*`` or a range (e.g. ``*/15``, ``9-17/2``). Month
@@ -35,7 +35,7 @@ This module is pure-stdlib. The spec-parsing functions are side-effect-free
 entry points; ``record_last_run`` is the one write path — it persists into the
 same file, under a ``lastRun`` key sitting alongside ``schedules``, via
 ``edges/store.py``'s locked read-modify-write (docket-owned JSON, single-writer
-rule applies). Before R-3, the last-run timestamp lived only in an in-memory
+rule applies). Before this, the last-run timestamp lived only in an in-memory
 ``dict`` in ``serve.py``, so every ``docket serve`` restart re-fired every due
 schedule immediately — persisting it here is what fixes that.
 """

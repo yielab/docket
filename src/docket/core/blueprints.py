@@ -1,15 +1,14 @@
-"""Pod blueprints: objective-scoped provisioning (ROADMAP Phase 16 W-7,
-extended ROADMAP Phase 21 P21-5).
+"""Pod blueprints: objective-scoped provisioning.
 
 A *blueprint* is a named, versioned pod shape: an archetype roster (role names
-resolved against ``core/archetypes.py``'s registry — W-6), a default pipeline
-(``core/pipeline.py``'s format — W-1, attached but not executed; the executor
-is W-2), a workspace kind (``codebase`` — a git-tracked project directory —
-or ``workdir`` — a plain working directory with no codebase assumption), and
-an optional default per-pod spend cap. Where a blueprint's default pipeline
-gates a step (mechanical/verdict/approval), that gate always matches the
-gated role's own archetype ``gateContract`` exactly — there is no separate
-"default gates" field to drift from it.
+resolved against ``core/archetypes.py``'s registry), a default pipeline
+(``core/pipeline.py``'s format, attached but not executed), a workspace kind
+(``codebase`` — a git-tracked project directory — or ``workdir`` — a plain
+working directory with no codebase assumption), and an optional default
+per-pod spend cap. Where a blueprint's default pipeline gates a step
+(mechanical/verdict/approval), that gate always matches the gated role's own
+archetype ``gateContract`` exactly — there is no separate "default gates"
+field to drift from it.
 
 Built-ins (``BUILTIN_BLUEPRINTS``):
 
@@ -17,7 +16,7 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   codebase. Its ``default_pipeline`` is exactly ``core.pipeline.default_pipeline()``
   (the same object dispatch.py's hardcoded order already matches) and it sets
   no default budget cap — provisioning through this blueprint is behaviorally
-  identical to the pre-W-7 default `docket add`.
+  identical to the plain default `docket add`.
 - ``research`` — Lead, Researcher, Analyst, Writer, Critic (workdir): gathers
   and analyzes source material, drafts a deliverable, and gates it on the
   Critic's APPROVE/REJECT verdict (bounded rework back to the Writer).
@@ -27,9 +26,9 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   behind a mechanical check (deferring to the Operator's own ``verifyCmd``,
   mirroring the Implementer's convention), then requires human approval
   before the Monitor's findings are considered actioned.
-- ``agentic-product`` — Lead, Implementer, Reviewer, Tester (codebase; ROADMAP
-  Phase 21 P21-5): the pod shape for a product that itself ships an agent to
-  end users, not just an internal tool. Its ``default_pipeline`` is the same
+- ``agentic-product`` — Lead, Implementer, Reviewer, Tester (codebase): the
+  pod shape for a product that itself ships an agent to end users, not just
+  an internal tool. Its ``default_pipeline`` is the same
   ``core.pipeline.default_pipeline()`` object ``software`` attaches, but
   because the roster carries Reviewer and Tester (``core/pod.py``'s existing
   ``FULL_POD_ROLES``, not a new roster shape), both steps actually gate a hop
@@ -40,14 +39,15 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   a scaffolding blueprint — it describes a pod shape, the same as the other
   four, and provisions no repository contents. The convention a pod
   provisioned from it is expected to follow is embedding the
-  ``docket-runtime`` library (ROADMAP Phase 21 P21-1) as its own guardrail
-  substrate rather than reinventing one; enforcing that is outside a
-  blueprint's job (see ``description`` below).
+  ``docket-runtime`` library as its own guardrail substrate rather than
+  reinventing one; enforcing that is outside a blueprint's job (see
+  ``description`` below).
 
-Per ROADMAP Phase 16's anti-overengineering rule, ``workspace_kind`` is a
-closed enum (``WORKSPACE_KINDS``) — same discipline as ``core/archetypes.py``'s
-``scope``/``modelClass``/``gateContract.kind``/``editRights``. A blueprint's
-*roster* references the archetype registry by name (open — any built-in,
+``workspace_kind`` is a closed enum (``WORKSPACE_KINDS``) — same discipline
+as ``core/archetypes.py``'s ``scope``/``modelClass``/``gateContract.kind``/
+``editRights``, avoiding an open-ended set of workspace shapes that would
+otherwise need special-casing elsewhere. A blueprint's *roster* references
+the archetype registry by name (open — any built-in,
 starter-library, or user-defined archetype), exactly like ``core/pod.py``'s
 pre-existing ``DEFAULT_POD_ROLES``/``FULL_POD_ROLES`` tuples already do; this
 module does not re-validate role names against that registry itself —

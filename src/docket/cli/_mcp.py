@@ -3,42 +3,41 @@ external MCP tool servers docket connects to as a *client*.
 
 This module has two, deliberately unrelated halves:
 
-- `docket mcp serve` (ROADMAP Phase 18 L-3): docket **as a server** — starts
-  an MCP (Model Context Protocol) stdio server so any MCP client (Claude
-  Code, Codex, ...) can drive docket's control plane *through* the same
-  governance spine a CLI invocation goes through — not around it.
-- `docket mcp servers add/list/remove` (ROADMAP Phase 19 P19-13): docket **as
-  a client** — the CLI over `core/mcp_tools.py`'s `add_mcp_server`/
-  `load_mcp_servers`/`remove_mcp_server` (P19-10), which shipped as tested,
-  uncalled library functions. This half is pure presentation: it validates
-  flags, builds an `McpServerConfig`, and calls the existing `core/`
-  functions — it does not talk to a remote server itself (that happens later,
-  when `core/agent_loop.py`, P19-5, calls `load_mcp_tools` to build a turn's
-  registry) and it never touches `core/tools.py`.
+- `docket mcp serve`: docket **as a server** — starts an MCP (Model Context
+  Protocol) stdio server so any MCP client (Claude Code, Codex, ...) can
+  drive docket's control plane *through* the same governance spine a CLI
+  invocation goes through — not around it.
+- `docket mcp servers add/list/remove`: docket **as a client** — the CLI over
+  `core/mcp_tools.py`'s `add_mcp_server`/`load_mcp_servers`/
+  `remove_mcp_server`. This half is pure presentation: it validates flags,
+  builds an `McpServerConfig`, and calls the existing `core/` functions — it
+  does not talk to a remote server itself, and it never touches
+  `core/tools.py` directly. Actually reaching a configured server from a live
+  turn is `core/mcp_tools.py`'s `load_mcp_tools` — see that module's own
+  docstring for exactly what is and isn't wired today.
 
-**The payoff this CLI exists to unlock: browser support is configuration, not
-code.** Point docket at the Playwright MCP server
-(`docket mcp servers add playwright -- npx -y @playwright/mcp@latest`) and
-P19-10's client gates every tool it advertises exactly like a built-in —
-namespaced `mcp__playwright__<tool>`, so a remote server can never shadow
+**The intended payoff: browser support as configuration, not code.** Point
+docket at the Playwright MCP server (`docket mcp servers add playwright --
+npx -y @playwright/mcp@latest`) and, once `load_mcp_tools` feeds a turn's
+registry, the client gates every tool it advertises exactly like a built-in
+— namespaced `mcp__playwright__<tool>`, so a remote server can never shadow
 `bash`, still screened through the `prompt-injection` policy before
-registration, still dispatched through the one chokepoint. The same is true
-of a web-search MCP server. This is what decision D-19's "rent the protocol"
-buys, and it is precisely why hand-rolling browser automation or a search
-tool is on the never-build list (decision D-24) — see the recipe in
-`specs/functional/mcp-client.spec.md`.
+registration, still dispatched through the one chokepoint
+(`core/tools.py`'s `dispatch_tool`, which evaluates the `pre_tool_call`
+policy hook live, in-turn). The same is true of a web-search MCP server.
+This is why hand-rolling browser automation or a search tool is on the
+never-build list — see the recipe in `specs/functional/mcp-client.spec.md`.
 
-The `serve` half's own docstring below (unchanged from L-3) continues to
-describe only that half:
+The `serve` half:
 
-ROADMAP Phase 18 L-3. `docket mcp serve` starts an MCP (Model Context
-Protocol) stdio server so any MCP client (Claude Code, Codex, ...) can drive
-docket's control plane *through* the same governance spine a CLI invocation
-goes through — not around it:
+`docket mcp serve` starts an MCP (Model Context Protocol) stdio server so
+any MCP client (Claude Code, Codex, ...) can drive docket's control plane
+*through* the same governance spine a CLI invocation goes through — not
+around it:
 
 - every tool call writes an audit-log entry (``core/audit.py``, action
   ``mcp.<tool>``) that participates in the same ``seq``/``prev_hash``
-  tamper-evidence chain as every other audit entry (Phase 15 G-4);
+  tamper-evidence chain as every other audit entry;
 - ``dispatch``/``delegate``/``approvals_grant``/``approvals_deny`` call the
   *exact same* ``core/`` functions the CLI and ``docket serve``'s HTTP API
   already call — no parallel approval or dispatch path, no auto-approve, no
@@ -47,12 +46,12 @@ goes through — not around it:
   ``cli/_pod.py`` or ``serve.py`` — it reuses ``core/`` services directly and
   never duplicates their business logic; ``core/`` has no idea MCP exists.
 
-**This is a server, never a host.** `docket mcp serve` exposes docket's own
-control plane as MCP tools for an external client to call. It does NOT make
-docket consume/execute other MCP servers' tools inside an agent turn — that
-would be the "standalone-runtime trap" the ROADMAP's Phase 18 scope guard
-explicitly refuses. Agent-side MCP *client* config is a separate, deliberately
-unbuilt card (L-4, daemon-gated).
+**This is a server, never a host — in the ``serve`` direction.** `docket mcp
+serve` exposes docket's own control plane as MCP tools for an external
+client to call; it does not make docket consume another server's tools
+through that same code path. Agent-side MCP *client* config is the separate
+`servers` half described above — see `core/mcp_tools.py`'s module docstring
+for how much of the path to a live turn is actually wired.
 
 **stdio discipline.** An MCP stdio server speaks newline-delimited JSON-RPC on
 stdout — any stray print corrupts the stream. This module's tool functions
@@ -68,7 +67,7 @@ more). It is only imported inside ``serve_stdio()``, lazily, guarded by
 with ``pip install 'docket[mcp]'`` (or ``uv sync --extra mcp``); a missing SDK
 prints ``MISSING_SDK_HINT`` instead of a bare traceback.
 
-**SDK version (Phase 18 L-6).** Targets the SDK's 2.x line (``mcp>=2.0.0``,
+**SDK version.** Targets the SDK's 2.x line (``mcp>=2.0.0``,
 no ceiling) via ``mcp.server.MCPServer`` — the 2.0 rework's direct successor
 to the 1.x line's ``mcp.server.fastmcp.FastMCP`` (``mcp.server.fastmcp`` was
 removed outright in 2.0, not deprecated in place). The migration was a rename,
@@ -282,9 +281,13 @@ def tool_approvals_deny(token: str) -> dict[str, Any]:
 
 
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
-    """Daemon-**recorded** USD spend — one agent (if ``agent_id`` is given) or
-    the whole fleet. Never a projected/estimated figure and never a claimed
-    dollar *savings* — see cost-tracking.spec.md."""
+    """**Recorded** USD spend (from the active driver's session data) — one
+    agent (if ``agent_id`` is given) or the whole fleet. Never a claimed
+    dollar *savings* — see cost-tracking.spec.md. ``DocketDriver`` never
+    reports a real dollar figure (see ``edges/adapters/docket_runtime.py``),
+    so this is currently always ``0.0`` per agent; the ``MODEL_PRICING``-based
+    comparative estimate `docket cost`'s human-readable view shows alongside
+    it is not returned by this tool."""
     _audit("cost", f"agent={agent_id or ''}")
     from docket.cli._cost import cost_snapshot
 
@@ -356,13 +359,14 @@ def serve_stdio() -> int:
     return 0
 
 
-# ── `docket mcp servers` — CLI over core/mcp_tools.py's client config (P19-13) ──
+# ── `docket mcp servers` — CLI over core/mcp_tools.py's client config ──
 #
 # Pure presentation: every function below validates input, builds/reads
 # McpServerConfig objects, and calls the existing core/mcp_tools.py functions
 # (add_mcp_server/load_mcp_servers/remove_mcp_server) unchanged. Nothing here
-# connects to a server or touches core/tools.py — that happens later, when
-# core/agent_loop.py (P19-5) calls load_mcp_tools to build a turn's registry.
+# connects to a server or touches core/tools.py — that is core/mcp_tools.py's
+# load_mcp_tools, whose own docstring says exactly how much of the path to a
+# live turn's registry is wired today.
 #
 # Deliberately plain print(), never docket.ui: this file also hosts
 # serve_stdio()'s JSON-RPC session, and test_l6_mcp_sdk_v2.py's

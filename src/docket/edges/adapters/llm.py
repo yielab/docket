@@ -1,4 +1,4 @@
-"""OpenAI-compatible chat-completions adapter (ROADMAP Phase 19 P19-1 / D-19).
+"""OpenAI-compatible chat-completions adapter.
 
 The one shipped implementation of ``core/llm.py``'s ``ChatBackend`` port, and
 the **only** module in docket that knows what a chat-completions request or
@@ -7,10 +7,10 @@ dispatcher, the gates — speaks ``ChatMessage``/``ToolCall``/``ChatResponse``.
 
 **Zero new dependencies, on purpose.** The protocol is an HTTP POST with a JSON
 body; stdlib ``urllib`` covers it. Pulling in a vendor SDK to do that would
-re-introduce exactly the coupling D-19 exists to remove, and D-18's ban on
-hand-rolled *per-vendor* clients is not in tension with this: there is one
-client here for one open protocol, not one per provider. llama.cpp, vLLM, LM
-Studio, OpenAI, Groq, Together and OpenRouter all speak it.
+re-introduce exactly the coupling docket deliberately avoids, and the standing
+ban on hand-rolled *per-vendor* clients is not in tension with this: there is
+one client here for one open protocol, not one per provider. llama.cpp, vLLM,
+LM Studio, OpenAI, Groq, Together and OpenRouter all speak it.
 
 **What this module refuses to do:** decide anything. It does not retry (that
 policy lives in ``core/dispatch.py``, keyed on ``FailureKind``), does not
@@ -234,9 +234,9 @@ def _classify_http_status(status: int) -> FailureKind:
     because ``core/dispatch.py``'s ``_RETRYABLE_FAILURE_KINDS`` is keyed on
     the existing ``FailureKind`` literals, and inventing a synonym would mean
     either a parallel retry table or a rename across dozens of test modules
-    for no behavioural gain. Phase 19 P19-7b deleted the daemon these names
-    originally described; renaming the vocabulary itself is a separate,
-    not-yet-scheduled cleanup, not part of this card.
+    for no behavioural gain. The daemon these names originally described is
+    gone; renaming the vocabulary itself remains a separate, not-yet-scheduled
+    cleanup.
     """
     return "daemon_error" if status in _RETRYABLE_STATUS else "nonzero_exit"
 
@@ -359,9 +359,9 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     ``None`` when no base URL can be found, so callers report an actionable
     "no endpoint configured" rather than posting into the void.
 
-    Phase 19 P19-7b: the stored-config lookup reads docket's own fleet
-    registry (``core/fleet.py``'s ``get_local_provider``) directly -- there
-    is no daemon config file left to have ever pointed at.
+    The stored-config lookup reads docket's own fleet registry
+    (``core/fleet.py``'s ``get_local_provider``) directly -- there is no
+    daemon config file left to have ever pointed at.
     """
     provider, _, model_id = model.partition("/")
     if not model_id:

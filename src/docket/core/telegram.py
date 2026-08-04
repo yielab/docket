@@ -1,10 +1,10 @@
-"""docket-owned Telegram approval channel (ROADMAP Phase 19 P19-8 / D-19).
+"""docket-owned Telegram approval channel.
 
-Since Phase 15, docket's own docs have had to explicitly deny that Telegram
-is a real approval channel: the OpenClaw daemon had its own native
-exec-approval prompt, a Telegram reply answered *that* prompt, docket never
-saw it, and no audit entry was written (G-5 spiked a bridge and found none).
-P19-7b deleted the daemon side of that gap; this module closes the other
+docket's own docs used to have to explicitly deny that Telegram was a real
+approval channel: the OpenClaw daemon had its own native exec-approval
+prompt, a Telegram reply answered *that* prompt, docket never saw it, and no
+audit entry was written (a spike found no practical bridge). That daemon-side
+gap is gone along with the daemon itself; this module closes the other
 side by making docket itself the bot -- long-polling the Bot API
 (``edges/adapters/telegram.py``, wire format only) and routing every message
 through docket's own, already-existing approval store and pod-delegation
@@ -30,7 +30,7 @@ anything happening:
 2. **Content screening** (:func:`_handle_delegate`). Message text that is
    about to become agent input (a delegated task) is run through the
    existing ``pre_input`` policy hook's ``prompt-injection`` policy, exactly
-   the way ``core/mcp_tools.py`` (P19-10) screens a remote MCP server's tool
+   the way ``core/mcp_tools.py`` screens a remote MCP server's tool
    descriptions before they reach a model -- the same untrusted-external-text
    threat class, the same evaluator, no new hook invented. ``block``/
    ``require_approval`` refuse before ``core.dispatch.enqueue_task`` is ever
@@ -237,7 +237,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
             "delegate",
         )
 
-    # P19-10's precedent, applied to inbound-channel text instead of a remote
+    # The same precedent applied to inbound-channel text instead of a remote
     # MCP tool description: untrusted external text is screened through the
     # real pre_input evaluator, trusted=False, before it is treated as agent
     # input. block/require_approval refuse outright -- there is no per-message

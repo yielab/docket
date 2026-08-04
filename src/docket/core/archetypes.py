@@ -1,20 +1,20 @@
-"""Role archetypes: versioned, declarative role definitions (ROADMAP Phase 16 W-6).
+"""Role archetypes: versioned, declarative role definitions.
 
 A *role archetype* is data, not code: a name, a scope, a model class, SOUL/AGENTS
-prose templates, a gate contract, edit rights, a tool profile, and (ROADMAP Phase
-19 P19-12) an enforced tool denylist. `core/pod.py`'s
+prose templates, a gate contract, edit rights, a tool profile, and an enforced
+tool denylist. `core/pod.py`'s
 `normalize_role`/`member_id`/`policy_role_for` resolve pod roles against the
 registry this module builds instead of a hardcoded 4-tuple, so a fifth (sixth,
 ...) role is data, never a new hardcoded string in `core/pod.py`/`cli/_pod.py`.
 
-## Per-role tool sets (ROADMAP Phase 19 P19-12)
+## Per-role tool sets
 
 `tool_profile` (below) is prose — descriptive, never enforced. That was a real
 gap: a Reviewer was *told* "read-only: no write/edit/exec" in its SOUL.md, but
 `core/agent_loop.py` handed it the same full tool registry as an Implementer.
 Being told not to do something is a strictly weaker guarantee than being
 *unable* to, and that distinction is exactly what docket sells (see
-ROADMAP's P19-12 card and CLAUDE.md's roles-as-data convention).
+CLAUDE.md's roles-as-data convention).
 
 `denied_tools` closes that gap as data: the built-in tool names (from
 `core.tools.builtin_registry()`) a role may never call. `registry_for_role`
@@ -25,12 +25,11 @@ branches on a role's name; the branch would be the anti-pattern this card
 exists to close.
 
 Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles —
-lead, implementer, reviewer, tester — byte-identical to the pre-W-6 hand-written
-SOUL.md/AGENTS.md generators that used to live in `cli/_pod.py` (golden-tested;
+lead, implementer, reviewer, tester (golden-tested;
 see `tests/python/test_w6_archetypes.py`). A starter library ships six more:
 researcher, analyst, writer, critic, operator, monitor (`STARTER_ARCHETYPES`).
 
-Closed vs. open (ROADMAP Phase 16, quoted verbatim): "no fifth role ever lands
+Closed vs. open: "no fifth role ever lands
 as a hardcoded string; archetype prose and rosters are user-extensible, but
 gate contracts, edit rights, and scope stay closed typed sets docket can
 reason about." So here: `scope`, `model_class`, `gate_contract.kind`, and
@@ -49,14 +48,14 @@ no override (every starter-library/user role) resolves through its own
 (`models_policy.resolve_role_model`'s archetype fallback) — no new hardcoded
 `ALL_ROLES` entry is needed per role.
 
-`token_budget` (ROADMAP Phase 17 C-1) is the role's context-compiler budget —
+`token_budget` is the role's context-compiler budget —
 how many (approximate) tokens of prior-hop carryover `core/context.py`'s
 `compile_artifact`/`hop_share` may thread into that role's hop prompt. It
 lives here, on the archetype, rather than in a second parallel registry: a
 role's identity (prose, gates, edit rights) and its resource budget are one
 declarative fact, not two things that can drift out of sync. A positive
 integer, defaulting to 6000 for any archetype that doesn't set one
-(hand-built in a test, or parsed from a pre-C-1 user overlay file with no
+(hand-built in a test, or parsed from a legacy user overlay file with no
 `tokenBudget` key) — see `core/context.py` for how it's actually spent.
 
 User archetypes overlay built-ins via `~/.docket/docket-roles.json` (the
@@ -66,8 +65,8 @@ tolerant on load (a malformed entry is skipped, never crashes a live fleet;
 format for a new archetype is a standalone YAML file (`docket roles add
 <file.yaml>`) — "a role becomes a versioned YAML definition" — which is
 parsed, validated, and merged into the JSON-backed overlay (the project's
-existing docket-owned-JSON-through-`edges/store.py` convention; see D-12 in
-ROADMAP.md). Docket's own built-in/starter archetypes remain Python literals
+existing docket-owned-JSON-through-`edges/store.py` convention).
+Docket's own built-in/starter archetypes remain Python literals
 in this module, matching the project's standing convention that workspace
 prose is generated inline in Python, not loaded from shipped template files
 (see CLAUDE.md's `templates/` note).
@@ -104,10 +103,9 @@ class GateContract:
     `kind` is one of `"none" | "verdict" | "mechanical" | "approval"`. `regexes`
     is only meaningful for `kind == "verdict"` — e.g. the reviewer's
     `("APPROVE", "REQUEST-CHANGES")` or the tester's `("PASS", "FAIL")` first-line
-    markers (mirroring `core/dispatch.py`'s real `_REVIEWER_VERDICT_RE`/
-    `_TESTER_VERDICT_RE` patterns exactly, for the day W-8 wires this contract
-    into the dispatch executor). This is DATA — `core/dispatch.py`'s actual gate
-    parsing/enforcement is untouched by this module (W-8, out of scope for W-6).
+    markers. When a pipeline step omits its own gate, `core.orchestrator.resolve_gate`
+    falls back to the step's role archetype's `gateContract` here — this is real,
+    consumed data, not merely descriptive.
     """
 
     kind: str
@@ -156,10 +154,10 @@ class RoleArchetype:
     # named row in core/models_policy.py's ALL_ROLES/ROLE_CLASS untouched.
     policy_role: str = ""
     description: str = ""  # open one-line prose, shown by `docket roles list/show`
-    # ROADMAP Phase 17 C-1: this role's context-compiler token budget — see
+    # This role's context-compiler token budget — see
     # the module docstring's "token_budget" paragraph and `core/context.py`.
     token_budget: int = 6000
-    # ROADMAP Phase 19 P19-12: built-in tool names this role may never call —
+    # Built-in tool names this role may never call —
     # see the module docstring's "Per-role tool sets" section. Open (like
     # `tool_profile`), not validated against the live tool registry: a name
     # that does not exist in a given registry is simply a no-op removal for
@@ -260,7 +258,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         raise ArchetypeError(f"archetype {name!r}: version must be an integer") from exc
 
     try:
-        # 6000 = RoleArchetype.token_budget's own default — a pre-C-1 overlay
+        # 6000 = RoleArchetype.token_budget's own default — a legacy overlay
         # entry (or any doc that never set one) still parses instead of
         # crashing (see the module docstring's "token_budget" paragraph).
         token_budget = int(doc.get("tokenBudget", 6000))
@@ -300,7 +298,7 @@ def render(template: str, variables: dict[str, str]) -> str:
         raise ArchetypeError(f"template is malformed: {exc}") from exc
 
 
-# ── Built-in archetypes: byte-identical to the pre-W-6 cli/_pod.py generators ──
+# ── Built-in archetypes ──────────────────────────────────────────────────────
 
 _SOUL_HEAD = (
     "# SOUL.md — ${project} · ${role}\n\n"
@@ -397,7 +395,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # for completeness/forward-compat, not exercised today.
         token_budget=2000,
         # "You NEVER edit code, run git, or execute the build" (see
-        # `_LEAD_BODY` above) — P19-12 makes that a real tool absence, not
+        # `_LEAD_BODY` above) is a real tool absence here, not
         # just an instruction. read/glob/grep stay, so a Lead can still
         # inspect state to coordinate.
         denied_tools=("write", "edit", "bash"),
@@ -465,10 +463,10 @@ BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "teste
 #
 # These ship as data, proving "a research pod, a content pod, an ops pod" are
 # expressible without a new hardcoded role string anywhere in core/pod.py or
-# cli/_pod.py. They participate in `docket roles`/`normalize_role`/`member_id`
-# today; wiring them into pod *composition presets* (rosters/blueprints) is
-# W-7, and wiring `gate_contract` into the dispatch executor is W-8 — both
-# explicitly out of scope here.
+# cli/_pod.py. They participate in `docket roles`/`normalize_role`/`member_id`,
+# in pod composition presets (`core/blueprints.py`'s research/content/ops
+# blueprints), and — via `gate_contract` — in the dispatch executor's gate
+# resolution (`core/orchestrator.py`).
 
 _STARTER_SOUL_HEAD = (
     "# SOUL.md — ${project} · ${role}\n\n"
@@ -720,7 +718,7 @@ def load_registry() -> ArchetypeRegistry:
 
 
 def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
-    """Narrow *base* to exactly what *role* may call (ROADMAP Phase 19 P19-12).
+    """Narrow *base* to exactly what *role* may call.
 
     Looks *role* up in the live archetype registry and removes every name in
     its `denied_tools` via the public `ToolRegistry.without()` API — the same

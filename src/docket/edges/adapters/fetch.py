@@ -1,13 +1,12 @@
-"""HTTP `fetch` tool: an inspectable, allowlisted egress path (ROADMAP Phase 19
-P19-11 / decisions D-23, D-24).
+"""HTTP `fetch` tool: an inspectable, allowlisted egress path.
 
 **What this module is not.** It does not close docket's network-egress gap.
-D-23 measured that gap precisely: `curl`/`wget` correctly ask for approval
+That gap has been measured precisely: `curl`/`wget` correctly ask for approval
 through the `bash` tool's command classifier, but `python3 -c
 "import urllib..."`, `node`, and `git clone <url>` are all on the curated
 exec allowlist (`core/security.py`'s `SAFE_BINS`) and reach the network
 unattended today. Closing that would mean a `--network none`/`--unshare-net`
-sandbox lockdown, which D-23/D-24 explicitly **deferred** — it is off by
+sandbox lockdown, which was deliberately **deferred** — it is off by
 default, it breaks `npm install`/`pip`/`git clone` when turned on, and it
 buys a config option, not a guarantee. This module ships the other half of
 that decision instead: a first-class tool that gives an agent an
@@ -24,7 +23,7 @@ gate of its own — a second module that could decide whether to run is a
 second place a gate can be forgotten (see `core/tools.py`'s module docstring).
 
 **Zero new dependencies, on purpose** — the same stdlib-`urllib` choice
-`edges/adapters/llm.py` (P19-1) already made, for the same reason: pulling in
+`edges/adapters/llm.py` already made, for the same reason: pulling in
 an HTTP client library for a GET request would be the exact kind of
 dependency creep ROADMAP §4.5's anti-overengineering guardrails exist to
 block.

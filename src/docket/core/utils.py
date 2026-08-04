@@ -28,9 +28,9 @@ def last_activity(agent_id: str) -> str:
 def gateway_active() -> bool:
     """Return True if a daemon gateway is active.
 
-    Phase 19 P19-7b: there is no daemon gateway any more, so this always
-    returns False -- see ``edges/adapters/system.py``'s ``gateway_active``,
-    which this only forwards to.
+    There is no daemon gateway any more, so this always returns False -- see
+    ``edges/adapters/system.py``'s ``gateway_active``, which this only
+    forwards to.
     """
     from docket.edges.adapters import system as _system
 
@@ -62,17 +62,17 @@ class CostTotals:
 def aggregate_cost(agent_id: str) -> CostTotals:
     """Return aggregated token/cost totals for *agent_id*.
 
-    Phase 18 L-1: the session-JSONL parsing this used to do directly now lives
-    behind the RuntimeDriver port -- this is a pure translation from the
-    driver's ``UsageTotals`` to the legacy ``CostTotals`` shape
-    ``cli/_cost.py``, ``cli/_doctor.py``, and ``core/dispatch.py`` already
-    depend on. See core/runtime_driver.py.
+    The session-JSONL parsing this used to do directly now lives behind the
+    RuntimeDriver port -- this is a pure translation from the driver's
+    ``UsageTotals`` to the legacy ``CostTotals`` shape ``cli/_cost.py``,
+    ``cli/_doctor.py``, and ``core/dispatch.py`` already depend on. See
+    core/runtime_driver.py.
 
-    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
-    (``DocketDriver``), not the ACL's ``OpenClawDriver`` -- load-bearing for
-    ``core/dispatch.py``'s own pod-budget gate (``pod_gating_cost`` calls this
-    for every hop's member), which must see the same driver hops actually
-    execute through or the budget cap silently stops tripping.
+    Resolves ``edges.adapters.docket_runtime.default_driver()``
+    (``DocketDriver``) -- load-bearing for ``core/dispatch.py``'s own
+    pod-budget gate (``pod_gating_cost`` calls this for every hop's member),
+    which must see the same driver hops actually execute through or the
+    budget cap silently stops tripping.
     """
     from docket.edges.adapters import docket_runtime as _dr
 
@@ -91,14 +91,16 @@ def estimate_cost_usd(model: str, totals: CostTotals) -> float | None:
     """Token-based cost estimate for *model*, priced from ``MODEL_PRICING``.
 
     Returns ``None`` when *model* has no pricing entry — callers must not
-    silently treat unknown pricing as "$0". This exists **only** for R-5's
-    budget-gating/warning fallback, for when the daemon's own session JSONL
-    never wrote a ``usage.cost.total`` (``aggregate_cost``'s ``cost_usd``
-    then stays 0.0 forever — see ``core/runtime_driver.py``'s
-    ``TurnResult.cost_usd`` note on daemon v2026.2.23). An estimate MUST
-    NEVER be presented as, or summed into, recorded spend — `docket cost`
-    stays exactly the daemon's own figure (see cli/_cost.py and the
-    no-unfalsifiable-cost-claims discipline in CLAUDE.md/cost-tracking.spec).
+    silently treat unknown pricing as "$0". This exists **only** as a
+    budget-gating/warning fallback, for when the active driver's recorded
+    usage never populates ``cost_usd`` (``aggregate_cost``'s ``cost_usd``
+    then stays 0.0 forever by design — see ``core/runtime_driver.py``'s
+    ``TurnResult.cost_usd`` docstring: converting a token count into a dollar
+    figure is exactly the estimate-to-billing-claim conversion this codebase
+    has a standing rule against). An estimate MUST NEVER be presented as, or
+    summed into, recorded spend — `docket cost` stays exactly the driver's
+    own recorded figure (see cli/_cost.py and the no-unfalsifiable-cost-claims
+    discipline in CLAUDE.md/cost-tracking.spec).
     """
     pricing = _mp.MODEL_PRICING.get(model)
     if pricing is None:
@@ -127,16 +129,14 @@ class DayRecord:
 def cost_history(agent_id: str) -> list[DayRecord]:
     """Return per-day token/cost records for *agent_id*.
 
-    Phase 18 L-1: delegates to the RuntimeDriver port's ``usage()`` (see
-    ``aggregate_cost``'s docstring) instead of parsing session JSONL directly.
-
-    Phase 19 P19-7a: same cutover as ``aggregate_cost`` -- resolves
+    Delegates to the RuntimeDriver port's ``usage()`` (see ``aggregate_cost``'s
+    docstring) instead of parsing session JSONL directly, resolving
     ``edges.adapters.docket_runtime.default_driver()``. Note ``DocketDriver``'s
     ``usage().by_day`` is always empty (see its docstring: a session's stored
     usage is one running total, not timestamped per turn), so this always
-    returns ``[]`` against the production driver now -- an honest gap, not a
-    regression this card papers over; see the report for what the daemon
-    provided here that docket cannot yet.
+    returns ``[]`` against the production driver -- an honest gap: a daily
+    cost breakdown is real, useful information this driver does not yet have
+    a way to produce.
     """
     from docket.edges.adapters import docket_runtime as _dr
 

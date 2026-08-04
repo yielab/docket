@@ -5,7 +5,7 @@ docket owns an agent's identity as a pure function of its ``.docket-meta.json``
 real identity; a **persona** (name/emoji/vibe) is an optional operator-assigned
 skin on top. This module holds the pure string logic for rendering that persona
 into ``SOUL.md`` and parsing an operator label — no I/O (the ``cli`` layer does
-the file writes and gateway restart) — plus (ROADMAP Phase 19 P19-12) the one
+the file writes and gateway restart) — plus the one
 I/O entry point that composes a turn's system prompt from this agent's own
 on-disk identity files.
 
@@ -14,9 +14,9 @@ idempotently without disturbing the rest of the (role-derived) SOUL, and so a
 just-reset agent reading SOUL sees a docket-controlled identity rather than a
 self-authored ``IDENTITY.md``.
 
-## The turn's system prompt (ROADMAP Phase 19 P19-12)
+## The turn's system prompt
 
-``core/agent_loop.py`` (P19-5) composed no system prompt at all — ``SOUL.md``
+Without this module, ``core/agent_loop.py`` would compose no system prompt at all — ``SOUL.md``
 (identity, scope, session key), the docket-owned persona, and
 ``WORKFLOW_AUTO.md``'s resume/durability contract (``core/memory.py``,
 ``CONTRACT_VERSION``) never reached the model. That is not decoration: the
@@ -139,7 +139,7 @@ def upsert_persona_block(soul_text: str, persona: Persona | None) -> str:
     return soul_text.rstrip("\n") + "\n\n" + block + "\n"
 
 
-# ── the turn's system prompt (ROADMAP Phase 19 P19-12) ────────────────────────
+# ── the turn's system prompt ────────────────────────────────────────────────
 
 
 def compose_system_prompt(soul_text: str, workflow_auto_text: str, persona: Persona | None) -> str:
@@ -195,11 +195,11 @@ def _read_workspace_text(path: Path) -> str:
 def system_prompt_for_agent(agent_id: str) -> str:
     """Read *agent_id*'s SOUL.md / persona / WORKFLOW_AUTO.md and compose a prompt.
 
-    The one I/O entry point ``core/agent_loop.py`` needs for prompt composition
-    (ROADMAP Phase 19 P19-12) — everything else in this module stays pure.
+    The one I/O entry point ``core/agent_loop.py`` needs for prompt
+    composition — everything else in this module stays pure.
     ``""`` for an agent with no workspace/identity files (e.g. an id docket has
     never provisioned) rather than raising: a turn must still be able to run
-    with no identity to compose, exactly as it did before this card.
+    with no identity to compose.
     """
     if not agent_id:
         return ""

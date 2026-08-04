@@ -7,13 +7,12 @@ e.g. `docket models set programmer local/qwen3-30b-a3b`.
 Run once, after the local inference server is up and answering on its /v1
 endpoint. Idempotent — safe to re-run to update the model / context.
 
-Phase 19 P19-7b: this used to register the provider in openclaw.json (the
-daemon's file) via the ACL; the daemon is gone, so the definition now lives in
-fleet.json (`core/fleet.py`'s `add_local_provider`/`get_local_provider`),
-which is what `edges/adapters/llm.py`'s `resolve_endpoint` reads to build a
-chat client for docket's own turn loop. This module still has no knowledge of
-terminals (ROADMAP §2) — it returns a typed result; `cli/_provider.py` renders
-it and prints the next-steps guidance.
+The provider definition lives in fleet.json (`core/fleet.py`'s
+`add_local_provider`/`get_local_provider`), which is what
+`edges/adapters/llm.py`'s `resolve_endpoint` reads to build a chat client for
+docket's own turn loop. This module still has no knowledge of terminals — it
+returns a typed result; `cli/_provider.py` renders it and prints the
+next-steps guidance.
 """
 
 from __future__ import annotations

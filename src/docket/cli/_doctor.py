@@ -6,11 +6,11 @@ this in a Typer command and raises typer.Exit(code).
 
 Each health check is its own small function so it can be tested in isolation.
 All fleet/agent state is read through `core/fleet.py` and `store`; this
-module never opens a daemon config file (there is no daemon any more —
-Phase 19 P19-7b deleted it, along with the checks here that only ever made
-sense against it: binary presence, gateway status, daemon config validity,
-the daemon's own security-audit/exec-approval report, and the gateway-log
-scans. What replaced each is noted at its former call site in `run_doctor`.
+module never opens a daemon config file — there is no daemon. Checks that
+only ever made sense against one (binary presence, gateway status, daemon
+config validity, a daemon security-audit/exec-approval report, gateway-log
+scans) don't exist here; what replaces each is noted at its former call site
+in `run_doctor`.
 """
 
 from __future__ import annotations
@@ -92,8 +92,7 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
 def _check_dependencies() -> int:
     """python3 (required) and fzf (optional).
 
-    Phase 19 P19-7b: this used to also check for the `openclaw` binary
-    (deleted along with the daemon it probed for).
+    Does not check for the `openclaw` binary — there is no daemon to probe for.
     """
     issues = 0
 
@@ -192,15 +191,15 @@ def _check_legacy_model_registry() -> int:
 
 
 def _check_dispatch_ledger(do_fix: bool) -> int:
-    """C-3: TASK_LIST.json (``status: "running"``) vs. the pod Lead's
+    """TASK_LIST.json (``status: "running"``) vs. the pod Lead's
     HEARTBEAT.md dispatch ledger (``core/memory.py``'s docket-owned region)
     must agree.
 
     ``core/dispatch.py`` keeps the ledger honest mechanically as it
-    claims/persists/finalizes each task (ROADMAP Phase 17 C-3); this check
+    claims/persists/finalizes each task; this check
     catches whatever slips through anyway — an older docket version that
-    predates C-3, a hand-edited HEARTBEAT.md, a crash between the queue write
-    and the ledger sync. A task ``running`` in the queue with no matching
+    predates this mechanism, a hand-edited HEARTBEAT.md, a crash between the
+    queue write and the ledger sync. A task ``running`` in the queue with no matching
     ledger entry, or a ledger entry for a task that isn't (or is no longer)
     ``running``, is drift either way.
 
@@ -344,14 +343,11 @@ def _check_provider_coverage(ids: list[str]) -> int:
 def _check_security_gates() -> int:
     """Approval-routing/isolation posture + the always-on tool-call gate.
 
-    Phase 19 P19-7b: the daemon's own exec-approval config (security=
-    allowlist/ask/askFallback), its config-perms check, and its
-    `openclaw security audit` report are all gone with the daemon. What
-    replaced them: `core/tools.py`'s `pre_tool_call` policy hook and
-    `core/security.py`'s argument-aware command classifier are
-    unconditionally active on every tool call docket dispatches (Phase 19
-    P19-3) — there is no "is it enabled" question left to ask about the gate
-    itself, only about where an approval prompt is routed and whether
+    There is no daemon exec-approval config to report on here: `core/tools.py`'s
+    `pre_tool_call` policy hook and `core/security.py`'s argument-aware
+    command classifier are unconditionally active on every tool call docket
+    dispatches — there is no "is it enabled" question left to ask about the
+    gate itself, only about where an approval prompt is routed and whether
     execution is sandboxed.
     """
     ui.console.print()
@@ -667,11 +663,10 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
 def _doctor_json() -> dict[str, Any]:
     """Assemble the machine-readable health report.
 
-    Phase 19 P19-7b: the ``openclaw``/``gateway``/``telegram`` keys this
-    payload used to carry are gone (no binary, no gateway, and channel
-    binding presence is already covered per-agent below) — this is a
-    breaking change to a public contract (``docket doctor --json``); see the
-    card's report for the full accounting.
+    The ``openclaw``/``gateway``/``telegram`` keys this payload used to
+    carry are gone — there is no daemon binary and no gateway, and
+    channel-binding presence is already covered per-agent below. This is a
+    breaking change to the public ``docket doctor --json`` contract.
     """
     issues = 0
     ids = project_ids()

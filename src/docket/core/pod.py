@@ -1,7 +1,7 @@
 """Pod composition model.
 
 A *pod* is the set of project-scoped agents that make up one project. Pure logic
-only — no I/O. The CLI (`docket add` / `docket pod`) and the ACL turn a `PodPlan`
+only — no I/O. The CLI (`docket add` / `docket pod`) turns a `PodPlan`
 into registered agents; this module just decides *what* a pod contains and how
 its members are named.
 
@@ -10,13 +10,13 @@ Reviewer, Tester, or **additional Implementers** are added later.
 A role may be **duplicated** (e.g. two Implementers); duplicates get an
 indexed member id (``<project>-implementer``, ``<project>-implementer-2``).
 
-ROADMAP Phase 16 W-6: the set of valid pod roles is no longer a hardcoded
-4-tuple — ``normalize_role``/``member_id``/``pod_of``/``members_of`` all
-resolve against ``core/archetypes.py``'s registry (built-in four roles +
-starter library + any user-defined archetype), so a fifth role is data, never
-a new hardcoded string here. ``_role_names()`` reads that registry fresh on
-every call; ``policy_role_for()`` is the typed lookup for a role's
-role→model policy key (see its own docstring).
+The set of valid pod roles is not a hardcoded 4-tuple —
+``normalize_role``/``member_id``/``pod_of``/``members_of`` all resolve against
+``core/archetypes.py``'s registry (built-in four roles + starter library + any
+user-defined archetype), so a fifth role is data, never a new hardcoded string
+here. ``_role_names()`` reads that registry fresh on every call;
+``policy_role_for()`` is the typed lookup for a role's role→model policy key
+(see its own docstring).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
 FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
 
 # At most one Lead per pod — a pod has a single orchestrator. Not part of the
-# archetype schema (W-6's field list has no "singleton" concept) — this is a
+# archetype schema (that field list has no "singleton" concept) — this is a
 # pod-composition rule specific to the Lead role, unaffected by which roles
 # the archetype registry knows about.
 _SINGLETON_POD_ROLES: frozenset[str] = frozenset({"lead"})
@@ -277,8 +277,7 @@ def resolve_member_cwd(member_id: str, worktree_dir: str = "", codebase: str = "
     generator (``cli/_pod.py``'s ``_regenerate_member_tools``) resolve through this
     one helper so they can never disagree again about which tree an implementer's
     work is actually checked against — a worktree-pod implementer's changes used
-    to be verified against the shared repo root instead of its own worktree
-    (Phase 14 R-6).
+    to be verified against the shared repo root instead of its own worktree.
     """
     if worktree_dir:
         return worktree_dir

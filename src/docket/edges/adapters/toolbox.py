@@ -1,4 +1,4 @@
-"""Built-in tool implementations (ROADMAP Phase 19 P19-2 / D-19).
+"""Built-in tool implementations.
 
 The side-effecting half of docket's tool set: the code that actually reads a
 file, writes one, or runs a command. It is deliberately dumb — every one of
@@ -18,7 +18,7 @@ Layering: this module imports nothing from ``core/``. It reports what happened
 via a local ``ToolOutcome``; ``core/tools.py`` wraps that with what was
 *decided*.
 
-P19-9 (ROADMAP Phase 19): ``run_bash``'s ``sandbox`` parameter is the one
+``run_bash``'s ``sandbox`` parameter is the one
 addition to that contract, and it is still mechanism, not policy -- it does
 not decide *whether* a command may run (that is ``core/tools.py``'s gate,
 already applied by the time this function is ever called); it decides, once

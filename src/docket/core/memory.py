@@ -31,13 +31,13 @@ callers over this module — none of them re-derive paths or dates.
                              log out of the way instead of deleting it
                              outright (see "Memory distillation" below).
 
-## The dispatch task ledger (ROADMAP Phase 17 C-3)
+## The dispatch task ledger
 
 The resume/durability contract above tells the agent to hand-maintain
-``HEARTBEAT.md``'s ``## Active Tasks`` list — which means, before this card, the
-ledger was only ever as honest as an LLM's compliance, while ``TASK_LIST.json``
-(``core/dispatch.py``) is the *actual* machine-read/written queue. The two were
-never reconciled. C-3 makes dispatch write its own record of in-flight work
+``HEARTBEAT.md``'s ``## Active Tasks`` list — which, left on its own, is only
+ever as honest as an LLM's compliance, while ``TASK_LIST.json``
+(``core/dispatch.py``) is the *actual* machine-read/written queue. The two would
+otherwise never be reconciled, so dispatch writes its own record of in-flight work
 mechanically: ``write_dispatch_tasks``/``sync_dispatch_tasks`` upsert a
 delimited region (``DISPATCH_BLOCK_BEGIN``/``_END``) inside ``## Active
 Tasks``, containing exactly the tasks ``TASK_LIST.json`` currently has
@@ -51,17 +51,17 @@ call ``sync_dispatch_tasks`` at each of those lifecycle points; ``docket
 doctor`` calls ``read_dispatch_task_ids`` to detect drift against
 ``TASK_LIST.json`` and the same ``sync_dispatch_tasks`` to fix it.
 
-## Memory distillation (ROADMAP Phase 17 C-2, decision D-18)
+## Memory distillation
 
 ``distill_memory`` is docket's first *self-originated* LLM call: docket asks
 an agent to summarize its own daily logs into ``MEMORY.md`` before
-``maintain clean``/``reset`` would otherwise delete them outright. Per D-18
-the call goes **through the driver** (``RuntimeDriver.run_turn``, the same
+``maintain clean``/``reset`` would otherwise delete them outright. The call
+goes **through the driver** (``RuntimeDriver.run_turn``, the same
 port every pod dispatch hop already uses) — never a hand-rolled provider
 SDK/HTTP client. The driver is injected as a plain callable (mirroring
 ``core/dispatch.py``'s own ``Runner`` alias, for the same reason:
 ``tests/python/fakes.py``'s ``FakeDriver`` is directly callable with that
-signature, so this module is fully unit-testable with no live daemon).
+signature, so this module is fully unit-testable with no real driver call).
 ``distill_memory`` fails **closed**: any driver failure or empty reply leaves
 every file on disk untouched, so a caller gating a delete on
 ``DistillResult.ok`` never bare-deletes memory it could not verify was
@@ -69,18 +69,14 @@ captured somewhere durable first.
 
 ## The runtime contract
 
-Pre-Phase-19, the external daemon's gateway ran a *post-compaction audit* after
-every context reset (requiring a Read of ``WORKFLOW_AUTO.md`` and the day's
-``memory/YYYY-MM-DD.md``, nagging the model until it complied). Phase 19
-P19-12 replaced that with something stronger: ``core/agent_loop.py``'s own
-turn loop (via ``core.identity.system_prompt_for_agent``) composes
-``SOUL.md``, the live persona, and ``WORKFLOW_AUTO.md`` into the system
-message on **every** turn, unconditionally — not a nag after the fact, an
-input the model cannot skip reading. docket is still the provisioner, so it
-must make these files *exist* and stay current; ``WORKFLOW_AUTO.md`` remains
-where we anchor the codebase path and the read order so they survive
-compaction even when ``SOUL.md``/``MEMORY.md`` fall out of the message
-history proper.
+``core/agent_loop.py``'s own turn loop (via ``core.identity.system_prompt_for_agent``)
+composes ``SOUL.md``, the live persona, and ``WORKFLOW_AUTO.md`` into the
+system message on **every** turn, unconditionally — not a nag after the
+fact, an input the model cannot skip reading. docket is still the
+provisioner, so it must make these files *exist* and stay current;
+``WORKFLOW_AUTO.md`` remains where we anchor the codebase path and the read
+order so they survive compaction even when ``SOUL.md``/``MEMORY.md`` fall
+out of the message history proper.
 
 One clock: all day math is **UTC**, matching ``.docket-meta.json`` ``created``
 and the trace/audit timestamps, so docket never disagrees with itself about
@@ -162,10 +158,10 @@ def last_activity(ws: Path) -> str:
 def _workflow_auto_text(
     *, project: str, codebase: str, stack: str, origin: str, work_dir: str = ""
 ) -> str:
-    # ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint (research/content/ops)
-    # has no codebase at all — routing to a dedicated sibling function (rather
-    # than branching mid-string here) keeps the pre-W-7 codebase-flavored text
-    # below byte-for-byte untouched for every existing caller (work_dir="").
+    # A `workdir`-kind pod blueprint (research/content/ops) has no codebase
+    # at all — routing to a dedicated sibling function (rather than branching
+    # mid-string here) keeps the codebase-flavored text below byte-for-byte
+    # unchanged for every caller that passes work_dir="".
     if work_dir.strip():
         return _workflow_auto_text_workdir(
             project=project, work_dir=work_dir, stack=stack, origin=origin
@@ -228,7 +224,7 @@ def _workflow_auto_text(
 
 
 def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, origin: str) -> str:
-    """The `workdir`-flavored WORKFLOW_AUTO.md body (ROADMAP Phase 16 W-7).
+    """The `workdir`-flavored WORKFLOW_AUTO.md body.
 
     Mirrors ``_workflow_auto_text`` section-for-section (same contract
     marker, same resume/durability rules, same read order) but never implies
@@ -338,8 +334,8 @@ def _memory_md_seed(*, project: str, codebase: str, stack: str, work_dir: str = 
         'this is the answer to "what is this project about"._',
         "",
     ]
-    # ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint has no codebase —
-    # this branch never fires for an existing (codebase or none) caller.
+    # A `workdir`-kind pod blueprint has no codebase — this branch never
+    # fires for a caller passing only `codebase` (or neither).
     if wd:
         lines.append("## Working directory")
         lines.append(f"- path: `{wd}`")
@@ -370,8 +366,8 @@ def _daily_seed(
         "passes on turn one. Append real session outcomes below._",
         "",
     ]
-    # See _memory_md_seed's note: work_dir is the W-7 workdir-blueprint case;
-    # an existing (codebase or neither) caller takes the unchanged elif/nothing path.
+    # See _memory_md_seed's note: work_dir is the workdir-blueprint case; a
+    # caller passing only codebase (or neither) takes the elif/nothing path.
     if work_dir.strip():
         lines.append(f"- Working directory: `{work_dir.strip()}`")
     elif codebase.strip():
@@ -419,10 +415,10 @@ def seed_contract(
     are owner-only, per the permissions invariant) whether freshly written or
     already present — so a doctor-driven heal also fixes stale permissions.
 
-    ``work_dir`` (ROADMAP Phase 16 W-7): set for a `workdir`-kind pod
+    ``work_dir``: set for a `workdir`-kind pod
     blueprint (research/content/ops) instead of ``codebase`` — mutually
-    exclusive with it. Leaving it unset (the default) reproduces every
-    pre-W-7 caller's exact output.
+    exclusive with it. Leaving it unset (the default) reproduces the
+    codebase-flavored output unchanged.
     """
     d = day or today()
     memory_dir(ws).mkdir(parents=True, exist_ok=True)
@@ -456,11 +452,11 @@ def seed_contract(
         daily.chmod(0o600)
 
 
-# --- distillation (ROADMAP Phase 17 C-2, decision D-18) -----------------------
+# --- distillation ---------------------------------------------------------
 #
 # See the module docstring's "Memory distillation" section for the design
 # rationale. Everything below is pure I/O over one workspace plus one
-# injected driver call — no daemon file-format knowledge, no ui/print (this is
+# injected driver call — no ui/print (this is
 # core/, per the standing layer rule), no import of edges/adapters/ at all.
 
 #: Subdirectory (under ``memory/``) that archived, already-distilled daily
@@ -607,10 +603,10 @@ def distill_memory(
 ) -> DistillResult:
     """Summarize pending ``memory/*.md`` logs into ``MEMORY.md`` via one driver turn.
 
-    This is docket's first self-originated LLM call (ROADMAP Phase 17 C-2,
-    decision D-18): the summarization turn runs through the injected driver
-    exactly like a pod dispatch hop, never a hand-rolled provider client.
-    *agent_id*/*session_key* identify whose daemon session runs the turn —
+    This is docket's first self-originated LLM call: the summarization turn
+    runs through the injected driver exactly like a pod dispatch hop, never
+    a hand-rolled provider client.
+    *agent_id*/*session_key* identify whose session runs the turn —
     in practice the workspace's own agent, already either a pod's Lead or an
     org-specialist utility agent, both of which already own their own
     memory (see the module docstring).
@@ -655,12 +651,12 @@ def distill_memory(
     return DistillResult(ok=True, logs_distilled=len(logs), archived=archived, summary=summary)
 
 
-# --- dispatch task ledger (ROADMAP Phase 17 C-3) ------------------------------
+# --- dispatch task ledger --------------------------------------------------
 #
 # See the module docstring's "The dispatch task ledger" section for the design
 # rationale. Everything below is pure text/file manipulation over one
-# workspace's HEARTBEAT.md -- no daemon file-format knowledge (this is
-# docket-owned workspace state), no ui/print (core/
+# workspace's HEARTBEAT.md -- docket-owned workspace state throughout,
+# no ui/print (core/
 # never prints), no knowledge of dispatch.py's TASK_LIST.json schema beyond
 # the handful of plain dict keys `sync_dispatch_tasks` reads.
 
@@ -753,7 +749,8 @@ def read_dispatch_task_ids(ws: Path) -> list[str]:
     """Task ids currently recorded in *ws*'s HEARTBEAT.md dispatch region.
 
     ``[]`` when the file is absent, unreadable, or has no dispatch region yet
-    (a pre-C-3 workspace, or one dispatch has never claimed a task in) — the
+    (a workspace predating the dispatch ledger, or one dispatch has never
+    claimed a task in) — the
     shape ``docket doctor`` diffs against ``TASK_LIST.json``'s own ``running``
     task ids to detect ledger drift (see ``cli/_doctor.py``'s
     ``_check_dispatch_ledger``).
@@ -788,7 +785,7 @@ def sync_dispatch_tasks(ws: Path, task_records: Iterable[Mapping[str, Any]]) -> 
     genuinely in flight; every other status (``pending``/``done``/``failed``/
     ``blocked``/``waiting_approval``) means no hop is currently executing for
     that task, so there is nothing to hold open in the ledger for it. This is
-    the one function both sides of C-3 call: ``core/dispatch.py``'s
+    the one function both dispatch and doctor call: ``core/dispatch.py``'s
     ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
     call it at each task-state-persistence point, and ``docket doctor``'s
     ``--fix`` calls it to re-sync a workspace whose ledger has drifted —
