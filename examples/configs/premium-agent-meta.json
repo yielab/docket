@@ -1,12 +1,19 @@
 {
-  "type": "repo",
-  "name": "Security Audit Tool",
+  "schemaVersion": 1,
+  "kind": "project",
+  "scope": "project",
+  "role": "implementer",
+  "pod": "security-scanner",
+  "name": "security-scanner implementer",
   "codebase": "/home/user/Sites/security-scanner",
   "stack": "Go, PostgreSQL, Docker",
   "model": "anthropic/claude-opus-4-6",
-  "description": "Enterprise security vulnerability scanner with compliance reporting",
+  "modelSource": "pinned",
+  "description": "Enterprise security vulnerability scanner with compliance reporting.",
   "created": "2026-02-18T14:22:00Z",
-  "sessionKey": "agent:security:default",
+  "sessionKey": "agent:security-scanner:default",
   "projectKey": "default",
-  "notes": "Using Opus (premium) for complex security analysis and threat modeling"
+  "templateVersion": "2",
+  "blueprint": "software",
+  "notes": "Pinned to Opus (docket profile security-scanner-implementer anthropic/claude-opus-4-6) for complex security analysis and threat modeling -- modelSource is 'pinned' rather than 'policy', so role->model repolicy runs (docket models set/preset) skip it."
 }

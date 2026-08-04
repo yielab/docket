@@ -1,18 +1,18 @@
 {
   "agents": [
     {
-      "name": "My Website",
-      "type": "repo",
-      "codebase": "~/Sites/mywebsite",
-      "model": "anthropic/claude-sonnet-4-6",
-      "description": "Marketing site — active development.",
+      "id": "webapp",
+      "name": "Web Application",
+      "blueprint": "software",
+      "codebase": "~/Sites/webapp",
+      "description": "Customer-facing web app.",
       "budgetUsd": 20
     },
     {
+      "id": "research",
       "name": "Research Bot",
-      "type": "task",
       "model": "anthropic/claude-haiku-4-5",
-      "description": "Web research and file automation."
+      "description": "Web research and file automation — a flat agent, no pod."
     }
   ]
 }

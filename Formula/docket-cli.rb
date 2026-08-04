@@ -1,11 +1,15 @@
 class DocketCli < Formula
-  desc "CLI for managing OpenClaw autonomous agent deployments"
+  desc "Governed runtime and control plane for autonomous coding-agent pods"
   homepage "https://github.com/yielab/docket"
   url "https://github.com/yielab/docket/archive/refs/tags/v#{version}.tar.gz"
   # sha256 is updated automatically by the release workflow (scripts/update-homebrew-sha.sh)
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
-  version "0.1.0"
+  # NOTE (repo hygiene pass): the only tags that exist today are v0.1.0 and
+  # v0.2.0-beta.1 -- pin here MUST be a real tag or `brew install` 404s on the
+  # url above. Do not bump this past the newest real tag speculatively; run
+  # scripts/update-homebrew-sha.sh <tag> after cutting a new release tag instead.
+  version "0.2.0-beta.1"
 
   # macOS ships with Bash 3.2 (GPL-3 license change); docket requires 4.0+
   depends_on "bash"
@@ -14,8 +18,8 @@ class DocketCli < Formula
   # fzf is optional — docket falls back to a numbered picker without it
   depends_on "fzf" => :optional
 
-  # Python core (M1+): every command except `install` dispatches to the Python
-  # package, so it must be installed alongside the thin Bash bootstrap.
+  # docket has no external daemon dependency (Phase 19 clean break) — the
+  # Python package is the whole product; every command dispatches to it.
   include Language::Python::Virtualenv
 
   def install
@@ -33,13 +37,16 @@ class DocketCli < Formula
 
   def caveats
     <<~EOS
-      docket requires the OpenClaw daemon and openclaw CLI to be installed separately.
-      See the quick-start guide for setup instructions:
-        https://github.com/yielab/docket/blob/main/docs/QUICK-START-DOCKET.md
+      docket needs an OpenAI-compatible chat-completions endpoint to run agent
+      turns -- a hosted provider API key, or a local llama.cpp/vLLM/LM Studio
+      server. It has no other external service dependency.
 
-      OpenClaw uses the system Python (python3) for JSON operations. If your system
-      Python is < 3.8 you may need to set PYTHON3 to the Homebrew python path:
-        export PYTHON3="#{Formula["python@3"].opt_bin}/python3"
+      Get started:
+        docket install                 # bootstrap docket's home + specialist agents
+        docket keys add ANTHROPIC_API_KEY   # or point at a local endpoint
+
+      See the quick-start guide:
+        https://github.com/yielab/docket/blob/main/docs/QUICK-START-DOCKET.md
     EOS
   end
 

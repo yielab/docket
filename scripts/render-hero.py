@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render docs/assets/hero.gif — a synthetic terminal animation.
 
-This is the reproducible source for the hero GIF. It needs no live OpenClaw
+This is the reproducible source for the hero GIF. It needs no live docket
 install: the terminal output is canned demo data using anonymized agent names
 (webapp / api / blog — never real client names).
 
@@ -77,13 +77,11 @@ BLOCKS = [
         [S("$ ", OVERLAY), S("docket ", BLUE, True), S("list", SKY)],
         [
             [
-                S("OpenClaw  ", TEXT, True),
-                S("● ", GREEN),
-                S("gateway up  ", SUBTEXT),
-                S("● ", GREEN),
-                S("telegram on  ", SUBTEXT),
-                S("│  ", OVERLAY),
-                S("3 agents", SUBTEXT),
+                S("docket  ", TEXT, True),
+                S("3 agent(s)  ", SUBTEXT),
+                S("1 channel binding(s)", SUBTEXT),
+                S("  │  ", OVERLAY),
+                S("v0.2", SUBTEXT),
             ],
             [
                 S("  webapp  ", BLUE),
@@ -118,7 +116,7 @@ BLOCKS = [
             [S("  Codebase:     ", SUBTEXT, True), S("~/code/webapp", TEXT)],
             [
                 S("  Workspace:    ", SUBTEXT, True),
-                S("~/.openclaw/workspaces/projects/webapp  ", TEXT),
+                S("~/.docket/workspaces/projects/webapp  ", TEXT),
                 S("(700)", OVERLAY),
             ],
             [
@@ -138,9 +136,9 @@ BLOCKS = [
     (
         [S("$ ", OVERLAY), S("docket ", BLUE, True), S("doctor", SKY)],
         [
-            [S("✓ ", GREEN), S("Gateway service: active", TEXT)],
-            [S("✓ ", GREEN), S("Config drift (meta ↔ openclaw.json): in sync", TEXT)],
+            [S("✓ ", GREEN), S("Tool-call gate: active (policy + high-risk classifier)", TEXT)],
             [S("✓ ", GREEN), S("Session keys: unique per project (no leak)", TEXT)],
+            [S("✓ ", GREEN), S("Dispatch task ledger: in sync", TEXT)],
             [S("✓ ", GREEN), S("Fleet healthy", GREEN, True)],
         ],
     ),
@@ -173,7 +171,7 @@ def base_frame():
     d.rectangle([0, 0, W, 42], fill=TITLEBAR)
     for cx, col in ((33, RED), (57, YELLOW), (81, GREEN)):
         d.ellipse([cx - 7, 14, cx + 7, 28], fill=col)
-    title = "docket — OpenClaw fleet ops"
+    title = "docket — agent fleet ops"
     tw = d.textlength(title, font=TITLE_FONT)
     d.text(((W - tw) / 2, 13), title, font=TITLE_FONT, fill=OVERLAY)
     return img, d

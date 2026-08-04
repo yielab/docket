@@ -1,0 +1,44 @@
+# Example docket-native pipeline — validate with:
+#   docket pipeline validate examples/pipelines/code-review.yaml
+# Try it against a real pod with:
+#   docket pipeline plan <project> --file examples/pipelines/code-review.yaml
+#   docket pipeline run  <project> --file examples/pipelines/code-review.yaml --follow
+#
+# A review-heavy pipeline with no automated Tester: Implementer's own
+# verifyCmd (whatever `docket pod <project> set-verify` configured) gates the
+# build, Reviewer's APPROVE/REQUEST-CHANGES verdict can send it back for
+# rework, and a final `approval` gate holds the pipeline for an explicit
+# human sign-off (via docket's approval store — CLI/HTTP/MCP/Telegram) before
+# it is considered shippable. No pipeline step here runs a shell command
+# directly — `mechanical`'s command is optional and, left unset, defers to
+# the Implementer's own configured verify command instead of duplicating it
+# in the pipeline file.
+name: code-review
+description: Implementer change, reviewer verdict with rework, human ship approval.
+
+steps:
+  - id: plan
+    role: lead
+
+  - id: build
+    role: implementer
+    gate:
+      type: mechanical
+      command: null
+
+  - id: review
+    role: reviewer
+    gate:
+      type: verdict
+      pattern: "^(APPROVE|REQUEST-CHANGES)$"
+      passValues: ["approve"]
+      rework:
+        to: build
+        when: ["request-changes"]
+        maxCycles: 1
+
+  - id: ship
+    role: lead
+    gate:
+      type: approval
+      message: "Reviewer approved — confirm this is safe to ship."

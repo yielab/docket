@@ -1,32 +1,41 @@
 # Declarative agent fleet — provision with:  docket add --from examples/configs/agents.yaml
 #
-# Re-applying is safe: agents whose workspace already exists are skipped, so this
-# file can live in git as the source of truth for a reproducible fleet.
+# Re-applying is safe: an entry whose id already exists is skipped (a pod is
+# checked via its Lead's workspace, a flat agent via its own), so this file
+# can live in git as the source of truth for a reproducible fleet.
 #
-# Required per agent: name. Everything else has a default:
-#   id          slugified from name if omitted
-#   type        task (use "repo" for an agent bound to a codebase)
-#   codebase    repo agents only; "~" is expanded
-#   stack       auto-detected from the codebase when omitted
-#   model       falls back to the docket default (sonnet)
+# Required per entry: id, name. Everything else has a default:
+#   blueprint    provisions a full pod (Lead + role members) from a named
+#                pod shape (see `docket roles list` / core/blueprints.py:
+#                software, research, content, ops, agentic-product). Omit it
+#                and you get a single flat agent instead (the legacy shape —
+#                no Lead/Implementer split, just one workspace).
+#   codebase     the pod's/agent's codebase path ("~" is expanded); leave
+#                unset for a task agent with no fixed codebase
+#   stack        auto-detected from the codebase when omitted
+#   model        flat agents only; falls back to the docket default. A
+#                blueprint pod's members follow the normal role->model
+#                policy instead (docket models) unless pinned afterwards.
 #   description, telegram, budgetUsd, projectKey  all optional
-
+#
+# Verified against the real loader (`docket add --from`, core/cli/_agents.py
+# `_cmd_add_declarative`) — every entry below actually provisions.
 agents:
-  - name: My Website
-    type: repo
-    codebase: ~/Sites/mywebsite
-    model: anthropic/claude-sonnet-4-6
-    description: Marketing site — active development.
+  - id: webapp
+    name: Web Application
+    blueprint: software
+    codebase: ~/Sites/webapp
+    description: Customer-facing web app.
     budgetUsd: 20
 
-  - name: Research Bot
-    type: task
+  - id: research
+    name: Research Bot
     model: anthropic/claude-haiku-4-5
-    description: Web research and file automation.
+    description: Web research and file automation — a flat agent, no pod.
 
   - id: mobile-app
     name: Mobile App
-    type: repo
+    blueprint: software
     codebase: ~/Sites/mobile-app
     description: React Native client.
     telegram: "-1001234567890"
