@@ -21,9 +21,11 @@ from typing import Any
 
 import docket.config as _cfg
 from docket import ui
+from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
+from docket.core import pod_provisioning as _pp
 from docket.core import provisioning as _prov
 from docket.core import secrets as _secrets
 from docket.core.audit import audit_log
@@ -198,16 +200,17 @@ def run_add(all_args: list[str]) -> int:
     ui.console.print()
     ui.info(f"Provisioning '{blueprint.name}' pod '{aid}' ({', '.join(roles)})...")
     created = _pod.build_pod_from_blueprint(
-        aid, blueprint.name, location=location, stack=stack, description=description, roles=roles
+        aid,
+        blueprint.name,
+        location=location,
+        stack=stack,
+        description=description,
+        roles=roles,
+        source="interactive",
     )
     if not created:
         ui.error("Pod provisioning failed — no members were registered.")
         return 1
-
-    audit_log(
-        "agent.add",
-        f"{aid} blueprint={blueprint.name} pod=({','.join(roles)}) source=interactive",
-    )
 
     lead_id = f"{aid}-lead"
     if tg_group:
@@ -232,15 +235,13 @@ def _provision_pod_from_spec(
 
     Returns the created member ids, or ``None`` (already warned) if the pod
     already exists or the blueprint name is unknown — the caller counts that
-    as a skip, matching the single-agent path's idempotence contract.
+    as a skip, matching the single-agent path's idempotence contract. Goes
+    through `cli._pod.build_pod_from_blueprint` -> `core.pod_provisioning
+    .provision_pod`, the same path the interactive `docket add` flow and
+    `POST /pods` use — see that module for the already-exists/rollback
+    contract this function relies on.
     """
     from docket.cli import _pod
-
-    if _pod.pod_member_ids(aid):
-        ui.warn(f"'{aid}' already exists — skipping.")
-        return None
-
-    from docket.core import blueprints as _bp
 
     try:
         blueprint = _bp.get_blueprint(blueprint_name)
@@ -253,7 +254,7 @@ def _provision_pod_from_spec(
     stack = str(spec.get("stack", ""))
     description = str(spec.get("description", ""))
     project_key = str(spec.get("projectKey", "default"))
-    budget = str(spec.get("budgetUsd", ""))
+    budget_usd = _pp.parse_budget_usd(spec.get("budgetUsd"))
 
     created = _pod.build_pod_from_blueprint(
         aid,
@@ -262,19 +263,14 @@ def _provision_pod_from_spec(
         stack=stack,
         description=description,
         project_key=project_key,
+        budget_usd=budget_usd,
+        source="declarative",
     )
     if not created:
-        ui.warn(f"'{aid}': pod provisioning failed — no members were registered.")
+        # Already warned by build_pod_from_blueprint (already-exists or a
+        # genuine provisioning failure) — nothing more to render here.
         return None
 
-    if budget and budget != "0":
-        with contextlib.suppress(Exception):
-            _fleet.meta_set(f"{aid}-lead", "budgetUsd", budget)
-
-    audit_log(
-        "agent.add",
-        f"{aid} blueprint={blueprint.name} pod=({','.join(blueprint.roles)}) source=declarative",
-    )
     ui.success(f"Provisioned '{blueprint.name}' pod '{aid}' with {len(created)} member(s).")
     return created
 

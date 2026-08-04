@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Stable
 **Last Updated**: 2026-08-04
 
@@ -22,15 +22,16 @@ This specification covers:
 - The authenticated read-registry endpoints added in R-3 (`/runs`, `/runs/<id>`) and their
   relationship to `POST /dispatch/<project>`
 - The Phase 22 authenticated read endpoints (`GET /tasks/<project>`, `GET /traces/<project>`)
+- `POST /pods` (Phase 22, P22-5) — provisioning a fresh pod over HTTP
 - The JSON schema for each response
 - The Prometheus metric names and semantics
 - The versioning policy (what constitutes a breaking change)
 - The security model (auth requirements per endpoint)
 
 It does NOT cover the write endpoints' request handling (`POST /approvals/<token>`,
-`POST /dispatch/<project>`, `POST /tasks/<project>`) beyond the shape of their request/response
-body — those are implementation details gated by `Authorization: Bearer <token>` and documented in
-`src/docket/serve.py`.
+`POST /dispatch/<project>`, `POST /tasks/<project>`, `POST /pods`) beyond the shape of their
+request/response body — those are implementation details gated by `Authorization: Bearer <token>`
+and documented in `src/docket/serve.py`.
 
 **API version:** `2`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
@@ -366,6 +367,65 @@ Success response (task queued, `pending`):
   granting it resumes the task, denying it fails the task terminally, exactly like any other
   approval-gated task.
 
+### POST /pods
+
+**Added in 2.5.0 (Phase 22, P22-5).** Requires `Authorization: Bearer <token>`. Provisions a fresh
+pod from a blueprint — the HTTP counterpart of `docket add`, closing the one provisioning gap Phase
+22 exists to close (a product-factory "one click creates a product" flow has no other way to reach
+pod creation). Unlike every other Phase 22 route, this one is not a thin wrapper over a
+pre-existing `core/` function: the real provisioning path (`cli/_pod.py`/`cli/_agents.py`) used to
+print through `ui.py` as it worked, which `serve.py` (which never imports `docket.cli`) cannot
+reach. `core.pod_provisioning.provision_pod` is the P22-5 extraction of that path's decisions and
+effects, UI-free; `docket add`'s interactive and `--from` pod paths call the exact same function
+(via `cli/_pod.py::build_pod_from_blueprint`), so this route and the CLI cannot drift apart.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"project": "myapp", "path": "/home/ops/myapp", "blueprint": "software"}' \
+  http://127.0.0.1:7474/pods
+```
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `project` | string | Yes | The pod id (matches `docket add`'s agent id, not its display name — a blueprint pod has no separate display-name field). `400` if absent or empty. |
+| `path` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `software`) or `workDir` (a `workdir`-kind blueprint, e.g. `research`/`content`/`ops`) — `provision_pod` picks which one it means from the blueprint's own `workspace_kind`. Defaults to `""` (a `workdir`-kind blueprint then auto-provisions one under `config.pod_work_dir(project)`, exactly as `docket add` with no path does). |
+| `blueprint` | string | No | A `core.blueprints` registry name. Defaults to `"software"` (`core.blueprints.DEFAULT_BLUEPRINT`, `docket add`'s own default). An unknown name is `400`, naming the invalid blueprint (`core.blueprints.BlueprintError`'s own message). |
+| `pod` | `"full"` | No | Mirrors `docket add --pod full` — the CLI's only roster-override, itself restricted to the `software` blueprint (a non-`software` blueprint provisions its own fixed roster; `pod` is silently ignored for one, exactly as the CLI warns-and-ignores rather than erroring). Any value other than `"full"` is `400`. |
+| `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A non-numeric value is `400`. |
+| `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same `verify_cmd` parameter `docket pod <p> add --verify` / `docket pod <p> set-verify` already thread through post-hoc, just supplied at creation instead. Validated the same way (`core.pod_provisioning.VerifyCmdError` — no NUL byte, no newline, length-capped); a failing value is `400`. |
+
+Success response (`201`) — the created pod roster:
+
+```json
+{
+  "ok": true,
+  "project": "myapp",
+  "blueprint": "software",
+  "members": [
+    {"id": "myapp-lead", "role": "lead", "model": "anthropic/claude-haiku-4-5-20251001"},
+    {"id": "myapp-implementer", "role": "implementer", "model": "anthropic/claude-sonnet-4-6"}
+  ]
+}
+```
+
+- A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
+  before `provision_pod` is ever called.
+- A missing or empty `project` is `400`.
+- `project` already having a registered pod member is rejected with `409` — matching `docket add`'s
+  own idempotence contract (`_provision_pod_from_spec`'s "already exists — skipping"): the existing
+  pod is left completely untouched, not silently re-provisioned or clobbered.
+- **A partial failure leaves nothing behind.** If any member after the first fails to provision, every
+  member `provision_pod` already created during that one call — its workspace directory and its
+  fleet registration — is torn down, and any pod-level resources (port range, scratch dir) allocated
+  for the attempt are freed, before the request fails. This is deliberate: the consumer (Tack) rolls
+  back its own project record on a non-2xx response and has no way to roll back a half-created pod
+  on docket's side. Such a failure is reported as `500` — the request itself was well-formed; the
+  failure is an operational one (e.g. a filesystem error), not a validation error.
+- This route adds no field `docket add` does not already have a corresponding capability for — see
+  the request-body table above for exactly which existing CLI capability each field reuses.
+
 ### POST /approvals/&lt;token&gt; — the `channel` field
 
 **Added in 2.4.0.** The request body accepts an optional `channel` string, tagged onto the
@@ -410,10 +470,19 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   `core.approval.APPROVAL_CHANNELS` (`cli | http | mcp | telegram | timeout | tack`); an
   unrecognized value MUST be rejected with `400` without changing the approval's state. Omitted, it
   MUST default to `"http"`.
+- `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
+  any project state; MUST reject a malformed/non-object body, a missing/empty `project`, an unknown
+  `blueprint`, a `pod` value other than `"full"`, a non-numeric `budget`, or an invalid `verifyCmd`
+  with `400` before `provision_pod` is ever called; MUST reject an already-provisioned `project`
+  with `409` without touching the existing pod; and on a genuine mid-provisioning failure MUST leave
+  no member workspace, no fleet registration and no orphaned port/scratch allocation behind (full
+  rollback) before responding `500`. `docket add`'s pod-provisioning path (interactive and `--from`)
+  and this route MUST call the same `core.pod_provisioning.provision_pod` function — there is no
+  second, drift-prone provisioning implementation.
 - The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`),
-  `tests/python/test_task_enqueue_api.py`, and `tests/python/test_headless_approval_api.py` (class
-  `TestApprovalChannel`). Any change that breaks these is a breaking API change and MUST bump
-  `apiVersion`.
+  `tests/python/test_task_enqueue_api.py`, `tests/python/test_headless_approval_api.py` (class
+  `TestApprovalChannel`), and `tests/python/test_serve_pods_endpoint.py`. Any change that breaks
+  these is a breaking API change and MUST bump `apiVersion`.
 
 ## Examples
 
@@ -457,6 +526,23 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.5.0 — 2026-08-04
+
+**`POST /pods`** (Phase 22, P22-5): provisioning over HTTP, the HTTP counterpart of `docket add`.
+Unlike the four 2.4.0 routes, this one is not a thin wrapper over a pre-existing `core/` function —
+the real provisioning path used to print through `ui.py` as it worked, which `serve.py` (never
+importing `docket.cli`) cannot reach. `core.pod_provisioning.provision_pod` (new module) is the
+extraction of that path's decisions and effects, UI-free; `docket add`'s pod path (interactive and
+`--from`) was refactored onto the same function, via `cli/_pod.py::build_pod_from_blueprint`, so the
+two surfaces cannot drift apart — pinned by a test that intercepts `provision_pod` and observes both
+surfaces route through it. Body: `{project, path, blueprint, pod, budget, verifyCmd}` — every field
+reuses an existing `docket add`/`docket pod` capability (see the `POST /pods` schema section above
+for the exact mapping); none is a new flag, field, or semantic the CLI does not already have. An
+already-provisioned `project` is `409`, untouched. A genuine mid-provisioning failure rolls back
+every member (and pod-level resource) created during that call before responding `500` — proven with
+a real induced failure (a monkeypatched workspace write raising on the second member), not a mock
+asserting a cleanup function was called. Additive (new endpoint only), so `apiVersion` is unchanged.
 
 ### 2.4.0 — 2026-08-04
 
