@@ -118,8 +118,11 @@ this three-layer stack running reliably:
   [Cost reporting and its limits](#cost-reporting-and-its-limits)). Dispatch refuses a paused
   pod's tasks outright; `docket profile <id> --resume` clears the pause. A role→cheapest-adequate-
   model policy and `docket cost` reporting round it out.
-- **Read API for dashboards**: `docket serve` exposes a versioned read-only API
-  (`/status.json`, `/metrics`, `/health`, `/runs`, `/approvals`) dashboards can consume.
+- **An API for an external plan-of-record**: `docket serve` exposes a versioned API
+  (`/status.json`, `/metrics`, `/health`, `/runs`, `/approvals`, plus `POST /dispatch/<project>` and
+  `POST /approvals/<token>`). **docket deliberately does not build a dashboard** — it competes on
+  the write and governance side and feeds a planner that holds the roadmap, board and sprints.
+  See [What's next](#whats-next) for the write routes that close the CLI/HTTP asymmetry.
 
 ## The gated turn
 
@@ -499,11 +502,28 @@ policy and how breaks are tracked.
 
 ## What's next
 
-See [ROADMAP.md](ROADMAP.md) for the full phased plan. Near-term priorities:
+See [ROADMAP.md](ROADMAP.md) for the full phased plan.
 
-1. Close the egress gap so `fetch` is the only network path, not merely the inspectable one
-2. A trace/audit retention policy — both grow unbounded, and audit rotation currently costs the
-   metrics counters their history
+**Phase 22 — a control-plane write API, so an external planner can drive docket.** docket has said
+since Phase 11 that it does not build a dashboard of its own; it competes on the write and
+governance side and feeds one. That consumer now exists, so the near-term work is closing the
+CLI/HTTP asymmetry — everything below is reachable from the CLI or MCP today but not over HTTP:
+
+| | |
+|---|---|
+| `POST /tasks/<project>` | Enqueue a task. There is currently **no HTTP way to enqueue** — `POST /dispatch/<project>` only runs an *existing* queue. Honours the `pre_input` gate exactly as the CLI does. |
+| `GET /tasks/<project>` | The pod queue as JSON — queue depth is currently only reachable by shelling out. |
+| `GET /traces/<project>?since=` | Cursor'd trace read, raw events out. |
+| `POST /pods` | Provisioning over HTTP. `docket add` is CLI-only. |
+| approval channel label | So an approval granted from a board is distinguishable in the audit chain from a CI job's. |
+
+The design rule for that phase is deliberately narrow: **expose what `core/` already does, add no
+new behaviour** — same auth, same policy hooks, same audit entries the CLI path produces.
+
+Also queued: **trace retention** (the reasoning changed — once an external consumer durably ingests
+trace events, docket's JSONL becomes a cache rather than the only copy, which makes expiring it safe
+rather than lossy), and **closing the egress gap** so `fetch` is the only network path rather than
+merely the inspectable one.
 
 ## Contributing
 
