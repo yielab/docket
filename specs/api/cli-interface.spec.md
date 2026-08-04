@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.13.0
+**Version**: 1.13.1
 **Status**: Complete
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-04
 
 ## Purpose
 
@@ -619,9 +619,8 @@ auto-discovery, `scan_telegram_groups`, along with the daemon gateway log it rea
 - `agent-id` (optional): Target agent; interactive picker if omitted
 **Output**: Prompts for the peer/group ID, records the binding in `fleet.json`, and registers the
 thread in the conversation registry. No docket-owned channel bot exists yet (P19-8) — a binding
-is recorded but nothing listens on it until then. `restart_gateway()` still runs for call-site
-compatibility but is now an honest no-op (`status="no_daemon"`) — there is no gateway process to
-restart
+is recorded but nothing listens on it until then. There is no gateway-restart step: it was
+deleted outright, not kept as a no-op (CL-C, ROADMAP Phase 19 wave 14).
 **Return**: 0 on success, 1 if not found
 
 #### docket unwire
@@ -629,8 +628,7 @@ restart
 **Syntax**: `docket unwire [agent-id] [--channel <name>]`
 **Arguments**:
 - `agent-id` (optional): Target agent; interactive picker if omitted
-**Output**: Unbind confirmation. `restart_gateway()` still runs for call-site compatibility but is
-now an honest no-op (`status="no_daemon"`)
+**Output**: Unbind confirmation. No gateway-restart step (see `docket wire` above).
 **Return**: 0 on success, 1 if not found
 
 #### docket completions
@@ -795,6 +793,17 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.13.1 (2026-08-04)
+
+- **CL-C (ROADMAP Phase 19, wave 14 dead-code sweep).** `restart_gateway()`/`RestartResult` and
+  every ceremonial call site across `cli/` (`docket wire`/`unwire`, `docket keys add/remove/
+  rotate/sync`, `docket profile`, `docket scope set/reset`, `docket models set/preset/reset`,
+  `docket pod ... add/remove`, `docket add`/`delete`) are deleted outright, not kept as a no-op
+  stub — the prior version's "still runs... but is now a no-op" phrasing on `docket wire`/
+  `docket unwire` is corrected accordingly. `gateway_active()` (and the `gateway` field it backs
+  in `docket snapshot`'s output, line ~463) is unchanged — it has real external consumers (the
+  `serve` read API) that `restart_gateway()` never had.
 
 ### Version 1.13.0 (2026-08-03)
 

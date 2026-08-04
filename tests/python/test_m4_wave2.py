@@ -1,8 +1,8 @@
 """M4 wave-2 tests: delete, wire, unwire — writer commands.
 
 All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made. Phase 19 P19-7b: the
-daemon and openclaw.json are gone -- fleet.json is the only registry left.
+so tests are hermetic. Phase 19 P19-7b: the daemon and openclaw.json are
+gone -- fleet.json is the only registry left.
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ def _make_env(home: Path) -> dict[str, str]:
     return {
         **os.environ,
         "DOCKET_HOME": str(home),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
@@ -146,12 +145,6 @@ class TestCmdDelete:
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
 
-    def test_delete_dry_run_gateway(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path)
-        rc, out, _ = _run(["delete", "myshop"], _make_env(home), "n\nmyshop\n")
-        assert rc == 0
-        assert "[dry-run]" in out
-
     def test_delete_shows_summary_before_confirm(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _, out, _ = _run(["delete", "myshop"], _make_env(home), "n\nmyshop\n")
@@ -194,12 +187,6 @@ class TestCmdUnwire:
         fleet = json.loads((home / "fleet.json").read_text())
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
-
-    def test_unwire_dry_run_gateway(self, tmp_path: Path) -> None:
-        home = _setup_agent(tmp_path, with_binding=True)
-        rc, out, _ = _run(["unwire", "myshop"], _make_env(home), "y\n")
-        assert rc == 0
-        assert "[dry-run]" in out
 
     def test_unwire_custom_channel_no_binding(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)

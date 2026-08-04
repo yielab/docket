@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Status**: Implemented. Configuration (`docket mcp servers add/list/remove`, ROADMAP Phase 19
 P19-13) and the underlying adapt-and-gate machinery (`core/mcp_tools.py`,
 `edges/adapters/mcp_client.py`, Phase 19 P19-10) are both shipped and CLI-reachable. **Still not
@@ -11,7 +11,7 @@ registry before a turn starts — the same way `core/llm.py` (P19-1), `core/tool
 `core/session.py` (P19-4) shipped ahead of their own callers. Configuring a server today makes it
 inspectable (`docket mcp servers list`) and ready; it does not yet make its tools available to a
 running agent.
-**Last Updated**: 2026-08-02
+**Last Updated**: 2026-08-04
 
 ## Purpose
 
@@ -182,7 +182,6 @@ class McpServerConfig(BaseModel):              # name, command, args, env, timeo
 class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]
 
 def load_mcp_servers() -> list[McpServerConfig]: ...
-def save_mcp_servers(servers: Sequence[McpServerConfig]) -> None: ...
 def add_mcp_server(config: McpServerConfig) -> None: ...      # raises ValueError on bad/dup name
 def remove_mcp_server(name: str) -> bool: ...                  # False if not found
 def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str: ...
@@ -386,6 +385,16 @@ dispatch_tool(
   execution path.
 
 ## Changelog
+
+### Version 1.1.1 (2026-08-04)
+
+- **CL-C (ROADMAP Phase 19, wave 14 dead-code sweep).** Removed
+  `save_mcp_servers` from `core/mcp_tools.py` and this spec's Module API: it
+  was never called by `cli/_mcp.py` or anything else (`add_mcp_server`/
+  `remove_mcp_server`'s lock-safe read-modify-write are the only registry
+  writers the CLI actually uses), and had no test coverage of its own. Purely
+  a removal of unused surface — no behavior documented elsewhere in this spec
+  changes.
 
 ### Version 1.1.0 (2026-08-02)
 

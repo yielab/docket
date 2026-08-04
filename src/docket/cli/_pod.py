@@ -540,9 +540,6 @@ def build_pod(
             created.append(m.member_id)
         else:
             ui.warn(f"  {m.member_id}: registration failed — {msg}")
-    from docket.cli import _render_restart_result
-
-    _render_restart_result(_sys.restart_gateway())
     return created
 
 
@@ -737,10 +734,6 @@ def _pod_add(project: str, extra: list[str]) -> None:
     if created:
         audit_log("pod.add", f"{project} role={canon_role} members={','.join(created)}")
 
-        from docket.cli import _render_restart_result
-
-        _render_restart_result(_sys.restart_gateway())
-
 
 def _pod_remove(project: str, extra: list[str]) -> None:
     if not extra:
@@ -764,9 +757,6 @@ def _pod_remove(project: str, extra: list[str]) -> None:
         remaining_roles = {_fleet.meta_get(mid, "role", "") for mid in remaining}
         if "implementer" not in remaining_roles:
             free_pod_resources(project)
-    from docket.cli import _render_restart_result
-
-    _render_restart_result(_sys.restart_gateway())
 
 
 def _regenerate_member_tools(member_id: str, project: str) -> None:

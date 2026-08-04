@@ -28,10 +28,19 @@ by this module.
 Phase 19 P19-7b: the daemon's gateway systemd unit (``openclaw-gateway.service``)
 and the ``service_manager``/``service_hint``/``systemctl_*`` helpers that only
 ever existed to start/restart/probe it are deleted along with the daemon --
-there is nothing left to manage. ``gateway_active``/``restart_gateway`` stay
-as honest, always-inactive/no-op stubs (see their docstrings) so the ~20
-call sites across ``cli/`` that used to restart the gateway after a mutating
-command need no individual changes.
+there is nothing left to manage. ``gateway_active`` stays as an honest,
+always-``False`` stub (see its docstring) -- ``docket snapshot`` and the
+``serve`` read API (``specs/data/serve-read-api.spec.md``) still expose a
+``gateway`` field to external consumers, and this keeps that field truthful
+without a breaking API change.
+
+CL-C (ROADMAP Phase 19, wave 14 dead-code sweep): ``restart_gateway()`` and
+its ``RestartResult``/``RestartStatus`` types were deleted outright, not kept
+as a stub. Unlike ``gateway_active``, nothing external ever observed
+``restart_gateway``'s return value -- every one of its ~15 call sites across
+``cli/`` was pure ceremony (call it, render the result, which prints nothing
+for the only status a real call could ever produce). A no-op that many sites
+ceremonially call is exactly the dead code D-19's clean break forbids.
 """
 
 from __future__ import annotations
@@ -47,24 +56,6 @@ from docket.core import security as _sec
 
 # Kept short so a hung subprocess never blocks a CLI command.
 _QUERY_TIMEOUT = 5
-
-# Outcome tags for restart_gateway(); the cli layer renders these via ui.*
-# (edges/ has no knowledge of terminals — see ROADMAP §2).
-RestartStatus = Literal["dry_run", "not_running", "restarted", "failed", "no_daemon"]
-
-
-@dataclass(frozen=True)
-class RestartResult:
-    """Typed outcome of restart_gateway(). Never printed here — cli/ renders it.
-
-    ``hint`` carries the platform command a user would run next (only set for
-    ``not_running``/``failed``); ``ok`` mirrors the old boolean contract (False
-    only for ``failed``).
-    """
-
-    status: RestartStatus
-    ok: bool
-    hint: str = ""
 
 
 def _which(binary: str) -> bool:
@@ -123,22 +114,6 @@ def gateway_active() -> bool:
     of needing an individual rewrite.
     """
     return False
-
-
-def restart_gateway() -> RestartResult:
-    """No daemon gateway exists any more -- nothing to restart.
-
-    Honors DOCKET_NO_RESTART=1 for parity with the old dry-run contract
-    (moot now that both paths are no-ops). Kept as a stable call site for the
-    ~20 places across ``cli/`` that used to restart the gateway after a
-    mutating command (keys, profile, wire, gates, pod add/remove, …); each
-    still calls this, gets an honest no-op, and renders it via
-    ``_render_restart_result``. Never prints — the cli layer renders the
-    result via ui.*.
-    """
-    if os.environ.get("DOCKET_NO_RESTART") == "1":
-        return RestartResult(status="dry_run", ok=True)
-    return RestartResult(status="no_daemon", ok=True)
 
 
 def docker_available() -> bool:

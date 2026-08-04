@@ -90,9 +90,6 @@ def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
     monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects)
-    monkeypatch.setattr(
-        _sys, "restart_gateway", lambda: _sys.RestartResult(status="dry_run", ok=True)
-    )
     return home
 
 

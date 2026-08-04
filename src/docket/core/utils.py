@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import docket.config as cfg
 from docket.core import models_policy as _mp
 from docket.edges import store
-
-if TYPE_CHECKING:
-    from docket.edges.adapters.system import RestartResult
 
 
 def project_ids() -> list[str]:
@@ -39,19 +35,6 @@ def gateway_active() -> bool:
     from docket.edges.adapters import system as _system
 
     return _system.gateway_active()
-
-
-def restart_gateway() -> RestartResult:
-    """No daemon gateway exists any more -- nothing to restart.
-
-    Honors DOCKET_NO_RESTART=1 for test hermeticity (moot now that both
-    paths are no-ops). Thin pass-through to the edges adapter; returns a
-    typed result (never prints — cli/ renders it via ui.*, since core has no
-    knowledge of terminals).
-    """
-    from docket.edges.adapters import system as _system
-
-    return _system.restart_gateway()
 
 
 def si_format(n: int) -> str:

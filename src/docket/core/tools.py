@@ -118,15 +118,6 @@ class ToolResult:
     def denied(self) -> bool:
         return self.decision == "deny"
 
-    @property
-    def needs_approval(self) -> bool:
-        """True when a human has to answer before this call may run.
-
-        P19-2 stops here and reports the requirement. P19-3 routes it to
-        ``core/approval.py``, which fails closed on timeout.
-        """
-        return self.decision == "ask"
-
     def as_tool_output(self) -> str:
         """The text fed back to the model as this call's result.
 

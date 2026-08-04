@@ -104,7 +104,6 @@ __all__ = [
     "load_mcp_tools",
     "namespaced_tool_name",
     "remove_mcp_server",
-    "save_mcp_servers",
 ]
 
 # Every adapted tool name starts with this. No built-in tool name does (they
@@ -166,13 +165,6 @@ def load_mcp_servers() -> list[McpServerConfig]:
     """The configured MCP servers, in on-disk order. Empty when unconfigured."""
     data = _store.read_json(_cfg.MCP_SERVERS_FILE)
     return McpServerRegistry.model_validate(data).servers
-
-
-def save_mcp_servers(servers: Sequence[McpServerConfig]) -> None:
-    """Overwrite the whole registry. Prefer :func:`add_mcp_server` /
-    :func:`remove_mcp_server` for a single change -- both are lock-safe
-    read-modify-write; this one is not."""
-    _store.write_json(_cfg.MCP_SERVERS_FILE, McpServerRegistry(servers=list(servers)))
 
 
 def add_mcp_server(config: McpServerConfig) -> None:
