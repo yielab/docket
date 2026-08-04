@@ -331,18 +331,36 @@ def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> To
 # ── the chokepoint ────────────────────────────────────────────────────────────
 
 
-def _audit_tool_decision(action: str, tool_name: str, ctx: ToolContext, detail: str) -> None:
+def _audit_tool_decision(
+    action: str,
+    tool_name: str,
+    ctx: ToolContext,
+    detail: str,
+    *,
+    policy_id: str = "",
+    policy_action: str = "",
+) -> None:
     """Write one audit entry for a non-``allow`` (or ``warn``/``redact``) gate
     decision. Centralized here so every gated tool call is recorded exactly
     once, regardless of which check (command classifier or policy engine)
     produced it — the arguments are rendered and passed through
     ``core.trace.redact`` first, since a tool call's arguments can carry a
     secret (a token in a ``write`` call, a credential in a ``bash`` command).
+
+    ``policy_id``/``policy_action`` (P20-2) are the raw ``pre_tool_call``
+    policy hit that (co-)decided this call, if any — recorded as a fixed,
+    ``repr``-quoted ``policy_id=... policy_action=...`` pair so a reader
+    (``docket serve``'s ``/metrics``, most notably) can attribute a policy hit
+    by id without parsing the free-text ``detail`` that follows. Both are the
+    empty string when no policy fired at all (e.g. a bare command-classifier
+    deny) — this describes the *same* decision ``detail`` already narrates,
+    never a second one.
     """
     audit_log(
         action,
         f"tool={tool_name} agent={ctx.agent_id or '?'} role={ctx.role or '?'} "
-        f"project={ctx.project or '?'}: {_redact(detail)}",
+        f"project={ctx.project or '?'} policy_id={policy_id!r} policy_action={policy_action!r}: "
+        f"{_redact(detail)}",
     )
 
 
@@ -386,7 +404,9 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
             f"tool.{verdict.policy_action}",
             tool.name,
             ctx,
-            f"policy={verdict.policy_id!r} call={render_tool_call(tool.name, args)}",
+            f"call={render_tool_call(tool.name, args)}",
+            policy_id=verdict.policy_id,
+            policy_action=verdict.policy_action,
         )
 
     if verdict.decision == "deny":
@@ -395,13 +415,20 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
             tool.name,
             ctx,
             f"{verdict.reason} call={render_tool_call(tool.name, args)}",
+            policy_id=verdict.policy_id,
+            policy_action=verdict.policy_action,
         )
         result.error = verdict.reason
         return result
 
     if verdict.decision == "ask":
         _audit_tool_decision(
-            "tool.ask", tool.name, ctx, f"{verdict.reason} call={render_tool_call(tool.name, args)}"
+            "tool.ask",
+            tool.name,
+            ctx,
+            f"{verdict.reason} call={render_tool_call(tool.name, args)}",
+            policy_id=verdict.policy_id,
+            policy_action=verdict.policy_action,
         )
         token = _approval.approval_create(
             ctx.project or "operator",
