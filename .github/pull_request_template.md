@@ -16,9 +16,9 @@
 
 ## Checklist
 
-- [ ] Model choices follow the role→model policy (no hardcoded models; tier names economy/standard/premium are deprecated)
+- [ ] Model choices follow the role→model policy (no hardcoded models; tier names economy/standard/premium are not accepted as user-facing values, removed in 0.2.0)
 - [ ] All docket-owned JSON I/O goes through `edges/store.py` (atomic + filelock + 0600)
-- [ ] Any `openclaw.json` / auth-profile / provider access goes through the ACL (`edges/adapters/openclaw.py`) — no other module touches those formats
+- [ ] Any new tool handler is dispatched only through `core/tools.py`'s single chokepoint (an AST test enforces this — no second execution path)
 - [ ] Mutating operations emit an audit entry (`core/audit.py`)
 - [ ] New read commands expose a `--json` flag with a shape documented in `specs/data/cli-json-shapes.spec.md`
 - [ ] Spec-first: behaviour is specified under `specs/` (validated by `./scripts/validate-specs.sh`)

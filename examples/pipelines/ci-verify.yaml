@@ -1,0 +1,50 @@
+# Example docket-native pipeline — validate with:
+#   docket pipeline validate examples/pipelines/ci-verify.yaml
+# Try it against a real pod with:
+#   docket pipeline plan <project> --file examples/pipelines/ci-verify.yaml
+#   docket pipeline run  <project> --file examples/pipelines/ci-verify.yaml --follow
+#
+# A CI-style verify pipeline: Lead plans, Implementer must pass a real test
+# command (a mechanical gate — nonzero exit fails the step), Reviewer must
+# approve before Tester runs a final structural PASS/FAIL check. A
+# REQUEST-CHANGES verdict from Reviewer sends the pod back to Implementer for
+# up to 2 rework cycles before the step fails outright.
+#
+# This is the one pipeline dialect docket actually executes (core/pipeline.py
+# + core/orchestrator.py) — the retired Lobster `docket workflow` dialect
+# (free-form shell/LLM steps with string interpolation) was never wired to an
+# executor and is gone (ROADMAP decision D-16). A pipeline step targets a pod
+# *role*, not an arbitrary shell command chain; the command below only lives
+# inside a `mechanical` gate, which runs it in the Implementer's own
+# workspace after that hop.
+name: ci-verify
+description: Build and verify a change, gated on tests and a human-reviewed diff.
+
+steps:
+  - id: plan
+    role: lead
+
+  - id: build
+    role: implementer
+    gate:
+      type: mechanical
+      command: "pytest -q"
+      timeout: 600
+
+  - id: review
+    role: reviewer
+    gate:
+      type: verdict
+      pattern: "^(APPROVE|REQUEST-CHANGES)$"
+      passValues: ["approve"]
+      rework:
+        to: build
+        when: ["request-changes"]
+        maxCycles: 2
+
+  - id: test
+    role: tester
+    gate:
+      type: verdict
+      pattern: "^(PASS|FAIL)$"
+      passValues: ["pass"]

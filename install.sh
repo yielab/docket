@@ -92,8 +92,8 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
 fi
 
 echo "Next steps:"
-echo "  docket install   — bootstrap OpenClaw + specialist agents"
-echo "  docket add       — create your first project agent"
+echo "  docket install   — bootstrap docket's home + specialist agents"
+echo "  docket add       — create your first project pod"
 echo "  docket doctor    — verify system health"
 echo ""
 echo "Optional — shell completions:"

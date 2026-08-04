@@ -45,9 +45,10 @@ body:
         - Cost & budget tracking
         - Security & gates
         - Telegram integration
-        - Workflows (Lobster)
+        - Pipelines (docket pipeline)
         - Doctor / health checks
-        - Team coordination
+        - Pod coordination / dispatch
+        - MCP / external tool servers
         - Other
     validations:
       required: false

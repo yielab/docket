@@ -35,9 +35,10 @@ test-*-agent/
 # live fleet. Published demo assets live in docs/assets/ (curated/anonymized).
 smoke-test/
 
-# OpenClaw runtime files (don't commit user configs)
-~/.openclaw/
-openclaw.json.backup
+# docket's own runtime state, if ever created inside the repo (normally under
+# ~/.docket/, outside the tree entirely -- this only guards a DOCKET_HOME
+# override pointed in-repo, e.g. for local testing)
+.docket/
 
 # Internal documentation
 internal-docs/
@@ -56,3 +57,10 @@ TERMINAL-MODE-QUICKSTART.txt
 CLAUDE.md
 __pycache__/
 .venv/
+
+# Dependency-floors check (CI job `floors`; see the "Running Tests" recipe in
+# CLAUDE.md) and release-build artifacts (`.github/workflows/release.yml`),
+# if ever run locally from the repo root instead of a scratch dir.
+.floorenv/
+floors.txt
+dist/

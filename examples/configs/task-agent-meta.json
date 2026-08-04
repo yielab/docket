@@ -1,11 +1,15 @@
 {
-  "type": "task",
+  "schemaVersion": 1,
+  "kind": "project",
+  "scope": "project",
   "name": "Research Assistant",
-  "codebase": "/home/user/work",
+  "codebase": "",
   "stack": "General purpose",
   "model": "anthropic/claude-haiku-4-5",
-  "description": "General-purpose agent for research, documentation, and task coordination",
+  "modelSource": "pinned",
+  "description": "General-purpose agent for research, documentation, and task coordination.",
   "created": "2026-02-25T11:30:00Z",
   "sessionKey": "agent:research:default",
-  "projectKey": "default"
+  "projectKey": "default",
+  "templateVersion": "4"
 }
