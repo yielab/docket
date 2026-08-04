@@ -1,11 +1,11 @@
 """Security-gate logic: docket's own command classifier + approval/isolation config.
 
-Phase 19 P19-2/P19-3 made ``core/tools.py``'s ``dispatch_tool`` the single
-chokepoint every tool call passes through, and the ``pre_tool_call`` policy
-hook (plus ``classify_command`` below) unconditionally live on it — there is
-no separate "enable the gate" step any more, and (since Phase 19 P19-7b) no
-daemon-side exec-approval mechanism to configure at all. What remains
-configurable is docket's own approval-routing and workspace-isolation state
+``core/tools.py``'s ``dispatch_tool`` is the single chokepoint every tool
+call passes through, and the ``pre_tool_call`` policy hook (plus
+``classify_command`` below) is unconditionally live on it — there is no
+separate "enable the gate" step, and no daemon-side exec-approval mechanism
+to configure at all (there is no daemon). What remains configurable is
+docket's own approval-routing and workspace-isolation state
 (``core/fleet.py``'s ``FleetSecurity``, ``docket gates enable/disable``,
 ``docket gates isolate``) — not whether tool calls are gated, only where a
 resulting prompt is routed and whether tool execution runs sandboxed.
@@ -73,9 +73,9 @@ class HighRiskClass:
 
 # Seed list of high-risk action classes: money-movement, prod-deploy, and
 # secret-access. Intentionally small and named — a policy foundation, not
-# exhaustive coverage. Not user-configurable yet (see FD-3 "out of scope");
-# a config-file override is a natural follow-up. All three classes are fully
-# enforced today via `classify_command` (argument-aware, Phase 19 P19-2).
+# exhaustive coverage. Not user-configurable yet; a config-file override is
+# a natural follow-up. All three classes are fully enforced via
+# `classify_command` (argument-aware).
 HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
     HighRiskClass(
         name="money-movement",
@@ -109,21 +109,23 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
 def match_high_risk(command: str) -> HighRiskClass | None:
     """Return the first HIGH_RISK_PATTERNS class matching *command*, else None.
 
-    The single classification entry point. G-3 wired it onto the two paths
-    docket itself controls: ``run_verify_cmd`` (which refuses a matching
-    command outright, before the shell ever starts) and dispatch's
-    ``pre_output`` hop-output scan.
+    The single classification entry point, wired onto the two paths docket
+    itself controls: ``run_verify_cmd`` (which refuses a matching command
+    outright, before the shell ever starts) and dispatch's ``pre_output``
+    hop-output scan. ``classify_command`` below also calls this to decide
+    ``ask`` for a live tool call — the check ``core/tools.py``'s
+    ``dispatch_tool`` chokepoint actually enforces.
 
     Three sibling helpers — ``high_risk_bins``, ``is_high_risk`` and
-    ``resolve_command_action`` — were deleted when G-3 landed rather than left
-    beside this one. They had accumulated zero production callers because they
-    modelled a decision docket structurally cannot make: ``ask`` vs ``allow``
-    for a live agent tool call belongs to the daemon's exec gate (D-15), which
-    keys on binary path and has no hook to consult docket. Keeping a
-    never-called "always ask on high risk" resolver in a *security* module was
-    the exact defect Phase 15 existed to close — enforcement-shaped code that
-    enforces nothing. The policy itself is still published, honestly, by
-    ``docket gates classes`` and ``specs/functional/security-gates.spec.md``.
+    ``resolve_command_action`` — were removed rather than kept beside this
+    one: they modelled a bare ask/allow decision at a granularity too coarse
+    to be useful (binary name only, never arguments) and had accumulated
+    zero production callers. ``classify_command`` is their proper
+    replacement: it reads the whole command line, so ``git push origin
+    production`` asks while ``git status`` does not, without needing a
+    coarse always-ask resolver at all. The policy itself is also published,
+    honestly, by ``docket gates classes`` and
+    ``specs/functional/security-gates.spec.md``.
     """
     for cls in HIGH_RISK_PATTERNS:
         if re.search(cls.pattern, command, re.IGNORECASE):
@@ -131,20 +133,15 @@ def match_high_risk(command: str) -> HighRiskClass | None:
     return None
 
 
-# ── argument-aware command classification (Phase 19 P19-2) ───────────────────
+# ── argument-aware command classification ────────────────────────────────
 #
-# Read `match_high_risk`'s docstring above first: three sibling helpers were
-# deleted in G-3 because they modelled an ask/allow decision docket structurally
-# could not make. That was true while the daemon owned the turn — its exec gate
-# keys on binary path and has no hook to consult docket.
-#
-# D-19 removes that constraint by removing the daemon. `core/tools.py` now runs
-# every tool call itself, so a classifier here finally has a real enforcement
-# point downstream. What follows is deliberately NOT a restoration of the
-# deleted `resolve_command_action`: that one classified a bare binary name,
-# which is exactly the granularity that made `git push origin production`
-# indistinguishable from `git status`. This one reads the whole command line,
-# including every segment behind a `;`, `&&` or pipe.
+# `core/tools.py`'s `dispatch_tool` runs every tool call itself, so this
+# classifier has a real enforcement point downstream. What follows is
+# deliberately NOT a restoration of the old bare-binary-name classifier
+# described in `match_high_risk`'s docstring above: that granularity made
+# `git push origin production` indistinguishable from `git status`. This one
+# reads the whole command line, including every segment behind a `;`, `&&`
+# or pipe.
 
 # Shell operators that start a new command. Anything after one of these is a
 # separate binary invocation and must be classified on its own — `ls && rm -rf
@@ -233,9 +230,9 @@ def classify_command(command: str) -> CommandVerdict:
     3. **Untokenizable** -> ask. Same reasoning: an unparseable command is not
        a safe command.
     4. **A high-risk action class matches the full line** -> ask, naming the
-       class. This is the check the daemon's allowlist could never perform,
-       because it needs the *arguments*: ``git`` is allowlisted, ``git push
-       origin production`` is a production deploy.
+       class. This is what makes the check argument-aware rather than
+       binary-only: ``git`` is allowlisted, but ``git push origin
+       production`` is a production deploy that must still ask.
     5. **Any segment's binary is off ``SAFE_BINS``** -> ask, naming it. Every
        segment is checked, so a safe binary cannot smuggle an unsafe one in
        behind ``;`` or ``&&``.
@@ -246,7 +243,8 @@ def classify_command(command: str) -> CommandVerdict:
     redirect to a path outside the workspace (path containment in
     ``core/tools.py`` covers the file tools, not shell redirects), and anything
     a script on the allowlist does once started. It is a gate, not a sandbox —
-    P19-9 adds the jail.
+    sandboxed exec (``core/tools.py``'s ``ToolContext.sandbox``) is a
+    separate, opt-in mechanism this classifier neither provides nor requires.
     """
     text = command.strip()
     if not text:
@@ -293,9 +291,10 @@ def apply_approval_routing() -> int:
     """Route gated-tool-call approval prompts to each agent's session channel.
 
     Writes fleet.json's approval-routing state to on/session. Returns the
-    count of channel-bound agents (informational) -- until docket owns a
-    live channel (P19-8), a bound agent has nowhere to actually receive a
-    prompt, so this count is a readiness signal, not a guarantee.
+    count of channel-bound agents (informational) -- a bound agent only
+    actually receives a prompt once ``docket serve --telegram`` is running
+    with a bot token configured (``core/telegram.py``), so this count is a
+    readiness signal, not a guarantee a prompt will be delivered.
     """
     _fleet.set_approval_routing(enabled=True, mode="session")
     count = 0

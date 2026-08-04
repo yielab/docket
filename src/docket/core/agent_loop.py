@@ -1,15 +1,13 @@
-"""The turn loop docket now owns (ROADMAP Phase 19 P19-5 / decision D-19).
+"""The turn loop docket owns.
 
-This is the card that makes the external daemon unused (Phase 19 P19-7b
-deleted it outright). Everything it needs already shipped and was, until
-now, unwired:
+``run_agent_turn`` composes three pieces:
 
-- ``core/llm.py`` (P19-1) — the ``ChatBackend`` port: one request/response
+- ``core/llm.py`` — the ``ChatBackend`` port: one request/response
   exchange, nothing more.
-- ``core/tools.py`` (P19-2/P19-3) — ``ToolRegistry``/``dispatch_tool``, the
+- ``core/tools.py`` — ``ToolRegistry``/``dispatch_tool``, the
   **single** chokepoint where the command classifier, the ``pre_tool_call``
-  policy hook, approval routing and audit already live.
-- ``core/session.py`` (P19-4) — durable per-session turn history, with
+  policy hook, approval routing and audit live.
+- ``core/session.py`` — durable per-session turn history, with
   compaction that never splits a tool-call/tool-result atomic unit.
 
 ``run_agent_turn`` composes these three: load history -> call the backend ->
@@ -17,8 +15,8 @@ receive ``tool_calls`` -> dispatch every one through ``core.tools.dispatch_tool`
 -> append results -> repeat until a stop condition. **Non-negotiable: there is
 no second path to tool execution here.** This module never imports
 ``edges/adapters/toolbox.py`` and never touches a ``Tool.handler`` directly —
-a tool call that bypassed ``dispatch_tool`` would bypass every guardrail the
-last three cards built.
+a tool call that bypassed ``dispatch_tool`` would bypass every guardrail
+built into it.
 
 ## Stop conditions — every exit is deliberate, and the result says which fired
 
@@ -80,21 +78,18 @@ appends. A crash mid-loop therefore loses at most the in-flight iteration,
 never the ones already completed — the durability contract that is the
 reason docket owns session state at all.
 
-## Tracing: new visibility docket has never had
+## Tracing
 
 Every dispatched tool call emits a ``tool_call`` trace event before it runs
 and a ``tool_result`` trace event after (``core/trace.py``'s existing event
 vocabulary — the same two event types ``core/trace.py``'s ``trace_ingest``
-already projects from daemon session logs, reused here for a live-emitted
-equivalent rather than an ingested one). ``docket trace`` can now show what
-an agent actually did inside a turn; the daemon kept this to itself.
+already projects from a driver's decoded session records, reused here for a
+live-emitted equivalent rather than an ingested one). ``docket trace`` shows
+what an agent actually did inside a turn.
 
-## Per-role tool sets and the system prompt (ROADMAP Phase 19 P19-12)
+## Per-role tool sets and the system prompt
 
-Two omissions this card closes, both recorded honestly rather than papered
-over when P19-5 shipped:
-
-- **The tool registry handed to the model was never narrowed by role.**
+- **The tool registry handed to the model is narrowed by role.**
   ``core.archetypes.registry_for_role`` is called once per turn, before the
   first ``backend.complete``, so a Reviewer is never even *advertised*
   ``write``/``edit``, and if a call for either arrives anyway (a stale
@@ -102,12 +97,13 @@ over when P19-5 shipped:
   against the narrowed registry — a strictly stronger guarantee than a
   SOUL.md instruction. This function never branches on a role's name; the
   denylist is data on the role's archetype (see ``core/archetypes.py``).
-- **No system prompt was composed at all.** ``core.identity.system_prompt_for_agent``
-  reads this agent's ``SOUL.md``, live persona, and ``WORKFLOW_AUTO.md`` (the
-  resume/durability contract) and folds them into one prompt, prepended as a
-  ``system`` message. Composed fresh every turn — never persisted to session
-  history — so a persona change or a re-seeded ``WORKFLOW_AUTO.md`` is
-  reflected on the very next turn rather than frozen into a stored message.
+- **The system prompt is composed fresh every turn.**
+  ``core.identity.system_prompt_for_agent`` reads this agent's ``SOUL.md``,
+  live persona, and ``WORKFLOW_AUTO.md`` (the resume/durability contract) and
+  folds them into one prompt, prepended as a ``system`` message. Never
+  persisted to session history — so a persona change or a re-seeded
+  ``WORKFLOW_AUTO.md`` is reflected on the very next turn rather than frozen
+  into a stored message.
 """
 
 from __future__ import annotations
@@ -263,8 +259,8 @@ def run_agent_turn(
     started = clock()
     project = ctx.project or ctx.agent_id or "unknown"
 
-    # P19-12: resolved once per turn, not per iteration -- neither the
-    # role's toolset nor this agent's identity files change mid-turn.
+    # Resolved once per turn, not per iteration -- neither the role's
+    # toolset nor this agent's identity files change mid-turn.
     registry = _archetypes.registry_for_role(registry, ctx.role)
     system_prompt = _identity.system_prompt_for_agent(ctx.agent_id)
 

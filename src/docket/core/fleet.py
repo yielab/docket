@@ -1,40 +1,31 @@
 """fleet.json — docket's own agent-fleet registry (models + read/write API).
 
-ROADMAP Phase 19 P19-6: agent registration, channel bindings, gates/isolation
-flags, and the org-wide default model used to live in ``openclaw.json``
-(the daemon's file), read/written through the (now-deleted, P19-7b) ACL
-(``edges/adapters/openclaw.py``) via ``core/oc_models.py``'s
-``OpenClawConfig``. That created two writers of overlapping state — the
-daemon (or a raw ``openclaw`` CLI call, or a hand edit) could mutate
-``openclaw.json`` independently of docket, which is exactly what
-``core/sync.py``'s meta<->openclaw.json drift check existed to catch.
-
-``FleetConfig`` is the replacement: a plain, docket-owned format written
-**only** by docket, through ``edges/store.py`` — nothing else ever writes
-``fleet.json``. That is what makes the drift problem disappear rather than
-merely relocate: with a single writer, "an older docket version partially
-wrote this" is still possible in principle, but "a different program touched
-this file" is not.
+Agent registration, channel bindings, gates/isolation flags, and the
+org-wide default model are read/written **only** by docket, through
+``edges/store.py`` — nothing else ever writes ``fleet.json``. This state used
+to live in ``openclaw.json``, a file that could be mutated by more than one
+writer (the daemon, a raw ``openclaw`` CLI call, or a hand edit) independently
+of docket — exactly the kind of drift a single-writer file makes
+structurally impossible rather than merely harder: with one writer, "an
+older docket version partially wrote this" is still possible in principle,
+but "a different program touched this file" is not.
 
 **Deliberately not duplicated:** a registered agent's ``model``, ``sessionKey``
 and ``projectKey`` remain ``.docket-meta.json``'s job (see ``core/models.py``'s
 ``AgentMeta``) and are NOT tracked here. ``FleetAgent`` records only the bare
 fact of registration (its id) — carrying a second copy of fields
-``.docket-meta.json`` already owns would just recreate the drift this card
-exists to remove.
+``.docket-meta.json`` already owns would just recreate the same kind of
+drift.
 
 Lenient by design (``extra="allow"``) so a future field added by one docket
 version round-trips through an older one instead of being silently dropped.
 
-Phase 19 P19-7b: this module also carries the read/write functions
+This module also carries the read/write functions
 (``meta_get``/``meta_set``/``list_agents``/``add_agent``/``get_binding``/…)
-that used to live in ``edges/adapters/openclaw.py`` purely because that was
-the one module allowed to write ``fleet.json``. None of these ever touched an
-OpenClaw file format — they are, and always were, docket-owned state read
-through ``edges/store.py`` — so they move here rather than needing a new ACL
-of their own. What genuinely was daemon-owned (``openclaw.json``, auth
-profiles, the ``openclaw`` binary, gateway logs) is deleted outright, not
-moved; see ROADMAP.md's Phase 19 P19-7b card for the full accounting.
+for fleet and agent-metadata state. None of these ever touched an OpenClaw
+file format — they are, and always were, docket-owned state read through
+``edges/store.py``, so they live as a plain ``core/`` module rather than
+needing an anti-corruption layer of their own.
 """
 
 from __future__ import annotations
@@ -78,20 +69,18 @@ class FleetDefaults(BaseModel):
 
 
 class FleetSecurity(BaseModel):
-    """Gates/isolation/approval-routing flags (ROADMAP security-gates.spec.md)."""
+    """Gates/isolation/approval-routing flags (see security-gates.spec.md)."""
 
     model_config = _LENIENT
 
     gates_enabled: bool = Field(False, alias="gatesEnabled")
     isolation_enabled: bool = Field(False, alias="isolationEnabled")
-    # 'unset' | 'off' | a sandbox mode string (e.g. 'non-main') — mirrors the
-    # old openclaw.json agents.defaults.sandbox.mode vocabulary.
+    # 'unset' | 'off' | a sandbox mode string (e.g. 'non-main').
     isolation_mode: str = Field("unset", alias="isolationMode")
     # 'unset' | 'on' | 'off' — a real tri-state, not a bool, so "never
     # configured" and "explicitly turned off" stay distinguishable (the same
     # shape as isolation_mode above; a bare `enabled: bool` cannot tell those
-    # two apart, which is exactly the ambiguity openclaw.json's presence/absence
-    # of the `approvals.exec` key used to resolve).
+    # two apart).
     approval_routing_state: str = Field("unset", alias="approvalRoutingState")
     approval_routing_mode: str = Field("", alias="approvalRoutingMode")
 
@@ -107,19 +96,17 @@ class FleetConfig(BaseModel):
     defaults: FleetDefaults = Field(default_factory=lambda: FleetDefaults())
     # Local OpenAI-compatible model endpoints (llama.cpp / LM Studio / vLLM),
     # registered by `docket models provider` (core/provider.py) and read by
-    # `edges/adapters/llm.py`'s `resolve_endpoint`. Pre-P19-7b this lived in
-    # openclaw.json's `models.providers` block; kept as a loose dict (not a
-    # typed sub-model) since its shape is dictated by `core.provider`'s
+    # `edges/adapters/llm.py`'s `resolve_endpoint`. Kept as a loose dict (not
+    # a typed sub-model) since its shape is dictated by `core.provider`'s
     # `local_provider_config` producer and `edges/adapters/llm.py`'s consumer,
     # not by anything fleet-registry-specific.
     providers: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Read/write API (Phase 19 P19-7b: moved in from edges/adapters/openclaw.py,
-# the now-deleted ACL). Every function below is docket-owned state — fleet.json
+# Read/write API. Every function below is docket-owned state — fleet.json
 # and .docket-meta.json — never an OpenClaw file format, so this is a plain
-# core/ module (imports only edges/store.py for I/O), not a second ACL.
+# core/ module (imports only edges/store.py for I/O).
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -261,7 +248,7 @@ def remove_binding(agent_id: str, channel: str | None = None) -> None:
 def find_binding(channel: str, peer_id: str, cfg: FleetConfig | None = None) -> FleetBinding | None:
     """Reverse lookup: the binding (if any) a channel peer is wired to.
 
-    The authorization primitive P19-8's Telegram channel is built on --
+    The authorization primitive docket's Telegram channel is built on --
     ``get_binding``/``agent_bindings`` above answer "what peer is *this
     agent* bound to"; an inbound channel message needs the opposite
     direction, "what agent (if any) is *this peer* bound to". A peer maps to
@@ -287,10 +274,8 @@ def agent_bindings(agent_id: str, cfg: FleetConfig | None = None) -> list[dict[s
 def channel_names(cfg: FleetConfig | None = None) -> list[str]:
     """Return the distinct channel names any binding currently uses.
 
-    Pre-P19-7b this read openclaw.json's `channels` key (the daemon's
-    configured channel list, which could include a channel with zero
-    bindings). fleet.json has no equivalent "configured but unused" concept —
-    a channel exists here only once something is bound to it.
+    fleet.json has no "configured but unused" concept — a channel exists
+    here only once something is bound to it.
     """
     seen: list[str] = []
     for b in (cfg or load_fleet()).bindings:
@@ -377,9 +362,9 @@ def set_model_both(agent_id: str, model: str) -> None:
 
     Named (rather than inlining ``meta_set`` at every call site) because
     "update an agent's model" is a meaningful operation on its own — what
-    ``docket profile``/``docket models set`` call. Pre-P19-6 this wrote both
-    openclaw.json's ``agents.list`` AND ``.docket-meta.json``; the fleet
-    registry never tracked model, so this has been a single write since P19-6.
+    ``docket profile``/``docket models set`` call. This writes only
+    ``.docket-meta.json`` today — the fleet registry never tracked an
+    agent's model, so despite the name there is only one write to make.
     """
     meta_set(agent_id, "model", model)
 

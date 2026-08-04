@@ -1,4 +1,4 @@
-"""``docket runs`` — inspect the dispatch run registry (R-3 / D-17).
+"""``docket runs`` — inspect the dispatch run registry.
 
 One record per dispatch invocation — CLI (`docket pod <p> dispatch`), the serve
 webhook (`POST /dispatch/<project>`), a due schedule, or the periodic sweep
@@ -122,7 +122,7 @@ def _show(args: list[str]) -> int:
         ("Project", rec.get("project", "?")),
         ("State", rec.get("state", "?")),
         ("Tasks", ", ".join(str(t) for t in task_ids) if task_ids else "—"),
-        # W-4: the pipeline variable namespace this run was dispatched with —
+        # The pipeline variable namespace this run was dispatched with —
         # today, only a webhook-triggered run ever has a non-empty one (its
         # JSON body's params, resolved against the pod's effective pipeline).
         (
@@ -144,7 +144,7 @@ def _show(args: list[str]) -> int:
 
 def _cancel(args: list[str]) -> int:
     """``docket runs cancel <id>`` — kill the run's in-flight hop's process
-    group and mark it terminally ``cancelled`` (ROADMAP Phase 16 W-2)."""
+    group and mark it terminally ``cancelled``."""
     if not args:
         ui.error("Usage: docket runs cancel <id>")
         return 1

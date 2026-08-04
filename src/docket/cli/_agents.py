@@ -58,7 +58,7 @@ def _parse_add_args(
     ``--codebase``/``--path`` (or the 2nd bare positional; for a `workdir`
     blueprint this is its working directory instead — see
     ``core/blueprints.py``); name as ``--name`` (or the 1st bare positional);
-    blueprint as ``--blueprint <name>`` (ROADMAP Phase 16 W-7) — unset means
+    blueprint as ``--blueprint <name>`` — unset means
     the caller falls back to the default blueprint (`software`). Any value
     supplied here is trusted and skips its interactive prompt. Returns
     ``None`` for anything not supplied.
@@ -116,9 +116,9 @@ def _parse_add_args(
 def run_add(all_args: list[str]) -> int:
     """Dispatch `docket add` (interactive, or `--from <spec-file>`).
 
-    Interactive flow: provisions a pod from a blueprint (ROADMAP Phase 16
-    W-7) — ``--blueprint <name>`` selects one; omitted defaults to
-    `software`, today's Lead+Implementer pod against a codebase, unchanged.
+    Interactive flow: provisions a pod from a blueprint —
+    ``--blueprint <name>`` selects one; omitted defaults to
+    `software`, the Lead+Implementer pod against a codebase.
     A `codebase`-kind blueprint prompts for the codebase path (defaults to
     the directory `docket add` ran in); a `workdir`-kind blueprint
     (research/content/ops) prompts for a working directory instead — no
@@ -327,8 +327,8 @@ def _cmd_add_declarative(from_file: str) -> int:
             ui.warn("Skipping spec entry with no 'id' field.")
             continue
 
-        # ROADMAP Phase 16 W-7: a spec entry carrying a `blueprint` field
-        # provisions a *pod* (build_pod_from_blueprint) instead of the single
+        # A spec entry carrying a `blueprint` field provisions a *pod*
+        # (build_pod_from_blueprint) instead of the single
         # flat agent below — a genuinely different shape (a blueprint pod is
         # never fewer than a Lead + one worker), so it gets its own existence
         # check (`<aid>-lead`, not the bare `<aid>` workspace dir) rather than
@@ -578,9 +578,9 @@ def _provision_agent(
     meta_file = _cfg.PROJECTS_DIR / agent_id / ".docket-meta.json"
     store.write_json(meta_file, meta_data)
 
-    # Phase 19 P19-7b: registration is fleet.json only now -- there is no
-    # daemon CLI to shell out to (and no daemon session directory to
-    # pre-create; core/session.py creates a session's storage lazily).
+    # Registration is fleet.json only -- there is no daemon to register with
+    # (and no daemon session directory to pre-create; core/session.py creates
+    # a session's storage lazily).
     with contextlib.suppress(Exception):
         _fleet.add_agent(agent_id, model, session_key, project_key)
 
@@ -811,8 +811,8 @@ def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None
     """Dispatch `docket maintain`. Returns the process exit code.
 
     ``extra`` carries flags that follow ``mode`` (currently only
-    ``--no-distill-first``, ROADMAP Phase 17 C-2) — ``cmd_maintain``'s Typer
-    registration allows/ignores unknown options so they land here rather
+    ``--no-distill-first``) — ``cmd_maintain``'s Typer registration
+    allows/ignores unknown options so they land here rather
     than erroring, the same pattern every other ``ctx.args``-based
     subcommand in this package uses.
     """
@@ -833,11 +833,10 @@ def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None
 
     action = mode or "check"
     args = extra or []
-    # Distillation defaults ON (ROADMAP Phase 17 C-2 / D-18): `clean`/`reset`
-    # must not bare-delete undistilled memory without an explicit opt-out.
-    # `--distill-first` is accepted too, as a no-op affirmation of the
-    # default, so the flag documented in the card's acceptance criteria is a
-    # real, recognized token either way.
+    # Distillation defaults ON: `clean`/`reset` must not bare-delete
+    # undistilled memory without an explicit opt-out. `--distill-first` is
+    # accepted too, as a no-op affirmation of the default, so it is a real,
+    # recognized token either way.
     distill_first = "--no-distill-first" not in args
 
     if action == "check":
@@ -975,13 +974,12 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
     The one call site every distillation-driven `maintain` action shares
     (`distill`, and `clean`/`reset` when `--distill-first` is on). Never
     deletes or archives anything itself beyond what `distill_memory` already
-    did — callers gate their own destructive step on `.ok` (ROADMAP Phase 17
-    C-2's fail-closed contract: a failed driver turn must block, not warn
-    and proceed).
+    did — callers gate their own destructive step on `.ok` (a fail-closed
+    contract: a failed driver turn must block, not warn and proceed).
 
-    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
-    -- docket's first self-originated LLM call (D-18) now genuinely runs
-    through docket's own gated loop.
+    Resolves ``edges.adapters.docket_runtime.default_driver()`` — this
+    self-originated LLM call runs through docket's own gated turn loop, the
+    same as any agent's turn.
     """
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
@@ -996,12 +994,10 @@ def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
     )
     if not result.ok:
         # `failure_kind` is what makes this actionable rather than just alarming:
-        # C-2's fail-closed contract turns a failed distillation into a *blocked
+        # the fail-closed contract turns a failed distillation into a *blocked
         # delete*, so the operator's next move depends entirely on why it failed
         # -- `timeout`/`daemon_error` say retry, `invalid_output` says the model
-        # returned something unusable and retrying will likely repeat it. The
-        # field was populated from the driver's TurnResult since C-2 shipped but
-        # nothing read it (CL-3 flagged it); this is its consumer.
+        # returned something unusable and retrying will likely repeat it.
         # Parentheses, not brackets: `ui.error` renders through Rich, which
         # parses `[timeout]` as a style tag and silently swallows it -- the
         # message came out as "Distillation failed : ..." until this was caught
@@ -1029,7 +1025,7 @@ def _maintain_distill(agent_id: str, ws: Path) -> int:
 def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
     """clean: delete memory/*.md log files.
 
-    `--distill-first` (default on, ROADMAP Phase 17 C-2): distill pending
+    `--distill-first` (default on): distill pending
     logs into MEMORY.md and archive the originals before this ever deletes
     anything. A failed distillation aborts here with no file touched — see
     `_run_distillation`/`distill_memory`'s fail-closed contract.
@@ -1077,7 +1073,7 @@ def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> i
 def _maintain_reset(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
     """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md.
 
-    `--distill-first` (default on, ROADMAP Phase 17 C-2): distill pending
+    `--distill-first` (default on): distill pending
     logs into MEMORY.md and archive the originals first. A failed
     distillation aborts before any deletion (fail closed). When a real
     distillation just ran (there was something pending and it succeeded),
@@ -1183,16 +1179,12 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
 def _maintain_sessions(agent_id: str) -> None:
     """sessions: report on this agent's durable session storage.
 
-    Phase 19 P19-7b: this used to trim/archive the daemon's growing
-    per-turn JSONL transcripts (a real token-hygiene problem, since a
-    transcript was re-read in full on every resume). That storage shape is
-    gone — ``core/session.py`` stores one JSON document per session key and
-    already compacts it automatically inside the turn loop when it grows past
-    budget (Phase 19 P19-4's ``plan_compaction``/``compact_session``), so
-    there is no equivalent manual "trim large files" step to port faithfully.
-    This reports current session sizes; it does not fabricate a trim/archive
-    action against a storage shape that no longer has the problem those
-    actions existed to fix.
+    ``core/session.py`` stores one JSON document per session key and already
+    compacts it automatically inside the turn loop when it grows past budget
+    (``plan_compaction``/``compact_session``), so there is no manual "trim
+    large files" step to perform. This command only reports current session
+    sizes — it does not fabricate a trim/archive action for a storage shape
+    that has no problem such an action would exist to fix.
     """
     from urllib.parse import unquote as _url_unquote
 
@@ -1200,10 +1192,7 @@ def _maintain_sessions(agent_id: str) -> None:
 
     ui.header(f"Sessions: {agent_id}")
     ui.console.print()
-    ui.dim(
-        "  Per-session compaction is automatic now (Phase 19 P19-4) -- there is nothing"
-        " to trim or archive manually."
-    )
+    ui.dim("  Per-session compaction is automatic -- there is nothing to trim or archive manually.")
     ui.console.print()
 
     if not _cfg.SESSIONS_DIR.is_dir():

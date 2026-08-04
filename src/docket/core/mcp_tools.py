@@ -1,11 +1,11 @@
-"""MCP client: pluggable external tool servers (ROADMAP Phase 19 P19-10 / D-19).
+"""MCP client: pluggable external tool servers, gated like a built-in.
 
-D-19's line: docket owns the loop, the tool registry, tool dispatch and every
-gate; it rents *protocols*. MCP is a tool transport, so it is rented -- but
-docket stays the dispatcher, which is the entire point. This module adapts
-whatever tools a configured external MCP server advertises into ordinary
-``core.tools.Tool`` objects and registers them into a ``core.tools.ToolRegistry``
-via its existing public API (``ToolRegistry.register``). Nothing here creates a
+docket owns the loop, the tool registry, tool dispatch and every gate; MCP is
+only a tool *transport*, so it is the one thing rented -- docket stays the
+dispatcher, which is the entire point. This module adapts whatever tools a
+configured external MCP server advertises into ordinary ``core.tools.Tool``
+objects and registers them into a ``core.tools.ToolRegistry`` via its
+existing public API (``ToolRegistry.register``). Nothing here creates a
 second execution path: an adapted tool's handler is exactly the kind of
 ``Callable[[dict, ToolContext], ToolOutcome]`` a built-in tool already has, so
 every call still passes through ``core.tools.dispatch_tool`` -- resolve, parse
@@ -14,10 +14,14 @@ to the real approval store, execute, audit. There is no fast path: this module
 literally cannot bypass the chokepoint, because it never calls a handler
 itself.
 
-**Not yet wired to a live path.** Like ``core/llm.py`` (P19-1), ``core/tools.py``
-(P19-2) and ``core/session.py`` (P19-4) before it, this module ships fully
-tested and unused in production until ``core/agent_loop.py`` (P19-5) exists to
-call ``load_mcp_tools`` when it builds a turn's ``ToolRegistry``.
+**Not yet wired to a live path.** ``core/agent_loop.py`` runs a turn against
+whatever ``ToolRegistry`` its caller hands it, and
+``edges/adapters/docket_runtime.py``'s ``DocketDriver`` builds that registry
+from ``core.tools.builtin_registry()`` alone -- it does not call
+:func:`load_mcp_tools`. This module's adaptation and screening logic ships
+fully tested, and ``docket mcp servers add/list/remove`` already configures
+servers end-to-end through this module's own functions; what remains is
+wiring :func:`load_mcp_tools` into the registry a live turn actually uses.
 
 ## Namespacing (the collision rule)
 
@@ -72,7 +76,7 @@ screens every remote tool's ``"<name>: <description>"`` through
   "only a non-allow decision is worth a record" rule.
 
 This reuses the *evaluator* only; it does not touch ``core/policy.py`` or
-``core/tools.py`` (both out of scope for this card) and adds no new hook.
+``core/tools.py``, and adds no new hook.
 """
 
 from __future__ import annotations
@@ -314,7 +318,7 @@ def _build_tool(
     )
 
 
-# ── the orchestration `core/agent_loop.py` (P19-5) will call ───────────────
+# ── the orchestration `core/agent_loop.py` will call once wired ────────────
 
 
 @dataclass(frozen=True)

@@ -4,8 +4,8 @@ All reads and writes to docket-owned JSON files (.docket-meta.json,
 fleet.json, and every other docket-owned registry) go through these two
 functions.
 
-Single-writer rule (D-12, ROADMAP §6): this module is the one chokepoint for
-docket-owned JSON writes. The one documented exemption is append-only JSONL
+Single-writer rule: this module is the one chokepoint for docket-owned JSON
+writes. The one documented exemption is append-only JSONL
 logs — ``core/trace.py`` and ``core/audit.py`` write directly, since each line
 is an independent, self-contained append rather than a read-modify-write of a
 whole document; everything else goes through ``write_json``.

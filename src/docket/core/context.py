@@ -1,22 +1,15 @@
-"""Context compiler (ROADMAP Phase 17 C-1): fit a hop's prior-hop artifacts to
-a per-role token budget.
+"""Context compiler: fit a hop's prior-hop artifacts to a per-role token budget.
 
-**Supersedes ROADMAP Phase 14 R-7's stopgap.** R-7 capped the total *bytes*
-carried forward from prior hops with one process-wide constant
-(``config.HOP_CARRYOVER_BYTES``) and, once a hop's share was exceeded,
-truncated the rendered text blindly — head and tail kept, the middle cut
-with no regard for what was actually in it. That was a documented stopgap
-ahead of this card (see its own docstring and ``pod-dispatch.spec.md``'s
-former "Bounded hop prompts" section). ``core/dispatch.py``'s ``_hop_message``
-no longer calls R-7's helpers (``_hop_carryover_budget``/
-``_truncate_carryover``) at all — this module is the one and only truncation
-mechanism a hop's prompt goes through now; the two are never layered.
+``core/dispatch.py``'s ``_hop_message`` calls this module, and only this
+module, to truncate a hop's prompt — there is no second, layered truncation
+mechanism anywhere else in the hop-composition path.
 
-This module keeps the one piece of R-7's design that was already right — a
-prior hop further into the past gets a smaller share (``hop_share``, the
-same halving series, now denominated in tokens) — and replaces the
-mechanism for what happens once a share is exceeded: instead of cutting the
-rendered text in half blindly, ``compile_artifact`` sheds the artifact's own
+A prior hop further into the past gets a smaller share of the budget
+(``hop_share``, a halving series denominated in tokens): each hop one step
+further back gets half the share of the one before it, so the total content
+carried forward across any number of prior hops never reaches the total
+budget, while the most recent, most relevant hop is squeezed the least. Once
+a hop's share is exceeded, ``compile_artifact`` sheds the artifact's own
 less-valuable fields first, in ``HandoffArtifact.DROP_ORDER``'s declared
 order (``notes`` -> ``diff_ref`` -> ``files_changed`` -> ``verdict``),
 checking the budget after each drop and stopping the moment it fits.
@@ -25,8 +18,8 @@ content — so the worst case is an explicitly *marked* truncation of
 ``summary`` itself (``_truncate_summary``), never a silent drop and never an
 empty section.
 
-**No tokenizer dependency.** ROADMAP Sec 4.5 bans a new heavyweight
-dependency for this. ``estimate_tokens`` reuses the project's existing,
+**No tokenizer dependency.** A new heavyweight dependency is out of scope
+for this. ``estimate_tokens`` reuses the project's existing,
 already-documented chars-per-token approximation
 (``config.CONTEXT_BYTES_PER_TOKEN``, default 4 bytes/token — the same ratio
 ``cli/_agents.py``'s ``maintain check``/``maintain sessions`` already use for
@@ -37,7 +30,7 @@ never claimed as an exact count, and never used to bill against.
 
 Per-role budgets live on the role archetype itself
 (``core/archetypes.py``'s ``RoleArchetype.token_budget``), not a second,
-parallel registry — W-6 made roles declarative for exactly this kind of
+parallel registry — roles are declarative data for exactly this kind of
 extension. ``budget_for_role`` resolves a role name against the live
 archetype registry, falling back to ``DEFAULT_TOKEN_BUDGET`` for a role the
 registry doesn't know (e.g. a hand-built test archetype that predates this
@@ -51,15 +44,12 @@ message (the task description, any rework note, then the recency-ordered
 prior-hop carryover) from this module's ``compile_artifact``/``hop_share``,
 and threads the result into its own ``_HopComposition`` trace record.
 
-**Scope note:** the card that opened this module (ROADMAP Phase 17 C-1) is
-described in the roadmap as compiling "(task, role, artifacts, workspace)".
-``_hop_message`` — the one call site this version wires into — has no
-workspace input to give it (dispatch never reads the workspace filesystem to
-build a hop's prompt), so this module does not accept or invent one; adding
-an unused parameter ahead of a real caller would be exactly the speculative
-generality ROADMAP Sec 4.5 rules out ("abstract before the second caller
-exists"). A future card that needs workspace-aware compilation extends this
-module then, with a real input to shape it around.
+**Scope note:** ``_hop_message`` — the one call site this module wires into
+— has no workspace input to give it (dispatch never reads the workspace
+filesystem to build a hop's prompt), so this module does not accept or
+invent one; adding an unused parameter ahead of a real caller would be
+speculative generality. A future caller that needs workspace-aware
+compilation extends this module then, with a real input to shape it around.
 """
 
 from __future__ import annotations
@@ -79,8 +69,6 @@ DEFAULT_TOKEN_BUDGET = 6000
 
 #: Visible marker used when ``summary`` itself must be truncated — the
 #: consumer-facing proof that content was cut, never a silent shortening.
-#: Mirrors R-7's own marker wording (now retired) so the operator-facing
-#: convention "an explicit count of what was omitted" carries forward.
 SUMMARY_TRUNCATION_MARKER = "\n[... summary truncated: {n} bytes omitted ...]\n"
 
 
@@ -90,10 +78,9 @@ def estimate_tokens(text: str) -> int:
     ``len(text.encode("utf-8")) // config.CONTEXT_BYTES_PER_TOKEN`` — the
     same bytes-per-token approximation (default 4) ``cli/_agents.py``'s
     ``maintain check``/``maintain sessions`` already use for their own
-    context-size guards. This is honestly an approximation (ROADMAP Sec 4.5
-    bans a new tokenizer dependency for this), not a real count from the
-    model's own tokenizer — good enough to bound a prompt deterministically,
-    never used to bill against.
+    context-size guards. This is honestly an approximation, not a real count
+    from the model's own tokenizer — good enough to bound a prompt
+    deterministically, never used to bill against.
     """
     return len(text.encode("utf-8")) // cfg.CONTEXT_BYTES_PER_TOKEN
 
@@ -114,12 +101,11 @@ def budget_for_role(role: str) -> int:
 def hop_share(rank: int, total_budget: int) -> int:
     """One prior hop's slice of *total_budget*, by recency ``rank`` (0 = newest).
 
-    The same halving series ROADMAP Phase 14 R-7 used for its byte budget
-    (``total_budget >> (rank + 1)``), now applied to a token budget: each hop
-    one step further into the past gets half the share of the one before it,
-    so the *total* carried forward across any number of prior hops never
-    reaches ``total_budget`` (a partial geometric series, ratio 1/2) while
-    the most recent, most relevant hop is squeezed the least.
+    A halving series (``total_budget >> (rank + 1)``): each hop one step
+    further into the past gets half the share of the one before it, so the
+    *total* carried forward across any number of prior hops never reaches
+    ``total_budget`` (a partial geometric series, ratio 1/2) while the most
+    recent, most relevant hop is squeezed the least.
     """
     return total_budget >> (rank + 1)
 
@@ -187,9 +173,10 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
     2. Otherwise shed ``HandoffArtifact.DROP_ORDER`` fields one at a time
        (``notes``, then ``diff_ref``, then ``files_changed``, then
        ``verdict``), re-measuring after each drop and stopping the moment it
-       fits. A field that is already empty (the common case today — dispatch
-       doesn't populate ``files_changed``/``diff_ref``/``notes`` yet, see
-       `core/handoff.py`) is skipped rather than reported as "dropped": there
+       fits. A field that is already empty (``notes`` is reserved but never
+       populated by dispatch; ``files_changed``/``diff_ref`` are only
+       populated for a successful Implementer hop, see `core/handoff.py`/
+       `core/dispatch.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that
        actually changed the rendered text.

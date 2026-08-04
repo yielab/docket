@@ -1,4 +1,4 @@
-"""Run registry — one persisted record per dispatch invocation (R-3 / D-17).
+"""Run registry — one persisted record per dispatch invocation.
 
 Background dispatch used to be unobservable: the serve webhook returned 200
 before any work was attempted, the scheduler and sweeper fired dispatch in
@@ -8,11 +8,11 @@ query, and no way to tell "done" from "failed" from "never ran".
 
 This module is the fix: every time something asks a pod to dispatch (the CLI,
 the serve webhook, a due schedule, the periodic sweep loop, or an MCP tool
-call — ``docket mcp serve``'s ``dispatch`` tool, Phase 18 L-3) a run record is
+call — ``docket mcp serve``'s ``dispatch`` tool) a run record is
 created *before* the work starts and folded to a terminal state when it
 finishes — successfully or not. Records persist to ``cfg.RUNS_FILE`` (a single
 docket-owned JSON document, one list of records) through
-``edges/store.py``'s locked read-modify-write, the same pattern R-1 uses for
+``edges/store.py``'s locked read-modify-write, the same pattern used for
 the pod task queue, since multiple threads (webhook handler, schedule thread,
 sweep loop) and the CLI can all be appending/updating concurrently.
 
@@ -20,9 +20,9 @@ This module never imports ``core/dispatch.py`` — ``execute()`` takes an
 arbitrary zero-arg callable and duck-types a ``task_id`` attribute off
 whatever it returns (matching ``dispatch.TaskResult`` without a hard
 dependency), so the run registry stays agnostic of what it is recording and
-``core/dispatch.py`` needs no changes at all for this card.
+``core/dispatch.py`` needs no changes at all to be recorded here.
 
-ROADMAP Phase 16 W-2 adds cancellation. ``execute()`` now publishes "which
+Cancellation: ``execute()`` publishes "which
 run id is currently executing" via a ``contextvars.ContextVar`` for the
 duration of *fn* — ``core/dispatch.py``'s production-driver hop call site
 reads it (``current_run_id()``) to know which run to record a spawned
@@ -60,7 +60,7 @@ RunTerminalState = Literal["succeeded", "failed", "cancelled"]
 _SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})
 _TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
 
-# W-2: which run id (if any) the *current thread* is executing under — set by
+# Which run id (if any) the *current thread* is executing under — set by
 # `execute()` for the duration of its `fn()` call. `None` outside any run
 # (e.g. a test calling `dispatch_task` directly).
 _CURRENT_RUN_ID: ContextVar[str | None] = ContextVar("_CURRENT_RUN_ID", default=None)
@@ -104,12 +104,12 @@ def create_run(
     webhook can hand the run id back to its own caller before the outcome is
     known.
 
-    *variables* (W-4) is the pipeline variable namespace this run was
+    *variables* is the pipeline variable namespace this run was
     resolved against — today, only the serve webhook populates it (a
     payload's params, run through ``core.pipeline.resolve_variables`` against
     the pod's effective pipeline before this run is even created); every
-    other source passes ``None`` and gets the same ``{}`` a pre-W-4 record
-    had, so this is purely additive to the schema. Recording it here — not
+    other source passes ``None`` and gets an empty ``{}``, so this field is
+    purely additive to the schema. Recording it here — not
     just accepting it as a dispatch argument — is what lets ``docket runs
     show <id>``/``GET /runs/<id>`` answer "what variables did this dispatch
     actually see", since nothing else in the run's lifecycle persists them.
@@ -129,10 +129,10 @@ def create_run(
         "created": _now(),
         "startedAt": None,
         "finishedAt": None,
-        # W-2: pids of any hop subprocess currently in flight for this run —
+        # pids of any hop subprocess currently in flight for this run —
         # see add_hop_pid/remove_hop_pid/cancel_run.
         "pids": [],
-        # W-4: the resolved variable namespace this run was dispatched with.
+        # The resolved variable namespace this run was dispatched with.
         "variables": dict(variables) if variables else {},
     }
 
@@ -224,11 +224,11 @@ def add_hop_pid(run_id: str, pid: int) -> None:
     """Record a newly-spawned hop subprocess's pid as in-flight for *run_id*.
 
     A run's ``pids`` field is a *list*, not a scalar — a ``parallel``
-    pipeline step can have more than one hop genuinely in flight at once
-    (W-2). Called from a driver's ``run_turn``'s ``on_spawn`` hook via
+    pipeline step can have more than one hop genuinely in flight at once.
+    Called from a driver's ``run_turn``'s ``on_spawn`` hook via
     ``core/dispatch.py``'s production-driver hop call site (never for an
     injected test runner — see that module's ``dispatch_task``); the
-    production ``DocketDriver`` (Phase 19 P19-7a) ignores ``on_spawn`` since
+    production ``DocketDriver`` ignores ``on_spawn`` since
     it backs onto no OS process for this to ever fire against, so this stays
     reachable only through a driver that does spawn one. No-op if *run_id*
     is unknown (e.g. a stale/racing caller).
@@ -314,8 +314,8 @@ def cancel_run(run_id: str) -> CancelOutcome:
         if killed
         else f"cancelled run {run_id} (nothing in flight to kill)"
     )
-    # W-4: every other privileged action writes an audit entry; `docket runs
-    # cancel` (W-2) shipped without one. Logged only on an actual cancellation
+    # Every other privileged action writes an audit entry; `docket runs
+    # cancel` matches that. Logged only on an actual cancellation
     # (this line), never for the unknown-id/already-terminal no-op returns
     # above — those change nothing, so there is nothing to audit. `state` here
     # is still the run's pre-cancel state (captured before the terminal-state
@@ -364,7 +364,7 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     a bare ``contextlib.suppress(Exception)`` with a real, queryable outcome
     instead of one silently discarded.
 
-    W-2: publishes ``run_id`` via ``current_run_id()`` for the duration of
+    Publishes ``run_id`` via ``current_run_id()`` for the duration of
     *fn* (a ``contextvars.ContextVar``, so it is thread-local and safely
     propagated into a parallel group's worker threads — see
     ``core.orchestrator.run_group``), and never lets a normal completion

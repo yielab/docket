@@ -1,7 +1,7 @@
 """Conversation registry — docket's durable index of channel conversations.
 
 Option B from ``internal-docs/telegram-conversation-memory.md``. No agent runtime
-docket has driven persists a durable conversation transcript (TC-3 in
+docket has driven persists a durable conversation transcript (see
 ``internal-docs/POD-DAEMON-NOTES.md``): a per-agent recall index is at best a
 rebuildable RAG index over workspace files, and live conversation context is lost
 on reset/compaction. So docket owns a small registry
@@ -143,7 +143,7 @@ def touch_for_hop(
 ) -> ConversationRegistry:
     """Refresh every tracked conversation for *agent_id* with real dispatch activity.
 
-    ROADMAP Phase 17 C-5: a pod dispatch hop is real, observable work — a human
+    A pod dispatch hop is real, observable work — a human
     watching a wired channel thread should see the task it's actually on and a
     preview of what it last said, not just whatever ``docket wire`` seeded once
     at binding time. Pure: the caller (``core/dispatch.py``'s ``_persist_hop``)

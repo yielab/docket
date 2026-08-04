@@ -2,9 +2,8 @@
 
 `core/provider.py` does the pure ping → register orchestration and returns a
 `ProviderRegistration`; this module renders that result and the next-steps
-guidance (previously all misfiled inside core/provider.py — see ROADMAP §2,
-"core has no knowledge of terminals"). Output strings are unchanged from the
-pre-split flow; only the module boundary moved.
+guidance, keeping presentation-layer output out of `core` ("core has no
+knowledge of terminals").
 """
 
 from __future__ import annotations

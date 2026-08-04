@@ -4,10 +4,10 @@
 a Typer command and raises ``typer.Exit(code)``. Dollar figures are the
 active driver's recorded spend from session data
 (``core.utils.aggregate_cost``/``cost_history``, delegating to whichever
-``RuntimeDriver`` is resolved -- ``DocketDriver`` in production since Phase 19
-P19-7a, which never reports a USD cost at all: see
-``edges/adapters/docket_runtime.py``'s ``usage()`` docstring); the bundled
-model-pricing table only powers the comparative estimate shown alongside it.
+``RuntimeDriver`` is resolved -- the production ``DocketDriver`` never
+reports a USD cost at all: see ``edges/adapters/docket_runtime.py``'s
+``usage()`` docstring); the bundled model-pricing table only powers the
+comparative estimate shown alongside it.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ def cost_snapshot() -> dict[str, Any]:
     """Per-agent recorded cost + the fleet total, as a bare dict (no printing).
 
     The pure data half of `docket cost --json` — factored out so a second
-    presentation-tier caller (``docket mcp serve``'s ``cost`` tool, Phase 18
-    L-3) can reuse the exact same assembly instead of re-deriving it, matching
+    presentation-tier caller (``docket mcp serve``'s ``cost`` tool) can reuse
+    the exact same assembly instead of re-deriving it, matching
     the "reuse core services, don't duplicate business logic" rule for
     read-only reporting the same way ``docket.serve.build_status()`` already
     does for the fleet status snapshot.
@@ -164,11 +164,9 @@ def _cmd_cost_all() -> None:
             ui.warn(f"  Runaway session: {r}")
 
     ui.console.print()
-    # Phase 19 P19-7b: the daemon (and its ~/.openclaw session JSONL) is
-    # deleted outright, so this footer now names the real, current source --
-    # docket's own durable per-session storage (core/session.py). This is a
-    # deliberate golden diff (see the card's report for the regenerated
-    # cost.golden).
+    # There is no daemon (and no ~/.openclaw session JSONL) any more, so this
+    # footer names the real, current source of recorded spend -- docket's own
+    # durable per-session storage (core/session.py).
     ui.dim(f"  Recorded spend from session data in {_cfg.SESSIONS_DIR}/*/session.json")
     ui.dim(
         f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"

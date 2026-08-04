@@ -1,13 +1,12 @@
-"""docket-native pipeline spec (ROADMAP Phase 16, W-1).
+"""docket-native pipeline spec.
 
-This module defines the **format**, not an executor. `core/dispatch.py`'s
-hardcoded ``PIPELINE_ORDER`` (lead -> implementer -> reviewer -> tester) keeps
-driving every pod today; nothing here is wired into it yet. That wiring —
-running a ``PipelineSpec`` over the R-1 task state machine, a bounded worker
-pool, per-step trace spans, and a real ``docket pipeline plan`` renderer — is
-ROADMAP Phase 16 card W-2, deliberately **not** built here (see that card's
-note: a second pretty-printer that drifts from the real executor is exactly
-what ROADMAP warns against).
+This module defines the **format**; ``core/orchestrator.py`` is the executor.
+It resolves a ``PipelineSpec`` against a pod's live roster into a concrete
+``ExecutionPlan``, and ``core/dispatch.py``'s hop loop walks that plan,
+reading each step's *resolved* gate instead of a hardcoded per-role check
+(see ``core/orchestrator.py``'s module docstring). ``docket pipeline plan``
+renders directly from the same ``resolve_plan`` the real executor calls — a
+second, drift-prone pretty-printer is deliberately avoided.
 
 Zero-migration contract: a pod with **no** pipeline file MUST behave exactly
 as it does today. ``load_pipeline(None)`` returns :func:`default_pipeline`
@@ -18,13 +17,14 @@ a file" branch of its own to get wrong. (The literal equivalence is drift-
 guarded by ``tests/python/test_w1_pipeline_spec.py``, which cross-checks
 against ``dispatch.PIPELINE_ORDER`` and the Reviewer/Tester verdict regexes
 directly — this module does not import ``dispatch`` itself, to keep a pure
-format module decoupled from the heavier dispatch/ACL import chain.)
+format module decoupled from the heavier dispatch import chain.)
 
 Steps target a **role** or a specific **agent** (mutually exclusive), and may
-carry an optional ``archetype`` — a plain string name referencing a ROADMAP
-Phase 16 W-6 role archetype. Only the *shape* of that name is validated here
-(a lowercase slug) — never its existence against some registry, so this card
-composes with W-6 without depending on its code landing first.
+carry an optional ``archetype`` — a plain string name referencing a role
+archetype (``core/archetypes.py``). Only the *shape* of that name is
+validated here (a lowercase slug) — never its existence against some
+registry, keeping this module decoupled from the archetype registry's own
+code.
 
 A step's ``gate`` is one of three kinds:
 
@@ -37,17 +37,19 @@ A step's ``gate`` is one of three kinds:
   regex; a matched value in ``passValues`` advances the pipeline. Generalizes
   ``dispatch.py``'s Reviewer (APPROVE/REQUEST-CHANGES) and Tester (PASS/FAIL)
   conventions to an arbitrary marker vocabulary. May carry a bounded
-  ``rework`` edge (see :class:`ReworkEdge`) — R-4's semantics, generalized
-  past "always the Reviewer, always back to the Implementer".
+  ``rework`` edge (see :class:`ReworkEdge`), generalizing "always the
+  Reviewer, always back to the Implementer" to any earlier step.
 - ``approval`` — the step must not proceed until an operator grants it via
   docket's existing headless approval channels (see security-gates.spec.md).
-  Wiring a pipeline step to that store is Phase 15 G-1 / W-2's job.
+  ``core/dispatch.py``'s ``_pipeline_step_requires_approval`` wires this gate
+  to a real ``core/approval.py`` record before the step's hop ever runs.
 
 ``parallel`` groups let a step fan out into concurrently-run child steps
-(e.g. one per ``--count N`` duplicate role member) — the model can express
-this today even though no executor runs it yet. Exactly one level of nesting
-is supported; join semantics for a group, and rework edges declared inside
-one, are executor concerns this module deliberately does not model.
+(e.g. one per ``--count N`` duplicate role member), run by
+``core.orchestrator.run_group`` under a bounded thread pool. Exactly one
+level of nesting is supported; a rework edge declared inside one is rejected
+by :class:`PipelineSpec`'s validator (a group has no single "earlier step" to
+target unambiguously).
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ def _is_slug(value: str) -> bool:
 
 
 class ReworkEdge(BaseModel):
-    """A bounded backward edge from a verdict gate to an earlier step (R-4).
+    """A bounded backward edge from a verdict gate to an earlier step.
 
     Mirrors ``core/dispatch.py``'s Reviewer -> Implementer rework loop: while
     a value in ``when`` keeps being the verdict, the pipeline jumps back to
@@ -163,10 +165,11 @@ class VerdictGate(BaseModel):
 class ApprovalGate(BaseModel):
     """The step must not proceed until an operator grants approval.
 
-    Deliberately minimal — wiring this to docket's approval store (tokens,
-    timeout-resolves-to-denied, CLI/HTTP grant/deny) is Phase 15 G-1 / W-2's
-    job, not this card's. ``message`` is optional context shown to the
-    approver.
+    Deliberately minimal on its own — this type carries no token, timeout, or
+    resolution state itself; ``core/dispatch.py`` wires an instance of it to
+    a real ``core/approval.py`` record (token, timeout-resolves-to-denied,
+    CLI/HTTP/Telegram grant or deny) before the gated step's hop ever runs.
+    ``message`` is optional context shown to the approver.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -187,8 +190,8 @@ Gate = Annotated[
 class Step(BaseModel):
     """One node in the pipeline.
 
-    A **unit step** targets exactly one of ``role`` (a pod role / W-6
-    archetype slot, e.g. ``implementer``) or ``agent`` (a specific agent id,
+    A **unit step** targets exactly one of ``role`` (a pod role / archetype
+    slot, e.g. ``implementer``) or ``agent`` (a specific agent id,
     e.g. ``myapp-implementer-2``) and may carry ``retries``/``timeout``
     overrides and a ``gate``.
 
@@ -261,9 +264,9 @@ Step.model_rebuild()
 
 class Variable(BaseModel):
     """A pipeline variable: a default value, or ``required`` for one supplied
-    at dispatch time (e.g. a future W-4 webhook param). No interpolation
-    engine exists here — that belongs to the executor (W-2); this only
-    declares the variable's shape.
+    at dispatch time (e.g. a webhook param — see :func:`resolve_variables`).
+    No interpolation engine exists here — that belongs to the executor; this
+    only declares the variable's shape.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -290,7 +293,7 @@ class VariableError(Exception):
 def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve *spec*'s declared variable namespace against caller-supplied values.
 
-    This is the "future W-4 webhook param" the :class:`Variable` docstring
+    This is the webhook param the :class:`Variable` docstring
     above refers to: a caller (``docket serve``'s ``POST /dispatch/<project>``
     webhook, today) supplies a plain ``{name: value}`` mapping — *provided* —
     and this function produces the pipeline's final, resolved variable
@@ -309,7 +312,7 @@ def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None
     through unchanged. This mirrors the format's own stance: **the document**
     shape is closed (``extra="forbid"`` everywhere, see the module docstring)
     but a variable's *runtime value* is deliberately not — nothing here
-    interpolates a variable into a hop's prompt or environment yet (still an
+    interpolates a variable into a hop's prompt or environment (that stays an
     executor concern, per the ``Variable``/module docstrings), so there is no
     text-substitution surface an undeclared key could corrupt; rejecting it
     would only make a pipeline author pre-declare every field a webhook sender
@@ -331,13 +334,13 @@ def resolve_variables(spec: PipelineSpec, provided: dict[str, Any] | None = None
 
 
 class PipelineSpec(BaseModel):
-    """The docket-native pipeline format (ROADMAP Phase 16 W-1).
+    """The docket-native pipeline format.
 
     ``extra="forbid"`` at every level is the point: an unknown key anywhere
     in the document is a validation error, not a silently-ignored construct
     (unlike the retired Lobster YAML dialect's validator, which silently
     ignored several constructs its own template emitted — exactly the gap
-    ROADMAP decision D-16 retires that format to close).
+    this format closes by construction).
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)

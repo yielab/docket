@@ -34,10 +34,10 @@ class AgentScope(StrEnum):
 
 class WorkspaceKind(StrEnum):
     """Whether a project agent's workspace is anchored to a codebase or a
-    plain working directory (ROADMAP Phase 16 W-7's pod blueprints).
+    plain working directory.
 
     ``codebase`` — a git-tracked project directory (``codebase`` field);
-    every project agent before W-7 is implicitly this. ``workdir`` — a plain
+    every legacy project agent is implicitly this. ``workdir`` — a plain
     working directory with no codebase assumption (``workDir`` field
     instead), for objectives that aren't "build a web site" (research,
     content, ops blueprints). Mutually exclusive with ``codebase``: an agent
@@ -50,7 +50,7 @@ class WorkspaceKind(StrEnum):
 
 # Backfill inference for legacy metas written before ``scope`` existed.
 # The authoritative split lives in config.py; this inline set exists only so a
-# pre-Phase-10 record can resolve its scope on read without importing config.
+# legacy record can resolve its scope on read without importing config.
 _PROJECT_SPECIALIST_ROLES = frozenset({"programmer", "reviewer", "tester"})
 
 
@@ -96,11 +96,10 @@ class AgentMeta(BaseModel):
     stack: str = ""
     description: str = ""
     role: str = ""
-    # ROADMAP Phase 16 W-7: which pod blueprint provisioned this agent (e.g.
-    # "software", "research") and whether its workspace is anchored to a
-    # codebase or a plain working directory. Absent/default on every record
-    # written before W-7 — a legacy agent is implicitly `workspace_kind:
-    # codebase`, exactly what it already is.
+    # Which pod blueprint provisioned this agent (e.g. "software", "research")
+    # and whether its workspace is anchored to a codebase or a plain working
+    # directory. Absent/default on every legacy record — a legacy agent is
+    # implicitly `workspace_kind: codebase`, exactly what it already is.
     blueprint: str = ""
     workspace_kind: WorkspaceKind = Field(WorkspaceKind.codebase, alias="workspaceKind")
     work_dir: str = Field("", alias="workDir")
@@ -113,7 +112,7 @@ class AgentMeta(BaseModel):
     paused: bool = False
     paused_reason: str = Field("", alias="pausedReason")
 
-    # R-2: pod-wide dispatch timeout overrides, set on the Lead alongside
+    # Pod-wide dispatch timeout overrides, set on the Lead alongside
     # budgetUsd (core/dispatch.py reads them the same way it reads the Lead's
     # budgetUsd for pod_budget()). None = no pod-level override; falls back to
     # DEFAULT_TIMEOUT (or a serve-wide config knob) at dispatch time.
@@ -160,7 +159,7 @@ class AgentMeta(BaseModel):
     def coerce_paused(value: object) -> bool:
         """Coerce a raw (possibly legacy) ``paused`` value to a real ``bool``.
 
-        R-5 fixed a type bug: a writer stored a real JSON boolean while
+        Guards against a type bug: a writer stored a real JSON boolean while
         display code (``cli/_agents.py``) compared it against the *string*
         ``"true"`` (``raw.get("paused", "") == "true"``) — which is never
         equal to a Python ``True``, so a paused agent silently displayed as

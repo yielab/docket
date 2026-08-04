@@ -7,14 +7,13 @@ All agent actions docket can observe are appended to::
 One file per session → atomic vs concurrent sessions. Disable all trace writes
 with ``DOCKET_NO_TRACE=1``.
 
-Exempt from the store.py single-writer rule (D-12, ROADMAP §6): appends are
-line-independent, not a read-modify-write of a whole document, so this module
-writes JSONL directly rather than through ``edges/store.py``. The ingestion
-bridge (``trace_ingest``) projects turns into this store, but — since
-Phase 18 L-1 — reads them only through the RuntimeDriver port
-(``edges.adapters.docket_runtime.DocketDriver`` as of Phase 19 P19-7a); this
-module itself has no knowledge of any driver's on-disk session format, only
-of its own.
+Exempt from the store.py single-writer rule: appends are line-independent,
+not a read-modify-write of a whole document, so this module writes JSONL
+directly rather than through ``edges/store.py``. The ingestion bridge
+(``trace_ingest``) projects turns into this store, but reads them only
+through the RuntimeDriver port (``edges.adapters.docket_runtime.DocketDriver``);
+this module itself has no knowledge of any driver's on-disk session format,
+only of its own.
 """
 
 from __future__ import annotations
@@ -30,9 +29,10 @@ from typing import Any, Literal
 import docket.config as _cfg
 
 # trace_event()'s return contract: "written" (recorded), "rejected" (invalid
-# event_type — the pre-G-4 `False`), or "suppressed" (DOCKET_NO_TRACE=1 — the
-# pre-G-4 dishonest `True`, indistinguishable from a real write). Callers that
-# only care about success can still do `trace_event(...) == "written"`.
+# event_type), or "suppressed" (DOCKET_NO_TRACE=1 no-ops the write) — three
+# distinct outcomes, so a suppressed write can never be mistaken for a real
+# one. Callers that only care about success can still do
+# `trace_event(...) == "written"`.
 TraceStatus = Literal["written", "rejected", "suppressed"]
 
 EVENT_TYPES: frozenset[str] = frozenset(
@@ -56,14 +56,14 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "rework_started",
         "review_rejected",
         "stale_claim",
-        "hop_retry",  # R-2: one retryable agent-turn retry attempt, observable history
-        "paused_refused",  # R-5: a claim refused because the pod's Lead is budget-paused
-        "approval_required",  # G-1: a require_approval gate fired pre-hop (task -> waiting_approval)
-        "approval_resumed",  # G-1: a granted approval flipped a waiting task back to pending
-        "approval_task_denied",  # G-1: a denied approval failed a waiting task terminally
-        # W-8: generic verdict-gate outcomes for any role/archetype beyond the
-        # two built-in ones (which keep emitting their own legacy names above
-        # — rework_started/review_rejected/reviewer_verdict_unparseable for
+        "hop_retry",  # one retryable agent-turn retry attempt, observable history
+        "paused_refused",  # a claim refused because the pod's Lead is budget-paused
+        "approval_required",  # a require_approval gate fired pre-hop (task -> waiting_approval)
+        "approval_resumed",  # a granted approval flipped a waiting task back to pending
+        "approval_task_denied",  # a denied approval failed a waiting task terminally
+        # Generic verdict-gate outcomes for any role/archetype beyond the two
+        # built-in ones (which keep emitting their own legacy names above —
+        # rework_started/review_rejected/reviewer_verdict_unparseable for
         # reviewer, tester_verdict_failed for tester — see
         # core/dispatch.py's _verdict_event_names).
         "verdict_rework_started",
@@ -158,10 +158,9 @@ def trace_event(
 
     Returns ``"written"`` on a real append, ``"rejected"`` for an unknown
     ``event_type``, or ``"suppressed"`` when DOCKET_NO_TRACE=1 no-ops the
-    write — three distinct outcomes a caller can tell apart, rather than the
-    pre-G-4 contract where a suppressed write and a real one both returned
-    ``True``. payload is parsed as JSON when possible, else wrapped as
-    ``{"text": payload}``.
+    write — three distinct outcomes a caller can tell apart, so a suppressed
+    write can never be mistaken for a real one. payload is parsed as JSON
+    when possible, else wrapped as ``{"text": payload}``.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return "suppressed"
@@ -201,20 +200,16 @@ def trace_ingest(project: str) -> None:
     timed-out open sessions. No-ops when DOCKET_NO_TRACE=1 or the driver has no
     sessions for *project*.
 
-    Phase 18 L-1: the daemon session-JSONL format knowledge this used to hold
-    directly (raw ``sessions/*.jsonl`` globbing, the ``type``/``timestamp``
-    record vocabulary) now lives behind the RuntimeDriver port -- this
-    function only ever sees the driver's neutral ``SessionSummary``/
-    ``SessionSlice`` shapes and applies docket's own trace-event policy
-    (redaction elsewhere, timeout handling, event vocabulary) on top. See
-    core/runtime_driver.py.
+    All knowledge of the on-disk session-log format lives behind the
+    RuntimeDriver port, not here -- this function only ever sees the
+    driver's neutral ``SessionSummary``/``SessionSlice`` shapes and applies
+    docket's own trace-event policy (redaction elsewhere, timeout handling,
+    event vocabulary) on top. See core/runtime_driver.py.
 
-    Phase 19 P19-7a: resolves ``edges.adapters.docket_runtime.default_driver()``
+    Resolves ``edges.adapters.docket_runtime.default_driver()``
     (``DocketDriver``, reading ``core/session.py``'s own storage) -- the same
-    cutover ``core/dispatch.py``'s hop execution made, and required for the
-    same reason: pod-dispatch hops now write turns through ``DocketDriver``,
-    so ingesting from the pre-cutover driver would silently see nothing new,
-    ever. That earlier driver was deleted outright in Phase 19 P19-7b.
+    driver ``core/dispatch.py``'s hop execution writes turns through, so
+    ingestion and hop execution always agree on where a session's turns live.
     """
     if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
         return

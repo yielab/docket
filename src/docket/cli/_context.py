@@ -82,9 +82,9 @@ def _context_show(agent_id: str, ws: Path) -> None:
     mem_count = sum(1 for _ in mem_dir.glob("*.md")) if mem_dir.is_dir() else 0
     activity = last_activity(agent_id)
 
-    # Phase 19 P19-7b: there is no daemon gateway log to tail any more; session
-    # size now reads docket's own durable per-session storage (core/session.py)
-    # for this agent's *current* session key, rather than a daemon JSONL file.
+    # There is no daemon gateway log to tail any more; session size reads
+    # docket's own durable per-session storage (core/session.py) for this
+    # agent's *current* session key, rather than a daemon JSONL file.
     session_size = "n/a"
     with contextlib.suppress(Exception):
         raw = store.read_json(_cfg.meta_path(agent_id))

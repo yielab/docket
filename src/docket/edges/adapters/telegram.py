@@ -1,10 +1,10 @@
-"""Telegram Bot API adapter (ROADMAP Phase 19 P19-8 / D-19).
+"""Telegram Bot API adapter.
 
 The **only** module in docket that knows the Telegram Bot API's wire format --
 ``getUpdates`` (long-poll) and ``sendMessage``. Stdlib ``urllib`` only, zero
-new dependencies -- the same precedent ``edges/adapters/llm.py`` (P19-1) and
-``edges/adapters/fetch.py`` (P19-11) already set for renting a protocol
-without renting a vendor SDK (D-19: "docket rents protocols only").
+new dependencies -- the same precedent ``edges/adapters/llm.py`` and
+``edges/adapters/fetch.py`` already set for renting a protocol without
+renting a vendor SDK ("docket rents protocols only").
 
 Everything above this module speaks the typed ``TelegramUpdate`` shape;
 nothing outside this file ever builds a Telegram URL, reads a Telegram JSON
@@ -177,9 +177,9 @@ def get_updates(
 def send_message(token: str, chat_id: str, text: str, *, request_timeout: float = 15) -> bool:
     """Send a plain-text reply. Returns ``False`` (never raises) on any failure.
 
-    No inline keyboards, no Markdown/HTML parse mode, no rich UI -- out of
-    scope for this card (approvals need a reply a human can read, not a UI
-    kit). ``chat_id`` is deliberately required non-empty: sending is only
+    No inline keyboards, no Markdown/HTML parse mode, no rich UI --
+    deliberately out of scope (approvals need a reply a human can read, not
+    a UI kit). ``chat_id`` is deliberately required non-empty: sending is only
     ever called with the chat_id an inbound update just arrived on.
     """
     if not token or not chat_id:

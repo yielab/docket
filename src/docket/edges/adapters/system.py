@@ -7,40 +7,35 @@ Design notes:
     and degrades gracefully so a missing binary never crashes a command.
   * Functions are module-level and typed so callers can monkeypatch them in tests.
 
-G-3 (ROADMAP Phase 15): this module imports ``docket.core.security`` for its
-pure, side-effect-free command classifier (``match_high_risk`` -- no I/O of
-its own). ``run_verify_cmd`` is the one function here that launches a fully
-free-form, operator-composed command string through a real shell
-(``shell=True``) -- every other function in this module runs a fixed argv
-list it built itself, which is not a comparable classification target (see
-``security-gates.spec.md``'s "Docket-launched process classification"
-section for the full scoping rationale).
+This module imports ``docket.core.security`` for its pure, side-effect-free
+command classifier (``match_high_risk`` -- no I/O of its own). ``run_verify_cmd``
+is the one function here that launches a fully free-form, operator-composed
+command string through a real shell (``shell=True``) -- every other function
+in this module runs a fixed argv list it built itself, which is not a
+comparable classification target (see ``security-gates.spec.md``'s
+"Docket-launched process classification" section for the full scoping
+rationale).
 
-P19-9 (ROADMAP Phase 19): the "exec sandbox" section below adds bwrap
-alongside docker as a second, weaker-but-dependency-free jail backend for
-``edges/adapters/toolbox.py``'s ``run_bash``. Detection (``sandbox_availability``)
-and argv construction (``bwrap_argv``/``docker_run_argv``) are mechanism only,
-the same "no policy vocabulary" split ``core.security``'s classifier already
-has from this module -- *whether* to ask for a jail is a decision made by
+The "exec sandbox" section below adds bwrap alongside docker as a second,
+weaker-but-dependency-free jail backend for ``edges/adapters/toolbox.py``'s
+``run_bash``. Detection (``sandbox_availability``) and argv construction
+(``bwrap_argv``/``docker_run_argv``) are mechanism only, the same "no policy
+vocabulary" split ``core.security``'s classifier already has from this
+module -- *whether* to ask for a jail is a decision made by
 ``core/tools.py``'s ``ToolContext.sandbox`` (opt-in, default ``"off"``), never
 by this module.
 
-Phase 19 P19-7b: the daemon's gateway systemd unit (``openclaw-gateway.service``)
-and the ``service_manager``/``service_hint``/``systemctl_*`` helpers that only
-ever existed to start/restart/probe it are deleted along with the daemon --
-there is nothing left to manage. ``gateway_active`` stays as an honest,
+There is no daemon and no gateway process any more, so there is nothing left
+to start, restart, or probe. ``gateway_active`` stays as an honest,
 always-``False`` stub (see its docstring) -- ``docket snapshot`` and the
 ``serve`` read API (``specs/data/serve-read-api.spec.md``) still expose a
 ``gateway`` field to external consumers, and this keeps that field truthful
-without a breaking API change.
-
-CL-C (ROADMAP Phase 19, wave 14 dead-code sweep): ``restart_gateway()`` and
-its ``RestartResult``/``RestartStatus`` types were deleted outright, not kept
-as a stub. Unlike ``gateway_active``, nothing external ever observed
-``restart_gateway``'s return value -- every one of its ~15 call sites across
-``cli/`` was pure ceremony (call it, render the result, which prints nothing
-for the only status a real call could ever produce). A no-op that many sites
-ceremonially call is exactly the dead code D-19's clean break forbids.
+without a breaking API change. ``restart_gateway()`` was removed outright
+rather than kept as a matching stub: unlike ``gateway_active``, nothing
+external ever observed its return value, so every call site was pure
+ceremony (call it, render a result that prints nothing for the only status a
+real call could ever produce) -- a no-op that many sites ceremonially call
+is dead code, not a truthful stub worth keeping.
 """
 
 from __future__ import annotations
@@ -89,9 +84,8 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
 
     Returns ``None`` on any failure (binary missing, timeout, no match) --
     ``core/secrets.py``'s keyring backend treats that as "no value", never
-    an error. This is the one shell-out `core/secrets.py` needs (D-13's
-    scope: every shell-out funnels through ``edges/adapters/``, never
-    ``core/`` directly).
+    an error. This is the one shell-out `core/secrets.py` needs -- every
+    shell-out funnels through ``edges/adapters/``, never ``core/`` directly.
     """
     try:
         result = subprocess.run(
@@ -106,7 +100,7 @@ def secret_tool_lookup(service: str, key: str) -> str | None:
 
 
 def gateway_active() -> bool:
-    """No daemon gateway exists any more (Phase 19 P19-7b removed it).
+    """No daemon gateway exists any more.
 
     Kept as a stable, always-``False`` call site so every existing caller
     (``cli/__init__.py``'s status line, ``cli/_doctor.py``, ``serve.py``'s
@@ -127,8 +121,8 @@ def docker_ps() -> list[str]:
     Degrades gracefully: a missing binary, an unreachable daemon, or a timeout
     all yield an empty list rather than raising.
 
-    2026-07-30 (CL-2 dead-code register): no production caller yet. Kept
-    (rather than deleted) because Docker workspace isolation is a live,
+    No production caller yet. Kept (rather than deleted) because Docker
+    workspace isolation is a live,
     opt-in feature (`docket gates isolate`) and this is the obvious primitive
     for a future `docket doctor`/`docket gates isolate status` check that
     confirms an isolated agent's container is actually running, not just
@@ -152,9 +146,9 @@ def docker_ps() -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-# ── exec sandbox (ROADMAP Phase 19 P19-9) ───────────────────────────────────
+# ── exec sandbox ─────────────────────────────────────────────────────────────
 #
-# `edges/adapters/toolbox.py`'s `run_bash` has no jail of its own -- P19-3's
+# `edges/adapters/toolbox.py`'s `run_bash` has no jail of its own -- the
 # gate decides whether a command may run at all, not what it can reach once
 # it does. These functions are the mechanism half of that: detecting which
 # jail backend is actually usable on this host (not just installed) and
@@ -384,16 +378,15 @@ def run_verify_cmd(cmd: str, cwd: str, timeout: int = 120) -> tuple[bool, str]:
     trace. The command is run with ``shell=True`` so pipelines and shell builtins
     work (e.g. ``uv run pytest && uv run ruff check .``).
 
-    G-3: *cmd* is classified against ``core.security``'s built-in high-risk
+    *cmd* is classified against ``core.security``'s built-in high-risk
     action classes (money-movement / prod-deploy / secret-access) BEFORE the
     subprocess is ever started -- a match fails closed, so the shell command is
     never run. Refusing outright, rather than routing to an approval prompt, is
     the only honest posture available here: this call is synchronous, inside a
-    dispatch hop, with no interactive approver reachable to answer. It is the
-    same posture the daemon's own ``askFallback: deny`` takes when nobody
-    answers a live prompt. ``cwd``/``timeout`` are never classified -- they are
-    not operator-composed shell text, just plumbing for where/how long the
-    already-cleared command runs.
+    dispatch hop, with no interactive approver reachable to answer it.
+    ``cwd``/``timeout`` are never classified -- they are not operator-composed
+    shell text, just plumbing for where/how long the already-cleared command
+    runs.
     """
     risk_cls = _sec.match_high_risk(cmd)
     if risk_cls is not None:
@@ -475,10 +468,9 @@ def git_current_branch(cwd: str) -> str:
 
     Degrades gracefully on a missing binary, a non-repo directory, or a timeout.
 
-    ROADMAP Phase 16 follow-up W-5b: this is now the ``diff_ref`` producer for
-    an Implementer hop's ``HandoffArtifact`` (`core/dispatch.py`'s
-    ``_implementer_diff_probe`` calls it against the resolved member cwd) —
-    the near-term caller the 2026-07-30 CL-2 dead-code note anticipated.
+    This is the ``diff_ref`` producer for an Implementer hop's
+    ``HandoffArtifact`` (`core/dispatch.py`'s ``_implementer_diff_probe``
+    calls it against the resolved member cwd).
     """
     if not git_available():
         return ""
@@ -515,9 +507,9 @@ def git_is_repo(cwd: str) -> bool:
 def git_changed_files(cwd: str) -> list[str]:
     """Return paths with uncommitted changes in `cwd` (staged, unstaged, untracked).
 
-    ROADMAP Phase 16 follow-up W-5b: the `files_changed` producer for an
-    Implementer hop's `HandoffArtifact` (`core/dispatch.py`'s
-    `_implementer_diff_probe`). Uses `git status --porcelain` rather than a
+    The `files_changed` producer for an Implementer hop's `HandoffArtifact`
+    (`core/dispatch.py`'s `_implementer_diff_probe`). Uses `git status
+    --porcelain` rather than a
     diff against a fixed base ref, so it reflects the real working-tree state
     regardless of whether the Implementer has committed anything this hop —
     the same "check the tree, not an assumption about it" spirit as

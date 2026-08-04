@@ -1,4 +1,4 @@
-"""docket roles — inspect and manage declarative role archetypes (ROADMAP Phase 16 W-6).
+"""docket roles — inspect and manage declarative role archetypes.
 
   docket roles list                 List every registered archetype (built-in,
                                      starter library, user-defined)

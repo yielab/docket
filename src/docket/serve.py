@@ -19,29 +19,29 @@ token below). A randomly-generated Bearer token is required on every
 token); it is printed at startup by default, or written to a 0600 file via
 ``--token-file``/``token_file=`` when stdout isn't a safe place for it (e.g. a
 systemd unit's journal). The approval endpoints reject all requests without a
-valid token — compared with `secrets.compare_digest` (Phase 18 G-6), not
-`==`, before touching approval state.
+valid token — compared with `secrets.compare_digest`, not `==`, before
+touching approval state.
 
-R-3 (D-17): every dispatch this server triggers — webhook, due schedule, or the
+Every dispatch this server triggers — webhook, due schedule, or the
 periodic sweep — is recorded in the ``core.runs`` registry *before* it starts
 and folded to a terminal state when it finishes, so an operator can always
 distinguish "done", "failed", and "never ran" via ``docket runs show`` /
 ``GET /runs/<id>``. No dispatch call site in this module silently discards an
-exception any more (no bare ``contextlib.suppress(Exception)`` around
-dispatch) — see ``core/runs.py``'s ``execute()``.
+exception (no bare ``contextlib.suppress(Exception)`` around dispatch) — see
+``core/runs.py``'s ``execute()``.
 
-G-1: ``POST /approvals/<token>`` genuinely resumes or kills a pod-dispatch task the
+``POST /approvals/<token>`` genuinely resumes or kills a pod-dispatch task the
 require_approval gate stopped, not just the approval record's own state — see
 ``core/dispatch.py``'s ``resolve_waiting_approval`` (a no-op for any other approval).
 
-W-4: ``POST /dispatch/<project>``'s JSON body — a plain ``{name: value}`` object,
+``POST /dispatch/<project>``'s JSON body — a plain ``{name: value}`` object,
 ``{}`` if the body is omitted — is resolved against the pod's effective pipeline's
 declared ``variables`` (``core.pipeline.resolve_variables``) before the run record
 is even created; a missing *required* variable is rejected with 400 and never
 reaches the run registry. The resolved namespace is persisted on the run record
 itself (``variables``), so ``docket runs show <id>``/``GET /runs/<id>`` can answer
 "what params did this dispatch actually see". Due-schedule dispatch (``_check_schedules``)
-now also recognizes a standard 5-field cron expression, not just ``@every``/``HH:MM``
+also recognizes a standard 5-field cron expression, not just ``@every``/``HH:MM``
 — see ``core/schedule.py``.
 """
 
@@ -193,22 +193,22 @@ def _esc(s: Any) -> str:
     return str(s).replace("\\", "").replace('"', "")
 
 
-# ── guardrail + loop metrics (P20-2) ────────────────────────────────────────
+# ── guardrail + loop metrics ─────────────────────────────────────────────────
 #
 # Denial rate, approvals granted/denied/timed-out by channel, policy-hit
 # counts by policy id, tool-call rate and turn latency — the numbers an
-# operator opens after an incident (ROADMAP Phase 20, P20-2). `docket serve`
-# is not a long-lived process holding counters in memory (a restart would
-# silently zero them), so every number here is recomputed fresh, on every
-# scrape, from the same durable records `docket trace`/`docket audit` already
-# show an operator — no second counter store, nothing that can drift from
-# what's on disk, and nothing that is lost on restart.
+# operator opens after an incident. `docket serve` is not a long-lived
+# process holding counters in memory (a restart would silently zero them),
+# so every number here is recomputed fresh, on every scrape, from the same
+# durable records `docket trace`/`docket audit` already show an operator —
+# no second counter store, nothing that can drift from what's on disk, and
+# nothing that is lost on restart.
 #
-# Telemetry stays separate from the audit log itself (ROADMAP Phase 20): this
-# module only *reads* trace JSONL and the audit log to compute counters, it
-# never writes through them and never routes a metric back into either.
+# Telemetry stays separate from the audit log itself: this module only
+# *reads* trace JSONL and the audit log to compute counters, it never writes
+# through them and never routes a metric back into either.
 
-# core/tools.py's `_audit_tool_decision` (P20-2) embeds the raw pre_tool_call
+# core/tools.py's `_audit_tool_decision` embeds the raw pre_tool_call
 # policy hit as a fixed `policy_id='...' policy_action='...'` pair right
 # after the agent/role/project prefix, specifically so this can be parsed
 # without scraping the free-text reason that follows it.
@@ -234,7 +234,7 @@ _APPROVAL_AUDIT_ACTIONS: dict[str, str] = {"approval.grant": "granted", "approva
 
 @dataclass
 class LoopMetrics:
-    """Guardrail + loop counters (P20-2), aggregated fresh on every scrape.
+    """Guardrail + loop counters, aggregated fresh on every scrape.
 
     ``tool_calls``: decision ("allow"/"ask"/"deny") -> count, from every
     ``tool_result`` trace event core/agent_loop.py emits for each
@@ -246,8 +246,8 @@ class LoopMetrics:
     ``policy_hits``: (policy_id, hook, action) -> count, merged from two
     sources -- the structured ``guardrail_check`` trace event
     (pre_input/pre_output; core/dispatch.py) and the enriched
-    ``policy_id=``/``policy_action=`` fields P20-2 added to core/tools.py's
-    tool-gate audit entries (pre_tool_call). ``hook``/``action`` are both
+    ``policy_id=``/``policy_action=`` fields core/tools.py's tool-gate audit
+    entries carry (pre_tool_call). ``hook``/``action`` are both
     small, code-controlled vocabularies (3 hooks, 4 policy actions);
     ``policy_id`` is bounded by the operator's own installed policy files.
 
@@ -257,8 +257,9 @@ class LoopMetrics:
     callers), outcome is "granted"/"denied".
 
     ``turn_duration_seconds_sum``/``_count``: a Prometheus-conventional
-    summary pair (no invented percentiles -- see the P20-2 report for why),
-    built from every ``session_start``/``session_end`` bracket found in any
+    summary pair (no invented percentiles -- this module reports only
+    sum/count, never a fabricated quantile), built from every
+    ``session_start``/``session_end`` bracket found in any
     trace file, fleet-wide -- the same terminal-session concept
     `docket metrics`/`cli/_metrics.py` already computes per-project, just
     unwindowed and summed across every project rather than one.
@@ -392,11 +393,11 @@ def render_metrics() -> str:
         "docket_approvals_pending_total " + str(pending),
     ]
 
-    # P20-2: guardrail + loop metrics -- see LoopMetrics' docstring for where
-    # each number is sourced from.
+    # Guardrail + loop metrics -- see LoopMetrics' docstring for where each
+    # number is sourced from.
     #
-    # Durability caveat (not solved here -- P20-3 owns trace/audit retention,
-    # DEFERRED per ROADMAP Phase 20 D-24): the audit-log-derived halves of
+    # Durability caveat (not solved here -- trace/audit retention is a known,
+    # deliberately deferred gap): the audit-log-derived halves of
     # these counters -- all of docket_approvals_total, and the pre_tool_call
     # slice of docket_policy_hits_total -- see only $DOCKET_HOME/audit.log's
     # CURRENT generation. core/audit.py rotates that file to a single backup
@@ -410,8 +411,8 @@ def render_metrics() -> str:
     # docket_policy_hits_total, and the turn-duration pair below) has no such
     # gap -- core/trace.py's sweep_all() only appends a synthetic
     # session_end to a stale-open trace, it never deletes a trace file -- but
-    # that means trace storage grows without bound instead (the "no trace
-    # retention policy" gap ROADMAP Phase 20 already names).
+    # that means trace storage grows without bound instead (a separate,
+    # known "no trace retention policy" gap).
     loop = _loop_metrics()
 
     lines += [
@@ -488,7 +489,7 @@ def _check_schedules(now_ts: float) -> None:
     timestamp used to decide "due" is read from — and, once a project fires,
     written back into — that same file (``core.schedule.load_last_run`` /
     ``record_last_run``) rather than an in-memory dict, so a ``docket serve``
-    restart does not re-fire every schedule on its first sweep (R-3).
+    restart does not re-fire every schedule on its first sweep.
 
     Each due project gets a run record (source ``"schedule"``) created up
     front, then is dispatched in a daemon thread via ``core.runs.execute`` so
@@ -511,8 +512,8 @@ def _check_schedules(now_ts: float) -> None:
         record = _runs.create_run("schedule", project)
 
         def _run(proj: str = project, run_id: str = record["id"]) -> None:
-            # R-2's process-wide timeout knobs (unset = no override) run inside
-            # R-3's run record, so a scheduled dispatch is both configurable and
+            # Process-wide timeout knobs (unset = no override) run inside the
+            # run record, so a scheduled dispatch is both configurable and
             # observable rather than fire-and-forget.
             _runs.execute(
                 run_id,
@@ -561,7 +562,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
             record = _runs.create_run("sweep", project)
 
             def _dispatch_one(proj: str = project) -> list[_dispatch.TaskResult]:
-                # R-2 timeout knobs inside R-3's per-pod run record.
+                # Timeout knobs inside this pod's per-pod run record.
                 return _dispatch.dispatch_pod(
                     proj,
                     turn_timeout=cfg.DISPATCH_TURN_TIMEOUT_S,
@@ -581,13 +582,13 @@ def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) ->
         _run_sweeps(dispatch)
 
 
-# P19-8: the Telegram long-poll loop. `core.telegram.poll_once` already never
-# raises for an unconfigured bot or a network failure (it returns a typed
-# summary) -- the `except Exception` below is a last-resort backstop for a
-# genuinely unexpected bug in that call chain, and it prints rather than
-# swallows (D-17: `contextlib.suppress(Exception)` around dispatch is
-# banned; a delegate action reaching `core.dispatch.enqueue_task` is exactly
-# that "dispatch" this loop must not hide a failure from).
+# The Telegram long-poll loop. `core.telegram.poll_once` never raises for an
+# unconfigured bot or a network failure (it returns a typed summary) -- the
+# `except Exception` below is a last-resort backstop for a genuinely
+# unexpected bug in that call chain, and it prints rather than swallows
+# (a bare `contextlib.suppress(Exception)` around dispatch is banned; a
+# delegate action reaching `core.dispatch.enqueue_task` is exactly that
+# "dispatch" this loop must not hide a failure from).
 _TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
 _TELEGRAM_ERROR_BACKOFF_S = 5
 
@@ -660,7 +661,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
             return False
         auth = self.headers.get("Authorization", "")
         expected = f"Bearer {self.serve_token}"
-        # Timing-safe compare (Phase 18 G-6) — a plain `==` short-circuits on
+        # Timing-safe compare — a plain `==` short-circuits on
         # the first mismatched byte, leaking token-length/prefix information
         # to an attacker who can measure response latency.
         return secrets.compare_digest(auth, expected)
@@ -745,7 +746,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
                     approval.approval_grant(approval_token, channel="http")
                 else:
                     approval.approval_deny(approval_token, channel="http")
-                # G-1: if this token gated a dispatch task, genuinely resume
+                # If this token gated a dispatch task, genuinely resume
                 # (grant) or kill (deny) it — see core/dispatch.py's
                 # resolve_waiting_approval. A no-op for any other approval.
                 _dispatch.resolve_waiting_approval(approval_token, decision)
@@ -771,12 +772,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
             from docket.core import pipeline as _pipeline
             from docket.core import runs as _runs
 
-            # W-4: the request body (a plain {name: value} JSON object) is the
+            # The request body (a plain {name: value} JSON object) is the
             # webhook's params — bound into the pod's effective pipeline's
             # declared `variables` namespace (core.pipeline.resolve_variables)
             # before anything is dispatched. A missing body (no Content-Length)
-            # is the same as `{}`, matching the pre-W-4 no-params behavior
-            # exactly.
+            # is the same as `{}`, so an omitted body still behaves as a
+            # no-params dispatch.
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -794,7 +795,7 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error(str(exc), 400)
                 return
 
-            # R-3 (D-17): the run record is created — and its id handed back to
+            # The run record is created — and its id handed back to
             # the caller — BEFORE any dispatch work is attempted. The actual
             # pipeline still runs async (this endpoint must not block on a real
             # agent turn), but its outcome always lands in the run registry
@@ -858,17 +859,17 @@ def run_serve(
     *interval* seconds in a daemon thread. Runs until interrupted.
 
     ``telegram``, when set (``docket serve --telegram``), also starts the
-    docket-owned Telegram long-poll loop (ROADMAP Phase 19 P19-8) in its own
-    daemon thread — opt-in, matching ``dispatch``, since it is a real
-    externally-reachable channel once a bot token is configured. Degrades to
-    an idle, periodically-retried wait if no ``TELEGRAM_BOT_TOKEN`` is
-    stored (``docket keys add TELEGRAM_BOT_TOKEN``) rather than failing to
-    start — see ``core/telegram.py``.
+    docket-owned Telegram long-poll loop in its own daemon thread — opt-in,
+    matching ``dispatch``, since it is a real externally-reachable channel
+    once a bot token is configured. Degrades to an idle, periodically-retried
+    wait if no ``TELEGRAM_BOT_TOKEN`` is stored (``docket keys add
+    TELEGRAM_BOT_TOKEN``) rather than failing to start — see
+    ``core/telegram.py``.
 
     ``token_file``, when given, writes the bearer token required by
     /approvals and /dispatch to that path (0600 perms) instead of printing it
-    to stdout (Phase 18 G-6) — use this when stdout may land somewhere less
-    private than a terminal, e.g. a systemd unit's journal.
+    to stdout — use this when stdout may land somewhere less private than a
+    terminal, e.g. a systemd unit's journal.
     """
     actual_port = DEFAULT_PORT if port is None else port
 

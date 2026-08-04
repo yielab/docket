@@ -362,7 +362,7 @@ def _delete_pod(project: str, members: list[str]) -> int:
         if ok:
             ui.success(f"Removed {mid}")
         else:
-            ui.warn(f"{mid}: daemon delete reported: {msg} (workspace cleaned)")
+            ui.warn(f"{mid}: fleet deregistration reported: {msg} (workspace cleaned)")
     _conv.save(reg)
 
     # Free pod runtime resources (port range + scratch dir) after all members gone.
@@ -445,9 +445,8 @@ def cmd_wire(
     if existing:
         ui.warn(f"Currently wired to: {existing}")
 
-    # Phase 19 P19-7b: log-based Telegram group discovery (`scan_telegram_groups`)
-    # depended on the daemon's gateway log, which no longer exists. Every
-    # channel — telegram included — is now manual entry only.
+    # There is no daemon gateway log to scan for a group id automatically.
+    # Every channel — telegram included — is manual entry only.
     ui.dim(f"Enter the peer/group ID from your {channel} setup.")
     ui.console.print()
     peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
@@ -458,7 +457,7 @@ def cmd_wire(
     _fleet.upsert_binding(aid, peer_id, channel)
     ui.success(f"Binding: {aid} ← {channel} group {peer_id}")
     if channel == "telegram":
-        # P19-8: docket owns its own bot now (`docket serve --telegram`, once
+        # docket owns its own bot (`docket serve --telegram`, once
         # `docket keys add TELEGRAM_BOT_TOKEN` is set) — this binding is the
         # ENTIRE authorization boundary for it: anyone who can post to this
         # chat can /approve, /deny, /status, or /delegate as '{aid}' the
@@ -613,7 +612,7 @@ def cmd_profile(
         raise typer.Exit(1)
 
     if resume:
-        # R-5: the only writer that CLEARS an auto-pause (`core/dispatch.py`'s
+        # The only writer that CLEARS an auto-pause (`core/dispatch.py`'s
         # `_pause_lead_for_budget` is the only one that SETS it). Mirrors the
         # `--budget` branch below: if the resumed agent is a pod's Lead, also
         # unblock its budget-blocked tasks — a pause with no way to un-stick
@@ -640,7 +639,7 @@ def cmd_profile(
             raise typer.Exit(1) from None
         _fleet.meta_set(aid, "budgetUsd", budget)
         audit_log("profile.budget", f"{aid}=${budget}")
-        # R-1: a pod-wide budget change is one of the two sanctioned ways a
+        # A pod-wide budget change is one of the two sanctioned ways a
         # budget-`blocked` task re-enters `pending` (the other is an explicit
         # `docket pod <p> queue --retry <task-id>`) — a blocked task never
         # retries on its own. Only the Lead owns the pod's cap (dispatch.pod_budget
@@ -872,7 +871,7 @@ def cmd_models(ctx: typer.Context) -> None:
 
 
 def _cmd_models_provider(rest: list[str]) -> None:
-    """Wire `docket models provider add <name> <base-url> [--opts]` (T5.6)."""
+    """Wire `docket models provider add <name> <base-url> [--opts]`."""
     from docket.cli import _provider
     from docket.core import provider as _prov
 
@@ -965,7 +964,7 @@ def _cmd_models_list() -> None:
     ui.console.print("Change: docket models set <role|default> <provider/model>")
     # markup=False: the literal [anthropic|...] must not be parsed as Rich
     # markup. Derived from KNOWN_PRESETS so a new preset can't silently go
-    # missing from this line the way `local` (Phase 18 L-2) used to.
+    # missing from this line the way `local` once did.
     ui.console.print(
         f"Preset: docket models preset [{'|'.join(_mp.KNOWN_PRESETS)}]",
         markup=False,
@@ -1055,7 +1054,7 @@ def _cmd_models_preset(preset: str | None) -> None:
     updates: dict[str, str] = {
         "default": std,
         # Persist the preset's own economy/standard/premium as the rank
-        # anchors too (Phase 18 L-2) — otherwise a non-Anthropic preset still
+        # anchors too — otherwise a non-Anthropic preset still
         # left Claude ids in the "rank anchors" line `docket models` prints.
         "rank.economy": econ,
         "rank.standard": std,
@@ -1262,10 +1261,9 @@ def cmd_logs(agent_id: str | None = typer.Argument(None)) -> None:
     else:
         ui.console.print("  [dim]No memory logs yet.[/dim]")
 
-    # Phase 19 P19-7b: this used to also tail the daemon's gateway log for a
-    # channel-bound agent's group traffic. There is no daemon and no gateway
-    # log any more, so that section is gone rather than faked; memory logs
-    # above remain the durable, docket-owned activity record.
+    # There is no daemon gateway log to tail for a channel-bound agent's
+    # group traffic; memory logs above remain the durable, docket-owned
+    # activity record.
     ui.console.print()
 
 
@@ -1551,9 +1549,9 @@ def cmd_serve(
     --dispatch, each refresh also runs every pod's queue through the
     Lead→Implementer→Reviewer→Tester pipeline. Each hop is a real agent
     turn and is budget-gated; leave it off for a read-only monitor. With
-    --telegram, also polls docket's own Telegram bot (ROADMAP Phase 19
-    P19-8) so a chat bound via `docket wire` can /approve, /deny, /status,
-    or /delegate — idle until a bot token is stored.
+    --telegram, also polls docket's own Telegram bot so a chat bound via
+    `docket wire` can /approve, /deny, /status, or /delegate — idle until a
+    bot token is stored.
     """
     from docket.serve import run_serve
 

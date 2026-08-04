@@ -37,7 +37,7 @@ from docket.edges.adapters import system as _sys
 # Bump when the pod-member templates change (doctor flags older members).
 POD_TEMPLATE_VERSION = 2
 
-# R-6: a verify command is stored and later run with shell=True (system.py's
+# A verify command is stored and later run with shell=True (system.py's
 # run_verify_cmd) because real verify pipelines legitimately use `&&`/pipes/
 # redirects. This cap only bounds what gets persisted to .docket-meta.json and
 # executed — it is generous for any realistic single-line pipeline, not an
@@ -59,7 +59,7 @@ def _validate_verify_cmd(cmd: str) -> str:
     invocation the operator typed, never from agent or network input, and docket
     executes it as the operator when the pipeline later runs it. This validation
     only rejects control-character injection and bounds length; it does not
-    sandbox, parse, or otherwise interpret the command (that's the daemon/Docker
+    sandbox, parse, or otherwise interpret the command (that's the Docker
     isolation lane, out of scope here).
     """
     if "\x00" in cmd:
@@ -93,19 +93,19 @@ def _render_context(
     *,
     work_dir: str = "",
 ) -> dict[str, str]:
-    """Template variables for a pod member's SOUL.md/AGENTS.md (W-6 archetypes).
+    """Template variables for a pod member's SOUL.md/AGENTS.md archetype.
 
     Guaranteed, cross-archetype variables: ``project``, ``objective``,
-    ``codebase``, ``workDir`` (the card's documented set — always populated,
-    safe for a user-authored archetype to reference). The rest
+    ``codebase``, ``workDir`` (always populated, safe for a user-authored
+    archetype to reference). The rest
     (``memberId``/``sessionKey``/``role``/``stack``/``codebaseOrConfigured``/
     ``codebaseOrIt``/``requiredStartupFile``) are additional context docket's
     own built-in/starter archetypes rely on for exact legacy prose parity.
 
-    ``work_dir`` (ROADMAP Phase 16 W-7): the shared working directory for a
-    `workdir`-kind pod blueprint (research/content/ops) — mutually exclusive
-    with ``codebase``. Empty for every `codebase`-kind (including `software`)
-    pod, which keeps ``workDir`` resolving exactly as it did pre-W-7.
+    ``work_dir``: the shared working directory for a `workdir`-kind pod
+    blueprint (research/content/ops) — mutually exclusive with ``codebase``.
+    Empty for every `codebase`-kind (including `software`) pod, so ``workDir``
+    falls back to ``codebase`` (or the workspace dir) as usual.
     """
     return {
         "project": project,
@@ -131,12 +131,12 @@ def _member_soul(
     *,
     work_dir: str = "",
 ) -> str:
-    """Render a pod member's SOUL.md from its archetype's `soulTemplate` (W-6).
+    """Render a pod member's SOUL.md from its archetype's `soulTemplate`.
 
-    Byte-identical to the pre-W-6 hand-written per-role generator for the four
-    legacy roles (lead/implementer/reviewer/tester) — see
+    Byte-identical to the legacy hand-written per-role generator for the four
+    built-in roles (lead/implementer/reviewer/tester) — see
     `tests/python/test_w6_archetypes.py`. No role-specific branching lives
-    here any more; the prose is data in `core/archetypes.py`.
+    here; the prose is data in `core/archetypes.py`.
     """
     arch = _arch.load_registry().get(member.role)
     if arch is None:
@@ -157,7 +157,7 @@ def _member_tools(
     """TOOLS.md for an Implementer — includes allocated runtime resources.
 
     ``verify_cmd``, when set, is the mechanical gate ``dispatch.py`` runs after this
-    Implementer's hop (CD-2) — surfaced here so the agent can see what its work
+    Implementer's hop — surfaced here so the agent can see what its work
     must pass before signaling done.
     """
     port_end = port_range_start + port_range_count - 1
@@ -197,9 +197,9 @@ def _member_tools(
 
 
 def _member_agents(member: pod.PodMember, project: str) -> str:
-    """Render a pod member's AGENTS.md from its archetype's `agentsTemplate` (W-6).
+    """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`.
 
-    Byte-identical to the pre-W-6 hand-written generator for the four legacy
+    Byte-identical to the legacy hand-written generator for the four built-in
     roles. Section names matter: the turn loop re-injects the "Session
     Startup" and "Red Lines" H2 blocks after every compaction
     (readPostCompactionContext) — a custom archetype must keep those headings
@@ -297,9 +297,9 @@ def _write_member_workspace(
     if worktree_dir:
         meta["worktreeDir"] = worktree_dir
         meta["worktreeBranch"] = _worktree_branch(project, member.member_id)
-    # ROADMAP Phase 16 W-7: only stamped when this member was provisioned
-    # through a blueprint — a bare `_pod.build_pod(...)` call (every existing
-    # test, and any future non-blueprint caller) leaves meta exactly as before.
+    # Only stamped when this member was provisioned through a blueprint — a
+    # bare `_pod.build_pod(...)` call (every existing test, and any future
+    # non-blueprint caller) leaves meta exactly as before.
     if blueprint_name:
         meta["blueprint"] = blueprint_name
     if work_dir:
@@ -350,19 +350,19 @@ def provision_member(
     blueprint_name: str = "",
     budget_usd: float | None = None,
 ) -> tuple[bool, str]:
-    """Create one pod member's workspace + meta and register it with the daemon.
+    """Create one pod member's workspace + meta and register it in the fleet registry.
 
     Does NOT restart the gateway — the caller batches one restart per command.
     For repo pods, Implementers get a git worktree on a dedicated branch.
     Falls back to the flat docket workspace if git is unavailable or the
     codebase is not a git repo. ``verify_cmd`` (Implementer only) is the
-    mechanical gate `dispatch.py` runs after this member's hop (CD-2/FD-1).
+    mechanical gate `dispatch.py` runs after this member's hop.
 
-    ``work_dir``/``blueprint_name``/``budget_usd`` (ROADMAP Phase 16 W-7):
-    a `workdir`-kind pod blueprint's shared working directory, the name of
-    the blueprint that provisioned this member, and a default per-pod budget
-    cap applied to the Lead only — all no-ops (and no new meta keys) when
-    unset, which is every pre-W-7 caller.
+    ``work_dir``/``blueprint_name``/``budget_usd``: a `workdir`-kind pod
+    blueprint's shared working directory, the name of the blueprint that
+    provisioned this member, and a default per-pod budget cap applied to the
+    Lead only — all no-ops (and no new meta keys) when unset, which is every
+    non-blueprint caller.
     """
     worktree_dir, fallback_reason = _provision_worktree(member, project, codebase)
     if fallback_reason:
@@ -383,9 +383,8 @@ def provision_member(
         blueprint_name=blueprint_name,
         budget_usd=budget_usd,
     )
-    # Phase 19 P19-7b: registration is fleet.json only now -- there is no
-    # daemon CLI to shell out to (see cli/_agents.py's run_add for the
-    # identical reasoning).
+    # Registration is fleet.json only -- there is no daemon to register with
+    # (see cli/_agents.py's run_add for the identical reasoning).
     _fleet.add_agent(member.member_id, member.model, member.session_key, project_key)
     return (True, "")
 
@@ -444,7 +443,7 @@ def teardown_member(member_id: str) -> tuple[bool, str]:
     if worktree_dir and codebase:
         _ok, _err = _sys.git_worktree_remove(codebase, worktree_dir)
 
-    # Phase 19 P19-7b: no daemon to unregister from -- fleet.json only.
+    # No daemon to unregister from -- fleet.json only.
     with contextlib.suppress(Exception):
         _fleet.remove_agent(member_id)
     if ws.is_dir():
@@ -508,8 +507,8 @@ def build_pod(
     blueprint pod), since nothing would ever consume a reserved port range or
     scratch dir in that case.
 
-    ``work_dir``/``blueprint_name``/``budget_usd`` (ROADMAP Phase 16 W-7) are
-    passed straight through to every member — see ``provision_member``.
+    ``work_dir``/``blueprint_name``/``budget_usd`` are passed straight
+    through to every member — see ``provision_member``.
     """
     role_models, _, _ = _mp.load_registry()
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
@@ -553,13 +552,14 @@ def build_pod_from_blueprint(
     project_key: str = "default",
     roles: tuple[str, ...] | None = None,
 ) -> list[str]:
-    """Provision a fresh pod from a named blueprint (ROADMAP Phase 16 W-7).
+    """Provision a fresh pod from a named blueprint.
 
     ``location`` is interpreted per the blueprint's ``workspace_kind``: a
     `codebase` blueprint (e.g. `software`) treats it as the pod's codebase
     path — this is the path ``docket add`` with no ``--blueprint`` has always
-    passed, so `software` provisions byte-identically to the pre-W-7 default.
-    A `workdir` blueprint treats it as the pod's shared working directory,
+    passed, so `software` provisions identically to the original
+    Lead+Implementer default. A `workdir` blueprint treats it as the pod's
+    shared working directory,
     auto-provisioning one under ``config.pod_work_dir(project)`` (0700) when
     ``location`` is left empty.
 
@@ -749,7 +749,7 @@ def _pod_remove(project: str, extra: list[str]) -> None:
     if ok:
         ui.success(f"Removed {member_id}")
     else:
-        ui.warn(f"{member_id}: daemon delete reported: {msg} (workspace cleaned)")
+        ui.warn(f"{member_id}: fleet deregistration reported: {msg} (workspace cleaned)")
     audit_log("pod.remove", f"{project} member={member_id} role={role}")
     # Free runtime resources if this was the last implementer in the pod.
     if role == "implementer":
@@ -796,7 +796,7 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
     Usage: ``docket pod <project> set-verify <member-id> "<cmd>"``. Rewrites
     TOOLS.md so the Implementer sees the updated gate. The command is validated
     (no NUL/newline, length-capped — see ``_validate_verify_cmd``) and the change
-    is audit-logged (R-6): docket still runs it with ``shell=True`` once stored.
+    is audit-logged: docket still runs it with ``shell=True`` once stored.
     """
     if len(extra) < 2:
         ui.error('Usage: docket pod <project> set-verify <member-id> "<cmd>"')
@@ -857,7 +857,7 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
 def _pod_queue(project: str, extra: list[str]) -> None:
     """Show the pod's task queue, or ``queue --retry <task-id>`` to un-block one task.
 
-    A ``blocked`` task (budget cap reached) never retries on its own (R-1) —
+    A ``blocked`` task (budget cap reached) never retries on its own —
     ``--retry`` is the explicit, single-task way back to ``pending``; a pod-wide
     budget change (``docket profile <lead-id> --budget ...``) un-blocks the
     whole pod's queue instead.
@@ -900,7 +900,7 @@ def _pod_queue(project: str, extra: list[str]) -> None:
 def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
     """Parse ``[--resume] [--timeout SECONDS]`` for ``docket pod <p> dispatch``.
 
-    ``--timeout`` (R-2) overrides *both* the agent-turn and the verifyCmd
+    ``--timeout`` overrides *both* the agent-turn and the verifyCmd
     timeout for this one invocation — a blanket ad hoc override, independent of
     (and taking precedence over) the pod's own persisted Lead-meta
     ``turnTimeoutS``/``verifyTimeoutS``. Raises ValueError on a non-positive or
@@ -924,19 +924,19 @@ def _pod_dispatch(
 
     ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
     stale claim (it crashed mid-task) and continues each one from its last
-    persisted hop instead of restarting at hop 0 (R-1 crash recovery).
-    ``--timeout SECONDS`` (R-2) overrides both the agent-turn and verifyCmd
+    persisted hop instead of restarting at hop 0 (crash recovery).
+    ``--timeout SECONDS`` overrides both the agent-turn and verifyCmd
     timeout for this run only; unset, each falls back to the pod's own
     Lead-meta ``turnTimeoutS``/``verifyTimeoutS``, then ``DEFAULT_TIMEOUT``.
 
-    R-3: this invocation is recorded in the run registry (source ``"cli"``)
+    This invocation is recorded in the run registry (source ``"cli"``)
     like every other dispatch path — an exception here is no longer just a
     traceback, it is also visible afterwards via ``docket runs show``.
 
-    W-2: *spec* — when given (by ``docket pipeline run``, the only other
+    *spec* — when given (by ``docket pipeline run``, the only other
     caller) — is forwarded to ``dispatch_pod`` unchanged; ``None`` (every
-    ``docket pod <project> dispatch`` call) resolves the pod's zero-migration
-    default, identical to pre-W-2 behavior. This is the one shared
+    ``docket pod <project> dispatch`` call) resolves the pod's default
+    Lead→Implementer→Reviewer→Tester pipeline. This is the one shared
     implementation both CLI surfaces drive, so there is no second,
     drift-prone copy of this rendering logic.
     """
@@ -992,12 +992,9 @@ def _pod_dispatch(
         ui.dim(f"  Details: docket runs show {record['id']}")
         raise typer.Exit(1)
     for res in results:
-        # W-5 (dead-code register): `core/dispatch.py` used to `print()` this
-        # notice directly — a layering violation (`core/` never prints). It
-        # now returns the same information as a typed `HopResult.
-        # verification_skipped` flag; this is the one place that renders it,
-        # in the same "before the task's own summary line" order the old
-        # print produced.
+        # `core/dispatch.py` never prints (a layering violation) -- it returns
+        # this as a typed `HopResult.verification_skipped` flag instead; this
+        # is the one place that renders it, before the task's own summary line.
         for hop in res.hops:
             if hop.verification_skipped:
                 ui.dim(f"[dispatch] verification skipped — verifyCmd not set for {hop.member_id}")
@@ -1006,7 +1003,7 @@ def _pod_dispatch(
         elif res.status == "blocked":
             ui.warn(f"  [{res.task_id}] blocked — {res.reason}")
         elif res.status == "waiting_approval":
-            # G-1: waiting on a human decision is an expected pause, not a
+            # Waiting on a human decision is an expected pause, not a
             # failure — same warn-not-error treatment as a budget block.
             ui.warn(f"  [{res.task_id}] waiting_approval — {res.reason}")
         else:
@@ -1017,7 +1014,7 @@ def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
     """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]`` (or a trailing integer).
 
     ``--verify`` (Implementer only; ignored with a warning for other roles) sets the
-    mechanical verification gate `dispatch.py` runs after the new member's hop (CD-2).
+    mechanical verification gate `dispatch.py` runs after the new member's hop.
     """
     role: str | None = None
     count = 1

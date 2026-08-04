@@ -1,14 +1,12 @@
-"""The pipeline executor (ROADMAP Phase 16 W-2) and generalized gates (W-8).
+"""The pipeline executor and generalized gate resolution.
 
-Before this card, ``core/pipeline.py`` (W-1) defined the docket-native pipeline
-*format* with no executor, and ``core/archetypes.py`` (W-6) defined a role's
-``gateContract`` as descriptive data only — ``core/dispatch.py`` kept its own,
-independently hardcoded Reviewer/Tester verdict parsing and Implementer
-``verifyCmd`` gate, unaware of either. This module is what makes both of those
-load-bearing: it resolves a :class:`~docket.core.pipeline.PipelineSpec` against
-a pod's live roster into a concrete, deterministic :class:`ExecutionPlan`, and
-gate execution (:mod:`docket.core.dispatch`) now reads a step's *resolved* gate
-— its own declared ``gate``, or (only when the step omits one) its archetype's
+``core/pipeline.py`` defines the docket-native pipeline *format*;
+``core/archetypes.py`` defines a role's ``gateContract`` as descriptive data.
+This module is what makes both load-bearing: it resolves a
+:class:`~docket.core.pipeline.PipelineSpec` against a pod's live roster into
+a concrete, deterministic :class:`ExecutionPlan`, and gate execution
+(:mod:`docket.core.dispatch`) reads a step's *resolved* gate — its own
+declared ``gate``, or (only when the step omits one) its archetype's
 ``gateContract`` — instead of branching on a hardcoded role name.
 
 This module is deliberately **pure and dispatch-independent** — no filesystem
@@ -17,8 +15,8 @@ imports *this* module (a one-way dependency); the reverse would be a cycle,
 since ``dispatch.py``'s hop loop is what actually calls back into this
 module's :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
 :func:`run_group` to walk a spec. ``docket pipeline plan`` renders directly
-from :func:`resolve_plan` too — the same function the real executor calls,
-per ROADMAP's explicit ban on a second, drift-prone pretty-printer.
+from :func:`resolve_plan` too — the same function the real executor calls, so
+there is never a second, drift-prone pretty-printer.
 
 Determinism contract (test-pinned, see ``tests/python/test_w2_orchestrator.py``):
 :func:`resolve_plan` is a pure function of ``(spec, roster, registry)`` — same
@@ -132,7 +130,7 @@ def _gate_from_contract(gc: _archetypes.GateContract) -> _pipeline.Gate | None:
 def resolve_gate(
     step: _pipeline.Step, registry: _archetypes.ArchetypeRegistry
 ) -> _pipeline.Gate | None:
-    """The gate a step actually runs under (W-8's generalization point).
+    """The gate a step actually runs under.
 
     A step's own declared ``gate`` always wins. Only when it omits one does
     this fall back to the resolved archetype's ``gateContract`` — looked up
@@ -252,11 +250,11 @@ def parse_verdict(gate: _pipeline.VerdictGate, output: str) -> str | None:
     """First non-blank line of *output* matched against *gate*.pattern.
 
     Returns the normalized (lowercased unless ``case_sensitive``) marker
-    value on a match, or ``None`` if unparseable — generalizes
-    ``core/dispatch.py``'s pre-W-8 ``_parse_reviewer_verdict``/
-    ``_parse_tester_verdict`` to an arbitrary pattern/marker vocabulary.
-    Exactly one line is ever consulted (the first non-blank one); a
-    non-match there is unparseable, never a reason to keep scanning.
+    value on a match, or ``None`` if unparseable — a single generic parser
+    for any archetype's marker vocabulary, rather than separate hardcoded
+    regexes per role. Exactly one line is ever consulted (the first
+    non-blank one); a non-match there is unparseable, never a reason to
+    keep scanning.
     """
     flags = 0 if gate.case_sensitive else re.IGNORECASE
     compiled = re.compile(gate.pattern, flags)
@@ -283,8 +281,9 @@ DEFAULT_MAX_PARALLEL_WORKERS = 4
 
 # Trace writes from concurrent group children land on the same per-task
 # tracefile (one session id per task) — core/trace.py's append is not itself
-# filelocked (it is exempt from edges/store.py's D-12 rule as an append-only
-# log), so concurrent same-file writers need this to stay non-interleaved.
+# filelocked (it writes JSONL directly rather than through the store.py
+# single-writer chokepoint, since appends are line-independent), so
+# concurrent same-file writers need this to stay non-interleaved.
 trace_write_lock = threading.Lock()
 
 
