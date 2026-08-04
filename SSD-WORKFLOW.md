@@ -21,10 +21,10 @@ docket/
 │   ├── functional/                # Feature specifications
 │   │   ├── agent-lifecycle.spec.md
 │   │   ├── session-scoping.spec.md
-│   │   └── workflow.spec.md
+│   │   └── pipeline-format.spec.md
 │   ├── api/                      # Interface contracts
 │   │   ├── cli-interface.spec.md
-│   │   └── openclaw-api.spec.md
+│   │   └── mcp-server.spec.md
 │   ├── data/                     # Data structures
 │   │   └── workspace-structure.spec.md
 │   ├── acceptance/               # User stories & criteria
@@ -129,8 +129,9 @@ uv run pytest tests/python/test_new_feature.py
 ### 4. Implementation Phase
 
 Now implement to make tests pass. Commands are Typer functions in `src/docket/cli/`; domain
-logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket JSON, the ACL
-`edges/adapters/openclaw.py` for OpenClaw state, `edges/adapters/system.py` for shell-outs).
+logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket JSON,
+`edges/adapters/llm.py` for the model endpoint, `edges/adapters/mcp_client.py` for MCP servers,
+`edges/adapters/system.py` for shell-outs to `docker`/`git`).
 
 ```python
 # src/docket/cli/__init__.py  (or a cli/_<group>.py module for a larger group)

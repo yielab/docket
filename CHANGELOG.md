@@ -16,6 +16,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that answered "what is this project about" with their own pod/workspace metadata.
 - `docket doctor` now heals any agent whose startup contract is **missing or stale** (detected via
   an embedded contract-version marker), not just absent.
+- **docket takes the runtime (Phase 19, decision D-19).** docket now owns the whole agent turn,
+  not just what happens between turns. `core/llm.py` + `edges/adapters/llm.py` (P19-1) is a
+  zero-new-dependency OpenAI-compatible chat-completions client (stdlib `urllib`) — any endpoint
+  that speaks that wire format works, hosted or local. `core/tools.py` (P19-2/P19-3) is the gated
+  tool registry and the single chokepoint every tool call now passes through (an AST test
+  enforces it), with `pre_input`/`pre_tool_call`/`pre_output` policy hooks all actually
+  evaluated — four templates shipped since Phase 11 and never once evaluated finally run.
+  `core/session.py` (P19-4) gives every session durable turn history with compaction that never
+  splits a tool-call/tool-result pair. `core/agent_loop.py` (P19-5), wired to dispatch through a
+  new `DocketDriver` (`edges/adapters/docket_runtime.py`), is the bounded turn loop itself: max
+  iterations, max tool calls, wall-clock timeout, and a measured-token budget.
+- **Sandboxed exec** (P19-9) — the `bash` tool gained an opt-in sandbox (`docker` or `bwrap`
+  backend, `ToolContext.sandbox`, default `"off"`), never true of the daemon's own exec path.
+- **MCP client** (P19-10, `core/mcp_tools.py` + `edges/adapters/mcp_client.py`) — external MCP
+  tool servers adapt into ordinary registry entries, gated exactly like a built-in and namespaced
+  `mcp__<server>__<tool>` so a remote server cannot shadow `bash`. `docket mcp servers
+  add/list/remove` (P19-13) makes configuring one just data, not code.
+- **`fetch` tool** (P19-11) — a domain-allowlisted, size-capped, timeout-bounded HTTP fetch,
+  refusing every domain by default until it is opted in (`FETCH_ALLOWED_DOMAINS`); the inspectable
+  half of the network-egress story (`bash` can still reach the network through interpreters and
+  package managers on the curated allowlist — a documented, open gap, not a closed one).
+- **Per-role tool sets + docket-owned identity** (P19-12) — a role's tool registry is composed
+  from its archetype via `ToolRegistry.without()`, so e.g. a Reviewer's registry has no
+  `write`/`edit`/`bash` to call at all — structural, not instruction-level.
+- **docket-owned Telegram channel** (P19-8, `core/telegram.py`) — docket itself is now the bot,
+  long-polling the Bot API and routing `/approve`, `/deny`, `/status`, `/delegate` through the
+  existing approval store and pod-delegation APIs. Closes a real gap: previously a Telegram reply
+  answered the daemon's own, separate exec-approval prompt, which docket never saw and could not
+  audit (Phase 15 G-5 spiked a bridge and found none). Every Telegram decision now writes the same
+  audit entry a CLI or HTTP one does, tagged `channel="telegram"`.
+- **Guardrail + loop metrics** (Phase 20, P20-2) — four new families on the existing Prometheus
+  surface: `docket_tool_calls_total{decision}`, `docket_policy_hits_total{policy_id,hook,action}`,
+  `docket_approvals_total{channel,outcome}`, `docket_turn_duration_seconds`. Recomputed from
+  durable records at scrape time rather than an in-memory counter, so a `docket serve` restart
+  never zeroes them and there is no second, driftable source of truth.
+- **`docket-runtime`, a standalone embeddable package** (Phase 21, `packages/docket-runtime/`) —
+  the turn loop, the gated tool registry, the policy engine, the approval store and the audit
+  chain, packaged separately from the CLI so a product can embed the guardrails instead of
+  reinventing them. Builds from the same source tree as the control plane, so the two cannot
+  drift apart; a clean install pulls only `pydantic` and `filelock`. Deliberately not a hosted
+  runtime — no multi-tenancy, external-caller auth, queues, or streaming; the embedding product
+  owns its own serving layer.
+- **`agentic-product` pod blueprint** (P21-5) — a fifth named pod shape alongside
+  software/research/content/ops, added as a row in the existing blueprint registry.
 
 ### Changed
 - **License: MIT → Apache 2.0.** Sole-copyright-holder relicense, effective from this commit
@@ -24,6 +68,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   argument / `--codebase`, not re-prompted), suggesting the project name from the codebase
   directory. Generated `AGENTS.md` uses the runtime-recognized `Session Startup` / `Red Lines`
   section headings so the post-compaction re-injection actually fires. Memory day math is UTC.
+- **The external OpenClaw daemon is deleted, not abstracted (Phase 19 P19-6/P19-7, decision
+  D-19).** A clean break with no compatibility layer and no migration: `~/.openclaw/`,
+  `openclaw.json`, auth-profiles, the Anti-Corruption Layer module (`edges/adapters/openclaw.py`),
+  every `openclaw` binary shell-out, and the `openclaw-gateway.service` systemd unit are all gone.
+  docket's own state root is now `~/.docket/` (`DOCKET_HOME`), holding a docket-owned `fleet.json`
+  (agent registration, channel bindings, gate/isolation flags, provider endpoints) in place of
+  `openclaw.json`. A pre-existing install's files at the old daemon-relative paths are simply not
+  read again — `docket install` re-creates a docket-native home from scratch.
+  `edges/adapters/system.py`'s `gateway_active`/`restart_gateway` are kept as honest,
+  always-inactive/no-op stubs so the ~20 call sites that used to restart the gateway after a
+  mutating command need no individual rewrite.
+- **Approval routing gained a fourth channel.** Approvals are answerable via CLI, HTTP, **MCP**
+  (a client answering through `docket mcp serve`), or Telegram — all four audit-logged with the
+  channel they came from, closing the Telegram gap described above.
+- **The high-risk command classifier is now argument-aware** (`core/security.py`'s
+  `classify_command`, wired into `core/tools.py`'s chokepoint) — it reads the whole command line,
+  including every segment behind a `;`, `&&`, `||`, or pipe, so `git status` is allowed while
+  `git push origin production` asks. This resolves, on every path docket itself dispatches, the
+  previously-documented limitation that a binary-path-only allowlist could not distinguish the
+  two; per-argument enforcement had been an explicit, tracked backlog item since Phase 13.
 
 ### Removed
 - The `repo` vs `task` agent-type concept (the `AgentType` enum, the meta `type` field, and every
@@ -38,6 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docket workflow`/`wf` now prints a removed-command notice pointing at the eventual `docket
   pipeline validate`/`plan`/`run` surface (`core/pipeline.py`, Phase 16 W-1/W-2); existing
   `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read.
+- **The OpenClaw daemon dependency itself (Phase 19).** No external `openclaw` binary, no daemon
+  process, no daemon-owned exec-approval prompt docket could not see. docket runs the agent turn
+  itself now — see Changed, above, for what replaced each piece of daemon-owned state.
 
 ## [0.2.0-beta.1] - 2026-07-03
 

@@ -16,7 +16,7 @@ Before creating bug reports, please check existing issues to avoid duplicates. W
 - Steps to reproduce the issue
 - Expected behavior
 - Actual behavior
-- Your environment (OS, Python version, OpenClaw version)
+- Your environment (OS, Python version)
 - Any relevant logs or error messages
 
 ### Suggesting Enhancements
@@ -75,21 +75,31 @@ DEBUG=1 docket <command>
 ### Package layout (three layers: `cli/ → core/ → edges/`)
 
 All command logic lives in the `docket` package under `src/docket/`. Dependencies point
-inward only — a `cli` command may call `core` and `edges`; `core` never imports `cli`; only
-the ACL knows the OpenClaw file formats.
+inward only — a `cli` command may call `core` and `edges`; `core` never imports `cli`. Two
+invariants matter most, both enforced by tests rather than convention alone:
+
+1. **Every tool call goes through `core/tools.py`'s single dispatcher** (`dispatch_tool`).
+   docket's governance stack — the policy engine, the approval store, the high-risk classifier,
+   the audit log — only means anything if there is exactly one place a tool can execute from.
+   An AST test enforces this:
+   `tests/python/test_p19_2_tool_registry.py::test_only_the_chokepoint_imports_the_handler_module`.
+2. **docket-owned JSON goes through `edges/store.py`** (atomic write + filelock + `.bak`
+   rotation + 0600 perms) — never write those files directly. The one documented exemption is
+   append-only JSONL (`core/trace.py`, `core/audit.py`), which writes directly by design.
 
 - **Commands** are Typer functions in `src/docket/cli/` — add them to `cli/__init__.py`, or to
   a `_<group>.py` module for a larger subcommand group (e.g. `cli/_gates.py`).
 - **Domain logic / helpers** go in `src/docket/core/` — Pydantic models in `core/models.py`,
-  plus pure services (policy resolution, sync, security, audit, trace).
+  plus pure services (policy resolution, sync, security, audit, trace, the turn loop, the tool
+  registry, the model-endpoint port).
 - **I/O and side effects** go in `src/docket/edges/`:
   - docket-owned JSON (`.docket-meta.json`, etc.) is read/written **only** through
-    `edges/store.py` (atomic write + filelock + `.bak` rotation + 0600 perms) — never write
-    those files directly.
-  - **all** OpenClaw config / auth-profile / provider access goes through the Anti-Corruption
-    Layer `edges/adapters/openclaw.py` — it is the only module that knows those formats. Do not
-    reach around it; extend it.
-  - shell-outs to `systemctl` / `docker` / `git` go through `edges/adapters/system.py`.
+    `edges/store.py`, per invariant 2 above.
+  - the model endpoint (`edges/adapters/llm.py`), MCP client (`edges/adapters/mcp_client.py`),
+    Telegram Bot API (`edges/adapters/telegram.py`), the sandboxed-exec/fetch tool handlers
+    (`edges/adapters/toolbox.py`, `edges/adapters/fetch.py`), and shell-outs to `docker` / `git`
+    (`edges/adapters/system.py`) each live behind their own adapter module — no other module
+    should know their wire formats.
 - **Tests** go in `tests/` (see [Testing](#testing)); **specs** go in `specs/`;
   **documentation** goes in `docs/`.
 
@@ -137,8 +147,8 @@ command:
 1. Write a spec under `specs/functional/<command>.spec.md`.
 2. Register the command as a Typer function in `src/docket/cli/` (in `cli/__init__.py`, or a
    `_<group>.py` module for a larger group) and wire its help into `cli/_help.py`.
-3. Put domain logic in `core/` and any I/O behind `edges/` (store.py for docket JSON, the ACL
-   for OpenClaw state, `system.py` for shell-outs).
+3. Put domain logic in `core/` and any I/O behind `edges/` (`store.py` for docket JSON,
+   `system.py` for shell-outs to `docker`/`git`).
 4. Add pytest coverage under `tests/python/`, and golden cases if the output is frozen.
 5. Run the CI gates (see [Testing](#testing)).
 
