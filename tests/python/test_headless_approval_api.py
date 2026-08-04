@@ -5,6 +5,10 @@ Acceptance criteria:
   - GET /approvals returns 401 without token or with wrong token
   - POST /approvals/<token> grants/denies an approval when authenticated
   - POST /approvals/<token> returns 401 without auth (state unchanged)
+  - POST /approvals/<token>'s optional `channel` field is validated against
+    core.approval.APPROVAL_CHANNELS (an unrecognised value is 400, not a
+    silent fallthrough), defaults to "http" when absent, and a recognised
+    value (e.g. "tack") is tagged onto the audit entry unchanged
   - Expiry sweep still fail-closes
   - suite green
 """
@@ -23,6 +27,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import approval as _approval
+from docket.core import audit as _audit
 from docket.core.approval import _approval_path
 from docket.edges import store as _store
 from docket.serve import _DocketHandler
@@ -211,6 +216,81 @@ class TestGrantDenyViaEndpoint:
         url, token = live_server
         status, _ = _post(f"{url}/unknown", {"action": "grant"}, token)
         assert status == 404
+
+
+# ── POST /approvals/<token>'s optional `channel` field ─────────────────────────
+
+
+class TestApprovalChannel:
+    def test_absent_channel_defaults_to_http_unchanged(self, live_server: tuple[str, str]) -> None:
+        """No `channel` in the body -> every caller before this field existed
+        keeps identical behaviour (channel="http", same as before)."""
+        url, token = live_server
+        apr_token = _approval.approval_create("projT1", "implementer", "deploy")
+        status, _body = _post(f"{url}/approvals/{apr_token}", {"action": "grant"}, token)
+        assert status == 200
+        entries = [e for e in _audit.read_audit() if e.get("action") == "approval.grant"]
+        assert entries, "no approval.grant audit entry written"
+        assert "channel=http" in entries[-1]["detail"]
+
+    def test_recognised_channel_tack_is_accepted_and_recorded(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        apr_token = _approval.approval_create("projT2", "implementer", "deploy")
+        status, body = _post(
+            f"{url}/approvals/{apr_token}", {"action": "grant", "channel": "tack"}, token
+        )
+        assert status == 200
+        assert body["ok"] is True
+        assert _approval.approval_get(apr_token)["state"] == "granted"
+        entries = [e for e in _audit.read_audit() if e.get("action") == "approval.grant"]
+        assert "channel=tack" in entries[-1]["detail"]
+
+    def test_recognised_channel_works_for_deny_too(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        apr_token = _approval.approval_create("projT3", "implementer", "deploy")
+        status, _body = _post(
+            f"{url}/approvals/{apr_token}", {"action": "deny", "channel": "tack"}, token
+        )
+        assert status == 200
+        assert _approval.approval_get(apr_token)["state"] == "denied"
+        entries = [e for e in _audit.read_audit() if e.get("action") == "approval.deny"]
+        assert "channel=tack" in entries[-1]["detail"]
+
+    def test_unrecognised_channel_returns_400_state_unchanged(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        apr_token = _approval.approval_create("projT4", "implementer", "deploy")
+        status, body = _post(
+            f"{url}/approvals/{apr_token}",
+            {"action": "grant", "channel": "some-made-up-caller"},
+            token,
+        )
+        assert status == 400
+        assert body["ok"] is False
+        # Rejected before touching approval state -- still pending, not granted.
+        assert _approval.approval_get(apr_token)["state"] == "pending"
+
+    def test_non_string_channel_returns_400(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        apr_token = _approval.approval_create("projT5", "implementer", "deploy")
+        status, _body = _post(
+            f"{url}/approvals/{apr_token}", {"action": "grant", "channel": 123}, token
+        )
+        assert status == 400
+        assert _approval.approval_get(apr_token)["state"] == "pending"
+
+    def test_every_recognised_channel_is_accepted(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        for chan in sorted(_approval.APPROVAL_CHANNELS):
+            apr_token = _approval.approval_create("projT6", "implementer", f"deploy via {chan}")
+            status, _body = _post(
+                f"{url}/approvals/{apr_token}", {"action": "grant", "channel": chan}, token
+            )
+            assert status == 200, f"channel {chan!r} should be accepted"
+            assert _approval.approval_get(apr_token)["state"] == "granted"
 
 
 # ── expiry still fail-closes ──────────────────────────────────────────────────
