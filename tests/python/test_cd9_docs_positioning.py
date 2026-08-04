@@ -1,4 +1,4 @@
-"""CD-9: Positioning / docs truth pass.
+"""Positioning / docs truth pass.
 
 Machine-readable audit: the public docs must lead with the verified differentiators
 and make no unfalsifiable or savings-claim statements.

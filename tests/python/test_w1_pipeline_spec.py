@@ -1,10 +1,10 @@
-"""W-1: docket-native pipeline spec.
+"""docket-native pipeline spec.
 
 ``core/pipeline.py`` defines the format only — a Pydantic model for the YAML
-dialect that ROADMAP Phase 16's W-2 executor will eventually run pods
-through, replacing the Lobster dialect docket used to lint but could never
-fully execute (retired by W-3, decision D-16). No executor exists yet; this
-suite tests the model and its validation, not any dispatch behavior.
+dialect the executor (`core/orchestrator.py`) runs pods through, replacing
+the Lobster dialect docket used to lint but could never fully execute (see
+test_w3_workflow_removed.py for its retirement). This suite tests the model
+and its validation only, not dispatch behavior.
 
   * TestRoundTrip          — a valid, full-featured pipeline parses and
     round-trips through dump/validate unchanged.
@@ -23,12 +23,12 @@ suite tests the model and its validation, not any dispatch behavior.
   * TestStepTargeting       — role XOR agent, archetype shape, id shape.
   * TestZeroMigration       — ``load_pipeline(None)`` returns the built-in
     pipeline, drift-guarded against ``core/dispatch.py``'s own
-    ``PIPELINE_ORDER`` directly. W-2/W-8 update: the built-in Reviewer/Tester
-    verdict *patterns* no longer have a dispatch-private regex to drift-check
-    against (``core/dispatch.py`` deleted its own hardcoded copy once gate
-    execution went generic) — those two checks now cross-check against
+    ``PIPELINE_ORDER`` directly. The built-in Reviewer/Tester verdict
+    *patterns* have no dispatch-private regex to drift-check against
+    (``core/dispatch.py`` has no hardcoded copy of its own; gate execution
+    is generic) — those two checks cross-check against
     ``core.orchestrator``'s resolved archetype-fallback gate instead, proving
-    the pipeline format's hardcoded default and the W-6 archetype registry's
+    the pipeline format's hardcoded default and the archetype registry's
     ``gateContract`` describe the same role without silently diverging.
   * TestLoadPipeline        — YAML parse errors, empty/non-mapping
     documents, and the missing-PyYAML error path.
@@ -558,8 +558,8 @@ class TestStepTargeting:
         assert step.archetype == "backend-implementer"
 
     def test_archetype_existence_never_checked(self) -> None:
-        # W-1 deliberately does not know about W-6's archetype registry — any
-        # shape-valid name is accepted, existing or not.
+        # The pipeline format deliberately does not know about the archetype
+        # registry — any shape-valid name is accepted, existing or not.
         step = Step(id="s1", role="implementer", archetype="some-archetype-that-does-not-exist")
         assert step.archetype == "some-archetype-that-does-not-exist"
 
@@ -614,13 +614,12 @@ class TestZeroMigration:
         assert implementer.gate.command is None
 
     def test_builtin_reviewer_pattern_matches_archetype_resolved_gate(self) -> None:
-        """W-8 purpose change: this used to byte-match a dispatch-private
-        regex constant (``_REVIEWER_VERDICT_RE``, since deleted — gate
-        execution reads a step's resolved gate generically now, see
-        ``core/dispatch.py``'s docstring note). The cross-check that matters
-        post-W-8 is that the pipeline format's hardcoded default and the W-6
-        archetype registry's ``gateContract`` — two independent sources of
-        "what does a bare `role: reviewer` step's gate look like" — agree.
+        """Gate execution reads a step's resolved gate generically (see
+        ``core/dispatch.py``'s docstring note), not a dispatch-private regex
+        constant. The cross-check that matters is that the pipeline format's
+        hardcoded default and the archetype registry's ``gateContract`` —
+        two independent sources of "what does a bare `role: reviewer` step's
+        gate look like" — agree.
         """
         spec = default_pipeline()
         reviewer = next(s for s in spec.steps if s.id == "reviewer")
@@ -648,7 +647,7 @@ class TestZeroMigration:
         assert reviewer.gate.rework.max_cycles == 1
 
     def test_builtin_tester_pattern_matches_archetype_resolved_gate(self) -> None:
-        """W-8 purpose change — see the reviewer test's docstring above."""
+        """See the reviewer test's docstring above."""
         spec = default_pipeline()
         tester = next(s for s in spec.steps if s.id == "tester")
         assert isinstance(tester.gate, VerdictGate)

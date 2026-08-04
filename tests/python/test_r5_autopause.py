@@ -1,6 +1,6 @@
-"""R-5: budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
+"""Budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
 
-Covers, per the ROADMAP Phase 14 R-5 card:
+Covers:
 
   * ``AgentMeta.coerce_paused``/``is_paused()`` — the typed accessor that fixes the
     string/bool display bug (a writer storing a real ``bool`` while old display code
@@ -12,8 +12,9 @@ Covers, per the ROADMAP Phase 14 R-5 card:
   * ``docket profile <id> --resume`` clears both fields, writes an audit entry, and
     (for a pod Lead) unblocks the pod's budget-blocked tasks.
   * The token-based estimate fallback (``core/utils.estimate_cost_usd`` /
-    ``core/dispatch.pod_gating_cost``) that lets gating trip even when the daemon
-    recorded no cost at all — always labelled, never contaminating recorded spend.
+    ``core/dispatch.pod_gating_cost``) that lets gating trip even when the
+    driver reports no USD cost at all — always labelled, never contaminating
+    recorded spend.
 """
 
 from __future__ import annotations
@@ -41,7 +42,6 @@ from docket.core.models import AgentMeta
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -93,14 +93,12 @@ def _write_session(oc_dir: Path, agent_id: str, *, input_tokens: int, output_tok
     """Seed a docket-native session (``core/session.py``'s on-disk shape) with
     real measured token counts and no cost figure.
 
-    Phase 19 P19-7a repointed ``aggregate_cost`` at ``DocketDriver``
-    (``edges.adapters.docket_runtime.default_driver()``), not the ACL's
-    ``OpenClawDriver`` -- this now writes the format it actually reads.
-    ``DocketDriver`` *never* reports a USD cost (see
-    ``core/runtime_driver.py``'s ``TurnResult.cost_usd`` docstring), which is
-    exactly the "tokens without cost" shape this R-5 suite was originally
-    written against for the daemon -- the estimate-fallback behaviour under
-    test is unchanged, only the driver reporting it is. *oc_dir* is unused
+    ``aggregate_cost`` reads through ``DocketDriver``
+    (``edges.adapters.docket_runtime.default_driver()``), which *never*
+    reports a USD cost (see ``core/runtime_driver.py``'s
+    ``TurnResult.cost_usd`` docstring) -- so "tokens without cost" is the
+    normal shape the estimate-fallback behaviour under test always has to
+    handle. *oc_dir* is unused
     (kept so every existing call site is untouched); the write goes through
     ``_cfg.SESSIONS_DIR``, which this suite already isolates per test via
     conftest.py's autouse ``_isolate_docket_home``.

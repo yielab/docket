@@ -1,4 +1,4 @@
-"""CD-4: Headless approval channel via serve.
+"""Headless approval channel via serve.
 
 Acceptance criteria:
   - GET /approvals lists pending approvals when authenticated

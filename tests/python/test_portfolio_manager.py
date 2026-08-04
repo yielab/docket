@@ -1,4 +1,4 @@
-"""AA-6: the optional org Portfolio Manager (opt-in, single, never a pod member)."""
+"""The optional org Portfolio Manager (opt-in, single, never a pod member)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ PM = "portfolio-manager"
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -116,8 +115,8 @@ class TestProvisioning:
     def test_gets_full_workspace_contract(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Phase 17 C-4: the Portfolio Manager gets the same durable workspace
-        set every other org specialist gets, not just a hardcoded SOUL.md.
+        """The Portfolio Manager gets the same durable workspace set every
+        other org specialist gets, not just a hardcoded SOUL.md.
         """
         from docket.core import memory as _mem
 

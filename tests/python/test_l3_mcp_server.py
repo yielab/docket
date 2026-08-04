@@ -1,4 +1,4 @@
-"""L-3: docket as an MCP server — the tool layer (`cli/_mcp.py`).
+"""Docket as an MCP server — the tool layer (`cli/_mcp.py`).
 
 These tests exercise the ``tool_*`` functions directly — plain Python
 functions with no dependency on the ``mcp`` SDK — so the suite never needs
@@ -36,7 +36,6 @@ from docket.core import runs as _runs
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

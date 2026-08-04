@@ -1,8 +1,7 @@
 """M4 final tests: auth, context, maintain, keys, add.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made. Phase 19 P19-7b: the
-daemon and openclaw.json are gone -- every seed writes fleet.json instead.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
+Agent registration is seeded via fleet.json.
 """
 
 from __future__ import annotations
@@ -41,8 +40,6 @@ def _make_env(home: Path) -> dict[str, str]:
     return {
         **os.environ,
         "DOCKET_HOME": str(home),
-        "DOCKET_NO_RESTART": "1",
-        # No PATH so openclaw CLI won't be found — tests stay hermetic
     }
 
 
@@ -117,39 +114,12 @@ def _setup_bare(tmp_path: Path) -> Path:
 
 
 class TestCmdAuth:
-    def _make_profiles_file(
-        self,
-        oc_dir: Path,
-        profiles: dict[str, Any],
-        usage_stats: dict[str, Any] | None = None,
-    ) -> None:
-        path = oc_dir / "agents" / "main" / "agent"
-        path.mkdir(parents=True, exist_ok=True)
-        data: dict[str, Any] = {"profiles": profiles}
-        if usage_stats is not None:
-            data["usageStats"] = usage_stats
-        (path / "auth-profiles.json").write_text(json.dumps(data))
-
     def test_status_no_profiles_file(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
         rc, out, err = _run(["auth"], _make_env(home))
         assert rc == 0
         combined = out + err
         assert "no provider api keys stored" in combined.lower()
-
-    def test_status_with_valid_profiles(self, tmp_path: Path) -> None:
-        home = _setup_bare(tmp_path)
-        self._make_profiles_file(
-            home,
-            profiles={
-                "anthropic:main": {"provider": "anthropic", "type": "token"},
-                "anthropic:secondary": {"provider": "anthropic", "type": "manual"},
-            },
-        )
-        rc, out, err = _run(["auth", "status"], _make_env(home))
-        assert rc == 0
-        combined = out + err
-        assert "anthropic:main" in combined or "anthropic" in combined
 
     def test_unknown_subcommand_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
@@ -159,10 +129,10 @@ class TestCmdAuth:
         assert "unknown" in combined.lower() or "usage" in combined.lower() or "foobar" in combined
 
     def test_login_reports_no_docket_native_flow(self, tmp_path: Path) -> None:
-        # P19-7b: there is no daemon left to shell out to, so `docket auth
-        # login` cannot degrade to a "binary not found" error -- it must
-        # say plainly that no docket-native replacement exists (see
-        # cli/_keys.py's run_auth / _AUTH_GONE_MESSAGE).
+        # There is no daemon to shell out to, so `docket auth login` cannot
+        # degrade to a "binary not found" error -- it must say plainly that
+        # no docket-native replacement exists (see cli/_keys.py's run_auth /
+        # _AUTH_GONE_MESSAGE).
         home = _setup_bare(tmp_path)
         env = {**_make_env(home), "PATH": "/nonexistent"}
         rc, out, err = _run(["auth", "login"], env)
@@ -252,14 +222,14 @@ class TestCmdMaintain:
         assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
 
     def test_distill_hermetic_no_daemon_fails_closed(self, tmp_path: Path) -> None:
-        """No `openclaw` on PATH -> the driver call fails -> nothing is deleted.
+        """No provider credentials configured -> the driver call fails ->
+        nothing is deleted.
 
-        ROADMAP Phase 17 C-2's fail-closed contract, exercised against the
-        real `OpenClawDriver` (no `FakeDriver` injection anywhere in this
-        test) -- proof the guarantee holds on a machine with no daemon at
-        all, not just against a mocked stand-in. The fake-driven success/
-        failure matrix lives in test_c2_memory_distillation.py and
-        test_c2_maintain_distill_cli.py.
+        Fail-closed distillation, exercised against the real production
+        driver (no `FakeDriver` injection anywhere in this test) -- proof the
+        guarantee holds against a real failure, not just a mocked stand-in.
+        The fake-driven success/failure matrix lives in
+        test_c2_memory_distillation.py and test_c2_maintain_distill_cli.py.
         """
         import datetime
 

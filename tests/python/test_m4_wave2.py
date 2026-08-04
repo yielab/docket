@@ -1,8 +1,7 @@
 """M4 wave-2 tests: delete, wire, unwire — writer commands.
 
 All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-so tests are hermetic. Phase 19 P19-7b: the daemon and openclaw.json are
-gone -- fleet.json is the only registry left.
+so tests are hermetic. fleet.json is docket's only agent/binding registry.
 """
 
 from __future__ import annotations
@@ -202,12 +201,12 @@ class TestCmdUnwire:
 
 
 class TestCmdWire:
-    """P19-7b: `scan_telegram_groups` depended on the daemon's gateway log,
-    which no longer exists -- `docket wire` is manual entry only now (see
-    cli/__init__.py's cmd_wire). P19-8 gave docket its own Telegram bot
-    (`docket serve --telegram`); the binding this command records is now the
-    *entire* authorization boundary for it (see core/telegram.py), so the
-    output says that plainly instead of "nothing listens on it yet".
+    """`docket wire` is manual entry only -- there is no gateway log to scan
+    a peer's activity from (see cli/__init__.py's cmd_wire). docket's own
+    Telegram bot (`docket serve --telegram`) makes the binding this command
+    records the *entire* authorization boundary for it (see
+    core/telegram.py), so the output says that plainly instead of "nothing
+    listens on it yet".
     """
 
     def test_wire_unknown_agent_exits_1(self, tmp_path: Path) -> None:
@@ -237,7 +236,7 @@ class TestCmdWire:
         binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
         assert binding["peerId"] == "-999888777"
-        # Honest (P19-8): the binding IS the authorization boundary now.
+        # Honest: the binding IS the authorization boundary now.
         combined = out + err
         assert "whole authorization story" in combined.lower()
 

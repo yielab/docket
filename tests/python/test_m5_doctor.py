@@ -4,11 +4,10 @@ These call run_doctor() in-process with DOCKET_HOME/FLEET_FILE monkeypatched
 to a temp seed. stdout is captured to assert on the human report; the return
 value is the process exit code.
 
-Phase 19 P19-7b deleted the daemon and every check here that only ever made
-sense against it: binary presence, gateway status, daemon config validity/
-perms, the daemon's own security-audit/exec-approval report, the browser/
-gateway-log scans, and the "OpenClaw memory index" advisory. What replaced
-each is noted at its former call site below.
+There is no daemon any more, so this module carries no check that only made
+sense against one: binary presence, gateway status, daemon config validity/
+perms, an exec-approval report, browser/gateway-log scans, or a memory-index
+advisory.
 """
 
 from __future__ import annotations
@@ -45,11 +44,6 @@ _FLEET_CONFIG: dict[str, Any] = {
     "defaults": {"model": "anthropic/claude-sonnet-4-6"},
     "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
-
-
-@pytest.fixture(autouse=True)
-def _no_restart(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
 
 
 def _point_config_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,8 +143,8 @@ class TestJsonProbe:
             "templateDrift",
         ):
             assert key in checks
-        # Phase 19 P19-7b: no daemon, so these keys are gone, not repointed —
-        # a doctor --json consumer must not expect them any more.
+        # No daemon, so these keys are gone, not repointed -- a doctor --json
+        # consumer must not expect them any more.
         for gone_key in ("openclaw", "gateway", "telegram"):
             assert gone_key not in checks
 
@@ -319,9 +313,9 @@ class TestChecks:
     def test_security_gates_always_on_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Phase 19 P19-7b: no daemon exec-approval config/audit to check any
-        more — the tool-call gate is unconditionally active, and that is what
-        this check now reports instead."""
+        """There is no daemon exec-approval config/audit to check -- the
+        tool-call gate is unconditionally active, and that is what this
+        check reports."""
         _seed(tmp_path, monkeypatch)
         issues = _doctor._check_security_gates()
         out = capsys.readouterr().out
@@ -379,12 +373,13 @@ class TestChecks:
         assert "programmer" in out and "legacy shared specialist" in out
 
 
-# ── Phase 17 C-4: specialists join the runtime contract healer ──────────────────
+# ── specialists join the runtime contract healer ──────────────────
 
 
 def _seed_bare_specialist(home: Path, role: str = "security") -> Path:
-    """A specialist workspace with only `.docket-meta.json` — the exact
-    pre-C-4 defect (`_provision_specialists` used to write nothing else).
+    """A specialist workspace with only `.docket-meta.json` -- provisioning
+    must fill in the rest of the runtime contract, not just leave a bare
+    metadata file.
     """
     ws = home / "workspaces" / role
     ws.mkdir(parents=True)

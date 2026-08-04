@@ -6,11 +6,9 @@ the live module attributes (the same technique as the doctor and trace/audit
 suites). The `docker` binary is stubbed off PATH so isolation reports "needs
 Docker".
 
-Phase 19 P19-7b deleted the daemon and its own exec-approvals.json file
-format along with `resolve_safe_bin_paths`/`build_exec_approvals` (the
-functions that used to seed it) -- `docket gates enable/disable` now only
-flips fleet.json's approval-routing state (see cli/_gates.py); there is no
-daemon config left to write.
+There is no daemon and no exec-approvals.json file format -- `docket gates
+enable/disable` only flips fleet.json's approval-routing state (see
+cli/_gates.py); there is no daemon config to write.
 """
 
 from __future__ import annotations
@@ -28,8 +26,8 @@ from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
 
-# P19-6/P19-7b: agent registration + channel bindings + gates/isolation flags
-# live in fleet.json now -- openclaw.json is gone entirely.
+# Agent registration + channel bindings + gates/isolation flags live in
+# fleet.json.
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}, {"id": "content"}],
     "bindings": [
@@ -60,8 +58,6 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # own pattern of repointing every config path it touches.
     monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
     # Never touch systemctl.
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
-
     # Stub `docker` off PATH so isolation reports "needs Docker". Real
     # binaries (git, python3, ...) pass.
     real_which = shutil.which
@@ -116,12 +112,11 @@ class TestHighRiskPatterns:
         assert "ls" not in bins
 
 
-# TestResolveSafeBinPaths / TestBuildExecApprovalsHighRisk deleted (P19-7b):
-# resolve_safe_bin_paths()/build_exec_approvals() seeded the daemon's own
-# exec-approvals.json allowlist file -- a daemon file format that no longer
-# exists, deleted along with the daemon rather than ported. No successor:
-# docket's own gate (pre_tool_call + classify_command, P19-2/P19-3) is
-# argument-aware and always active; it does not need a seeded bin allowlist.
+# resolve_safe_bin_paths()/build_exec_approvals() no longer exist: they
+# seeded the daemon's own exec-approvals.json allowlist file, a file format
+# that is gone along with the daemon. No successor: docket's own gate
+# (pre_tool_call + classify_command) is argument-aware and always active; it
+# does not need a seeded bin allowlist.
 
 
 # ── gates ─────────────────────────────────────────────────────────────────────
@@ -140,10 +135,10 @@ class TestGatesStatus:
     def test_status_always_reports_the_gate_active(
         self, oc_dir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # P19-3: there is no daemon gate report left to query -- docket's own
-        # tool-call gate (pre_tool_call + classify_command) is unconditionally
-        # active, and `docket gates status` says so regardless of routing/
-        # isolation configuration.
+        # There is no daemon gate report to query -- docket's own tool-call
+        # gate (pre_tool_call + classify_command) is unconditionally active,
+        # and `docket gates status` says so regardless of routing/isolation
+        # configuration.
         rc = _gates.run_gates("status")
         out = capsys.readouterr().out
         assert rc == 0
@@ -161,12 +156,11 @@ class TestGatesStatus:
 
 
 class TestGatesEnableDisable:
-    """P19-7b: `docket gates enable/disable` no longer seeds a daemon
-    exec-approvals.json allowlist (that file format is gone along with the
-    daemon) -- it only flips fleet.json's approval-routing state. There is
-    no existing-config distinction left to force over, so the old
-    idempotent/--force tests (which asserted on repeated exec-approvals.json
-    writes) have no successor and are deleted rather than adapted.
+    """`docket gates enable/disable` does not seed a daemon exec-approvals.json
+    allowlist (that file format is gone along with the daemon) -- it only
+    flips fleet.json's approval-routing state. There is no existing-config
+    distinction left to force over, so there is no idempotent/--force test
+    here asserting on repeated exec-approvals.json writes.
     """
 
     def test_enable_turns_on_routing(
@@ -242,7 +236,7 @@ class TestGatesIsolate:
         rc = _gates.run_gates("isolate", want="on")
         out = capsys.readouterr().out
         assert rc == 0
-        # P19-6: isolation mode lives in fleet.json now, not openclaw.json.
+        # Isolation mode lives in fleet.json.
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
         assert fleet["security"]["isolationEnabled"] is True

@@ -1,18 +1,13 @@
-"""P19-7b acceptance guard: no `openclaw` coupling left under `src/`.
+"""Acceptance guard: no live `openclaw` coupling left under `src/`.
 
-Phase 19 P19-7b deleted the ACL (`edges/adapters/openclaw.py`), every
-`openclaw` shell-out, `openclaw.json`/`CONFIG_FILE`, and auth-profiles --
-a clean break with no compatibility layer (D-19). The card's acceptance
-criterion is `command grep -ril openclaw src/` returning nothing but a
-deliberate historical note.
+docket has no ACL (`edges/adapters/openclaw.py`), no `openclaw` shell-out, no
+`openclaw.json`/`CONFIG_FILE`, and no auth-profiles any more -- a clean break
+with no compatibility layer. This guard's criterion: `command grep -ril
+openclaw src/` should turn up nothing but deliberate historical comments.
 
-This is the **replacement** for the retired `test_ch2_openclaw_acl_guard.py`
-(whose entire premise -- an ACL boundary to police -- no longer exists) and
-for the retired `test_p19_7a_no_real_openclaw.py`. It is strictly stronger
-than either: rather than looking for one shell-out pattern or one file
-format, it walks every `.py` file under `src/docket` token by token and
-forbids the word "openclaw" (case-insensitive) from appearing anywhere
-EXCEPT:
+It walks every `.py` file under `src/docket` token by token (stronger than a
+plain grep for one shell-out pattern or one file format) and forbids the word
+"openclaw" (case-insensitive) from appearing anywhere EXCEPT:
 
   * a `#` comment, or
   * a real docstring (the first statement of a module/class/function) --
@@ -23,11 +18,10 @@ live import, identifier, or non-docstring string literal is not -- that
 would mean actual code still depends on the deleted daemon/ACL/file format.
 
 Proven RED before being trusted: a reference to a fake `docket.edges.adapters
-.openclaw` import was planted in a scratch copy of a real module and this
-guard failed with that file listed as an offender; the plant was then
-reverted and the guard passed again. See the card's report for which drift
-was planted (an `import docket.edges.adapters.openclaw as _oc` line) and
-confirmation of both RED and GREEN.
+.openclaw` import (`import docket.edges.adapters.openclaw as _oc`) was
+planted in a scratch copy of a real module and this guard failed with that
+file listed as an offender; the plant was then reverted and the guard passed
+again.
 """
 
 from __future__ import annotations
@@ -93,7 +87,7 @@ def test_no_live_openclaw_reference_outside_comments_and_docstrings() -> None:
     for path in sorted(SRC.rglob("*.py")):
         offenders.extend(_offenders_in_file(path))
     assert not offenders, (
-        "Live `openclaw` reference(s) found outside comments/docstrings -- P19-7b's "
+        "Live `openclaw` reference(s) found outside comments/docstrings -- the "
         "clean break means no code may import, name, or otherwise depend on the "
         "deleted ACL/daemon/file-format any more (a historical comment or docstring "
         "explaining what used to be there is fine; real code is not):\n" + "\n".join(offenders)

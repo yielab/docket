@@ -1,8 +1,8 @@
-"""P19-9: sandboxed execution for bash-class tools.
+"""Sandboxed execution for bash-class tools.
 
-P19-3's gate decides whether a command may run at all. This decides what it
-can reach once it does — the gate is not a sandbox, and `toolbox.run_bash`'s
-own docstring said so from P19-2 onward. Four things are pinned here, in
+The tool-call gate decides whether a command may run at all. This decides
+what it can reach once it does — the gate is not a sandbox, and
+`toolbox.run_bash`'s own docstring says so. Four things are pinned here, in
 order of how much they matter:
 
 1. **Detection is real, not assumed.** `system.sandbox_availability()` probes
@@ -293,7 +293,7 @@ class TestChokepointWiring:
         ctx = ToolContext(roots=(workspace,), sandbox="auto")
         # `printf` (not `echo`) — it is on core.security's SAFE_BINS
         # allowlist, so the command classifier allows it outright and this
-        # test is exercising the sandbox wiring, not the P19-3 gate.
+        # test is exercising the sandbox wiring, not the tool-call gate.
         res = dispatch_tool(self._call('{"command": "printf hi"}'), ctx, builtin_registry())
         assert res.ok and res.executed
         assert "[sandbox: none" in res.content

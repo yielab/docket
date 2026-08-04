@@ -1,9 +1,7 @@
 """M3 tests: list, info, cost — fully-ported read-only commands.
 
-All tests run the Python module via subprocess so they exercise the full stack
-(config loading, ACL, store) through the same entry point the Bash dispatcher
-uses.  The OPENCLAW_DIR env var is overridden per-test to a temp directory so
-tests are hermetic and never touch the real ~/.openclaw.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
+to a temp directory so tests are hermetic and never touch the real ~/.docket.
 """
 
 from __future__ import annotations
@@ -30,24 +28,7 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings live in fleet.json now, not
-# openclaw.json's `agents`/`bindings` above (kept for the pieces that stay
-# genuinely daemon-owned until P19-7).
+# Agent registration + channel bindings live in fleet.json.
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
@@ -57,18 +38,14 @@ FLEET_CONFIG: dict[str, Any] = {
 
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
-    """Build subprocess env with OPENCLAW_DIR (+ DOCKET_HOME) overridden.
-
-    P19-6: DOCKET_HOME (fleet.json's home) no longer defaults from
-    OPENCLAW_DIR, so a real subprocess needs both pinned to the same temp dir
-    or it would fall back to the real ~/.docket.
-    """
-    return {**os.environ, "OPENCLAW_DIR": str(oc_dir), "DOCKET_HOME": str(oc_dir)}
+    """Build subprocess env with DOCKET_HOME overridden to a temp dir, or a
+    real subprocess would fall back to the real ~/.docket."""
+    return {**os.environ, "DOCKET_HOME": str(oc_dir)}
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    """Create a minimal agent workspace + openclaw.json in tmp_path."""
-    oc_dir = tmp_path / ".openclaw"
+    """Create a minimal agent workspace + fleet.json in tmp_path."""
+    oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
 
     agent_ws = oc_dir / "workspaces" / "projects" / agent_id
@@ -78,7 +55,6 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     (agent_ws / "SOUL.md").write_text("# SOUL\n")
     (agent_ws / "MEMORY.md").write_text("# MEMORY\n")
 
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
     (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     return oc_dir
@@ -95,9 +71,8 @@ def _write_docket_session(
     updated: str = "2024-03-15T10:00:00Z",
 ) -> None:
     """Seed a docket-native session (``core/session.py``'s on-disk shape)
-    directly. P19-7a's replacement for writing daemon-format ``sessions/*.jsonl``:
-    a pod-dispatch hop's turns now land here, through ``DocketDriver``, not
-    the old daemon session log ``docket cost``'s tests used to fake.
+    directly -- a pod-dispatch hop's turns land here, through
+    ``DocketDriver``.
     """
     from urllib.parse import quote
 
@@ -119,7 +94,7 @@ def _write_docket_session(
 
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    """Run `python -m docket <args>` with OPENCLAW_DIR overridden."""
+    """Run `python -m docket <args>` with DOCKET_HOME overridden."""
     import subprocess
 
     result = subprocess.run(
@@ -161,7 +136,7 @@ class TestCmdList:
 
     def test_list_json_unregistered_agent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        # Write fleet.json with an empty agents list (P19-6: registration lives here)
+        # Write fleet.json with an empty agents list (registration lives here)
         (oc_dir / "fleet.json").write_text(
             json.dumps({"agents": [], "bindings": [], "defaults": {"model": ""}})
         )
@@ -203,12 +178,11 @@ class TestCmdList:
         assert "ORG SPECIALISTS" in out
 
     def test_list_empty_no_agents(self, tmp_path: Path) -> None:
-        oc_dir = tmp_path / ".openclaw"
+        oc_dir = tmp_path / ".docket"
         oc_dir.mkdir()
-        (oc_dir / "openclaw.json").write_text(json.dumps({"agents": {"list": []}, "bindings": []}))
         rc, out, _err = _run(["list"], oc_dir)
         assert rc == 0
-        assert "No project agents" in out  # warn() → stdout (mirrors Bash)
+        assert "No project agents" in out
 
     def test_list_json_multiple_agents(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, "myshop")
@@ -345,11 +319,11 @@ class TestCmdCost:
         assert a["input"] == 1000
         assert a["output"] == 200
         assert a["turns"] == 1
-        # P19-7a: DocketDriver never reports a USD cost -- CLAUDE.md's standing
-        # rule against turning a measured-token count into a billing claim,
-        # the same "0.0 with real token counts recorded" contract run_turn
-        # already had, now visible through `docket cost` too (a named
-        # capability gap vs. the daemon -- see the P19-7a report).
+        # DocketDriver never reports a USD cost -- CLAUDE.md's standing rule
+        # against turning a measured-token count into a billing claim, the
+        # same "0.0 with real token counts recorded" contract run_turn
+        # already had, now visible through `docket cost` too (a named,
+        # permanent capability gap).
         assert a["costUsd"] == 0.0
         assert data["totalUsd"] == 0.0
 
@@ -388,14 +362,13 @@ class TestCmdCost:
         assert data["history"] == []
 
     def test_cost_history_json_with_data(self, tmp_path: Path) -> None:
-        """P19-7a: ``DocketDriver.usage().by_day`` is always ``[]`` -- a
-        session's stored usage is one running total for its lifetime, with no
-        per-turn timestamp to bucket by day (see
+        """``DocketDriver.usage().by_day`` is always ``[]`` -- a session's
+        stored usage is one running total for its lifetime, with no per-turn
+        timestamp to bucket by day (see
         ``edges/adapters/docket_runtime.py``'s ``usage()`` docstring).
         ``docket cost --history`` is an honest empty list against the
-        production driver now, not a silently-stale daemon-JSONL read -- a
-        named capability gap (see the P19-7a report), not a bug this test
-        should paper over.
+        production driver -- a named, permanent capability gap, not a bug
+        this test should paper over.
         """
         oc_dir = _setup_agent(tmp_path)
         _write_docket_session(oc_dir, "agent:myshop:default", input_tokens=500, output_tokens=100)

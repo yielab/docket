@@ -81,9 +81,7 @@ run_docket() {
   # traces/policies/approvals/fleet.json all live under $fake_home/.openclaw,
   # and pinning here keeps every golden case unaffected by that default (this
   # harness tests command OUTPUT, not the new home's default path -- that is
-  # covered by a pytest instead). CL-C (wave 14): OPENCLAW_DIR dropped -- no
-  # code under src/ has read that env var since P19-7b deleted the daemon
-  # config it pointed at, so exporting it here was a no-op.
+  # covered by a pytest instead).
   PATH="$FAKES_DIR:$PATH" \
   HOME="$fake_home" \
   DOCKET_HOME="$fake_home/.openclaw" \

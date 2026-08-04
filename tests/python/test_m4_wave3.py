@@ -1,7 +1,6 @@
 """M4 wave-3a tests: edit, snapshot.
 
-All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
 """
 
 from __future__ import annotations
@@ -31,29 +30,7 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [
-        {
-            "agentId": "myshop",
-            "match": {"channel": "telegram", "peer": {"kind": "group", "id": "-999"}},
-        }
-    ],
-    "channels": {"telegram": {"enabled": True}},
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
-# P19-6: agent registration + channel bindings live in fleet.json now, not
-# openclaw.json's `agents`/`bindings` above.
+# Agent registration + channel bindings live in fleet.json.
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [
@@ -67,9 +44,7 @@ FLEET_CONFIG: dict[str, Any] = {
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
         "DOCKET_HOME": str(oc_dir),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
@@ -78,15 +53,14 @@ def _setup_agent(
     agent_id: str = "myshop",
     workspace_files: list[str] | None = None,
 ) -> Path:
-    """Create a minimal project workspace.  Returns the oc_dir."""
-    oc_dir = tmp_path / ".openclaw"
+    """Create a minimal project workspace.  Returns the docket home dir."""
+    oc_dir = tmp_path / ".docket"
     oc_dir.mkdir(exist_ok=True)
     ws = oc_dir / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     for fname in workspace_files or []:
         (ws / fname).write_text(f"# {agent_id}\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
     (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
     return oc_dir
 
@@ -293,20 +267,15 @@ class TestCmdSnapshot:
         data = json.loads(out)
         assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", data["timestamp"])
 
-    def test_empty_openclaw_graceful(self, tmp_path: Path) -> None:
-        # Minimal openclaw.json with no channels, no bindings, no agents
-        oc_dir = tmp_path / ".openclaw"
+    def test_empty_fleet_graceful(self, tmp_path: Path) -> None:
+        # No fleet.json at all -- channels, bindings, and agents must all default empty.
+        oc_dir = tmp_path / ".docket"
         oc_dir.mkdir()
-        (oc_dir / "openclaw.json").write_text(
-            json.dumps({"agents": {"defaults": {"model": ""}, "list": []}, "bindings": []})
-        )
         rc, out, _ = _run(
             ["snapshot"],
             {
                 **os.environ,
-                "OPENCLAW_DIR": str(oc_dir),
                 "DOCKET_HOME": str(oc_dir),
-                "DOCKET_NO_RESTART": "1",
             },
         )
         assert rc == 0

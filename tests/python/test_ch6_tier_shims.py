@@ -1,21 +1,20 @@
-"""CH-6 tests: tier/`profiles:` deprecation-shim removal (D-2 exit, 0.2.0).
+"""tier/`profiles:` deprecation-shim removal.
 
 Covers:
   - `docket profile <id> premium` (a tier name) now fails with a helpful
     model-id-based error, instead of silently resolving through the old
     TIER_ANCHORS table.
   - `docket models set <tier-name> <model>` and `docket tier` are rejected/removed.
-  - the internal rank-anchor seed table still resolves (Phase 18 L-2 relabels
-    the display from "fallback" to "rank anchors" — see
-    tests/python/test_l2_provider_agnosticism.py for the override/no-Claude-
-    residue coverage that phase added).
+  - the internal rank-anchor seed table still resolves, displayed as "rank
+    anchors" not "fallback" — see tests/python/test_l2_provider_agnosticism.py
+    for the override/no-Claude-residue coverage.
   - the one-shot `profiles:` -> `roles:` registry migration: migrates once, is
     idempotent, leaves registries without the legacy key untouched, and leaves
     registries that already have `roles:` alone (flagged by `docket doctor` as
     a residual key instead of being silently overwritten).
 
-All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
-and DOCKET_NO_RESTART=1, mirroring tests/python/test_m4_wave1.py.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden,
+mirroring tests/python/test_m4_wave1.py.
 """
 
 from __future__ import annotations
@@ -41,39 +40,21 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
         "DOCKET_HOME": str(oc_dir),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    oc_dir = tmp_path / ".openclaw"
+    oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
     ws = oc_dir / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
     return oc_dir
 
 
@@ -145,9 +126,8 @@ class TestTierNamesRemoved:
 
 class TestFallbackChainPreserved:
     def test_models_list_shows_rank_anchor_seed_table(self, tmp_path: Path) -> None:
-        """Renamed from the old 'fallback chain' framing (Phase 18 L-2): the
-        internal rank-anchor seed table still resolves and displays, but the
-        label is now honest ('rank anchors', not 'fallback' — nothing in
+        """The internal rank-anchor seed table still resolves and displays,
+        with an honest label ('rank anchors', not 'fallback' — nothing in
         docket degrades a request to a cheaper model on failure)."""
         oc_dir = _setup_agent(tmp_path)
         rc, out, _err = _run(["models"], oc_dir)

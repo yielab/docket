@@ -1,9 +1,8 @@
-"""G-4b: audit coverage for `models.*` — docket models set/preset/reset.
+"""Audit coverage for `models.*` — docket models set/preset/reset.
 
 `docket models set/preset/reset` change the role->model policy for the entire
-fleet but wrote no audit entry (a gap ROADMAP Phase 15 G-4 named and left
-open — see audit.spec.md's Version 2.0.0/2.1.0 changelog). This module covers
-the closing of that gap:
+fleet -- see audit.spec.md's Version 2.0.0/2.1.0 changelog. This module
+covers:
 
   - Each of `set`/`preset`/`reset` writes exactly one `models.*` audit entry
     naming the role(s) affected (or `default`) and the before/after model, so
@@ -13,9 +12,8 @@ the closing of that gap:
     other family, and `docket audit verify` still walks a log containing them
     without reporting a break.
 
-All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
-and DOCKET_NO_RESTART=1, matching the existing `models`/`profile` subprocess
-tests in test_m4_wave1.py.
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden,
+matching the existing `models`/`profile` subprocess tests in test_m4_wave1.py.
 """
 
 from __future__ import annotations
@@ -39,39 +37,21 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
         "DOCKET_HOME": str(oc_dir),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    oc_dir = tmp_path / ".openclaw"
+    oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
     ws = oc_dir / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
     return oc_dir
 
 

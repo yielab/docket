@@ -1,4 +1,4 @@
-"""G-3: high-risk classes enforced on docket-launched processes.
+"""High-risk classes enforced on docket-launched processes.
 
 Before this card, ``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier had
 callers only in tests (``test_m5_gates_policy.py``). A classifier nothing calls
@@ -97,7 +97,6 @@ class TestRunVerifyCmdHighRisk:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"

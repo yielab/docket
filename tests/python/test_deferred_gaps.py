@@ -183,12 +183,11 @@ class TestServeSweeps:
 # ── GAP 4: doctor advisory sections ───────────────────────────────────────────
 #
 # The Brave-browser advisory (_check_brave_browser) scanned for
-# `openclaw/browser` processes spawned by the OpenClaw daemon's headless web
-# UI. Phase 19 P19-7b deletes the daemon and every openclaw shell-out; there
-# is no longer a browser process for docket to observe, so the check itself
-# was deleted from cli/_doctor.py (no successor -- daemon-owned capability,
-# honestly gone, not silently dropped). Only the eval-results advisory
-# (docket-owned) remains below.
+# `openclaw/browser` processes spawned by the daemon's headless web UI. There
+# is no daemon and no browser process for docket to observe any more, so the
+# check itself was deleted from cli/_doctor.py (no successor -- a
+# daemon-owned capability, honestly gone, not silently dropped). Only the
+# eval-results advisory (docket-owned) remains below.
 
 
 class TestDoctorAdvisorySections:

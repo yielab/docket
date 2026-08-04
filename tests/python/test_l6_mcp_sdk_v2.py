@@ -1,4 +1,4 @@
-"""L-6: migrate `docket mcp serve` to the current (2.x) `mcp` SDK.
+"""Migrate `docket mcp serve` to the current (2.x) `mcp` SDK.
 
 L-3 shipped `docket mcp serve` against the SDK's 1.x line
 (`mcp.server.fastmcp.FastMCP`), pinned defensively at `mcp>=1.2.0,<2.0.0`
@@ -117,7 +117,6 @@ class TestSingleCodePathOnRealSdk:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

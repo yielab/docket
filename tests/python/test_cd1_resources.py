@@ -1,4 +1,4 @@
-"""CD-1: pod runtime-resource isolation — pure logic + integration tests.
+"""Pod runtime-resource isolation — pure logic + integration tests.
 
 Two layers:
   * TestPortAllocation — pure logic tests for core/resources.py (no I/O).
@@ -23,7 +23,6 @@ from docket.core import resources as _res
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

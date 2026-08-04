@@ -1,4 +1,4 @@
-"""W-6: `core/archetypes.py` — the declarative role-archetype registry.
+"""`core/archetypes.py` — the declarative role-archetype registry.
 
 Covers: closed-enum rejection (scope/modelClass/editRights/gateContract kind),
 the built-in/starter-library archetypes each validating, the user-overlay

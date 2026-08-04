@@ -1,5 +1,5 @@
-"""ROADMAP Phase 16 W-2: cancellation — `docket runs cancel <id>` actually
-kills the in-flight hop's process group.
+"""Cancellation — `docket runs cancel <id>` actually kills the in-flight
+hop's process group.
 
 Layers covered:
   * ``edges.adapters.system.kill_process_group`` — the raw OS mechanics: a
@@ -12,23 +12,17 @@ Layers covered:
     kill), and that a concurrent cancel is never clobbered back to
     "succeeded" by the run's own normal completion.
 
-Phase 19 P19-7b deleted the daemon-facing driver whose ``agent_run`` spawned
-a real, killable OS subprocess per hop — this file used to prove the
-timeout/on_spawn mechanics against it (three classes: ``TestAgentRunSpawnHook``,
-``TestAgentRunTimeoutKillsWholeGroup``, ``TestDispatchCancellationIntegration``),
-deliberately kept alive through P19-7a specifically to demonstrate the real
-kill mechanics still worked on *some* driver. There is no driver left that
-spawns an OS process per hop: the production ``DocketDriver`` (Phase 19 P19-5)
-makes in-process HTTP calls and never fires ``on_spawn`` (see its own
-docstring), so a dispatch hop cannot be killed mid-flight by `docket runs
-cancel` today — the run registry still marks it "cancelled" honestly
-("nothing in flight to kill"), but no in-flight call is interrupted. That is
-a named, permanent capability gap now (there is no second driver left to
-prove otherwise against), not something to paper over by inventing a fake
-subprocess-spawning driver. ``TestKillProcessGroup`` and ``TestCancelRun``
-below still prove the OS-level kill primitive and the run-registry bookkeeping
-work correctly in isolation — the only thing that changed is that no
-production code path currently connects a real pid to them.
+There is no driver that spawns an OS process per hop: the production
+``DocketDriver`` makes in-process HTTP calls and never fires ``on_spawn``
+(see its own docstring), so a dispatch hop cannot be killed mid-flight by
+`docket runs cancel` today — the run registry still marks it "cancelled"
+honestly ("nothing in flight to kill"), but no in-flight call is
+interrupted. That is a named, permanent capability gap (there is no
+subprocess-spawning driver to prove otherwise against), not something to
+paper over by inventing a fake one. ``TestKillProcessGroup`` and
+``TestCancelRun`` below still prove the OS-level kill primitive and the
+run-registry bookkeeping work correctly in isolation — the only gap is that
+no production code path currently connects a real pid to them.
 """
 
 from __future__ import annotations

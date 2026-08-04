@@ -1,4 +1,4 @@
-"""ROADMAP Phase 16 W-4: webhook params bound into pipeline variables.
+"""Webhook params bound into pipeline variables.
 
 Two layers:
 

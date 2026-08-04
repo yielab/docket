@@ -1,4 +1,4 @@
-"""W-6: `core/pod.py`'s role model resolves against the archetype registry
+"""`core/pod.py`'s role model resolves against the archetype registry
 instead of a hardcoded 4-tuple — `normalize_role`/`member_id`/`policy_role_for`
 must keep returning the exact same values for the four legacy roles, while
 also accepting a starter-library/user-defined role without a single new
@@ -27,7 +27,6 @@ from docket.core import pod
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -50,7 +49,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _ids(home: Path) -> list[str]:
-    # P19-6/P19-7b: agent registration lives in fleet.json now.
+    # Agent registration lives in fleet.json.
     del home  # kept for call-site compatibility; no longer the source
     return [a.id for a in _fleet.list_agents()]
 

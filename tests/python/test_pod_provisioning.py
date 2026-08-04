@@ -1,4 +1,4 @@
-"""AA-3: pod provisioning + the `docket pod` command (hermetic, no daemon)."""
+"""Pod provisioning + the `docket pod` command (hermetic, no daemon)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from docket.core import fleet as _fleet
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -200,7 +199,7 @@ class TestDeletePod:
     def test_delete_pod_writes_one_agent_delete_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """G-4: pod teardown (docket delete <pod>) writes a single agent.delete line."""
+        """Pod teardown (docket delete <pod>) writes a single agent.delete line."""
         from docket import cli
 
         _seed(tmp_path, monkeypatch)
@@ -216,7 +215,7 @@ class TestDeletePod:
 
 
 class TestParseAddArgs:
-    """FD-1: `--verify` parsing in `_parse_add_args`."""
+    """`--verify` parsing in `_parse_add_args`."""
 
     def test_role_only(self) -> None:
         assert _pod._parse_add_args(["implementer"]) == ("implementer", 1, "")
@@ -250,7 +249,7 @@ class TestParseAddArgs:
 
 
 class TestPodAddVerify:
-    """FD-1: `docket pod <project> add --verify` sets `verifyCmd` + TOOLS.md."""
+    """`docket pod <project> add --verify` sets `verifyCmd` + TOOLS.md."""
 
     def test_add_implementer_with_verify_sets_meta(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -290,7 +289,7 @@ class TestPodAddVerify:
 
 
 class TestPodSetVerify:
-    """FD-1: `docket pod <project> set-verify <member-id> "<cmd>"`."""
+    """`docket pod <project> set-verify <member-id> "<cmd>"`."""
 
     def test_set_verify_updates_meta(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         home = _seed(tmp_path, monkeypatch)
@@ -342,7 +341,7 @@ class TestPodSetVerify:
 
 
 class TestPodAddRemoveAudit:
-    """G-4: `docket pod <p> add/remove` each write exactly one audit line."""
+    """`docket pod <p> add/remove` each write exactly one audit line."""
 
     def test_pod_add_writes_one_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

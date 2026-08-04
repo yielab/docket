@@ -1,4 +1,4 @@
-"""CH-1: Enforce the store.py single-writer rule (D-12).
+"""Enforce the store.py single-writer rule (D-12).
 
 store.py's docstring claims ALL docket-owned JSON writes go through
 ``edges.store.write_json``. This is a machine-checked guard against

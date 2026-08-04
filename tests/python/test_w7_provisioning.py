@@ -1,12 +1,11 @@
-"""W-7: pod blueprint provisioning end-to-end (ROADMAP Phase 16).
+"""Pod blueprint provisioning end-to-end.
 
-Covers the card's explicit deliverables: every built-in blueprint provisions
-a real pod; `software` provisions byte-for-byte identically to the pre-W-7
-`_pod.build_pod` primitive (the card's hard parity requirement); a `workdir`
-blueprint's pod passes `docket doctor` clean; `docket add --from spec.yaml`
-provisions a pod via a `blueprint` field without disturbing the existing
-single-agent declarative path; an unknown blueprint fails cleanly in both
-the interactive and declarative surfaces.
+Covers: every built-in blueprint provisions a real pod; `software` provisions
+byte-for-byte identically to the underlying `_pod.build_pod` primitive (a
+hard parity requirement); a `workdir` blueprint's pod passes `docket doctor`
+clean; `docket add --from spec.yaml` provisions a pod via a `blueprint` field
+without disturbing the existing single-agent declarative path; an unknown
+blueprint fails cleanly in both the interactive and declarative surfaces.
 
 The blueprint *format* itself (registry, validation, pipeline/gate fidelity)
 is covered by test_w7_blueprints.py — this file is provisioning I/O only.
@@ -31,7 +30,6 @@ from docket.core import pod as _pod_core
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -55,7 +53,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _ids(home: Path) -> list[str]:
-    # P19-6/P19-7b: agent registration lives in fleet.json now.
+    # Agent registration lives in fleet.json.
     del home  # kept for call-site compatibility; no longer the source
     return [a.id for a in _fleet.list_agents()]
 
@@ -306,9 +304,9 @@ class TestDoctorAcceptsWorkdirBlueprint:
     def test_agentic_product_pod_passes_doctor_clean(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # ROADMAP Phase 21 P21-5: codebase-kind, full (lead/implementer/
-        # reviewer/tester) roster — same doctor path software's full pod
-        # (`--pod full`) already exercises, just reached via a blueprint name.
+        # codebase-kind, full (lead/implementer/reviewer/tester) roster —
+        # same doctor path software's full pod (`--pod full`) already
+        # exercises, just reached via a blueprint name.
         _seed(tmp_path, monkeypatch)
         created = _pod.build_pod_from_blueprint(
             "demo", "agentic-product", location="/src/demo", stack="Python"

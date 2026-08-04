@@ -1,14 +1,13 @@
-"""W-5 guard: core/ and edges/ must never call print() directly.
+"""Guard: core/ and edges/ must never call print() directly.
 
-Dead-code register (TODO.md, Phase 16 wave 5): ``core/dispatch.py:1313`` had
-``print(f"[dispatch] verification skipped...")`` — a layering violation of the
-standing rule (CLAUDE.md, ROADMAP §4.5) that ``core/``/``edges/`` never print
-or import ``docket.ui``; only ``cli/`` renders output. That call is now a
-typed ``HopResult.verification_skipped`` flag plus a trace event, rendered by
-``cli/_pod.py``. This is the AST-based guard the card calls for (sibling of
-``test_ch3_no_ui_in_core_edges.py``'s no-``ui``-import check and
-``test_ch4_no_subprocess_in_core.py``'s no-shell-out check) so a bare
-``print()`` can never quietly regress back into either layer.
+``core/dispatch.py`` once had ``print(f"[dispatch] verification skipped...")``
+— a layering violation of the standing rule (CLAUDE.md, ROADMAP §4.5) that
+``core/``/``edges/`` never print or import ``docket.ui``; only ``cli/``
+renders output. That call is now a typed ``HopResult.verification_skipped``
+flag plus a trace event, rendered by ``cli/_pod.py``. This is an AST-based
+guard (sibling of ``test_ch3_no_ui_in_core_edges.py``'s no-``ui``-import
+check and ``test_ch4_no_subprocess_in_core.py``'s no-shell-out check) so a
+bare ``print()`` can never quietly regress back into either layer.
 
 AST-based rather than a plain text grep: a naive substring search for
 ``"print("`` false-positives on identifiers merely ending in those letters

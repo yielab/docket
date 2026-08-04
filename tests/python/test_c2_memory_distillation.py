@@ -1,7 +1,6 @@
-"""ROADMAP Phase 17 C-2: memory distillation (`core.memory.distill_memory`).
+"""Memory distillation (`core.memory.distill_memory`).
 
-Pure `core/` coverage — no CLI, no subprocess, no live daemon. Covers the
-card's explicit contract:
+Pure `core/` coverage — no CLI, no subprocess, no live daemon. Covers:
 
 * nothing pending short-circuits to `ok=True, skipped=True` without ever
   calling the driver;
@@ -15,8 +14,8 @@ card's explicit contract:
   `config.DISTILL_MAX_INPUT_BYTES`.
 
 Uses `tests/python/fakes.py`'s `FakeDriver` (the one test double for the
-`RuntimeDriver` port, ROADMAP §4.5/D-14) throughout -- this suite is green on
-a machine with no `openclaw` binary and no daemon at all. CLI-level wiring
+`RuntimeDriver` port, ROADMAP §4.5) throughout -- this suite is green on a
+machine with no `openclaw` binary and no daemon at all. CLI-level wiring
 (`docket maintain <id> clean/reset/distill`, the `--no-distill-first`
 opt-out) is covered separately in test_c2_maintain_distill_cli.py.
 """

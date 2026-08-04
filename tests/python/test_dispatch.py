@@ -1,20 +1,18 @@
-"""AA-7: real pod dispatch — ACL agent_run + the pipeline driver (hermetic).
+"""Real pod dispatch — the pipeline driver (hermetic).
 
-Two layers are exercised:
-  * ``openclaw.agent_run`` against a *fake* ``openclaw`` binary on PATH (proves the
-    real subprocess wrapper + JSON parsing) — the card's "faked daemon" gate.
-  * ``core.dispatch`` with an injected runner (fast, deterministic) for the
-    pipeline semantics: hop order, budget gating, failure-stops, no-cross-pod.
-A final end-to-end test wires the driver through the REAL agent_run + fake binary.
+``core.dispatch`` is exercised two ways:
+  * with an injected runner (fast, deterministic) for the pipeline
+    semantics: hop order, budget gating, failure-stops, no-cross-pod.
+  * end to end (``TestEndToEnd``) with no injected runner at all -- a real
+    pod-dispatch hop executes through the real production ``DocketDriver``,
+    with only its `ChatBackend` scripted.
 
-CD-0 adds ``TestAgentRunRealShape`` — canned real daemon JSON confirming the
-confirmed schema (result.payloads[0].text, no USD cost field).
-
-R-1 adds the task-state-machine-v2 suites: ``TestConcurrentDispatch`` (the
-thread-race regression this whole card exists to close), ``TestCrashRecovery``
+The task-state-machine-v2 suites: ``TestConcurrentDispatch`` (the
+thread-race regression this exists to close), ``TestCrashRecovery``
 (stale-claim sweep + resume-from-last-hop), ``TestBlockedStaysBlocked``
-(kills the old blocked→pending auto-retry), and ``TestLegacyQueueLoads``
-(a pre-R-1 TASK_LIST.json with none of the new fields still loads/dispatches).
+(kills a blocked→pending auto-retry), and ``TestLegacyQueueLoads``
+(a legacy TASK_LIST.json with none of the newer fields still
+loads/dispatches).
 """
 
 from __future__ import annotations
@@ -45,7 +43,6 @@ from .fakes import FakeDriver
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
@@ -72,23 +69,19 @@ def _seed_pod(
     return home
 
 
-# Phase 18 L-1: the pipeline-semantics tests below inject `FakeDriver` (the one
+# The pipeline-semantics tests below inject `FakeDriver` (the one
 # RuntimeDriver test double, tests/python/fakes.py) as dispatch.py's Runner —
 # it is callable with agent_run's exact signature, so it drops in unchanged
-# wherever a `runner=` kwarg is passed. Replaces this file's former ad-hoc
-# `FakeDriver` shim.
+# wherever a `runner=` kwarg is passed.
 
 
-# Phase 19 P19-7b deleted the daemon-facing driver whose real subprocess-backed
-# `agent_run` `TestAgentRun`/`TestAgentRunEnv`/`TestAgentRunRealShape` used to
-# exercise (against a fake `openclaw` binary on PATH, and canned real daemon
-# JSON per CD-0). The successor path is `edges/adapters/llm.py`'s
-# `OpenAIChatClient` (response parsing, already covered by
+# There is no daemon-facing driver, no subprocess-backed `agent_run`, and no
+# daemon JSON shape to shell out to any more. The equivalent coverage lives
+# in `edges/adapters/llm.py`'s `OpenAIChatClient` (response parsing, see
 # test_p19_1_llm_port.py) and `edges/adapters/docket_runtime.py`'s
-# `DocketDriver` (env passed through to a tool call, covered by
+# `DocketDriver` (env passed through to a tool call, see
 # test_p19_5_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
-# `test_on_spawn_is_accepted_and_ignored`) -- neither reads a daemon JSON
-# shape or shells out at all, so those classes are not re-created here.
+# `test_on_spawn_is_accepted_and_ignored`).
 
 
 # ── pipeline driver (injected runner) ────────────────────────────────────────────
@@ -164,7 +157,7 @@ class TestPipeline:
         res = _dispatch.dispatch_pod("demo", runner=runner)[0]
         assert res.status == "blocked"
         assert runner.calls == []  # nothing dispatched
-        # R-1: a blocked task stays blocked (it is never silently rewritten back
+        # A blocked task stays blocked (it is never silently rewritten back
         # to pending) — it only re-enters pending via unblock_pod/retry_task.
         assert _dispatch.read_tasks("demo")[0]["status"] == "blocked"
 
@@ -181,8 +174,7 @@ class TestPipeline:
 
     def test_no_lead_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _seed_pod(tmp_path, monkeypatch)
-        # Remove the lead from the fleet registry → no dispatchable pod
-        # (P19-6: registration lives in fleet.json now, not openclaw.json).
+        # Remove the lead from the fleet registry → no dispatchable pod.
         _fleet.remove_agent("demo-lead")
         with pytest.raises(_dispatch.DispatchError):
             _dispatch.dispatch_pod("demo", runner=FakeDriver())
@@ -321,17 +313,17 @@ class TestEndToEnd:
         assert (oc_dir / "traces" / "demo").is_dir()
 
 
-# ── R-1: task state machine v2 — locked claims close the concurrent-dispatch race ─
+# ── task state machine v2 — locked claims close the concurrent-dispatch race ─
 
 
 class TestConcurrentDispatch:
-    """The regression this whole card exists to close.
+    """The regression this exists to close.
 
-    Before R-1, ``dispatch_pod`` read the queue unlocked, decided what to run
-    from that snapshot, and only wrote back after each task — so two
+    An unlocked ``dispatch_pod`` would read the queue, decide what to run
+    from that snapshot, and only write back after each task — so two
     concurrent callers on the same pod could both see the same task
-    ``pending`` and both run it. Claiming (``_claim_next_task``) is now a
-    locked read-modify-write, so this can no longer happen: concurrent callers
+    ``pending`` and both run it. Claiming (``_claim_next_task``) is a
+    locked read-modify-write, so this cannot happen: concurrent callers
     may run *different* tasks at once, but never the *same* one twice.
     """
 
@@ -391,7 +383,7 @@ class TestConcurrentDispatch:
         assert len({t["id"] for t in tasks}) == n_tasks  # uuid4 ids never collide
 
 
-# ── R-1: crash recovery — stale-claim sweep + resume from the last persisted hop ──
+# ── crash recovery — stale-claim sweep + resume from the last persisted hop ──
 
 
 class _CrashOnRoleRunner:
@@ -520,7 +512,7 @@ class TestCrashRecovery:
         assert any(e["event_type"] == "stale_claim" for e in events)
 
 
-# ── R-1: a budget-blocked task is never silently rewritten back to pending ────────
+# ── a budget-blocked task is never silently rewritten back to pending ────────
 
 
 class TestBlockedStaysBlocked:
@@ -537,7 +529,7 @@ class TestBlockedStaysBlocked:
         assert first[0].status == "blocked"
         # Once blocked, a `blocked` task is not even eligible to claim again —
         # repeated dispatch_pod calls find nothing to do (never re-attempted,
-        # let alone re-attempted forever, which was the R-1 bug).
+        # let alone re-attempted forever).
         for _ in range(3):
             assert _dispatch.dispatch_pod("demo", runner=runner) == []
         assert runner.calls == []  # never actually dispatched
@@ -590,7 +582,7 @@ class TestBlockedStaysBlocked:
         assert _dispatch.unblock_pod("demo") == 0
 
 
-# ── R-1: backward compatibility — a pre-R-1 TASK_LIST.json still loads/dispatches ─
+# ── backward compatibility — a legacy-shape TASK_LIST.json still loads/dispatches ─
 
 
 class TestLegacyQueueLoads:
@@ -605,7 +597,7 @@ class TestLegacyQueueLoads:
                 {
                     "tasks": [
                         {
-                            # Pre-R-1 shape: epoch-ms id, no claimId/claimedAt/failureKind.
+                            # Legacy shape: epoch-ms id, no claimId/claimedAt/failureKind.
                             "id": "task-1700000000000",
                             "description": "Old-style task",
                             "priority": "normal",

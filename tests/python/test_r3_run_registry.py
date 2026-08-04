@@ -1,4 +1,4 @@
-"""R-3 (D-17): the persisted run registry — one record per dispatch invocation.
+"""The persisted run registry — one record per dispatch invocation.
 
 Unit-level coverage of ``core/runs.py``'s CRUD primitives and its ``execute()``
 safe-wrapper, hermetic against a tmp ``RUNS_FILE``. Integration coverage (every

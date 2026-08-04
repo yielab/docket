@@ -96,9 +96,9 @@ class TestSeedContract:
 
 
 class TestSeedContractWorkdir:
-    """ROADMAP Phase 16 W-7: a `workdir`-kind pod blueprint has no codebase —
-    seed_contract's work_dir parameter must produce sensible, non-codebase
-    framing without touching the codebase-flavored text for existing callers.
+    """A `workdir`-kind pod blueprint has no codebase — seed_contract's
+    work_dir parameter must produce sensible, non-codebase framing without
+    touching the codebase-flavored text for existing callers.
     """
 
     def test_work_dir_default_reproduces_codebase_output_unchanged(self, tmp_path: Path) -> None:

@@ -1,19 +1,20 @@
-"""P19-8: docket-owned Telegram approval channel -- the routing/authorization
+"""docket-owned Telegram approval channel -- the routing/authorization
 layer (``core/telegram.py``).
 
-Since Phase 15, docket's docs have had to explicitly deny that Telegram is a
-real approval channel (no producer, no audit entry, no bridge -- G-5). This
-card makes it real; this module is the proof. **No test here ever touches a
-socket or a real token** -- ``core/telegram.py``'s ``handle_message`` never
-does network I/O at all (only ``poll_once`` does, and its tests inject fake
-``get_updates``/``send_message`` callables, never the real adapter).
+Telegram is a real, docket-owned approval channel here: grant/deny/status/
+delegate all route through it with a real producer, a real audit entry, and
+no daemon bridge required. This module is the proof. **No test here ever
+touches a socket or a real token** -- ``core/telegram.py``'s
+``handle_message`` never does network I/O at all (only ``poll_once`` does,
+and its tests inject fake ``get_updates``/``send_message`` callables, never
+the real adapter).
 
 What's pinned, in order of how much it matters:
 
 1. **An unbound chat cannot approve/deny/status/delegate anything** -- the
-   card's required "watch it fail" proof for the unauthorized-sender
-   invariant. Proven both as a direct assertion and by literally breaking
-   the authorization check and watching the same test go red (see
+   required "watch it fail" proof for the unauthorized-sender invariant.
+   Proven both as a direct assertion and by literally breaking the
+   authorization check and watching the same test go red (see
    ``TestUnauthorizedSenderIsAPlantedDriftProof``).
 2. Every grant/deny through this channel writes ``audit_log(...,
    channel="telegram")`` via the *existing* ``core.approval`` producer --
@@ -22,7 +23,7 @@ What's pinned, in order of how much it matters:
 3. Fail-closed on every ambiguous case: missing token, unparseable command,
    a `pre_input` `block`/`require_approval` verdict on delegated text.
 4. Delegated text is screened through the real `pre_input` policy hook
-   before ``core.dispatch.enqueue_task`` is ever called (P19-10's MCP tool
+   before ``core.dispatch.enqueue_task`` is ever called (the same MCP tool
    description precedent, applied to inbound channel text).
 """
 
@@ -43,7 +44,6 @@ from docket.core import telegram as _tg
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
@@ -251,8 +251,8 @@ class TestDelegate:
     def test_a_block_policy_refuses_before_enqueue_task_is_ever_called(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """P19-10's precedent applied to inbound channel text: a `block`
-        pre_input verdict must refuse fail-closed, never partially enqueue."""
+        """Applied to inbound channel text: a `block` pre_input verdict must
+        refuse fail-closed, never partially enqueue."""
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)

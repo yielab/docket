@@ -1,4 +1,4 @@
-"""ROADMAP Phase 19 P19-5: `DocketDriver`, the daemon-free `RuntimeDriver`
+"""`DocketDriver`, the daemon-free `RuntimeDriver`
 (`edges/adapters/docket_runtime.py`).
 
 `DocketDriver` implements the 7-method `RuntimeDriver` Protocol on top of

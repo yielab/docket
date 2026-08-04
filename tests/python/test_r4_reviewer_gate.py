@@ -1,4 +1,4 @@
-"""R-4: Reviewer verdict gate + bounded rework loop.
+"""Reviewer verdict gate + bounded rework loop.
 
 Before this card, the Reviewer's documented "APPROVE or REQUEST-CHANGES" veto
 was prose only — dispatch never read a Reviewer hop's output, so a
@@ -44,7 +44,6 @@ from docket.core import trace as _trace
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 

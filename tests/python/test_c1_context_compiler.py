@@ -1,6 +1,6 @@
-"""ROADMAP Phase 17 C-1: the context compiler (`core/context.py`).
+"""The context compiler (`core/context.py`).
 
-Pure-function unit tests for the module that supersedes Phase 14 R-7's blind
+Pure-function unit tests for the module that supersedes an earlier blind
 byte cap. Covers:
 
   * TestEstimateTokens  — the chars/token approximation itself (reuses

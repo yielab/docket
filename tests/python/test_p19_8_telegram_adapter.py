@@ -1,4 +1,4 @@
-"""P19-8: the Telegram Bot API adapter (ROADMAP Phase 19 / D-19).
+"""The Telegram Bot API adapter.
 
 ``edges/adapters/telegram.py`` is the only module that knows the Bot API's
 wire format. A real local HTTP server (stdlib ``http.server``) backs every
@@ -11,7 +11,7 @@ What this pins, in order of how much it matters:
 
 1. **The bot token never appears in a returned error string** -- proven
    against a real HTTP 401 response and a real connection failure, not
-   assumed. This is one of this card's two required "watch it fail" proofs.
+   assumed.
 2. Long-poll semantics: an empty result is success, not a failure; the
    caller's offset is echoed back verbatim (this module never computes the
    next offset itself -- that is ``core/telegram.py``'s job).

@@ -1,9 +1,9 @@
-"""ROADMAP Phase 19 P19-5: the turn loop (`core/agent_loop.py`).
+"""The turn loop (`core/agent_loop.py`).
 
-This is the card that makes the daemon unused, so what matters most here is
-that there is exactly one path to tool execution and that every stop
-condition is a deliberate, reported exit -- never a silent hang or a runaway
-loop. Covers, in order of how much each one matters:
+docket owns the loop, so what matters most here is that there is exactly one
+path to tool execution and that every stop condition is a deliberate,
+reported exit -- never a silent hang or a runaway loop. Covers, in order of
+how much each one matters:
 
 * **Single execution path** -- `run_agent_turn` never calls a tool handler
   except through `core.tools.dispatch_tool`; an architectural guard walks
@@ -193,12 +193,12 @@ def _truncated(content: str = "", tool_calls: Sequence[ToolCall] = ()) -> ChatRe
 
 
 class TestSingleExecutionPath:
-    """The card's non-negotiable: a tool call that bypasses dispatch_tool
-    bypasses every guardrail P19-2/P19-3 built. Verified by walking
-    agent_loop.py's own source, not just by observing today's behaviour --
-    see the module docstring's "plant the drift" instruction.
+    """Non-negotiable: a tool call that bypasses dispatch_tool bypasses every
+    guardrail the tool-call gate builds. Verified by walking agent_loop.py's
+    own source, not just by observing today's behaviour.
 
-    Planted and reverted by hand while writing this test (not committed):
+    Proven RED before being trusted. Planted and reverted by hand while
+    writing this test (not committed):
     temporarily replaced the `dispatch_tool(call, ctx, registry)` call with
     `tool = registry.get(call.name); tool.handler(call.parsed_arguments(), ctx)`
     -- a direct second path around the gate. This test went red (the

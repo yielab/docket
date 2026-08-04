@@ -1,7 +1,6 @@
-"""CH-0: Quick truth & dead-file sweep.
+"""Quick truth & dead-file sweep.
 
-Guards the fixes from the Phase 12 audit (internal-docs/architecture-audit.md
-§2 "Wrong in docs" / §4 "Cosmetic"):
+Guards:
   - the 3 dead template files are gone and never referenced under src/ again
     (install/pod provisioning write SOUL/AGENTS/workflow templates inline)
   - README's test-count claims aren't left stale

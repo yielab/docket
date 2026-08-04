@@ -1,9 +1,9 @@
 """Shared pytest fixtures for the docket Python suite.
 
-Phase 19 P19-7b deleted the external daemon and every shell-out to it —
-there is no `openclaw` binary, no `openclaw.json`, no ACL module left to
-isolate around. Every fixture below isolates docket's own state instead
-(fleet.json, the `DOCKET_HOME`-derived registries, docket-owned secrets).
+There is no external daemon, no `openclaw` binary, no `openclaw.json`, and no
+ACL module to isolate around. Every fixture below isolates docket's own state
+instead (fleet.json, the `DOCKET_HOME`-derived registries, docket-owned
+secrets).
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from docket.core import secrets as _secrets
 def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Safety net: default AUDIT_LOG to an ephemeral path for every test.
 
-    ``core/audit.py`` no longer has an environment kill switch (G-4) — best-
-    effort recording now genuinely always happens — so a test that exercises
+    ``core/audit.py`` has no environment kill switch — best-effort recording
+    always happens — so a test that exercises
     a mutating code path but forgets to repoint ``_cfg.AUDIT_LOG`` at its own
     sandbox would otherwise append real entries to the developer's actual
     ``~/.docket/audit.log``. This applies to every test by default; a test
@@ -35,16 +35,13 @@ def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Safety net: default FLEET_FILE to an ephemeral path for every test.
 
-    ROADMAP Phase 19 P19-6 decoupled ``DOCKET_HOME`` (fleet.json's home) from
-    the daemon's directory -- a test that repointed that directory for
-    hermeticity no longer isolates fleet.json "for free". Since Phase 19
-    P19-7b moved the fleet read/write API into ``core/fleet.py`` (which reads
-    ``_cfg.FLEET_FILE`` fresh on every call, never a module-level rebound
-    copy), patching ``_cfg.FLEET_FILE`` alone is sufficient — there is no
-    second module to patch any more (the pre-P19-7b ACL rebound its own copy
-    at import time; ``core/fleet.py`` does not). A test that wants a specific
-    fleet.json still repoints ``_cfg.FLEET_FILE`` itself, which simply
-    overrides this default.
+    ``DOCKET_HOME`` (fleet.json's home) is not implicitly isolated by
+    repointing some other directory for hermeticity. The fleet read/write API
+    lives in ``core/fleet.py``, which reads ``_cfg.FLEET_FILE`` fresh on
+    every call, never a module-level rebound copy -- so patching
+    ``_cfg.FLEET_FILE`` alone is sufficient, there is no second module to
+    patch. A test that wants a specific fleet.json still repoints
+    ``_cfg.FLEET_FILE`` itself, which simply overrides this default.
     """
     monkeypatch.setattr(_cfg, "FLEET_FILE", tmp_path / "_autouse_fleet.json", raising=True)
 
@@ -53,12 +50,11 @@ def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Safety net: default docket's secrets store to an ephemeral path.
 
-    ``core/secrets.py`` (Phase 19 P19-7b) reads ``SECRETS_FILE``/
-    ``SECRETS_META_FILE`` as module-level constants computed once at import
-    (``DOCKET_HOME / "secrets.json"`` etc.), not through ``_cfg`` at call
-    time -- so isolating them means patching the ``core.secrets`` module's
-    own attributes directly, the same shape ``_isolate_fleet_file`` used to
-    need before that module's own rebind went away.
+    ``core/secrets.py`` reads ``SECRETS_FILE``/``SECRETS_META_FILE`` as
+    module-level constants computed once at import (``DOCKET_HOME /
+    "secrets.json"`` etc.), not through ``_cfg`` at call time -- so isolating
+    them means patching the ``core.secrets`` module's own attributes
+    directly.
     """
     monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "_autouse_secrets.json", raising=True)
     monkeypatch.setattr(
@@ -67,21 +63,16 @@ def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 # Every ``DOCKET_HOME``-derived path, and the config attribute each is read
-# through at call time. Verified by grep at the time this was written: nothing
-# under ``src/docket/`` binds these at import (no ``from docket.config import
-# TRACES_DIR`` etc.), so patching the config module alone is sufficient --
-# ``FLEET_FILE`` above is the one exception noted in its own fixture's
-# docstring.
+# through at call time. Nothing under ``src/docket/`` binds these at import
+# (no ``from docket.config import TRACES_DIR`` etc.), so patching the config
+# module alone is sufficient -- ``FLEET_FILE`` above is the one exception
+# noted in its own fixture's docstring.
 #
-# P19-7a (the runtime cutover) added four: MODEL_REGISTRY_FILE,
-# ARCHETYPE_REGISTRY_FILE, PROJECTS_DIR and AUDIT_LOG moved under
-# DOCKET_HOME here. P19-7b added two more when the daemon's workspace root
-# was retired: WORKSPACES_DIR (specialist/pod-member workspaces) and PODS_DIR
-# (pod scratch/workdir roots). ``AUDIT_LOG`` already had its own dedicated
-# ``_isolate_audit_log`` fixture above; it is listed here too so
-# ``test_p19_6b_docket_home_isolation.py``'s source-scanning guard (which
-# does not know about that separate fixture) stays green. Both fixtures
-# isolate it to a safe tmp path, so the redundancy is harmless.
+# ``AUDIT_LOG`` already has its own dedicated ``_isolate_audit_log`` fixture
+# above; it is listed here too so ``test_p19_6b_docket_home_isolation.py``'s
+# source-scanning guard (which does not know about that separate fixture)
+# stays green. Both fixtures isolate it to a safe tmp path, so the
+# redundancy is harmless.
 _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
     ("TRACES_DIR", "traces"),
     ("APPROVALS_DIR", "approvals"),

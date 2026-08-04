@@ -1,4 +1,4 @@
-"""R-3 (D-17): every dispatch path yields a queryable run record.
+"""Every dispatch path yields a queryable run record.
 
 Covers the four ways a pod dispatch can be triggered — CLI (`docket pod <p>
 dispatch`), the serve webhook (`POST /dispatch/<project>`), a due schedule
@@ -48,7 +48,6 @@ _TEST_TOKEN = "test-serve-token-r3-runs"
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 

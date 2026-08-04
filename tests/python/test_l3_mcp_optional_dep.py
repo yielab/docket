@@ -1,4 +1,4 @@
-"""L-3: the optional `mcp` SDK dependency degrade path + real-SDK smoke test.
+"""The optional `mcp` SDK dependency degrade path + real-SDK smoke test.
 
 `docket mcp serve` needs the official MCP Python SDK (`mcp`), which is an
 *optional* extra (`docket[mcp]`) — kept out of the base install so

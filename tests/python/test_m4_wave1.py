@@ -1,6 +1,6 @@
 """M4 wave-1 tests: profile, scope, models — writer commands.
 
-All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
+All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
 so tests are hermetic and never touch the real ~/.docket.
 """
 
@@ -31,38 +31,21 @@ META: dict[str, Any] = {
     "projectKey": "default",
 }
 
-OC_CONFIG: dict[str, Any] = {
-    "agents": {
-        "defaults": {"model": ""},
-        "list": [
-            {
-                "id": "myshop",
-                "model": "anthropic/claude-sonnet-4-6",
-                "metadata": {"sessionKey": "agent:myshop:default", "projectKey": "default"},
-            }
-        ],
-    },
-    "bindings": [],
-    "security": {"gates": {"enabled": False}, "isolation": {"enabled": False}},
-}
-
 
 def _make_env(oc_dir: Path) -> dict[str, str]:
     return {
         **os.environ,
-        "OPENCLAW_DIR": str(oc_dir),
         "DOCKET_HOME": str(oc_dir),
     }
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
-    oc_dir = tmp_path / ".openclaw"
+    oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
     ws = oc_dir / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
-    (oc_dir / "openclaw.json").write_text(json.dumps(OC_CONFIG))
     return oc_dir
 
 
@@ -117,9 +100,8 @@ class TestCmdProfile:
         assert meta["modelSource"] == "pinned"
 
     def test_profile_pin_updates_meta_only(self, tmp_path: Path) -> None:
-        """P19-6: model lives in .docket-meta.json only now — the fleet
-        registry never tracked per-agent model, and `docket profile` no
-        longer touches openclaw.json at all (see core/fleet.py)."""
+        """Model lives in .docket-meta.json only -- the fleet registry never
+        tracks per-agent model (see core/fleet.py)."""
         oc_dir = _setup_agent(tmp_path)
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         meta = json.loads(
@@ -221,18 +203,6 @@ class TestCmdScope:
         )
         assert meta["projectKey"] == "billing"
         assert meta["sessionKey"] == "agent:myshop:billing"
-
-    def test_scope_set_does_not_touch_openclaw_json(self, tmp_path: Path) -> None:
-        # P19-6: sessionKey/projectKey live in .docket-meta.json only. Pre-P19-6
-        # this asserted the daemon-rejected `metadata` key got stripped on a
-        # write-then-strip round trip; `docket scope set` no longer writes
-        # openclaw.json at all, which is the stronger version of the same
-        # guarantee — assert the file is untouched, byte for byte.
-        oc_dir = _setup_agent(tmp_path)
-        before = (oc_dir / "openclaw.json").read_text()
-        _run(["scope", "myshop", "set", "billing"], oc_dir)
-        after = (oc_dir / "openclaw.json").read_text()
-        assert after == before
 
     def test_scope_set_without_key_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

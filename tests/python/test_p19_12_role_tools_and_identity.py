@@ -1,6 +1,6 @@
-"""ROADMAP Phase 19 P19-12: per-role tool sets + identity composition.
+"""Per-role tool sets + identity composition.
 
-Two omissions P19-5 recorded honestly rather than papering over:
+Two gaps this closes rather than papering over:
 
 1. **`ToolRegistry.without()` existed and was tested, but nothing composed it
    per role.** A Reviewer was *told* not to edit code (SOUL.md prose); it is

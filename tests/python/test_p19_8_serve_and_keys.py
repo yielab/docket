@@ -1,4 +1,4 @@
-"""P19-8: `docket serve --telegram` wiring, and the bot token's exclusion
+"""`docket serve --telegram` wiring, and the bot token's exclusion
 from per-agent `.env` sync.
 
 Two things are pinned here that the channel/adapter test modules don't
@@ -6,7 +6,7 @@ reach:
 
 1. `serve.py`'s poll loop paces itself (no busy-loop on an unconfigured bot
    or a transport error) and never lets an unexpected exception escape --
-   `contextlib.suppress(Exception)` around dispatch is banned (D-17), so
+   a bare `contextlib.suppress(Exception)` around dispatch is banned, so
    this proves the alternative: catch, print, back off, keep going.
 2. `docket keys add TELEGRAM_BOT_TOKEN` must NOT copy the token into every
    project agent's `.env` file the way a provider key does -- that would

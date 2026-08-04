@@ -1,19 +1,17 @@
-"""ROADMAP Phase 17 C-2: `docket maintain` distillation wiring.
+"""`docket maintain` distillation wiring.
 
-Covers `cli/_agents.py`'s side of the card -- `docket maintain <id> distill`,
-and `clean`/`reset` gaining a `--distill-first` default (with
+Covers `cli/_agents.py`'s side of it -- `docket maintain <id> distill`, and
+`clean`/`reset` gaining a `--distill-first` default (with
 `--no-distill-first` as the explicit opt-out) so neither command bare-deletes
 undistilled memory. Calls `run_maintain` directly (the same pattern
 test_w7_provisioning.py uses for `run_add`) with `sys.stdin.isatty`/
 `builtins.input` monkeypatched for the confirm prompt, and
 `edges.adapters.docket_runtime.default_driver` monkeypatched to return
-`tests/python/fakes.py`'s `FakeDriver` -- no live daemon, no `openclaw`
-binary, anywhere in this file. (Phase 19 P19-7a repointed `cli/_agents.py`'s
-`_run_distillation` at `docket_runtime.default_driver`, not the ACL's; this
-file's monkeypatch target moved with it.)
+`tests/python/fakes.py`'s `FakeDriver` -- no live daemon anywhere in this
+file.
 
-A hermetic no-fake, no-daemon proof (the real `OpenClawDriver` failing
-because `openclaw` isn't on PATH) lives in test_m4_final.py's
+A hermetic no-fake proof (the real production driver failing because no
+provider credentials are configured) lives in test_m4_final.py's
 `TestCmdMaintain` class, alongside the rest of `docket maintain`'s
 subprocess-level coverage.
 """
