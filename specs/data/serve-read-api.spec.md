@@ -381,7 +381,7 @@ effects, UI-free; `docket add`'s interactive and `--from` pod paths call the exa
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"project": "myapp", "path": "/home/ops/myapp", "blueprint": "software"}' \
+  -d '{"project": "myapp", "path": "/srv/repos/myapp", "blueprint": "software"}' \
   http://127.0.0.1:7474/pods
 ```
 
