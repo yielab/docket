@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Stable
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-04
 
 ## Purpose
 
@@ -21,6 +21,7 @@ This specification covers:
 - The three stable, unauthenticated read endpoints (`/status.json`, `/metrics`, `/health`)
 - The authenticated read-registry endpoints added in R-3 (`/runs`, `/runs/<id>`) and their
   relationship to `POST /dispatch/<project>`
+- The Phase 22 authenticated read endpoints (`GET /tasks/<project>`, `GET /traces/<project>`)
 - The JSON schema for each response
 - The Prometheus metric names and semantics
 - The versioning policy (what constitutes a breaking change)
@@ -52,6 +53,14 @@ of the pod pipeline — the CLI, the serve webhook, a due schedule, or the sweep
 |---|---|---|
 | `GET /runs` | `application/json` | Yes |
 | `GET /runs/<id>` | `application/json` | Yes |
+
+...and two more authenticated read endpoints (Phase 22, P22-2/P22-3) — each exposes exactly what a
+`core/` function already returns, no new behaviour:
+
+| Endpoint | Content-Type | Auth required |
+|---|---|---|
+| `GET /tasks/<project>` | `application/json` | Yes |
+| `GET /traces/<project>` | `application/json` | Yes |
 
 All responses are served from `127.0.0.1` (localhost only). Responses include
 `Cache-Control: no-store` — consumers must not cache.
@@ -194,6 +203,76 @@ resolved against — `{}` for every source except `webhook` (see `POST /dispatch
 **Added in API version 2 (R-3 / D-17).** Requires `Authorization: Bearer <token>`. Returns one run
 record (the same shape as one element of `/runs`' array, unwrapped). `404` if the id is unknown.
 
+### GET /tasks/&lt;project&gt;
+
+**Added 2.4.0 (Phase 22, P22-2).** Requires `Authorization: Bearer <token>`. Wraps
+`core.dispatch.read_tasks(project)` exactly — no filtering, no reshaping, no invented 404: a
+project with no pod is `read_tasks`' own `[]`, not an error.
+
+```json
+{
+  "tasks": [
+    {
+      "id": "task-91a2...",
+      "description": "Fix the bug",
+      "priority": "normal",
+      "status": "pending",
+      "source": "operator",
+      "created": "2026-08-04T12:00:00Z",
+      "hops": []
+    }
+  ]
+}
+```
+
+Field set matches whatever `read_tasks` normalizes onto a task record (v2 fields backfilled for a
+legacy queue) — this spec does not re-enumerate them; see `core/dispatch.py`'s
+`_TASK_SCALAR_DEFAULTS` for the authoritative list, since duplicating it here would drift the
+moment a field is added there.
+
+- The project segment must be non-empty — `GET /tasks` and `GET /tasks/` both reject with `400`.
+- A project with a pod but an empty queue, and a project with no pod at all, both return `200` with
+  `{"tasks": []}` — indistinguishable at this endpoint, matching `read_tasks`' own contract (it has
+  no notion of "pod exists but is empty" vs. "no pod").
+
+### GET /traces/&lt;project&gt;
+
+**Added 2.4.0 (Phase 22, P22-3 — P20-3's deferral trigger firing).** Requires
+`Authorization: Bearer <token>`. Returns raw trace JSONL for one project, verbatim, cursor'd by an
+optional `?since=<cursor>` query parameter so a polling consumer (e.g. Tack) can resume without
+re-reading everything each time. This is deliberately **not** the fleet-wide trace query P20-3
+described — one project, one cursor, no filtering by event type/role/session; a caller that wants
+that aggregates client-side across calls.
+
+```json
+{
+  "events": [
+    "{\"ts\": \"2026-08-04T12:00:00Z\", \"project\": \"myapp\", \"session_id\": \"...\", \"agent_role\": \"lead\", \"event_type\": \"tool_call\", \"payload\": {...}}"
+  ],
+  "next": "2026-08-04T12:00:00Z:1"
+}
+```
+
+- Each element of `events` is the **verbatim JSONL line** (a JSON string, not a re-parsed/re-keyed
+  object) exactly as `core.trace.export_lines` returned it — no field is added, removed or renamed.
+- A project with no trace files returns `200` with `{"events": [], "next": ""}` — not an error.
+- The project segment must be non-empty — `GET /traces` and `GET /traces/` both reject with `400`.
+- **Cursor semantics.** `export_lines`' own `since` filter is `ts >= since` — inclusive — and `ts`
+  is second-granularity (`%Y-%m-%dT%H:%M:%SZ`). Several trace events sharing one timestamp is
+  routine (one dispatch hop can emit several events inside the same wall-clock second), so neither
+  "next cursor = last event's raw ts" (redelivers that whole second on the next poll) nor a naive
+  exclusive reinterpretation of it (silently drops a same-second event that arrives after the poll
+  that first saw that second) is correct. The `next` value is instead a compound
+  `"<ts>:<n>"` token — `n` is how many lines carrying that exact `ts` have already been delivered —
+  so a poll loop that always passes back the previous response's `next` as its `since` ingests every
+  event exactly once, even across a same-second boundary. A bare timestamp (no `:<n>` suffix) is
+  also accepted as `since`, with `n` treated as 0.
+- A trace line `export_lines` cannot key on (malformed JSON, or valid JSON missing `ts`) is a
+  pre-existing limitation of that function, not solved by this endpoint: such a line is always
+  re-included whenever any `since` filter is active, regardless of cursor value. This endpoint never
+  drops it, but also cannot make it stop reappearing — the practical impact is nil under normal
+  operation, since `core.trace.trace_event` always writes a valid `ts`.
+
 ### POST /dispatch/&lt;project&gt;
 
 **Changed in API version 2.** The webhook now creates a run record *before* returning, and the
@@ -241,6 +320,13 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 - `/metrics` MUST conform to Prometheus text format 0.0.4.
 - `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer token with `401`,
   before touching the run registry.
+- `/tasks/<project>` and `/traces/<project>` MUST reject a request with no (or an invalid) Bearer
+  token with `401`, and MUST reject an empty project segment with `400`, before touching any
+  project state.
+- `/traces/<project>`'s `next` cursor MUST be safe to feed back as the next request's `since`
+  without either re-delivering an event already returned or skipping one written after the
+  previous response — including when several events share one `ts` (see the cursor semantics
+  paragraph above).
 - A run record's `state` MUST be one of `queued | running | succeeded | failed`; `source` MUST be
   one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
   `dispatch` tool).
@@ -292,6 +378,29 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.4.0 — 2026-08-04
+
+- P22-2: `GET /tasks/<project>` — wraps `core.dispatch.read_tasks(project)` behind the same Bearer
+  auth as `/runs`. No new behaviour: no filtering, no reshaping, and no 404 invented beyond what
+  `read_tasks` itself expresses (`[]` for a project with no pod). Additive (new endpoint only), so
+  this does not bump `apiVersion`.
+- P22-3: `GET /traces/<project>?since=<cursor>` — this is P20-3's deferral trigger firing ("grep
+  over JSONL is adequate" was true for a human operator, false for a programmatic consumer that
+  must resume from a cursor). Built on `core.trace.export_lines(project, since)` used as-is; returns
+  raw JSONL verbatim for one project, cursor'd, with no fleet-wide query and no filtering by event
+  type/role/session — deliberately narrower than the fleet trace query P20-3 originally described.
+  Additive, does not bump `apiVersion`.
+- The `next` cursor `GET /traces/<project>` returns is a compound `"<ts>:<n>"` token, not a bare
+  timestamp — `export_lines`' `since` filter is inclusive (`ts >= since`) and second-granularity, so
+  a bare last-seen ts would either redeliver everything from that second or, if naively treated as
+  exclusive instead, silently drop a same-second event written after the poll that first observed
+  that second. `n` tracks how many lines at that exact `ts` have already gone out, so a poll loop
+  ingests every event exactly once across the boundary. A caller-supplied bare timestamp is still
+  accepted as `since` (treated as `n=0`).
+- Both endpoints follow the Phase 22 design rule: expose what `core/` already does, add no new
+  behaviour — same Bearer auth, same absence of new policy hooks, same lack of new audit entries
+  the CLI path wouldn't already produce (`read_tasks`/`export_lines` are pure reads).
 
 ### 2.3.0 — 2026-08-03
 

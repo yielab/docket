@@ -9,18 +9,24 @@ Exposes:
   /runs                 list dispatch run records, newest first (auth required)
   /runs/<id>            one dispatch run record (auth required)
   /dispatch/<project>   trigger a pod dispatch; returns a queryable run id (auth required)
+  /tasks/<project>      the pod's task queue, as core.dispatch.read_tasks returns it
+                        (auth required)
+  /traces/<project>     cursor'd raw trace JSONL for one project — ?since=<cursor>
+                        resumes a poll loop exactly where the last page left off
+                        (auth required; see _traces_page's docstring for the cursor
+                        format and why a bare last-seen ts is not enough)
 
 Security model: the server binds to 127.0.0.1 (loopback-only) by default —
 `run_serve`'s ``bind`` parameter can widen that, but nothing in docket
 recommends or automates doing so; treat any non-loopback bind as an explicit,
 on-you decision (there is no additional network ACL here, only the bearer
 token below). A randomly-generated Bearer token is required on every
-/approvals, /runs and /dispatch request (DOCKET_SERVE_TOKEN env var pins a fixed
-token); it is printed at startup by default, or written to a 0600 file via
-``--token-file``/``token_file=`` when stdout isn't a safe place for it (e.g. a
-systemd unit's journal). The approval endpoints reject all requests without a
-valid token — compared with `secrets.compare_digest`, not `==`, before
-touching approval state.
+/approvals, /runs, /tasks, /traces and /dispatch request (DOCKET_SERVE_TOKEN
+env var pins a fixed token); it is printed at startup by default, or written
+to a 0600 file via ``--token-file``/``token_file=`` when stdout isn't a safe
+place for it (e.g. a systemd unit's journal). The approval endpoints reject
+all requests without a valid token — compared with `secrets.compare_digest`,
+not `==`, before touching approval state.
 
 Every dispatch this server triggers — webhook, due schedule, or the
 periodic sweep — is recorded in the ``core.runs`` registry *before* it starts
@@ -645,6 +651,130 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
                 return
 
 
+# ── /traces/<project> cursor paging ─────────────────────────────────────────
+#
+# Built entirely on `core.trace.export_lines(project, since)` — owned by
+# another card this wave, used here exactly as it stands. That function's
+# `since` filter is `ts >= since`: inclusive, and second-granularity (`ts` is
+# `%Y-%m-%dT%H:%M:%SZ`). Both properties matter for a poll loop that must
+# ingest every event exactly once:
+#
+#   * Inclusive means the naive cursor — "next = last event's ts" — would
+#     redeliver that same last event (and anything else sharing its second)
+#     on the very next poll.
+#   * Second granularity means several events sharing one timestamp is
+#     routine, not an edge case (a single dispatch hop can emit several trace
+#     events inside the same wall-clock second), so "ts > cursor" instead of
+#     "ts >= cursor" would silently DROP any same-second event that arrives
+#     after the poll that first saw that second, rather than deliver it late.
+#
+# The cursor this module mints is therefore a compound "<ts>:<n>" token: n is
+# how many lines carrying that exact ts have already gone out. Re-querying at
+# ts re-fetches that whole second (inclusive filter), and the first n of them
+# — stable, since trace files are append-only and never reordered — are
+# exactly the ones already delivered, so they're dropped before the response
+# is built. See `_traces_page`.
+
+
+def _trace_line_ts(line: str) -> str:
+    """Best-effort ts extraction for cursor bookkeeping.
+
+    Mirrors `export_lines`' own parsing exactly (`str(json.loads(line).get("ts",
+    ""))`) so this module's notion of "which second a line belongs to" never
+    diverges from the filter it is compensating for. Returns "" for anything
+    `export_lines` cannot key on either: malformed JSON, or valid JSON that
+    isn't an object.
+    """
+    try:
+        parsed = json.loads(line)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    return str(parsed.get("ts", ""))
+
+
+def _decode_trace_cursor(raw: str) -> tuple[str, int]:
+    """Decode a `since` query value into (ts, lines already delivered at ts).
+
+    Accepts both a cursor this module minted (`"<ts>:<n>"`) and a bare
+    timestamp a caller supplies by hand (no ":<int>" suffix, n=0) — the
+    latter is a reasonable "give me everything from this point on" request
+    and export_lines' own `since` parameter already accepts a plain ts.
+    """
+    if not raw:
+        return "", 0
+    ts, sep, tail = raw.rpartition(":")
+    if sep and tail.isdigit():
+        return ts, int(tail)
+    return raw, 0
+
+
+def _traces_page(project: str, since: str) -> tuple[list[str], str]:
+    """One cursor'd page of *project*'s raw trace JSONL, delivered exactly once.
+
+    Returns (lines, next_cursor). `lines` are the verbatim JSONL strings
+    `export_lines` returned (untouched — no reformatting, no filtering by
+    event type/role/session); `next_cursor` is what a subsequent call's
+    `since` should be to resume without re-ingesting or skipping anything —
+    see the module-level comment above for why that requires more than the
+    last line's raw ts.
+
+    A trailing line this module cannot key on (`_trace_line_ts` returns "")
+    is a pre-existing `export_lines` limitation, not something fixed here:
+    such a line is always re-included whenever *any* since filter is active,
+    regardless of position, so no cursor value can make it stop reappearing.
+    This function still returns it (nothing already-fetched is silently
+    dropped) but anchors the next cursor on the last line it CAN key on,
+    rather than minting a cursor from "" — which would collapse the filter
+    entirely and replay the whole project's trace on the next poll.
+    """
+    cursor_ts, already = _decode_trace_cursor(since)
+    lines = _trace.export_lines(project, cursor_ts)
+
+    if already:
+        skipped = 0
+        i = 0
+        while i < len(lines) and skipped < already:
+            ts = _trace_line_ts(lines[i])
+            if ts == cursor_ts:
+                skipped += 1
+                i += 1
+            elif ts == "":
+                # Always re-included regardless of position (see docstring)
+                # -- pass over without spending the skip budget on it.
+                i += 1
+            else:
+                break
+        lines = lines[i:]
+
+    if not lines:
+        return [], since
+
+    anchor_idx = -1
+    anchor_ts = ""
+    for idx in range(len(lines) - 1, -1, -1):
+        ts = _trace_line_ts(lines[idx])
+        if ts:
+            anchor_idx, anchor_ts = idx, ts
+            break
+    if anchor_idx == -1:
+        # Nothing in this page has a usable ts -- cannot safely advance past
+        # the incoming cursor without risking a full replay next time.
+        return lines, since
+
+    # How many lines, counting backward from anchor_idx, carry that exact ts
+    # -- the size of the trailing same-second run the next poll must skip.
+    count_at_anchor = 0
+    for idx in range(anchor_idx, -1, -1):
+        if _trace_line_ts(lines[idx]) != anchor_ts:
+            break
+        count_at_anchor += 1
+    if anchor_ts == cursor_ts:
+        count_at_anchor += already
+    return lines, f"{anchor_ts}:{count_at_anchor}"
+
+
 class _DocketHandler(BaseHTTPRequestHandler):
     """Serves the docket endpoints; builds responses on demand.
 
@@ -723,6 +853,43 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error(f"Unknown run: {run_id}", 404)
                 return
             self._send(json.dumps(rec).encode("utf-8"), "application/json")
+        elif path == "/tasks":
+            # `path` already had trailing slashes stripped above, so both
+            # bare "/tasks" and "/tasks/" (an empty project segment) land
+            # here as "Missing project" rather than falling through to a
+            # generic 404.
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            self._send_json_error("Missing project", 400)
+        elif path.startswith("/tasks/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project = path[len("/tasks/") :]
+            from docket.core import dispatch as _dispatch
+
+            # read_tasks itself returns [] for a project with no pod (absent
+            # queue file) -- no 404 invented here, matching that contract.
+            body = json.dumps({"tasks": _dispatch.read_tasks(project)}).encode("utf-8")
+            self._send(body, "application/json")
+        elif path == "/traces":
+            # Same rationale as the bare "/tasks" branch above.
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            self._send_json_error("Missing project", 400)
+        elif path.startswith("/traces/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project = path[len("/traces/") :]
+            query = _urlparse.parse_qs(_urlparse.urlsplit(full_path).query)
+            since_values = query.get("since")
+            since = since_values[0] if since_values else ""
+            events, next_cursor = _traces_page(project, since)
+            body = json.dumps({"events": events, "next": next_cursor}).encode("utf-8")
+            self._send(body, "application/json")
         else:
             self._send(b"not found\n", "text/plain", status=404)
 
