@@ -8,7 +8,7 @@ Get started with DOCKET-optimized agents in under 5 minutes.
 > **Beta / early-stage software.** docket is under active development and not yet at a stable
 > release. The steps below work and are test-backed, but expect rough edges, breaking changes
 > between versions, and the occasional gap between docs and behavior. Verify results against your
-> own OpenClaw install, and treat all cost figures as estimates, not provider bills.
+> own install, and treat all cost figures as estimates, not provider bills.
 
 ---
 
@@ -106,8 +106,8 @@ docket serve --dispatch                                       # autonomous: drai
 
 Each hop is a **real, costed LLM turn**, so dispatch is always explicit (`dispatch`)
 or opt-in (`serve --dispatch`) — never silent. Before each hop docket checks the pod's
-recorded spend against the Lead's budget cap (`docket profile myapp-lead --budget N`);
-over budget, the task stays **pending** instead of running. Every hop is traced
+token-based dollar estimate against the Lead's budget cap (`docket profile myapp-lead --budget
+N`); over budget, the task stays **pending** instead of running. Every hop is traced
 (`docket trace`) for a fully auditable run.
 
 If the pod has a Reviewer or Tester, their hop is **gated**, not advisory: a Reviewer's
@@ -188,7 +188,7 @@ docket pod myapp dispatch       # run Lead → Implementer → (Reviewer) → (T
 2. **Implementer** runs *inside* the project workspace, writes the change, signals DONE.
 3. **Reviewer** *(if the pod has one)* read-only veto on the diff.
 4. **Tester** *(if the pod has one)* behaviour-only PASS / FAIL.
-5. **Lead** reports the result; the queue shows per-task status and recorded cost.
+5. **Lead** reports the result; the queue shows per-task status and estimated cost.
 
 Each hop is budget-gated against the Lead's cap and traced (`docket trace`), so a run
 is fully auditable. Re-check the queue afterward:
@@ -260,9 +260,8 @@ tokens (context isolated per project).
 **A:** `docket maintain <id> rebuild` backs up the current workspace files into a
 `.backup-YYYYMMDD-HHMMSS/` directory before regenerating them. Restore from that backup:
 ```bash
-cd ~/.openclaw/workspaces/manager
+cd ~/.docket/workspaces/manager
 cp .backup-YYYYMMDD-HHMMSS/SOUL.md SOUL.md
-systemctl --user restart openclaw-gateway.service
 ```
 
 ### Q: Can I customize the templates?
@@ -271,15 +270,13 @@ systemctl --user restart openclaw-gateway.service
 docket edit manager    # Opens manager's SOUL.md in $EDITOR
 ```
 
-Then restart the gateway to apply changes:
-```bash
-systemctl --user restart openclaw-gateway.service
-```
+There is nothing to restart — docket has no external daemon or gateway process; the next turn
+picks the edited file up directly.
 
 ### Q: How do I know it's working?
 **A:** Check token usage:
 1. Message a pod's Lead with a status query
-2. Check OpenClaw logs for token count
+2. Run `docket cost <lead-id>` for its measured token counts
 3. Run `docket context <lead-id> show` — recent activity, active tasks, and context stats
    (log count, last active) for that one agent, never a cross-project blend
 
@@ -297,7 +294,7 @@ kept in one place rather than duplicated across every doc that touches them.
 
 1. **Run real work:** `docket pod <project> delegate "<task>"` → `docket pod <project> dispatch`
 2. **Understand the team model:** Read **[Agent Teams (Pods)](AGENT-TEAMS.md)** — the heart of docket
-3. **Monitor cost:** Check recorded spend with `docket cost`
+3. **Monitor cost:** Check measured token usage with `docket cost`
 4. **Review context & distill memory:** `docket context <project> project` / `docket maintain <project> distill` per project
 5. **Go autonomous:** `docket serve --dispatch` to drive every pod's queue in the background
 

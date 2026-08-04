@@ -8,7 +8,7 @@ Complete technical guide to docket's DOCKET architecture implementation.
 > **Beta / early-stage software.** The architecture below is implemented and automated-test-backed,
 > but has not been QA-hardened in production. "Validated" in the Implementation Status section
 > means *covered by the automated suite*, not field-proven — verify behavior against your own
-> OpenClaw install. All cost figures are accounting estimates, not provider bills (see the
+> install. All cost figures are accounting estimates, not provider bills (see the
 > [README's cost limits](../README.md#cost-reporting-and-its-limits)).
 
 ---
@@ -96,8 +96,8 @@ cli/  ->  core/  ->  edges/
   raising `typer.Exit` and renders whatever typed result `core/`/`edges/` handed back (a
   `RestartResult`, a `Drift` list, a `TaskResult`) through `ui.py`'s `info`/`success`/`warn`/
   `error` helpers.
-- **`core/`** (Pydantic models + pure services) — the domain: agent/OpenClaw data models,
-  role→model policy, dispatch's state machine, sync/security/approval/audit/trace/policy logic.
+- **`core/`** (Pydantic models + pure services) — the domain: agent data models, role→model
+  policy, dispatch's state machine, security/approval/audit/trace/policy logic.
   `core/` never imports `cli/`, never imports `ui.py`, and never prints — every function returns a
   typed result for `cli/` to render.
 - **`edges/`** (the only side-effecting layer) — `edges/store.py` is the single chokepoint for
@@ -109,81 +109,83 @@ This is not a style preference — it is enforced by what each layer is allowed 
 couple of the newest modules in the tree exist specifically to keep the boundary from eroding (see
 the RuntimeDriver port, below).
 
-### The Anti-Corruption Layer
+### No external daemon — docket owns the loop
 
-`edges/adapters/openclaw.py` is the **only** module in the codebase allowed to know what
-`openclaw.json`, an auth profile, or a provider config file actually look like on disk. Every
-other module — including `core/dispatch.py`'s hop loop and every `cli/` command — reaches
-OpenClaw state only through this ACL's typed functions (`get_agent`, `list_agents`, `meta_get`,
-`agent_run`, and so on). Shelling out to the `openclaw` binary itself is included in that rule:
-`agents add`, `models auth`, `--version`, and `onboard` all go through the ACL, never a direct
-`subprocess` call from `core/` or `cli/`.
+Through Phase 18, docket was a control plane wrapped around a separate OpenClaw daemon process:
+an Anti-Corruption Layer module (`edges/adapters/openclaw.py`) was the only code allowed to know
+`openclaw.json`'s on-disk shape, every agent turn ran inside that daemon's own process, and a
+config change ended with docket restarting its systemd gateway unit so the daemon would pick it
+up. **Phase 19 (decision D-19) removed all of that outright, not incrementally.** There is no
+`openclaw` binary, no `openclaw.json`, no auth-profile store, no ACL module, and no gateway
+service to restart — `edges/adapters/system.py`'s `restart_gateway()`/`gateway_active()` are kept
+as stable, always-no-op/always-`False` call sites (so the ~20 pre-existing call sites across
+`cli/` need no individual rewrite), not a live integration. docket runs the agent turn itself
+(`core/agent_loop.py`) and talks to any OpenAI-compatible chat-completions endpoint directly
+(`edges/adapters/llm.py`, stdlib `urllib`, no vendor SDK).
 
-The payoff: OpenClaw's file formats can change — or OpenClaw itself could in principle be replaced
-— by rewriting one module, not by auditing every call site in the tree. This is a *reversibility*
-property, not a migration plan: docket wraps OpenClaw decisively (the moat is the control plane,
-not the agent loop), and the ACL is what keeps that decision from calcifying into an assumption
-smeared across the codebase.
+This was a scope ruling, not a migration: **no compatibility layer, no migration steps** — a
+pre-Phase-19 install's files at old daemon-relative paths are simply not read again; `docket
+install` re-creates a docket-native home from scratch under `~/.docket/` (`DOCKET_HOME`).
 
 ### The RuntimeDriver port (decision D-14)
 
-A mid-2026 audit found that the *execution* slice of that same coupling — parsing an agent turn's
-result, reading a session's on-disk JSONL, aggregating token/cost usage — had started leaking
-around the ACL rather than being contained by it: session-JSONL parsing had drifted into
-`core/utils.py`, and `core/trace.py`'s ingestion bridge decoded the daemon's raw session-record
-types itself. `core/runtime_driver.py` is the fix: a single typed `Protocol` — `RuntimeDriver` —
-that `core/` and `cli/` program against instead of a concrete driver's on-disk knowledge. It has
-six members plus one ingestion helper:
+Before the daemon was removed, a mid-2026 audit found that the *execution* slice of docket's
+coupling to it — parsing an agent turn's result, reading a session's on-disk JSONL, aggregating
+token/cost usage — had started leaking around the ACL rather than being contained by it.
+`core/runtime_driver.py` is the fix that outlived the daemon it was first built for: a single
+typed `Protocol` — `RuntimeDriver` — that `core/` and `cli/` program against instead of a concrete
+driver's on-disk knowledge. It has six members plus one ingestion helper:
 
 - `run_turn` — one costed agent turn: the hot path `core/dispatch.py`'s pipeline calls for every
   hop, and, per decision D-18, docket's own self-originated LLM calls (memory distillation, see
   [Memory Management](#memory-management))
 - `provision` / `teardown` — register/unregister an agent with the backing runtime
 - `list_sessions` / `usage` — durable-session enumeration and token/cost aggregation
-- `capabilities` — what this driver instance can actually promise (for example, whether the
-  daemon reports a real USD cost at all), so a caller never hardcodes an assumption about the one
+- `capabilities` — what this driver instance can actually promise (for example, whether it
+  reports a real USD cost at all), so a caller never hardcodes an assumption about the one
   shipped driver's quirks
 - `read_new_turns` — decodes session records past a caller-held offset into docket's own neutral
   `SessionTurn`/`SessionSlice` vocabulary, feeding `core/trace.py`'s ingestion sweep
 
-`edges/adapters/openclaw.py`'s `OpenClawDriver` is the **one shipped implementation**; a
-`FakeDriver` test double (`tests/python/fakes.py`) is the one test double. This is a deliberately
-narrow move. docket's architectural principles carry a standing ban on an `AbstractBackend`/plugin
-framework, and decision D-14 *revises* that ban rather than repealing it: the port is containment
-of coupling that already existed, not speculative generality. **There is one shipped driver.** A
-second real driver still needs a real trigger — OpenClaw stalling, repeatedly breaking
-compatibility, or a paying user who needs a different runtime — not the existence of the port
-itself; adding driver discovery, entry points, or a config-selectable backend ahead of that would
-be scope creep, not follow-through.
+`edges/adapters/docket_runtime.py`'s `DocketDriver` — docket's own turn loop, running directly
+against a configured model endpoint — is the **one shipped implementation** since Phase 19
+P19-7b replaced the daemon-facing driver this port originally shipped with; a `FakeDriver` test
+double (`tests/python/fakes.py`) is the one test double. This is a deliberately narrow move.
+docket's architectural principles carry a standing ban on an `AbstractBackend`/plugin framework,
+and decision D-14 *revises* that ban rather than repealing it: the port is containment of coupling
+that already existed, not speculative generality. **There is one shipped driver.** A second real
+driver still needs a real trigger (a paying user who needs a different runtime), not the existence
+of the port itself; adding driver discovery, entry points, or a config-selectable backend ahead of
+that would be scope creep, not follow-through. One consequence worth stating plainly: `DocketDriver`
+never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
+[Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#cost-reporting-and-its-limits).
 
-### Dual-source configuration and drift detection
+### Configuration — one owner, one writer
 
-Every agent's state lives in two places that docket keeps aligned by convention, not by one being
-derived from the other:
+Every agent's state lives in two docket-owned files, split by who reads them and written **only**
+by docket, through `edges/store.py`:
 
-- **`.docket-meta.json`**, in each workspace — the source of truth for the docket CLI itself
-  (kind, role, name, codebase, stack, model, `modelSource`, description, `sessionKey`,
-  `projectKey`, and platform-era additions like `blueprint`/`workspaceKind`/`workDir` and a pod's
-  allocated `portRangeStart`/`portRangeCount`/`scratchDir`)
-- **`~/.openclaw/openclaw.json`** — the source of truth for the OpenClaw daemon (agent
-  registration, Telegram bindings, channels, per-agent metadata including the session key, tool
-  approval gates, security config)
+- **`.docket-meta.json`**, in each workspace — per-agent facts: kind, role, name, codebase, stack,
+  model, `modelSource`, description, `sessionKey`, `projectKey`, budget, persona, and platform-era
+  additions like `blueprint`/`workspaceKind`/`workDir` and a pod's allocated
+  `portRangeStart`/`portRangeCount`/`scratchDir`
+- **`~/.docket/fleet.json`** (`core/fleet.py`) — agent registration, channel bindings, gate/
+  isolation flags, local provider endpoints, and the org-wide default model
 
-Every write path that changes agent config goes through the ACL and updates both stores, then
-restarts the gateway (`edges/adapters/system.py`'s `restart_gateway()`). Because the two writes
-are separate calls rather than one atomic transaction, they can still drift apart — a crash
-mid-command, a manual edit, an older docket version. `core/sync.py`'s `check_agent`/`check_all`
-are the single implementation that detects that drift, comparing the two stores' `model` and
-`sessionKey` fields for every registered agent that has a `.docket-meta.json`. `docket doctor`'s
-config-drift check renders `sync.py`'s `Drift` records and drives the interactive `--fix` re-sync
-— it does not reimplement the comparison itself.
+This is a narrower split than it looks: `fleet.json` deliberately does **not** duplicate `model`/
+`sessionKey`/`projectKey` — those stay `.docket-meta.json`'s job alone. Before Phase 19, the
+second store was `openclaw.json`, owned by an external daemon that could mutate it independently
+of docket (or be hand-edited, or touched by a raw `openclaw` CLI call) — which is exactly what
+`core/sync.py`'s drift check used to exist to catch. With both files now written only by docket
+through one code path, "a different program touched this file" is no longer possible, and that
+drift-detection machinery (the ACL, `core/sync.py`, `docket doctor`'s session-key-sync check) is
+retired along with the daemon rather than kept around for a problem that no longer exists.
 
 ### Durable state docket owns
 
-OpenClaw's own daemon keeps very little that survives a context reset: its per-agent sqlite file
-is a rebuildable RAG index over workspace files, not a transcript, and live conversation context
-is lost on reset or compaction. docket fills that gap with a handful of small, docket-owned
-stores:
+docket's own turn loop keeps no durable transcript of its own — live conversation context is lost
+on reset or compaction unless something outside the loop preserves it. docket fills that gap with
+a handful of small, docket-owned stores, all under `~/.docket/`:
 
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
   docket-owned region inside its `## Active Tasks` list that `core/dispatch.py` upserts
@@ -196,7 +198,7 @@ stores:
   seeded on `docket wire` and cleaned up on delete. Dispatch and `serve` keep `last_message`/
   `task_ref` current automatically as a task moves, rather than that being a manual
   `docket conversations set` chore.
-- **The audit log** (`core/audit.py`, `$OPENCLAW_DIR/audit.log`, 0600) — one JSON line per
+- **The audit log** (`core/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
   `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket audit verify` can
   walk the chain and report the first broken link; a missing file, a pre-chain legacy line, or the
@@ -274,8 +276,9 @@ docket serve --dispatch                                         # background: dr
 
 Three guarantees hold on every hop:
 
-- **Budget-gated.** Before each hop docket checks the pod's recorded spend against the Lead's
-  budget cap (`docket profile <project>-lead --budget N`). The first hop that would exceed it
+- **Budget-gated.** Before each hop docket checks the pod's token-based dollar estimate against
+  the Lead's budget cap (`docket profile <project>-lead --budget N`). The first hop that would
+  exceed it
   pauses the pod's Lead (`docket profile <id> --resume` clears it) and leaves the task
   **blocked**, not run — every further claim against that pod is refused outright until it's
   resumed.
@@ -288,10 +291,12 @@ Each hop is a real, costed LLM turn, which is why dispatch is **explicit** (`doc
 dispatch`) or **opt-in** (`docket serve --dispatch`) — never silent. Plain `docket serve` is a
 read-only monitor and does not dispatch.
 
-This is the outline; the actual state machine also retries a hop that fails on a transient daemon
-hiccup, can stop a task at a human approval gate, and generalizes what "Reviewer" and "Tester"
-mean past those two hardcoded roles. See [Dispatch Internals](#dispatch-internals) for the full
-mechanics.
+This is the outline; the actual state machine also retries a hop that fails on a transient hiccup
+(a timeout or the model endpoint erroring — `TurnResult.failure_kind`'s `timeout`/`daemon_error`,
+a name that predates Phase 19 and now just means "the turn itself didn't complete cleanly," not a
+live external process), can stop a task at a human approval gate, and generalizes what "Reviewer"
+and "Tester" mean past those two hardcoded roles. See [Dispatch Internals](#dispatch-internals)
+for the full mechanics.
 
 **Result:** No wasted parallel work — and the hand-off between roles actually executes.
 
@@ -319,9 +324,9 @@ Tester ONLY reads:
 
 The lever DOCKET actually controls is **per-pod context isolation** (see the
 [Before/After](#the-problem-before-docket) diagram above) — token reduction is what isolation
-controls and what you can measure, not a fixed percentage. Read your **recorded** spend with
-`docket cost`; see [Cost Optimization](#cost-optimization) below for the model-selection half of
-the story.
+controls and what you can measure, not a fixed percentage. Read your measured token counts (and
+the labelled dollar estimate alongside them) with `docket cost`; see
+[Cost Optimization](#cost-optimization) below for the model-selection half of the story.
 
 ### Response Time
 
@@ -361,12 +366,16 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Holds the per-pod budget cap that gates every dispatch hop
   (`docket profile <project>-lead --budget N`)
 
-**Tools:**
-- `read` (memory files only)
-- `openclaw message send` (dispatch to pod workers)
+**Tools:** `read`, `glob`, `grep`, `fetch` — `write`/`edit`/`bash` are structurally absent from
+its tool registry (`core/archetypes.py`'s `lead` archetype declares `denied_tools=("write",
+"edit", "bash")`, applied via `ToolRegistry.without()` every turn). This is a genuine tool-registry
+removal, not an instruction the Lead is merely told to follow: a call to `write`/`edit`/`bash`
+comes back as a tool-not-found denial before it ever reaches the gate. Dispatch to pod workers
+happens structurally (docket's own dispatch pipeline invokes the next hop), not through a tool
+call the Lead makes.
 
 **Cannot:**
-- **Edit code** (ever)
+- **Edit code** (ever — structurally, not just by instruction)
 - Run commands
 - Commit
 - Make architecture decisions alone
@@ -384,11 +393,13 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Its hop's reply is captured directly by dispatch as a typed `HandoffArtifact` — no completion
   file to write or poll for (see [Dispatch Internals](#dispatch-internals))
 
-**Tools:**
-- `read`, `write`, `edit`
-- `exec` (sandbox only)
+**Tools:** the full built-in set — `read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`. The
+`implementer` archetype declares no `denied_tools`: "full-repo" means no built-in tool is off
+limits. `bash` still passes through the same argument-aware high-risk classifier and approval
+gate as every other tool call (see [Security Model](#security-model)) — an unrestricted tool
+registry is not the same thing as an unrestricted gate.
 
-**Cannot:**
+**Cannot (by convention, not tool removal):**
 - Review security (reviewer's job)
 - Run validation tests (tester's job)
 - Commit or push
@@ -413,10 +424,11 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 5. ✓ No dangerous operations
 6. ✓ Test coverage
 
-**Tools:**
-- `read` (the diff)
+**Tools:** `read`, `glob`, `grep`, `fetch` — `write`/`edit`/`bash` are structurally absent
+(`denied_tools=("write", "edit", "bash")`), so "read-only" is a genuine registry restriction, not
+a SOUL.md-only instruction: a Reviewer that tries to call `edit` gets a tool-not-found denial.
 
-**Cannot:**
+**Cannot (structurally):**
 - Fix code (only reviews)
 - Execute tests
 - Commit
@@ -433,12 +445,14 @@ lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod fu
 - Binary verdict: PASS or FAIL
 - Does NOT read code (stays objective)
 
-**Tools:**
-- `exec` (test runners)
-- `browser` (UI testing, read-only)
+**Tools:** `read`, `glob`, `grep`, `bash`, `fetch` — `write`/`edit` are structurally absent
+(`denied_tools=("write", "edit")`); `bash` stays so the Tester can actually run the suite it
+reports PASS/FAIL on. Staying objective by not reading the implementation is a **convention**
+the Tester is instructed to follow (its prompt points it at reproduction steps, not the diff) —
+the `read` tool itself is not removed, since the Tester needs it to read expected-behavior/
+acceptance-criteria files.
 
-**Cannot:**
-- Read implementation code
+**Cannot (by convention, except write/edit which are structurally absent):**
 - Review security
 - Fix failing tests
 - Commit
@@ -463,11 +477,14 @@ transitional, being superseded by per-pod Leads.
   fleet-visibility surface that replaced it)
 - Reads memory/snapshots, not full history
 
-**Tools:**
-- `read` (memory files only)
-- `openclaw message send`
+**Tools:** the full built-in set is technically available — org specialists have no role
+archetype in `core/archetypes.py`, so unlike a pod's Lead/Reviewer/Tester there is no
+`denied_tools` list narrowing their registry. Its constraints are **prompt-level only**
+(SOUL.md's "never edit code, run builds, or commit"), backstopped by the same tool-call gate and
+high-risk classifier every call passes through (see [Security Model](#security-model)) — not a
+structural tool removal the way a pod role's is.
 
-**Cannot:**
+**Cannot (by instruction, not tool removal):**
 - Edit code
 - Run commands
 - Commit
@@ -484,12 +501,13 @@ transitional, being superseded by per-pod Leads.
 - Maintains patterns/ library
 - Cross-project memory search
 
-**Tools:**
-- `read` (all project memory)
-- `write` (memory files only)
-- `openclaw memory search`
+**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`) — like
+every org specialist, it has no role archetype narrowing its registry; scope is prompt-level
+(SOUL.md), not tool-enforced. There is no separate semantic memory-search tool — docket's own
+turn loop has none of its own — so cross-project pattern extraction works by reading and
+`grep`-ing memory files directly, the same tools available to any agent.
 
-**Cannot:**
+**Cannot (by instruction, not tool removal):**
 - Modify source code
 - Run tests
 - Commit
@@ -508,12 +526,11 @@ transitional, being superseded by per-pod Leads.
 - Compliance audits (GDPR, HIPAA)
 - Proactive monitoring
 
-**Tools:**
-- `read` (all code)
-- `browser` (security testing)
-- `openclaw message send` (HITL requests)
+**Tools:** the full built-in set (`read`, `write`, `edit`, `glob`, `grep`, `bash`, `fetch`) — no
+role archetype narrows it; the constraints below are prompt-level (SOUL.md), backstopped by the
+same tool-call gate and high-risk classifier every agent's calls pass through.
 
-**Cannot:**
+**Cannot (by instruction, not tool removal):**
 - Modify code
 - Execute suspicious code
 - Approve own escalations
@@ -534,11 +551,11 @@ Provisioned only by `docket install --portfolio`, which adds **one** `portfolio-
 - Sees fleet **metadata** — which pods exist, their queues, budgets, and health
 - Recommends where to focus, rebalance, or pause, in words for a human
 
-**Tools:**
-- `read` (fleet metadata — `docket list`/`pod`/`cost`/`doctor` surface)
-- `openclaw message send` (advisory reports to the human)
+**Tools:** the full built-in set is technically available (no role archetype narrows it), but its
+prompt scopes it to reading fleet metadata (`docket list`/`pod`/`cost`/`doctor` surface) and
+reporting in words — never project source.
 
-**Cannot:**
+**Cannot (by instruction, not tool removal):**
 - Read or edit **project code** (it sees metadata, not source)
 - **Dispatch into pods** (each pod's own Lead owns execution)
 - Be a pod member, or run another pod's agents
@@ -575,15 +592,16 @@ Context stays scoped to one project's pod
 
 There is no generated `SNAPSHOT.md`, and `docket context` no longer has `snapshot`/`index`/
 `search`/`compress` subcommands — they, and the per-agent index/snapshot artifacts they wrote,
-were removed (the openclaw runtime's own memory backend handles semantic search; docket does not
-keep a rival index). What actually scopes a pod's context is the **workspace startup contract**
-docket provisions on `docket add`/`docket install` and `docket doctor` re-seeds if a workspace is
-missing one or has a stale version:
+were removed because nothing read them back (there is no separate semantic memory index today —
+docket's own turn loop has no `memory_search` tool of its own; an agent searches its memory files
+the same way it reads any other file, with `read`/`grep`). What actually scopes a pod's context is
+the **workspace startup contract** docket provisions on `docket add`/`docket install` and
+`docket doctor` re-seeds if a workspace is missing one or has a stale version:
 
-- **`WORKFLOW_AUTO.md`** — the startup protocol. The openclaw runtime forces every agent to
-  re-read this file after each context reset, so docket anchors the codebase path and the
-  resume/durability rules here — the one place guaranteed to survive compaction even when
-  `SOUL.md`/`MEMORY.md` fall out of context.
+- **`WORKFLOW_AUTO.md`** — the startup protocol. docket's own turn loop forces every agent to
+  re-read this file after each context reset (its system-prompt composition re-injects it every
+  turn), so docket anchors the codebase path and the resume/durability rules here — the one place
+  guaranteed to survive compaction even when `SOUL.md`/`MEMORY.md` fall out of context.
 - **`MEMORY.md`** — long-term curated project facts (what the project is, architecture, current
   state) — written by the agent, seeded with a stub on first run.
 - **`HEARTBEAT.md`** — the durable in-flight task ledger. An agent is instructed to write
@@ -620,7 +638,7 @@ don't generate a separate summary artifact.
 ### Memory Commands
 
 ```bash
-# Read-only dashboard: recent memory logs, active tasks, today's gateway activity
+# Read-only dashboard: recent memory logs, active tasks, session-size/last-active stats
 docket context <id> show
 
 # Project quick reference: codebase/stack/model, active tasks, MEMORY.md sections
@@ -664,8 +682,11 @@ including the exact reviewer checklist and gate/approval-channel mechanics, live
 A declarative policy engine (`docket policies`) adds a fourth layer on the dispatch path itself —
 `pre_input`/`pre_output` hooks that can redact, warn, block, or route a task to human approval.
 See [The policy engine on the dispatch path](#the-policy-engine-on-the-dispatch-path) for the
-mechanics; it does not reach inside a running turn (`pre_tool_call` stays daemon-gated), so it is
-a complement to the layers above, not a replacement for daemon-side tool approval.
+mechanics. Since Phase 19, this is no longer the whole in-turn story either: `pre_tool_call` —
+the third policy hook, evaluated inside `core/tools.py`'s `dispatch_tool` chokepoint alongside the
+high-risk command classifier — is now **live** on every tool call docket's own turn loop makes,
+closing the gap where docket's policy templates existed but nothing inside a running turn ever
+evaluated them.
 
 ---
 
@@ -742,7 +763,8 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Typed handoff artifacts between hops + a per-role token-budgeted context compiler
 - [x] Run registry and cancellation (`docket runs`)
 - [x] Declarative policy engine on the live dispatch path (`docket policies`)
-- [x] RuntimeDriver port — one typed protocol, one shipped OpenClaw driver (`core/runtime_driver.py`)
+- [x] RuntimeDriver port — one typed protocol, one shipped driver (`core/runtime_driver.py`,
+  `edges/adapters/docket_runtime.py`'s `DocketDriver`)
 - [x] docket as an MCP server (`docket mcp serve`, optional `[mcp]` extra)
 - [x] Memory distillation (`docket maintain distill`, and `clean`/`reset --distill-first`)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
@@ -882,8 +904,10 @@ hop's real output, before it is embedded in the carried-forward artifact. A `blo
 `pre_input` rejects the task before it is ever queued; a `require_approval` verdict enqueues it
 straight into `waiting_approval`. A `block` on `pre_output` fails the hop the same way a failed
 agent turn does; `redact` scrubs the text in place; `warn` only logs and feeds `docket metrics`.
-In-turn tool calls (`pre_tool_call`) stay daemon-gated — docket is not inside a turn to intercept a
-tool call — and this engine never claims to enforce them.
+In-turn tool calls have their own separate hook — `pre_tool_call`, evaluated by `core/tools.py`'s
+`dispatch_tool` on every call docket's own turn loop makes (Phase 19 P19-3) — which this
+dispatch-level engine does not duplicate; `docket policies test pre_tool_call <role> "<text>"`
+dry-runs that hook specifically.
 
 ---
 
@@ -899,7 +923,7 @@ tool call — and this engine never claims to enforce them.
 
 ### Q: Is this the same as the original DOCKET.md proposal?
 
-**A:** Similar spirit, adapted for OpenClaw's capabilities:
+**A:** Similar spirit, adapted for what docket's own agent runtime can do:
 - ✅ Kept: Distinct agent roles, context discipline, security focus
 - ✅ Changed: Coordination is a real dispatch state machine driving costed agent turns
   ([Dispatch Internals](#dispatch-internals)), not RPC and not memory-file signaling
@@ -925,8 +949,8 @@ provisions each project's pod with the right templates. Everything else works th
 
 **A:** See [Cost Optimization](#cost-optimization) above and
 [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) — the short version
-is: token reduction from isolation is real but not a fixed percentage, and docket reports
-**recorded** spend rather than a savings promise.
+is: token reduction from isolation is real and measured, but docket reports **measured tokens
+plus a clearly labelled dollar estimate**, never a savings promise.
 
 ---
 
@@ -936,7 +960,7 @@ is: token reduction from isolation is real but not a fixed percentage, and docke
 2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
 3. **Inspect context:** `docket context <project> show` (quick per-project view)
 4. **Test workflow:** Assign bug fix, observe token usage
-5. **Monitor spend:** `docket cost` (recorded spend)
+5. **Monitor spend:** `docket cost` (measured tokens + a labelled estimate)
 
 ---
 
