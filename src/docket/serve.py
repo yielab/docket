@@ -716,14 +716,23 @@ def _decode_trace_cursor(raw: str) -> tuple[str, int]:
     """Decode a `since` query value into (ts, lines already delivered at ts).
 
     Accepts both a cursor this module minted (`"<ts>:<n>"`) and a bare
-    timestamp a caller supplies by hand (no ":<int>" suffix, n=0) — the
-    latter is a reasonable "give me everything from this point on" request
-    and export_lines' own `since` parameter already accepts a plain ts.
+    timestamp a caller supplies by hand (n=0) — the latter is a reasonable
+    "give me everything from this point on" request, and export_lines' own
+    `since` parameter already accepts a plain ts.
+
+    Splitting the two apart needs more care than "does it end in :<digits>",
+    because a timestamp CONTAINS colons. `core/trace.py`'s `_now_iso()` writes
+    `%Y-%m-%dT%H:%M:%SZ`, so a minted cursor's ts half always ends in `Z` —
+    that trailing `Z` is what distinguishes `"...T12:34:56Z:3"` (compound,
+    n=3) from `"...T12:34:56"` (a bare ISO ts whose SECONDS would otherwise be
+    misread as the count, silently rewinding the cursor to the start of the
+    minute and re-delivering it). Requiring the `Z` keeps the hand-supplied
+    form this docstring advertises actually working.
     """
     if not raw:
         return "", 0
     ts, sep, tail = raw.rpartition(":")
-    if sep and tail.isdigit():
+    if sep and tail.isdigit() and ts.endswith("Z"):
         return ts, int(tail)
     return raw, 0
 

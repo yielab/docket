@@ -291,6 +291,26 @@ class TestCursorDecoding:
         assert ts == "2026-08-04T00:00:00Z"
         assert n == 0
 
+    def test_bare_timestamp_without_the_trailing_z_keeps_its_seconds(self) -> None:
+        """A timestamp CONTAINS colons, so ":<digits>" alone cannot mean "count".
+
+        Without requiring the ts half to end in `Z`, `"...T00:00:42"` splits as
+        ts=`"...T00:00"` / n=42: the seconds are eaten as a skip count and the
+        cursor silently rewinds to the start of the minute, re-delivering
+        everything in it. Over-delivery rather than loss, but it breaks the
+        hand-supplied form `_decode_trace_cursor` documents as supported.
+        `core/trace.py`'s `_now_iso()` always writes the trailing `Z`, which is
+        what makes the two forms distinguishable at all.
+        """
+        ts, n = serve._decode_trace_cursor("2026-08-04T00:00:42")
+        assert ts == "2026-08-04T00:00:42"
+        assert n == 0
+
+    def test_a_digit_suffix_without_the_z_is_not_treated_as_a_count(self) -> None:
+        ts, n = serve._decode_trace_cursor("2026-08-04T00:00:42:7")
+        assert n == 0
+        assert ts == "2026-08-04T00:00:42:7"
+
 
 class TestTracesPageDirect:
     def test_empty_project_yields_empty_cursor(self, traces_home: Path) -> None:
