@@ -281,7 +281,7 @@ def bwrap_argv(roots: tuple[Path, ...], command: str) -> list[str]:
     any process outside its own tree -- and, since Linux tears down an
     entire pid namespace when its first process dies, killing this call's
     process group cannot leave a namespace orphan behind (verified: see
-    test_p19_9_sandboxed_exec.py's process-tree test). Network is left
+    test_sandboxed_exec.py's process-tree test). Network is left
     shared (`--share-net` overrides `--unshare-all`'s default): most
     legitimate bash-tool work (git fetch/push, package installs) needs it,
     and cutting it is a materially larger, separate decision this card does

@@ -414,8 +414,8 @@ uv run pytest
 ```
 
 Data-layer and metadata validation (`AgentMeta`, store round-trips, scope backfill) is
-exercised in `tests/python/test_m2_data_layer.py`; command-level argument and action
-validation is exercised across the `test_m3_commands.py` / `test_m4_*.py` waves, with
+exercised in `tests/python/test_data_layer.py`; command-level argument and action
+validation is exercised across the `test_list_info_cost_commands.py`, `test_profile_scope_models.py` and their siblings, with
 model-id validation in the policy tests. Lint, format, and strict type checks gate CI
 alongside the suite:
 

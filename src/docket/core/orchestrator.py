@@ -18,7 +18,7 @@ module's :func:`resolve_plan`/:func:`resolve_gate`/:func:`parse_verdict`/
 from :func:`resolve_plan` too — the same function the real executor calls, so
 there is never a second, drift-prone pretty-printer.
 
-Determinism contract (test-pinned, see ``tests/python/test_w2_orchestrator.py``):
+Determinism contract (test-pinned, see ``tests/python/test_orchestrator.py``):
 :func:`resolve_plan` is a pure function of ``(spec, roster, registry)`` — same
 spec + same roster + same registry always produces a byte-identical
 :class:`ExecutionPlan`, independent of wall-clock time, dict-iteration order

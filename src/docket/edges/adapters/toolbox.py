@@ -394,7 +394,7 @@ def _kill_group(proc: subprocess.Popen[str]) -> None:
     process group, so this reaches it and everything it forked, and Linux
     additionally tears down bwrap's entire pid namespace the moment its
     first process dies — a command inside it cannot escape by detaching
-    (verified: test_p19_9_sandboxed_exec.py's bwrap orphan test). Docker is
+    (verified: test_sandboxed_exec.py's bwrap orphan test). Docker is
     the one shape this does *not* cover on its own: ``docker run``'s CLI
     process is a thin client the daemon runs the real container under, so
     killing its process group alone leaves the container running (verified

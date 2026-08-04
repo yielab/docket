@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "The gated agent-turn runtime docket embeds: chat port, tool registry, policy engine, approval store, hash-chained audit -- with no CLI attached."
 requires-python = ">=3.11"
 # Same two runtime dependencies the docket control plane needs for this exact
-# slice (verified by tests/python/test_p21_1_runtime_boundary.py, which parses
+# slice (verified by tests/python/test_runtime_package_boundary.py, which parses
 # this file's own force-include table so the two can never silently drift
 # apart). Do not add a third without re-measuring -- see specs/architecture/
 # runtime-library.spec.md for the versioning and boundary policy this

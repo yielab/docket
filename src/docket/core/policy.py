@@ -62,7 +62,7 @@ def validate_policy(path: Path) -> str:
 
     The CLI doesn't call this yet — `cli/_policies.py`'s `_list()`/`_show()` do their own
     generic JSON parse, they don't schema-check. Kept rather than removed because it is not
-    actually unexercised: `tests/python/test_cd3_high_risk.py` and `test_m5_gates_policy.py`
+    actually unexercised: `tests/python/test_high_risk_policy_templates.py` and `test_gates_policies_approve_deny.py`
     call it directly as the schema-validity guard over the shipped `high-risk-*.json`
     templates — real regression coverage a plain JSON parse doesn't give. Wiring a
     `docket policies validate` command (mirroring `docket roles validate`) is the natural

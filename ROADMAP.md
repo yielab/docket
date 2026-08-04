@@ -50,7 +50,7 @@ Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned
   delegates execution to `_oc.agent_run`/`_sys.*`, no raw subprocess), cited a stale
   `_install.py` size, and otherwise recommended cargo-cult OOP against the deliberate
   functional style. The **one** actionable idea — a boundary guard — was implemented as the true
-  invariant: `tests/python/test_ch4_no_subprocess_in_core.py` (core/ must be process-free),
+  invariant: `tests/python/test_no_subprocess_in_core.py` (core/ must be process-free),
   a sibling of the CH-3 no-UI-in-core test. Optional-only leftover: splitting the 1204-line
   `edges/adapters/openclaw.py` into a sub-package (maintainability, not a need).
 
@@ -1385,15 +1385,15 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
 >   writes `paused=true, pausedReason="budget"` on the pod's Lead the first time the cap is
 >   reached; `_claim_next_task` refuses every further claim for that pod outright (a
 >   `paused_refused` trace event); `docket profile <id> --resume` clears it; test-pinned
->   (`tests/python/test_r5_autopause.py`, 26 cases).
+>   (`tests/python/test_autopause.py`, 26 cases).
 > - REQUEST-CHANGES from a Reviewer blocks and drives one bounded rework cycle (default
 >   `maxReworkCycles=1`) before a second rejection fails the task — test-pinned
->   (`tests/python/test_r4_reviewer_gate.py`, 25 cases, incl. `TestReviewerReworkResume` for the
+>   (`tests/python/test_reviewer_gate.py`, 25 cases, incl. `TestReviewerReworkResume` for the
 >   resume-mid-rework case).
 > - Every serve-lane dispatch (CLI, webhook, schedule, sweep) has a queryable run id via
 >   `core/runs.py`/`docket runs`, and the four `contextlib.suppress(Exception)` sites around
 >   dispatch that used to swallow every exception are gone — grep-pinned
->   (`tests/python/test_r3_no_suppressed_dispatch.py`).
+>   (`tests/python/test_no_suppressed_dispatch.py`).
 > - Every spec Status line matches the code: R-8's sweep rewrote `pod-dispatch.spec.md` to
 >   v2.0.0 (the full state machine) and trued up `docket-meta.spec.md`, `serve-read-api.spec.md`,
 >   `cli-json-shapes.spec.md`, `audit.spec.md`, and `cli-interface.spec.md` — see TODO.md's R-8
@@ -1465,7 +1465,7 @@ silenced exceptions; every spec Status line matches the code; full suite + golde
   a `--token-file`/`token_file=` option to write the approval/dispatch token to a 0600 file
   instead of stdout, and documented bind rules (loopback-only by default, an explicit warning
   printed for any non-loopback bind). Landed in the same merge as L-2 below. See
-  `tests/python/test_g6_serve_auth.py`.
+  `tests/python/test_serve_auth.py`.
 
 **Exit criteria:** every control in the audit's "enforced vs documented" table is either on a live
 path or explicitly labeled *convention* in SECURITY docs; a `require_approval` policy visibly pauses
@@ -1813,7 +1813,7 @@ workspace; suite green.
   (`core/utils.py` now forwards to `edges/adapters/system.py`'s `GATEWAY_UNIT`); reconciled the
   eval harness's daemon-JSON parser (`tests/evals/lib/eval-helpers.sh`) to the ACL's real
   `result.payloads[0].text`/`result.meta.agentMeta.usage` shape. See
-  `tests/python/test_l2_provider_agnosticism.py`; `model-profiles.spec.md` v2.3.0 and
+  `tests/python/test_provider_agnosticism.py`; `model-profiles.spec.md` v2.3.0 and
   `cli-interface.spec.md` v1.6.0 already carry this card's spec updates.
 - **L-3 · docket as an MCP server** *(pure docket, high leverage)*: `docket mcp serve` (stdio,
   official `mcp` SDK pinned) exposing the control plane as tools — `status, pods, queue, delegate,
@@ -1978,7 +1978,7 @@ in the audit log.
 
 **It was already there.** Dispatched in wave 13 and the agent found the work shipped: `core/runs.py`'s
 `cancel_run` has written `audit_log("runs.cancel", run=… project=… was=… killed=…)` since **W-4**
-(`7e9ddab`, merged 2026-07-30), with four tests in `test_r3_runs_cli.py::TestRunsCancelAuditEntry`
+(`7e9ddab`, merged 2026-07-30), with four tests in `test_runs_cli.py::TestRunsCancelAuditEntry`
 (entry on success · none on unknown id · none on already-terminal · chain still verifies) and the
 change recorded in `audit.spec.md`'s own 2.3.0 changelog. **Zero commits on `pc/p20-4`.**
 
@@ -2025,7 +2025,7 @@ API contract, **not** a rewrite.
 **P21-1 · Package split** — *TODO (unblocked) · M*
 `docket-runtime` (library) + `docket` (control plane). Public API contract, versioning policy, and a
 test proving the library imports nothing from `cli/` — the same shape as the existing
-`test_ch4_no_subprocess_in_core.py` boundary guard, and it must be **seen to fail** on a planted
+`test_no_subprocess_in_core.py` boundary guard, and it must be **seen to fail** on a planted
 import before it counts as evidence.
 
 **P21-5 · `agentic-product` pod blueprint** — *TODO · XS*

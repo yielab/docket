@@ -149,7 +149,7 @@ Each specification document must include:
 | MCP Server | 1.3.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
 | CLI JSON Shapes | 1.4.0 | Complete | |
 | docket-meta schema | 2.8.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
-| Serve Read API | 2.3.0 | Stable | Pinned by `tests/python/test_cd8_read_api.py`; `/runs` tier (Phase 14 R-3); `mcp` run source (Phase 18 L-3); `POST /dispatch/<project>` variable binding + 400s (Phase 16 W-4); guardrail + loop metrics, derived per-scrape, with the audit-rotation and scrape-cost limits stated (Phase 20 P20-2) |
+| Serve Read API | 2.3.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs` tier (Phase 14 R-3); `mcp` run source (Phase 18 L-3); `POST /dispatch/<project>` variable binding + 400s (Phase 16 W-4); guardrail + loop metrics, derived per-scrape, with the audit-rotation and scrape-cost limits stated (Phase 20 P20-2) |
 | Input Validation | 1.2.0 | Complete | |
 | Test Framework | 2.0.0 | Active | Conventions doc (not a `.spec.md`) |
 | User Stories | 1.3.0 | Active | Acceptance criteria (not a `.spec.md`) |

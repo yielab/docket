@@ -369,7 +369,7 @@ def serve_stdio() -> int:
 # live turn's registry is wired today.
 #
 # Deliberately plain print(), never docket.ui: this file also hosts
-# serve_stdio()'s JSON-RPC session, and test_l6_mcp_sdk_v2.py's
+# serve_stdio()'s JSON-RPC session, and test_mcp_sdk_v2_migration.py's
 # TestNoUiImportEvenWithTheSdkInstalled pins "cli/_mcp.py never imports
 # docket.ui" at the whole-module level (simpler to guarantee than "only when
 # a JSON-RPC session isn't live"). These helpers keep the same glyphs

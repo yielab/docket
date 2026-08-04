@@ -1124,7 +1124,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
     `estimate_tokens` (the bytes/`config.CONTEXT_BYTES_PER_TOKEN` approximation), `budget_for_role`
     (resolves a role against the live archetype registry), `hop_share` (R-7's recency-halving
     series, now in tokens), and `compile_artifact` (the field-shedding + marked-summary-truncation
-    compiler). See `tests/python/test_c1_context_compiler.py` for its own unit coverage.
+    compiler). See `tests/python/test_context_compiler.py` for its own unit coverage.
   - `core/archetypes.py`'s `RoleArchetype` gains `token_budget` (positive integer, default 6000;
     `tokenBudget` on the wire) — every built-in and starter-library archetype now declares one.
     See `role-archetypes.spec.md` v1.3.0.
@@ -1233,7 +1233,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
      site (`serve.py`'s sweep loop) with a per-pod loop over `dispatchable_pods()` +
      `dispatch_pod()` through `core.runs.execute`, specifically for the per-pod run-registry
      granularity `dispatch_all_pods`'s coarse "one sweep, swallow `DispatchError`" shape did not
-     have (`tests/python/test_r3_no_suppressed_dispatch.py` pins both halves of this fact). Wiring
+     have (`tests/python/test_no_suppressed_dispatch.py` pins both halves of this fact). Wiring
      it back would reintroduce the exact behaviour R-3 deliberately replaced.
   3. Finished Phase 18 CL-1's blocked sweep: the ~76 `edges.adapters.openclaw.AgentRunResult(...)`
      call sites across `test_r2/r4/r5/r6/r7`, `test_cd2`, `test_dispatch`, `test_g1_*`, `test_l1_*`

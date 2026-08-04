@@ -135,7 +135,7 @@ def _member_soul(
 
     Byte-identical to the legacy hand-written per-role generator for the four
     built-in roles (lead/implementer/reviewer/tester) — see
-    `tests/python/test_w6_archetypes.py`. No role-specific branching lives
+    `tests/python/test_archetypes.py`. No role-specific branching lives
     here; the prose is data in `core/archetypes.py`.
     """
     arch = _arch.load_registry().get(member.role)

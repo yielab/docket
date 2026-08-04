@@ -51,11 +51,11 @@ implementation is written; specs are the source of truth and are validated in CI
 tests/
 ├── python/                 # pytest suite (~493 tests)
 │   ├── conftest.py         # shared fixtures (fake_openclaw shim on PATH)
-│   ├── test_m2_data_layer.py
-│   ├── test_m3_commands.py
-│   ├── test_m4_*.py        # command waves
+│   ├── test_data_layer.py
+│   ├── test_list_info_cost_commands.py
+│   ├── test_profile_scope_models.py  # per-command coverage, named by subject
 │   ├── test_m5_*.py        # doctor, gates/policy, provider, serve, system, trace/audit
-│   ├── test_m6_install.py
+│   ├── test_install.py
 │   ├── test_pod_model.py / test_pod_provisioning.py
 │   ├── test_portfolio_manager.py
 │   ├── test_acl_no_inject.py / test_dispatch.py / test_cli_stubs.py / ...
@@ -219,8 +219,8 @@ Non-blocking specialist-role evals (`manager`, `programmer`, `reviewer`, `tester
 uv run pytest
 
 # One file / one test
-uv run pytest tests/python/test_m3_commands.py
-uv run pytest tests/python/test_m3_commands.py::test_list_renders_agents
+uv run pytest tests/python/test_list_info_cost_commands.py
+uv run pytest tests/python/test_list_info_cost_commands.py::test_list_renders_agents
 
 # Golden parity + evals
 bash tests/golden/run.sh verify-all

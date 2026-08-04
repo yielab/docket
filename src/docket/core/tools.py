@@ -205,7 +205,7 @@ class ToolRegistry:
 def render_tool_call(name: str, args: dict[str, Any]) -> str:
     """Render one tool call as the text a ``pre_tool_call`` regex policy matches.
 
-    **Contract — pinned by ``tests/python/test_p19_3_pre_tool_call.py`` and load
+    **Contract — pinned by ``tests/python/test_pre_tool_call_policy.py`` and load
     bearing for every shipped policy template, not an implementation detail:**
 
         "<name> <key>=<json-value> <key>=<json-value> ..."

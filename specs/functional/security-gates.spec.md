@@ -498,7 +498,7 @@ tool call to take.**
    renders one tool call as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the
    call's own argument order, each value `json.dumps`-encoded. This exact shape **MUST** be
    treated as a contract, not an implementation detail — every shipped `pre_tool_call` pattern is
-   matched against its output, and `tests/python/test_p19_3_pre_tool_call.py::TestRenderToolCallShape`
+   matched against its output, and `tests/python/test_pre_tool_call_policy.py::TestRenderToolCallShape`
    pins it.
 
    > **Two `block-destructive.json` alternatives were verified, not assumed, against this
@@ -617,7 +617,7 @@ either.
    time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
    NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
    command's jail **MUST NOT** be treated as a substitute for gating that command in the first
-   place. Both are test-pinned (`tests/python/test_p19_9_sandboxed_exec.py`).
+   place. Both are test-pinned (`tests/python/test_sandboxed_exec.py`).
 4. **Honest capability reporting: two distinct questions, two distinct answers.**
    - *"Is sandboxing configured/available?"* — a pure, side-effect-free capability probe,
      `sandbox_availability()`, answerable with no command run at all (the future `docket doctor`
@@ -656,7 +656,7 @@ either.
      does not detach into a new session, so it and everything it forks stay in the same host process
      group `_kill_group` already signals; Linux additionally tears down bwrap's entire pid namespace
      the moment its first process dies, so a command inside it cannot escape by detaching even if it
-     tried. Verified empirically (see `test_p19_9_sandboxed_exec.py`'s bwrap orphan test): a command
+     tried. Verified empirically (see `test_sandboxed_exec.py`'s bwrap orphan test): a command
      that forks two background `sleep`s and hangs leaves zero matching processes after a timeout.
    - **docker**: `_kill_group` alone **MUST NOT** be relied on — `docker run`'s own CLI process is a
      thin client, and the real command runs under `dockerd`, a separate process tree the CLI's
@@ -669,7 +669,7 @@ either.
    - This is a real, test-pinned regression class, not a hypothetical: the docker case was planted
      and verified red during this card's development by temporarily removing the `docker_kill` call
      from the timeout handler — the container was still `docker ps`-visible after the call returned;
-     reverted, it is not (see `test_p19_9_sandboxed_exec.py::TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`).
+     reverted, it is not (see `test_sandboxed_exec.py::TestRealDockerJail::test_timeout_kills_the_container_not_just_the_cli_wrapper`).
 8. **Network is left reachable inside a real jail, on both backends, by deliberate choice, not
    oversight.** `bwrap_argv` passes `--share-net` (overriding `--unshare-all`'s default); the docker
    backend leaves the image's default bridge network untouched. Most legitimate `bash`-tool work
@@ -961,7 +961,7 @@ call at a time inside a turn — there is no separate `docket` CLI command that 
 isolation. Since Phase 19 P19-5/P19-7a wired `DocketDriver` onto every real pod-dispatch hop (see
 the scope note in "In-turn tool-call gate" above), this is exactly what happens on every real
 `bash`/`write`/etc. call a hop makes today, not merely a future contract. Each shape below is
-exactly what `tests/python/test_p19_3_pre_tool_call.py` asserts.
+exactly what `tests/python/test_pre_tool_call_policy.py` asserts.
 
 A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
 
@@ -1005,7 +1005,7 @@ $ docket audit
 
 Like the section above, `ToolContext.sandbox` has no live-path caller yet — these are
 `toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
-`tests/python/test_p19_9_sandboxed_exec.py` asserts, not shell transcripts a user can run today.
+`tests/python/test_sandboxed_exec.py` asserts, not shell transcripts a user can run today.
 
 The default — `sandbox="off"` — is the same function that shipped in P19-2, byte for byte:
 
@@ -1157,12 +1157,12 @@ $ git clone https://anywhere.example/repo.git
   wired `DocketDriver` onto every real hop, and P19-7b removed the daemon that used to be the
   only alternative execution path — is now every tool call any pod-dispatch hop makes. A call
   that reaches that function and is not gated by `evaluate_tool_call` is the specific regression
-  `tests/python/test_p19_3_pre_tool_call.py` exists to catch.
+  `tests/python/test_pre_tool_call_policy.py` exists to catch.
 - A `require_approval`/`ask`-gated tool call through `core/tools.py` **MUST NOT** execute before
   its approval resolves, and **MUST NOT** be left waiting indefinitely — `wait_for_approval`
   **MUST** eventually return `granted` or `denied`, the latter both for an explicit deny and for
   an unanswered `TOOL_APPROVAL_TIMEOUT`. A denied or timed-out call's handler **MUST NOT** run;
-  `tests/python/test_p19_3_pre_tool_call.py::TestDispatchToolApprovalRouting` proves this with the
+  `tests/python/test_pre_tool_call_policy.py::TestDispatchToolApprovalRouting` proves this with the
   handler's own execution flag, not just the returned decision.
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
   resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
@@ -1177,7 +1177,7 @@ $ git clone https://anywhere.example/repo.git
   decided, never on top of it.
 - `ToolContext.sandbox="off"` (the default) **MUST** produce byte-for-byte the same `run_bash`
   output as before ROADMAP Phase 19 P19-9 existed — no marker, no environment change, no argv
-  change. `tests/python/test_p19_9_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
+  change. `tests/python/test_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
 - `sandbox="auto"` resolving to a real backend that then fails to start (`OSError` on launch)
   **MUST NOT** cause the command to run unsandboxed instead — it **MUST** be reported as a failure
   naming the backend. `TestHonestReportingIsDeterministic::test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback`
@@ -1201,7 +1201,7 @@ $ git clone https://anywhere.example/repo.git
   this card.
 - `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
   refusal happens before `urllib.request.build_opener` is ever called, not merely before the
-  content is returned. `tests/python/test_p19_11_fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
+  content is returned. `tests/python/test_fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
   proves this by making `build_opener` raise if invoked at all.
 - A redirect `fetch` follows **MUST NOT** land on a host absent from the same allowlist — the
   domain allowlist governs the whole request, including any redirect chain, not just the
@@ -1305,7 +1305,7 @@ $ git clone https://anywhere.example/repo.git
     the escape hatches named above; it exists so reaching the network doesn't have to mean
     reaching for one of them. **Read the Status line and "Network egress and the `fetch` tool"
     above before citing this card as closing docket's egress gap — it does not, on purpose.**
-  - Tests: `tests/python/test_p19_11_fetch_tool.py` (16 cases) — a real local HTTP server
+  - Tests: `tests/python/test_fetch_tool.py` (16 cases) — a real local HTTP server
     (stdlib `http.server`) backs the allowlist, size-cap, timeout, redirect, and HTTP-error
     behavior; a `pre_tool_call` policy test dispatches a real `fetch` call through the
     unmodified `dispatch_tool` to prove the gate applies. Four guards were planted as drift and
@@ -1338,7 +1338,7 @@ $ git clone https://anywhere.example/repo.git
     `resolve_within` uses for file tools, extended to the exec surface; a docker jail is stronger
     still (nothing else exists inside the container's filesystem). Both hold at the same time as
     `resolve_within`'s own check on file-tool calls — proven, not assumed, by
-    `tests/python/test_p19_9_sandboxed_exec.py`'s combined tests.
+    `tests/python/test_sandboxed_exec.py`'s combined tests.
   - **Honest reporting keeps two questions distinct.** `sandbox_availability()` answers "is a jail
     configured/possible" with no command run; `run_bash`'s new `[sandbox: <backend>]` marker
     (emitted only when `sandbox="auto"` was actually asked for) answers "did *this* command run in
@@ -1369,7 +1369,7 @@ $ git clone https://anywhere.example/repo.git
     real-but-not-yet-live-path shape P19-2/P19-3 had before ROADMAP Phase 19 P19-5. No CLI surface
     (`docket doctor`, `docket gates classes`) was added or changed by this card; that wiring is left
     to whichever card next touches those command modules.
-  - Tests: `tests/python/test_p19_9_sandboxed_exec.py` (30 cases) — pure unit tests for detection
+  - Tests: `tests/python/test_sandboxed_exec.py` (30 cases) — pure unit tests for detection
     and argv shape that need no real docker/bwrap, deterministic honest-reporting tests that force
     backend choice via monkeypatch/env so they never depend on host capability, and real-backend
     tests (containment, env minimization, timeout/orphan checks) that are skipped, with an explicit
@@ -1434,7 +1434,7 @@ $ git clone https://anywhere.example/repo.git
 
 - **ROADMAP Phase 15 G-3 — high-risk classes enforced on docket-launched processes.** Before
   this card, `core/security.py`'s `HIGH_RISK_PATTERNS` classifier had callers only in tests
-  (`test_m5_gates_policy.py`) — plus prose in this spec. A classifier nothing calls is
+  (`test_gates_policies_approve_deny.py`) — plus prose in this spec. A classifier nothing calls is
   documentation, not enforcement, the same defect shape G-1 fixed for the approval store and G-2
   fixed for the policy engine. Closed on two real paths:
   - `edges/adapters/system.py`'s `run_verify_cmd` — the one docket-launched subprocess built

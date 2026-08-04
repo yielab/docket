@@ -33,7 +33,7 @@ This specification covers:
 - The dependency contract: `docket-runtime` depends on exactly `pydantic` and `filelock`
 - The versioning policy: what a consumer embedding this library may rely on across a version
   bump, and what is explicitly not promised
-- The boundary test (`tests/python/test_p21_1_runtime_boundary.py`) and what it does and does not
+- The boundary test (`tests/python/test_runtime_package_boundary.py`) and what it does and does not
   prove
 - Known, deliberate degradation points where a shipped module has a lazy, guarded reference to
   control-plane-only code that is not part of this distribution
@@ -77,7 +77,7 @@ alongside the CLI.
 
 The exact set is the `[tool.hatch.build.targets.wheel.force-include]` table in
 `packages/docket-runtime/pyproject.toml` — this specification does not repeat it as a second,
-driftable copy; `tests/python/test_p21_1_runtime_boundary.py` reads that table directly, so the
+driftable copy; `tests/python/test_runtime_package_boundary.py` reads that table directly, so the
 test and the shipped wheel can never silently disagree. As of this version it is 23 real modules
 (plus 4 `__init__.py` package markers): the chat port and its adapter, the gated tool registry and
 its built-in/fetch/sandboxed-exec handlers, the turn loop, the policy engine, the approval store,
@@ -140,7 +140,7 @@ sits.
 
 **What is never silently reshaped, at any version:** the shipped file list only grows or shrinks
 via an explicit edit to `packages/docket-runtime/pyproject.toml`'s force-include table, which
-`tests/python/test_p21_1_runtime_boundary.py` re-validates on every run — so "which files are the
+`tests/python/test_runtime_package_boundary.py` re-validates on every run — so "which files are the
 library" cannot drift out from under a consumer between releases without the test noticing.
 
 **What is explicitly NOT promised:**
@@ -220,8 +220,8 @@ message naming the missing path; an install failure follows pip's own exit-code 
   file — both are asserted directly by the boundary test, not left to a build-time failure to
   surface later.
 - Both boundary invariants **MUST** be enforced by
-  `tests/python/test_p21_1_runtime_boundary.py`, an AST-based (not line-scanning) guard modelled
-  on `test_ch4_no_subprocess_in_core.py` / `test_p19_7b_no_openclaw_references.py`.
+  `tests/python/test_runtime_package_boundary.py`, an AST-based (not line-scanning) guard modelled
+  on `test_no_subprocess_in_core.py` / `test_no_openclaw_references.py`.
 - A wheel built from `packages/docket-runtime/pyproject.toml` **MUST** install, in a virtual
   environment containing nothing else from this repository, with `pydantic` and `filelock` as the
   only non-transitive dependencies pulled in.

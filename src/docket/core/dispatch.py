@@ -133,7 +133,7 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 # execution reads a step's *resolved* gate generically (see `_execute_unit`'s
 # `isinstance(gate, _pipeline.VerdictGate)` branch and `core.orchestrator.parse_verdict`)
 # instead of branching on a hardcoded role name. A second, independent copy of these patterns
-# here would drift from that single source of truth (see `tests/python/test_w1_pipeline_spec.py`).
+# here would drift from that single source of truth (see `tests/python/test_pipeline_spec.py`).
 
 
 class DispatchError(Exception):
@@ -1096,7 +1096,7 @@ def _verdict_event_names(role: str) -> tuple[str, str, str]:
 
     Preserves the exact legacy event names the two built-in verdict roles
     have always emitted (``reviewer``/``tester`` — pinned by
-    ``tests/python/test_r4_reviewer_gate.py``/``test_cd2_verify.py``) so gate
+    ``tests/python/test_reviewer_gate.py``/``test_verify_gate.py``) so gate
     *decision logic* can go fully generic (driven by the gate's own type and
     config, not a role-name branch) without changing what an operator sees in
     ``docket trace``. Any other role/archetype gets the generic
@@ -2352,7 +2352,7 @@ def pod_roster() -> list[dict[str, Any]]:
 # A "dispatch every pod in one sweep" helper doesn't exist here on purpose —
 # not an oversight. `serve.py`'s sweep loop instead iterates
 # `dispatchable_pods()` and calls `dispatch_pod()` per pod through
-# `core.runs.execute` (see `tests/python/test_r3_no_suppressed_dispatch.py`).
+# `core.runs.execute` (see `tests/python/test_no_suppressed_dispatch.py`).
 # A single-sweep helper's natural shape — one record for the whole sweep,
 # catching and swallowing `DispatchError` per pod — loses per-pod granularity
 # in the run registry (one run id per pod) and hides a real error instead of

@@ -14,7 +14,7 @@ as it does today. ``load_pipeline(None)`` returns :func:`default_pipeline`
 (same role order, same verdict conventions, same default rework bound) — so a
 caller that always goes through this loader never needs a separate "is there
 a file" branch of its own to get wrong. (The literal equivalence is drift-
-guarded by ``tests/python/test_w1_pipeline_spec.py``, which cross-checks
+guarded by ``tests/python/test_pipeline_spec.py``, which cross-checks
 against ``dispatch.PIPELINE_ORDER`` and the Reviewer/Tester verdict regexes
 directly — this module does not import ``dispatch`` itself, to keep a pure
 format module decoupled from the heavier dispatch import chain.)
@@ -479,7 +479,7 @@ def validate_pipeline(text: str) -> list[str]:
 
 
 # Mirrors core/dispatch.py's Reviewer/Tester verdict conventions exactly —
-# ``tests/python/test_w1_pipeline_spec.py`` cross-checks these two patterns
+# ``tests/python/test_pipeline_spec.py`` cross-checks these two patterns
 # and the role order below directly against ``dispatch.py``'s own constants,
 # so this module's hardcoding one drift-guarded copy (rather than importing
 # dispatch.py at runtime) is a deliberate, tested tradeoff — see the module

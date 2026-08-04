@@ -26,7 +26,7 @@ exists to close.
 
 Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles —
 lead, implementer, reviewer, tester (golden-tested;
-see `tests/python/test_w6_archetypes.py`). A starter library ships six more:
+see `tests/python/test_archetypes.py`). A starter library ships six more:
 researcher, analyst, writer, critic, operator, monitor (`STARTER_ARCHETYPES`).
 
 Closed vs. open: "no fifth role ever lands

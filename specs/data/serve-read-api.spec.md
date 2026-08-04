@@ -247,7 +247,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 - `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
   `GET /runs/<id>` immediately after the response is sent (the record exists before the HTTP
   response is written, even though the dispatch itself is still in flight).
-- The contract is pinned by `tests/python/test_cd8_read_api.py` (class `TestApiContract`).
+- The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`).
   Any change that breaks that test is a breaking API change and MUST bump `apiVersion`.
 
 ## Examples

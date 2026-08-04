@@ -55,7 +55,7 @@ pod-dispatch.spec.md).
    `DocketDriver`, unconditionally — into the legacy `CostTotals`/`DayRecord` shapes
    `cli/_cost.py`, `cli/_doctor.py`, and `core/dispatch.py` already depend on; they no longer
    open a session file themselves. A guard test
-   (`test_p19_7b_no_openclaw_references.py::test_no_live_openclaw_reference_outside_comments_and_docstrings`,
+   (`test_no_openclaw_references.py::test_no_live_openclaw_reference_outside_comments_and_docstrings`,
    which replaced the retired `test_ch2_openclaw_acl_guard.py::test_core_has_no_session_format_knowledge`)
    fails the build if daemon session-format knowledge — or any other live `openclaw` reference
    — regresses back into `src/`.
@@ -218,7 +218,7 @@ $ docket pod myproject dispatch
   codebase ships. Updated requirements 2 and 4 (Cost reporting) to drop the "`OpenClawDriver`
   still reads daemon-format JSONL when directly constructed" carve-out — there is no such driver
   left to construct — and to name the new guard test
-  (`test_p19_7b_no_openclaw_references.py`, which replaced the retired
+  (`test_no_openclaw_references.py`, which replaced the retired
   `test_ch2_openclaw_acl_guard.py`). Corrected the Enforcement section's estimate-fallback
   reasoning (requirement 4): recorded pod spend reading `0` is not an occasional daemon quirk
   ("may never write `usage.cost.total`") any more, it is the unconditional, only case in

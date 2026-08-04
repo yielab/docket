@@ -389,14 +389,14 @@ steps:
 - Every level of the document (`PipelineSpec`, `Step`, `MechanicalGate`, `VerdictGate`,
   `ApprovalGate`, `ReworkEdge`, `Variable`) rejects unknown keys.
 - `default_pipeline()`'s role order **MUST** equal `core/dispatch.py`'s `PIPELINE_ORDER` tuple
-  — checked directly, by test (`tests/python/test_w1_pipeline_spec.py::TestZeroMigration`), not a
+  — checked directly, by test (`tests/python/test_pipeline_spec.py::TestZeroMigration`), not a
   hand-copied literal that could silently drift. Its Reviewer/Tester `pattern`/`passValues` no
   longer have a dispatch-private regex constant to cross-check against (W-8 deleted
   `core/dispatch.py`'s own hardcoded copy once gate execution went generic) — the drift guard is
   now that `core.orchestrator.resolve_gate`'s archetype-gateContract fallback (a bare `role:
   reviewer`/`role: tester` step with no `gate` of its own) produces the byte-identical
   pattern/passValues `default_pipeline()`'s explicit gates declare, checked by the same test class
-  and by `tests/python/test_w6_archetypes.py`.
+  and by `tests/python/test_archetypes.py`.
 - This format module itself (`core/pipeline.py`) still contains no executor, CLI command, or
   dry-run renderer — those now exist, but in `core/orchestrator.py` and `cli/_pipeline.py`
   respectively (see "Does NOT cover").

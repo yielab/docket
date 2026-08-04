@@ -65,7 +65,7 @@ every "the daemon" reference in it as describing a system this codebase no longe
 2. **The mechanism already ships in docket, unrelated to this spike.** `docket models provider
    add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]`
    (`cli/_provider.py` → `core/provider.py` → `edges/adapters/openclaw.py`'s
-   `add_local_provider`/`local_provider_config`, tested in `tests/python/test_m5_provider.py`
+   `add_local_provider`/`local_provider_config`, tested in `tests/python/test_provider_registration.py`
    since M5) already writes an arbitrary `models.providers.<name>` block — `{baseUrl, apiKey,
    api: "openai-completions", models: [...]}` — into `openclaw.json` for **any** base URL, not
    only a literal local llama.cpp/LM Studio server. The command's naming and messaging are
