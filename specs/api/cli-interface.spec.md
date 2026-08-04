@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.14.0
+**Version**: 1.15.0
 **Status**: Complete
 **Last Updated**: 2026-08-04
 
@@ -527,7 +527,7 @@ doctor` no longer prints an eval-results advisory section. (The former eval.spec
 ### Observability
 
 #### docket trace
-**Purpose**: View, tail, export, or ingest agent-action JSONL traces
+**Purpose**: View, tail, export, ingest, or expire agent-action JSONL traces
 **Syntax**: `docket trace <session-id | subcommand> [args]`
 **Subcommands**:
 - `<session-id>`: Render one session's events human-readable
@@ -536,7 +536,17 @@ doctor` no longer prints an eval-results advisory section. (The former eval.spec
 - `ingest <project>`: Project the active driver's session history (`core/session.py`, via
   `DocketDriver`) into the trace store — no daemon session-JSONL format left to parse
   (ROADMAP Phase 19 P19-7b)
-**Output**: Human-readable event log or raw JSONL
+- `expire [project] [--dry-run] [--days N]`: Delete TERMINATED trace files (one with a
+  `session_end` event, real or the synthetic one `sweep_all` appends to a timed-out session)
+  whose last event is older than the retention window. An OPEN trace (no `session_end` yet) is
+  never deleted regardless of age — a live turn may still be appending to it. `--dry-run`
+  previews what would be deleted without deleting anything or touching the ingest index.
+  `--days N` overrides `TRACE_RETENTION_DAYS` (default 30) for one run. Omitting `[project]`
+  sweeps every project. `audit.log` is out of scope — this command only ever touches
+  `$TRACES_DIR` (`core/audit.py` is an intentionally separate, non-lossy record; see
+  ROADMAP P22-6)
+**Output**: Human-readable event log, raw JSONL, or an expiry summary (scanned/kept/deleted
+counts and per-file detail)
 **Return**: 0 on success, 1 if session not found
 
 #### docket metrics
@@ -799,6 +809,21 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.15.0 (2026-08-04)
+
+- **ROADMAP P22-6 — trace retention.** Docket's trace JSONL becomes a cache rather than the
+  only copy once an external consumer durably ingests trace events (P22-3), which makes
+  deleting old trace data safe rather than lossy — the reasoning P20-3's deferred retention
+  half was waiting on. Added `docket trace expire [project] [--dry-run] [--days N]`
+  (`core.trace.expire_old_traces`), age-bounded by the new `TRACE_RETENTION_DAYS` config
+  constant (default 30 days). Reuses `sweep_all`'s liveness reasoning: only a trace with a
+  `session_end` event is eligible, so an open/still-writing session is never deleted
+  regardless of age. Deletion keeps the per-project `.ingest-index.json` consistent by
+  dropping any removed session_id's offset entry. `audit.log` is explicitly out of scope —
+  see `core/audit.py`. `docket serve`'s periodic sweep does not call this yet — wiring
+  `trace.expire_old_traces()` alongside the existing `trace.sweep_all()` call in
+  `serve.py::_run_sweeps` is tracked as follow-up, not shipped by this card.
 
 ### Version 1.14.0 (2026-08-04)
 

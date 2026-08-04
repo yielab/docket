@@ -1565,6 +1565,8 @@ def cmd_trace(ctx: typer.Context) -> None:
 
     args = list(ctx.args)
     since: str | None = None
+    dry_run = False
+    days: int | None = None
     pos: list[str] = []
     i = 0
     while i < len(args):
@@ -1572,11 +1574,20 @@ def cmd_trace(ctx: typer.Context) -> None:
             since = args[i + 1] if i + 1 < len(args) else None
             i += 2
             continue
+        if args[i] == "--dry-run":
+            dry_run = True
+            i += 1
+            continue
+        if args[i] == "--days":
+            raw = args[i + 1] if i + 1 < len(args) else None
+            days = int(raw) if raw is not None and raw.lstrip("-").isdigit() else None
+            i += 2
+            continue
         pos.append(args[i])
         i += 1
     sub = pos[0] if pos else None
     target = pos[1] if len(pos) > 1 else None
-    raise typer.Exit(run_trace(sub, target, since))
+    raise typer.Exit(run_trace(sub, target, since, dry_run, days))
 
 
 @app.command("metrics")

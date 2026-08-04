@@ -80,6 +80,20 @@ CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 # METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
+# TRACE_RETENTION_DAYS: how long a TERMINATED trace file (one with a
+# session_end event, real or the synthetic one core/trace.py's sweep_all()
+# appends to a timed-out session) survives before `docket trace expire` --
+# and, once wired, the periodic sweep -- deletes it. An OPEN trace (no
+# session_end yet) is never touched by age alone; see
+# core/trace.py::expire_old_traces for the liveness reasoning.
+# 30 days is deliberately generous: enough for an operator to investigate an
+# incident well after the fact, while still bounding disk growth now that an
+# external consumer durably ingests trace events (making this JSONL a cache
+# rather than the only copy). This does NOT apply to audit.log -- see
+# core/audit.py, an intentionally separate, non-lossy record.
+TRACE_RETENTION_DAYS = int(os.environ.get("TRACE_RETENTION_DAYS", "30"))
+TRACE_RETENTION_S = TRACE_RETENTION_DAYS * 86400
+
 # These constants bound the *static* context re-sent every turn (SOUL/AGENTS/
 # TOOLS/HEARTBEAT/MEMORY.md) and power the token guards in `maintain check`.
 # Token counts are a rough bytes/divisor estimate -- good enough to catch

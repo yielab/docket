@@ -7,6 +7,10 @@ docket trace
   docket trace export <project>          Raw JSONL passthrough
     [--since YYYY-MM-DD]                 Filter by date
   docket trace ingest <project>          Manually ingest new session turns
+  docket trace expire [project]          Delete terminated traces past retention
+    [--dry-run]                          Preview without deleting
+    [--days N]                           Override the retention window
 
   Traces live at: <HOME>/.openclaw/traces/<project>/<session_id>.jsonl
+  Default retention: 30 days (TRACE_RETENTION_DAYS)
 

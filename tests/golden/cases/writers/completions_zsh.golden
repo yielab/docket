@@ -70,7 +70,7 @@ _docket() {
     keys|key|secret) compadd add list remove rotate setup validate export ;;
     models)          compadd list set preset reset provider ;;
     auth)            compadd status login key setup ;;
-    trace)           compadd tail export ingest ;;
+    trace)           compadd tail export ingest expire ;;
     policies|policy) compadd list show init test validate ;;
     roles|role)      compadd list show add validate ;;
     completions|completion) compadd bash zsh ;;
