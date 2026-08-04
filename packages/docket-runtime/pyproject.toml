@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rack-cli/docket"
+Homepage = "https://github.com/yielab/docket"
 
 # ── Packaging mechanism ──────────────────────────────────────────────────────
 #
