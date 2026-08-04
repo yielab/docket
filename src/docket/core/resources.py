@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
-# Per-pod port range defaults.  Override PORT_RANGE_SIZE via the env var
-# DOCKET_PORT_RANGE_SIZE at daemon startup (kept here as module constants so
-# tests can import directly without a live config).
+# Per-pod port range defaults. Plain module constants, not env-overridable
+# (no DOCKET_PORT_RANGE_SIZE or similar is read anywhere) -- kept this way so
+# tests can import them directly without a live config; change the value
+# here to change the default.
 PORT_BASE: int = 3000
 PORT_RANGE_SIZE: int = 100
 

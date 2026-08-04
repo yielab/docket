@@ -17,7 +17,10 @@ Real-world long-poll quirks handled here, not above:
   ``timeout`` seconds and returns an empty list -- that is success, not a
   failure to report. ``request_timeout`` (this process's own socket timeout)
   must exceed ``timeout`` or a legitimately empty long-poll reads as a local
-  timeout instead of "nothing happened".
+  timeout instead of "nothing happened". This module takes both values as
+  given and does not enforce that relationship -- ``core/telegram.py``'s
+  ``poll_once`` resolves ``request_timeout`` from config and corrects a
+  misconfigured pair before ever calling down to this function.
 - ``offset`` is the caller's job to advance (Telegram only forgets an update
   once a strictly-greater offset has been acknowledged); this module is
   stateless per call and simply echoes back every update it decoded so the

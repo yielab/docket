@@ -6,11 +6,10 @@ this in a Typer command and raises typer.Exit(code).
 
 Each health check is its own small function so it can be tested in isolation.
 All fleet/agent state is read through `core/fleet.py` and `store`; this
-module never opens a daemon config file — there is no daemon. Checks that
-only ever made sense against one (binary presence, gateway status, daemon
-config validity, a daemon security-audit/exec-approval report, gateway-log
-scans) don't exist here; what replaces each is noted at its former call site
-in `run_doctor`.
+module never opens a daemon config file — there is no daemon to have one.
+Where a check has no daemon-era equivalent left to run, its function's own
+docstring says so and why (see `_check_dependencies`, `_check_security_gates`,
+`_doctor_json`).
 """
 
 from __future__ import annotations
