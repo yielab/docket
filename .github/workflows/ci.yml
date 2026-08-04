@@ -100,7 +100,7 @@ jobs:
         run: bash tests/golden/run.sh verify-all
 
   # Shell: lint the remaining shell surface (the launcher, installers, helper
-  # scripts, the golden/eval harnesses) and validate specs.
+  # scripts, the golden harness) and validate specs.
   shell:
     runs-on: ubuntu-latest
     steps:
@@ -114,7 +114,7 @@ jobs:
             bin/docket install.sh uninstall.sh \
             scripts/*.sh \
             tests/golden/run.sh tests/golden/fixtures/seed.sh \
-            tests/run-all-tests.sh tests/evals/*.sh tests/evals/lib/*.sh
+            tests/run-all-tests.sh
 
       - name: Validate specs (blocking)
         run: ./scripts/validate-specs.sh

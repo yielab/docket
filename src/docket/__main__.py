@@ -20,7 +20,6 @@ _ALIASES = {
     "usage": "cost",
     "check": "doctor",
     "security": "gates",
-    "evals": "eval",
     "export": "snapshot",
     "completion": "completions",
     "policy": "policies",
@@ -94,8 +93,19 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         "Any existing workflows/*.lobster.yml files are left on disk untouched, but no longer "
         "read by docket.",
     ),
+    "eval": (
+        "docket eval was removed — the specialist-role eval harness (tests/evals/) was dead "
+        "code: it shelled out to the daemon deleted in Phase 19 and skipped silently "
+        "instead of failing, which is why nobody noticed.",
+        "There is no replacement command: no CLI entry point runs a single agent turn to "
+        "call (DocketDriver.run_turn is only reached from pod dispatch and maintain "
+        "distill), so repointing the harness would mean inventing new surface against a "
+        "private port, not fixing a bug.",
+        "tests/evals/ has been deleted; docket doctor no longer prints eval-results hints.",
+    ),
 }
 _REMOVED["wf"] = _REMOVED["workflow"]
+_REMOVED["evals"] = _REMOVED["eval"]
 
 
 def main() -> None:

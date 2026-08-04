@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 2.5.1
+**Version**: 2.5.2
 **Status**: Complete
 **Last Updated**: 2026-08-04
 
@@ -263,10 +263,12 @@ every "the daemon" reference in it as describing a system this codebase no longe
    correction from the prior "fallback" label, which was a false claim: nothing in docket
    degrades a request to a cheaper model on failure. It is a role-default seed table, not a
    live runtime fallback chain, and the display now says so.
-3. **Scope note:** the eval harness's `docket eval --tier <economy|standard|premium>` flag
-   (eval.spec.md) is a live-eval matrix selector for spot-checks, not a model value or role
-   key — it is the one deliberately surviving user-facing use of the tier words and does not
-   contradict rule 1 (which governs model/role value positions only).
+3. **Scope note (closed CL-J):** the eval harness's `docket eval --tier
+   <economy|standard|premium>` flag was the one deliberately surviving user-facing use of the
+   tier words (a live-eval matrix selector for spot-checks, not a model value or role key). CL-J
+   removed `docket eval` (dead code wired to the deleted OpenClaw daemon; no successor command)
+   along with `tests/evals/` and eval.spec.md, so that carve-out no longer exists — tier names
+   now have **zero** surviving user-facing use anywhere, closing rule 1 without exception.
 
 ### Legacy registry migration
 
@@ -451,6 +453,14 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.5.2 (2026-08-04)
+
+- **CL-J — `docket eval` removed.** Closed the "Scope note" carve-out under Tier names (removed,
+  0.2.0): `docket eval --tier` was the one deliberately surviving user-facing use of the tier
+  vocabulary, and CL-J deleted `docket eval` outright (dead code wired to the deleted OpenClaw
+  daemon; no successor command, unlike `docket workflow`/`docket team`). Tier names now have zero
+  surviving user-facing use anywhere.
 
 ### Version 2.5.1 (2026-08-04)
 

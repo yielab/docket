@@ -231,14 +231,6 @@ def meta_path(agent_id: str) -> Path:
     return workspace_dir(agent_id) / META_FILE
 
 
-def cli_root() -> Path:
-    """Repo/install root (DOCKET_CLI_ROOT env override, else package parent)."""
-    override = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
-    if override.is_dir():
-        return override
-    return Path(__file__).resolve().parents[2]
-
-
 def templates_dir() -> Path:
     """Templates shipped inside the package."""
     return Path(__file__).resolve().parent / "templates"

@@ -1,8 +1,11 @@
-"""completions, eval, metrics, help commands.
+"""completions, metrics, help commands.
 
 These call the public run_* entry points in-process. stdout is captured with
 capsys to assert on the rendered text; the return value is the process exit
 code. Config-dependent modules (metrics) are repointed at a temp DOCKET_HOME.
+
+`docket eval` was removed (CL-J) — see test_eval_command_removed.py for its
+removed-command-notice coverage.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import docket.config as _cfg
-from docket.cli import _completions, _eval, _help, _metrics
+from docket.cli import _completions, _help, _metrics
 
 # ── completions ─────────────────────────────────────────────────────────────────
 
@@ -63,48 +66,6 @@ class TestCompletions:
         second = capsys.readouterr().out
         assert first == second
         assert first.endswith("complete -F _docket_complete docket\n")
-
-
-# ── eval ────────────────────────────────────────────────────────────────────────
-
-
-class TestEval:
-    def test_evals_dir_resolves(self) -> None:
-        evals = _eval._evals_dir()
-        assert evals is not None
-        assert (evals / "run-evals.sh").is_file()
-
-    def test_run_all_returns_int(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _eval.run_eval()
-        capsys.readouterr()
-        # Harness exits 0 on pass/skip-only; never raises.
-        assert isinstance(rc, int)
-
-    def test_unknown_role_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = _eval.run_eval(role="nonexistent-role")
-        err = capsys.readouterr().err
-        assert rc == 1
-        assert "No eval found for role 'nonexistent-role'" in err
-
-    def test_known_role_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
-        evals = _eval._evals_dir()
-        assert evals is not None
-        roles = sorted(p.name[: -len(".eval.sh")] for p in evals.glob("*.eval.sh"))
-        assert roles, "expected at least one role eval script"
-        rc = _eval.run_eval(role=roles[0])
-        out = capsys.readouterr().out
-        assert isinstance(rc, int)
-        assert f"Eval: {roles[0]}" in out
-
-    def test_missing_evals_dir_errors(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.setenv("DOCKET_CLI_ROOT", "/nonexistent-root-xyz")
-        # Also defeat the package-relative fallback by forcing it to miss: the
-        # package layout still resolves, so instead assert the env path is honored
-        # only when valid. Here we verify the resolver returns the real dir.
-        evals = _eval._evals_dir()
-        assert evals is not None  # falls back to package layout
 
 
 # ── metrics ─────────────────────────────────────────────────────────────────────

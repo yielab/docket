@@ -37,8 +37,7 @@ docket/
 ├── src/docket/                  # Python package (cli/ → core/ → edges/)
 └── tests/                       # Test implementation
     ├── python/                  # pytest suite (unit + integration)
-    ├── golden/                  # Byte-parity golden suite
-    └── evals/                   # Specialist-role evals
+    └── golden/                  # Byte-parity golden suite
 ```
 
 ## Workflow Steps
@@ -165,7 +164,7 @@ Ensure everything is aligned:
 # Check coverage
 ./scripts/spec-coverage.sh
 
-# Run all tests (pytest + golden parity + evals)
+# Run all tests (pytest + golden parity)
 ./tests/run-all-tests.sh
 
 # Run the CI gates (all blocking)

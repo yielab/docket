@@ -105,6 +105,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The OpenClaw daemon dependency itself (Phase 19).** No external `openclaw` binary, no daemon
   process, no daemon-owned exec-approval prompt docket could not see. docket runs the agent turn
   itself now — see Changed, above, for what replaced each piece of daemon-owned state.
+- `docket eval` — the specialist-role eval harness (`tests/evals/`, `cli/_eval.py`) (CL-J). It
+  was dead code: wired to the deleted OpenClaw daemon (`WORKSPACE` under
+  `$HOME/.openclaw/workspaces/<role>`, `openclaw agent --local --json`) and skipped silently
+  rather than failing, which is why the drift went unnoticed. Unlike `docket workflow`/`docket
+  team`, there is no replacement command — no CLI entry point runs a single agent turn to
+  repoint the harness at, so it was deleted outright rather than redesigned. Running `docket
+  eval`/`docket evals` now prints a removed-command notice. `docket doctor` no longer prints an
+  eval-results advisory section, and the `docket eval --tier` carve-out in the tier-name removal
+  rule (model-profiles.spec.md) no longer applies — tier names now have zero surviving
+  user-facing use anywhere.
 
 ## [0.2.0-beta.1] - 2026-07-03
 

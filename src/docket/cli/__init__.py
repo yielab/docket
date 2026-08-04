@@ -1422,19 +1422,6 @@ def cmd_audit(
     raise typer.Exit(run_audit(limit=limit, json_out=json_out))
 
 
-@app.command("eval")
-def cmd_eval(
-    live: bool = typer.Option(False, "--live", help="Run live golden-task evals"),
-    tier: str = typer.Option("standard", "--tier", help="Model tier"),
-    role: str = typer.Option("", "--role", help="Restrict to one role"),
-    recommend: bool = typer.Option(False, "--recommend", help="Emit tier recommendations"),
-) -> None:
-    """Run non-blocking specialist-role evals."""
-    from docket.cli._eval import run_eval
-
-    raise typer.Exit(run_eval(live=live, tier=tier, role=role, recommend=recommend))
-
-
 @app.command("snapshot")
 def cmd_snapshot(
     output: str | None = typer.Option(None, "--output", "-o", help="Write JSON to file"),
