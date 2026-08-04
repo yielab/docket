@@ -13,7 +13,7 @@
 >
 > ---
 >
-> ## ☑ PHASE 19 COMPLETE (2026-08-03) — docket owns the runtime; the daemon is gone. Next: Phase 21 (the substrate), then what survives of Phase 20
+> ## ☑ BOARD CLEAR (2026-08-04) — Phases 19, 20 and 21 all closed; nothing is scheduled
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
 > `command grep -ril openclaw src/` — returns only comments and docstrings narrating the removal;
@@ -77,7 +77,32 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ CURRENT STATE — Phase 19 waves 8-9 shipped; the daemon is unused
+## ☑ CURRENT STATE (2026-08-04) — the board is CLEAR. Wave 13 closed; nothing is scheduled
+
+**Every scheduled card is done.** Phase 19 (13 cards), Phase 21's surviving two (P21-1, P21-5) and
+Phase 20's surviving one (P20-2) have all shipped. P20-4 was dispatched and came back a **no-op** —
+the gap it was written against had been closed by W-4 months earlier and never re-trued (see
+ROADMAP's P20-4 card; the lesson is that a gap list is a claim about the tree and decays like one).
+
+`platform` green at wave 13 close: **2,081 tests** (`pytest` exit 0, 4 env skips), 18/18 goldens
+byte-identical, **25 specs** valid / 0 warnings, 37 commands, ~26,700 lines, `ruff` + `ruff format`
++ `mypy --strict` (73 files) clean, `metrics.py --check` in sync across all five claims.
+
+**Do not start the next thing from this file.** Everything remaining in the plan was deliberately
+**cut or deferred by D-24 with a named trigger** — OpenTelemetry, streaming, the tenant axis, fleet
+trace query + retention, egress lockdown, the build-agent profile. A trigger firing is a fact about
+the world (a second operator, a disk that fills, a cross-pod question asked twice), not a queue to
+work down. The right next move is to reassess against a real product, not to re-claim cut scope.
+
+**Known doc debt, integrator-owned, not yet carded:** the README was re-trued for the post-daemon
+world on 2026-08-03, but `docs/commands.md` (54 stale refs), `COMPATIBILITY.md` (premise false),
+`CONTRIBUTING.md` (points at the deleted ACL), `docs/DOCKET.md`, `docs/troubleshooting.md`,
+`docs/QUICK-START-DOCKET.md` and `docs/SECURITY-SIMPLE.md` still describe an external daemon that no
+longer exists. ROADMAP/TODO/CHANGELOG references are historical record and should stay.
+
+---
+
+## Historical — Phase 19 waves 8-9 shipped; the daemon is unused
 
 **Platformization (Phases 14-18) is COMPLETE** — 38 cards, 7 waves; durable per-card records are the
 `☑ Waves 3-4 / 5 / 6 / 7 shipped` blocks in ROADMAP.md's Phase 16 section.
@@ -912,7 +937,7 @@ and must explain the diff.
 | 10 | ☑ P19-6 · P19-11 · P19-12 · P19-13 | done (2026-08-02) | — |
 | 11 | ☑ P19-7a -> P19-7b -> P19-8 | done (2026-08-03) | **PHASE 19 CLOSED** — acceptance grep clean |
 | 12 | ☑ P21-1 -> P21-5 | done (2026-08-03) | — |
-| **▶ 13** | **P20-2 · P20-4** | 2 parallel | last scheduled work; everything else was cut/deferred by D-24 |
+| 13 | ☑ **P20-2** · ~~P20-4~~ | done (2026-08-04) | **BOARD CLEAR** — P20-2 shipped; P20-4 was a phantom card (W-4 had already closed it). Everything else was cut/deferred by D-24 |
 
 **Wave 11 closes Phase 19. Wave 12 is Phase 21 (the substrate — the factory's actual product line).
 Wave 13 is all that survives of Phase 20.** Anything not in this table was cut or deferred by D-24;

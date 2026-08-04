@@ -421,13 +421,13 @@ pytest suite, an 18-case golden-parity suite, and specialist-role evals — see
 
 By the numbers:
 
-- **2,066 tests** in the pytest suite (`tests/python/`)
-- **~26,400 lines** of Python in the shipped `docket` package
+- **2,081 tests** in the pytest suite (`tests/python/`)
+- **~26,700 lines** of Python in the shipped `docket` package
 - **25 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,066-test Python suite
+uv run pytest                                        # 2,081-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -495,9 +495,9 @@ policy and how breaks are tracked.
 
 See [ROADMAP.md](ROADMAP.md) for the full phased plan. Near-term priorities:
 
-1. Guardrail and loop metrics on the existing Prometheus surface — denial rate, approvals by
-   channel, policy-hit counts, turn latency
-2. Close the egress gap so `fetch` is the only network path, not merely the inspectable one
+1. Close the egress gap so `fetch` is the only network path, not merely the inspectable one
+2. A trace/audit retention policy — both grow unbounded, and audit rotation currently costs the
+   metrics counters their history
 3. Expand the eval harness (`tests/evals/`) and feed results into model right-sizing
 
 ## Contributing

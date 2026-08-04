@@ -1858,8 +1858,8 @@ point of writing the rule down: it has to bind the person applying it.
 | **P19-13** `docket mcp servers` CLI | **DO — S** | ~30 lines of CLI over library functions P19-10 already shipped and tested. Makes browser + web search **configuration, not code** |
 | **P19-11** `fetch` tool | **DO** | Table stakes for an agentic-product runtime, and the inspectable egress path |
 | **P21-5** `agentic-product` blueprint | **DO — XS** | A row in `BUILTIN_BLUEPRINTS`. The scaffolding primitive a factory needs **already exists**; this is data, not machinery |
-| **P20-4** `runs cancel` audit entry | **DO — XS** | Near-free, and closes a gap carried since W-4 |
-| **P20-2** guardrail + loop metrics | **DO — S** | Denial rate and approval wait are the two numbers an operator would actually open |
+| **P20-4** `runs cancel` audit entry | ~~**DO — XS**~~ **ALREADY SHIPPED** | The gap it was written against had already been closed by W-4. Nothing to do; see the card below |
+| **P20-2** guardrail + loop metrics | ☑ **SHIPPED** (2026-08-04) | Denial rate and approval wait are the two numbers an operator would actually open |
 | **D-23** egress lockdown | **DEFER** | Off by default, breaks `npm`/`pip`/`git` when on, no measured need. Buys a config option, not a guarantee |
 | **P20-3** fleet trace query + retention | **DEFER** | `grep` over JSONL is adequate at this fleet size. Retention returns when a disk fills, which is a fact, not a forecast |
 | **P20-1 OpenTelemetry** | **CUT** | **Reversing the integrator's own recommendation.** Correct at platform scale; this is one host and one operator, with JSONL traces and six Prometheus metrics already shipped. Importing a platform-team solution into a one-operator system is textbook overengineering. Revisit at a second operator or a real dashboard |
@@ -1898,10 +1898,17 @@ it was built for unattended operation.
    all pods this week".
 2. **No OpenTelemetry.** The industry standard is absent, so nothing feeds Grafana/Jaeger/Honeycomb
    without docket building a UI it would then have to maintain.
-3. **The P19-5 loop is not in the metrics.** Tool-call rate, denial rate, approval wait time and
-   policy-hit counts are exactly the security-relevant signals, and none are exported.
+3. ~~**The P19-5 loop is not in the metrics.**~~ — **closed by P20-2** (wave 13): tool-call rate,
+   denial rate, approvals by channel and policy-hit counts by id are all exported.
 4. **No latency anywhere.** No p50/p95 per role — a slow model and a stuck agent look identical.
-5. `docket runs cancel` still writes **no audit entry** (carried since W-4).
+   **Partly closed by P20-2**, which exports `docket_turn_duration_seconds` as a `_sum`/`_count`
+   summary. Percentiles are still absent, and deliberately so: only `session_start`/`session_end`
+   brackets exist, so a p95 would be invented rather than measured. Real percentiles need a
+   per-turn timestamp that nothing records yet.
+5. ~~`docket runs cancel` still writes **no audit entry**~~ — **already closed by W-4** (`7e9ddab`,
+   2026-07-30), which shipped the entry, four tests and the spec bump on the *same day* this gap
+   list was written. Recorded as open here, and again as card P20-4 below, because neither was
+   re-trued afterwards. The gap was never real; see P20-4.
 6. **No trace retention policy.** JSONL grows without bound.
 7. **No agent-quality regression detection** — the eval harness is non-blocking spot checks.
 
@@ -1926,11 +1933,38 @@ events, plus six Prometheus metrics and a versioned read API. **Trigger to re-op
 operator, or a real Grafana/Jaeger/Honeycomb backend that someone will actually watch. Not "it is
 the industry standard".
 
-**P20-2 · Guardrail + loop metrics** — *TODO · S · KEPT*
+**P20-2 · Guardrail + loop metrics** — *☑ SHIPPED (2026-08-04, wave 13) · S*
 Denial rate, approvals granted/denied/timed-out **by channel**, policy-hit counts by policy id,
 tool-call rate, turn latency. Extends the existing Prometheus surface; **no new endpoint** and no new
 dependency. These are the numbers an operator opens after an incident, which is why this survived the
 cut that removed OTel: it is the *signal*, without the *transport project*.
+
+Shipped as four families — `docket_tool_calls_total{decision}`, `docket_policy_hits_total{policy_id,
+hook,action}`, `docket_approvals_total{channel,outcome}`, and `docket_turn_duration_seconds` (a
+summary with **no** quantiles; there is no per-turn timestamp to build honest percentiles from, only
+`session_start`/`session_end` brackets).
+
+**The design call worth keeping:** every number is recomputed from durable records at scrape time —
+trace JSONL for tool calls, policy hits and session brackets; the audit log for approvals by channel.
+`docket serve` is not a long-lived process holding counters, so an in-memory store would silently
+zero on restart and a persisted one would be a second source of truth free to drift from what is on
+disk. Deriving means every metric is traceable back to a record an operator can `grep`. Telemetry
+still never writes *through* the audit log — it only reads it.
+
+**One `core/tools.py` change, scoped exactly:** `_audit_tool_decision` now takes `policy_id`/
+`policy_action` as structured keyword fields instead of burying the hit in free text, so `/metrics`
+can attribute a policy hit by id without parsing prose. `evaluate_tool_call` — the gate itself — is
+untouched: no decision changes, no second execution path, no reordering of the classifier/policy
+sequence, and `audit_log` stays best-effort and never-raising, so recording cannot affect whether a
+tool runs.
+
+**Two limits documented rather than implied.** (1) `audit.log` rotates at `AUDIT_LOG_MAX_BYTES` to a
+single-generation backup and `read_audit` sees only the current file, so `docket_approvals_total` and
+the `pre_tool_call` slice of `docket_policy_hits_total` **lose history on rotation** — and a counter
+dropping to a *partial* value is misread by `rate()` as a reset plus real traffic. Fixing that is
+retention design, which is P20-3's deferred scope. (2) Scrape cost was **measured, not asserted**: a
+927KB / 10,000-event trace corpus plus an audit log at the 5MB ceiling renders in ~60ms. Fine today,
+`O(trace + audit bytes)`, no cache added, threshold named.
 
 **P20-3 · Fleet trace query + retention** — *⏸ DEFERRED (D-24)*
 Cross-project query (`docket trace --fleet --json`) plus a documented retention/rotation policy, the
@@ -1938,11 +1972,30 @@ way `AUDIT_LOG_MAX_BYTES` already handles the audit log. Both gaps are real; nei
 this fleet size, where `grep` over per-project JSONL answers the question. **Trigger:** a disk that
 actually fills, or a cross-pod question asked twice.
 
-**P20-4 · `runs cancel` audit entry** — *TODO · XS · KEPT*
-Closes the W-4 gap. A cancellation is a human decision that killed running work; it belongs in the
-audit log. Kept despite the general cut because it is nearly free and because the audit chain
-claiming completeness while missing a class of human action is a correctness problem, not a
-nice-to-have.
+**P20-4 · `runs cancel` audit entry** — *☑ NO-OP (2026-08-03) · the gap was already closed*
+Was: closes the W-4 gap — a cancellation is a human decision that killed running work, so it belongs
+in the audit log.
+
+**It was already there.** Dispatched in wave 13 and the agent found the work shipped: `core/runs.py`'s
+`cancel_run` has written `audit_log("runs.cancel", run=… project=… was=… killed=…)` since **W-4**
+(`7e9ddab`, merged 2026-07-30), with four tests in `test_r3_runs_cli.py::TestRunsCancelAuditEntry`
+(entry on success · none on unknown id · none on already-terminal · chain still verifies) and the
+change recorded in `audit.spec.md`'s own 2.3.0 changelog. **Zero commits on `pc/p20-4`.**
+
+**Why the board was wrong, which is the part worth keeping.** W-4 closed the gap on 2026-07-30 —
+the same day Phase 20's gap list was written recording it as open. The gap list was never re-read
+against the tree afterwards, so the false entry was promoted into a card, survived D-24's
+prioritization pass (where it was *kept* over OpenTelemetry on the strength of a premise nobody
+re-checked), and was scheduled into a wave. **A gap list is a claim about the tree and decays like
+any other; re-verify one before you schedule work against it, not after.** The card cost one agent
+dispatch to disprove — cheap, but only because the agent checked instead of building a second
+`audit_log` call next to the first.
+
+Two design points the agent settled while proving it, both correct as shipped: `cancel_run` is the
+single chokepoint (`grep` confirms exactly one caller, `cli/_runs.py:152` — no HTTP, MCP or serve
+path cancels), and the entry carries **no** `channel` field, unlike `approval_grant`/`approval_deny`.
+With one caller and one possible value, threading a channel today would be speculative generality;
+adding an HTTP or MCP cancel path is the trigger, not before.
 
 ---
 
@@ -2103,6 +2156,30 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-04 (wave 13) — THE BOARD IS CLEAR.** Phases 19, 20 and 21 are all closed; nothing is
+  scheduled. **P20-2 shipped** the guardrail + loop metrics: four families on the existing Prometheus
+  surface (`docket_tool_calls_total{decision}`, `docket_policy_hits_total{policy_id,hook,action}`,
+  `docket_approvals_total{channel,outcome}`, `docket_turn_duration_seconds` as a quantile-less
+  summary), **no new endpoint and no new dependency**. Every number is recomputed from durable
+  records at scrape time rather than held in a counter store — `docket serve` is not long-lived, so
+  in-memory counters would zero on restart and a persisted set would be a second source of truth free
+  to drift from disk. Its one `core/tools.py` change is confined to how the audit *detail* is
+  formatted (`policy_id`/`policy_action` as structured fields instead of free text); the gate itself
+  is untouched. Two limits are documented rather than implied: audit-log rotation costs the
+  approval/policy counters their history (P20-3's deferred retention scope), and scrape cost was
+  **measured** at ~60ms against a 5MB audit log plus a 927KB trace corpus, not asserted.
+  **P20-4 was a phantom card** — dispatched, and the agent found the gap already closed by W-4
+  (`7e9ddab`, 2026-07-30) with tests and a spec entry; zero commits. It had been recorded as open in
+  Phase 20's gap list *the same day* W-4 closed it, then promoted into a card, then **kept over
+  OpenTelemetry in D-24's prioritization pass on a premise nobody re-checked**. The lesson is on the
+  card: a gap list is a claim about the tree and decays like any other — re-verify one before
+  scheduling work against it. Tree at close: **2,081 tests**, 18/18 goldens, 25 specs / 0 warnings,
+  37 commands, ~26,700 lines, `ruff` + `mypy --strict` (73 files) clean.
+  Separately, the **README was re-trued** for the post-daemon world (it still described docket as a
+  wrapper around an external OpenClaw daemon, with an ACL, `openclaw.json`, a daemon-owned approval
+  prompt docket could not audit, and "recorded dollar spend"); `docs/commands.md`,
+  `COMPATIBILITY.md`, `CONTRIBUTING.md` and four `docs/` files carry the same debt and are **not yet
+  carded**.
 - **2026-07-31 (planning, no code)** — **The goal was stated — *a factory for agentic products* — and
   it settled four open decisions and opened a fifth.** **D-20 ANSWERED: both, in an order** — factory
   first, embeddable substrate second, on the reasoning that *if every product is agentic, the runtime
