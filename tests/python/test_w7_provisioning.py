@@ -80,6 +80,7 @@ class TestBuiltinBlueprintsProvision:
             ("research", ("lead", "researcher", "analyst", "writer", "critic")),
             ("content", ("lead", "writer", "critic")),
             ("ops", ("lead", "operator", "monitor")),
+            ("agentic-product", ("lead", "implementer", "reviewer", "tester")),
         ],
     )
     def test_provisions_expected_members_and_files(
@@ -131,7 +132,13 @@ class TestBuiltinBlueprintsProvision:
 
     @pytest.mark.parametrize(
         "blueprint_name,expected_budget",
-        [("software", None), ("research", 20.0), ("content", 15.0), ("ops", 30.0)],
+        [
+            ("software", None),
+            ("research", 20.0),
+            ("content", 15.0),
+            ("ops", 30.0),
+            ("agentic-product", None),
+        ],
     )
     def test_default_budget_applies_to_lead_only(
         self,
@@ -294,6 +301,24 @@ class TestDoctorAcceptsWorkdirBlueprint:
     ) -> None:
         _seed(tmp_path, monkeypatch)
         created = _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
+        assert _doctor._check_project_agents(sorted(created)) == 0
+
+    def test_agentic_product_pod_passes_doctor_clean(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ROADMAP Phase 21 P21-5: codebase-kind, full (lead/implementer/
+        # reviewer/tester) roster — same doctor path software's full pod
+        # (`--pod full`) already exercises, just reached via a blueprint name.
+        _seed(tmp_path, monkeypatch)
+        created = _pod.build_pod_from_blueprint(
+            "demo", "agentic-product", location="/src/demo", stack="Python"
+        )
+        assert sorted(r.split("-", 1)[1] for r in created) == [
+            "implementer",
+            "lead",
+            "reviewer",
+            "tester",
+        ]
         assert _doctor._check_project_agents(sorted(created)) == 0
 
 

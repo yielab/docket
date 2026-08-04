@@ -1,12 +1,13 @@
 """W-7: pod blueprints — the format itself (`core/blueprints.py`).
 
-Covers the registry (four built-ins), the closed `workspace_kind` enum, the
-structural validation `PodBlueprint.__post_init__` enforces, and the
-cross-check that every gated step in a blueprint's `default_pipeline` matches
-the gated role's own archetype `gateContract.kind` exactly (no drift between
-"the roster" and "the pipeline" — see `core/blueprints.py`'s module
-docstring). Provisioning end-to-end (workspace files, `.docket-meta.json`,
-`--from spec.yaml`, `docket doctor`) is covered by test_w7_provisioning.py.
+Covers the registry (five built-ins as of ROADMAP Phase 21 P21-5), the closed
+`workspace_kind` enum, the structural validation `PodBlueprint.__post_init__`
+enforces, and the cross-check that every gated step in a blueprint's
+`default_pipeline` matches the gated role's own archetype `gateContract.kind`
+exactly (no drift between "the roster" and "the pipeline" — see
+`core/blueprints.py`'s module docstring). Provisioning end-to-end (workspace
+files, `.docket-meta.json`, `--from spec.yaml`, `docket doctor`) is covered
+by test_w7_provisioning.py.
 """
 
 from __future__ import annotations
@@ -22,9 +23,9 @@ from docket.core import pod as _pod
 
 
 class TestRegistry:
-    def test_four_builtins_registered(self) -> None:
+    def test_five_builtins_registered(self) -> None:
         names = set(bp.load_registry().names())
-        assert names == {"software", "research", "content", "ops"}
+        assert names == {"software", "research", "content", "ops", "agentic-product"}
 
     def test_default_blueprint_is_software(self) -> None:
         assert bp.DEFAULT_BLUEPRINT == "software"
@@ -35,7 +36,7 @@ class TestRegistry:
         try:
             bp.get_blueprint("wizard-pod")
         except bp.BlueprintError as exc:
-            for name in ("software", "research", "content", "ops"):
+            for name in ("software", "research", "content", "ops", "agentic-product"):
                 assert name in str(exc)
 
     def test_get_blueprint_known_roundtrips(self) -> None:
@@ -44,8 +45,9 @@ class TestRegistry:
 
 
 class TestWorkspaceKind:
-    def test_software_is_codebase(self) -> None:
-        assert bp.get_blueprint("software").workspace_kind == "codebase"
+    @pytest.mark.parametrize("name", ["software", "agentic-product"])
+    def test_codebase_blueprints_are_codebase(self, name: str) -> None:
+        assert bp.get_blueprint(name).workspace_kind == "codebase"
 
     @pytest.mark.parametrize("name", ["research", "content", "ops"])
     def test_non_software_are_workdir(self, name: str) -> None:
@@ -56,7 +58,7 @@ class TestWorkspaceKind:
 
 
 class TestRosterInvariants:
-    @pytest.mark.parametrize("name", ["software", "research", "content", "ops"])
+    @pytest.mark.parametrize("name", ["software", "research", "content", "ops", "agentic-product"])
     def test_lead_is_first_and_only(self, name: str) -> None:
         roles = bp.get_blueprint(name).roles
         assert roles[0] == "lead"
@@ -65,7 +67,7 @@ class TestRosterInvariants:
     def test_software_roster_matches_pod_default(self) -> None:
         assert bp.get_blueprint("software").roles == _pod.DEFAULT_POD_ROLES
 
-    @pytest.mark.parametrize("name", ["software", "research", "content", "ops"])
+    @pytest.mark.parametrize("name", ["software", "research", "content", "ops", "agentic-product"])
     def test_every_role_is_a_registered_archetype(self, name: str) -> None:
         registry = _arch.load_registry()
         for role in bp.get_blueprint(name).roles:
@@ -142,7 +144,7 @@ class TestPipelineGateFidelity:
         "approval": "approval",
     }
 
-    @pytest.mark.parametrize("name", ["software", "research", "content", "ops"])
+    @pytest.mark.parametrize("name", ["software", "research", "content", "ops", "agentic-product"])
     def test_gates_match_archetype_gate_contract(self, name: str) -> None:
         registry = _arch.load_registry()
         blueprint = bp.get_blueprint(name)
@@ -179,3 +181,35 @@ class TestPipelineGateFidelity:
         actual = bp.get_blueprint("software").default_pipeline
         assert [s.id for s in actual.steps] == [s.id for s in expected.steps]
         assert actual.model_dump() == expected.model_dump()
+
+
+class TestAgenticProduct:
+    """ROADMAP Phase 21 P21-5: `agentic-product` is a fifth row of data, not
+    new machinery — same `default_pipeline()` object `software` attaches, a
+    `codebase` workspace kind, and the one deliberate difference from
+    `software`: a full (Lead, Implementer, Reviewer, Tester) roster so the
+    Reviewer/Tester gates already present in `default_pipeline()` actually
+    engage at dispatch time instead of going unreached.
+    """
+
+    def test_roster_is_full_pod_roles(self) -> None:
+        assert bp.get_blueprint("agentic-product").roles == _pod.FULL_POD_ROLES
+
+    def test_workspace_kind_is_codebase(self) -> None:
+        assert bp.get_blueprint("agentic-product").workspace_kind == "codebase"
+
+    def test_no_default_budget_cap(self) -> None:
+        # Matches `software`, the other codebase-kind blueprint: an ongoing
+        # project pod gets no preset spend ceiling, unlike the three
+        # task-shaped workdir blueprints (research/content/ops).
+        assert bp.get_blueprint("agentic-product").default_budget_usd is None
+
+    def test_pipeline_is_the_same_object_as_software(self) -> None:
+        # No new pipeline/gate design for this card: agentic-product reuses
+        # core.pipeline.default_pipeline() verbatim, the same as software.
+        software_pipeline = bp.get_blueprint("software").default_pipeline
+        agentic_pipeline = bp.get_blueprint("agentic-product").default_pipeline
+        assert agentic_pipeline.model_dump() == software_pipeline.model_dump()
+
+    def test_description_names_docket_runtime(self) -> None:
+        assert "docket-runtime" in bp.get_blueprint("agentic-product").description

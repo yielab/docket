@@ -1,4 +1,5 @@
-"""Pod blueprints: objective-scoped provisioning (ROADMAP Phase 16 W-7).
+"""Pod blueprints: objective-scoped provisioning (ROADMAP Phase 16 W-7,
+extended ROADMAP Phase 21 P21-5).
 
 A *blueprint* is a named, versioned pod shape: an archetype roster (role names
 resolved against ``core/archetypes.py``'s registry — W-6), a default pipeline
@@ -26,6 +27,22 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   behind a mechanical check (deferring to the Operator's own ``verifyCmd``,
   mirroring the Implementer's convention), then requires human approval
   before the Monitor's findings are considered actioned.
+- ``agentic-product`` — Lead, Implementer, Reviewer, Tester (codebase; ROADMAP
+  Phase 21 P21-5): the pod shape for a product that itself ships an agent to
+  end users, not just an internal tool. Its ``default_pipeline`` is the same
+  ``core.pipeline.default_pipeline()`` object ``software`` attaches, but
+  because the roster carries Reviewer and Tester (``core/pod.py``'s existing
+  ``FULL_POD_ROLES``, not a new roster shape), both steps actually gate a hop
+  at dispatch time instead of going unreached the way they do behind
+  ``software``'s lean default roster. That is a deliberate, data-only
+  difference in blast radius: an agent that ships to end users warrants the
+  review + test gate on by default; an internal tool does not. This is *not*
+  a scaffolding blueprint — it describes a pod shape, the same as the other
+  four, and provisions no repository contents. The convention a pod
+  provisioned from it is expected to follow is embedding the
+  ``docket-runtime`` library (ROADMAP Phase 21 P21-1) as its own guardrail
+  substrate rather than reinventing one; enforcing that is outside a
+  blueprint's job (see ``description`` below).
 
 Per ROADMAP Phase 16's anti-overengineering rule, ``workspace_kind`` is a
 closed enum (``WORKSPACE_KINDS``) — same discipline as ``core/archetypes.py``'s
@@ -40,7 +57,7 @@ a blueprint's roster is actually provisioned.
 Blueprints are Python literals in this module (the same "workspace prose is
 generated inline in Python" convention ``core/archetypes.py`` follows for its
 own built-ins) — there is no user-authored blueprint YAML format yet (unlike
-``docket roles add``); the four built-ins are the whole registry today.
+``docket roles add``); the five built-ins are the whole registry today.
 """
 
 from __future__ import annotations
@@ -210,6 +227,20 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         default_pipeline=_ops_pipeline(),
         default_budget_usd=30.0,
         description="executes operational actions with a mechanical check and human sign-off",
+    ),
+    "agentic-product": PodBlueprint(
+        name="agentic-product",
+        version=1,
+        workspace_kind="codebase",
+        roles=_pod.FULL_POD_ROLES,
+        default_pipeline=_pipeline.default_pipeline(),
+        default_budget_usd=None,
+        description=(
+            "a product that ships its own agent to end users; embeds docket-runtime "
+            "for the gated tool chokepoint, policy engine, approval store and audit "
+            "chain instead of reinventing them, and runs reviewer + tester by default "
+            "given the higher blast radius of an agent-facing release"
+        ),
     ),
 }
 
