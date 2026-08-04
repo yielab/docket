@@ -396,23 +396,28 @@ def render_metrics() -> str:
     # Guardrail + loop metrics -- see LoopMetrics' docstring for where each
     # number is sourced from.
     #
-    # Durability caveat (not solved here -- trace/audit retention is a known,
-    # deliberately deferred gap): the audit-log-derived halves of
-    # these counters -- all of docket_approvals_total, and the pre_tool_call
-    # slice of docket_policy_hits_total -- see only $DOCKET_HOME/audit.log's
-    # CURRENT generation. core/audit.py rotates that file to a single backup
-    # (audit.log.1, itself overwritten by the next rotation) once it exceeds
-    # AUDIT_LOG_MAX_BYTES (5MB by default), and core/audit.py's read_audit()
-    # reads only the current file -- so a rotation silently drops whatever
-    # history was in the backup before it. A `rate()` reading a counter that
-    # drops to a partial value (not zero) on rotation will misread it as a
-    # reset followed by an under-counted window, not as missing history.
-    # Trace JSONL (docket_tool_calls_total, the pre_input/pre_output half of
-    # docket_policy_hits_total, and the turn-duration pair below) has no such
-    # gap -- core/trace.py's sweep_all() only appends a synthetic
-    # session_end to a stale-open trace, it never deletes a trace file -- but
-    # that means trace storage grows without bound instead (a separate,
-    # known "no trace retention policy" gap).
+    # Durability caveat -- BOTH sources now lose history, for different reasons,
+    # and every counter here is therefore a lifetime-of-current-storage count
+    # rather than a true monotonic total:
+    #
+    # 1. Audit-derived (all of docket_approvals_total, and the pre_tool_call
+    #    slice of docket_policy_hits_total) see only $DOCKET_HOME/audit.log's
+    #    CURRENT generation. core/audit.py rotates that file to a single backup
+    #    (audit.log.1, itself overwritten by the next rotation) once it exceeds
+    #    AUDIT_LOG_MAX_BYTES, and read_audit() reads only the current file --
+    #    so a rotation silently drops whatever history was in the backup.
+    # 2. Trace-derived (docket_tool_calls_total, the pre_input/pre_output half
+    #    of docket_policy_hits_total, and the turn-duration pair below) used to
+    #    have no such gap, because traces were only ever appended to. They now
+    #    expire: core/trace.py's expire_old_traces() deletes terminated traces
+    #    past TRACE_RETENTION_S. Retention bounds storage growth, which was the
+    #    point, but it means these counters drop when a trace file ages out.
+    #
+    # The consequence is the same for both, and it is why this is worth a
+    # comment rather than a footnote: a `rate()` over a counter that drops to a
+    # PARTIAL value (not zero) misreads it as a reset followed by an
+    # under-counted window, not as missing history. Do not build an alert that
+    # assumes these are monotonic.
     loop = _loop_metrics()
 
     lines += [
@@ -531,9 +536,20 @@ def _check_schedules(now_ts: float) -> None:
 def _run_sweeps(dispatch: bool = False) -> None:
     """Run the periodic sweeps once, each best-effort.
 
-    Coerces stale open traces to aborted and expires pending approvals past
-    APPROVAL_TIMEOUT. Every sweep is guarded so one failure never aborts the
-    others or the server.
+    Coerces stale open traces to aborted, deletes terminated traces past
+    TRACE_RETENTION_S, and expires pending approvals past APPROVAL_TIMEOUT.
+    Every sweep is guarded so one failure never aborts the others or the server.
+
+    Retention is measured from when a session ENDED, not from when it was last
+    active, and the two sweeps compose to make that so: ``expire_old_traces``
+    only ever deletes an already-terminated trace, and ``sweep_all``'s synthetic
+    session_end carries a fresh ``_now_iso()`` timestamp. So an abandoned trace
+    is first terminated, and only then starts its retention clock — an ancient
+    stale-open trace survives a full window after the sweep first notices it,
+    rather than being deleted on sight. That is deliberate: the alternative
+    deletes evidence of an abandoned session at the exact moment an operator
+    would go looking for it. ``audit.log`` is not swept at all — telemetry is
+    sampled and lossy by design, an audit log must be neither.
 
     When *dispatch* is set, also drives every dispatchable pod's queued tasks
     through its pipeline (one run record per pod, source ``"sweep"``) and
@@ -547,6 +563,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
 
     with contextlib.suppress(Exception):
         trace.sweep_all()
+    with contextlib.suppress(Exception):
+        trace.expire_old_traces()
     with contextlib.suppress(Exception):
         approval.approval_sweep_expired()
     if dispatch:
