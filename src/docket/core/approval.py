@@ -13,8 +13,14 @@ Approval records are docket-owned artefacts, so writes go through the
 Trace emission and secret redaction are best-effort and isolated behind the thin
 ``_emit_trace`` / ``_redact`` hooks so tests can stub them. Grant/deny also write
 an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``) tagged
-with the calling channel (``cli``, ``http``, ``telegram``, ``timeout``, ...) so
-``docket audit`` has a record of who approved what and through which surface.
+with the calling channel so ``docket audit`` has a record of who approved what
+and through which surface. The recognised channel vocabulary is the closed set
+in ``APPROVAL_CHANNELS`` below (``cli``, ``http``, ``mcp``, ``telegram``,
+``timeout``, ``tack``) — core owns this list precisely so a caller (e.g.
+``serve.py``'s ``POST /approvals/<token>``) can reject an arbitrary
+caller-supplied string before it ever reaches the hash-chained audit log,
+rather than trusting free text into a record whose whole value is honest
+provenance.
 
 The expiry sweep (``approval_sweep_expired``) resolves a stale pending record
 to **denied** (fail-closed) rather than a read-by-nobody ``"expired"`` state,
@@ -49,6 +55,14 @@ from typing import Any, Literal
 import docket.config as _cfg
 from docket.core.audit import audit_log
 from docket.edges import store as _store
+
+# The closed set of channels a grant/deny may be tagged with in the audit log
+# (see the module docstring). ``timeout`` is the fail-closed expiry path
+# (``_resolve_timeout_as_denied``), never a human-driven caller. Callers that
+# accept a channel from outside the process (``serve.py``'s
+# ``POST /approvals/<token>``) MUST validate against this set rather than
+# passing an arbitrary string through to ``approval_grant``/``approval_deny``.
+APPROVAL_CHANNELS: frozenset[str] = frozenset({"cli", "http", "mcp", "telegram", "timeout", "tack"})
 
 
 class ApprovalError(Exception):

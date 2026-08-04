@@ -750,12 +750,23 @@ class _DocketHandler(BaseHTTPRequestHandler):
             from docket.core import approval
             from docket.core import dispatch as _dispatch
 
+            # `channel` identifies the surface this decision came through, tagged
+            # onto the hash-chained audit log entry (`core/approval.py`'s
+            # `approval_grant`/`approval_deny`). Default stays "http" (every caller
+            # before this field existed keeps identical behaviour); an unrecognised
+            # value is rejected rather than let free text reach the audit log —
+            # core owns the vocabulary (`approval.APPROVAL_CHANNELS`), not this module.
+            channel = req_body.get("channel", "http")
+            if not isinstance(channel, str) or channel not in approval.APPROVAL_CHANNELS:
+                self._send_json_error(f"Unrecognised channel: {channel!r}", 400)
+                return
+
             decision = "granted" if action == "grant" else "denied"
             try:
                 if action == "grant":
-                    approval.approval_grant(approval_token, channel="http")
+                    approval.approval_grant(approval_token, channel=channel)
                 else:
-                    approval.approval_deny(approval_token, channel="http")
+                    approval.approval_deny(approval_token, channel=channel)
                 # If this token gated a dispatch task, genuinely resume
                 # (grant) or kill (deny) it — see core/dispatch.py's
                 # resolve_waiting_approval. A no-op for any other approval.
@@ -770,6 +781,65 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 self._send_json_error(exc.message, 409)
             except approval.ApprovalError as exc:
                 self._send_json_error(str(exc), 404)
+        elif path.startswith("/tasks/"):
+            if not self._check_auth():
+                self._send_json_error("Unauthorized", 401)
+                return
+            project = path[len("/tasks/") :]
+            if not project:
+                self._send_json_error("Missing project", 400)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b"{}"
+                task_body: Any = json.loads(raw)
+            except (ValueError, json.JSONDecodeError):
+                self._send_json_error("Invalid JSON body", 400)
+                return
+            if not isinstance(task_body, dict):
+                self._send_json_error("Request body must be a JSON object", 400)
+                return
+
+            description = task_body.get("description", "")
+            if not isinstance(description, str) or not description:
+                self._send_json_error("description is required", 400)
+                return
+            priority_raw = task_body.get("priority", "normal")
+            priority = str(priority_raw) if priority_raw else "normal"
+            # `trusted` (optional) overrides the `pre_input` policy check's trust
+            # flag for this enqueue only — see core.dispatch.enqueue_task. Absent
+            # (None) leaves every existing caller's behaviour byte-for-byte
+            # unchanged; this is the only place that field is threaded through.
+            trusted_raw = task_body.get("trusted")
+            trusted = bool(trusted_raw) if trusted_raw is not None else None
+
+            from docket.core import dispatch as _dispatch
+
+            try:
+                task = _dispatch.enqueue_task(project, description, priority, trusted=trusted)
+            except _dispatch.DispatchError as exc:
+                msg = str(exc)
+                # enqueue_task raises DispatchError for exactly two reasons: no
+                # pod for this project (404 — nothing to enqueue against), or a
+                # `block` pre_input policy verdict (4xx, naming the policy id the
+                # exception message already carries — never swallowed into 500).
+                status = 404 if msg.startswith("no pod for") else 400
+                self._send_json_error(msg, status)
+                return
+
+            task_resp: dict[str, Any] = {
+                "ok": True,
+                "task": task["id"],
+                "project": project,
+                "status": task["status"],
+            }
+            # A `require_approval` pre_input verdict leaves the task itself
+            # created but gated — surface its real status and token rather than
+            # a 200 that implies it is queued to run (see enqueue_task, which
+            # already sets both on the returned dict for this case).
+            if task["status"] == "waiting_approval":
+                task_resp["approvalToken"] = task.get("approvalToken", "")
+            self._send(json.dumps(task_resp).encode(), "application/json")
         elif path.startswith("/dispatch/"):
             if not self._check_auth():
                 self._send_json_error("Unauthorized", 401)

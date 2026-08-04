@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Stable
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-04
 
 ## Purpose
 
@@ -27,8 +27,9 @@ This specification covers:
 - The security model (auth requirements per endpoint)
 
 It does NOT cover the write endpoints' request handling (`POST /approvals/<token>`,
-`POST /dispatch/<project>`) beyond the shape of their response body — those are implementation
-details gated by `Authorization: Bearer <token>` and documented in `src/docket/serve.py`.
+`POST /dispatch/<project>`, `POST /tasks/<project>`) beyond the shape of their request/response
+body — those are implementation details gated by `Authorization: Bearer <token>` and documented in
+`src/docket/serve.py`.
 
 **API version:** `2`  (see `SERVE_API_VERSION` in `src/docket/serve.py`)
 The server binds to `127.0.0.1` by default. The read endpoints (`/status.json`, `/metrics`,
@@ -114,7 +115,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
 | `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`core/tools.py`'s `dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`). Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. Sourced entirely from trace JSONL (see the durability note below). |
 | `docket_policy_hits_total{policy_id,hook,action}` | counter | Guardrail policy hits, by policy id, hook (`pre_input`\|`pre_tool_call`\|`pre_output`) and the policy's own action (`warn`\|`redact`\|`require_approval`\|`block`). The pre_input/pre_output slice comes from trace JSONL; the pre_tool_call slice comes from the audit log and is subject to the rotation caveat below. |
-| `docket_approvals_total{channel,outcome}` | counter | Resolved approvals, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path (`core/approval.py`), never a human channel, and only ever pairs with `outcome="denied"`. Sourced entirely from the audit log; subject to the rotation caveat below. |
+| `docket_approvals_total{channel,outcome}` | counter | Resolved approvals, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path (`core/approval.py`), never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` (added in 2.4.0) distinguishes a decision made from Tack's board from one made through any other surface. Sourced entirely from the audit log; subject to the rotation caveat below. |
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, across every project's trace JSONL. `_sum`/`_count` gives mean duration; deliberately no invented percentiles (see `docket.serve.LoopMetrics`'s docstring). |
 
 Additional metrics may be added in minor versions. **P20-2 (added 2026-08-03):** the guardrail/loop
@@ -231,6 +232,72 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
   `docket pod <project> dispatch` would use) — the webhook has no way to supply a `--file` pipeline
   of its own; only its *variable values* are payload-driven.
 
+### POST /tasks/&lt;project&gt;
+
+**Added in 2.4.0.** Requires `Authorization: Bearer <token>`. Enqueues one task onto the pod's
+queue — the HTTP counterpart of `docket pod <project> delegate` and the MCP `delegate` tool, closing
+the one enqueue gap Phase 22 exists to close (`POST /dispatch/<project>` above only *runs* an
+already-populated queue). Calls the exact same `core.dispatch.enqueue_task` those two callers use,
+so the `pre_input` guardrail gate, priority normalization and persisted task shape are byte-for-byte
+identical to the CLI path — this route adds no new semantics.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"description": "Fix the flaky test", "priority": "high"}' \
+  http://127.0.0.1:7474/tasks/myapp
+```
+
+Request body:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `description` | string | Yes | `400` if absent or empty. |
+| `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization `enqueue_task` already applies to the CLI/MCP callers. |
+| `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue (see `core.dispatch.enqueue_task`'s `trusted` parameter). Omitted, it preserves the CLI/MCP default exactly (trusted). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (today: whether the `prompt-injection` policy id is skipped). |
+
+Success response (task queued, `pending`):
+
+```json
+{"ok": true, "task": "task-91a2...", "project": "myapp", "status": "pending"}
+```
+
+- A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
+  before `enqueue_task` is ever called.
+- A project with no pod (`docket add <project>` never run) is rejected with `404`, naming the
+  project — this is a real "nothing to enqueue against" condition, not a server error.
+- A `pre_input` guardrail policy matching the description with a `block` verdict is rejected with a
+  `4xx` naming the policy id (the same `DispatchError` message `docket pod <p> delegate` prints) —
+  nothing is persisted.
+- A `pre_input` policy matching with a `require_approval` verdict is **not** an error: the task is
+  genuinely created (visible on `GET /tasks/<project>`, `docket pod <p> queue`, etc.) but gated, so
+  the response is an honest `200` reporting the real state instead of one that implies the task is
+  queued to run:
+
+  ```json
+  {
+    "ok": true,
+    "task": "task-91a2...",
+    "project": "myapp",
+    "status": "waiting_approval",
+    "approvalToken": "apr-3f2a1c9e-..."
+  }
+  ```
+
+  `approvalToken` resolves through the same `POST /approvals/<token>` endpoint documented below —
+  granting it resumes the task, denying it fails the task terminally, exactly like any other
+  approval-gated task.
+
+### POST /approvals/&lt;token&gt; — the `channel` field
+
+**Added in 2.4.0.** The request body accepts an optional `channel` string, tagged onto the
+`approval.grant`/`approval.deny` audit entry this endpoint already writes (`core/approval.py`).
+Validated against the closed vocabulary `core.approval.APPROVAL_CHANNELS` (`cli`\|`http`\|`mcp`\|
+`telegram`\|`timeout`\|`tack`) — an unrecognized value is rejected with `400` rather than let an
+arbitrary caller-supplied string reach the hash-chained audit log. Omitted, it defaults to `"http"`,
+so every caller that predates this field is unchanged. `tack` distinguishes a decision made from
+Tack's board from one made through any other surface — the audit chain's whole value is that its
+provenance is honest, so a Tack-granted approval must not be indistinguishable from a CI job's.
+
 ## Validation
 
 - `apiVersion` MUST be a string matching `SERVE_API_VERSION` in `src/docket/serve.py`.
@@ -247,8 +314,20 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 - `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
   `GET /runs/<id>` immediately after the response is sent (the record exists before the HTTP
   response is written, even though the dispatch itself is still in flight).
-- The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`).
-  Any change that breaks that test is a breaking API change and MUST bump `apiVersion`.
+- `POST /tasks/<project>` MUST reject a request with no (or an invalid) Bearer token with `401`
+  before touching the pod's queue; MUST reject an absent/empty `description` and a malformed or
+  non-object body with `400` before calling `enqueue_task`; MUST return `404` (not `500`) for a
+  project with no pod; MUST return a `4xx` naming the policy id for a `block` `pre_input` verdict;
+  and MUST return `200` with `status: "waiting_approval"` plus a non-empty `approvalToken` for a
+  `require_approval` verdict, never a response implying the task is queued to run.
+- `POST /approvals/<token>`'s optional `channel` field MUST be one of
+  `core.approval.APPROVAL_CHANNELS` (`cli | http | mcp | telegram | timeout | tack`); an
+  unrecognized value MUST be rejected with `400` without changing the approval's state. Omitted, it
+  MUST default to `"http"`.
+- The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`),
+  `tests/python/test_task_enqueue_api.py`, and `tests/python/test_headless_approval_api.py` (class
+  `TestApprovalChannel`). Any change that breaks these is a breaking API change and MUST bump
+  `apiVersion`.
 
 ## Examples
 
@@ -292,6 +371,32 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.4.0 — 2026-08-04
+
+- **`POST /tasks/<project>`** (Phase 22): the missing HTTP way to *enqueue* a task —
+  `POST /dispatch/<project>` only ever ran an already-populated queue. Calls the exact same
+  `core.dispatch.enqueue_task` the CLI (`docket pod <p> delegate`) and the MCP `delegate` tool call,
+  so the `pre_input` guardrail gate, priority normalization and persisted task shape are unchanged;
+  this route adds no new behaviour, only a new way to reach existing behaviour. A `block` verdict is
+  a `4xx` naming the policy id; a `require_approval` verdict is an honest `200` reporting
+  `status: "waiting_approval"` plus the real `approvalToken`, not a response implying the task is
+  queued to run. A project with no pod is `404`. Additive (new endpoint only), so `apiVersion` is
+  unchanged.
+- `enqueue_task` gained an optional, keyword-only `trusted` parameter, wired straight into
+  `core.policy.policy_eval_detail`'s existing `trusted=` argument — it does not add a new trust
+  concept, policy action, or `source` vocabulary, and does not touch the persisted task's `source`
+  field. Every existing caller (the CLI, the MCP tool, Telegram's inline delegate) passes no value
+  and keeps byte-for-byte identical behaviour; only `POST /tasks/<project>` threads a caller-supplied
+  value through.
+- **`channel="tack"` on `POST /approvals/<token>`** (Phase 22): the request body now accepts an
+  optional `channel` field, validated against the closed vocabulary `core.approval.APPROVAL_CHANNELS`
+  (`cli | http | mcp | telegram | timeout | tack`) rather than accepted as free text — an
+  unrecognized value is rejected with `400` without touching the approval's state. Omitted, it
+  defaults to `"http"`, so every caller that predates this field keeps identical behaviour. `tack` is
+  new so an approval granted from Tack's board is distinguishable in the hash-chained audit log from
+  one granted through any other surface. Additive, so `apiVersion` is unchanged.
+- `docket_approvals_total{channel,outcome}`'s documented channel set gained `tack` to match.
 
 ### 2.3.0 — 2026-08-03
 

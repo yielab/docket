@@ -335,7 +335,13 @@ def _enqueue_pre_input_gate(
     return hit
 
 
-def enqueue_task(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
+def enqueue_task(
+    project: str,
+    description: str,
+    priority: str = "normal",
+    *,
+    trusted: bool | None = None,
+) -> dict[str, Any]:
     """Append a pending task to the pod's queue and return it.
 
     Raises DispatchError if the project has no Lead workspace (no pod yet), or if a
@@ -343,6 +349,12 @@ def enqueue_task(project: str, description: str, priority: str = "normal") -> di
     (nothing is persisted in that case). The append itself is a locked read-modify-write
     (``store.read_modify_write``) so two concurrent ``delegate`` calls can never clobber each
     other's task.
+
+    ``trusted`` overrides the ``trusted`` flag passed into ``policy_eval_detail`` for this
+    enqueue's ``pre_input`` check only — it does not touch the persisted task's ``source``
+    field or invent any new trust/source vocabulary. ``None`` (the default every existing CLI
+    and MCP caller gets) preserves the original behaviour exactly: trusted iff
+    ``source == "operator"``, which is always true today since ``source`` is hardcoded.
     """
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
@@ -351,9 +363,10 @@ def enqueue_task(project: str, description: str, priority: str = "normal") -> di
     task_id = f"task-{_uuid.uuid4()}"
     source = "operator"
     session_id = f"agent:{project}:{task_id}"
+    effective_trusted = (source == "operator") if trusted is None else trusted
 
     hit = _enqueue_pre_input_gate(
-        project, session_id, task_id, description, trusted=source == "operator"
+        project, session_id, task_id, description, trusted=effective_trusted
     )
     if hit.action == "block":
         raise DispatchError(
