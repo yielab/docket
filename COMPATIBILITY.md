@@ -1,40 +1,62 @@
 # Compatibility
 
-docket wraps the [OpenClaw](https://openclaw.dev) daemon, which renames and reshapes its config
-periodically. This document records what docket is known to work with and how breaks are handled.
+docket has no external daemon dependency. Its compatibility surface is the **model endpoint**
+docket's own turn loop talks to, plus the optional MCP servers it can gate like a built-in tool.
+This document records what docket is verified against and how breaks are tracked. See the
+README's [Compatibility](README.md#compatibility) section for the short version.
 
 ## Support matrix
 
-| docket-cli | Tested OpenClaw | `openclaw.json` schema | Notes |
-|----------|-----------------|------------------------|-------|
-| 0.1.x    | current release line (developed against the 2026.x line) | v1 | Manual verification only; no automated version pin yet |
+| docket-cli | Model endpoint | MCP | Notes |
+|------------|-----------------|-----|-------|
+| 0.2.x | OpenAI-compatible `/chat/completions` (tool calling) | stdio servers, optional `[mcp]` extra | Verified against hosted providers and local llama.cpp / vLLM / LM Studio |
 
-docket reads the live OpenClaw version (`openclaw --version`) for display but does not currently
-enforce a minimum. It writes the v1 `openclaw.json` schema (preserving unknown keys on every
-atomic write, so forward-compatible fields survive a round-trip).
+- **Model endpoint.** `edges/adapters/llm.py` is the one module that knows the
+  chat-completions wire format, built on stdlib `urllib` — no vendor SDK is pulled in. Any
+  endpoint that speaks the OpenAI-compatible `/chat/completions` shape works: a hosted
+  provider's API, or a local llama.cpp / vLLM / LM Studio server. Point docket at one with
+  `docket keys add <PROVIDER>_API_KEY`, or override every model at once with
+  `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY`.
+- **Tool calling.** An endpoint that does not implement tool calling still runs text-only
+  turns; anything that requires a tool fails cleanly (a typed, non-`ok` response) rather than
+  silently.
+- **MCP.** `docket mcp servers add` points at any MCP stdio server; its tools are gated
+  through the exact same chokepoint as a built-in, namespaced `mcp__<server>__<tool>`.
+  Requires the optional `[mcp]` extra (`pip install 'docket[mcp]'` or `uv sync --extra mcp`);
+  without it, `docket mcp` commands print an actionable missing-SDK message instead of a bare
+  import error.
 
 ## Platform
 
-- **Python 3.11+** — required; the primary runtime for all docket logic.
-- **Linux** — primary, CI-gated.
-- **macOS** — supported on a best-effort basis; the macOS CI job is currently informational
-  (`continue-on-error`) and slated to become a required gate.
-- **Bash 4.0+** — required only for the `bin/docket` launcher shim (three lines that locate
-  a Python interpreter and exec `python -m docket "$@"`). Not required if you invoke
-  `python -m docket` directly. macOS ships Bash 3.2; install via Homebrew if you use the shim.
-- **systemd** — used for gateway service management on Linux; non-systemd hosts degrade
-  gracefully (restart steps are skipped with a warning).
+- **Python 3.11+** — required; the runtime for all docket logic.
+- **Linux** — primary, CI-gated (`python`/`floors`/`golden`/`shell` jobs in
+  `.github/workflows/ci.yml`).
+- **macOS** — supported on a best-effort basis; the `macos` CI job runs the full pytest suite
+  and a launcher smoke test, but is `continue-on-error: true` — a macOS-only failure does not
+  block a merge today.
+- **Bash 4.0+** — required only for the `bin/docket` launcher shim (locates a Python
+  interpreter and execs `python -m docket "$@"`). Not required if you invoke `python -m docket`
+  directly. macOS ships Bash 3.2; install a newer one via Homebrew if you use the shim.
+- No `systemd` (or any other service manager) dependency. Earlier versions restarted an
+  external daemon's gateway service after config changes; that daemon no longer exists, and
+  `edges/adapters/system.py`'s `restart_gateway`/`gateway_active` are honest no-op stubs kept
+  only so old call sites don't need individual rewrites.
 
 ## Policy
 
-- **Schema changes** in OpenClaw are absorbed where possible via the unknown-key-preserving
-  atomic writer. A genuinely breaking schema change will be pinned in the matrix above and
-  called out in [CHANGELOG.md](CHANGELOG.md).
-- **Reporting a break:** open a `compatibility-break` issue with your `docket --version`,
-  `openclaw --version`, and the failing command. See `.github/ISSUE_TEMPLATE/`.
+- **Model-endpoint changes.** Providers occasionally change response shapes or error codes.
+  `edges/adapters/llm.py` treats a documented set of HTTP statuses (`408/409/425/429/5xx`) as
+  retryable and everything else as a real rejection; a genuinely breaking wire-format change
+  is called out in [CHANGELOG.md](CHANGELOG.md).
+- **MCP SDK changes.** The `[mcp]` extra pins a floor version, not a ceiling
+  (`pyproject.toml`'s `[project.optional-dependencies]`); a breaking SDK release is handled the
+  same way — pin and changelog entry.
+- **Reporting a break:** open a bug report (`.github/ISSUE_TEMPLATE/bug_report.yml`) with your
+  `docket --version`, the model provider/endpoint you're using, and the failing command.
 
-## Roadmap
+## What this file does not claim
 
-Automated weekly CI that installs the latest OpenClaw, runs the integration suite, and opens an
-auto-issue on break is a tracked roadmap item (see [ROADMAP.md](ROADMAP.md)). Until then the
-matrix reflects manual verification, and this file is the single place that claim lives.
+There is no automated compatibility CI against external providers today — the matrix above
+reflects the pytest suite (which exercises the adapter against fixtures and a fake endpoint,
+not a live third-party API) and manual verification. If that changes, this file is the place
+the claim will be recorded.

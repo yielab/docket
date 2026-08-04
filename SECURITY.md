@@ -32,11 +32,15 @@ being actively exploited, please say so and I will prioritize it.
 
 ## Threat model: what runs with what privileges
 
-docket itself is a configuration and reporting tool. The thing that holds privilege is the
-**OpenClaw daemon and the agents it runs** — they can execute commands on the host. docket:
+**docket runs the agent turn itself** (`core/agent_loop.py`) — it is not a thin wrapper around
+an external daemon. The thing that holds privilege is docket's own tool dispatcher
+(`core/tools.py`'s `dispatch_tool`, the single chokepoint every tool call passes through) and
+the handlers it calls into (`edges/adapters/toolbox.py`'s `bash`/`write`/`edit`/`read`/`glob`/
+`grep`, `edges/adapters/fetch.py`'s domain-allowlisted `fetch`, plus any MCP server an operator
+has added). docket:
 
-- writes config (`~/.openclaw/openclaw.json`, per-workspace `.docket-meta.json`) and reads cost
-  and health data;
+- writes its own config (`.docket-meta.json` per workspace, `~/.docket/fleet.json`, and the
+  rest of `~/.docket/` — see `src/docket/config.py`) and reads cost and health data;
 - runs as your user; it does **not** require or request root for normal operation;
 - enforces `700` on workspace dirs and `600` on files, and keeps secrets out of `argv`
   (values flow via stdin/env/inside-Python, never as process arguments — no `/proc` leakage).
@@ -45,15 +49,21 @@ docket itself is a configuration and reporting tool. The thing that holds privil
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,
 `docket install` **enforces tool-approval gates by default** (opt out with `--no-gates`): a
 curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
-`docker`, `systemctl`), with a fail-closed default (`askFallback: deny`). Approvals are
-answerable headlessly — `docket approve`/`docket deny` from any shell, or `docket serve`'s
-`POST /approvals/<token>` for CI/automation — as well as via Telegram, and every grant/deny is
-audit-logged regardless of channel. Note: `git`/`npm` stay on the allowlist for usability (the
-daemon can't gate by argument text), so a bare `git push` is not itself blocked by this layer —
-see the spec's high-risk-class section. `docket gates isolate on` is a separate, still opt-in
-layer that additionally confines tool execution to a per-agent Docker sandbox. Re-apply or
-reverse gate config anytime with `docket gates enable`/`docket gates disable`. `docket doctor`
-and `docket gates status` report the live posture. See
+`docker`), with a fail-closed default — a call gated `ask` blocks on docket's own approval
+store (`core/approval.py`) and times out to **denied**, never left pending. Approvals are
+answerable through **four channels** — `docket approve`/`docket deny` from any shell, `docket
+serve`'s `POST /approvals/<token>` for CI/automation, MCP (a client like Claude Code or Codex
+answering through `docket mcp serve`), and Telegram (`docket wire`) — and every grant, deny, or
+timeout is audit-logged with the channel it came from
+(`channel="cli"|"http"|"mcp"|"telegram"|"timeout"`). The classifier behind this
+(`core/security.py`'s `classify_command`) is **argument-aware**: it reads the whole command
+line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status` is allowed
+while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
+usability, but that no longer means their dangerous invocations are unexamined. `docket gates
+isolate on` is a separate, still opt-in layer that additionally confines tool execution to a
+per-agent Docker (or `bwrap`) sandbox. Re-apply or reverse gate config anytime with `docket
+gates enable`/`docket gates disable`. `docket doctor` and `docket gates status` report the live
+posture. See
 [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
 (Status: Implemented, on by default for new installs).
 
@@ -70,9 +80,15 @@ boundary the CLI itself already has, since the server only speaks stdio (no netw
 bearer token, unlike `docket serve`'s HTTP API). See
 [`specs/api/mcp-server.spec.md`](specs/api/mcp-server.spec.md).
 
-**This is a server, not a host.** `docket mcp serve` never executes another MCP server's tools
-inside an agent turn — docket consuming third-party MCP tools (the concern in the "What docket
-does NOT protect against" section below) is a separate, deliberately unbuilt capability.
+**This is a server, and separately also a client.** `docket mcp serve` never executes another MCP
+server's tools inside an agent turn — that direction is a different feature, `docket mcp servers
+add/list/remove` (`core/mcp_tools.py`, `edges/adapters/mcp_client.py`), which adapts a configured
+external server's tools into ordinary registry entries so they are gated exactly like a built-in,
+namespaced `mcp__<server>__<tool>` so a remote server cannot shadow `bash`. A remote tool's
+name/description is screened through the `pre_input` policy hook before it is ever registered,
+since it is untrusted input arriving as tool metadata rather than task text. See
+[`specs/functional/mcp-client.spec.md`](specs/functional/mcp-client.spec.md) for the current
+status, including what is configured/gated versus what is wired into a live turn today.
 
 ## Where you run docket matters: homelab vs. public VPS
 
@@ -83,10 +99,10 @@ does NOT protect against" section below) is a separate, deliberately unbuilt cap
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
 > with exec access on an exposed host is a serious liability. Gates are on by default, but also
 > **enable Docker workspace isolation** (`docket gates isolate on`), use the `keyring` secret
-> backend, restrict the OpenClaw daemon's network exposure, and never run with broad ambient
-> credentials. Instruction-level constraints alone are *not* sufficient here — and remember
-> `git`/`npm` invocations stay allowlisted even with gates on, so don't rely on gates to catch a
-> bad `git push` by itself.
+> backend, and never run with broad ambient credentials. Instruction-level constraints alone
+> are *not* sufficient here — and remember network egress is not fully locked down (see below):
+> `bash` can still reach the network through interpreters and package managers on the curated
+> allowlist even with gates on.
 
 ## Secret storage
 
@@ -100,16 +116,26 @@ API keys are stored via a pluggable backend (`DOCKET_SECRETS_BACKEND`):
 
 docket is honest about its limits. It does **not**:
 
-- sandbox or contain the OpenClaw daemon or models themselves — if OpenClaw or a model is
-  compromised, docket's config cannot save you;
+- **fully lock down network egress.** `fetch` is domain-allowlisted and refuses everything by
+  default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but `bash` can still reach the
+  network through interpreters and package managers on the curated allowlist (`SAFE_BINS` in
+  `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`). `fetch` is the *inspectable* path,
+  not yet the *only* one. Tracked as an open gap, not glossed over — see `README.md`'s "What's
+  next".
+- sandbox or contain the model endpoint itself, or a remote MCP server's own process — if a
+  model or an MCP server is compromised, docket's gates constrain what it can ask docket's
+  tools to do, but do not contain the endpoint/server itself;
 - defend against a malicious or prompt-injected agent when gates were explicitly disabled
-  (`--no-gates` at install, or `docket gates disable` later), or against a `git`/`npm`
-  invocation specifically (allowlisted even with gates on — see the approval-gate model above);
-- audit or vet the code your agents write or the third-party tools/MCP servers they invoke;
+  (`--no-gates` at install, or `docket gates disable` later);
+- audit or vet the code your agents write or the third-party MCP servers they invoke — a
+  gated MCP tool call still runs whatever that server implements;
 - encrypt data at rest beyond the `0600`/keyring options above, or protect against an attacker
   who already has your user account or root;
 - guarantee budget caps are instantaneous — they pause on the next reported usage tick, so a
-  single in-flight call can overshoot.
+  single in-flight call can overshoot;
+- enforce anything on a process started **outside** docket's own turn loop — gating covers
+  every tool call docket itself dispatches, which is not the same as being a system-wide
+  enforcement daemon.
 
 Run docket and its agents only in environments you trust, enable enforced gates on anything
 exposed, and review agent output before acting on it.
