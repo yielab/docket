@@ -7,7 +7,7 @@
 | `models.png` | `docket models` — role→model policy | `README.md` | Manually captured; no generator script |
 | `info.png` | `docket info` — per-project isolation (session key, workspace, codebase) | `docs/commands.md` | Manually captured; no generator script |
 | `maintain.png` | `docket maintain <id> check` — health check & auto-fix | `docs/commands.md` | Manually captured; no generator script |
-| `cost.png` | `docket cost` — recorded spend + budget cap (the guardrail) | `docs/commands.md` | Manually captured; no generator script |
+| `cost.png` | `docket cost` — spend + budget cap (the guardrail) | `docs/commands.md` | Manually captured; **stale since Phase 19** — shows recorded dollar spend, which no longer exists |
 
 > **Needs recapture (removed 2026-07-03):** `gates.png` (`docket gates status`) and `doctor.png`
 > (`docket doctor`) were pulled from `README.md`'s "See it in action" section because they showed
@@ -17,7 +17,7 @@
 > "See it in action" table.
 >
 > None of these PNGs have a generation script — they're manually captured against a live
-> OpenClaw install (only `hero.gif` is scripted/synthetic, see below). When recapturing, follow
+> install (only `hero.gif` is scripted/synthetic, see below). When recapturing, follow
 > the existing style: dark terminal chrome, real command output, project names anonymized
 > (`webapp`/`api`/`blog`-style, never a real client name or `/home/<realuser>` path).
 >
