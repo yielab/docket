@@ -51,15 +51,19 @@ import contextlib
 import datetime as _dt
 import json
 import os
+import re
 import secrets
 import threading
 import urllib.parse as _urlparse
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import docket.config as cfg
+from docket.core import audit as _audit
 from docket.core import fleet as oc
+from docket.core import trace as _trace
 from docket.core import utils
 
 DEFAULT_PORT = 7331
@@ -189,6 +193,166 @@ def _esc(s: Any) -> str:
     return str(s).replace("\\", "").replace('"', "")
 
 
+# ── guardrail + loop metrics (P20-2) ────────────────────────────────────────
+#
+# Denial rate, approvals granted/denied/timed-out by channel, policy-hit
+# counts by policy id, tool-call rate and turn latency — the numbers an
+# operator opens after an incident (ROADMAP Phase 20, P20-2). `docket serve`
+# is not a long-lived process holding counters in memory (a restart would
+# silently zero them), so every number here is recomputed fresh, on every
+# scrape, from the same durable records `docket trace`/`docket audit` already
+# show an operator — no second counter store, nothing that can drift from
+# what's on disk, and nothing that is lost on restart.
+#
+# Telemetry stays separate from the audit log itself (ROADMAP Phase 20): this
+# module only *reads* trace JSONL and the audit log to compute counters, it
+# never writes through them and never routes a metric back into either.
+
+# core/tools.py's `_audit_tool_decision` (P20-2) embeds the raw pre_tool_call
+# policy hit as a fixed `policy_id='...' policy_action='...'` pair right
+# after the agent/role/project prefix, specifically so this can be parsed
+# without scraping the free-text reason that follows it.
+_POLICY_AUDIT_RE = re.compile(r"policy_id='([^']*)' policy_action='([^']*)'")
+# approval.grant/approval.deny's detail is `token=... project=... channel=...`
+# (core/approval.py) -- channel is always one of a small, code-controlled set
+# (cli/http/mcp/telegram/timeout), never free text a caller supplies.
+_CHANNEL_AUDIT_RE = re.compile(r"channel=(\S+)")
+
+# The four `core/tools.py` audit actions that can carry a pre_tool_call
+# policy hit (`tool.deny`/`tool.ask` may also be a bare command-classifier
+# decision with no policy involved at all -- see `_collect_audit_loop_metrics`).
+_TOOL_GATE_ACTIONS: frozenset[str] = frozenset(
+    {"tool.deny", "tool.ask", "tool.warn", "tool.redact"}
+)
+# core/approval.py's two terminal audit actions -> the outcome label. A
+# fail-closed timeout resolves via `approval.deny` with `channel=timeout`
+# (never `approval.grant`), so "timed out" surfaces here as
+# `channel="timeout",outcome="denied"` -- exactly what the audit log records,
+# rather than a fabricated third outcome value with nothing behind it.
+_APPROVAL_AUDIT_ACTIONS: dict[str, str] = {"approval.grant": "granted", "approval.deny": "denied"}
+
+
+@dataclass
+class LoopMetrics:
+    """Guardrail + loop counters (P20-2), aggregated fresh on every scrape.
+
+    ``tool_calls``: decision ("allow"/"ask"/"deny") -> count, from every
+    ``tool_result`` trace event core/agent_loop.py emits for each
+    ``dispatch_tool`` call. Doubles as both tool-call rate (sum of all
+    buckets) and denial rate (the "deny" bucket over that sum) -- the
+    standard Prometheus shape (a `rate()`/ratio over counters), not a
+    precomputed percentage this module would otherwise have to keep in sync.
+
+    ``policy_hits``: (policy_id, hook, action) -> count, merged from two
+    sources -- the structured ``guardrail_check`` trace event
+    (pre_input/pre_output; core/dispatch.py) and the enriched
+    ``policy_id=``/``policy_action=`` fields P20-2 added to core/tools.py's
+    tool-gate audit entries (pre_tool_call). ``hook``/``action`` are both
+    small, code-controlled vocabularies (3 hooks, 4 policy actions);
+    ``policy_id`` is bounded by the operator's own installed policy files.
+
+    ``approvals``: (channel, outcome) -> count, from every
+    ``approval.grant``/``approval.deny`` audit entry -- channel is one of
+    cli/http/mcp/telegram/timeout (core/approval.py's own closed set of
+    callers), outcome is "granted"/"denied".
+
+    ``turn_duration_seconds_sum``/``_count``: a Prometheus-conventional
+    summary pair (no invented percentiles -- see the P20-2 report for why),
+    built from every ``session_start``/``session_end`` bracket found in any
+    trace file, fleet-wide -- the same terminal-session concept
+    `docket metrics`/`cli/_metrics.py` already computes per-project, just
+    unwindowed and summed across every project rather than one.
+    """
+
+    tool_calls: dict[str, int] = field(default_factory=dict)
+    policy_hits: dict[tuple[str, str, str], int] = field(default_factory=dict)
+    approvals: dict[tuple[str, str], int] = field(default_factory=dict)
+    turn_duration_seconds_sum: float = 0.0
+    turn_duration_seconds_count: int = 0
+
+
+def _epoch_seconds(ts: Any) -> float | None:
+    """Parse a leading 'YYYY-MM-DDTHH:MM:SS' trace timestamp as a UTC epoch."""
+    if not isinstance(ts, str) or len(ts) < 19:
+        return None
+    try:
+        return (
+            _dt.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_dt.UTC).timestamp()
+        )
+    except ValueError:
+        return None
+
+
+def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
+    """Fold every project's trace JSONL into *m* (tool calls, policy hits,
+    turn durations). Mirrors ``core.trace.sweep_all``'s ``*/*.jsonl`` glob —
+    every project, not one.
+    """
+    traces_dir = cfg.TRACES_DIR
+    if not traces_dir.is_dir():
+        return
+    for tf in sorted(traces_dir.glob("*/*.jsonl")):
+        start_ts: Any = None
+        end_ts: Any = None
+        for rec in _trace.read_trace(tf):
+            etype = rec.get("event_type")
+            raw_payload = rec.get("payload")
+            payload: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+            if etype == "tool_result":
+                decision = str(payload.get("decision", ""))
+                if decision:
+                    m.tool_calls[decision] = m.tool_calls.get(decision, 0) + 1
+            elif etype == "guardrail_check":
+                policy_id = str(payload.get("policy", ""))
+                hook = str(payload.get("hook", ""))
+                action = str(payload.get("action", ""))
+                if policy_id and hook and action:
+                    key = (policy_id, hook, action)
+                    m.policy_hits[key] = m.policy_hits.get(key, 0) + 1
+            elif etype == "session_start":
+                start_ts = rec.get("ts")
+            elif etype == "session_end":
+                end_ts = rec.get("ts")
+        if start_ts and end_ts:
+            s, e = _epoch_seconds(start_ts), _epoch_seconds(end_ts)
+            if s is not None and e is not None and e >= s:
+                m.turn_duration_seconds_sum += e - s
+                m.turn_duration_seconds_count += 1
+
+
+def _collect_audit_loop_metrics(m: LoopMetrics) -> None:
+    """Fold the audit log's tool-gate and approval entries into *m*."""
+    for entry in _audit.read_audit():
+        action = str(entry.get("action", ""))
+        detail = str(entry.get("detail", ""))
+        if action in _TOOL_GATE_ACTIONS:
+            hit = _POLICY_AUDIT_RE.search(detail)
+            if not hit:
+                continue
+            policy_id: str = hit.group(1)
+            policy_action: str = hit.group(2)
+            # Empty policy_id, or policy_action "allow" (matched but didn't
+            # decide anything), means this call's decision came from the
+            # command classifier alone -- not a policy hit.
+            if not policy_id or policy_action in ("", "allow"):
+                continue
+            policy_key = (policy_id, "pre_tool_call", policy_action)
+            m.policy_hits[policy_key] = m.policy_hits.get(policy_key, 0) + 1
+        elif action in _APPROVAL_AUDIT_ACTIONS:
+            outcome = _APPROVAL_AUDIT_ACTIONS[action]
+            chan_hit = _CHANNEL_AUDIT_RE.search(detail)
+            channel: str = chan_hit.group(1) if chan_hit else "unknown"
+            approval_key = (channel, outcome)
+            m.approvals[approval_key] = m.approvals.get(approval_key, 0) + 1
+
+
+def _loop_metrics() -> LoopMetrics:
+    m = LoopMetrics()
+    _collect_trace_loop_metrics(m)
+    _collect_audit_loop_metrics(m)
+    return m
+
+
 def render_metrics() -> str:
     """Render Prometheus-format metrics.
 
@@ -227,6 +391,79 @@ def render_metrics() -> str:
         "# TYPE docket_approvals_pending_total gauge",
         "docket_approvals_pending_total " + str(pending),
     ]
+
+    # P20-2: guardrail + loop metrics -- see LoopMetrics' docstring for where
+    # each number is sourced from.
+    #
+    # Durability caveat (not solved here -- P20-3 owns trace/audit retention,
+    # DEFERRED per ROADMAP Phase 20 D-24): the audit-log-derived halves of
+    # these counters -- all of docket_approvals_total, and the pre_tool_call
+    # slice of docket_policy_hits_total -- see only $DOCKET_HOME/audit.log's
+    # CURRENT generation. core/audit.py rotates that file to a single backup
+    # (audit.log.1, itself overwritten by the next rotation) once it exceeds
+    # AUDIT_LOG_MAX_BYTES (5MB by default), and core/audit.py's read_audit()
+    # reads only the current file -- so a rotation silently drops whatever
+    # history was in the backup before it. A `rate()` reading a counter that
+    # drops to a partial value (not zero) on rotation will misread it as a
+    # reset followed by an under-counted window, not as missing history.
+    # Trace JSONL (docket_tool_calls_total, the pre_input/pre_output half of
+    # docket_policy_hits_total, and the turn-duration pair below) has no such
+    # gap -- core/trace.py's sweep_all() only appends a synthetic
+    # session_end to a stale-open trace, it never deletes a trace file -- but
+    # that means trace storage grows without bound instead (the "no trace
+    # retention policy" gap ROADMAP Phase 20 already names).
+    loop = _loop_metrics()
+
+    lines += [
+        "# HELP docket_tool_calls_total Tool calls dispatched through the gated"
+        " tool registry, by gate decision",
+        "# TYPE docket_tool_calls_total counter",
+    ]
+    for decision, count in sorted(loop.tool_calls.items()):
+        lines.append('docket_tool_calls_total{decision="' + _esc(decision) + '"} ' + str(count))
+
+    lines += [
+        "# HELP docket_policy_hits_total Guardrail policy hits, by policy id, hook and action"
+        " (the pre_tool_call slice is bounded by the audit log's current generation --"
+        " see the rotation caveat above)",
+        "# TYPE docket_policy_hits_total counter",
+    ]
+    for (policy_id, hook, action), count in sorted(loop.policy_hits.items()):
+        lab = (
+            'policy_id="'
+            + _esc(policy_id)
+            + '",hook="'
+            + _esc(hook)
+            + '",action="'
+            + _esc(action)
+            + '"'
+        )
+        lines.append("docket_policy_hits_total{" + lab + "} " + str(count))
+
+    lines += [
+        "# HELP docket_approvals_total Resolved approvals, by channel and outcome"
+        ' (channel="timeout" is a fail-closed expiry, not a human channel; bounded by'
+        " the audit log's current generation -- see the rotation caveat above)",
+        "# TYPE docket_approvals_total counter",
+    ]
+    for (channel, outcome), count in sorted(loop.approvals.items()):
+        lab = 'channel="' + _esc(channel) + '",outcome="' + _esc(outcome) + '"'
+        lines.append("docket_approvals_total{" + lab + "} " + str(count))
+
+    # A `summary` family (Prometheus text exposition format): one HELP/TYPE
+    # pair on the bare metric name, then its `_sum`/`_count` lines -- not two
+    # independent counters. No quantile lines: a summary with none is valid,
+    # and is exactly the "no invented percentiles" shape (see
+    # LoopMetrics.turn_duration_seconds_sum/_count's docstring) -- an
+    # operator gets the mean from sum/count and nothing fabricated beyond it.
+    lines += [
+        "# HELP docket_turn_duration_seconds Session wall-clock"
+        " (session_start -> session_end), fleet-wide",
+        "# TYPE docket_turn_duration_seconds summary",
+        "docket_turn_duration_seconds_sum " + str(loop.turn_duration_seconds_sum),
+        "docket_turn_duration_seconds_count " + str(loop.turn_duration_seconds_count),
+    ]
+
     return "\n".join(lines)
 
 

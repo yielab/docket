@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Stable
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-03
 
 ## Purpose
 
@@ -112,8 +112,43 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_cost_usd_total` | gauge | Total cost across all agents (USD). |
 | `docket_gateway_up` | gauge | `1` = gateway active, `0` = inactive. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
+| `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`core/tools.py`'s `dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`). Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. Sourced entirely from trace JSONL (see the durability note below). |
+| `docket_policy_hits_total{policy_id,hook,action}` | counter | Guardrail policy hits, by policy id, hook (`pre_input`\|`pre_tool_call`\|`pre_output`) and the policy's own action (`warn`\|`redact`\|`require_approval`\|`block`). The pre_input/pre_output slice comes from trace JSONL; the pre_tool_call slice comes from the audit log and is subject to the rotation caveat below. |
+| `docket_approvals_total{channel,outcome}` | counter | Resolved approvals, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path (`core/approval.py`), never a human channel, and only ever pairs with `outcome="denied"`. Sourced entirely from the audit log; subject to the rotation caveat below. |
+| `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, across every project's trace JSONL. `_sum`/`_count` gives mean duration; deliberately no invented percentiles (see `docket.serve.LoopMetrics`'s docstring). |
 
-Additional metrics may be added in minor versions.
+Additional metrics may be added in minor versions. **P20-2 (added 2026-08-03):** the guardrail/loop
+metrics above are computed fresh, on every `/metrics` scrape, from durable state already on disk —
+trace JSONL (`$TRACES_DIR`) and the audit log (`$DOCKET_HOME/audit.log`) — never a second in-process
+counter store, so they survive a `docket serve` restart for free and every number is traceable back
+to a record `docket trace`/`docket audit` can also show. This module only *reads* those stores to
+compute counters; it never writes through them, keeping telemetry and the audit log's own
+tamper-evidence chain separate (ROADMAP Phase 20).
+
+**Durability caveat, stated plainly (not solved here — retention/rotation is P20-3, DEFERRED by
+D-24):** the audit-log-derived halves — all of `docket_approvals_total`, and the pre_tool_call
+slice of `docket_policy_hits_total` — see only `audit.log`'s *current* generation.
+`core/audit.py` rotates that file to a single-generation backup (`audit.log.1`, itself overwritten
+by the next rotation) once it exceeds `AUDIT_LOG_MAX_BYTES` (5MB by default), and `read_audit()`
+reads only the current file — a rotation silently drops whatever history was in the backup before
+it. A Prometheus `rate()` reading a counter that drops to a smaller-but-nonzero value on rotation
+misreads that as a reset followed by real (under-counted) traffic, not as missing history. Trace
+JSONL (the rest of these metrics) has no such gap — `core/trace.py`'s `sweep_all()` only appends a
+synthetic `session_end` to a stale-open trace, it never deletes a trace file — but that means trace
+storage instead grows without bound, the same "no trace retention policy" gap ROADMAP Phase 20
+already names (P20-3).
+
+**Scrape cost, measured:** every `/metrics` request re-parses every trace JSONL file plus the whole
+current audit log — there is no cache. Measured against a synthetic corpus of 50 trace files across
+10 projects (200 events each, 10,000 events total, ~927KB) plus an audit log at its rotation
+ceiling (`AUDIT_LOG_MAX_BYTES` = 5MB, 18,296 entries at this corpus's average entry size):
+`render_metrics()` averaged **60ms** wall-clock over 5 runs (58-65ms range) on the box this was
+measured on. That is fine at today's fleet size and Prometheus's typical 15s scrape interval, but
+it is `O(total trace + audit bytes)` per scrape on the same thread that serves `/health`, so it
+degrades linearly as either grows unbounded (see the durability caveat above) — a cache is
+deliberately not added by this card; the threshold to revisit is when a scrape starts costing
+enough to compete with that interval against a real fleet's actual trace/audit volume, which
+should be measured against production data, not asserted here.
 
 ### GET /health
 
@@ -257,6 +292,36 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.3.0 — 2026-08-03
+
+- P20-2 (ROADMAP Phase 20): four new `/metrics` families — `docket_tool_calls_total{decision}`,
+  `docket_policy_hits_total{policy_id,hook,action}`, `docket_approvals_total{channel,outcome}`
+  (all `counter`), and `docket_turn_duration_seconds` (`summary`: `_sum`/`_count` lines, no
+  quantiles — one HELP/TYPE pair on the bare name per the Prometheus text exposition format, not
+  two independent counters). Additive (new metric names only, no existing name/label/type
+  changed), so this does not bump `apiVersion` — the same additive rule the 2.1.0 entry below
+  already establishes for this endpoint.
+- All four are recomputed fresh on every scrape from durable state already on disk (trace JSONL
+  under `$TRACES_DIR`, and the audit log) — no new counter store, no new endpoint, no new
+  dependency. `core/tools.py`'s tool-gate audit entries (`tool.deny`/`tool.ask`/`tool.warn`/
+  `tool.redact`) now also carry a structured `policy_id=`/`policy_action=` pair so the
+  pre_tool_call half of the policy-hit counter can be attributed without parsing free text; this
+  is additive to the audit `detail` string, not a new audit action, and does not touch
+  `evaluate_tool_call`'s decision logic.
+- `channel="timeout"` on `docket_approvals_total` is `core/approval.py`'s existing fail-closed
+  expiry path (`_resolve_timeout_as_denied`), not a new state — it only ever pairs with
+  `outcome="denied"`. `channel` covers `cli`, `http`, `mcp`, `telegram` and `timeout`, the same
+  closed set of callers `core/approval.py`'s own docstring already names.
+- **Durability and scrape-cost caveats documented, not solved** (retention/rotation is P20-3,
+  DEFERRED by D-24) — see the two callout paragraphs above the metric table: the audit-log-derived
+  counters silently lose history older than the current 5MB generation on rotation, and a `/metrics`
+  scrape is `O(total trace + audit bytes)` with no cache (measured at 60ms against a 10,000-event/
+  50-file trace corpus plus a 5MB audit log).
+- Deliberately not shipped: a per-agent cost/token metric change, or a p50/p95 latency figure —
+  see the P20-2 report for why (docket's own driver's `cost_usd` is structurally always 0.0 post
+  Phase 19, and no per-turn timestamp exists to compute a percentile from; `_sum`/`_count` is the
+  honest S-sized answer for the mean).
 
 ### 2.1.0 — 2026-07-30
 
