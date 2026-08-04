@@ -1,21 +1,31 @@
 #!/usr/bin/env bash
-# Seed a deterministic fake ~/.openclaw for golden tests.
+# Seed a deterministic fake docket home for golden tests.
 # Usage: seed.sh <fake_home_dir>
 #
-# Creates:
-#   <fake_home>/.openclaw/
-#     openclaw.json           — 2 project agents + 6 specialists, 1 binding
-#     docket-models.json      — model policy overrides (empty, uses built-ins)
-#     workspaces/projects/myshop/    .docket-meta.json + stub workspace files
-#     workspaces/projects/content/   .docket-meta.json + stub workspace files
-#     workspaces/programmer/         .docket-meta.json (specialist)
-#     workspaces/reviewer/           ...
-#     workspaces/tester/             ...
-#     workspaces/knowledge/          ...
-#     workspaces/security/           ...
-#     workspaces/manager/            ...
+# Creates (under <fake_home>/.openclaw/ -- see run.sh's run_docket() for why
+# DOCKET_HOME is still pinned to a directory with that name):
+#   fleet.json              — docket's own registry: 2 project agents + 6
+#                              specialists, 1 binding
+#   docket-models.json      — model policy overrides (empty, uses built-ins)
+#   workspaces/projects/myshop/    .docket-meta.json + stub workspace files
+#   workspaces/projects/content/   .docket-meta.json + stub workspace files
+#   workspaces/programmer/         .docket-meta.json (specialist)
+#   workspaces/reviewer/           ...
+#   workspaces/tester/             ...
+#   workspaces/knowledge/          ...
+#   workspaces/security/           ...
+#   workspaces/manager/            ...
 #
 # All timestamps are fixed to 2026-03-05T12:00:00-03:00 for determinism.
+#
+# CL-C (wave 14): this fixture used to also write an openclaw.json file
+# (the pre-P19-7b daemon config format) alongside fleet.json. docket has not
+# read openclaw.json since P19-7b deleted the ACL that parsed it -- fleet.json
+# has been the only registry this suite (or docket itself) consults since
+# P19-6 -- so seeding it was dead weight left behind by that migration, not a
+# real fixture requirement. Removed, along with the fake `openclaw` binary
+# (tests/golden/fakes/openclaw) that read it back and the unused
+# OPENCLAW_DIR env export in run.sh's run_docket().
 
 set -euo pipefail
 
@@ -38,83 +48,9 @@ mkdir -p \
 
 chmod 700 "$OC_DIR"
 
-# ── openclaw.json ──────────────────────────────────────────────────────────────
-cat >"$OC_DIR/openclaw.json" <<'JSON'
-{
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-sonnet-4-6"
-    },
-    "list": [
-      {
-        "id": "myshop",
-        "model": "anthropic/claude-sonnet-4-6",
-        "metadata": {
-          "sessionKey": "agent:myshop:default",
-          "projectKey": "default"
-        }
-      },
-      {
-        "id": "content",
-        "model": "anthropic/claude-haiku-4-5",
-        "metadata": {
-          "sessionKey": "agent:content:blog",
-          "projectKey": "blog"
-        }
-      },
-      {
-        "id": "programmer",
-        "model": "anthropic/claude-sonnet-4-6",
-        "metadata": {}
-      },
-      {
-        "id": "reviewer",
-        "model": "anthropic/claude-haiku-4-5",
-        "metadata": {}
-      },
-      {
-        "id": "tester",
-        "model": "anthropic/claude-haiku-4-5",
-        "metadata": {}
-      },
-      {
-        "id": "knowledge",
-        "model": "anthropic/claude-haiku-4-5",
-        "metadata": {}
-      },
-      {
-        "id": "security",
-        "model": "anthropic/claude-sonnet-4-6",
-        "metadata": {}
-      },
-      {
-        "id": "manager",
-        "model": "anthropic/claude-haiku-4-5",
-        "metadata": {}
-      }
-    ]
-  },
-  "bindings": [
-    {
-      "agentId": "myshop",
-      "match": {
-        "channel": "telegram",
-        "peer": { "kind": "group", "id": "-1001234567890" }
-      }
-    }
-  ],
-  "security": {
-    "gates": { "enabled": false },
-    "isolation": { "enabled": false }
-  }
-}
-JSON
-chmod 600 "$OC_DIR/openclaw.json"
-
-# ── fleet.json (Phase 19 P19-6: docket's own registry, DOCKET_HOME-pinned to
-# $OC_DIR by run.sh — see that file's run_docket() for why) ────────────────────
-# Mirrors openclaw.json's agents/bindings/security above: agent registration,
-# channel bindings, and gates/isolation flags now live here instead. Per-agent
+# ── fleet.json (docket's own registry, DOCKET_HOME-pinned to $OC_DIR by
+# run.sh — see that file's run_docket() for why) ────────────────────────────────
+# Agent registration, channel bindings, and gates/isolation flags. Per-agent
 # model is deliberately NOT duplicated (see core/fleet.py) -- only the bare
 # registration fact.
 cat >"$OC_DIR/fleet.json" <<'JSON'

@@ -152,6 +152,16 @@ TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
 # so it is never auto-provisioned or flagged missing on a default install.
 PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
 
+# CL-C (wave 14): `programmer`/`reviewer`/`tester` are kept in both sets below
+# even though Phase 10 made them per-pod roles, not global specialists
+# (ORG_ROLES/PROJECT_ROLES is the live scope split -- see role_scope() below).
+# This is deliberate, not a leftover: `docket doctor` (`cli/_doctor.py`'s
+# `_check_metadata_backfill`/`_managed_workspace_ids`) and
+# `core/models_policy.py`'s `policy_agent_ids` both walk this set to detect
+# and heal a pre-Phase-10 GLOBAL `~/.docket/workspaces/<role>/` directory left
+# over from before pods existed -- a real, still-possible on-disk state this
+# codebase intentionally still recognizes. Removing these three would blind
+# that detection, not just delete dead code.
 SPECIALIST_ROLES: frozenset[str] = frozenset(
     ["manager", "programmer", "reviewer", "tester", "knowledge", "security", PORTFOLIO_MANAGER_ROLE]
 )
@@ -160,6 +170,8 @@ META_FILE = ".docket-meta.json"
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
+# Same rationale as SPECIALIST_ROLES above: programmer/reviewer/tester stay
+# here so doctor/models_policy can find a legacy global workspace by name.
 SPECIALIST_ORDER: tuple[str, ...] = (
     "manager",
     "programmer",

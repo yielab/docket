@@ -1,7 +1,7 @@
 """M4 wave-1 tests: profile, scope, models — writer commands.
 
 All tests run `python -m docket` as a subprocess with OPENCLAW_DIR overridden
-and DOCKET_NO_RESTART=1 so no systemctl calls are made.
+so tests are hermetic and never touch the real ~/.docket.
 """
 
 from __future__ import annotations
@@ -52,7 +52,6 @@ def _make_env(oc_dir: Path) -> dict[str, str]:
         **os.environ,
         "OPENCLAW_DIR": str(oc_dir),
         "DOCKET_HOME": str(oc_dir),
-        "DOCKET_NO_RESTART": "1",
     }
 
 
@@ -193,12 +192,6 @@ class TestCmdProfile:
         # Should warn about alias, not hard-fail
         assert rc == 0 or "alias" in err
 
-    def test_profile_dry_run_gateway(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
-        assert rc == 0
-        assert "[dry-run]" in out  # DOCKET_NO_RESTART=1
-
 
 # ---------------------------------------------------------------------------
 # docket scope
@@ -269,12 +262,6 @@ class TestCmdScope:
         rc, _, err = _run(["scope", "ghost", "show"], oc_dir)
         assert rc == 1
         assert "not found" in err
-
-    def test_scope_set_dry_run_gateway(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["scope", "myshop", "set", "work"], oc_dir)
-        assert rc == 0
-        assert "[dry-run]" in out
 
 
 # ---------------------------------------------------------------------------
@@ -389,12 +376,6 @@ class TestCmdModels:
             (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
         )
         assert meta["model"] == "anthropic/claude-opus-4-6"
-
-    def test_models_set_dry_run_gateway(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
-        assert rc == 0
-        assert "[dry-run]" in out
 
 
 # ---------------------------------------------------------------------------

@@ -179,9 +179,6 @@ def _keys_add(name: str) -> int:
     _sync_keys_to_agents()
     audit_log("keys.add", name)
 
-    from docket.cli import _do_restart_gateway
-
-    _do_restart_gateway()
     ui.success(f"Key '{name}' stored.")
     return 0
 
@@ -204,9 +201,6 @@ def _keys_remove(name: str) -> int:
     _sync_keys_to_agents()
     audit_log("keys.remove", name)
 
-    from docket.cli import _do_restart_gateway
-
-    _do_restart_gateway()
     ui.success(f"Key '{name}' removed.")
     return 0
 
@@ -237,9 +231,6 @@ def _keys_rotate(name: str) -> int:
     _sync_keys_to_agents()
     audit_log("keys.rotate", name)
 
-    from docket.cli import _do_restart_gateway
-
-    _do_restart_gateway()
     ui.success(f"Key '{name}' rotated.")
     return 0
 
@@ -341,9 +332,6 @@ def _keys_setup() -> int:
         _save_secrets(secrets)
         _sync_keys_to_agents()
 
-        from docket.cli import _do_restart_gateway
-
-        _do_restart_gateway()
         ui.success("Keys saved and synced to agent workspaces.")
     else:
         ui.info("No changes made.")

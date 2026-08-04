@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.5.0
+**Version**: 2.5.1
 **Status**: Complete
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-04
 
 ## Purpose
 
@@ -237,8 +237,9 @@ every "the daemon" reference in it as describing a system this codebase no longe
 
 1. `docket profile <id> <provider/model>` **MUST** pin the agent: set the model in
    `.docket-meta.json` (the only place it lives, see "Changing the policy" above) and
-   `modelSource: pinned`. `restart_gateway()` still runs for call-site compatibility but is now
-   an honest `status="no_daemon"` no-op (ROADMAP Phase 19 P19-7b) — there is no gateway left.
+   `modelSource: pinned`. There is no gateway-restart step: `restart_gateway()` and its ~15
+   ceremonial call sites across `cli/` were deleted outright (CL-C, ROADMAP Phase 19 wave 14) —
+   not kept as a no-op stub — since nothing ever observed its return value.
 2. `docket profile <id> default` **MUST** re-attach the agent to its role policy: resolve the
    role's model, set it, and stamp `modelSource: policy`.
 3. `docket profile <id>` with no argument **MUST** display the current model, role (with WHY),
@@ -450,6 +451,15 @@ $ docket models
 - Pricing **MUST** exist for every built-in policy model.
 
 ## Changelog
+
+### Version 2.5.1 (2026-08-04)
+
+- **CL-C (ROADMAP Phase 19, wave 14 dead-code sweep).** `restart_gateway()`/`RestartResult` and
+  every call site that ceremonially invoked them after a mutating command (including `docket
+  profile`'s) are deleted outright, not kept as a no-op stub — unlike `gateway_active()` (kept;
+  still backs the `gateway` field in `docket snapshot` and the `serve` read API), nothing
+  external ever observed `restart_gateway`'s return value. Corrected the "Pinning agents"
+  requirement, which still described it as "still runs... but is now a no-op."
 
 ### Version 2.5.0 (2026-08-03)
 

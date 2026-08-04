@@ -75,16 +75,17 @@ run_docket() {
   stderr_file="$(mktemp)"
   exit_code_file="$(mktemp)"
 
-  # Prepend fakes/ so our stubs intercept openclaw/systemctl/docker
-  # DOCKET_HOME (Phase 19 P19-6) pinned to the same fake .openclaw dir the
-  # fixtures already seed -- its real default is now ~/.docket, independent
-  # of OPENCLAW_DIR, but seed.sh's traces/policies/approvals/fleet.json all
-  # live under $fake_home/.openclaw, and pinning here keeps every golden case
-  # unaffected by that default (this harness tests command OUTPUT, not the
-  # new home's default path -- that is covered by a pytest instead).
+  # Prepend fakes/ so our stubs intercept systemctl/docker.
+  # DOCKET_HOME pinned to the same fake .openclaw dir the fixtures already
+  # seed -- its real default is now ~/.docket, but seed.sh's
+  # traces/policies/approvals/fleet.json all live under $fake_home/.openclaw,
+  # and pinning here keeps every golden case unaffected by that default (this
+  # harness tests command OUTPUT, not the new home's default path -- that is
+  # covered by a pytest instead). CL-C (wave 14): OPENCLAW_DIR dropped -- no
+  # code under src/ has read that env var since P19-7b deleted the daemon
+  # config it pointed at, so exporting it here was a no-op.
   PATH="$FAKES_DIR:$PATH" \
   HOME="$fake_home" \
-  OPENCLAW_DIR="$fake_home/.openclaw" \
   DOCKET_HOME="$fake_home/.openclaw" \
   DOCKET_FAKE_HOME="$fake_home" \
   DOCKET_NO_COLOR=1 \

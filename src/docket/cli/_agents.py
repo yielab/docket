@@ -214,10 +214,6 @@ def run_add(all_args: list[str]) -> int:
         _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
         ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
 
-        from docket.cli import _do_restart_gateway
-
-        _do_restart_gateway()
-
     ui.console.print()
     ui.success(f"Pod '{aid}' created with {len(created)} members!")
     for mid in created:
@@ -324,7 +320,6 @@ def _cmd_add_declarative(from_file: str) -> int:
 
     created: list[str] = []
     skipped: list[str] = []
-    wired: bool = False
 
     for spec in agents_spec:
         aid = str(spec.get("id", "")).strip()
@@ -350,7 +345,6 @@ def _cmd_add_declarative(from_file: str) -> int:
                 lead_id = f"{aid}-lead"
                 _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
                 ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
-                wired = True
             continue
 
         if (_cfg.PROJECTS_DIR / aid).is_dir():
@@ -383,12 +377,6 @@ def _cmd_add_declarative(from_file: str) -> int:
         if tg_group:
             _fleet.upsert_binding(aid, tg_group, "telegram", "group")
             ui.success(f"Telegram binding: {aid} ← group {tg_group}")
-            wired = True
-
-    if wired:
-        from docket.cli import _do_restart_gateway
-
-        _do_restart_gateway()
 
     ui.console.print()
     if created:
@@ -815,9 +803,6 @@ def run_delete(agent_id: str | None) -> int:
     else:
         ui.warn(f"Workspace kept at: {ws}")
 
-    from docket.cli import _do_restart_gateway
-
-    _do_restart_gateway()
     ui.success(f"Done. Project '{aid}' deleted.")
     return 0
 

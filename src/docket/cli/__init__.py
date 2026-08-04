@@ -30,10 +30,8 @@ from docket.core.utils import (
     gateway_active,
     last_activity,
     project_ids,
-    restart_gateway,
 )
 from docket.edges import store
-from docket.edges.adapters import system as _sys
 
 app = typer.Typer(
     name="docket",
@@ -42,39 +40,6 @@ app = typer.Typer(
     no_args_is_help=False,
     invoke_without_command=True,
 )
-
-
-def _render_restart_result(result: _sys.RestartResult) -> None:
-    """Render a RestartResult.
-
-    edges/ no longer prints (it has no knowledge of terminals); this is the
-    single place that renders the result. Shared by the other cli/ modules
-    that used to trigger a gateway restart -- there is no daemon gateway any
-    more (Phase 19 P19-7b), so ``no_daemon`` is the only status a real call
-    ever returns; the other branches are kept only so ``DOCKET_NO_RESTART=1``
-    (a pre-existing test knob) still prints something recognisable.
-    """
-    if result.status == "dry_run":
-        print("[dry-run] restart_gateway called")
-    elif result.status == "no_daemon":
-        return
-    elif result.status == "not_running":
-        ui.warn("Gateway not running. Start it with:")
-        print(f"  {result.hint}")
-    elif result.status == "restarted":
-        ui.info("Restarting gateway...")
-        ui.success("Gateway restarted")
-    elif result.status == "failed":
-        ui.info("Restarting gateway...")
-        ui.warn("Gateway restart failed.")
-        print(f"  Check: {result.hint}")
-
-
-def _do_restart_gateway() -> None:
-    result = restart_gateway()
-    _render_restart_result(result)
-    if not result.ok:
-        ui.warn("Gateway restart failed or gateway not running.")
 
 
 def _pick_agent(prompt: str) -> str:
@@ -404,7 +369,6 @@ def _delete_pod(project: str, members: list[str]) -> int:
     _pod.free_pod_resources(project)
 
     audit_log("agent.delete", f"{project} pod ({len(members)} members)")
-    _do_restart_gateway()
     ui.success(f"Pod '{project}' deleted.")
     return 0
 
@@ -559,7 +523,6 @@ def cmd_unwire(
 
     _fleet.remove_binding(aid, channel)
     ui.success("Binding removed")
-    _do_restart_gateway()
 
 
 @app.command("scope")
@@ -613,7 +576,6 @@ def cmd_scope(
         ui.success(f"Session scope updated: {current_key} → {project_key}")
         ui.success(f"Session key: {new_session}")
         ui.info("Update SOUL.md to reflect the new scope if needed.")
-        _do_restart_gateway()
 
     elif action == "reset":
         new_session = f"agent:{aid}:default"
@@ -622,7 +584,6 @@ def cmd_scope(
         audit_log("scope.reset", aid)
         ui.success("Session scope reset to: default")
         ui.success(f"Session key: {new_session}")
-        _do_restart_gateway()
 
     else:
         ui.error(f"Unknown action '{action}'. Use: show, set, or reset")
@@ -761,7 +722,6 @@ def cmd_profile(
         ui.success(f"Model: {current} → {new_model} (follows role policy '{role}')")
     else:
         ui.success(f"Model pinned: {current} → {new_model}")
-    _do_restart_gateway()
 
 
 @app.command("persona")
@@ -835,7 +795,6 @@ def cmd_persona(
     else:
         audit_log("persona.clear", aid)
         ui.success(f"Persona cleared for '{aid}'.")
-    _do_restart_gateway()
 
 
 @app.command(
@@ -1055,7 +1014,6 @@ def _cmd_models_set(key: str, model: str) -> None:
         n = _mp.reapply_role_policy()
         if n:
             ui.console.print(f"  {n} agent(s) updated.")
-        _do_restart_gateway()
 
 
 def _cmd_models_preset(preset: str | None) -> None:
@@ -1145,7 +1103,6 @@ def _cmd_models_preset(preset: str | None) -> None:
     n = _mp.reapply_role_policy()
     if n:
         ui.console.print(f"  {n} agent(s) updated.")
-    _do_restart_gateway()
 
     key_name = t.get("key", "")
     if key_name:
@@ -1204,7 +1161,6 @@ def _cmd_models_reset() -> None:
     n = _mp.reapply_role_policy()
     if n:
         ui.console.print(f"  {n} agent(s) updated.")
-    _do_restart_gateway()
 
 
 @app.command(

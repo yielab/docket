@@ -1,8 +1,8 @@
-"""M5 tests: docket.edges.adapters.system — docker/git wrappers, gateway stubs.
+"""M5 tests: docket.edges.adapters.system — docker/git wrappers, gateway stub.
 
 These tests fake `subprocess.run` with monkeypatch so no real docker/git is
 ever invoked. They cover:
-  * gateway_active/restart_gateway's honest always-inactive/no-op stubs
+  * gateway_active's honest always-inactive stub
   * docker availability + ps
   * git branch lookup
   * git changed-files probe (W-5b)
@@ -11,9 +11,15 @@ Phase 19 P19-7b deleted the daemon's gateway systemd unit and every
 service_manager/service_hint/systemctl_* helper that only ever existed to
 start/restart/probe it -- there is nothing left to manage, so their tests
 are deleted, not adapted (see edges/adapters/system.py's module docstring).
-gateway_active/restart_gateway survive as stable, always-honest stubs so the
-~20 call sites across cli/ that used to restart the gateway need no
-individual rewrite; both are covered below for their new behavior.
+gateway_active survives as a stable, always-honest stub because
+`docket snapshot` and the `serve` read API still expose a `gateway` field to
+external consumers (specs/data/serve-read-api.spec.md) -- covered below.
+
+CL-C (wave 14): restart_gateway()/RestartResult were deleted outright, not
+kept as a stub -- unlike gateway_active, nothing external ever observed
+restart_gateway's return value, so every call site was pure ceremony. Their
+tests (test_restart_gateway_dry_run/test_restart_gateway_no_daemon) are
+deleted along with the function, not adapted.
 """
 
 from __future__ import annotations
@@ -35,7 +41,7 @@ class _FakeCompleted:
         self.stderr = ""
 
 
-# ── gateway_active / restart_gateway (honest no-op stubs) ──────────────────────
+# ── gateway_active (honest no-op stub) ──────────────────────────────────────────
 
 
 def test_gateway_active_always_false(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,32 +50,6 @@ def test_gateway_active_always_false(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(subprocess, "run", boom)
     assert system.gateway_active() is False
-
-
-def test_restart_gateway_dry_run(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("DOCKET_NO_RESTART", "1")
-
-    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("dry-run must not shell out")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    result = system.restart_gateway()
-    assert result == system.RestartResult(status="dry_run", ok=True)
-    # edges/ never prints (ROADMAP §2) — the cli layer renders the result.
-    assert capsys.readouterr().out == ""
-
-
-def test_restart_gateway_no_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_NO_RESTART", raising=False)
-
-    def boom(*_a: Any, **_k: Any) -> _FakeCompleted:
-        raise AssertionError("no daemon exists -- must not shell out")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    result = system.restart_gateway()
-    assert result == system.RestartResult(status="no_daemon", ok=True)
 
 
 # ── docker ──────────────────────────────────────────────────────────────────────
