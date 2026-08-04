@@ -911,8 +911,8 @@ and must explain the diff.
 | 8-9 | ☑ P19-1 -> P19-2 -> **P19-3** -> P19-4 -> P19-5 -> P19-9/P19-10 | done | — |
 | 10 | ☑ P19-6 · P19-11 · P19-12 · P19-13 | done (2026-08-02) | — |
 | 11 | ☑ P19-7a -> P19-7b -> P19-8 | done (2026-08-03) | **PHASE 19 CLOSED** — acceptance grep clean |
-| **12** | **P21-1** -> **P21-5** | sequential | library boundary test seen to fail on a planted import |
-| **13** | **P20-2 · P20-4** | 2 parallel | — |
+| 12 | ☑ P21-1 -> P21-5 | done (2026-08-03) | — |
+| **▶ 13** | **P20-2 · P20-4** | 2 parallel | last scheduled work; everything else was cut/deferred by D-24 |
 
 **Wave 11 closes Phase 19. Wave 12 is Phase 21 (the substrate — the factory's actual product line).
 Wave 13 is all that survives of Phase 20.** Anything not in this table was cut or deferred by D-24;
