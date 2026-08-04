@@ -14,11 +14,9 @@ docstring says so and why (see `_check_dependencies`, `_check_security_gates`,
 
 from __future__ import annotations
 
-import contextlib
 import json as _json
 import os
 import shutil
-from pathlib import Path
 from typing import Any
 
 import docket.config as _cfg
@@ -531,83 +529,6 @@ def _check_scaffolding(ids: list[str]) -> int:
     return 0
 
 
-def _check_eval_results() -> int:
-    """Eval-results model-tier recommendations (advisory).
-
-    When tests/evals/results/*.jsonl exist, prints per-role minimum passing tier
-    from the latest results file. Purely advisory (returns 0 — never affects the
-    issue count).
-    """
-    import collections
-
-    results_dir = _eval_results_dir()
-    if results_dir is None:
-        return 0
-    files = sorted(results_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not files:
-        return 0
-    latest = files[0]
-
-    ui.console.print()
-    results_date = latest.name[: -len(".jsonl")]
-    ui.console.print(f"[bold]Eval results ({results_date}):[/bold]")
-
-    recs: list[dict[str, Any]] = []
-    try:
-        for line in latest.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            with contextlib.suppress(Exception):
-                recs.append(_json.loads(line))
-    except OSError:
-        recs = []
-    if not recs:
-        ui.console.print("  (no records in results file)")
-        return 0
-
-    tier_order = {"economy": 0, "standard": 1, "premium": 2}
-    by_role: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
-    for r in recs:
-        by_role[str(r["role"])].append(r)
-
-    for role, results in sorted(by_role.items()):
-        passing = [r for r in results if r.get("passed")]
-        failing = [r for r in results if not r.get("passed")]
-        if not passing and not failing:
-            continue
-        if not passing:
-            ui.console.print(f"  {role}: all {len(failing)} run(s) FAILED")
-            continue
-        min_tier = min(passing, key=lambda r: tier_order.get(str(r.get("tier", "standard")), 1))[
-            "tier"
-        ]
-        avg_cost = sum(float(r.get("costUsd", 0)) for r in passing) / len(passing)
-        current_tier = results[-1].get("tier", "?")
-        if tier_order.get(str(min_tier), 1) < tier_order.get(str(current_tier), 1):
-            ui.console.print(
-                f"  [yellow]⚠[/yellow]  {role}: passes on a cheaper model class "
-                f"({min_tier}, avg ${avg_cost:.4f}/run) — docket models set {role} <provider/model>"
-            )
-        else:
-            ui.console.print(
-                f"  [green]✓[/green]  {role}: {min_tier} minimum "
-                f"(avg ${avg_cost:.4f}/run, {len(passing)}/{len(results)} passed)"
-            )
-    ui.dim("  Re-run: DOCKET_EVAL_LIVE=1 docket eval")
-    return 0
-
-
-def _eval_results_dir() -> Path | None:
-    """Locate tests/evals/results/ — repo root via DOCKET_CLI_ROOT or package layout."""
-    root = Path(os.environ.get("DOCKET_CLI_ROOT", ""))
-    if not root.is_dir():
-        # src/docket/cli/_doctor.py → parents[3] == repo root.
-        root = Path(__file__).resolve().parents[3]
-    results = root / "tests" / "evals" / "results"
-    return results if results.is_dir() else None
-
-
 def _fmt_num(s: str) -> str:
     """Render a numeric string the way Bash printed it ('10' not '10.0')."""
     try:
@@ -865,7 +786,6 @@ def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
     _check_metadata_backfill(ids)
     _check_runtime_contract(ids)
     _check_scaffolding(ids)
-    _check_eval_results()
 
     ui.console.print()
     if issues == 0:

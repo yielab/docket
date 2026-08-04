@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.13.1
+**Version**: 1.14.0
 **Status**: Complete
 **Last Updated**: 2026-08-04
 
@@ -512,13 +512,17 @@ narrower: approval-routing destination and isolation-mode posture.
 **Return**: 0 always for the listing forms; for `verify`, 0 when the chain is clean (or no log
 exists yet), 1 when a broken link is detected
 
-#### docket eval
-**Purpose**: Run specialist-role structural checks and optional live golden tasks
-**Syntax**: `docket eval [--live]`
-**Options**:
-- `--live` (env: `DOCKET_EVAL_LIVE=1`): Run live tasks against the configured model endpoint (billable)
-**Output**: Pass/fail per specialist role; model optimization hints
-**Return**: 0 if all pass, 1 if any fail
+`docket eval` (the specialist-role eval harness: structural checks + optional live golden
+tasks) was **removed** (CL-J) — `tests/evals/` was dead code, wired to the deleted OpenClaw
+daemon (`WORKSPACE` under `$HOME/.openclaw/workspaces/<role>`, `openclaw agent --local --json`)
+and skipped silently rather than failing, which is why the drift went unnoticed. Unlike
+`docket workflow`/`docket team`, there is **no replacement command**: no CLI entry point runs a
+single agent turn to repoint the harness at (`DocketDriver.run_turn` is only reached from pod
+dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
+private port, not fixing a bug. Running `docket eval` (or its former `evals` alias) prints a
+removed-command notice saying so plainly. `tests/evals/` and `cli/_eval.py` are deleted; `docket
+doctor` no longer prints an eval-results advisory section. (The former eval.spec.md was removed
+2026-08-04; ROADMAP decision CL-J is the durable retirement record.)
 
 ### Observability
 
@@ -699,7 +703,9 @@ distinguishes error kinds:
 |------|---------|---------|
 | 0 | Success | All commands |
 | 1 | Any failure (not found, invalid arguments, permission, driver/model error, …) | All commands |
-| 2 | SKIP (role not installed / live mode off — non-blocking for CI) | `eval` only |
+
+Code `2` (SKIP, role not installed / live mode off) was the one surviving exception to this flat
+convention, used only by the now-removed `docket eval` (CL-J). No command produces it anymore.
 
 No other exit codes are produced. (Earlier revisions of this spec described codes 2–9 and
 127 per failure kind; those were never implemented — removed in v1.5.0.)
@@ -793,6 +799,15 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.14.0 (2026-08-04)
+
+- **CL-J — `docket eval` removed.** The specialist-role eval harness (`tests/evals/`) was dead
+  code wired to the deleted OpenClaw daemon, and — unlike `docket workflow`/`docket team` —
+  has no successor command. Removed the "docket eval" section under Security and Gates in
+  favor of a removed-command paragraph; dropped exit code `2` (SKIP) from the Return Code
+  Convention table, the one surviving exception to the flat `0`/`1` convention. `docket eval`/
+  `docket evals` now print a removed-command notice and exit 1.
 
 ### Version 1.13.1 (2026-08-04)
 

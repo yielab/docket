@@ -1,15 +1,17 @@
 # Testing Framework
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Active
-**Last Updated**: 2026-06-24
+**Last Updated**: 2026-08-04
 
 ## Overview
 
 This document describes how docket is tested. docket is a Python package
 (`src/docket/`, layered `cli/ → core/ → edges/`); its testing stack is built on
-**pytest**, a **byte-parity golden suite**, **specialist-role eval stubs**, and a
-set of **CI-blocking static gates** (ruff, mypy, spec validation).
+**pytest**, a **byte-parity golden suite**, and a set of **CI-blocking static gates**
+(ruff, mypy, spec validation). (A non-blocking specialist-role eval-stub harness
+existed under `tests/evals/` but was dead code — wired to the deleted OpenClaw daemon
+— and was removed outright, CL-J.)
 
 docket follows spec-first / test-first discipline (SSD — see `SSD-WORKFLOW.md` and
 `specs/README.md`). The behaviour described in a spec is encoded as a test before the
@@ -65,10 +67,7 @@ tests/
 │   ├── cases/              # *.golden frozen outputs
 │   ├── fakes/  fixtures/   # fake openclaw + seeded home for hermetic runs
 │   └── scrub.py            # normalises volatile output before diffing
-├── evals/                  # specialist-role eval stubs (non-blocking)
-│   ├── run-evals.sh
-│   └── <role>.eval.sh      # manager, programmer, reviewer, tester, knowledge, security
-└── run-all-tests.sh        # aggregator: pytest + golden + evals
+└── run-all-tests.sh        # aggregator: pytest + golden
 ```
 
 ### Naming conventions
@@ -203,15 +202,6 @@ bash tests/golden/run.sh list
 bash tests/golden/run.sh capture info myshop
 ```
 
-## Eval Stubs (`tests/evals/`)
-
-Non-blocking specialist-role evals (`manager`, `programmer`, `reviewer`, `tester`,
-`knowledge`, `security`). They exercise role behaviour qualitatively and do not gate CI.
-
-```bash
-./tests/evals/run-evals.sh
-```
-
 ## Running the Tests
 
 ```bash
@@ -222,11 +212,10 @@ uv run pytest
 uv run pytest tests/python/test_list_info_cost_commands.py
 uv run pytest tests/python/test_list_info_cost_commands.py::test_list_renders_agents
 
-# Golden parity + evals
+# Golden parity
 bash tests/golden/run.sh verify-all
-./tests/evals/run-evals.sh
 
-# Everything at once (pytest + golden + evals)
+# Everything at once (pytest + golden)
 bash tests/run-all-tests.sh
 ```
 
@@ -265,6 +254,14 @@ CI is defined in `.github/workflows/ci.yml` with four jobs:
    and review the diff.
 
 ## Changelog
+
+### Version 2.1.0 (2026-08-04)
+- **CL-J — the eval-stub harness is removed.** `tests/evals/` was dead code, wired to the
+  deleted OpenClaw daemon (workspace paths under `$HOME/.openclaw/...`, `openclaw agent
+  --local --json`), and skipped silently instead of failing, which is why the drift went
+  unnoticed. Removed the "Eval Stubs" section, the `evals/` entry from the Test Layout tree,
+  and every `./tests/evals/run-evals.sh` invocation from the Running-the-Tests examples.
+  `tests/run-all-tests.sh` now aggregates pytest + golden only.
 
 ### Version 2.0.0 (2026-06-24)
 - Rewritten to describe the real Python/pytest test stack after the Bash→Python cutover.

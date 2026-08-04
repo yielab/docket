@@ -57,7 +57,6 @@ MONITORING
   doctor             System health: fleet registry, drift, budget, runaway
   gates              Tool-call gate status (always on); approval routing / isolation
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
-  eval               Specialist-role evals: structural checks + live golden tasks
 
 OBSERVABILITY
   trace    <session>  Render one agent-action trace human-readable

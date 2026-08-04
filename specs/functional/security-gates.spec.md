@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.12.0
+**Version**: 0.12.1
 **Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, **unlike** the in-turn tool-call gate above (now live), still has no live-path caller: `DocketDriver`'s `ToolContext` construction never sets `sandbox="auto"`, so nothing in production requests a jail yet even though the gate that decides whether a `bash` call may run at all is itself now unconditionally live. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
 **Last Updated**: 2026-08-03
 
@@ -354,19 +354,19 @@ requirement 2 above for why `resolve_command_action` in particular could never h
 
 1. **Scope decision — which of docket's own subprocess calls are classification targets.**
    `edges/adapters/system.py` is the shell-out chokepoint (~11 `subprocess.run` call sites,
-   plus `cli/_eval.py`'s `bash <script>`, `cli/_trace.py`'s `tail -f <file>`, and
-   `cli/_install.py`'s `[python, --version]` probe). Of all of these, exactly **one** —
-   `system.py`'s `run_verify_cmd` — launches a fully free-form, operator-composed command
-   string through a real shell (`shell=True`); every other call site in this list builds a
-   fixed argv list itself (a systemd unit name, `docker ps --format ...`, a `git -C <dir>
-   rev-parse ...` plumbing call, a literal `[python, "--version"]` probe, a repo-relative
-   `.eval.sh` path chosen from a fixed on-disk set, a `tail -f` on a trace file docket itself
-   computed). None of those fixed-argv calls carry an arbitrary, classifiable command string —
-   there is nothing there for `HIGH_RISK_PATTERNS` to match against that isn't already fully
-   determined by docket's own code, and a `--version` probe is not a comparable risk surface to
-   a shell-interpreted, operator-typed verify pipeline. `run_verify_cmd` **MUST** therefore be
-   the only classification point in `edges/adapters/system.py`; the rest of the module's
-   subprocess calls are explicitly out of scope for this requirement, not overlooked.
+   plus `cli/_trace.py`'s `tail -f <file>` and `cli/_install.py`'s `[python, --version]` probe;
+   `cli/_eval.py`'s `bash <script>` call site was removed along with the eval harness itself,
+   CL-J). Of all of these, exactly **one** — `system.py`'s `run_verify_cmd` — launches a fully
+   free-form, operator-composed command string through a real shell (`shell=True`); every other
+   call site in this list builds a fixed argv list itself (a systemd unit name, `docker ps
+   --format ...`, a `git -C <dir> rev-parse ...` plumbing call, a literal `[python, "--version"]`
+   probe, a `tail -f` on a trace file docket itself computed). None of those fixed-argv calls
+   carry an arbitrary, classifiable command string — there is nothing there for
+   `HIGH_RISK_PATTERNS` to match against that isn't already fully determined by docket's own
+   code, and a `--version` probe is not a comparable risk surface to a shell-interpreted,
+   operator-typed verify pipeline. `run_verify_cmd` **MUST** therefore be the only classification
+   point in `edges/adapters/system.py`; the rest of the module's subprocess calls are explicitly
+   out of scope for this requirement, not overlooked.
 2. `edges/adapters/system.py`'s `run_verify_cmd` **MUST** classify its `cmd` argument against
    `core.security.match_high_risk` before starting the subprocess. A match **MUST** fail
    closed — the shell command **MUST NOT** be started at all — and the returned failure message
@@ -1216,6 +1216,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.12.1 (2026-08-04)
+
+- **CL-J — `docket eval` removed.** Updated the "Docket-launched process classification" scope
+  enumeration: `cli/_eval.py`'s `bash <script>` call site no longer exists (the eval harness and
+  `tests/evals/` were deleted outright, dead code wired to the daemon this spec already
+  describes as gone). No change to the classification requirements themselves — `run_verify_cmd`
+  remains the only classification point in `edges/adapters/system.py`.
 
 ### Version 0.12.0 (2026-08-03)
 

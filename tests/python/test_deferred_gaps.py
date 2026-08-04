@@ -1,11 +1,15 @@
-"""Tests for the four deferred Bash→Python migration gaps.
+"""Tests for the deferred Bash→Python migration gaps.
 
 GAP 1  approval emits the right trace events (approval_requested / _granted /
        _denied) with the Bash payload keys, and redacts the action.
 GAP 2  docket serve runs the trace/approval sweeps at startup.
 GAP 3  trace.redact strips the VALUE of a stored secret (not just secret-shapes).
-GAP 4  doctor prints the Brave + Eval-results advisory sections without moving
-       the issue count / exit code.
+GAP 4  doctor's Brave + Eval-results advisory sections — retired. The Brave
+       advisory (`_check_brave_browser`) scanned for daemon-spawned browser
+       processes and was deleted outright (no daemon, no successor). The
+       eval-results advisory (`_check_eval_results`) was deleted with the eval
+       harness itself (CL-J). `docket doctor` prints no advisory sections
+       anymore, so GAP 4 has nothing left to test.
 
 All subsystems read paths from docket.config at call time, so we repoint the
 already-imported config attributes at a temp seed and drive the public surfaces
@@ -178,44 +182,3 @@ class TestServeSweeps:
         monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
         serve.run_serve(port=0, interval=30)
         assert ran == ["startup"]
-
-
-# ── GAP 4: doctor advisory sections ───────────────────────────────────────────
-#
-# The Brave-browser advisory (_check_brave_browser) scanned for
-# `openclaw/browser` processes spawned by the daemon's headless web UI. There
-# is no daemon and no browser process for docket to observe any more, so the
-# check itself was deleted from cli/_doctor.py (no successor -- a
-# daemon-owned capability, honestly gone, not silently dropped). Only the
-# eval-results advisory (docket-owned) remains below.
-
-
-class TestDoctorAdvisorySections:
-    def test_eval_results_section(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli import _doctor
-
-        results = tmp_path / "tests" / "evals" / "results"
-        results.mkdir(parents=True)
-        recs = [
-            {"role": "programmer", "tier": "economy", "passed": True, "costUsd": 0.001},
-            {"role": "programmer", "tier": "premium", "passed": True, "costUsd": 0.02},
-        ]
-        (results / "2026-06-23.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-        monkeypatch.setenv("DOCKET_CLI_ROOT", str(tmp_path))
-        rc = _doctor._check_eval_results()
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "Eval results (2026-06-23)" in out
-        assert "programmer" in out
-
-    def test_eval_results_absent_is_noop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        from docket.cli import _doctor
-
-        monkeypatch.setenv("DOCKET_CLI_ROOT", str(tmp_path))  # no results dir
-        rc = _doctor._check_eval_results()
-        assert rc == 0
-        assert capsys.readouterr().out == ""

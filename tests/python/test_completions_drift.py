@@ -93,6 +93,19 @@ class TestRetiredCommandsNeverAdvertised:
         for tier in ("economy", "standard", "premium", "tier"):
             assert tier not in out
 
+    @pytest.mark.parametrize("shell", ["bash", "zsh"])
+    def test_eval_not_advertised_as_a_command(
+        self, shell: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`docket eval` was removed (CL-J). Unlike `team`/`tier`, the bare substring
+        "eval" legitimately survives in the completion scripts' own `eval "$(docket
+        completions bash)"` install instructions, so this checks the *parsed command
+        set*, not the raw text."""
+        _completions.run_completions(shell)
+        out = capsys.readouterr().out
+        names = _parse_bash_commands(out) if shell == "bash" else _parse_zsh_commands(out)
+        assert "eval" not in names
+
 
 class TestCommandsPresent:
     """At-minimum acceptance list of commands completions must advertise."""
@@ -107,7 +120,6 @@ class TestCommandsPresent:
         "context",
         "snapshot",
         "audit",
-        "eval",
         "gates",
         "trace",
     )

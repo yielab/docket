@@ -113,7 +113,7 @@ All contributions must include appropriate tests:
 Run the full aggregator before submitting:
 
 ```bash
-# All tests (pytest + golden parity + evals)
+# All tests (pytest + golden parity)
 ./tests/run-all-tests.sh
 
 # pytest suite only
@@ -121,9 +121,6 @@ uv run pytest
 
 # Golden parity suite (byte-for-byte CLI output)
 bash tests/golden/run.sh verify-all
-
-# Specialist-role evals (non-blocking stubs)
-./tests/evals/run-evals.sh
 ```
 
 ### CI gates

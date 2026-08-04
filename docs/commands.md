@@ -2115,53 +2115,6 @@ docket metrics [-r/--role <role>] [-p/--project <project>] [-w/--window <N>]
 
 ---
 
-### eval
-
-Run non-blocking specialist-role evals — structural checks by default, or live golden-task
-grading with `--live`. Never blocks CI (see `tests/evals/run-evals.sh`).
-
-**Syntax:**
-```bash
-docket eval                          # structural checks, all roles
-docket eval --role reviewer          # restrict to one role's eval script
-docket eval --live                   # run live golden-task evals (calls a real model)
-docket eval --live --role reviewer --tier economy   # live, one role, at a given model tier
-docket eval --recommend              # print tier right-sizing recommendations from stored results
-```
-
-**Flags:**
-- **`--live`** (default off): run live golden-task evals instead of structural-only checks.
-- **`--tier <economy|standard|premium>`** (default `standard`): the model-class label recorded
-  with the eval results, for right-sizing analysis. It's a free-form string, not validated
-  against that enum by the CLI. **This is not the same vocabulary as the retired `docket
-  profile`/`docket tier` shim** — it never sets or validates any agent's actual model, and is
-  unaffected by the tier-name rejection described under [profile](#profile).
-- **`--role <name>`**: restrict to one role's eval script (`tests/evals/<role>.eval.sh`).
-- **`--recommend`**: run no evals; print tier recommendations derived from the most recent stored
-  results instead.
-
-**Example:**
-```bash
-docket eval
-#   SKIP  knowledge
-#   SKIP  manager
-#   ...
-#   Pass: 0   Skip: 6   Fail: 0
-
-docket eval --live --role reviewer --tier economy
-# ✓ PASS — reviewer
-```
-
-**Aliases:** `evals`
-
-**Notes:**
-- Exit codes: `0` = PASS (or all-SKIP aggregate run), `2` = SKIP (single-role form: agent not
-  installed, or live mode off), anything else = FAIL
-- Live-run results append to `tests/evals/results/YYYY-MM-DD.jsonl` (`role`, `tier`, `passed`,
-  `costUsd`)
-
----
-
 ## Global Options
 
 ### --debug
@@ -2237,7 +2190,6 @@ source of truth. `docket <alias>` rewrites to `docket <command>` before argument
 | `usage` | `cost` |
 | `check` | `doctor` |
 | `security` | `gates` |
-| `evals` | `eval` |
 | `export` | `snapshot` |
 | `completion` | `completions` |
 | `policy` | `policies` |
@@ -2268,6 +2220,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |
 | `workflow`, `wf` | `docket pipeline validate` / `plan` / `run` — the single pipeline dialect docket actually executes (the Lobster YAML validator ignored constructs its own template emitted). Existing `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read |
+| `eval`, `evals` | **removed, no replacement** — the specialist-role eval harness (`tests/evals/`) was dead code, wired to the deleted OpenClaw daemon, and skipped silently instead of failing. Unlike `workflow`/`team`, no CLI entry point runs a single agent turn to repoint it at, so it was deleted outright rather than redesigned |
 
 ---
 
@@ -2296,7 +2249,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `FETCH_ALLOWED_DOMAINS` | Comma-separated exact hostnames the `fetch` tool may reach | empty (nothing allowed until opted in) |
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
-| `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher and `docket eval` | package/launcher location |
+| `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher to select which project to `uv run` against | package/launcher location |
 | `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
 
 There is **no** environment kill switch for the audit log — a prior `DOCKET_NO_AUDIT=1` escape
