@@ -2476,6 +2476,16 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
   `HandoffArtifact` — the handoff budget bounds the message, not the history — and the endpoint
   refuses the prompt at 19,827 tokens.
 
+  **A fourth, found while documenting the Tack integration:** `GET /traces/<project>?since=` —
+  the route an external plan-of-record polls — replayed on any project with more than one session.
+  `export_lines` concatenates session files in sorted *filename* order and a session id is a uuid,
+  so the stream is not chronological, while the cursor anchored on the page's last line and counted
+  a trailing same-second run. On the real `adapta` project a resume replayed 36 of 47 events. The
+  page is now sorted by ts before anchoring: resume returns 0, and events arrive in time order
+  across sessions. Wave 16's "no replay" check had been correct but not general — that project had
+  one session file at the time. **A verification is a claim about the state it ran against**;
+  re-running it against a richer state is what made the general case visible.
+
   **This is the third instance of one shape** (MCP tools, W17-1; sandbox, W18-3; now compaction):
   built, tested, never wired to the default path, with documentation asserting it works. Both false
   claims were corrected the same day rather than held pending a fix, moving the `docket help` golden

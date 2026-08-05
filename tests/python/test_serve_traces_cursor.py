@@ -329,3 +329,60 @@ class TestTracesPageDirect:
         assert len(events2) == 1
         assert json.loads(events2[0])["payload"]["i"] == 1
         assert cursor2 != cursor1
+
+
+class TestMultipleSessionFiles:
+    """A real pod writes one trace file per dispatched task, so any project
+    with history has several.
+
+    ``export_lines`` concatenates them in **sorted filename order**, and a
+    session id is a uuid — so the concatenated stream is not chronological.
+    The cursor scheme anchors on the newest event in the page and counts the
+    events sharing that second; both are properties of the page's *contents*,
+    not of the order the files happened to be globbed in.
+    """
+
+    def _write(self, session: str, i: int) -> None:
+        _trace.trace_event("demo", session, "lead", "tool_call", json.dumps({"i": i}))
+
+    def test_cursor_does_not_replay_when_a_project_has_several_sessions(
+        self, traces_home: Path
+    ) -> None:
+        # "zzz" sorts last by filename but is written first, so the newest
+        # event does NOT land at the end of the concatenated stream.
+        self._write("zzz-older-session", 0)
+        time.sleep(1.05)
+        self._write("aaa-newer-session", 1)
+
+        events1, cursor1 = serve._traces_page("demo", "")
+        assert len(events1) == 2, "first poll must return both sessions' events"
+
+        events2, _cursor2 = serve._traces_page("demo", cursor1)
+        assert events2 == [], (
+            "nothing new was written, so a poll from the returned cursor must "
+            f"yield nothing -- got {len(events2)} replayed event(s)"
+        )
+
+    def test_new_events_still_arrive_after_a_multi_session_cursor(self, traces_home: Path) -> None:
+        self._write("zzz-older-session", 0)
+        time.sleep(1.05)
+        self._write("aaa-newer-session", 1)
+        _events1, cursor1 = serve._traces_page("demo", "")
+
+        time.sleep(1.05)
+        self._write("zzz-older-session", 2)
+
+        events2, _cursor2 = serve._traces_page("demo", cursor1)
+        assert [json.loads(e)["payload"]["i"] for e in events2] == [2]
+
+    def test_a_page_spanning_sessions_is_delivered_in_time_order(self, traces_home: Path) -> None:
+        self._write("zzz-older-session", 0)
+        time.sleep(1.05)
+        self._write("aaa-newer-session", 1)
+        time.sleep(1.05)
+        self._write("mmm-newest-session", 2)
+
+        events, _cursor = serve._traces_page("demo", "")
+        assert [json.loads(e)["payload"]["i"] for e in events] == [0, 1, 2], (
+            "a consumer folding events onto a board reads them in order"
+        )

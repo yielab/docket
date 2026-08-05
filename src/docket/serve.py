@@ -745,10 +745,10 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
 
     Returns (lines, next_cursor). `lines` are the verbatim JSONL strings
     `export_lines` returned (untouched — no reformatting, no filtering by
-    event type/role/session); `next_cursor` is what a subsequent call's
-    `since` should be to resume without re-ingesting or skipping anything —
-    see the module-level comment above for why that requires more than the
-    last line's raw ts.
+    event type/role/session) **sorted by ts across session files**;
+    `next_cursor` is what a subsequent call's `since` should be to resume
+    without re-ingesting or skipping anything — see the module-level comment
+    above for why that requires more than the last line's raw ts.
 
     A trailing line this module cannot key on (`_trace_line_ts` returns "")
     is a pre-existing `export_lines` limitation, not something fixed here:
@@ -760,7 +760,15 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     entirely and replay the whole project's trace on the next poll.
     """
     cursor_ts, already = _decode_trace_cursor(since)
-    lines = _trace.export_lines(project, cursor_ts)
+    # `export_lines` concatenates session files in sorted FILENAME order, and a
+    # session id is a uuid -- so with more than one session (any project with
+    # history) the raw stream is not chronological. Everything below anchors the
+    # cursor on the newest event in the page and counts the run sharing that
+    # second, which is only correct on an ordered page; without this sort a
+    # multi-session project replays the events that happened to follow the
+    # anchor in glob order. Stable, so same-second lines keep their file order,
+    # and unkeyable ("") lines sort to the front where the skip loop expects them.
+    lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_ts)
 
     if already:
         skipped = 0

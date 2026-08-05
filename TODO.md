@@ -210,6 +210,21 @@ guard, resolved **per call** rather than bound as a default argument so it stays
 Both guards proven RED: the import-time binding restored, and a re-declared `os.environ.get` planted
 in `toolbox.py`.
 
+**W19-4 — the trace cursor replayed on any project with more than one session.** FIXED.
+`GET /traces/<project>?since=` is what an external plan-of-record polls, and P22-3's whole point was
+resuming without re-ingesting. But `core.trace.export_lines` concatenates session files in **sorted
+filename order**, and a session id is a uuid — so with more than one session (any project with
+history) the stream is not chronological, while `_traces_page` anchored the cursor on the *last*
+line of the page and counted a *trailing* run at that ts. Both are correct only on an ordered page.
+
+Measured on the real `adapta` project: first poll 47 events, cursor `…T15:45:01Z:2` — a timestamp
+*earlier* than events in the same page — and a resume from it replayed **36 of the 47**. The
+earlier wave-16 verification ("exactly 1 new event, no replay") was correct but not general: that
+project had a single session file at the time. *Now:* the page is sorted by ts before anchoring, so
+the cursor lands on the newest event and the tie-count covers the whole page. Re-measured on the
+same project: resume returns **0 events**. Events also now arrive in time order across sessions,
+which is what a consumer folding them onto a board needs. Three tests added, all proven RED first.
+
 **W19-3 — session compaction is implemented, tested, documented, and never called.** FOUND, NOT
 FIXED. `core/session.py` ships `plan_compaction`/`compact_session` with fail-closed summarisation.
 **Nothing in `src/` calls either.** `core/agent_loop.py` imports only `append_messages`/

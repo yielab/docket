@@ -37,7 +37,8 @@
 **Contents:** [Why](#why) · [The gated turn](#the-gated-turn) · [Telegram](#mobile-control-via-telegram)
 · [Install](#install) · [Tour](#60-second-tour) · [Screenshots](#see-it-in-action) ·
 [Cost](#cost-reporting-and-its-limits) · [Concepts](#concepts) · [Commands](#command-reference)
-· [Security](#security) · [Embedding the runtime](#embedding-the-runtime) ·
+· [Security](#security) · [Tack integration](#integrating-with-a-control-plane-tack) ·
+[Embedding the runtime](#embedding-the-runtime) ·
 [Compatibility](#compatibility) · [Roadmap](#whats-next) · [Contributing](#contributing)
 
 ---
@@ -129,6 +130,8 @@ this three-layer stack running reliably:
   **docket deliberately does not build a dashboard** — it competes on the write and governance side
   and feeds a planner that holds the roadmap, board and sprints. The trace read is cursor'd so a
   consumer resumes exactly where it stopped; docket aggregates nothing on its behalf.
+  See [Integrating with a control plane (Tack)](#integrating-with-a-control-plane-tack) for the
+  full route table, the poll loop and the limits.
 
 ## The gated turn
 
@@ -447,13 +450,13 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,209 tests** in the pytest suite (`tests/python/`)
+- **2,212 tests** in the pytest suite (`tests/python/`)
 - **~27,605 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,209-test Python suite
+uv run pytest                                        # 2,212-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -499,6 +502,142 @@ Being honest about the limits:
 public VPS — see [SECURITY.md](SECURITY.md) for the homelab-vs-VPS guidance, the privilege and
 approval-gate model, what docket does and does **not** protect against, secret-storage backends
 (keyring vs 0600 JSON), and the responsible-disclosure policy.
+
+## Integrating with a control plane (Tack)
+
+**docket executes; something else holds the plan of record.** docket has said since Phase 11 that it
+does not build a dashboard of its own — it competes on the write and governance side and *feeds*
+one. [**Tack**](https://github.com/yielab/tack) is that consumer: a single-binary project manager
+that owns the roadmap, board, sprints and dependency DAG. It **polls** docket and folds runs,
+approvals, traces and metrics back onto the board.
+
+**Tack polls; docket never pushes.** There is no webhook and no callback, deliberately: a poll loop
+survives a restart or an outage on either side with no replay logic anywhere, and the cursor below
+is the whole recovery mechanism.
+
+### 1. Run the server
+
+```bash
+docket serve --port 7331 --token-file ~/.docket/serve.token --dispatch
+```
+
+- **Binds `127.0.0.1` only.** It is not reachable off the host. Run Tack on the same machine, or
+  front it with your own TLS terminator / SSH tunnel — docket does not terminate TLS.
+- `--token-file` writes the bearer token `0600` instead of printing it to stdout. Prefer it over
+  copying the token out of a log.
+- `--dispatch` also drives every pod's queue through the Lead → Implementer → Reviewer → Tester
+  pipeline on each sweep. Those are **real, costed agent turns** — leave it off for a read-only
+  monitor and drive dispatch explicitly with `POST /dispatch/<project>` instead.
+- `--telegram` additionally long-polls docket's own bot, so approvals can be answered from a phone.
+
+### 2. Authentication
+
+Every route is `Authorization: Bearer <token>` **except three**, which are deliberately open so a
+health check or a Prometheus scrape needs no credential:
+
+| Open (no token) | Bearer required |
+| --- | --- |
+| `GET /status.json` · `GET /metrics` · `GET /health` | everything else |
+
+A missing or wrong token is a `401`. The comparison is timing-safe.
+
+### 3. The routes Tack uses
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/status.json` | Fleet snapshot — `apiVersion`, `agents`, `channels`, `totalCostUsd` |
+| `GET` | `/health` | Liveness for the poller |
+| `GET` | `/metrics` | Prometheus text format |
+| `GET` | `/tasks/<project>` | The pod queue, with each task's hops, status and timestamps |
+| `POST` | `/tasks/<project>` | Enqueue a task — `{"description": "...", "priority": "normal"}` |
+| `POST` | `/dispatch/<project>` | Run that pod's queue now; returns a run id immediately |
+| `GET` | `/runs` · `/runs?project=<p>` · `/runs/<id>` | One record per dispatch invocation |
+| `GET` | `/approvals` | Everything currently blocking on a human |
+| `POST` | `/approvals/<token>` | Decide one — `{"action": "grant"\|"deny", "channel": "tack"}` |
+| `GET` | `/traces/<project>?since=<cursor>` | Cursor'd raw trace events |
+| `POST` | `/pods` | Provision a pod — `{"project", "path", "blueprint", "pod", "budget", "verifyCmd"}` |
+
+**Tag approvals with `channel: "tack"`.** It is a first-class value in the closed vocabulary
+`core/approval.py` owns (`cli`, `http`, `mcp`, `telegram`, `timeout`, `tack`), so a board-granted
+approval is distinguishable in the hash-chained audit log from a CI job's or a phone's. An
+unrecognised channel is rejected with a `400` rather than let free text into a record whose entire
+value is honest provenance.
+
+### 4. The poll loop
+
+```bash
+TOKEN=$(cat ~/.docket/serve.token)
+CURSOR=""                       # empty on the first poll only
+
+while :; do
+  PAGE=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    --get --data-urlencode "since=$CURSOR" \
+    "http://127.0.0.1:7331/traces/myproject")
+
+  echo "$PAGE" | jq -c '.events[]' | while read -r EVENT; do
+    :                           # fold the event onto the board
+  done
+
+  CURSOR=$(echo "$PAGE" | jq -r '.next')   # persist this; it is the resume point
+  sleep 10
+done
+```
+
+`.events` are **verbatim JSONL strings** — docket does no reformatting, no filtering by event
+type/role/session, and aggregates nothing on the consumer's behalf. They arrive **in timestamp
+order**, across every session file the project has.
+
+`.next` is the cursor. Store it durably next to whatever you ingested, and hand it back as `since`.
+Round-tripping it delivers **each event exactly once**: nothing re-ingested, nothing skipped. It is
+a compound `<ts>:<n>` value rather than a bare timestamp because trace `ts` is second-granularity —
+a bare timestamp would either replay a whole second or silently drop later events within it. Treat
+it as opaque; a bare timestamp is also accepted, but only the value docket hands back carries the
+tie-break count.
+
+Polling with an unchanged cursor and nothing new written returns `{"events": [], "next": <same>}` —
+a no-op, not a duplicate.
+
+### 5. Enqueue and dispatch
+
+```bash
+# Queue work. Returns the task id; the CLI sees it immediately -- one path, not two.
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"description": "Add a health endpoint", "priority": "high"}' \
+  http://127.0.0.1:7331/tasks/myproject
+
+# Run the queue. Returns a run id straight away; the pipeline continues async.
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:7331/dispatch/myproject
+```
+
+**`POST /tasks` honours the `pre_input` policy gate exactly as the CLI does.** A blocking policy
+returns a `4xx` **naming the policy** — never swallowed into a `500`. A policy demanding approval
+returns the task as `"status": "waiting_approval"` **with its `approvalToken`**, rather than a `200`
+implying it is queued to run. Poll `/approvals`, decide with `POST /approvals/<token>`, and the
+gated task genuinely resumes or dies — it is not merely a record update.
+
+`POST /dispatch` hands back the run id **before** any dispatch work is attempted, so the outcome
+always lands in the run registry rather than vanishing behind a fire-and-forget thread.
+
+### 6. What this integration deliberately is not
+
+The design rule for the whole write API is **expose what `core/` already does, add no new
+behaviour** — same auth, same policy hooks, same audit entries the CLI path produces. A route that
+starts growing flags the CLI does not have has stopped being this feature.
+
+- **Not multi-tenant.** Tack is one operator's control center, not a tenant. There is no per-caller
+  identity, no quota and no isolation between callers — a valid bearer token can do anything the CLI
+  can. Multi-tenancy is **cut**, not deferred.
+- **No streaming.** Poll; there is no SSE or WebSocket surface.
+- **Tack must ingest traces durably.** `docket trace expire` (30-day default) treats docket's JSONL
+  as a cache once an external consumer holds the durable copy. If Tack does not persist what it
+  reads, retention will eventually delete it.
+- **`/metrics` counters are not monotonic.** They are lifetime-of-current-storage counts: audit-log
+  rotation and trace retention both drop history, so a `rate()` over one can misread a partial value
+  as a reset. Do not build an alert that assumes otherwise.
+- **`cost_usd` is always `0.0`.** Token counts are measured and real; dollars are a clearly labelled
+  estimate rendered by `docket cost`. Do not surface an estimate as billed spend
+  (see [Cost reporting and its limits](#cost-reporting-and-its-limits)).
 
 ## Embedding the runtime
 
