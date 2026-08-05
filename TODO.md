@@ -77,7 +77,51 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ ACTIVE — WAVE 16: Phase 22, the control-plane write API (opened 2026-08-04)
+## ☑ WAVE 16 — Phase 22 COMPLETE (2026-08-04). All six cards shipped; the board is CLEAR
+
+Two rounds, four agents. **Round 1:** P22-1+P22-4 (`do_POST`), P22-2+P22-3 (`do_GET`), P22-6
+(`core/trace.py`). **Round 2:** P22-5 alone. `platform` green at close: **2,162 tests**, 18/18
+goldens byte-identical, 24/24 specs, `ruff`+`ruff format`+`mypy --strict` (73 files) clean,
+`metrics.py --check` in sync.
+
+**The ownership split worked.** Five of six cards touched `serve.py`; splitting by HTTP *method*
+produced zero code conflicts. The one conflict was the one the scheduling rule predicts —
+`specs/data/serve-read-api.spec.md`, where two cards both wrote a 2.4.0 changelog entry. Resolved by
+keeping **both** and merging them, never by picking a side: neither side held the other's change.
+
+**Four defects found in review, not by the suite.** Worth recording because each is a pattern:
+
+1. **A cursor that ate its own timestamp.** `_decode_trace_cursor` split `since` on the last colon
+   to separate `<ts>:<n>` — but *a timestamp contains colons*. Safe for every cursor docket mints
+   (`_now_iso()` always writes a trailing `Z`), broken for the hand-supplied bare timestamp the
+   function documents as supported: `"…T12:34:56"` decoded as `ts="…T12:34", n=56`, rewinding a poll
+   loop to the start of the minute. **The existing test covered the bare form only *with* the `Z`,
+   which is exactly why it survived review.**
+2. **A comment that was false when written.** The retention sweep wiring initially claimed sweep
+   *order* mattered so a stale-open trace expires in the same pass. The test written to pin it
+   failed: `_end_record` stamps `_now_iso()`, so terminating a trace **resets its age**. Real
+   semantics — retention runs from when a session *ended*, not from last activity. Caught only
+   because the comment was tested instead of trusted.
+3. **A caveat that a shipped card made false.** `serve.py`'s and the spec's `/metrics` durability
+   note said trace-derived counters had no history gap *because traces were never deleted*. P22-6
+   deleted that premise. Both now state that every counter there is a lifetime-of-current-storage
+   count, not a monotonic total.
+4. **A pointer left behind by a refactor.** `cli/_doctor.py` referenced
+   `cli/_pod.py::_write_member_workspace` after P22-5 moved it to `core/pod_provisioning.py`.
+
+**Every new guard was proven RED before being trusted** — the channel allowlist, the `trusted`
+override, the open-trace liveness rule, the sweep wiring, the cursor fix, and the rollback (which
+fails on real orphaned filesystem state, not a mock asserting cleanup was called).
+
+**P22-5's honest finding, recorded rather than buried:** `docket add` has no `--verify` flag today
+(only `docket pod <p> set-verify` does), so threading `verifyCmd` into initial provisioning is the
+closest this phase came to growing new surface. Judged reuse — `provision_member` already had the
+parameter, and the roadmap's own body spec named the field — but it is the one call worth revisiting
+if the CLI and HTTP surfaces are ever compared field by field.
+
+---
+
+## ☑ WAVE 16 board (closed) — Phase 22, the control-plane write API (opened 2026-08-04)
 
 **Read [ROADMAP.md](ROADMAP.md) §PHASE 22 before claiming anything here.** The phase exists because
 a real consumer (**Tack**, holding the plan of record) is blocked on each card by name. The design

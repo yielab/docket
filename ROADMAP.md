@@ -2260,7 +2260,7 @@ wizard-provisioned product.
 
 ---
 
-## 8. How to start (current — Phases 0–21 COMPLETE; **Phase 22 active**, wave 16 on the `platform` branch)
+## 8. How to start (current — Phases 0–22 COMPLETE; the board is CLEAR)
 
 Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
 and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
@@ -2283,10 +2283,26 @@ prioritization rule and the deferral triggers on each cut card. One card (P20-4)
 came back a **no-op**: the gap it was written against had already been closed and never re-trued.
 **A gap list is a claim about the tree and decays like one — re-verify before scheduling against it.**
 
-**The active work is Phase 22 — the control-plane write API.** The goal's third part: docket
-executes, and something else holds the plan of record. The board is the `▶ ACTIVE — WAVE 16` block
-in TODO.md. **Read the phase's design rule before scoping any card in it:** *expose what `core/`
-already does, add no new behaviour.*
+**Phase 22 — the control-plane write API — is COMPLETE** (wave 16, 2026-08-04). All six cards
+shipped: `POST /tasks/<project>`, `GET /tasks/<project>`, `GET /traces/<project>?since=`, the
+approval `channel` label, `POST /pods`, and trace retention. The goal's third part now holds —
+docket executes, and something else holds the plan of record.
+
+**The design rule held everywhere except one place, and that place is recorded rather than buried.**
+Four of the five routes are thin wrappers over existing `core/` functions. `POST /pods` could not
+be, and the reason was structural: `serve.py` never imports `docket.cli`, but provisioning lived in
+`cli/_pod.py` and `cli/_agents.py` interleaved with `ui.*` calls. So it was an extraction into
+`core/pod_provisioning.py` first, then a route — with `docket add` refactored onto the *same*
+function so the two surfaces cannot drift, proven by byte-identical `docket add` goldens. The one
+field that came closest to new surface is `verifyCmd`: `docket add` has no `--verify` flag today
+(only `docket pod <p> set-verify` does), so threading it into initial provisioning is reuse of an
+existing `provision_member` parameter rather than a new capability — a judgement worth revisiting if
+the CLI and HTTP surfaces are ever compared field by field.
+
+**Rollback is new behaviour `docket add` gained for free.** `build_pod` previously had a
+continue-on-per-member-failure branch that was dead code, because `provision_member` never failed.
+A partial failure now leaves no workspace, no fleet registration and no port allocation — proven by
+an induced failure that asserts on real orphaned filesystem state, not a mock.
 
 **The goal, stated 2026-07-31 and unchanged: a factory for agentic products** — in three parts, in
 order. (1) The factory: docket itself, exists. (2) The embeddable substrate:
@@ -2340,6 +2356,22 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-04 (wave 16) — Phase 22 shipped: the control-plane write API.** Six cards, two rounds,
+  four agents. `POST /tasks/<project>` (enqueue, honouring the `pre_input` gate exactly as the CLI
+  does), `GET /tasks/<project>`, `GET /traces/<project>?since=` (cursor'd), the approval `channel`
+  label validated against a closed set `core/approval.py` owns, `POST /pods`, and trace retention.
+  **Scheduling:** five of six cards touched `serve.py`, so ownership was split by HTTP *method* —
+  zero code conflicts, and the single conflict was the spec changelog the roll-up rule already
+  predicts, resolved by keeping both entries rather than picking one.
+  **Four defects were found in review rather than by the suite**, and the pattern in each is worth
+  more than the fix: a cursor that split on the last colon *of a timestamp* (safe for minted
+  cursors, broken for the hand-supplied form the docstring advertised — the existing test covered
+  only the variant that worked); a wiring comment that was **false when written**, caught because
+  the comment was tested rather than trusted (`sweep_all`'s synthetic `session_end` carries a fresh
+  timestamp, so terminating a trace *resets* its age, which means retention runs from session end,
+  not last activity); a `/metrics` durability caveat that a card in the *same wave* made false
+  (trace-derived counters had no history gap only because traces were never deleted); and a doc
+  pointer left behind by the P22-5 refactor. Full per-card record in TODO.md.
 - **2026-08-04 (wave 15) — the last legacy sweep, and one real bug.** Four cards; full per-card
   record in TODO.md. **The bug: `TELEGRAM_REQUEST_TIMEOUT_S` was documented, env-overridable and
   wired to nothing.** The adapter fell back to a hardcoded 35s socket timeout, so the env var did
