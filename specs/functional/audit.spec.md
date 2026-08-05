@@ -1,13 +1,17 @@
 # Audit Log Specification
 
-**Version**: 2.6.0
-**Status**: Implemented (recording coverage, tamper evidence, rotation, and the kill-switch
-removal below are all shipped, now including `models.*`, `runs.cancel`, `mcp_servers.*`, and
-`telegram.*` — see Requirement 2 for what audit still does NOT see). **ROADMAP Phase 19 P19-7a**
-moved the log file itself from `$OPENCLAW_DIR/audit.log` to `$DOCKET_HOME/audit.log` — see
-Requirement 5. **ROADMAP Phase 19 P19-8** gave the `channel=telegram` tag on `approval.grant`/
-`approval.deny` a real producer for the first time — see Requirement 1's `telegram.*` family.
-**Last Updated**: 2026-08-03
+**Version**: 2.7.0
+**Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
+kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
+`mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
+**ROADMAP Phase 19 P19-7a** moved the log file itself from `$OPENCLAW_DIR/audit.log` to
+`$DOCKET_HOME/audit.log` — see Requirement 5. **ROADMAP Phase 19 P19-8** gave the
+`channel=telegram` tag on `approval.grant`/`approval.deny` a real producer for the first time —
+see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1** closed the gap
+where two rotations in a row could erase security-relevant history while `docket audit verify`
+kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
+plainly is NOT, detected now.
+**Last Updated**: 2026-08-05
 
 ## Purpose
 
@@ -149,17 +153,62 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
    `seq` (integer, starting at 1) and a `prev_hash` — the SHA-256 hex digest
    (stdlib `hashlib`, no new dependency) of the immediately preceding entry's
    canonical JSON form (`json.dumps(entry, sort_keys=True, separators=(",",
-   ":"))`). The first entry of a chain **MUST** use the sentinel
+   ":"))`). The first entry of a genesis chain **MUST** use the sentinel
    `prev_hash="0"*64` (`GENESIS_HASH`). A **chain restart** — starting a fresh
-   `seq=1`/`GENESIS_HASH` entry rather than continuing the previous chain — is
-   the correct, honest behavior (not a defect) in three cases: (a) the log is
-   missing or empty, (b) the immediately preceding line predates this
-   requirement and carries no `seq`/`prev_hash` (a "legacy" line), or (c) the
-   preceding line was just rotated away (Requirement 11). `docket audit
+   `seq=1`/`GENESIS_HASH` entry with no claim on anything before it — is the
+   correct, honest behavior (not a defect) in two cases: (a) the log is
+   missing or empty, or (b) the immediately preceding line predates this
+   requirement and carries no `seq`/`prev_hash` (a "legacy" line), including
+   when that legacy line was the last thing in a generation that then
+   rotated away (Rotation Requirement 2). A size-triggered rotation over a
+   generation that **does** have a chained tail is **not** a restart — see
+   Requirement 9c.
+9c. **Rotation continuation (W18-1).** When the generation being rotated away
+   (Rotation Requirement 1) has a chained tail — a last line carrying
+   `seq`/`prev_hash` — the new current file's first entry **MUST NOT** reset
+   to `seq=1`/`GENESIS_HASH`. It **MUST** instead carry `seq = <rotated
+   generation's final seq> + 1` and `prev_hash = <SHA-256 of the rotated
+   generation's final entry>` — i.e. exactly the entry the old file's chain
+   would have produced next, had it not been renamed away. This is a claim,
+   not a proof: `docket audit verify` (see Viewing Requirement 5) **MUST**
+   check it against the single retained backup (`audit.log.1`) and
+   distinguish three states for the current file's first entry:
+   - **genesis** — `seq=1` and `prev_hash=GENESIS_HASH`. No predecessor is
+     claimed (a fresh install, or a restart after a legacy tail per
+     Requirement 9). Never a break, regardless of what `audit.log.1`
+     contains — a pre-W18-1 log's rotations never made this claim, so an old
+     log **MUST** continue to verify exactly as it did before this
+     requirement existed (backward compatibility).
+   - **continued, verified** — `seq>1`, `prev_hash != GENESIS_HASH`, and
+     `audit.log.1`'s last line has `seq = (claimed seq) - 1` and recomputes to
+     the claimed `prev_hash`. Reported clean; the verifier additionally
+     reports the seq the chain continues from, so an operator can see that
+     more history preceded this file even when that history itself is no
+     longer readable (having rotated further back than the one retained
+     backup covers — Rotation Requirement 4).
+   - **continued, unverifiable** — `seq>1`, `prev_hash != GENESIS_HASH`, but
+     `audit.log.1` is missing, unreadable, or its last line does not match
+     the claim. The current file is asserting a prior generation it cannot
+     produce. This **MUST** be reported as a break (Viewing Requirement 5),
+     the same way a hand-tampered line is — this is the concrete case W18-1
+     exists to make detectable: deleting or altering the one backup
+     generation after a rotation no longer reads as a clean, fresh chain.
+
+   **What this does NOT do.** It does not recover deleted entries, and it
+   does not prevent erasure — an operator (or attacker) with filesystem
+   access can still delete both `audit.log` and `audit.log.1` and let the
+   next write start a genuine, unverifiable-from-genuine genesis chain,
+   indistinguishable from a real fresh install. It also does not extend
+   coverage past one rotation back: a generation two or more rotations in
+   the past is gone once its backup is itself overwritten by the next
+   rotation, by design (Rotation Requirement 4) — only the *fact* that
+   something preceded the current file (a `seq` greater than the file's own
+   line count) remains visible, not that generation's content. `docket audit
    verify` (see Viewing) walks the chain and reports the first line where a
    stored `prev_hash` does not match the recomputed hash of the entry before
-   it — this is the one thing a legacy or chain-restart line can never
-   trigger, by construction.
+   it, or a first-entry continuation claim that cannot be substantiated —
+   these are the only things a legacy line or a genesis chain-restart can
+   never trigger, by construction.
 10. `core/trace.py`'s `trace_event()` (a sibling append-only store, not part of
     this log) **MUST** distinguish a suppressed write (`DOCKET_NO_TRACE=1`)
     from a real one and from a rejected (invalid `event_type`) call — it
@@ -172,13 +221,28 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 1. `audit.log` **MUST** rotate to a single-generation backup, `audit.log.1`
    (overwriting any prior backup), once it reaches `AUDIT_LOG_MAX_BYTES`
    (`config.py`, default 5 MiB, env-overridable — the house style for every
-   other docket-owned path/size constant in `config.py`).
-2. The entry that triggers rotation, and every entry after it, **MUST** start
-   a fresh chain in the new current file (Requirement 9c) — the chain is
-   never required to bridge across a rotation boundary.
-3. `docket audit verify` **MUST** verify only the current `audit.log`; when a
-   rotated backup exists it **MUST** say so explicitly (rather than silently
-   ignoring it or claiming full-history coverage it cannot provide).
+   other docket-owned path/size constant in `config.py`). This is still a
+   single generation, unchanged by W18-1 — retention stays bounded at
+   "current file + one backup"; W18-1 is about detecting what rotation
+   erases, not keeping more of it around.
+2. The entry that triggers rotation **MUST** carry forward the rotated
+   generation's chain (`seq + 1`, `prev_hash` of its final entry) rather than
+   restarting at `seq=1`/`GENESIS_HASH` — **unless** the rotated generation's
+   own last line had nothing chained to continue from (empty file, or a
+   legacy line with no `seq`/`prev_hash`), in which case a fresh genesis
+   chain is still the correct, honest result (Requirement 9c).
+3. `docket audit verify` **MUST** verify only the current `audit.log`'s own
+   entries, but **MUST** check a first-entry continuation claim (2, above)
+   against `audit.log.1` and report a break when that claim cannot be
+   substantiated (Requirement 9c) — it is never permitted to silently accept
+   an unverifiable claim as if it were a genuine genesis chain.
+4. Verification never bridges past the single retained backup: a generation
+   two or more rotations back is unrecoverable once its own backup is
+   overwritten by the next rotation, and `docket audit verify` **MUST NOT**
+   claim to check it. When a rotated backup exists, whether or not the
+   current chain makes a claim on it, the command **MUST** say so explicitly
+   (rather than silently ignoring it or claiming full-history coverage it
+   cannot provide).
 
 ### Viewing and verifying (docket audit)
 
@@ -193,12 +257,19 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 5. `docket audit verify` **MUST** walk the current log's hash chain and:
    - exit 0 and report "no audit log yet" when the file does not exist;
    - exit 0 and report the count of chained and legacy (unchained) lines when
-     the chain verifies clean;
+     the chain verifies clean. When the first entry made a rotation-
+     continuation claim (Requirement 9c) that was substantiated against
+     `audit.log.1`, the report **MUST** additionally say so — naming the seq
+     it continues from — rather than reporting a plain clean chain
+     indistinguishable from a fresh install;
    - exit 1 and report the **first** broken link's line number and reason
-     (e.g. a `prev_hash` mismatch, an out-of-order `seq`, or malformed JSON)
-     when tampering is detected.
-   A legacy line, or the first line of a fresh chain restart, **MUST NOT** be
-   reported as a break — only an actual hash/seq mismatch counts as tampering.
+     when tampering is detected — a `prev_hash` mismatch, an out-of-order
+     `seq`, malformed JSON, **or** a first-entry continuation claim that
+     `audit.log.1` cannot substantiate (missing, unreadable, or its tail
+     doesn't match — Requirement 9c's "continued, unverifiable" state).
+   A legacy line, or the first line of a genuine genesis chain restart,
+   **MUST NOT** be reported as a break — only an actual hash/seq mismatch, or
+   an unsubstantiated continuation claim, counts as tampering.
 
 ## Interface Contracts
 
@@ -268,6 +339,17 @@ clean-chain summary above does not repeat it: there, `chained` already sums to
 the total (every line is either chained or legacy), so restating it would be
 redundant.
 
+### Verifying across a rotation (W18-1)
+
+```bash
+$ docket audit verify   # after a size-triggered rotation, backup intact
+✓ 6 chained line(s) verified clean.
+  Chain continues from a rotated generation ending at seq=214 — verified against audit.log.1.
+
+$ docket audit verify   # audit.log.1 was deleted after that same rotation
+✗ Error: Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, but audit.log.1 is missing — earlier history may have been deleted
+```
+
 ## Validation
 
 ### Pre-conditions
@@ -280,6 +362,13 @@ redundant.
   log contains exactly one new line describing it, chained to the previous entry.
 - `docket audit verify` after a hand-edit of any non-final line reports a break at
   the first line whose `prev_hash` no longer matches.
+- After a rotation whose rotated-away generation had a chained tail, the new
+  current file's first entry continues that chain's `seq`/`prev_hash`
+  (Requirement 9c) rather than restarting it, and `docket audit verify`
+  reports the continuation as clean when `audit.log.1` still substantiates it.
+- If `audit.log.1` is deleted or altered after such a rotation, `docket audit
+  verify` reports a break at the current file's first line — this is the one
+  thing distinguishing it from an install that never had prior history.
 
 ### Invariants
 
@@ -287,9 +376,44 @@ redundant.
 - No secret value ever appears in the log.
 - Audit failures never break the mutating command that triggered them.
 - Recording cannot be disabled by an environment variable.
-- A legacy or chain-restart line is never reported as tampering.
+- A legacy line, or a genuine genesis chain-restart, is never reported as
+  tampering.
+- A rotation-continuation claim that `audit.log.1` cannot substantiate IS
+  reported as tampering (Requirement 9c) — this is new as of Version 2.7.0
+  and is the one exception to "only an actual hash/seq mismatch counts".
+- Retention stays bounded at one rotated generation; verification never
+  claims to check further back than that.
+- **What remains undetectable, stated plainly:** deleting or replacing both
+  the current file and its backup in one motion is indistinguishable from a
+  fresh install — no local, single-copy tamper-evidence scheme can prevent
+  that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.7.0 (2026-08-05)
+
+- **W18-1 — the audit chain now survives its own rotation.** Before this version, two
+  size-triggered rotations in a row could erase security-relevant entries from both
+  `audit.log` and the single-generation `audit.log.1` backup, and `docket audit verify`
+  reported a clean chain restarting at `seq=1` — indistinguishable from a fresh install,
+  even though history had genuinely been overwritten. Added Requirement 9c: the entry
+  written immediately after a rotation now carries the rotated generation's final `seq +
+  1` and its hash as `prev_hash` (a **continuation claim**) instead of resetting to
+  `seq=1`/`GENESIS_HASH`, unless the rotated generation's own tail was itself a legacy
+  line with nothing to continue (unchanged, honest restart). `docket audit verify`
+  (Requirement 5) now checks that claim against `audit.log.1` and distinguishes three
+  states: genesis (no claim, e.g. a fresh install or a pre-2.7.0 log — unaffected,
+  verifies exactly as before), continued-and-verified (reported clean, naming the seq it
+  continues from), and continued-but-unsubstantiated (`audit.log.1` missing, unreadable,
+  or its tail doesn't match — now reported as a break, the concrete new detection this
+  card adds). Rotation/retention Requirement 1 is unchanged: still one current file plus
+  exactly one backup, no unbounded growth. **Stated plainly, what this does NOT do:** it
+  does not recover deleted entries, and an operator who deletes both the current file and
+  `audit.log.1` in one motion still produces an unverifiable-from-genuine fresh chain — no
+  local tamper-evidence scheme can prevent that. `core/audit.py`'s `VerifyResult` gained
+  one new field, `continued_from_seq` (`int | None`), populated only on a verified
+  continuation. No change to the entry schema, to `audit_log()`'s never-fail contract, or
+  to the no-kill-switch decision.
 
 ### Version 2.6.0 (2026-08-03)
 

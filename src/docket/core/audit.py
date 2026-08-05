@@ -7,10 +7,24 @@ Secret VALUES are never logged: callers pass only the key name / action target.
 Tamper evidence: every line carries a monotonic ``seq`` and a ``prev_hash``
 — the SHA-256 of the previous line's canonical JSON form (stdlib ``hashlib``, no
 new dependency). ``verify_chain()`` walks the file and reports the first broken
-link. A missing/empty file, a pre-chain legacy line (no ``seq``/``prev_hash``),
-or the first entry after a size-triggered rotation are honest **chain restarts**
-(seq resets to 1, prev_hash resets to ``GENESIS_HASH``) rather than tampering —
-callers treat them as "unchained (legacy)", never as a break.
+link. A missing/empty file, or a pre-chain legacy line (no ``seq``/``prev_hash``),
+are honest **chain restarts** (seq resets to 1, prev_hash resets to
+``GENESIS_HASH``) rather than tampering — callers treat them as "unchained
+(legacy)", never as a break.
+
+A size-triggered rotation does NOT restart the chain: the first entry written
+after a rotation carries the rotated generation's final ``seq + 1`` and the
+SHA-256 of its final entry, so the new file *declares what it continues from*
+instead of silently claiming to be a fresh install. ``verify_chain()`` checks
+that declaration against the single rotated-backup generation
+(``audit.log.1``) it should still be sitting in; a claim that can't be
+substantiated there (backup missing, or its tail doesn't match) is reported as
+a break, not silently accepted. This makes a deleted or altered backup
+generation *evident* — it does not, and cannot, make erasure impossible: an
+attacker with full filesystem access can always delete both the current file
+and the backup and let the next write start a genuine fresh genesis chain,
+indistinguishable from a real fresh install. See
+specs/functional/audit.spec.md Requirement 9 for the full state table.
 
 There is no environment kill switch: recording is best-effort (a write failure
 never raises) but can no longer be silently switched off — a prior
@@ -113,18 +127,31 @@ def _chain_head(logf: Path) -> tuple[int, str]:
     return seq + 1, _hash_entry(last)
 
 
-def _rotate_if_needed(logf: Path) -> None:
+def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
     """Rotate *logf* to a single-generation ``<name>.1`` backup once oversized.
 
     Best-effort: any OSError is swallowed (matches audit_log's never-fail
-    contract). The new current file starts a fresh chain (see _chain_head).
+    contract) and reported as None, same as "no rotation happened".
+
+    Returns the ``(seq, prev_hash)`` the very next entry should carry to
+    honestly continue the rotated generation's chain — exactly what
+    ``_chain_head`` would have returned for *logf* had it never been renamed
+    away — or ``None`` when either no rotation happened, or the rotated
+    generation's last line had nothing chained to continue from (missing/
+    empty file, or a legacy line with no ``seq``/``prev_hash``). In both
+    ``None`` cases the caller falls back to ``_chain_head(logf)``, which
+    correctly reads the (now-absent) current file as a fresh genesis chain —
+    unchanged from pre-rotation-continuation behaviour.
     """
     try:
-        if logf.exists() and logf.stat().st_size >= _cfg.AUDIT_LOG_MAX_BYTES:
-            backup = logf.with_suffix(logf.suffix + ".1")
-            os.replace(logf, backup)
+        if not (logf.exists() and logf.stat().st_size >= _cfg.AUDIT_LOG_MAX_BYTES):
+            return None
+        continuation = _chain_head(logf)
+        backup = logf.with_suffix(logf.suffix + ".1")
+        os.replace(logf, backup)
     except OSError:
-        pass
+        return None
+    return None if continuation == (1, GENESIS_HASH) else continuation
 
 
 def audit_log(action: str, detail: str = "") -> None:
@@ -152,8 +179,8 @@ def audit_log(action: str, detail: str = "") -> None:
         return
 
     try:
-        _rotate_if_needed(logf)
-        seq, prev_hash = _chain_head(logf)
+        continuation = _rotate_if_needed(logf)
+        seq, prev_hash = continuation if continuation is not None else _chain_head(logf)
         entry: dict[str, Any] = {
             "seq": seq,
             "ts": _utc_now(),
@@ -208,7 +235,16 @@ class ChainBreak:
 
 @dataclass(frozen=True)
 class VerifyResult:
-    """Outcome of walking the current audit log's hash chain."""
+    """Outcome of walking the current audit log's hash chain.
+
+    ``continued_from_seq`` is set only when the current file's first entry
+    made — and this walk successfully verified against ``audit.log.1`` — a
+    rotation-continuation claim (Requirement 9c): the seq the rotated-away
+    generation ended on. ``None`` covers both "no claim was made" (a genuine
+    genesis chain, or a chain restart after a legacy tail) and "this file has
+    no entries at all" — callers that care about the distinction already have
+    ``exists``/``total_lines`` for that.
+    """
 
     exists: bool
     total_lines: int
@@ -216,17 +252,69 @@ class VerifyResult:
     legacy: int
     break_at: ChainBreak | None
     rotated_backup: bool
+    continued_from_seq: int | None = None
+
+
+def _verify_rotation_continuation(
+    logf: Path, claimed_seq: int, claimed_prev_hash: str
+) -> str | None:
+    """Check a first-entry rotation-continuation claim against ``<logf>.1``.
+
+    *claimed_seq*/*claimed_prev_hash* are the current file's first entry's
+    own ``seq``/``prev_hash`` — i.e. it claims the rotated-away generation
+    ended at ``seq=claimed_seq - 1`` with that hash. Returns ``None`` when
+    the backup's last line substantiates the claim, or an explanatory reason
+    string (unmatched to a specific line — the caller attaches it to line 1,
+    the entry making the claim) when it does not: this is the "erasure"
+    case this card exists to surface. Only ever called when the claim is
+    structurally plausible (``claimed_seq > 1``, ``claimed_prev_hash !=
+    GENESIS_HASH``) — see ``verify_chain``.
+    """
+    backup = logf.with_suffix(logf.suffix + ".1")
+    claimed_from = claimed_seq - 1
+    line = _last_line(backup)
+    if line is None:
+        return (
+            f"chain claims continuation from seq={claimed_from}, but "
+            f"{backup.name} is missing — earlier history may have been deleted"
+        )
+    try:
+        backup_entry: dict[str, Any] = json.loads(line)
+    except json.JSONDecodeError:
+        return (
+            f"chain claims continuation from seq={claimed_from}, but "
+            f"{backup.name}'s last line is not valid JSON — predecessor cannot "
+            "be verified"
+        )
+    try:
+        backup_seq = int(backup_entry.get("seq", -1))
+    except (TypeError, ValueError):
+        backup_seq = -1
+    if backup_seq != claimed_from or _hash_entry(backup_entry) != claimed_prev_hash:
+        return (
+            f"chain claims continuation from seq={claimed_from}, but "
+            f"{backup.name} does not match — the predecessor generation was "
+            "altered or replaced"
+        )
+    return None
 
 
 def verify_chain() -> VerifyResult:
     """Walk ``$DOCKET_HOME/audit.log`` and verify its tamper-evidence chain.
 
-    Only the *current* file is checked — a rotation starts a fresh chain, so
-    there is nothing to bridge across the boundary (``rotated_backup`` tells
-    the caller a backup exists so it can say so explicitly). Legacy lines
-    (written before this chain existed, i.e. missing ``seq``/``prev_hash``)
-    are counted separately and reset expectations for the next chained line,
-    exactly like a rotation boundary — they are never reported as breaks.
+    Only the *current* file's entries are re-hashed — but its very first
+    entry may *claim* to continue a rotated-away generation (Requirement 9c),
+    and when it does, that claim is checked against the single rotated
+    backup (``audit.log.1``) it should still be sitting in. Three states
+    follow from this: a genuine genesis chain (no claim made — a fresh
+    install, or a restart after a legacy tail), a claim that the backup
+    substantiates (reported clean, with ``continued_from_seq`` set), or a
+    claim the backup cannot substantiate — missing, unreadable, or simply not
+    a match — which is reported as a break exactly like a hand-tampered
+    line, not silently accepted. Legacy lines (written before this chain
+    existed, i.e. missing ``seq``/``prev_hash``) are counted separately and
+    reset expectations for the next chained line, same as before this card —
+    they are never reported as breaks.
     """
     logf = _cfg.AUDIT_LOG
     rotated = logf.with_suffix(logf.suffix + ".1").exists()
@@ -244,6 +332,7 @@ def verify_chain() -> VerifyResult:
     legacy = 0
     expected_seq: int | None = None
     expected_prev: str | None = None
+    continued_from_seq: int | None = None
 
     for i, raw in enumerate(lines, start=1):
         try:
@@ -256,6 +345,7 @@ def verify_chain() -> VerifyResult:
                 legacy,
                 ChainBreak(i, "malformed JSON line, cannot verify"),
                 rotated,
+                continued_from_seq,
             )
 
         if "seq" not in entry or "prev_hash" not in entry:
@@ -274,11 +364,31 @@ def verify_chain() -> VerifyResult:
                 legacy,
                 ChainBreak(i, "non-integer seq, cannot verify"),
                 rotated,
+                continued_from_seq,
             )
         prev_hash = str(entry.get("prev_hash", ""))
 
         if expected_seq is None:
-            if seq != 1:
+            is_chain_start = i == 1
+            if seq == 1 and prev_hash == GENESIS_HASH:
+                pass  # genuine genesis chain (or a restart after a legacy tail)
+            elif is_chain_start and seq > 1 and prev_hash != GENESIS_HASH:
+                # Only the file's very first entry can legitimately claim a
+                # rotation continuation -- a restart after a mid-file legacy
+                # line never can, since audit_log() never produces one there.
+                gap = _verify_rotation_continuation(logf, seq, prev_hash)
+                if gap is not None:
+                    return VerifyResult(
+                        True,
+                        len(lines),
+                        chained,
+                        legacy,
+                        ChainBreak(i, gap),
+                        rotated,
+                        continued_from_seq,
+                    )
+                continued_from_seq = seq - 1
+            elif seq != 1:
                 return VerifyResult(
                     True,
                     len(lines),
@@ -286,8 +396,9 @@ def verify_chain() -> VerifyResult:
                     legacy,
                     ChainBreak(i, f"expected chain restart at seq=1, found seq={seq}"),
                     rotated,
+                    continued_from_seq,
                 )
-            if prev_hash != GENESIS_HASH:
+            else:
                 return VerifyResult(
                     True,
                     len(lines),
@@ -295,6 +406,7 @@ def verify_chain() -> VerifyResult:
                     legacy,
                     ChainBreak(i, "expected GENESIS prev_hash at chain start"),
                     rotated,
+                    continued_from_seq,
                 )
         else:
             if seq != expected_seq:
@@ -305,6 +417,7 @@ def verify_chain() -> VerifyResult:
                     legacy,
                     ChainBreak(i, f"seq out of order (expected {expected_seq}, found {seq})"),
                     rotated,
+                    continued_from_seq,
                 )
             if prev_hash != expected_prev:
                 return VerifyResult(
@@ -314,10 +427,11 @@ def verify_chain() -> VerifyResult:
                     legacy,
                     ChainBreak(i, "prev_hash mismatch — an earlier line was altered or removed"),
                     rotated,
+                    continued_from_seq,
                 )
 
         chained += 1
         expected_seq = seq + 1
         expected_prev = _hash_entry(entry)
 
-    return VerifyResult(True, len(lines), chained, legacy, None, rotated)
+    return VerifyResult(True, len(lines), chained, legacy, None, rotated, continued_from_seq)

@@ -112,6 +112,53 @@ class TestChainWriting:
         assert millis.isdigit()
 
 
+class TestAuditLogNeverRaises:
+    """audit_log()'s never-fail contract (module docstring) must survive
+    whatever this card added -- a rotation-continuation lookup is still
+    just another best-effort step inside the same try/except."""
+
+    def test_unwritable_parent_directory_does_not_raise(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _boom(self: Path, *a: object, **kw: object) -> None:
+            raise OSError("simulated: cannot create parent directory")
+
+        monkeypatch.setattr(Path, "mkdir", _boom, raising=True)
+        _audit.audit_log("keys.add", "SHOULD_NOT_RAISE")  # must not raise
+        assert not (audit_home / "audit.log").exists()
+
+    def test_unwritable_log_file_does_not_raise(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_open = Path.open
+
+        def _boom_on_log(self: Path, *a: object, **kw: object) -> object:
+            if self.name == "audit.log":
+                raise OSError("simulated: cannot open audit.log for append")
+            return real_open(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "open", _boom_on_log, raising=True)
+        _audit.audit_log("keys.add", "SHOULD_NOT_RAISE")  # must not raise
+        assert not (audit_home / "audit.log").exists()
+
+    def test_unwritable_backup_during_rotation_does_not_raise(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # _rotate_if_needed's os.replace can itself fail (e.g. a read-only
+        # parent) -- must degrade to "no rotation happened" (None), not raise.
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+        _audit.audit_log("keys.add", "FIRST")
+
+        def _boom(*a: object, **kw: object) -> None:
+            raise OSError("simulated: cannot rename during rotation")
+
+        monkeypatch.setattr("os.replace", _boom, raising=True)
+        _audit.audit_log("keys.add", "SECOND")  # must not raise despite rotation failing
+        # The write itself still succeeded (best-effort covers rotation only).
+        entries = _audit.read_audit()
+        assert entries[-1]["detail"] == "SECOND"
+
+
 class TestChainVerify:
     def test_missing_log_reports_nothing_to_verify(self, audit_home: Path) -> None:
         result = _audit.verify_chain()
@@ -193,19 +240,179 @@ class TestChainVerify:
         rc = audit_cli.run_audit()
         assert rc == 0
 
-    def test_rotation_starts_a_fresh_chain_and_is_reported(
+    def test_single_rotation_continues_the_chain_and_verifies_clean(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """W18-1: a single rotation no longer restarts the chain at seq=1.
+
+        The new current file's first entry carries the rotated generation's
+        final seq+1 and its hash as prev_hash -- a continuation claim -- and
+        `verify_chain` checks that claim against the backup it just wrote,
+        reporting it clean with `continued_from_seq` set rather than a fresh
+        (indistinguishable-from-genesis) restart.
+        """
         monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
         _audit.audit_log("keys.add", "FIRST")
         _audit.audit_log("keys.add", "SECOND")
 
         assert (audit_home / "audit.log.1").exists()
+        entries = _audit.read_audit()
+        assert entries[0]["seq"] == 2  # continues from the rotated "FIRST", not 1
+        assert entries[0]["prev_hash"] != _audit.GENESIS_HASH
+
         result = _audit.verify_chain()
         assert result.rotated_backup is True
         assert result.break_at is None
         assert result.chained == 1  # only "SECOND" is in the current file
         assert result.total_lines == 1  # rotated-away "FIRST" isn't in this count either
+        assert result.continued_from_seq == 1  # verified against audit.log.1's "FIRST"
+
+    def test_rotation_over_a_legacy_tail_still_starts_a_fresh_genesis_chain(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Backward compat: a legacy (pre-chain) last line has no seq/prev_hash
+        to continue from, so rotating it away is still an honest restart at
+        seq=1/GENESIS_HASH -- unchanged from pre-W18-1 behaviour."""
+        logf = audit_home / "audit.log"
+        legacy_line = json.dumps(
+            {"ts": "2026-06-01T00:00:00Z", "user": "alice", "pid": 1, "action": "x", "detail": ""}
+        )
+        logf.write_text(legacy_line + "\n", encoding="utf-8")
+        logf.chmod(0o600)
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+
+        _audit.audit_log("keys.add", "AFTER_ROTATED_LEGACY")
+
+        entries = _audit.read_audit()
+        assert entries[0]["seq"] == 1
+        assert entries[0]["prev_hash"] == _audit.GENESIS_HASH
+        result = _audit.verify_chain()
+        assert result.break_at is None
+        assert result.continued_from_seq is None
+
+
+class TestRotationErasureDetection:
+    """W18-1: the reproduced bug and its fix.
+
+    Before this card, flooding a small AUDIT_LOG_MAX_BYTES with enough
+    entries to rotate twice erased the security-relevant entries from BOTH
+    the current file and the single-generation backup, and verify_chain()
+    reported a clean chain restarting at seq=1 -- indistinguishable from a
+    fresh install. The fix doesn't recover the deleted bytes (nothing can,
+    short of keeping unbounded generations), but it makes the fact that
+    history preceded the current file impossible to hide silently: seq no
+    longer resets at a rotation, and if the one backup generation that would
+    substantiate the continuation claim is itself missing or altered,
+    verify_chain() now reports a break instead of "no break".
+    """
+
+    def _flood_past_two_rotations(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 300, raising=True)
+        _audit.audit_log("keys.add", "SECRET_ONE")
+        _audit.audit_log("keys.remove", "SECRET_TWO")
+        for i in range(200):
+            _audit.audit_log("noise.tick", f"n{i}")
+
+    def test_flooding_erases_the_entries_but_seq_no_longer_hides_it(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._flood_past_two_rotations(monkeypatch)
+
+        # The bug's original symptom is still true: the secret-bearing lines
+        # are genuinely gone from disk. Nothing about this card recovers them.
+        all_text = (audit_home / "audit.log").read_text(encoding="utf-8") + (
+            audit_home / "audit.log.1"
+        ).read_text(encoding="utf-8")
+        assert "SECRET_ONE" not in all_text
+        assert "SECRET_TWO" not in all_text
+
+        # But unlike before, verify_chain no longer claims a fresh seq=1
+        # chain -- the true, much larger seq is visible, evidencing that a
+        # long history preceded this file even though most of it rotated
+        # away legitimately (not tampering: the single retained backup
+        # verifies the one hop we can still substantiate).
+        entries = _audit.read_audit()
+        assert entries[0]["seq"] > 2
+        result = _audit.verify_chain()
+        assert result.break_at is None
+        assert result.continued_from_seq is not None
+
+    def test_deleting_the_backup_after_flooding_is_now_detected(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The concrete guard: erasing the one remaining link (audit.log.1)
+        turns a verifiable continuation into an unverifiable one, and that
+        IS reported as a break -- this is the new, previously-missing
+        detection the card exists to add."""
+        self._flood_past_two_rotations(monkeypatch)
+        assert _audit.verify_chain().break_at is None  # sanity: clean before erasure
+
+        (audit_home / "audit.log.1").unlink()
+
+        result = _audit.verify_chain()
+        assert result.break_at is not None
+        assert result.break_at.line == 1
+        assert "audit.log.1 is missing" in result.break_at.reason
+        assert result.rotated_backup is False
+        assert result.continued_from_seq is None
+
+    def test_altering_the_backups_tail_after_rotation_is_detected(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Deleting the backup isn't the only way to hide history -- hand-
+        editing its last line so it no longer matches the current file's
+        continuation claim must be caught the same way."""
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+        _audit.audit_log("keys.add", "FIRST")
+        _audit.audit_log("keys.add", "SECOND")
+        assert _audit.verify_chain().break_at is None  # sanity: clean before tamper
+
+        backup = audit_home / "audit.log.1"
+        tampered = json.loads(backup.read_text(encoding="utf-8").strip())
+        tampered["detail"] = "TAMPERED"
+        backup.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
+
+        result = _audit.verify_chain()
+        assert result.break_at is not None
+        assert result.break_at.line == 1
+        assert "does not match" in result.break_at.reason
+
+
+class TestPreexistingLogBackwardCompat:
+    """W18-1: a log written entirely by the pre-continuation code (or one
+    whose rotation predates this card) must not be reported as tampering
+    just because it now sits next to a backup it never claimed."""
+
+    def test_preexisting_current_file_with_unrelated_backup_verifies_clean(
+        self, audit_home: Path
+    ) -> None:
+        # Simulates: the pre-W18-1 code rotated once, writing a current file
+        # that (as it always did) restarts at seq=1/GENESIS_HASH with no
+        # knowledge of, or claim on, the backup sitting next to it.
+        backup = audit_home / "audit.log.1"
+        backup.write_text(
+            json.dumps(
+                {
+                    "seq": 1,
+                    "ts": "2026-06-01T00:00:00.000Z",
+                    "user": "alice",
+                    "pid": 1,
+                    "action": "keys.add",
+                    "detail": "OLD_BEFORE_ROTATION",
+                    "prev_hash": _audit.GENESIS_HASH,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backup.chmod(0o600)
+
+        _audit.audit_log("keys.add", "AFTER_OLD_ROTATION")
+
+        result = _audit.verify_chain()
+        assert result.break_at is None
+        assert result.continued_from_seq is None  # no claim was ever made
+        assert result.rotated_backup is True
 
 
 class TestAuditVerifyCommand:
@@ -259,6 +466,35 @@ class TestAuditVerifyCommand:
         captured = capsys.readouterr()
         assert rc == 1
         assert "line 2 of 3" in captured.err
+
+    def test_verify_reports_a_verified_rotation_continuation(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+        _audit.audit_log("keys.add", "FIRST")
+        _audit.audit_log("keys.add", "SECOND")
+
+        rc = audit_cli.run_audit_verify()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "verified clean" in out
+        assert "continues from a rotated generation" in out
+
+    def test_verify_reports_erasure_of_the_rotated_backup_as_a_failure(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # W18-1's headline case: before this card, deleting audit.log.1
+        # after a rotation left `docket audit verify` reporting a clean
+        # chain (exit 0). It must now fail loudly (exit 1).
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+        _audit.audit_log("keys.add", "FIRST")
+        _audit.audit_log("keys.add", "SECOND")
+        (audit_home / "audit.log.1").unlink()
+
+        rc = audit_cli.run_audit_verify()
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "audit.log.1 is missing" in captured.err
 
 
 # ── new call-site coverage ───────────────────────────────────────────────────

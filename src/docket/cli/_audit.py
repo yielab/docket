@@ -81,9 +81,15 @@ def run_audit_verify() -> int:
         summary += f", {result.legacy} legacy (unchained) line(s) skipped"
     ui.success(summary + ".")
 
-    if result.rotated_backup:
+    if result.continued_from_seq is not None:
         ui.dim(
-            "  A rotated backup exists (audit.log.1) — verify only checks the "
-            "current file; each rotation starts a fresh chain."
+            f"  Chain continues from a rotated generation ending at "
+            f"seq={result.continued_from_seq} — verified against audit.log.1."
+        )
+    elif result.rotated_backup:
+        ui.dim(
+            "  A rotated backup exists (audit.log.1), but this chain does not "
+            "claim continuity from it (it started fresh after a pre-chain/legacy "
+            "line) — verify only checks the current file."
         )
     return 0
