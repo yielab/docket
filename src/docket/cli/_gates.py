@@ -62,7 +62,11 @@ def _status() -> int:
 
     iso = _fleet.get_isolation_mode()
     if iso in ("non-main", "all"):
-        ui.success(f"Workspace isolation: {iso} (recorded — not yet consulted by the turn loop)")
+        ui.success(
+            f"Workspace isolation: {iso} (consulted by the turn loop — sandboxed via docker/bwrap "
+            "when a backend is available; a turn refuses to run rather than falling back "
+            "unsandboxed)"
+        )
     elif iso == "off":
         ui.dim("Workspace isolation: off")
     else:
@@ -114,11 +118,12 @@ def _isolate(want: str) -> int:
 
     _sec.apply_workspace_isolation()
     audit_log("gates.isolate", "on")
-    ui.success("Sandbox isolation recorded on (mode=non-main)")
-    ui.warn(
-        "Not yet consulted by the turn loop: DocketDriver always runs tools unsandboxed "
-        "(ToolContext.sandbox='off') regardless of this setting — recorded for a future card, "
-        "not faked as live enforcement."
+    ui.success("Sandbox isolation on (mode=non-main)")
+    ui.dim(
+        "  Consulted by the turn loop: DocketDriver probes docker/bwrap fresh on every turn and "
+        "runs tools sandboxed (ToolContext.sandbox='auto') when one is usable. If neither is "
+        "available when a turn starts, the turn refuses to run rather than falling back "
+        "unsandboxed, and the refusal is audited ('isolation.refused')."
     )
     ui.console.print("  Disable: [green]docket gates isolate off[/green]")
     return 0

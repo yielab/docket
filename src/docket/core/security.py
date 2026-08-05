@@ -312,12 +312,13 @@ def disable_approval_routing() -> None:
 def apply_workspace_isolation() -> None:
     """Record that per-agent Docker sandbox isolation is desired.
 
-    The Docker capability check is the caller's responsibility. Writes
-    fleet.json's isolation mode; **not yet consulted by the turn loop** —
-    ``edges/adapters/docket_runtime.py``'s ``DocketDriver`` always constructs
-    its ``ToolContext`` with ``sandbox="off"``, so this flag does not yet
-    change what a real tool call does. Recorded honestly here so the state
-    exists for a future card to wire, not silently dropped.
+    The Docker capability check at ``docket gates isolate on`` time is the
+    caller's responsibility. Writes fleet.json's isolation mode, which
+    ``edges/adapters/docket_runtime.py``'s ``DocketDriver`` reads on every
+    turn (via ``core.fleet.get_isolation_enabled``) to decide whether to ask
+    for a sandboxed ``ToolContext``: real docker/bwrap containment when a
+    backend is usable, an audited refusal instead of an unsandboxed run when
+    neither is.
     """
     _fleet.set_sandbox_isolation(mode="non-main")
 

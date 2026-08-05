@@ -1,8 +1,8 @@
 # Security Gates Specification
 
-**Version**: 0.12.1
-**Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below — and, **unlike** the in-turn tool-call gate above (now live), still has no live-path caller: `DocketDriver`'s `ToolContext` construction never sets `sandbox="auto"`, so nothing in production requests a jail yet even though the gate that decides whether a `bash` call may run at all is itself now unconditionally live. Do not read this Status line as "sandboxing is on"; it is real, tested, additive infrastructure describing what happens once something turns it on. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
-**Last Updated**: 2026-08-03
+**Version**: 0.13.0
+**Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below. **As of W18-3, it also has a live-path caller**: `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` resolves `ToolContext.sandbox` from the operator's `docket gates isolate on`/`off` posture (`core.fleet.get_isolation_enabled`) fresh on every real turn — `"off"` unless isolation is on, `"auto"` when it is on and a backend is usable, and an outright, audited refusal of the whole turn (never a silent unsandboxed run) when it is on and neither docker nor bwrap is usable. The default install still ships isolation off, so the overwhelmingly common path is unchanged; what changed is that turning it on now does something. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
+**Last Updated**: 2026-08-05
 
 ## Purpose
 
@@ -31,9 +31,14 @@ both configures and enforces this gate itself.
 > Phase 19 P19-8 — a `/approve`/`/deny` reply in a chat bound via `docket wire`, answered by
 > docket's own bot (`docket serve --telegram`). `docket gates isolate
 > on`/`off` separately records (`core/security.py`'s `apply_workspace_isolation`/
-> `disable_workspace_isolation`) whether tool execution should be confined to a per-agent Docker
-> sandbox — recorded today, **not yet consulted by the turn loop** (`DocketDriver` always runs
-> tools unsandboxed, `ToolContext.sandbox="off"`, regardless of this flag). `docket doctor`
+> `disable_workspace_isolation`) whether tool execution should be confined to a sandbox —
+> **consulted by the turn loop as of W18-3**: `edges/adapters/docket_runtime.py`'s `DocketDriver`
+> reads the flag (`core.fleet.get_isolation_enabled`) fresh on every real turn and resolves
+> `ToolContext.sandbox` from it — `"off"` when isolation is off (byte-identical to every prior
+> version), `"auto"` when isolation is on and `system.sandbox_availability()` finds a usable
+> docker/bwrap backend, and an outright, audited refusal (`isolation.refused`) of the whole turn
+> — never a silent unsandboxed fallback — when isolation is on and neither backend is usable. See
+> "Exec sandbox" below for the full contract, corrected for this. `docket doctor`
 > reports gate status (always-active), approval routing, isolation, and config-permission
 > hardening. `docket gates enable [--force]` keeps the `--force` flag for CLI compatibility, but
 > there is no longer an existing-config idempotency distinction for it to force over — routing is
@@ -607,8 +612,8 @@ either.
    filesystem jail can break a command that gate would have allowed outright, e.g. one that reads a
    path genuinely outside the workspace roots for a legitimate reason). Recommendation: **leave
    `"off"` until an operator has verified docker or bwrap works on their fleet's hosts**, then opt
-   in per role via whatever constructs `ToolContext` (ROADMAP Phase 19 P19-5's agent loop, not yet
-   built) — the same "opt in, verify, then adopt" path Docker workspace isolation already uses.
+   in fleet-wide with `docket gates isolate on` — the same "opt in, verify, then adopt" path Docker
+   workspace isolation already used before it, too, was wired live (W18-3; see requirement 9).
 3. **The jail is additive to `resolve_within`, never a replacement.** A `bwrap` jail binds the whole
    host filesystem read-only over itself, then re-binds each of `ToolContext.roots` read-write on
    top — the same "contain to a known set of roots" shape `resolve_within` already uses for file
@@ -677,19 +682,34 @@ either.
    larger, separate decision this card does not make — a network-isolated mode is a natural future
    addition, not a gap being silently left open. This **MUST NOT** be described as network isolation
    anywhere in user-facing material; this section governs filesystem and process containment only.
-9. **Scope — stated precisely, matching the Status line (corrected for P19-7b: unlike the gate
-   above, this piece is still not live).** This section governs `edges/adapters/toolbox.py`'s
-   `run_bash` and the `bash` tool registration in `core/tools.py` only. As of this version:
-   - `ToolContext.sandbox` defaults to `"off"` everywhere `ToolContext` is constructed today —
-     `grep`-verified zero production call sites pass `sandbox="auto"`, including `DocketDriver`'s
-     own construction of it (`edges/adapters/docket_runtime.py`'s `run_turn`). Unlike the
-     `pre_tool_call`/command-classifier gate above (now live on every real hop since P19-5/P19-7a),
-     this is still real, tested, additive infrastructure with no live-path caller — not a claim
-     that any agent is sandboxed today.
-   - `docket doctor`/`docket gates classes` do not yet surface `sandbox_availability()` — this wave
-     owns the mechanism (`edges/adapters/system.py`, `edges/adapters/toolbox.py`, the
-     `ToolContext`/`bash`-registration slice of `core/tools.py`) and leaves CLI wiring to whichever
-     card touches those command modules next.
+9. **Scope — stated precisely, matching the Status line (corrected for W18-3: this piece is now
+   live, gated behind the operator's own on/off switch).** This section governs
+   `edges/adapters/toolbox.py`'s `run_bash` and the `bash` tool registration in `core/tools.py`;
+   `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` is the one production caller that
+   decides what `ToolContext.sandbox` a real turn gets. As of this version:
+   - `ToolContext.sandbox` still defaults to `"off"` everywhere `ToolContext` is constructed
+     directly (tests, and any future driver) — the change is narrower than "on by default
+     everywhere": `DocketDriver.run_turn` is the one call site that can now pass `"auto"`, and only
+     does so when `core.fleet.get_isolation_enabled()` is true (`docket gates isolate on`). No
+     install ships with isolation on by default, so a fresh install's turns are unaffected byte for
+     byte — this requirement's guarantee is about what changes once an operator opts in, not a
+     change to the default.
+   - **Fail closed, not fail open, when isolation is on and no backend is usable.**
+     `DocketDriver.run_turn` probes `system.sandbox_availability()` itself before building
+     `ToolContext` (a second call, independent of the one `toolbox.run_bash` makes per `bash` call
+     when `sandbox="auto"`): if isolation is on and the probe comes back `"none"`, the turn is
+     refused outright (`TurnResult(ok=False, failure_kind="daemon_error")`) and the refusal is
+     audited (`audit_log("isolation.refused", ...)`) — no LLM call is made and no tool executes.
+     This is deliberately *not* the same behaviour as handing `sandbox="auto"` straight to
+     `toolbox.run_bash` and letting each `bash` call degrade individually to an honest
+     `[sandbox: none (...)]`-tagged unsandboxed run (requirement 4's per-call reporting): a
+     per-call marker only an operator reading raw tool output would ever see is not an acceptable
+     substitute for "isolation is on" actually meaning something, so the turn-level gate refuses
+     before any call gets the chance to degrade.
+   - `docket doctor`/`docket gates classes` do not surface the raw `sandbox_availability()` probe
+     (backend/docker/bwrap booleans) — `docket gates status`/`docket doctor` report the
+     operator-facing fact (isolation on/off, and that it is consulted), not the mechanism-level
+     probe result; the latter remains a `docket doctor` enhancement, not yet built.
    - There is no more daemon exec path for this section to be contrasted with (P19-7b deleted it);
      what this section adds is layered underneath the `pre_tool_call`/command-classifier gate
      above — a second, independent layer on top of calls that already cleared that gate, exactly
@@ -1003,9 +1023,12 @@ $ docket audit
 
 ### Exec sandbox — examples (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
-Like the section above, `ToolContext.sandbox` has no live-path caller yet — these are
-`toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
-`tests/python/test_sandboxed_exec.py` asserts, not shell transcripts a user can run today.
+These are `toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
+`tests/python/test_sandboxed_exec.py` asserts, not shell transcripts a user can run directly — but
+unlike the P19-9 version of this section, they are no longer hypothetical: `DocketDriver.run_turn`
+is a real, live caller that picks `sandbox="auto"` for exactly these shapes whenever `docket gates
+isolate on` is set and a backend is usable (`tests/python/test_docket_driver.py`'s
+`TestIsolationWiring`).
 
 The default — `sandbox="off"` — is the same function that shipped in P19-2, byte for byte:
 
@@ -1216,6 +1239,48 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.13.0 (2026-08-05)
+
+- **W18-3 — `docket gates isolate on` now reaches a live turn.** Closes the gap this spec's own
+  "Exec sandbox" requirement 9 and the `docket gates status`/`docket doctor` output both admitted
+  honestly: the flag was recorded in `fleet.json` but nothing on the real turn path ever read it
+  back, so isolation ON was silently indistinguishable from isolation OFF on every dispatch. Fixed
+  in `edges/adapters/docket_runtime.py`: `DocketDriver.run_turn` now resolves
+  `ToolContext.sandbox` from `core.fleet.get_isolation_enabled()` (the single field every isolation
+  writer — `set_isolation_enabled`, `set_sandbox_isolation`, `disable_sandbox_isolation` — funnels
+  through, so this can never disagree with what `docket gates status` prints) fresh on every real
+  turn, before building the tool registry.
+  - Off (the default, unchanged): `sandbox="off"`, byte-identical to every prior version —
+    `tests/python/test_docket_driver.py::TestIsolationWiring::test_isolation_off_leaves_ctx_sandbox_off`.
+  - On, with a usable backend: `sandbox="auto"`, using the existing backend selection
+    (`system.sandbox_availability()`, `DOCKET_SANDBOX_BACKEND` override respected, no parallel
+    mechanism added) — `test_isolation_on_with_backend_available_sets_sandbox_auto`,
+    `test_docket_sandbox_backend_override_still_wins`.
+  - **On, with no usable backend: the whole turn is refused, not silently run unsandboxed.**
+    `DocketDriver.run_turn` probes availability itself before the loop starts; if isolation is on
+    and neither docker nor bwrap is usable, it returns `TurnResult(ok=False,
+    failure_kind="daemon_error")` without making an LLM call or executing a tool, and audits the
+    refusal (`audit_log("isolation.refused", ...)`) since a refused turn produces no
+    `dispatch_tool` entry to carry the reason otherwise —
+    `test_isolation_on_no_backend_refuses_the_turn_rather_than_running_unsandboxed`. This is
+    deliberately stricter than `toolbox.run_bash`'s own per-call `sandbox="auto"` degrade (an
+    honest `[sandbox: none (...)]`-tagged unsandboxed run, requirement 4 of "Exec sandbox" above):
+    a marker buried in one tool call's output is not an acceptable stand-in for "isolation is on"
+    actually meaning something at the turn level.
+  - End-to-end proof that the flag `docket gates isolate on` writes is the one the turn reads:
+    `test_the_flag_docket_gates_isolate_on_writes_is_the_one_the_turn_reads` drives the real CLI
+    command, not `set_isolation_enabled` directly and not a hand-built `ToolContext`.
+  - `cli/_gates.py`'s `docket gates status`/`isolate on` output and `cli/_doctor.py`'s security
+    section are corrected to match: both previously stated, accurately at the time, that isolation
+    was "recorded — not yet consulted by the turn loop"; that line is now false and is replaced
+    with an honest description of the live behaviour above.
+  - Requirement 9 of "Exec sandbox for the `bash` tool" (below) is rewritten for this — it
+    previously stated, as settled fact, that `ToolContext.sandbox` had no live-path caller and that
+    `DocketDriver`'s own construction of it was grep-verified to always pass `"off"`. Both
+    statements are now false for the isolation-on case; the requirement is corrected rather than
+    silently left stale, per this spec's own standing practice of correcting statements that turn
+    out false rather than deleting the record of what was true before.
 
 ### Version 0.12.1 (2026-08-04)
 

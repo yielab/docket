@@ -240,7 +240,7 @@ class TestGatesIsolate:
         fleet = json.loads(_cfg.FLEET_FILE.read_text())
         assert fleet["security"]["isolationMode"] == "non-main"
         assert fleet["security"]["isolationEnabled"] is True
-        assert "Sandbox isolation recorded on" in out
+        assert "Sandbox isolation on" in out
 
     def test_isolate_off(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
