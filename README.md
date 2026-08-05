@@ -432,13 +432,13 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,141 tests** in the pytest suite (`tests/python/`)
-- **~26,784 lines** of Python in the shipped `docket` package
+- **2,162 tests** in the pytest suite (`tests/python/`)
+- **~27,257 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,141-test Python suite
+uv run pytest                                        # 2,162-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -517,7 +517,7 @@ asymmetry — things reachable from the CLI or MCP but not over HTTP.
 | `GET /tasks/<project>` | The pod queue as JSON | ✅ shipped |
 | `GET /traces/<project>?since=` | Cursor'd trace read, raw events out | ✅ shipped |
 | approval `channel` label | So a board-granted approval is distinguishable in the audit chain from a CI job's | ✅ shipped |
-| `POST /pods` | Provisioning over HTTP — `docket add` is CLI-only | in progress |
+| `POST /pods` | Provisioning over HTTP — `docket add` was CLI-only | ✅ shipped |
 
 The design rule is deliberately narrow: **expose what `core/` already does, add no new behaviour** —
 same auth, same policy hooks, same audit entries the CLI path produces. `POST /tasks` honours the

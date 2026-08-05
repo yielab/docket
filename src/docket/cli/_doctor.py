@@ -56,7 +56,7 @@ _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
     """Workspace files ``aid`` must have — role-aware for pod members.
 
-    ``cli/_pod.py``'s ``_write_member_workspace`` only ever writes ``TOOLS.md``
+    ``core/pod_provisioning.py``'s ``_write_member_workspace`` only ever writes ``TOOLS.md``
     for an Implementer (and only when it has allocated resources or a verify
     command) — a pod's Lead/Reviewer/Tester/other role never gets one, by
     design: there is nothing role-specific to document for them (no allocated

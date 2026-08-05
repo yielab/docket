@@ -136,18 +136,28 @@ to a record `docket trace`/`docket audit` can also show. This module only *reads
 compute counters; it never writes through them, keeping telemetry and the audit log's own
 tamper-evidence chain separate (ROADMAP Phase 20).
 
-**Durability caveat, stated plainly (not solved here — retention/rotation is P20-3, DEFERRED by
-D-24):** the audit-log-derived halves — all of `docket_approvals_total`, and the pre_tool_call
-slice of `docket_policy_hits_total` — see only `audit.log`'s *current* generation.
-`core/audit.py` rotates that file to a single-generation backup (`audit.log.1`, itself overwritten
-by the next rotation) once it exceeds `AUDIT_LOG_MAX_BYTES` (5MB by default), and `read_audit()`
-reads only the current file — a rotation silently drops whatever history was in the backup before
-it. A Prometheus `rate()` reading a counter that drops to a smaller-but-nonzero value on rotation
-misreads that as a reset followed by real (under-counted) traffic, not as missing history. Trace
-JSONL (the rest of these metrics) has no such gap — `core/trace.py`'s `sweep_all()` only appends a
-synthetic `session_end` to a stale-open trace, it never deletes a trace file — but that means trace
-storage instead grows without bound, the same "no trace retention policy" gap ROADMAP Phase 20
-already names (P20-3).
+**Durability caveat, stated plainly — every counter here is a lifetime-of-current-storage count,
+NOT a monotonic total.** Both sources lose history, for different reasons:
+
+1. **Audit-derived** — all of `docket_approvals_total`, and the pre_tool_call slice of
+   `docket_policy_hits_total` — see only `audit.log`'s *current* generation. `core/audit.py`
+   rotates that file to a single-generation backup (`audit.log.1`, itself overwritten by the next
+   rotation) once it exceeds `AUDIT_LOG_MAX_BYTES` (5MB by default), and `read_audit()` reads only
+   the current file, so a rotation silently drops whatever history was in the backup.
+2. **Trace-derived** — the rest of these metrics — had no such gap until 2.5.0, because traces were
+   only ever appended to. They now expire: `core/trace.py`'s `expire_old_traces()` (P22-6) deletes
+   *terminated* traces past `TRACE_RETENTION_S`, run by `docket trace expire` and by `serve`'s
+   periodic sweep. Retention bounds the unbounded storage growth this caveat used to name as an
+   open gap, at the cost of giving these counters the same drop behaviour.
+
+A Prometheus `rate()` reading a counter that drops to a **smaller-but-nonzero** value misreads that
+as a reset followed by real (under-counted) traffic, not as missing history. **Consumers MUST NOT
+build alerting that assumes these counters are monotonic.**
+
+Note that retention is measured from when a session *ended*, not from when it was last active: a
+trace with no `session_end` is never expired by age, and `sweep_all()`'s synthetic `session_end`
+carries a fresh timestamp, so an abandoned session's trace survives a full window after the sweep
+first terminates it.
 
 **Scrape cost, measured:** every `/metrics` request re-parses every trace JSONL file plus the whole
 current audit log — there is no cache. Measured against a synthetic corpus of 50 trace files across
@@ -543,6 +553,14 @@ already-provisioned `project` is `409`, untouched. A genuine mid-provisioning fa
 every member (and pod-level resource) created during that call before responding `500` — proven with
 a real induced failure (a monkeypatched workspace write raising on the second member), not a mock
 asserting a cleanup function was called. Additive (new endpoint only), so `apiVersion` is unchanged.
+
+Also in 2.5.0: the `/metrics` **durability caveat is rewritten, because P22-6 made half of it
+false.** It previously said trace-derived counters had no history gap "because `sweep_all()` never
+deletes a trace file", and named unbounded trace growth as an open P20-3 gap. Trace retention
+(`expire_old_traces`) closed that gap and, in doing so, gave the trace-derived counters the same
+drop behaviour the audit-derived ones already had. Both halves are now stated as
+lifetime-of-current-storage counts with an explicit MUST NOT on monotonic alerting. No metric
+name, type or label changed — only the honesty of what they mean.
 
 ### 2.4.0 — 2026-08-04
 
