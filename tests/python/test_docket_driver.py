@@ -28,9 +28,16 @@ from pathlib import Path
 import pytest
 
 import docket.config as _cfg
+from docket.cli import _gates
+from docket.core import fleet as _fleet
+from docket.core.audit import read_audit
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
+from docket.edges.adapters import system as _system
 from docket.edges.adapters.docket_runtime import DocketDriver
+from docket.edges.adapters.system import SandboxAvailability
+from docket.edges.adapters.toolbox import ToolOutcome
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +51,12 @@ def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
     monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", tmp_path / "docket" / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+    # DOCKET_SANDBOX_BACKEND leaking in from the real dev/CI environment would
+    # make TestIsolationWiring's "no backend available" cases flaky -- start
+    # every test from the same clean slate and let individual tests opt in.
+    monkeypatch.delenv("DOCKET_SANDBOX_BACKEND", raising=False)
 
 
 def _write_meta(agent_id: str, **overrides: object) -> Path:
@@ -341,3 +353,163 @@ class TestSessionIntrospection:
         sl = DocketDriver().read_new_turns("nobody", "agent:nobody:default", 0)
         assert sl.had_new_content is False
         assert sl.turns == []
+
+
+# ── isolation wiring (W18-3) ──────────────────────────────────────────────────
+
+
+def _probe_registry() -> ToolRegistry:
+    """A one-tool registry that reports back the exact `ctx.sandbox` value
+    `run_turn` built, so a test can observe it without hand-constructing a
+    `ToolContext` itself -- the real construction path is the thing under
+    test."""
+    registry = ToolRegistry()
+
+    def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+        return ToolOutcome(True, content=f"sandbox={ctx.sandbox}")
+
+    registry.register(
+        Tool(
+            name="probe",
+            description="reports ctx.sandbox",
+            parameters={"type": "object", "properties": {}},
+            handler=_probe,
+            kind="read",
+        )
+    )
+    return registry
+
+
+def _probe_call_response() -> ChatResponse:
+    call = ToolCall(id="c1", name="probe", arguments="{}")
+    return ChatResponse(
+        ok=True,
+        message=assistant("", tool_calls=[call]),
+        finish_reason="tool_calls",
+        usage=TokenUsage(5, 5),
+    )
+
+
+class TestIsolationWiring:
+    """`docket gates isolate on` writes `security.isolationEnabled` to
+    fleet.json -- before this wire, nothing on the real turn path ever read
+    it back, so isolation ON was silently indistinguishable from isolation
+    OFF on every live turn (the reproduction this card was opened against).
+    `DocketDriver.run_turn` now resolves it via `_resolve_sandbox`.
+    """
+
+    def test_isolation_off_leaves_ctx_sandbox_off(self) -> None:
+        # No fleet.json write at all -- the default, overwhelmingly common
+        # path (`get_isolation_enabled()` on a missing fleet.json resolves to
+        # False). This is the "off stays byte-identical" proof: the
+        # `ToolContext` a real turn builds today carries `sandbox="off"`.
+        _write_meta("solo-agent")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_probe_registry
+        )
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "sandbox=off"
+
+    def test_isolation_on_with_backend_available_sets_sandbox_auto(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_meta("solo-agent")
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="docker", docker=True, bwrap=False),
+        )
+        _fleet.set_isolation_enabled(True)
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_probe_registry
+        )
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "sandbox=auto"
+
+    def test_isolation_on_no_backend_refuses_the_turn_rather_than_running_unsandboxed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The failure mode this card exists to end: isolation is ON but
+        # neither docker nor bwrap is usable. The turn must refuse outright
+        # -- not silently downgrade to an unsandboxed run -- and the LLM
+        # backend must never even be reached (`_never_called` fails the test
+        # if it is).
+        _write_meta("solo-agent")
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="none", docker=False, bwrap=False),
+        )
+        _fleet.set_isolation_enabled(True)
+        driver = DocketDriver(backend_factory=_never_called)
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is False
+        assert result.failure_kind == "daemon_error"
+        assert "docker" in result.error.lower()
+        assert "bwrap" in result.error.lower()
+
+        refusals = [e for e in read_audit() if e["action"] == "isolation.refused"]
+        assert len(refusals) == 1
+        assert "agent=solo-agent" in refusals[0]["detail"]
+        assert "docker=False" in refusals[0]["detail"]
+        assert "bwrap=False" in refusals[0]["detail"]
+
+    def test_docket_sandbox_backend_override_still_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Both real backends report usable, but the operator's own override
+        # forces "none" -- this wire adds no parallel backend-selection
+        # mechanism, it only gates in front of the existing one
+        # (`system.sandbox_availability`), so the override must still be the
+        # last word, exactly as it already is for `toolbox.run_bash`.
+        _write_meta("solo-agent")
+        monkeypatch.setattr(_system, "docker_daemon_reachable", lambda: True)
+        monkeypatch.setattr(_system, "bwrap_available", lambda: True)
+        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        _fleet.set_isolation_enabled(True)
+        driver = DocketDriver(backend_factory=_never_called)
+
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is False
+        assert result.failure_kind == "daemon_error"
+
+    def test_the_flag_docket_gates_isolate_on_writes_is_the_one_the_turn_reads(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # End-to-end through fleet: drive the real `docket gates isolate on`
+        # CLI path (not `set_isolation_enabled` directly, and not a
+        # hand-built `ToolContext`), then confirm a real turn observes
+        # exactly the flag it wrote.
+        _write_meta("solo-agent")
+        monkeypatch.setattr(_gates.shutil, "which", lambda name, *a, **k: "/usr/bin/docker")
+        monkeypatch.setattr(
+            _system,
+            "sandbox_availability",
+            lambda: SandboxAvailability(backend="bwrap", docker=False, bwrap=True),
+        )
+        rc = _gates.run_gates("isolate", want="on")
+        capsys.readouterr()
+        assert rc == 0
+
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend, registry_factory=_probe_registry
+        )
+        result = driver.run_turn("solo-agent", "agent:solo-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "sandbox=auto"

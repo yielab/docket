@@ -361,7 +361,7 @@ def _check_security_gates() -> int:
 
     iso = _fleet.get_isolation_mode()
     if iso in ("non-main", "all"):
-        ui.dim(f"  Workspace isolation: recorded {iso}, but not yet consulted by the turn loop")
+        ui.success(f"  Workspace isolation: {iso} (consulted by the turn loop)")
     else:
         ui.dim("  Workspace isolation: off — docket gates isolate on (needs Docker)")
 

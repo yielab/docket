@@ -26,8 +26,10 @@ from urllib.parse import unquote as _url_unquote
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
+from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
 from docket.core import session as _session
+from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
@@ -44,6 +46,7 @@ from docket.core.runtime_driver import (
 from docket.core.tools import ToolContext, ToolRegistry, builtin_registry
 from docket.edges import store as _store
 from docket.edges.adapters import llm as _llm
+from docket.edges.adapters import system as _system
 
 __all__ = ["DocketDriver"]
 
@@ -107,6 +110,66 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
     return (_cfg.workspace_dir(agent_id),)
 
 
+def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]:
+    """Turn the operator's isolation posture into a go/no-go for this turn.
+
+    ``core/fleet.py``'s ``get_isolation_enabled`` is the single coherent
+    source ``docket gates isolate on``/``off`` and the ``non-main``/``all``
+    mode setters all funnel through (``set_isolation_enabled``,
+    ``set_sandbox_isolation``, ``disable_sandbox_isolation`` all write the
+    same ``security.isolation_enabled`` field) -- reading it here, rather
+    than ``get_isolation_mode``, means this can never disagree with what
+    ``docket gates status`` prints.
+
+    Returns ``(want_sandbox, refusal)``. ``want_sandbox=False`` with no
+    refusal is the byte-identical-to-today default path (isolation off, or
+    never configured): the caller passes ``sandbox="off"`` and nothing about
+    ``ToolContext`` construction changes. ``want_sandbox=True`` means a real
+    backend was actually probed and found usable *right now*
+    (``edges.adapters.system.sandbox_availability``, which itself honours
+    ``DOCKET_SANDBOX_BACKEND`` -- this function adds no parallel backend
+    selection, it only adds the go/no-go gate in front of the existing one).
+
+    A non-``None`` refusal is the fail-closed half this function exists for:
+    isolation is turned on, but neither docker nor bwrap is usable on this
+    host. The alternative -- handing ``sandbox="auto"`` to the loop anyway
+    and letting ``toolbox.run_bash`` degrade per call to an honest
+    ``[sandbox: none (...)]``-tagged *unsandboxed* run -- is exactly the
+    silent downgrade this card exists to end: an operator who ran ``docket
+    gates isolate on`` reads that marker, if they read it at all, buried in
+    one tool call's output, long after the command already ran on the bare
+    host. Refusing the whole turn up front is the loud, audited version of
+    the same fact, and it is audited here (``isolation.refused``) precisely
+    because nothing else will run to record it -- a refused turn produces no
+    tool calls, so there is no ``dispatch_tool`` entry to carry this reason.
+    """
+    if not _fleet.get_isolation_enabled():
+        return False, None
+    availability = _system.sandbox_availability()
+    if availability.backend != "none":
+        return True, None
+    detail = (
+        f"agent={agent_id} role={role or '?'} "
+        f"docker={availability.docker} bwrap={availability.bwrap}"
+    )
+    audit_log("isolation.refused", detail)
+    refusal = TurnResult(
+        False,
+        "",
+        0.0,
+        {},
+        (
+            "isolation is enabled (docket gates isolate on) but no sandbox backend "
+            "(docker or bwrap) is available on this host -- refusing to run this turn "
+            "unsandboxed rather than silently downgrading it. Install/start docker or "
+            "bwrap, or turn isolation off ('docket gates isolate off') to run without a "
+            "jail."
+        ),
+        failure_kind="daemon_error",
+    )
+    return False, refusal
+
+
 @dataclass
 class DocketDriver:
     """The ``RuntimeDriver`` implementation.
@@ -157,6 +220,10 @@ class DocketDriver:
                 failure_kind="invalid_output",
             )
 
+        want_sandbox, refusal = _resolve_sandbox(agent_id, meta.role)
+        if refusal is not None:
+            return refusal
+
         model = meta.model or _cfg.DEFAULT_MODEL
         backend = self.backend_factory(model)
         if backend is None:
@@ -177,6 +244,7 @@ class DocketDriver:
             env=dict(env or {}),
             role=meta.role,
             project=agent_id,
+            sandbox="auto" if want_sandbox else "off",
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside
