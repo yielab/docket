@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import docket.config as _cfg
 from docket.core import security as _sec
 
 # Kept short so a hung subprocess never blocks a CLI command.
@@ -158,14 +159,6 @@ def docker_ps() -> list[str]:
 # split with `core.security`'s classifier.
 
 SandboxBackend = Literal["docker", "bwrap", "none"]
-
-# Image for the docker exec-jail. Small and generic on purpose: this jail's
-# job is filesystem/process containment for an arbitrary shell command, not
-# matching any particular project's runtime, so there is no reason to derive
-# it from the workspace under test. Override on a host that pre-pulled a
-# different image, or has no network to pull this one -- an unpullable image
-# is a legitimate way to end up back at "none", not a bug to work around here.
-SANDBOX_DOCKER_IMAGE = os.environ.get("DOCKET_SANDBOX_IMAGE", "alpine:3.20")
 
 # Detection probes must be fast (they run on every "auto" call) and must
 # never hang a tool call over a jail that turns out to be unusable.
@@ -340,7 +333,7 @@ def docker_run_argv(
     argv += ["-w", str(roots[0].resolve())]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]
-    argv += [SANDBOX_DOCKER_IMAGE, "sh", "-c", command]
+    argv += [_cfg.SANDBOX_DOCKER_IMAGE, "sh", "-c", command]
     return argv
 
 

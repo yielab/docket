@@ -163,7 +163,7 @@ def trace_event(
     write can never be mistaken for a real one. payload is parsed as JSON
     when possible, else wrapped as ``{"text": payload}``.
     """
-    if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
+    if _cfg.no_trace():
         return "suppressed"
     if event_type not in EVENT_TYPES:
         return "rejected"
@@ -212,7 +212,7 @@ def trace_ingest(project: str) -> None:
     driver ``core/dispatch.py``'s hop execution writes turns through, so
     ingestion and hop execution always agree on where a session's turns live.
     """
-    if os.environ.get("DOCKET_NO_TRACE", "0") == "1":
+    if _cfg.no_trace():
         return
 
     from docket.edges.adapters import docket_runtime as _dr
