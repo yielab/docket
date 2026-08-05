@@ -8,11 +8,54 @@ It takes docket from a polished single-user CLI to a hardened, portable, operabl
 so each phase is independently shippable and raises the bar on **security → reliability →
 portability → operability → product**. Earlier phases unblock later ones.
 
-Status legend: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven, planned · 🚧 in progress · 🗓️ planned / deferred
+---
 
-**Status:** Phases 0–13 complete ☑ (including the **Bash→Python core migration**, M0–M6, the **agent-pod architecture**, AA-0…AA-9, **competitive differentiation**, CD-0…CD-9, **consolidation & hardening**, CH-0…CH-13, and **close the differentiation gaps**, FD-0…FD-7 — see §0 and the Phase 10/11/12/13 records). **docket 0.2.0-beta.1 is cut and tagged** — every release from this project is a beta pre-release (SemVer `-beta.N` suffix) until the project is field-hardened enough to drop it; see the beta warning in README.md. **The Platformization program (Phases 14–18) was added 2026-07-30 on the `platform` branch** — a five-phase arc turning docket from a single-runtime control plane into an agent-orchestration platform (hardened dispatch → wired governance → declarative orchestration + diverse role archetypes → context/memory → runtime-driver port + MCP). **The whole program is COMPLETE ☑** — Phases 14, 15, 16, 17 and 18 all closed, the last three branches merged 2026-07-31 (see the `☑ Wave 7 shipped` record in the Phase 16 section, which carries every wave's history). 38 cards across 7 waves (R-1…R-8, G-1…G-6 + G-4b, W-1…W-8 + W-5b, C-1…C-5, L-1…L-6, CL-1…CL-3). `platform` green at close: **1,735 tests** (`pytest` exit 0, zero FAILED/ERROR), 18/18 goldens byte-identical, 21 specs / 0 warnings, 37 commands, ~22,880 lines, `ruff` + `ruff format` + `mypy --strict` (62 files) clean, `metrics.py --check` in sync across all five claims, and the dependency floors measured and CI-enforced for the first time. TODO.md now holds only the closing record and the carried-forward gaps; every wave's per-card history lives in the Phase 16 section here. Source audit: `internal-docs/agent-platform-audit-and-build-plan.md` (2026-07-29, gitignored local rationale — the phase sections below are self-contained). Other remaining: Phase 2 packaging stretch goals, deferred `docket models optimize` + dynamic-routing spike (see Phase 6b notes); prod-deploy's git/npm high-risk enforcement (needs a daemon-side capability that doesn't exist yet, see Phase 13); plus the §7 Backlog.
-**Phase 22 added 2026-08-04 — Control-plane write API for an external plan-of-record.** The read-API consumer the Phase 11 backlog ruling always assumed ("docket feeds a dashboard rather than building a worse one") now exists and is ours: **Tack** (a sibling single-binary Rust/SolidJS project manager) is building an agent-factory control center on top of docket, holding the plan of record (roadmap, board, sprints, dependency DAG) while docket executes. Five small cards close the CLI/HTTP asymmetry — enqueue, queue read, cursor'd trace read, an approval channel label, and pod provisioning. Tack's Phases 33–38 and its per-agent task cards live in that repo's `docs/book/src/roadmap.md` and `TODO.md`. See §PHASE 22 below.
-**Last Updated:** 2026-08-04
+## ⇢ STATUS AT A GLANCE — every phase, one line each
+
+**Last updated: 2026-08-05.** **Every phase 0–22 is COMPLETE. Nothing is scheduled.** The active
+board is [TODO.md](TODO.md); when it says the board is clear, it is.
+
+> **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
+> Phase sections are written in the present tense of when they were authored, and several still carry
+> the status marker they were born with. **This table is the authority; a phase heading is not.**
+
+| Phase | What it was | Status |
+| --- | --- | --- |
+| 0–4 | Truth & correctness, cost enforcement, consolidation, park experiments, strengthen | ☑ done |
+| 5 | Channel portability + system snapshot | ☑ done |
+| 6 / 6b | Model & provider agnosticism · tier-less role→model policy | ☑ done |
+| 7 | *Renumbered away* — the former "Product & community"; folded into 11–13 | — n/a |
+| 8 | Agent observability, guardrails & drift (HITL) | ☑ done |
+| 9 | Contract integrity: spec↔runtime gap | ☑ done |
+| 10 | Agent architecture: project pods | ☑ done |
+| 11 | Competitive differentiation | ☑ done (2026-06-25) |
+| 12 | Consolidation & hardening | ☑ done (2026-07-02) |
+| 13 | Close the differentiation gaps | ☑ done (2026-07-02) |
+| 14–18 | **Platformization I–V** — dispatch hardening, wired governance, declarative orchestration, context/memory, runtime-driver port + MCP | ☑ done (38 cards, 7 waves, closed 2026-07-31) |
+| 19 | **docket takes the runtime (D-19)** — owns the loop, registry, all three policy hooks, approvals, audit, sessions. No daemon. | ☑ done (13 cards, waves 8–11) — **record in TODO.md + §Changelog; this file has no Phase 19 section** |
+| 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
+| 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
+| 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
+| — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
+
+**Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
+trigger (see §4.5's prioritization rule, D-24, and §7):
+
+| Not doing | Why |
+| --- | --- |
+| Multi-tenancy / the tenant axis | **CUT** (D-22, D-24). Trigger to revisit: docket itself serving more than one end customer from one host. |
+| OpenTelemetry · streaming · browser automation | **CUT** by D-24 — no measured need in *this* system. |
+| Egress lockdown | Deferred (D-23). `fetch` is the inspectable path, not the only one. |
+| A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
+| Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
+
+**Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
+
+**Release:** `0.2.0-beta.1`, cut and tagged. Every release carries a SemVer `-beta.N` suffix until
+the project is field-hardened enough to drop it (see README's beta warning).
+
+Status legend used in the older sections below: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven,
+planned · 🚧 in progress · 🗓️ planned / deferred
 
 > **Consolidation note (2026-06-23):** this file is now the **single roadmap**. The former
 > `ARCHITECTURE-AUDIT.md`, `MIGRATION-PLAN-PYTHON.md`, and `MIGRATION-TASKS.md` were folded in
@@ -265,9 +308,22 @@ address exactly those.
 
 ---
 
-## 5. The TODO
+## 5. Phase records (historical — every phase below is COMPLETE)
 
-### PHASE 0 — Truth & correctness  *(blocking; nothing else ships first)*
+> **This is not a task list.** It was one, once; the name "The TODO" survived long after the work
+> did. **Nothing in this section is outstanding** — see the status table at the top of the file.
+>
+> Each phase is preserved as written, in the present tense of its own moment, because the
+> *reasoning* is the durable part: why a thing was built, what was deliberately narrowed, and which
+> assumptions turned out wrong. Two conventions to read it with:
+>
+> - **Phases 0–9 were authored against the Bash codebase.** Their `lib/**/*.sh` paths refer to a tree
+>   deleted in M6. Inline `(pre-migration Bash; now …)` notes point at the Python successor.
+> - **Phases 10–18 predate D-19**, so they describe a Python core that still wrapped an external
+>   daemon behind an Anti-Corruption Layer. That layer is gone too. **Where a phase below contradicts
+>   §2, §2 wins.**
+
+### PHASE 0 — Truth & correctness  *(☑ COMPLETE — blocking at the time; nothing else shipped first)*
 
 #### ☑ P0-1 — Fix the `agents.list` vs `agents.registered` key bug
 
@@ -335,7 +391,7 @@ address exactly those.
 
 ---
 
-### PHASE 1 — Cost enforcement  *(the real differentiator)*
+### PHASE 1 — Cost enforcement  *(☑ COMPLETE — the real differentiator at the time)*
 
 > Context: there have already been billing incidents (a recorded billing error and a runaway-session analysis). Today docket only *reports* cost (`_aggregate_cost`). We need *enforcement*.
 
@@ -364,7 +420,7 @@ address exactly those.
 
 ---
 
-### PHASE 2 — Finish consolidation & resolve "smart routing"
+### PHASE 2 — Finish consolidation & resolve "smart routing"  *(☑ COMPLETE)*
 
 > Context: `router.sh` (pre-migration Bash dispatch; now the alias/removed-command map in `src/docket/__main__.py`) deprecates 10 commands in favor of `maintain, mode, context, cost, profile, doctor`, but ships both. "Smart routing" (`smart.sh`) injects prose into SOUL.md and does not actually change the model — it's placebo.
 
@@ -397,7 +453,7 @@ address exactly those.
 
 ---
 
-### PHASE 3 — Park experiments & finish the edges
+### PHASE 3 — Park experiments & finish the edges  *(☑ COMPLETE)*
 
 #### ☑ P3-1 — Move `terminal` (584 LOC) and `browser` (260 LOC) to `experimental/`
 
@@ -413,7 +469,7 @@ address exactly those.
 
 ---
 
-### PHASE 4 — Strengthen & extend  *(current)*
+### PHASE 4 — Strengthen & extend  *(☑ COMPLETE)*
 
 #### ☑ P4-0 — Remove dead adapter
 
@@ -473,7 +529,7 @@ address exactly those.
 
 ---
 
-### PHASE 5 — Channel portability + system snapshot  *(current)*
+### PHASE 5 — Channel portability + system snapshot  *(☑ COMPLETE)*
 
 #### ☑ P5-1 — Channel-aware wire/unwire
 
@@ -505,7 +561,7 @@ address exactly those.
 
 ---
 
-### PHASE 6 — Model & provider agnosticism  *(🔴 CRITICAL — work this next, top to bottom)*
+### PHASE 6 — Model & provider agnosticism  *(☑ COMPLETE)*
 
 > **Why this is critical:** docket currently has a hard dependency on the Claude API.
 > A pricing change, outage, regional block, account suspension, or ToS change at one vendor
@@ -760,7 +816,7 @@ address exactly those.
 
 ---
 
-### PHASE 8 — Agent observability, guardrails & drift (HITL)  *(🟡 new — work top to bottom)*
+### PHASE 8 — Agent observability, guardrails & drift (HITL)  *(☑ COMPLETE)*
 
 > **Source spec — goals:** every agent action leaves a durable, queryable trace (G1); destructive
 > actions are gated behind explicit human approval (G2); untrusted input is guard-railed before it
@@ -928,7 +984,7 @@ address exactly those.
 
 ---
 
-### PHASE 9 — Contract integrity: close the spec↔runtime gap (de-ceremony)  *(🟠 new — audit-driven)*
+### PHASE 9 — Contract integrity: close the spec↔runtime gap (de-ceremony)  *(☑ COMPLETE)*
 
 > **Audit verdict (blunt):** docket's contract discipline is **partly ceremonial**. The `specs/`
 > tree is well-authored and CI runs `validate-specs.sh` + `spec-coverage.sh` on every push — but
@@ -1013,7 +1069,7 @@ address exactly those.
 
 ---
 
-### PHASE 10 — Agent architecture: project pods (scope ≠ role ≠ lifecycle)  *(🟡 active — Python core; work top to bottom)*
+### PHASE 10 — Agent architecture: project pods (scope ≠ role ≠ lifecycle)  *(☑ COMPLETE)*
 
 > **Executable task board:** [TODO.md](TODO.md) (self-contained
 > cards, claimable by separate agents). **Rationale long-form:** `internal-docs/agent-structure-analysis.md`.
@@ -1929,7 +1985,58 @@ product nobody asked for.
 
 ---
 
-## PHASE 20 — Fleet observability (planned; after Phase 19's removal wave — **scope cut by D-24**)
+## PHASE 19 — docket takes the runtime (D-19)  *(☑ COMPLETE — all 13 cards, waves 8–11, closed 2026-08-03)*
+
+> **This section was written retroactively on 2026-08-05**, because the phase that changed docket
+> most had no section at all — only scattered references and a record in TODO.md. The per-card
+> detail lives in TODO.md's wave 8–11 blocks and in §Changelog; this is the durable summary.
+
+**The decision (D-19): own the loop, rent the protocols.** A clean break — no daemon compatibility
+layer, no migration path. docket now owns the turn loop, the tool registry, all three policy hooks,
+approvals, audit and sessions. It rents only protocols: an OpenAI-compatible HTTP endpoint (stdlib
+`urllib`, zero new deps), MCP for pluggable tool servers, and containers for isolation.
+
+**Why it had to happen, and this is the durable lesson.** docket shipped four `pre_tool_call` policy
+templates that had **never once been evaluated**, because the external daemon owned the inside of a
+turn. The wrap boundary was not merely limiting the roadmap — it was making the product's central
+claim false. *Whoever owns the loop owns the interception points.* That is also why agent frameworks
+(LangGraph/CrewAI/AutoGen) are rejected on principle: they own the loop, and therefore the gates.
+See §4.5's build-vs-wrap box, which records the reversal rather than deleting the old reasoning.
+
+**The 13 cards:**
+
+| Card | What it delivered |
+| --- | --- |
+| P19-1 | `core/llm.py` chat port + `edges/adapters/llm.py` — the only module that knows the wire format |
+| P19-2 | `core/tools.py` — **the gated tool registry and the single chokepoint** |
+| P19-3 | Turned on `pre_tool_call` — the hook whose templates had never run |
+| P19-4 | `core/session.py` — durable turn history + compaction that never splits a tool-call/result pair |
+| P19-5 | `core/agent_loop.py` + `DocketDriver` — the bounded turn loop |
+| P19-6 | docket-native home (`~/.docket`) + fleet registry, single writer |
+| P19-7a/b | **The runtime cutover** — the removal spine; `restart_gateway()` and ~15 ceremonial call sites deleted |
+| P19-8 | **docket-owned Telegram** — a real approval channel, writing `channel="telegram"` to the audit chain |
+| P19-9 | Sandboxed exec for `bash` (docker/bwrap argv) |
+| P19-10 | MCP client — pluggable tool servers, gated like a built-in |
+| P19-11 | `fetch` tool — domain-allowlisted, **deny-by-default** (D-23 re-scoped: ship `fetch`, defer the lockdown) |
+| P19-12 | Per-role tool sets + identity composition — `denied_tools` as **data**, making a Reviewer *unable* to write |
+| P19-13 | `docket mcp servers` CLI |
+
+**Acceptance test for the whole phase:** `command grep -ril openclaw src/` returns only comments and
+docstrings narrating the removal — zero live string literals.
+
+**What the phase made true:** the four never-evaluated policy templates are live, and Telegram became
+a real approval channel — reversing a caveat carried since Phase 15.
+
+**Two of its cards left wires unfinished, and both were closed later** — recorded here because the
+pattern repeated: **P19-10 shipped `load_mcp_tools` as a tested but never-called library** (closed by
+W17-1, 2026-08-05), and P19-9's sandbox was likewise reachable only if something set
+`ToolContext.sandbox`, which nothing did (closed by W18-3, same day). *Machinery implemented, tested,
+and not wired to the default path* is this phase's characteristic failure mode — see CLAUDE.md's
+review heuristic.
+
+---
+
+## PHASE 20 — Fleet observability  *(☑ COMPLETE at cut scope — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card)*
 
 **Why after, not before.** Instrumenting code that P19-7 is about to delete is waste. Phase 20
 starts once the daemon is gone and the shapes are final.
@@ -2054,7 +2161,7 @@ adding an HTTP or MCP cancel path is the trigger, not before.
 
 ---
 
-## PHASE 21 — The product substrate (**UNBLOCKED** — D-20 answered, scope cut by D-24)
+## PHASE 21 — The product substrate  *(☑ COMPLETE at cut scope — P21-1 + P21-5 shipped; the rest cut by D-24)*
 
 **D-20 is answered: a factory for agentic products, so both — factory first, substrate second.**
 Phase 21 is therefore live, and **two cards wide, not four**.
@@ -2128,7 +2235,7 @@ assumption that quietly wrecks a roadmap.
 
 ---
 
-## PHASE 22 — Control-plane write API for an external plan-of-record (Tack) (planned, 2026-08-04)
+## PHASE 22 — Control-plane write API for an external plan-of-record  *(☑ COMPLETE — all 6 cards, wave 16, 2026-08-04)*
 
 **What triggered this.** The backlog has said since Phase 11 that docket **does not build a
 dashboard of its own** — it "competes on the *write/governance* side and **feeds** them via a read
@@ -2260,49 +2367,14 @@ wizard-provisioned product.
 
 ---
 
-## 8. How to start (current — Phases 0–22 COMPLETE; the board is CLEAR)
+## 8. How to start
 
-Phases 0–13 are complete (§5 + the Phase 10/11/12/13 records). `docket` **0.2.0-beta.1** is cut
-and tagged — the operator clarified every release from this project carries a SemVer `-beta.N`
-pre-release suffix (not a bare version) for as long as the project stays beta/early-stage per
-README's warning banner; `v0.1.0` predates this convention and stays as-is.
+> **Status lives in one place — the table at the top of this file.** This section is *how to work*,
+> not *what is left*. Duplicating status here is what let it drift for three phases.
 
-**The Platformization program (Phases 14–18) is COMPLETE** — 38 cards across 7 waves; see those
-phase sections, decisions D-14…D-18 in §6, and the 2026-07-30 amendment in §4.5. Each phase's board
-was cleared from TODO.md per convention.
-
-**Phase 19 — docket takes the runtime (D-19) — is COMPLETE.** All 13 cards shipped across waves
-8–11. The phase's own acceptance test (`command grep -ril openclaw src/` returning no live string
-literals) passes. docket owns the loop, the tool registry, all three policy hooks, approvals, audit
-and sessions, and rents protocols only. **The claim the phase existed to make true:** four
-`pre_tool_call` policy templates that had never once been evaluated are live, and Telegram is a
-**real** approval channel writing `channel="telegram"` to the hash-chained audit log.
-
-**Phases 20 and 21 are closed at their surviving scope.** D-24 cut roughly half of both — see §4.5's
-prioritization rule and the deferral triggers on each cut card. One card (P20-4) was dispatched and
-came back a **no-op**: the gap it was written against had already been closed and never re-trued.
-**A gap list is a claim about the tree and decays like one — re-verify before scheduling against it.**
-
-**Phase 22 — the control-plane write API — is COMPLETE** (wave 16, 2026-08-04). All six cards
-shipped: `POST /tasks/<project>`, `GET /tasks/<project>`, `GET /traces/<project>?since=`, the
-approval `channel` label, `POST /pods`, and trace retention. The goal's third part now holds —
-docket executes, and something else holds the plan of record.
-
-**The design rule held everywhere except one place, and that place is recorded rather than buried.**
-Four of the five routes are thin wrappers over existing `core/` functions. `POST /pods` could not
-be, and the reason was structural: `serve.py` never imports `docket.cli`, but provisioning lived in
-`cli/_pod.py` and `cli/_agents.py` interleaved with `ui.*` calls. So it was an extraction into
-`core/pod_provisioning.py` first, then a route — with `docket add` refactored onto the *same*
-function so the two surfaces cannot drift, proven by byte-identical `docket add` goldens. The one
-field that came closest to new surface is `verifyCmd`: `docket add` has no `--verify` flag today
-(only `docket pod <p> set-verify` does), so threading it into initial provisioning is reuse of an
-existing `provision_member` parameter rather than a new capability — a judgement worth revisiting if
-the CLI and HTTP surfaces are ever compared field by field.
-
-**Rollback is new behaviour `docket add` gained for free.** `build_pod` previously had a
-continue-on-per-member-failure branch that was dead code, because `provision_member` never failed.
-A partial failure now leaves no workspace, no fleet registration and no port allocation — proven by
-an induced failure that asserts on real orphaned filesystem state, not a mock.
+`docket` **0.2.0-beta.1** is cut and tagged — every release from this project carries a SemVer
+`-beta.N` pre-release suffix (not a bare version) for as long as the project stays beta/early-stage
+per README's warning banner; `v0.1.0` predates this convention and stays as-is.
 
 **The goal, stated 2026-07-31 and unchanged: a factory for agentic products** — in three parts, in
 order. (1) The factory: docket itself, exists. (2) The embeddable substrate:
