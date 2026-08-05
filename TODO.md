@@ -77,6 +77,86 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
+## ▶ LOCAL ENVIRONMENT — rebuilt and verified against the real tree (2026-08-05)
+
+**Status: working, with one named gap.** `docket` on PATH is an editable install whose venv resolves
+to this repo's `src/docket`, so **the installed CLI follows this branch** — no reinstall
+needed after a merge. Verified: `0.2.0b1`, launcher at `~/.local/bin/docket` → the dedicated venv.
+
+### What the rebuild found
+
+**The previous `~/.docket` was 100% test-suite residue** — the leak CLAUDE.md warns about, in its
+third occurrence. 67 registered agents, every one a fixture name (`alpha`, `beta`, `goodagent`,
+`legacyagent`, `declaredagent`, `sweepdemo`, `pod-a`, `pod-b`, `flatpod`, `gitless`, `taskpod`,
+`leanapp`, `myapp`, `myops`, `myproj`, `myresearch`, `demo`, `demo2`, `other`). Two workspace dirs
+survived and **both were empty**, one holding only a stale `.docket.lock`. No real project was ever
+registered. `docket doctor` reported 14 pods "in sync" while `docket list` reported none — the
+mismatch that exposed it.
+
+Backed up to `~/.docket.backup-20260805-085622` (1.3M) before deleting anything.
+
+### What now exists
+
+`docket install --portfolio` → org specialists (`manager`, `knowledge`, `security`) + the four
+Portfolio roles + 6 baseline policies. One real pod, **`docket-dev`, pointed at this repo**, full
+4-role roster, `$5` cap, `verifyCmd = uv run ruff check . && uv run mypy src`.
+
+All three isolation layers verified as **real, not declared**:
+
+| Layer | Evidence |
+| --- | --- |
+| git worktree | `~/.docket/workspaces/projects/docket-dev-implementer/worktree` on branch `docket/docket-dev/docket-dev-implementer` |
+| port range | `3000-3099`, disjoint |
+| scratch dir | `~/.docket/workspaces/pods/docket-dev/.scratch` |
+| session key | `agent:docket-dev:default` |
+
+`docket gates isolate on` is **enabled and now genuinely consulted** (W18-3): `gates status` reports
+`non-main (consulted by the turn loop)`. Both `docker` and `bwrap` are present and usable.
+
+### This session's work, exercised end to end against a live server
+
+`docket serve --port 7477 --token-file …` (token file `0600`), then:
+
+| Check | Result |
+| --- | --- |
+| `POST /tasks` unauthenticated | **401** |
+| `POST /tasks/docket-dev` (P22-1) | task id returned, `pending` |
+| `GET /tasks/docket-dev` (P22-2) | queue read back, full normalized shape |
+| **`pre_input` gate on the HTTP path** | **`guardrail_check` traced: `policy=prompt-injection action=warn`** |
+| `GET /traces/…?since=` (P22-3) | compound cursor `2026-08-05T12:00:03Z:1` |
+| **cursor resume** | polled from cursor → **exactly 1 new event, no replay** |
+| `POST /pods` (P22-5) | pod created, roster returned |
+| duplicate `POST /pods` | **409**, not a silent re-provision |
+| CLI sees HTTP-created pod + tasks | **yes — one path, not two** |
+| `docket audit verify` | 6 chained lines clean, incl. the HTTP provisioning |
+| `docket trace expire --dry-run` (P22-6) | 187 scanned, 1 kept open, 186 kept recent |
+
+**Two corrections to my own first reading, both worth recording.** An injection-style enqueue looked
+ungated until checked properly: the string `ignore all previous instructions` does **not** match
+`ignore\s+(previous|all|prior)\s+instructions` (a word sits between), and the policy's action is
+`warn` by design, not `block`. With a genuinely matching string the gate fired and traced. **Neither
+was a defect — reporting either as one would have been a false finding.**
+
+### The one real gap
+
+**No model endpoint is reachable on this host.** No API key stored, no `DOCKET_LLM_*` override, and
+no local runtime listening (checked ollama/llama.cpp/vLLM/LM Studio ports; none open). A real
+dispatch therefore cannot complete — and **fails cleanly and actionably** rather than hanging:
+
+```text
+✗ lead hop failed: no endpoint configured for model 'anthropic/claude-haiku-4-5'
+```
+
+`docket doctor` names it precisely as its only 4 critical issues, with the fix command. Closing it is
+one step, and it is the operator's choice which:
+
+- `docket keys add ANTHROPIC_API_KEY` (or any provider the role→model policy points at), **or**
+- `DOCKET_LLM_BASE_URL` at a local llama.cpp / vLLM / LM Studio server and repoint the models.
+
+Everything except the model call is verified working.
+
+---
+
 ## ☑ WAVE 18 COMPLETE (2026-08-05) — two false security claims, both now true; board CLEAR
 
 Three cards. `platform` green: **2,199 tests**, 18/18 goldens byte-identical, 24/24 specs,

@@ -2356,6 +2356,20 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-05 — the local environment was rebuilt, and the suite leak was worse than assumed.**
+  `docket` on PATH is an editable install resolving to `src/docket`, so the installed CLI already
+  follows this branch. But `~/.docket` held **no real state at all** — 67 registered agents, every
+  one a test fixture name, and two workspace directories that were both empty. `docket doctor`
+  reported 14 pods "in sync" while `docket list` reported none; that mismatch is what exposed it.
+  **This is the third recorded occurrence of the suite leaking into the developer's real
+  `DOCKET_HOME`**, and the first where it had displaced the entire environment rather than adding to
+  it. Backed up, wiped, rebuilt: org specialists + a real `docket-dev` pod on this repo, isolation
+  enabled (and now actually consulted, per W18-3), all three isolation layers verified as real
+  artifacts rather than declarations. Phase 22's routes were exercised end to end against a live
+  `docket serve` — including the `pre_input` gate firing on the HTTP path and a cursor poll
+  returning exactly one new event with no replay. **The single remaining gap is a model endpoint**:
+  no key, no local runtime, so a dispatch cannot complete — it fails cleanly naming the missing
+  credential, which `docket doctor` reports as its only critical issues.
 - **2026-08-05 (wave 18) — two security claims were false; both are now true.** Opened against one
   *reproduced* defect: the audit log's hash chain restarted at `seq=1` on rotation with a single
   backup generation, so flooding past two rotations erased history while `docket audit verify`
