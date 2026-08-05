@@ -37,6 +37,7 @@ board is [TODO.md](TODO.md); when it says the board is clear, it is.
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
+| — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — **plus one found and NOT fixed: session compaction is never called; see §Changelog and TODO.md** |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -48,6 +49,7 @@ trigger (see §4.5's prioritization rule, D-24, and §7):
 | Egress lockdown | Deferred (D-23). `fetch` is the inspectable path, not the only one. |
 | A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
 | Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
+| **Wiring `compact_session` into the turn loop** | **Deferred, trigger ALREADY FIRED** (wave 19, 2026-08-05) — not cut. Every hop shares one session key, so history grows unbounded; a 16k endpoint refuses the reviewer hop at 19,827 tokens. A hosted large-context model hides it. Needs a recursion guard and a summariser session-key decision, so it is a card, not a patch. |
 
 **Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
 
@@ -2316,6 +2318,31 @@ depend on this — its reporting comes from the dispatch lifecycle (runs + trace
 `orch_tasks` link table makes agent self-reporting a drop-in the day the wire lands. Recorded here
 so the dependency is visible, not to re-card work that is already tracked.
 
+**P22-8 · `pipeline validate` over HTTP** — *TODO · S · found by Tack card D3 (2026-08-05)*
+`docket pipeline validate <file>` (`cli/_pipeline.py::_validate`) is a thin CLI wrapper over
+`core.pipeline.validate_pipeline(text) -> list[str]` — pure, already UI-free, already the single
+source of truth for "is this a valid docket pipeline." `serve.py` exposes no route for it (checked
+every `do_GET`/`do_POST` branch directly; the closest existing thing, `POST /dispatch/<project>`,
+*runs* a pipeline, it doesn't just check one). Tack wants to validate a template's stored pipeline
+YAML at save time (its "pipeline library," task 37.3) without maintaining a second, drift-prone copy
+of `PipelineSpec`'s schema in Rust — exactly the mistake P20-3-style client reimplementation already
+cost this project once (Tack's own B2/R1 history). Today Tack can only check that stored YAML
+*parses*, not that it's a valid pipeline, and says so explicitly rather than claiming a stronger
+guarantee it can't back up.
+
+A route is a small, low-risk addition: `POST /pipeline/validate` (or a query-string variant of an
+existing path), body = raw YAML text, `{ok: bool, errors: [str]}` — no project, no pod, no auth
+even, mirroring `validate_pipeline`'s own signature exactly (it takes no project argument today).
+Unlike P22-5, this one genuinely cannot grow: `validate_pipeline` already exists, already takes
+exactly one argument, and already returns exactly the list Tack wants to show the operator. The
+route is a `do_POST` branch and nothing else.
+
+**Acceptance:** `POST /pipeline/validate` with a well-formed pipeline body returns `{ok: true,
+errors: []}`; a body with a duplicate step id, an unknown rework target, or invalid YAML returns
+`{ok: false, errors: [...]}` with `core.pipeline.validate_pipeline`'s own messages, unchanged. Tack's
+card D3 should switch its template save-time check from a bare `serde_yaml` parse to this route the
+day it ships (see TODO.md's Tack repo, §6 "D3" handoff, for the client-side half of this gap).
+
 ### What this phase does *not* do
 
 - **No dashboard.** Unchanged from the Phase 11 backlog ruling. Tack renders; docket serves data.
@@ -2427,6 +2454,35 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-05 (wave 19) — running a real pod against a real endpoint found three defects in one
+  session, and 2,209 tests had caught none of them.** The local environment gained a llama.cpp
+  endpoint (`127.0.0.1:8081`, 16k context) and a second real pod, **Adapta**. The first dispatch
+  failed, and the reason was not the model. **(1)** An Implementer with a git worktree is gated
+  against that worktree *alone*, but `SOUL.md` — its system prompt — and `WORKFLOW_AUTO.md` — the
+  contract it re-reads after every context reset — both named the **origin checkout**, while
+  `TOOLS.md` named the worktree. Every read came back `resolves outside the allowed roots`, the
+  model retried other spellings, and the turn died on the token budget having executed **zero**
+  tool calls. Nothing raised, so nothing went red. Fixed at the single point all three files are
+  written, with a new test that pins the *property* (the advertised path is inside
+  `_resolve_roots()`) rather than any path string, and with `docket doctor`'s contract heal — the
+  same defect's second writer — fixed alongside. **(2)** The tool-output ceiling was a bare
+  `30_000` literal in `toolbox.py`. It is a *context* bound, so its usable value is a function of
+  the endpoint, and docket had no way to express that: at 30k, two results alone overflow a 16k
+  window. Now `config.py`-owned and resolved per call. **(3) — found, not fixed:**
+  `plan_compaction`/`compact_session` exist, are tested, are documented as automatic, and are
+  **called from nowhere in `src/`**. Every hop of a dispatch shares one session key, so the reviewer
+  hop receives the lead's and implementer's full raw history on top of the compiled
+  `HandoffArtifact` — the handoff budget bounds the message, not the history — and the endpoint
+  refuses the prompt at 19,827 tokens.
+
+  **This is the third instance of one shape** (MCP tools, W17-1; sandbox, W18-3; now compaction):
+  built, tested, never wired to the default path, with documentation asserting it works. Both false
+  claims were corrected the same day rather than held pending a fix, moving the `docket help` golden
+  by exactly one line. The lesson worth keeping is narrower than "test more": **all three were
+  invisible to unit tests and immediately visible to one real run.** A small-context endpoint is a
+  better integration test than a large one, because it makes context bugs fail loudly instead of
+  silently costing tokens.
 
 - **2026-08-05 — the local environment was rebuilt, and the suite leak was worse than assumed.**
   `docket` on PATH is an editable install resolving to `src/docket`, so the installed CLI already

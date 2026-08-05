@@ -475,7 +475,10 @@ def _check_runtime_contract(ids: list[str]) -> int:
         if not ws.is_dir() or _mem.contract_ok(ws):
             continue
         meta = store.read_json(_cfg.meta_path(aid))
-        codebase = str(meta.get("codebase", ""))
+        # A member with a git worktree is gated against the worktree ALONE, so the
+        # contract must anchor there -- healing it back to the origin checkout would
+        # re-introduce the very unreachable path this heal exists to fix.
+        codebase = str(meta.get("worktreeDir") or meta.get("codebase", ""))
         stack = str(meta.get("stack", ""))
         name = str(meta.get("name", "") or aid)
         _mem.seed_contract(ws, project=name, codebase=codebase, stack=stack)

@@ -254,6 +254,20 @@ class TestBuiltinHandlers:
         out = toolbox.read_file((workspace,), "big.txt")
         assert out.ok and "[truncated:" in out.content
 
+    def test_the_output_ceiling_is_a_live_setting(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A small-context endpoint must be able to lower it -- 30k chars is two
+        results away from overflowing a 16k window, and the turn dies on an
+        HTTP 400 with no partial progress."""
+        body = "x" * 5_000
+        (workspace / "mid.txt").write_text(body)
+        assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
+
+        monkeypatch.setattr(toolbox, "MAX_OUTPUT_CHARS", 1_000)
+        out = toolbox.read_file((workspace,), "mid.txt")
+        assert out.ok and "[truncated: 4000 more characters]" in out.content
+
 
 class TestDispatchChokepoint:
     def test_unknown_tool_is_denied_with_a_readable_reason(self, ctx: ToolContext) -> None:

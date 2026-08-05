@@ -33,7 +33,7 @@ MAINTENANCE  (docket maintain [id] <subcommand>)
   clean              Clear memory logs only (distills first; --no-distill-first skips)
   reset              Clear memory + heartbeat (distills first; --no-distill-first skips)
   rebuild            Deep rebuild from .docket-meta.json
-  sessions           Report per-session storage size (compaction is now automatic)
+  sessions           Report per-session storage size
   distill            Summarize memory logs into MEMORY.md; archive originals
 
 TELEGRAM

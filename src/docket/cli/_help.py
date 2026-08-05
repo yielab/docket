@@ -59,7 +59,7 @@ def run_help() -> int:
   {G}clean{R}              Clear memory logs only (distills first; --no-distill-first skips)
   {G}reset{R}              Clear memory + heartbeat (distills first; --no-distill-first skips)
   {G}rebuild{R}            Deep rebuild from .docket-meta.json
-  {G}sessions{R}           Report per-session storage size (compaction is now automatic)
+  {G}sessions{R}           Report per-session storage size
   {G}distill{R}            Summarize memory logs into MEMORY.md; archive originals
 
 {B}TELEGRAM{R}

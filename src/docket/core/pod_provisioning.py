@@ -331,8 +331,15 @@ def _write_member_workspace(
     ws = _cfg.PROJECTS_DIR / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
+    # The path this member is *told* to work in must be one its tool calls are
+    # allowed to reach: the driver's `_resolve_roots` returns the worktree
+    # ALONE when there is one, so naming the origin checkout here would advertise
+    # a path every read/write is then refused for -- a silent failure that burns
+    # the whole token budget on retries. Empty for every non-worktree member, so
+    # their files are byte-identical.
+    told_root = worktree_dir or codebase
     (ws / "SOUL.md").write_text(
-        _member_soul(member, project, codebase, stack, description, work_dir=work_dir),
+        _member_soul(member, project, told_root, stack, description, work_dir=work_dir),
         encoding="utf-8",
     )
     (ws / "AGENTS.md").write_text(_member_agents(member, project), encoding="utf-8")
@@ -342,7 +349,7 @@ def _write_member_workspace(
             _member_tools(
                 project,
                 member.role,
-                worktree_dir or codebase,
+                told_root,
                 port_range_start,
                 port_range_count,
                 scratch_dir,
@@ -352,8 +359,10 @@ def _write_member_workspace(
         )
     # Seed the files the turn loop's system-prompt composition re-reads every turn,
     # anchoring the codebase (or, for a `workdir`-kind pod, the working
-    # directory) path where a just-reset agent will actually see it.
-    _mem.seed_contract(ws, project=project, codebase=codebase, stack=stack, work_dir=work_dir)
+    # directory) path where a just-reset agent will actually see it. Same
+    # reachable-root rule as SOUL.md above -- this file is what a just-reset
+    # agent trusts about where to `cd`.
+    _mem.seed_contract(ws, project=project, codebase=told_root, stack=stack, work_dir=work_dir)
 
     # Keep pod-member identity docket-owned: quarantine any self-authoring
     # scaffolding (IDENTITY.md/BOOTSTRAP.md) so it can't split the member's identity.

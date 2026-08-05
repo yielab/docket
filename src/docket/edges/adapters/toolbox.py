@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import docket.config as _cfg
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.system import SandboxAvailability, SandboxBackend
 
@@ -49,7 +50,9 @@ SandboxMode = Literal["off", "auto"]
 # result is a context-budget failure waiting to happen (and, for `bash`, a way
 # to blow the window with one `find /`). Truncation is always announced in the
 # returned text — silently short output would be read as "that is all there is".
-MAX_OUTPUT_CHARS = 30_000
+# The value is config.py's (DOCKET_TOOL_MAX_OUTPUT_CHARS) because the usable
+# ceiling depends on the endpoint's context window, not on this module.
+MAX_OUTPUT_CHARS = _cfg.TOOL_MAX_OUTPUT_CHARS
 MAX_GREP_MATCHES = 200
 MAX_GLOB_RESULTS = 300
 
@@ -67,7 +70,10 @@ class ToolOutcome:
     error: str = ""
 
 
-def _truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
+def _truncate(text: str, limit: int | None = None) -> str:
+    # Resolved per call, not bound as a default argument, so the ceiling stays
+    # a live setting rather than whatever it happened to be at import time.
+    limit = MAX_OUTPUT_CHARS if limit is None else limit
     if len(text) <= limit:
         return text
     dropped = len(text) - limit

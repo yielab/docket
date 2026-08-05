@@ -137,23 +137,97 @@ ungated until checked properly: the string `ignore all previous instructions` do
 `warn` by design, not `block`. With a genuinely matching string the gate fired and traced. **Neither
 was a defect — reporting either as one would have been a false finding.**
 
-### The one real gap
+### The model endpoint — CLOSED (2026-08-05)
 
-**No model endpoint is reachable on this host.** No API key stored, no `DOCKET_LLM_*` override, and
-no local runtime listening (checked ollama/llama.cpp/vLLM/LM Studio ports; none open). A real
-dispatch therefore cannot complete — and **fails cleanly and actionably** rather than hanging:
+A local **llama.cpp** server is now the org endpoint: `127.0.0.1:8081`, Qwen3.6-35B-A3B GGUF,
+`--ctx-size 16384`. No API key is stored and none is needed. `docket doctor`'s four critical
+endpoint issues are gone.
 
-```text
-✗ lead hop failed: no endpoint configured for model 'anthropic/claude-haiku-4-5'
-```
+### Second real pod: **Adapta** (a sibling FastAPI project)
 
-`docket doctor` names it precisely as its only 4 critical issues, with the fix command. Closing it is
-one step, and it is the operator's choice which:
+Full 4-role roster on the local endpoint, its own worktree
+(`docket/adapta/adapta-implementer`), its own port range and scratch dir, `verifyCmd =
+python3 -m compileall -q adapta` (the project's `.venv` is empty, so `pytest` genuinely is not
+available there — the first verify command was wrong and the gate correctly failed the task).
+Telegram was recovered from the pre-docket config, re-homed into docket's own secret store, and the
+group identity resolved through the Bot API rather than guessed.
 
-- `docket keys add ANTHROPIC_API_KEY` (or any provider the role→model policy points at), **or**
-- `DOCKET_LLM_BASE_URL` at a local llama.cpp / vLLM / LM Studio server and repoint the models.
+### What a real dispatch proved — and what it cost to get there
 
-Everything except the model call is verified working.
+Running an actual pod against an actual small-context model surfaced **three defects in one
+session**, none of which any test caught. See WAVE 19 below. After the two fixes:
+
+| Hop | Result |
+| --- | --- |
+| lead | **works** — read the real tree through gated tools, named `adapta` and `adapta/api/app.py` correctly |
+| implementer | **works** — `<promise>DONE</promise>` |
+| verify gate | **passes** — `{"verification": "passed", "cmd": "python3 -m compileall -q adapta"}` |
+| reviewer | **runs**, produces a real review; emits `APPROVE` on the *last* line, so the first-line verdict parse rejects it |
+| tester | not reached |
+
+**The reviewer failure is the gate working, not a docket bug.** A trailing `APPROVE` is exactly what
+a structural first-line verdict parse must refuse; accepting a verdict from anywhere in the reply
+would void the gate. What remains is the local model's instruction-following, not docket's.
+
+**Operating note for a 16k endpoint:** `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`. The 30k default is
+tuned for a hosted large-context model; at 30k, two tool results alone (~15k tokens) overflow the
+window and the turn dies on an HTTP 400 with no partial progress.
+
+
+---
+
+## ☑ WAVE 19 COMPLETE (2026-08-05) — what running a real pod found; board CLEAR
+
+Not a scheduled wave. Three defects, all surfaced by **actually dispatching the Adapta pod against a
+real 16k-context endpoint**, none caught by 2,209 tests. `platform` green: **2,209 tests**, 18/18
+goldens, 24/24 specs, `mypy --strict` clean, metrics in sync.
+
+**W19-1 — a worktree member was told to work in a directory it was forbidden to read.** FIXED.
+`provision_member` gives an Implementer a git worktree, and `_resolve_roots` then returns that
+worktree **alone**. But `SOUL.md` (the system prompt) and `WORKFLOW_AUTO.md` (the startup contract
+re-read after every context reset) both named the **origin checkout**, while `TOOLS.md` named the
+worktree. Every read of the advertised path came back `resolves outside the allowed roots`; the
+model retried other spellings and the turn died on the token budget with **zero successful tool
+calls**. Nothing crashed, so nothing went red.
+
+*Now:* one `told_root = worktree_dir or codebase` at the single point all three files are written,
+so a member with a worktree is told the worktree and a member without one is **byte-identical**.
+`docket doctor`'s contract heal was the same defect's second writer and is fixed with it. New
+`tests/python/test_workspace_root_agreement.py` pins the invariant as *the advertised path is inside
+`_resolve_roots()` for that member* — a property, not a path string. Proven RED first: 4 of 8 failed
+before the fix, and the doctor test was re-proven RED on its own.
+
+**Deployed pods were repaired, not just new ones.** `docket doctor` does not re-render `SOUL.md` for
+pod members (they are excluded from template-drift), so `adapta-implementer` and
+`docket-dev-implementer` were repaired in place and their contracts re-seeded through the fixed
+doctor path.
+
+**W19-2 — the tool-output ceiling was unreachable from outside the code.** FIXED.
+`toolbox.MAX_OUTPUT_CHARS` was a bare `30_000` literal. It is a **context** bound, not a display
+bound — the usable value is a function of the endpoint, and docket had no way to say so. Now
+`config.py`'s `TOOL_MAX_OUTPUT_CHARS` (`DOCKET_TOOL_MAX_OUTPUT_CHARS`), added to the single-owner
+guard, resolved **per call** rather than bound as a default argument so it stays a live setting.
+Both guards proven RED: the import-time binding restored, and a re-declared `os.environ.get` planted
+in `toolbox.py`.
+
+**W19-3 — session compaction is implemented, tested, documented, and never called.** FOUND, NOT
+FIXED. `core/session.py` ships `plan_compaction`/`compact_session` with fail-closed summarisation.
+**Nothing in `src/` calls either.** `core/agent_loop.py` imports only `append_messages`/
+`load_messages`. Every hop of a dispatch shares one session key, so the reviewer hop sees the lead's
+and implementer's full raw history *on top of* the compiled `HandoffArtifact` — the typed-handoff
+budget bounds the message, not the history. On a 16k endpoint this rejects the prompt outright at
+19,827 tokens; on a 200k hosted model it stays invisible.
+
+**This is the third instance of the exact shape CLAUDE.md names** (MCP tools, W17-1; sandbox, W18-3):
+machinery built, tested, never wired to the default path, with docs claiming it works. Both false
+claims were corrected immediately rather than held pending the fix — `maintain sessions` said
+*"Per-session compaction is automatic"* and `docket help` said *"(compaction is now automatic)"*.
+The help golden moved by exactly one line, for a string that was factually false.
+
+**Wiring it is a real card, not a patch:** `compact_session` needs a `SessionSummaryRunner` (a
+`run_turn` call), so calling it from inside `DocketDriver.run_turn` needs a recursion guard, a
+decision about which session key the summariser uses, a trace event, and tests. Deliberately not
+attempted inside an unscheduled wave.
 
 ---
 

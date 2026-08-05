@@ -49,6 +49,7 @@ _OWNED_ENV_VARS: frozenset[str] = frozenset(
         "DOCKET_KEYRING_SERVICE",
         "DOCKET_NO_TRACE",
         "DOCKET_SANDBOX_IMAGE",
+        "DOCKET_TOOL_MAX_OUTPUT_CHARS",
     }
 )
 

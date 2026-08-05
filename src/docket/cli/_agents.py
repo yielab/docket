@@ -1175,12 +1175,15 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
 def _maintain_sessions(agent_id: str) -> None:
     """sessions: report on this agent's durable session storage.
 
-    ``core/session.py`` stores one JSON document per session key and already
-    compacts it automatically inside the turn loop when it grows past budget
-    (``plan_compaction``/``compact_session``), so there is no manual "trim
-    large files" step to perform. This command only reports current session
-    sizes — it does not fabricate a trim/archive action for a storage shape
-    that has no problem such an action would exist to fix.
+    ``core/session.py`` stores one JSON document per session key. It ships
+    ``plan_compaction``/``compact_session``, but **nothing on the turn path
+    calls them today** — ``core/agent_loop.py`` imports only
+    ``append_messages``/``load_messages``, so a session grows unbounded until
+    the endpoint rejects the prompt. This command reports current sizes and
+    says so; it does not claim an automatic compaction that does not run, and
+    it does not fabricate a manual trim either — a truncation outside
+    ``compact_session``'s fail-closed summarisation is exactly the durability
+    loss that module exists to prevent.
     """
     from urllib.parse import unquote as _url_unquote
 
@@ -1188,7 +1191,9 @@ def _maintain_sessions(agent_id: str) -> None:
 
     ui.header(f"Sessions: {agent_id}")
     ui.console.print()
-    ui.dim("  Per-session compaction is automatic -- there is nothing to trim or archive manually.")
+    ui.dim(
+        "  Sessions are not compacted automatically -- history grows until the endpoint refuses it."
+    )
     ui.console.print()
 
     if not _cfg.SESSIONS_DIR.is_dir():

@@ -322,6 +322,15 @@ AGENT_LOOP_MAX_ITERATIONS = int(os.environ.get("AGENT_LOOP_MAX_ITERATIONS", "20"
 # iterations — a single response requesting many calls at once is a distinct
 # risk from many responses requesting one each, so both are capped.
 AGENT_LOOP_MAX_TOOL_CALLS = int(os.environ.get("AGENT_LOOP_MAX_TOOL_CALLS", "40"))
+# TOOL_MAX_OUTPUT_CHARS: ceiling on ONE tool result's text before
+# edges/adapters/toolbox.py truncates it (visibly — silently short output
+# would be read as "that is all there is"). This is a context bound, not a
+# display bound: the result goes straight back into the model's window, so the
+# usable value is a function of the ENDPOINT, not of docket. The default suits
+# a large-context hosted model; a small local server needs it far lower — at
+# 30k chars two results alone (~15k tokens) overflow a 16k-context llama.cpp
+# instance, and the turn dies on an HTTP 400 with no partial progress.
+TOOL_MAX_OUTPUT_CHARS = int(os.environ.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "30000"))
 # AGENT_LOOP_WALL_CLOCK_TIMEOUT_S: default overall budget for one turn,
 # checked between iterations (not by interrupting an in-flight HTTP call).
 # edges.adapters.docket_runtime.DocketDriver.run_turn overrides this with its
@@ -370,7 +379,7 @@ FETCH_ALLOWED_DOMAINS: tuple[str, ...] = tuple(
     d.strip().lower() for d in os.environ.get("FETCH_ALLOWED_DOMAINS", "").split(",") if d.strip()
 )
 # FETCH_MAX_RESPONSE_BYTES: response bodies are fed straight into a model's
-# context, same reasoning as `toolbox.MAX_OUTPUT_CHARS` for the other
+# context, same reasoning as `TOOL_MAX_OUTPUT_CHARS` for the other
 # built-ins; truncation is always announced in the returned text.
 FETCH_MAX_RESPONSE_BYTES = int(os.environ.get("FETCH_MAX_RESPONSE_BYTES", str(200_000)))
 # FETCH_TIMEOUT_S: default per-call wall-clock bound, overridable per call via
