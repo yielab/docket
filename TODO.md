@@ -225,6 +225,34 @@ the cursor lands on the newest event and the tie-count covers the whole page. Re
 same project: resume returns **0 events**. Events also now arrive in time order across sessions,
 which is what a consumer folding them onto a board needs. Three tests added, all proven RED first.
 
+**W19-5 — the README described a conversational Telegram bot that does not exist.** FIXED (docs).
+Found by *using* the wired Adapta group: plain prose (`hablame del proyecto`) comes back
+"Unrecognized command", which is precisely what the README promised would work. Three false claims
+in one section:
+
+| Claim | Reality |
+| --- | --- |
+| "Conversational dispatch — message the Lead directly" | Four slash commands only; anything else is refused |
+| "a gated action **pings** the wired group" | `send_message` has **one** call site (the reply in `poll_once`); `core/approval.py` has zero references to the module. Nothing is ever pushed. |
+| setup snippet used `docket serve` | The poll loop only starts under `--telegram` |
+
+Corrected in `README.md`, `docs/commands.md` and `docs/QUICK-START-DOCKET.md`, plus the two limits
+that follow and were nowhere stated: docket never messages first, and `/delegate` returns a task id
+rather than the agent's answer.
+
+**The spec was right the whole time.** `specs/functional/telegram-integration.spec.md` has always
+required "exactly four verbs" and that any other text be treated as unrecognized — *"never as an
+implicit delegate"*. This was prose drifting from a correct spec, which is a different failure from
+the W17-1/W18-3/W19-3 family (machinery unwired). **The lesson is the inverse one: a CI-validated
+spec did not stop the README from promising something else**, because nothing compares them.
+
+Made durable rather than just corrected: the spec now states inbound-only as requirement 7 (and
+`/delegate`-returns-an-id as 8) with both echoed in Non-Goals, pinned by an AST guard
+(`TestInboundOnly`) that fails if anything outside the reply path calls `send_message` or if
+`core/approval.py` ever reaches the Telegram module. Proven RED by planting an outbound push in
+`serve.py` and an import in `approval.py`. The boundary can still be moved — deliberately, in a
+change that has to update the guard.
+
 **W19-3 — session compaction is implemented, tested, documented, and never called.** FOUND, NOT
 FIXED. `core/session.py` ships `plan_compaction`/`compact_session` with fail-closed summarisation.
 **Nothing in `src/` calls either.** `core/agent_loop.py` imports only `append_messages`/

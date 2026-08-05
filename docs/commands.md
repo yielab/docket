@@ -944,7 +944,11 @@ docket roles validate ./producer.yaml   # dry-run without persisting
 
 ### wire
 
-Bind an agent to a channel group (Telegram by default) for notifications and approvals.
+Bind an agent to a channel group (Telegram by default) so that chat can send it commands.
+
+> **Inbound only.** The binding authorizes a chat to send `/approve`, `/deny`, `/status` and
+> `/delegate`; docket never messages the group on its own. There is no notification on a pending
+> approval and no report when a task finishes — you poll with `/status`.
 
 **Syntax:**
 ```bash

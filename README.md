@@ -448,7 +448,7 @@ docket list / info <id> / delete <id>      # Fleet-wide view / one agent / teard
 docket models / profile <id>               # Role→model policy / pin or budget-cap one agent
 docket cost [id] / doctor / maintain <id>  # Tokens / fleet health / per-agent upkeep
 docket gates status                        # Approval-gate, routing, and audit posture
-docket serve [--dispatch]                  # Read-only API, Telegram polling, pod queues
+docket serve [--dispatch] [--telegram]     # Control-plane API; queues; Telegram (opt-in flag)
 docket pipeline validate/plan/run <file>   # Declarative pipelines, run by the dispatch engine
 docket roles list/show/add/validate        # Declarative role archetypes
 docket runs list/show/cancel               # Dispatch run registry; cancel an in-flight hop
@@ -471,13 +471,13 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,212 tests** in the pytest suite (`tests/python/`)
+- **2,215 tests** in the pytest suite (`tests/python/`)
 - **~27,605 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,212-test Python suite
+uv run pytest                                        # 2,215-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```

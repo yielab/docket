@@ -125,10 +125,23 @@ blocked policy verdict never default to granting or denying anything.
    a missing/malformed argument (e.g. `/approve` with no token).
 6. **MUST** treat any other text as unrecognized — never as an implicit delegate or an implicit
    approval of the most-recent pending token.
+7. **MUST** be inbound-only: the channel replies to a message it received and **MUST NOT** send
+   unprompted. There is no notification on a newly-created approval and no report when a
+   delegated task finishes — `send_message` has exactly one call site, the reply inside
+   `poll_once`, and `core/approval.py` holds no reference to this module. An operator discovers
+   pending work by sending `/status`. This is a deliberate boundary, not an omission: an outbound
+   path would make an approval request itself a message docket pushes to an untrusted surface.
+8. **MUST** answer `/delegate` with the queued task's id, not the pipeline's output. The channel
+   queues work; it does not carry results back (see requirement 7). Output is read through
+   `docket pod <project> queue`, `docket trace`, or the HTTP control plane.
 
 ### Non-Goals (explicitly out of scope for this card)
 
 - Webhook mode (long-poll only)
+- Any outbound/unprompted message, including approval notifications and task-completion
+  reports (see Command grammar 7) — a wired chat is a command surface, not a feed
+- Conversational chat: prose that is not one of the four verbs is refused, never routed
+  to the bound agent as a turn
 - Inline keyboards or any rich UI beyond a plain-text reply
 - Discord/Slack/other chat platforms
 - A per-user allowlist beyond the chat-level binding (the binding IS the authorization unit)

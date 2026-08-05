@@ -29,7 +29,10 @@ What's pinned, in order of how much it matters:
 
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -39,6 +42,7 @@ from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import policy as _policy
 from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
 
@@ -481,3 +485,82 @@ class TestRequestTimeoutInvariantIsEnforced:
 
         assert not summary.ok
         assert summary.warning != ""
+
+
+class TestInboundOnly:
+    """spec: telegram-integration, Command grammar 7 -- the channel replies, never initiates.
+
+    A wired chat is a command surface, not a feed. Nothing may message the
+    group unprompted: no notification when an approval is created, no report
+    when a delegated task finishes. That is a security boundary, not a missing
+    feature -- an outbound path would make an approval request itself a message
+    docket pushes onto an untrusted surface, and it would do so from code that
+    never went through `_authorize`.
+
+    Pinned structurally (an AST walk over `src/`) rather than behaviourally,
+    because the failure this guards against is someone *adding* a caller: a
+    behavioural test can only assert about the call sites that already exist.
+    Sibling of `test_tool_registry.py`'s chokepoint guard, same reasoning.
+
+    If outbound messaging is ever implemented deliberately, this test must be
+    updated in the same change -- which is the point. It makes the boundary
+    move visible instead of silent.
+    """
+
+    _SRC = Path(_tg.__file__).resolve().parent.parent  # src/docket/
+
+    #: The single legitimate call site: the reply inside `core.telegram.poll_once`.
+    _ALLOWED: ClassVar[set[str]] = {"core/telegram.py"}
+
+    def _send_call_sites(self) -> list[str]:
+        found: list[str] = []
+        for path in sorted(self._SRC.rglob("*.py")):
+            rel = path.relative_to(self._SRC).as_posix()
+            if rel in self._ALLOWED or rel.startswith("edges/adapters/telegram"):
+                continue  # the wire-format adapter defines it; poll_once calls it
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                name = (
+                    fn.attr
+                    if isinstance(fn, ast.Attribute)
+                    else fn.id
+                    if isinstance(fn, ast.Name)
+                    else ""
+                )
+                if name == "send_message":
+                    found.append(f"{rel}:{node.lineno}")
+        return found
+
+    def test_nothing_outside_the_reply_path_sends_a_telegram_message(self) -> None:
+        offenders = self._send_call_sites()
+        assert not offenders, (
+            "docket must never message a wired chat unprompted; found send_message "
+            f"call(s) outside core/telegram.py's reply path at: {offenders}"
+        )
+
+    def test_the_approval_store_does_not_reach_the_telegram_channel(self) -> None:
+        """Creating an approval must not notify -- an operator polls with /status."""
+        source = (self._SRC / "core" / "approval.py").read_text(encoding="utf-8")
+        assert "telegram" not in source.replace("APPROVAL_CHANNELS", "").replace(
+            '"telegram"', ""
+        ).replace("``telegram``", ""), (
+            "core/approval.py referencing the telegram module would mean approval "
+            "creation can push a message; the channel is inbound-only"
+        )
+
+    def test_delegate_replies_with_a_task_id_not_the_agents_answer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """spec: Command grammar 8 -- the channel queues work, it does not carry results."""
+        monkeypatch.setattr(_tg, "_lead_project", lambda _aid: "demo")
+        monkeypatch.setattr(_tg._policy, "policy_eval_detail", lambda *a, **k: _policy.PolicyHit())
+        monkeypatch.setattr(_tg._dispatch, "enqueue_task", lambda *a, **k: {"id": "task-abc123"})
+
+        result = _tg._handle_delegate("demo-lead", "do the thing")
+
+        assert result.ok
+        assert "task-abc123" in result.reply
+        assert "do the thing" not in result.reply

@@ -2476,6 +2476,17 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
   `HandoffArtifact` — the handoff budget bounds the message, not the history — and the endpoint
   refuses the prompt at 19,827 tokens.
 
+  **A fifth, found by using the product rather than reading it:** the README advertised
+  "conversational dispatch — message the Lead directly" over Telegram. No such path exists; prose
+  is refused with an "unrecognized command" reply. Two neighbouring claims were also false (a gated
+  action "pings the wired group" — nothing is ever pushed; and a setup snippet using `docket serve`
+  when the poll loop needs `--telegram`). **The functional spec was correct throughout**, requiring
+  "exactly four verbs" and that anything else be treated as unrecognized — so unlike the
+  unwired-machinery family this was *prose drifting from a right spec*, and nothing compares the
+  two. Corrected across README/commands/quick-start; the inbound-only property and
+  `/delegate`-returns-a-task-id are now spec requirements pinned by an AST guard rather than
+  implicit.
+
   **A fourth, found while documenting the Tack integration:** `GET /traces/<project>?since=` —
   the route an external plan-of-record polls — replayed on any project with more than one session.
   `export_lines` concatenates session files in sorted *filename* order and a session id is a uuid,

@@ -62,6 +62,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   software/research/content/ops, added as a row in the existing blueprint registry.
 
 ### Changed
+- **Documentation: the Telegram channel is a command surface, not a chat.** The README
+  advertised "conversational dispatch — message the Lead directly", which never existed: plain
+  prose is answered with an "unrecognized command" reply. Two further claims in the same section
+  were also false — that a gated action "pings the wired group" (nothing is ever pushed;
+  `send_message` has exactly one call site, the reply inside `poll_once`, and `core/approval.py`
+  holds no reference to the module), and a setup snippet using `docket serve` when the poll loop
+  only starts under `--telegram`. Corrected across `README.md`, `docs/commands.md` and
+  `docs/QUICK-START-DOCKET.md`. The functional spec was accurate throughout — it has always
+  required "exactly four verbs" and that any other text be treated as unrecognized — so this was
+  prose drifting from a correct spec, not a spec gap.
+- **`specs/functional/telegram-integration.spec.md`** now states the inbound-only property as a
+  requirement rather than leaving it implicit, plus that `/delegate` answers with a task id and
+  not the pipeline's output, with both added to Non-Goals. Pinned by an AST guard
+  (`TestInboundOnly`) that fails if any module outside the reply path calls `send_message`, or if
+  the approval store ever reaches the Telegram module — the boundary can still be moved, but not
+  silently.
 - **License: MIT → Apache 2.0.** Sole-copyright-holder relicense, effective from this commit
   forward; applies to the current state of the repository, not a rewrite of historical commits.
 - `docket add` is repo-only and detects the codebase from the current directory (or a `path`

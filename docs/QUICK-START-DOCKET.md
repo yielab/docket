@@ -250,8 +250,10 @@ doesn't project dollar savings.
 **A:** Two ways, same pipeline:
 - **CLI (scriptable, traced):** `docket pod <project> delegate "<task>"` then
   `docket pod <project> dispatch` (or `docket serve --dispatch` to run queues in the background).
-- **Telegram (mobile-first):** message the pod's Lead directly — conversational dispatch of
-  the same Lead → Implementer → (Reviewer) → (Tester) pipeline.
+- **Telegram (mobile-first):** `/delegate <task>` in the wired group queues onto the same
+  Lead → Implementer → (Reviewer) → (Tester) pipeline. It is a command channel, not a chat:
+  plain prose is refused with an "unrecognized command" reply, and `/delegate` hands back a
+  task id rather than the agent's answer — read that with `docket pod <project> queue`.
 
 Either way the agents respond faster (each pod processes only its own context) and use fewer
 tokens (context isolated per project).
