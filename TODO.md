@@ -77,7 +77,57 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ☑ WAVE 16 — Phase 22 COMPLETE (2026-08-04). All six cards shipped; the board is CLEAR
+## ▶ ACTIVE — WAVE 17: close a recorded limit, not new scope (opened 2026-08-05)
+
+**This wave adds no new capability to the plan.** It closes the first of the four *known-true
+limits* CLAUDE.md lists, plus one hygiene defect. Both were **re-verified against the tree before
+being scheduled** — the P20-4 rule — and both are real today:
+
+- `load_mcp_tools` appears in `src/docket/` only inside docstrings and comments. It is never called.
+  `DocketDriver.registry_factory` is `builtin_registry` and nothing overrides it.
+- `METRICS_WINDOW` is declared twice, independently: `config.py:81` and `cli/_metrics.py:26`.
+  `config.py` declares **none** of `RUNAWAY_TURNS_THRESHOLD`, `RUNAWAY_COST_THRESHOLD` or
+  `KEY_MAX_AGE_DAYS`, which are read straight from the environment in `cli/_cost.py` (inline, twice
+  each) and `cli/_doctor.py` — despite CLAUDE.md stating `config.py` holds *every* path and constant.
+
+### Cards
+
+**W17-1 · MCP tools reachable in a live turn** — *TODO · M/L*
+Owns `edges/adapters/docket_runtime.py`, `core/agent_loop.py`'s registry composition, and
+`core/archetypes.py` if the role decision below requires it.
+
+**W17-2 · One owner per configuration constant** — *TODO · S*
+Owns `config.py`, `cli/_metrics.py`, `cli/_cost.py`, `cli/_doctor.py`.
+
+### The question W17-1 must answer before it writes any code
+
+**Role narrowing runs on built-in names only, and MCP names are not built-in names.**
+`core/agent_loop.py:264` calls `registry_for_role(registry, ctx.role)`, which removes exactly the
+names in the role archetype's `denied_tools` — `("write", "edit", "bash")` for a Reviewer. Every
+adapted MCP tool is registered as `mcp__<server>__<tool>`, so **none of them match any
+`denied_tools` entry.**
+
+Load MCP tools into a turn naively and a Reviewer — which the README says *structurally cannot
+write*, and whose registry genuinely lacks `write`/`edit`/`bash` today — is handed
+`mcp__filesystem__write_file` by any configured filesystem server. That is not a regression in a
+detail; it silently falsifies a headline guarantee, and the guarantee is the product's whole claim.
+
+**No implementation may land that does not answer this.** Fail closed by default.
+
+### What must stay true
+
+- **The chokepoint.** `core/mcp_tools.py` never calls a handler itself, so adapted tools already
+  route through `dispatch_tool`. Nothing in this wave may create a second execution path; the AST
+  guard exists and must stay green.
+- **Failure isolation.** `load_mcp_tools` never raises. An unreachable or hung server must degrade
+  to "unavailable" and must never block or fail a turn that would otherwise run on built-ins.
+- **Turn cost is a real constraint.** Loading is per-turn, and a stdio server means spawning a
+  subprocess. Measure it before deciding whether the wire needs caching or opt-in gating; do not
+  assume either way.
+
+---
+
+## ☑ WAVE 16 — Phase 22 COMPLETE (2026-08-04). All six cards shipped
 
 Two rounds, four agents. **Round 1:** P22-1+P22-4 (`do_POST`), P22-2+P22-3 (`do_GET`), P22-6
 (`core/trace.py`). **Round 2:** P22-5 alone. `platform` green at close: **2,162 tests**, 18/18
