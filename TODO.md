@@ -77,7 +77,62 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ☑ WAVE 17 COMPLETE (2026-08-05) — the MCP wire landed; the board is CLEAR
+## ▶ ACTIVE — WAVE 18: a headline guarantee is weaker than it reads (opened 2026-08-05)
+
+**Not a deferral being worked down.** The board was clear and every remaining deferral has an
+unfired trigger. This wave exists because a **reproduced defect** was found in an advertised
+guarantee — README lists "Hash-chained tamper-evident audit log ✅ `docket audit verify`" as a
+differentiator, and the chain does not survive its own rotation.
+
+### The reproduction (run before scheduling, not inferred from reading)
+
+With `AUDIT_LOG_MAX_BYTES` lowered and two security-relevant entries recorded, appending noise until
+the log rotates twice produces:
+
+| observation | result |
+| --- | --- |
+| security entries in `audit.log` | **gone** |
+| security entries in `audit.log.1` | **gone** — the 2nd rotation overwrote the backup holding them |
+| `verify_chain()` | **no break reported** |
+| first `seq` in the current chain | **1** — indistinguishable from a fresh install |
+| after `rm audit.log.1` | `rotated_backup=False` — looks pristine |
+
+`_rotate_if_needed` does `os.replace(logf, backup)` to a **single** generation, and `_chain_head` on
+the now-absent file returns `(1, GENESIS_HASH)`. So each generation is an island: tamper-evident
+*within* itself, with nothing asserting that anything preceded it.
+
+**Anyone who can cause audit writes can erase audit history, and the verifier will call the result
+clean.** For a log whose entire value is honest provenance, that is the property that matters.
+
+### Cards
+
+**W18-1 · Make the chain survive rotation** — *TODO · M*
+Owns `core/audit.py`, `cli/_audit.py` (or wherever `docket audit verify` renders), `config.py`'s
+audit constants.
+
+**W18-2 · Verify the capability claims against the tree** — *TODO · S · report only, no code*
+Produces a findings file; the integrator applies any README edits (README is integrator-owned).
+Justified by track record, not suspicion: the comparison table has been **wrong twice this month** —
+the MCP row claimed tools reached a live turn when the wire did not exist, and the read-API row
+undersold what shipped. A table whose stated purpose is "honesty is the point of this table" earns
+periodic checking against the code.
+
+### Constraints on W18-1
+
+- **`audit_log` must keep its never-fail contract.** It is best-effort by design and silently
+  no-ops on `OSError`. Do not make an audit write able to break a command.
+- **Do not conflate this with trace retention.** P22-6 deliberately excluded `audit.log`: telemetry
+  may be sampled and lossy, an audit log may not. This card makes history *harder to destroy
+  silently*, never easier.
+- **Detection beats prevention here.** Unbounded retention is not the goal — bounded disk is still
+  desirable. The goal is that a missing generation becomes **visible** rather than invisible.
+- Whatever ships must be **honestly described**. If some erasure remains undetectable (an attacker
+  with full filesystem access can always delete everything), say so plainly rather than implying the
+  log is now unforgeable.
+
+---
+
+## ☑ WAVE 17 COMPLETE (2026-08-05) — the MCP wire landed
 
 Two cards, two agents, both merged. `platform` green: **2,184 tests**, 18/18 goldens byte-identical,
 24/24 specs, `ruff` + `mypy --strict` (73 files) clean, `metrics.py --check` in sync.
