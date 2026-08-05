@@ -41,8 +41,9 @@ from docket.core.llm import (
     assistant,
 )
 from docket.core.models import AgentMeta, Persona
-from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
+from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry, dispatch_tool
 from docket.edges import store as _store
+from docket.edges.adapters.toolbox import ToolOutcome
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,72 @@ class TestRegistryForRole:
         base = builtin_registry()
         assert _archetypes.registry_for_role(base, "not-a-real-role").names() == base.names()
         assert _archetypes.registry_for_role(base, "").names() == base.names()
+
+
+class TestRegistryForRoleExcludesByKindToo:
+    """The gap a name-only denylist cannot close: a namespaced tool (e.g. an
+    MCP-adapted one, `mcp__<server>__<tool>`) never equals `"write"`/`"edit"`/
+    `"bash"`, so `.without(*denied_tools)` alone would never remove it.
+    `registry_for_role` also removes by `Tool.kind`, computed from the kinds
+    the role's own `denied_tools` already imply -- no new archetype field, no
+    per-role branch. See `core/archetypes.py::registry_for_role`'s docstring.
+    """
+
+    def _registry_with_a_write_kind_extra(self) -> ToolRegistry:
+        base = builtin_registry()
+        base.register(
+            Tool(
+                name="mcp__weather__overwrite_config",
+                description="a write-capable tool registered under a namespaced name",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="ran"),
+                kind="write",
+            )
+        )
+        return base
+
+    def test_reviewer_loses_the_namespaced_write_kind_tool_too(self) -> None:
+        base = self._registry_with_a_write_kind_extra()
+        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        assert "mcp__weather__overwrite_config" not in narrowed
+        assert "read" in narrowed and "glob" in narrowed  # read-kind untouched
+
+    def test_lead_loses_it_too_same_denied_kind_set_as_reviewer(self) -> None:
+        base = self._registry_with_a_write_kind_extra()
+        narrowed = _archetypes.registry_for_role(base, "lead")
+        assert "mcp__weather__overwrite_config" not in narrowed
+
+    def test_tester_loses_it_but_keeps_bash(self) -> None:
+        """Tester denies write/edit (kind `write`) but not bash (kind
+        `exec`) -- the kind-based exclusion only removes what that role's
+        own denied kinds cover, not every non-read tool."""
+        base = self._registry_with_a_write_kind_extra()
+        narrowed = _archetypes.registry_for_role(base, "tester")
+        assert "mcp__weather__overwrite_config" not in narrowed
+        assert "bash" in narrowed
+
+    def test_implementer_keeps_the_namespaced_tool(self) -> None:
+        """Contrast case: implementer denies nothing, so nothing is excluded
+        by kind either -- the mechanism narrows, it does not blanket-deny."""
+        base = self._registry_with_a_write_kind_extra()
+        narrowed = _archetypes.registry_for_role(base, "implementer")
+        assert "mcp__weather__overwrite_config" in narrowed
+
+    def test_a_read_kind_namespaced_tool_survives_reviewer_narrowing(self) -> None:
+        """Kind, not the `mcp__` prefix, is what's being keyed on -- a
+        read-kind extra tool is not swept up by write/exec exclusion."""
+        base = builtin_registry()
+        base.register(
+            Tool(
+                name="mcp__docs__lookup",
+                description="a read-only tool, hypothetically",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="ok"),
+                kind="read",
+            )
+        )
+        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        assert "mcp__docs__lookup" in narrowed
 
 
 class TestReviewerCannotDispatchAWrite:

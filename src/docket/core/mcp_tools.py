@@ -14,14 +14,21 @@ to the real approval store, execute, audit. There is no fast path: this module
 literally cannot bypass the chokepoint, because it never calls a handler
 itself.
 
-**Not yet wired to a live path.** ``core/agent_loop.py`` runs a turn against
-whatever ``ToolRegistry`` its caller hands it, and
-``edges/adapters/docket_runtime.py``'s ``DocketDriver`` builds that registry
-from ``core.tools.builtin_registry()`` alone -- it does not call
-:func:`load_mcp_tools`. This module's adaptation and screening logic ships
-fully tested, and ``docket mcp servers add/list/remove`` already configures
-servers end-to-end through this module's own functions; what remains is
-wiring :func:`load_mcp_tools` into the registry a live turn actually uses.
+**Wired to the live turn path.** ``edges/adapters/docket_runtime.py``'s
+``DocketDriver.run_turn`` builds a registry from ``core.tools.
+builtin_registry()`` (via its ``registry_factory`` seam) and then calls
+:func:`load_mcp_tools` against it (via its ``mcp_loader`` seam) before
+handing the registry to ``core/agent_loop.py``'s ``run_agent_turn`` -- which
+still narrows by role exactly once, after MCP tools are folded in, so a
+role that denies ``write`` never sees a write-capable MCP tool either. See
+``core.archetypes.registry_for_role``'s docstring for the kind-based rule
+that makes that safe without a per-role branch: every adapted tool here
+registers ``kind="write"`` unconditionally (see :func:`_build_tool` below),
+so a role whose ``denied_tools`` implies kind ``write`` is denied loses every
+MCP tool along with ``write``/``edit`` -- not because of anything MCP-aware
+in the narrowing function, but because ``kind`` is the same data both paths
+already share. On an install with zero configured servers (the default),
+this whole path costs one cheap JSON read and changes nothing observable.
 
 ## Namespacing (the collision rule)
 

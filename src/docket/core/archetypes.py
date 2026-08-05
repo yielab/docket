@@ -733,11 +733,36 @@ def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
     from the registry) or one with an empty `denied_tools` returns *base*
     unchanged — today's behavior for anyone this card does not narrow, not a
     silent denial of everything.
+
+    **Also removes by capability, not only by name.** `denied_tools` is a
+    list of literal built-in names, but `base` may also carry MCP-adapted
+    tools (`core.mcp_tools.load_mcp_tools`), registered under a namespaced
+    name (`mcp__<server>__<tool>`) no denylist could ever spell out in
+    advance -- and every adapted tool is registered `kind="write"`
+    unconditionally (`core/mcp_tools.py` has no way to know whether a remote
+    tool is actually read-only). So after the name-based removal, this also
+    computes the set of `Tool.kind`s implied by the denied names still
+    present in *base* (`write` for `write`/`edit`, `exec` for `bash`) and
+    removes every remaining tool of those kinds via `ToolRegistry.
+    without_kind()`. For every built-in/starter archetype shipped today this
+    is a no-op against a builtins-only registry -- `write`/`edit`/`bash` are
+    already the only built-ins with kind `write`/`exec`, and every role that
+    denies any of them already names all three. It only starts removing
+    something new once an MCP tool is actually present, which is exactly the
+    case a name-only denylist cannot reach: a role denied `write` must not
+    gain a write-capable tool just because it arrived through MCP instead of
+    `core.tools.builtin_registry()`.
     """
     archetype = load_registry().get(role)
     if archetype is None or not archetype.denied_tools:
         return base
-    return base.without(*archetype.denied_tools)
+    narrowed = base.without(*archetype.denied_tools)
+    denied_kinds = {
+        tool.kind for name in archetype.denied_tools if (tool := base.get(name)) is not None
+    }
+    if denied_kinds:
+        narrowed = narrowed.without_kind(*denied_kinds)
+    return narrowed
 
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:

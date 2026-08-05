@@ -192,6 +192,22 @@ class ToolRegistry:
                 clone.register(tool)
         return clone
 
+    def without_kind(self, *kinds: ToolKind) -> ToolRegistry:
+        """A copy with every tool whose ``kind`` is in *kinds* removed.
+
+        Sibling of :meth:`without`, keyed on the tool's declared capability
+        rather than its name. This is what lets a name-agnostic tool (e.g. an
+        MCP-adapted tool, registered under a namespaced name no denylist could
+        ever spell out in advance) still be excluded from a role that denies
+        the capability it represents -- see
+        ``core.archetypes.registry_for_role``, the one caller.
+        """
+        clone = ToolRegistry()
+        for tool in self._tools.values():
+            if tool.kind not in kinds:
+                clone.register(tool)
+        return clone
+
     def __len__(self) -> int:
         return len(self._tools)
 

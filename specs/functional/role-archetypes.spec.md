@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
@@ -10,8 +10,13 @@ budget" below. ROADMAP Phase 19's P19-12 added `deniedTools` — see "Archetype 
 "Per-role tool sets" section — and, unlike `editRights`, it is genuinely *enforced*:
 `core.archetypes.registry_for_role` is called by `core/agent_loop.py` once per turn to remove
 those tool names from the registry the model is given, so a denied tool is unreachable, not just
-discouraged. See `agent-loop.spec.md` for how the turn loop consumes it.
-**Last Updated**: 2026-08-02
+discouraged. **Wave 17** extended that enforcement to also key on `Tool.kind`, not only literal
+names (`registry_for_role`'s new requirement 6) — the reason: `core.mcp_tools.load_mcp_tools`
+gained a production caller this wave (see `mcp-client.spec.md`), so a registry `registry_for_role`
+narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
+in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
+for the wiring this requirement exists to keep safe.
+**Last Updated**: 2026-08-05
 
 ## Purpose
 
@@ -169,11 +174,11 @@ This specification does NOT cover:
    `core.tools.builtin_registry()`'s names) an archetype's agent may never call. It defaults to
    `()` for any archetype that does not declare one.
 2. `core.archetypes.registry_for_role(base, role)` **MUST** look *role* up in the live archetype
-   registry and, when found with a non-empty `denied_tools`, return
-   `base.without(*archetype.denied_tools)` — the public `ToolRegistry.without()` API, never a
-   private/parallel narrowing mechanism. An unrecognized *role* (empty string, a bare project id,
-   any name absent from the registry) or one whose `denied_tools` is empty **MUST** return *base*
-   unchanged.
+   registry and, when found with a non-empty `denied_tools`, return `base.without(
+   *archetype.denied_tools)` — the public `ToolRegistry.without()` API, never a private/parallel
+   narrowing mechanism — further narrowed per requirement 6 below. An unrecognized *role* (empty
+   string, a bare project id, any name absent from the registry) or one whose `denied_tools` is
+   empty **MUST** return *base* unchanged.
 3. No caller **MUST** branch on a role's name (e.g. `if role == "reviewer"`) to decide what to
    narrow — the denylist is data on the archetype; `registry_for_role` is the single, generic
    function every caller uses.
@@ -184,6 +189,23 @@ This specification does NOT cover:
    `()` (full-repo). See "Built-in archetypes" below for the full table.
 5. This field is independent of `editRights` (requirement 5 under "Archetype schema") — a user
    archetype **MAY** set any combination of the two; nothing computes one from the other.
+6. **`registry_for_role` MUST also narrow by capability, not only by literal name** (ROADMAP Phase
+   19/wave 17, P19-10's follow-up — see `mcp-client.spec.md`'s "Wired to the live turn path"). A
+   registry handed to `registry_for_role` may contain tools whose name was never known when
+   `denied_tools` was written (an MCP-adapted tool, namespaced `mcp__<server>__<tool>` by
+   `core.mcp_tools.load_mcp_tools`) — no denylist of literal names can ever anticipate one. After
+   the name-based removal in requirement 2, `registry_for_role` **MUST** compute the set of
+   `core.tools.Tool.kind` values implied by the denied names still present in *base* (e.g. `write`
+   for `write`/`edit`, `exec` for `bash`) and **MUST** remove every remaining tool of those kinds
+   via the public `ToolRegistry.without_kind()` API. This **MUST NOT** be a per-role branch, an MCP-
+   aware special case, or a second field on the archetype — it is a pure function of `denied_tools`
+   (already-declared data) and `Tool.kind` (already-declared data on every registered tool,
+   built-in or not). For every built-in/starter archetype shipped today this step removes nothing
+   beyond what requirement 2 already removed from a builtins-only registry — `write`/`edit`/`bash`
+   are already the only built-ins with kind `write`/`exec`, and every archetype that denies any of
+   them already names all three (or, for `tester`, both `write`-kind names) — so it only starts
+   mattering once a registry actually contains a non-built-in tool, which was impossible before
+   this requirement's own card wired `load_mcp_tools` into a live turn.
 
 ### Starter library
 
@@ -396,6 +418,28 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.5.0 (2026-08-05)
+
+- **ROADMAP Phase 19/wave 17, card P19-10's follow-up (MCP tools reachable in a live turn).**
+  `core.mcp_tools.load_mcp_tools` gained a production caller
+  (`edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn`, see `mcp-client.spec.md`'s "Wired
+  to the live turn path"), which meant a registry `registry_for_role` narrows could, for the first
+  time, contain a tool whose name `denied_tools` could never have anticipated (an MCP-adapted
+  tool, namespaced `mcp__<server>__<tool>`). Added the new "Per-role tool sets" requirement 6:
+  `registry_for_role` also narrows by `core.tools.Tool.kind`, computed from the kinds the role's
+  own `denied_tools` already imply, via the new `ToolRegistry.without_kind()` API (documented in
+  this spec's requirement 6 above, the sibling of `without()`). No new archetype field, no
+  per-role branch — every adapted MCP
+  tool registers `kind="write"` unconditionally, so a role whose denied names imply kind `write`
+  (`lead`, `reviewer`, `tester`, `critic`, `monitor`) loses every MCP tool along with `write`/
+  `edit`; a role that denies nothing (`implementer` and the full-access starter archetypes) is
+  unaffected. Byte-identical for every registry this spec's requirement 4 table already covers
+  (builtins-only) — proven by keeping the pre-existing `TestRegistryForRole` tests passing
+  unmodified. **Honest limit, not a gap this version closes:** a read-only role now gets *zero*
+  MCP tools rather than a correctly-narrowed nonzero set, because nothing in `core/mcp_tools.py`
+  can currently tell a genuinely read-only remote tool from a write-capable one — see
+  `mcp-client.spec.md`'s changelog for the full reasoning and the named trigger for loosening this.
 
 ### Version 1.4.0 (2026-08-02)
 

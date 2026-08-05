@@ -21,10 +21,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote as _url_unquote
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
+from docket.core import mcp_tools as _mcp
 from docket.core import session as _session
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
@@ -44,6 +46,24 @@ from docket.edges import store as _store
 from docket.edges.adapters import llm as _llm
 
 __all__ = ["DocketDriver"]
+
+
+def _load_mcp_tools(registry: ToolRegistry, role: str) -> list[Any]:
+    """Fold every configured MCP server's tools into *registry* for this turn.
+
+    Thin wrapper around ``core.mcp_tools.load_mcp_tools`` so
+    ``DocketDriver``'s injection seam (``mcp_loader``) has a fixed
+    two-positional shape a test can substitute without matching
+    ``load_mcp_tools``'s full keyword surface. Called with zero configured
+    servers on every install that has never run ``docket mcp servers add``
+    (the overwhelming default) -- that path is one cheap JSON read
+    (``core.mcp_tools.load_mcp_servers``) and returns immediately, never
+    spawning a subprocess or mutating *registry*. Never raises: see
+    ``core/mcp_tools.py``'s "Failure isolation" docstring section -- an
+    unreachable, slow, or malformed server degrades to "unavailable" rather
+    than failing the turn this registry is about to be used for.
+    """
+    return _mcp.load_mcp_tools(registry, role=role)
 
 
 def _load_agent_meta(agent_id: str) -> tuple[AgentMeta | None, str]:
@@ -91,14 +111,16 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
 class DocketDriver:
     """The ``RuntimeDriver`` implementation.
 
-    ``backend_factory``/``registry_factory`` are the two injection seams a
-    test needs (a stubbed ``ChatBackend``, a narrower tool set); both default
-    to the real production functions, so a bare ``DocketDriver()`` is what
-    every non-test caller constructs.
+    ``backend_factory``/``registry_factory``/``mcp_loader`` are the injection
+    seams a test needs (a stubbed ``ChatBackend``, a narrower tool set, a
+    fake MCP server without a real subprocess); all three default to the
+    real production functions, so a bare ``DocketDriver()`` is what every
+    non-test caller constructs.
     """
 
     backend_factory: Callable[[str], ChatBackend | None] = _llm.client_for
     registry_factory: Callable[[], ToolRegistry] = builtin_registry
+    mcp_loader: Callable[[ToolRegistry, str], list[Any]] = _load_mcp_tools
 
     def run_turn(
         self,
@@ -156,9 +178,17 @@ class DocketDriver:
             role=meta.role,
             project=agent_id,
         )
+        # Folded in before the turn loop narrows by role
+        # (core.archetypes.registry_for_role, called once inside
+        # run_agent_turn) -- narrowing has to see whatever a configured MCP
+        # server contributed, or a write-denying role would keep a
+        # write-capable MCP tool. See core/archetypes.py's registry_for_role
+        # docstring for the kind-based rule that makes this safe.
+        registry = self.registry_factory()
+        self.mcp_loader(registry, meta.role)
         loop_config = _loop.LoopConfig(wall_clock_timeout_s=float(timeout))
         result = _loop.run_agent_turn(
-            backend, self.registry_factory(), ctx, session_key, message, config=loop_config
+            backend, registry, ctx, session_key, message, config=loop_config
         )
 
         # cost_usd stays 0.0: real token counts are recorded (result.usage,

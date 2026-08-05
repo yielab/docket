@@ -1704,11 +1704,11 @@ Two independent things live under `docket mcp`: **serving** docket's own control
 MCP server (`mcp serve`), and **configuring external MCP tool servers** (`mcp servers`) — the
 "rent the protocol" idea, where external tools are configuration rather than code.
 
-> **Status:** `mcp serve` is fully live. `mcp servers` registers a server and makes it
-> inspectable, and the client that loads its tools namespaces them `mcp__<server>__<tool>` and
-> routes them through the same gate as a built-in — but **the turn loop does not yet build its
-> registry from them**, so a configured server's tools are not reachable by a running agent.
-> See `specs/functional/mcp-client.spec.md`.
+> **Status:** `mcp serve` is fully live. `mcp servers` registers a server, and its tools are now
+> reachable from a live turn: the client namespaces them `mcp__<server>__<tool>`, and the turn
+> loop folds them into the registry before gating and before per-role narrowing, so a Reviewer (or
+> any role that denies `write`) never gets a write-capable MCP tool no matter what a configured
+> server advertises. See `specs/functional/mcp-client.spec.md`.
 
 #### serve
 
