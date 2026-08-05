@@ -1,17 +1,28 @@
 # MCP Client Specification
 
-**Version**: 1.1.1
-**Status**: Implemented. Configuration (`docket mcp servers add/list/remove`, ROADMAP Phase 19
-P19-13) and the underlying adapt-and-gate machinery (`core/mcp_tools.py`,
-`edges/adapters/mcp_client.py`, Phase 19 P19-10) are both shipped and CLI-reachable. **Still not
-on a live agent-turn path**: `core/agent_loop.py`'s `run_agent_turn` (Phase 19 P19-5) takes an
-already-built `ToolRegistry` as a caller-supplied argument rather than building one itself, so
-nothing in production yet calls `load_mcp_tools` to fold a configured server's tools into that
-registry before a turn starts — the same way `core/llm.py` (P19-1), `core/tools.py` (P19-2), and
-`core/session.py` (P19-4) shipped ahead of their own callers. Configuring a server today makes it
-inspectable (`docket mcp servers list`) and ready; it does not yet make its tools available to a
-running agent.
-**Last Updated**: 2026-08-04
+**Version**: 1.2.0
+**Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
+oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
+`edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
+(defaulting to a thin wrapper over :func:`load_mcp_tools`), called from `run_turn` right after the
+turn's registry is built (`registry_factory()`) and before `core/agent_loop.py`'s `run_agent_turn`
+narrows it by role — so every configured server's tools are both *reachable* by a running agent
+and *subject to the same per-role narrowing a built-in tool gets*. Configuring a server
+(`docket mcp servers add`) now makes its tools available on the very next turn, no restart or
+separate activation step needed. See "Requirement 25-28" below for the wiring contract and
+`role-archetypes.spec.md`'s new requirement 6 for the role-narrowing half this depended on: a
+naive wire (add MCP tools before narrowing, without also excluding by `Tool.kind`) would have
+silently defeated a Reviewer's "no write/edit/bash" guarantee, since a namespaced MCP tool name
+(`mcp__<server>__<tool>`) can never equal a literal denied name. That gap is closed, not merely
+avoided by omission — see "Wired to the live turn path (the role-narrowing hazard)" below.
+**What remains unwired, stated plainly:** no per-turn caching of a server's tool listing (every
+turn that reaches a configured server re-spawns it — see "Measured per-turn cost" below and its
+named trigger for when to add one); HTTP/SSE transports remain unsupported (stdio only, unchanged
+scope); a read-only role gets *zero* MCP tools rather than a correctly-narrowed nonzero set,
+because no per-tool trust/capability signal exists yet to tell a genuinely read-only remote tool
+from a write-capable one (every adapted tool is `kind="write"` unconditionally, unchanged from
+1.1.0) — this is the correct fail-closed answer today, not a gap this version silently carries.
+**Last Updated**: 2026-08-05
 
 ## Purpose
 
@@ -44,11 +55,13 @@ This specification covers:
 - The recipe this whole client exists to unlock: pointing docket at an off-the-shelf MCP server
   (Playwright for browser automation, any MCP-compliant search server for web search) as
   configuration rather than code — see Examples
+- **`DocketDriver.run_turn`'s `mcp_loader` seam** (`edges/adapters/docket_runtime.py`) — the call
+  site that makes a configured server's tools reachable by a running agent, and the ordering
+  guarantee (loaded before role narrowing) that keeps that reachability compatible with
+  `role-archetypes.spec.md`'s per-role tool sets
 
 This specification does NOT cover:
 
-- The turn loop itself, or when/how often it calls `load_mcp_tools` (`core/agent_loop.py`,
-  ROADMAP Phase 19 P19-5 — not yet built)
 - `core/tools.py`'s tool schema, registry, or `dispatch_tool` chokepoint (P19-2) — this
   specification's entire premise is that none of that is touched or reimplemented; every adapted
   tool is gated by the unmodified `dispatch_tool`/`evaluate_tool_call` — see `security-gates.spec.md`
@@ -59,8 +72,15 @@ This specification does NOT cover:
   consumption as "a deliberately separate, unbuilt card (ROADMAP Phase 18 L-4, daemon-gated)" is
   superseded by this specification now that D-19 has docket, not a daemon, own the loop
 - Non-stdio MCP transports (HTTP/SSE) — only a spawned stdio subprocess server is supported today
-- Actually connecting to a configured server during a live agent turn — `docket mcp servers add`
-  only writes configuration; nothing calls `load_mcp_tools` in production yet (see Status above)
+- **The role-narrowing mechanism itself** (`core.archetypes.registry_for_role`'s kind-based
+  exclusion) — this specification only documents that `DocketDriver` loads MCP tools *before* that
+  narrowing runs, and why that ordering matters; `role-archetypes.spec.md` owns the narrowing
+  contract
+- **Per-turn caching of a server's tool listing** — not built; every turn that reaches a
+  configured server re-spawns it (see Status above for the measured cost and named trigger)
+- **Per-tool trust/capability metadata** — there is no way today to mark a specific remote tool
+  (or a whole server) as read-only, which is why a role that denies `write` gets zero MCP tools
+  rather than a correctly-narrowed subset (see Status above)
 
 ## Requirements
 
@@ -167,7 +187,36 @@ This specification does NOT cover:
 24. None of `docket mcp servers add/list/remove` **MUST** import from, or otherwise reach,
     `core/tools.py` or any built-in tool registration — this CLI only ever calls the configuration
     functions in Requirements 1-3; connecting to a server and adapting its tools remains
-    `load_mcp_tools`'s job, on whatever path eventually calls it (see Status).
+    `load_mcp_tools`'s job, called by `DocketDriver.run_turn` (Requirement 25).
+
+### Live-turn wiring (ROADMAP Phase 19/wave 17)
+
+25. `edges/adapters/docket_runtime.py`'s `DocketDriver` **MUST** expose an `mcp_loader` seam
+    (`Callable[[ToolRegistry, str], list[McpServerLoadResult]]`), defaulting to a thin wrapper
+    around `load_mcp_tools`, so a test can substitute a fake `list_tools`/`call_tool` pair (per
+    Requirement 4's own port) without spawning a subprocess or requiring the `mcp` SDK.
+26. `DocketDriver.run_turn` **MUST** call `self.mcp_loader(registry, role)` against the registry
+    returned by `self.registry_factory()` (typically `core.tools.builtin_registry()`) **before**
+    that registry is handed to `core.agent_loop.run_agent_turn` — i.e. before
+    `core.archetypes.registry_for_role`'s once-per-turn narrowing runs (`agent-loop.spec.md`).
+    This ordering **MUST NOT** be reversed: narrowing after loading is what lets
+    `role-archetypes.spec.md`'s requirement 6 (kind-based exclusion) see, and exclude, an
+    MCP-adapted tool for a role that denies the capability it represents.
+27. A zero-server install (`load_mcp_servers()` returns `[]`, the default for any install that has
+    never run `docket mcp servers add`) **MUST** produce a registry, a system prompt, and a set of
+    tool advertisements to the model **byte-for-byte identical** to the pre-wave-17 behavior (no
+    call to `load_mcp_tools` at all). `load_mcp_tools` with zero servers **MUST NOT** mutate the
+    registry, write an audit entry, or spawn a subprocess.
+28. Nothing in `DocketDriver.run_turn`'s use of `mcp_loader` **MUST** change `run_agent_turn`'s own
+    "never raises for an ordinary failure" contract (`agent-loop.spec.md`) — `load_mcp_tools`
+    already never raises (Requirement 11-13, 19), so a server that is unreachable, hung (bounded by
+    Requirement 13's timeout), or returns a malformed listing degrades to "unavailable" and the
+    turn proceeds on whatever registry resulted, never failing solely because of MCP loading.
+29. This specification does not itself define a caching layer for `load_mcp_tools`'s per-turn
+    cost — see Status above for the measured latency and the named trigger for adding one. Any
+    future cache **MUST** invalidate on a `docket mcp servers remove`/`add`/edit, not merely on a
+    TTL — a stale cache that resurrects a removed server's tool is a correctness bug, not a
+    performance tradeoff.
 
 ## Interface Contracts
 
@@ -215,6 +264,27 @@ def call_remote_tool(
     config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float
 ) -> ToolOutcome: ...
 ```
+
+### `DocketDriver`'s wiring seam (`docket.edges.adapters.docket_runtime`)
+
+```python
+@dataclass
+class DocketDriver:
+    backend_factory: Callable[[str], ChatBackend | None] = client_for
+    registry_factory: Callable[[], ToolRegistry] = builtin_registry
+    mcp_loader: Callable[[ToolRegistry, str], list[Any]] = _load_mcp_tools  # wraps load_mcp_tools
+
+    def run_turn(self, agent_id: str, session_key: str, message: str, ...) -> TurnResult:
+        ...
+        registry = self.registry_factory()
+        self.mcp_loader(registry, meta.role)   # folds MCP tools in, before role narrowing
+        ...
+        result = _loop.run_agent_turn(backend, registry, ctx, session_key, message, config=loop_config)
+```
+
+`mcp_loader`'s two-positional shape (`registry`, `role`) is a fixed wrapper around
+`load_mcp_tools`'s keyword-heavy signature (Module API above) so a test can substitute a fake
+without matching that full surface — see Requirement 25.
 
 Both functions spawn a fresh stdio subprocess for exactly one exchange and tear it down again —
 no connection is kept open between calls, so a misbehaving server cannot corrupt a later,
@@ -369,6 +439,14 @@ dispatch_tool(
   the launch command it was given.
 - `docket mcp servers list` **MUST NOT** ever cause a subprocess to be spawned — it reads
   `load_mcp_servers()` only.
+- With zero configured servers, `DocketDriver.run_turn`'s registry, the tool specs advertised to
+  the model, and every downstream effect **MUST** be identical to a `DocketDriver` built before
+  this version — proven by `tests/python/test_mcp_tools_in_a_live_turn.py::
+  TestZeroServersIsUnchanged`, not merely asserted.
+- A role whose `denied_tools` implies kind `write` (every archetype that denies `write`/`edit`)
+  **MUST NOT** be advertised, and **MUST NOT** be able to dispatch, any MCP-adapted tool — proven
+  end-to-end through `DocketDriver.run_turn` (not only at `registry_for_role`'s own level) by
+  `tests/python/test_mcp_tools_in_a_live_turn.py::TestReviewerNeverGainsAWriteCapableMcpTool`.
 
 ### Invariants
 
@@ -383,8 +461,41 @@ dispatch_tool(
   `core/mcp_tools.py` itself (see `TestOnlyTheInertResultTypeIsImported` in
   `tests/python/test_mcp_client.py`) — the CLI is configuration only, never a second
   execution path.
+- A failure isolated to `DocketDriver.mcp_loader` (an unreachable, hung, or malformed-listing
+  server) **MUST NOT** cause `run_turn` to return `ok=False` on its own — only an otherwise-real
+  turn failure (backend error, timeout, budget) may do that (Requirement 28).
 
 ## Changelog
+
+### Version 1.2.0 (2026-08-05)
+
+- **ROADMAP Phase 19/wave 17, card W17-1 — MCP tools reachable in a live turn.** Closed docket's
+  oldest recorded known-true limit. Added Requirements 25-29 ("Live-turn wiring"):
+  `edges/adapters/docket_runtime.py`'s `DocketDriver` gained an `mcp_loader` injection seam,
+  called from `run_turn` right after `registry_factory()` and before `run_agent_turn`'s per-turn
+  role narrowing — so a configured server's tools are folded into the registry the model sees and
+  are subject to the same narrowing a built-in tool gets. Configuring a server
+  (`docket mcp servers add`) now makes its tools usable on the very next turn.
+  - **The blocking design question this card had to answer first:** a namespaced MCP tool name
+    (`mcp__<server>__<tool>`) can never equal a literal `denied_tools` entry, so a naive wire would
+    have silently given a Reviewer (or any write-denying role) every configured server's tools —
+    falsifying this project's own "structural, not advisory" claim about role narrowing. Fixed in
+    `role-archetypes.spec.md`'s new requirement 6, not here: `registry_for_role` now also excludes
+    by `Tool.kind`, and every MCP-adapted tool is `kind="write"` unconditionally (unchanged from
+    1.1.0's `_build_tool`) — so the existing kind data, not a new MCP-aware rule, closes the gap.
+  - **Measured, not assumed, per-turn cost.** Zero configured servers (the default): one JSON read,
+    averaging 0.0036ms over 1000 iterations, no subprocess. One configured server: a real subprocess
+    round trip against `docket mcp serve` itself (a real, already-shipped MCP stdio server used as
+    the measurement's "fake" server) averaged ~0.62s steady-state per server, per turn. **Decision:
+    no caching in this version** — configuring a server is already the opt-in gate that determines
+    who pays this cost, and a correct cache needs an invalidation signal tied to
+    `MCP_SERVERS_FILE`'s content (Requirement 29) that does not exist yet; named trigger for a
+    follow-up: more than one configured server, or measured turn latency dominated by MCP loading.
+  - **What this version leaves honestly unwired:** no per-turn caching (above); HTTP/SSE transports
+    still unsupported (unchanged scope); a read-only role gets zero MCP tools rather than a
+    correctly narrowed nonzero set, because no per-tool trust/capability signal exists to
+    distinguish a genuinely read-only remote tool from a write-capable one — the follow-up this
+    leaves named, not started.
 
 ### Version 1.1.1 (2026-08-04)
 

@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` and
 `edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
 `core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
@@ -15,8 +15,12 @@ uninstalled (P19-7b removes it). See `pod-dispatch.spec.md`'s "Runtime driver re
 omissions P19-5 recorded honestly rather than papering over: the loop now narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
 agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent`) — see the new
-"Per-role tool narrowing" and "System prompt composition" requirements below.
-**Last Updated**: 2026-08-03
+"Per-role tool narrowing" and "System prompt composition" requirements below. **Wave 17** gave
+`DocketDriver` an `mcp_loader` seam, called before this loop's registry-narrowing step, so a
+configured MCP server's tools are reachable from a live turn and correctly narrowed by role — see
+`mcp-client.spec.md` for the wiring and `role-archetypes.spec.md`'s requirement 6 for the
+kind-based narrowing this depended on.
+**Last Updated**: 2026-08-05
 
 ## Purpose
 
@@ -232,6 +236,8 @@ def run_agent_turn(
 class DocketDriver:                            # implements core.runtime_driver.RuntimeDriver
     backend_factory: Callable[[str], ChatBackend | None]   # default: edges.adapters.llm.client_for
     registry_factory: Callable[[], ToolRegistry]            # default: core.tools.builtin_registry
+    mcp_loader: Callable[[ToolRegistry, str], list[Any]]    # default: wraps core.mcp_tools.load_mcp_tools
+                                                             # (ROADMAP Phase 19/wave 17 -- see mcp-client.spec.md)
 
     def run_turn(self, agent_id, session_key, message, timeout=300, env=None, *, on_spawn=None) -> TurnResult: ...
     def provision(self, agent_id, workspace, model) -> ProvisionResult: ...
@@ -353,6 +359,18 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.3.0 (2026-08-05)
+
+- **ROADMAP Phase 19/wave 17, card W17-1 (MCP tools reachable in a live turn).** `DocketDriver`
+  gained an `mcp_loader` field (Module API above), called from `run_turn` before the registry is
+  handed to `run_agent_turn` — so this loop's existing once-per-turn `registry_for_role` call now
+  also narrows whatever a configured MCP server contributed, not only built-ins. No change to
+  `run_agent_turn`'s own signature or contract: it still takes an already-built `ToolRegistry` as a
+  caller-supplied argument (that part of the P19-5 Status note above remains literally true) — the
+  change is entirely in what `DocketDriver` builds before calling it. Full requirements and the
+  role-narrowing safety argument live in `mcp-client.spec.md` (Requirements 25-29) and
+  `role-archetypes.spec.md` (requirement 6), not duplicated here.
 
 ### Version 1.2.0 (2026-08-03)
 

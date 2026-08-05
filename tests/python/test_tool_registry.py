@@ -363,6 +363,30 @@ class TestRegistry:
         res = dispatch_tool(_call("write", '{"path":"x","content":"y"}'), ctx, readonly)
         assert res.denied and not (ctx.roots[0] / "x").exists()
 
+    def test_without_kind_narrows_by_capability_not_name(self) -> None:
+        """Sibling of `without()`, keyed on `Tool.kind` -- the mechanism
+        `core.archetypes.registry_for_role` uses to exclude a namespaced
+        (e.g. MCP-adapted) tool no name-based denylist could spell out in
+        advance. See that module's docstring for the full reasoning."""
+        no_mutation = builtin_registry().without_kind("write", "exec")
+        assert no_mutation.names() == ["fetch", "glob", "grep", "read"]
+
+    def test_without_kind_removes_a_non_builtin_tool_of_the_same_kind(self) -> None:
+        registry = builtin_registry()
+        registry.register(
+            Tool(
+                name="mcp__fake__danger",
+                description="a namespaced tool no denylist names explicitly",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="ran"),
+                kind="write",
+            )
+        )
+        narrowed = registry.without_kind("write")
+        assert "mcp__fake__danger" not in narrowed
+        assert "write" not in narrowed and "edit" not in narrowed
+        assert "read" in narrowed and "bash" in narrowed  # exec-kind untouched
+
 
 class TestSinglePathToExecution:
     """The architectural invariant, checked against the tree rather than
