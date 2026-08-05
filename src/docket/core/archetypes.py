@@ -81,7 +81,7 @@ from typing import Any
 
 import docket.config as cfg
 from docket.core import memory as _mem
-from docket.core.tools import ToolRegistry
+from docket.core.tools import ToolKind, ToolRegistry
 from docket.edges import store as _store
 
 SCOPES: frozenset[str] = frozenset({"org", "pod"})
@@ -717,6 +717,33 @@ def load_registry() -> ArchetypeRegistry:
     return ArchetypeRegistry(archetypes)
 
 
+# The capability each built-in tool name represents. `registry_for_role` maps a
+# role's `denied_tools` through this to decide which *kinds* that role may not
+# hold, so a capability denial survives arriving under an unfamiliar name (an
+# MCP-adapted tool is namespaced `mcp__<server>__<tool>`, which no denylist can
+# spell out in advance).
+#
+# Deliberately a static map rather than a lookup into the registry being
+# narrowed. Deriving the kind from `base` would make the denial conditional on
+# the denied built-in still being *present* there — so a caller that narrowed
+# the registry first (`DocketDriver.registry_factory` exists precisely to inject
+# a narrower tool set) would silently stop deriving `write`, and a Reviewer
+# would regain a write-capable MCP tool. The denial must depend only on the
+# role's own data, never on what the incoming registry happens to contain.
+#
+# `test_role_tools_and_identity.py` pins this against `builtin_registry()` so
+# the two cannot drift.
+BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
+    "read": "read",
+    "glob": "read",
+    "grep": "read",
+    "fetch": "read",
+    "write": "write",
+    "edit": "write",
+    "bash": "exec",
+}
+
+
 def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
     """Narrow *base* to exactly what *role* may call.
 
@@ -758,7 +785,7 @@ def registry_for_role(base: ToolRegistry, role: str) -> ToolRegistry:
         return base
     narrowed = base.without(*archetype.denied_tools)
     denied_kinds = {
-        tool.kind for name in archetype.denied_tools if (tool := base.get(name)) is not None
+        kind for name in archetype.denied_tools if (kind := BUILTIN_TOOL_KINDS.get(name))
     }
     if denied_kinds:
         narrowed = narrowed.without_kind(*denied_kinds)

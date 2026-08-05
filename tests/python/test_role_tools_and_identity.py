@@ -258,6 +258,51 @@ class TestRegistryForRoleExcludesByKindToo:
         narrowed = _archetypes.registry_for_role(base, "reviewer")
         assert "mcp__docs__lookup" in narrowed
 
+    def test_denied_kinds_do_not_depend_on_the_incoming_registry(self) -> None:
+        """The denial must come from the ROLE's data, never from what `base`
+        happens to contain.
+
+        Deriving the denied kinds by looking each denied name up *in base*
+        makes the whole exclusion conditional on the built-in still being
+        present there. `DocketDriver.registry_factory` exists precisely so a
+        caller can inject a narrower tool set, so a base without `write`/
+        `edit`/`bash` is a supported shape -- and under the lookup-in-base
+        derivation it yielded an empty denied-kind set, handing a Reviewer
+        back the write-capable MCP tool this whole mechanism exists to keep
+        away from it. `BUILTIN_TOOL_KINDS` is a static map for this reason.
+        """
+        base = ToolRegistry()
+        base.register(
+            Tool(
+                name="read",
+                description="read a file",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="ok"),
+                kind="read",
+            )
+        )
+        base.register(
+            Tool(
+                name="mcp__fs__write_file",
+                description="write-capable, arriving through MCP",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: ToolOutcome(True, content="wrote"),
+                kind="write",
+            )
+        )
+        # No built-in write/edit/bash in `base` at all.
+        narrowed = _archetypes.registry_for_role(base, "reviewer")
+        assert "mcp__fs__write_file" not in narrowed
+        assert "read" in narrowed
+
+    def test_builtin_tool_kinds_matches_the_real_builtin_registry(self) -> None:
+        """Drift guard: the static map must stay true to the registry it
+        describes, or a new built-in silently gains no capability denial.
+        """
+        real = builtin_registry()
+        actual = {name: real.get(name).kind for name in real.names()}  # type: ignore[union-attr]
+        assert actual == _archetypes.BUILTIN_TOOL_KINDS
+
 
 class TestReviewerCannotDispatchAWrite:
     """**The card's acceptance criterion.** A Reviewer registry genuinely
