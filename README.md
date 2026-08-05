@@ -98,8 +98,14 @@ docket's approval store is answerable through **four channels** — a CLI channe
 (`docket approve`/`docket deny`), a headless HTTP endpoint, MCP, and Telegram — and every grant,
 deny, or timeout writes an entry to the hash-chained, tamper-evident audit log, tagged with the
 channel it came from. The headless channels mean CI jobs and automation can vote without a chat
-account. **Approvals fail closed on timeout.** Docker workspace isolation stays opt-in
-(`docket gates isolate on`).
+account. **Approvals fail closed on timeout.**
+
+> [!WARNING]
+> **`docket gates isolate on` does not yet sandbox a live turn.** It records the preference in
+> `fleet.json`, and the bwrap/docker execution path exists and is tested — but the turn loop never
+> reads the flag, so **every tool call currently runs unsandboxed regardless of the setting.**
+> Do not treat workspace isolation as a containment boundary today. `docket gates status` says the
+> same thing at the terminal.
 
 ---
 
@@ -152,7 +158,8 @@ docket runs the agent turn itself, which is what makes the guardrails real rathe
     tool handler   denied (fail-closed)        hash-chained audit log
 ```
 
-**Built-in tools:** `read`, `write`, `edit`, `glob`, `grep`, `bash` (sandboxed exec), and `fetch`
+**Built-in tools:** `read`, `write`, `edit`, `glob`, `grep`, `bash` (sandbox path implemented but
+not reached by a live turn — see Security), and `fetch`
 (domain-allowlisted, size-capped, timeout-bounded).
 
 > [!NOTE]
@@ -295,7 +302,7 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
 | Approval gates + headless channels + audit log (HITL) | — | ✅ CLI / HTTP / MCP / Telegram, each audit-logged |
-| Hash-chained tamper-evident audit log | — | ✅ `docket audit verify` |
+| Hash-chained tamper-evident audit log | — | ✅ `docket audit verify` — within a generation; the chain restarts on rotation (see Security) |
 | Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health`, `/runs`, `/approvals` |
@@ -466,21 +473,32 @@ turned out to be unusable when first measured.
 
 docket manages autonomous agents that can execute commands. Its safety model is **layered**, and
 the enforcing layer is real: every tool call passes through one dispatcher where the policy engine
-and the high-risk action classifier run before the handler does. Approval gates are **on by
-default** for new installs (opt out with `docket install --no-gates`; reverse later with
-`docket gates enable` / `disable`). Grants, denials and timeouts are audit-logged with the channel
-they came from — CLI, HTTP, MCP, or Telegram. Docker workspace isolation
-(`docket gates isolate on`) stays **opt-in**.
+and the high-risk action classifier run before the handler does. Grants, denials and timeouts are
+audit-logged with the channel they came from — CLI, HTTP, MCP, Telegram, or a board.
 
 Being honest about the limits:
 
+- **Workspace isolation is recorded but not enforced.** `docket gates isolate on` writes the
+  preference to `fleet.json`, and the bwrap/docker execution path is implemented and tested — but
+  **the turn loop never reads the flag**, so tool calls run unsandboxed whatever it is set to. The
+  machinery exists; the wire does not. Treat isolation as unavailable today, not as defence in
+  depth you have already enabled.
+- **`--no-gates` does not disable the tool-call gate.** The policy engine and the high-risk command
+  classifier are **always** active — `cli/_install.py` says so in its own docstring. What
+  `--no-gates` skips is the automatic setup of approval *routing*. An `"ask"` verdict still creates
+  an approval token and still blocks the call, timing out to **denied**. The gate is stronger than
+  the flag's name suggests, which is the safe direction — but it is not what "opt out" reads like.
 - **Network egress is not locked down.** `fetch` is domain-allowlisted and **refuses everything by
   default** until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but `bash` can still reach the
   network through interpreters and package managers on the curated allowlist. `fetch` is the
-  *inspectable* path, not yet the *only* path. Tracked as an open gap, not glossed over.
-- **Enforcement covers the tool calls docket dispatches.** That is now every tool call in a docket
-  agent turn, which is the change Phase 19 made. It is not a system-wide enforcement daemon: a
-  process a user starts outside docket is outside its scope.
+  *inspectable* path, not yet the *only* path.
+- **The audit log's chain does not survive rotation.** Each generation is hash-chained and
+  tamper-evident within itself, but rotation starts a fresh chain at `seq=1` with only a
+  single-generation backup — so enough log volume silently discards history and
+  `docket audit verify` still reports a clean chain.
+- **Enforcement covers the tool calls docket dispatches.** That is every tool call in a docket
+  agent turn. It is not a system-wide enforcement daemon: a process a user starts outside docket is
+  outside its scope.
 
 **Where you run docket matters.** A trusted homelab is a very different risk profile from a
 public VPS — see [SECURITY.md](SECURITY.md) for the homelab-vs-VPS guidance, the privilege and

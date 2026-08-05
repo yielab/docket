@@ -59,9 +59,15 @@ timeout is audit-logged with the channel it came from
 (`core/security.py`'s `classify_command`) is **argument-aware**: it reads the whole command
 line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status` is allowed
 while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
-usability, but that no longer means their dangerous invocations are unexamined. `docket gates
-isolate on` is a separate, still opt-in layer that additionally confines tool execution to a
-per-agent Docker (or `bwrap`) sandbox. Re-apply or reverse gate config anytime with `docket
+usability, but that no longer means their dangerous invocations are unexamined.
+
+> **`docket gates isolate on` is not currently a containment boundary.** It records the preference
+> in `fleet.json`, and the per-agent Docker/`bwrap` execution path is implemented and tested, but
+> the turn loop does not read the flag — so tool calls run unsandboxed whatever it is set to.
+> Do not count it as a layer when deciding whether a host is safe to run on. `docket gates status`
+> reports the same at the terminal.
+
+Re-apply or reverse gate config anytime with `docket
 gates enable`/`docket gates disable`. `docket doctor` and `docket gates status` report the live
 posture. See
 [`specs/functional/security-gates.spec.md`](specs/functional/security-gates.spec.md)
@@ -97,8 +103,9 @@ status, including what is configured/gated versus what is wired into a live turn
 > proportionate. Budget caps and session isolation are the features doing the most work here.
 >
 > **Public VPS / shared / internet-exposed host — treat as dangerous.** An autonomous agent
-> with exec access on an exposed host is a serious liability. Gates are on by default, but also
-> **enable Docker workspace isolation** (`docket gates isolate on`), use the `keyring` secret
+> with exec access on an exposed host is a serious liability. Gates are on by default, but
+> **workspace isolation is not yet enforced** (see above), so do not plan around it as a
+> containment layer. Use the `keyring` secret
 > backend, and never run with broad ambient credentials. Instruction-level constraints alone
 > are *not* sufficient here — and remember network egress is not fully locked down (see below):
 > `bash` can still reach the network through interpreters and package managers on the curated
