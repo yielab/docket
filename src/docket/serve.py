@@ -15,18 +15,21 @@ Exposes:
                         resumes a poll loop exactly where the last page left off
                         (auth required; see _traces_page's docstring for the cursor
                         format and why a bare last-seen ts is not enough)
+  /pods                 POST: provision a fresh pod from a blueprint, the same
+                        core.pod_provisioning.provision_pod path `docket add`
+                        uses; returns the created roster (auth required)
 
 Security model: the server binds to 127.0.0.1 (loopback-only) by default —
 `run_serve`'s ``bind`` parameter can widen that, but nothing in docket
 recommends or automates doing so; treat any non-loopback bind as an explicit,
 on-you decision (there is no additional network ACL here, only the bearer
 token below). A randomly-generated Bearer token is required on every
-/approvals, /runs, /tasks, /traces and /dispatch request (DOCKET_SERVE_TOKEN
-env var pins a fixed token); it is printed at startup by default, or written
-to a 0600 file via ``--token-file``/``token_file=`` when stdout isn't a safe
-place for it (e.g. a systemd unit's journal). The approval endpoints reject
-all requests without a valid token — compared with `secrets.compare_digest`,
-not `==`, before touching approval state.
+/approvals, /runs, /tasks, /traces, /pods and /dispatch request
+(DOCKET_SERVE_TOKEN env var pins a fixed token); it is printed at startup by
+default, or written to a 0600 file via ``--token-file``/``token_file=`` when
+stdout isn't a safe place for it (e.g. a systemd unit's journal). The approval
+endpoints reject all requests without a valid token — compared with
+`secrets.compare_digest`, not `==`, before touching approval state.
 
 Every dispatch this server triggers — webhook, due schedule, or the
 periodic sweep — is recorded in the ``core.runs`` registry *before* it starts
@@ -1091,8 +1094,140 @@ class _DocketHandler(BaseHTTPRequestHandler):
                 {"ok": True, "run": record["id"], "project": project, "status": "dispatched"}
             ).encode()
             self._send(resp_body, "application/json")
+        elif path == "/pods":
+            self._handle_post_pods()
         else:
             self._send_json_error("not found", 404)
+
+    def _handle_post_pods(self) -> None:
+        """``POST /pods`` — provision a fresh pod from a blueprint.
+
+        Body: ``{project, path, blueprint, pod, budget, verifyCmd}`` (all but
+        ``project`` optional). This is the one Phase 22 route that is not a
+        thin wrapper over a pre-existing ``core/`` function: the real
+        provisioning path (``cli/_pod.py``/``cli/_agents.py``) used to print
+        through ``ui.py`` as it worked, which `serve.py` (never importing
+        `docket.cli`) cannot reach. `core.pod_provisioning.provision_pod` is
+        the P22-5 extraction of that path's decisions and effects, UI-free —
+        `docket add`'s pod path calls the exact same function (via
+        `cli/_pod.py::build_pod_from_blueprint`), so the two surfaces cannot
+        drift apart. See that module's docstring for the rollback contract on
+        a partial failure.
+
+        This route adds no field `docket add`/`docket pod ... set-verify`
+        does not already have: ``pod`` mirrors `docket add --pod full` (the
+        CLI's only roster-override, itself restricted to the `software`
+        blueprint); ``budget``/``verifyCmd`` are the same override
+        `provision_pod` already threads through for the declarative
+        `--from spec.yaml` path / `docket pod <p> set-verify`, just supplied
+        at creation time here instead of post-hoc.
+        """
+        if not self._check_auth():
+            self._send_json_error("Unauthorized", 401)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            body: Any = json.loads(raw)
+        except (ValueError, json.JSONDecodeError):
+            self._send_json_error("Invalid JSON body", 400)
+            return
+        if not isinstance(body, dict):
+            self._send_json_error("Request body must be a JSON object", 400)
+            return
+
+        project = body.get("project")
+        if not isinstance(project, str) or not project:
+            self._send_json_error("project is required", 400)
+            return
+
+        from docket.core import blueprints as _bp
+
+        blueprint_name = body.get("blueprint", _bp.DEFAULT_BLUEPRINT)
+        if not isinstance(blueprint_name, str) or not blueprint_name:
+            self._send_json_error("blueprint must be a non-empty string", 400)
+            return
+
+        path_value = body.get("path", "")
+        if not isinstance(path_value, str):
+            self._send_json_error("path must be a string", 400)
+            return
+
+        # `pod` mirrors `docket add --pod full` — the CLI's only roster
+        # override, itself restricted to the `software` blueprint (a
+        # non-`software` blueprint provisions its own fixed roster; the CLI
+        # warns and ignores rather than erroring, and there is no HTTP
+        # surface to print that warning to, so this route just ignores it
+        # the same way).
+        pod_field = body.get("pod")
+        roles: tuple[str, ...] | None = None
+        if pod_field is not None:
+            if not isinstance(pod_field, str) or pod_field.lower() != "full":
+                self._send_json_error('pod must be "full" if given', 400)
+                return
+            if blueprint_name == "software":
+                from docket.core.pod import FULL_POD_ROLES
+
+                roles = FULL_POD_ROLES
+
+        budget_raw = body.get("budget")
+        budget_usd: float | None = None
+        if budget_raw is not None:
+            if isinstance(budget_raw, bool) or not isinstance(budget_raw, (int, float, str)):
+                self._send_json_error("budget must be a number", 400)
+                return
+            try:
+                budget_val = float(budget_raw)
+            except (TypeError, ValueError):
+                self._send_json_error("budget must be numeric", 400)
+                return
+            budget_usd = budget_val if budget_val > 0 else None
+
+        verify_cmd = body.get("verifyCmd", "")
+        if not isinstance(verify_cmd, str):
+            self._send_json_error("verifyCmd must be a string", 400)
+            return
+
+        from docket.core import pod_provisioning as _pp
+
+        try:
+            result = _pp.provision_pod(
+                project,
+                blueprint_name,
+                location=path_value,
+                roles=roles,
+                budget_usd=budget_usd,
+                verify_cmd=verify_cmd,
+                source="http",
+            )
+        except _bp.BlueprintError as exc:
+            self._send_json_error(str(exc), 400)
+            return
+        except _pp.VerifyCmdError as exc:
+            self._send_json_error(str(exc), 400)
+            return
+        except _pp.PodAlreadyExistsError:
+            self._send_json_error(f"'{project}' already exists", 409)
+            return
+        except _pp.PodProvisionError as exc:
+            # Rollback has already run (see provision_pod's docstring) --
+            # nothing from this attempt survives on disk or in the fleet
+            # registry. Not a 4xx: the request itself was well-formed, the
+            # failure is an operational one (e.g. disk/filesystem trouble).
+            self._send_json_error(str(exc), 500)
+            return
+
+        resp_body = json.dumps(
+            {
+                "ok": True,
+                "project": result.project,
+                "blueprint": result.blueprint,
+                "members": [
+                    {"id": m.member_id, "role": m.role, "model": m.model} for m in result.members
+                ],
+            }
+        ).encode()
+        self._send(resp_body, "application/json", status=201)
 
     def do_HEAD(self) -> None:
         self.do_GET()
