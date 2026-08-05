@@ -13,7 +13,6 @@ comparative estimate shown alongside it.
 from __future__ import annotations
 
 import json as _json
-import os
 from typing import Any
 
 import docket.config as _cfg
@@ -149,8 +148,8 @@ def _cmd_cost_all() -> None:
 
         total_cost += totals.cost_usd
 
-        runaway_turns = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
-        runaway_cost_t = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
+        runaway_turns = _cfg.RUNAWAY_TURNS_THRESHOLD
+        runaway_cost_t = _cfg.RUNAWAY_COST_THRESHOLD
         if totals.turns > runaway_turns or totals.cost_usd >= runaway_cost_t:
             runaway.append(f"{pid} ({totals.turns} turns, ${totals.cost_usd:.4f})")
 
@@ -214,8 +213,8 @@ def _render_agent_cost(agent_id: str) -> None:
             f"  [bold]{'Budget:':<16}[/bold] [{color}]{pct}%[/{color}] of ${bval:.2f} cap"
         )
 
-    runaway_turns = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
-    runaway_cost_t = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
+    runaway_turns = _cfg.RUNAWAY_TURNS_THRESHOLD
+    runaway_cost_t = _cfg.RUNAWAY_COST_THRESHOLD
     if totals.turns > runaway_turns:
         ui.console.print()
         ui.warn(f"  High turn count: {totals.turns} turns (threshold: {runaway_turns})")

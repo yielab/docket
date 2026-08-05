@@ -23,8 +23,6 @@ from typing import Any
 import docket.config as _cfg
 from docket import ui
 
-METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
-
 
 def _metrics_help() -> None:
     """Print usage help."""
@@ -167,13 +165,13 @@ def run_metrics(
     """Compute and print metrics from JSONL traces.
 
     role/project: optional filters. window: rolling terminal-session count
-    (defaults to METRICS_WINDOW). show_help: print usage and return 0.
+    (defaults to config.METRICS_WINDOW). show_help: print usage and return 0.
     """
     if show_help:
         _metrics_help()
         return 0
 
-    win = METRICS_WINDOW if window is None else window
+    win = _cfg.METRICS_WINDOW if window is None else window
     traces_dir = _cfg.TRACES_DIR
 
     if not traces_dir.is_dir():

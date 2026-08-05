@@ -182,7 +182,7 @@ class TestArgvShape:
         assert f"{os.getuid()}:{os.getgid()}" in argv
         resolved = str(workspace.resolve())
         assert f"{resolved}:{resolved}" in argv
-        assert argv[-4:] == [system.SANDBOX_DOCKER_IMAGE, "sh", "-c", "echo hi"]
+        assert argv[-4:] == [_cfg.SANDBOX_DOCKER_IMAGE, "sh", "-c", "echo hi"]
 
     def test_docker_run_forwards_only_the_explicit_env_not_the_host_env(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch

@@ -13,7 +13,6 @@ cosmetic). Centralising here is what keeps those three consistent.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import docket.config as _cfg
@@ -66,10 +65,10 @@ def secret_values() -> list[str]:
     if not raw:
         return []
     backend = "file"
-    if os.environ.get("DOCKET_SECRETS_BACKEND") == "keyring" and _system.secret_tool_available():
+    if _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
         backend = "keyring"
     if backend == "keyring":
-        service = os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
+        service = _cfg.KEYRING_SERVICE
         out: list[str] = []
         for key in raw:
             value = _system.secret_tool_lookup(service, str(key))

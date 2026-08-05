@@ -80,6 +80,18 @@ CLAIM_STALE_TIMEOUT = int(os.environ.get("CLAIM_STALE_TIMEOUT", "1800"))
 # METRICS_WINDOW: rolling terminal-session count for `docket metrics`.
 METRICS_WINDOW = int(os.environ.get("METRICS_WINDOW", "50"))
 
+# RUNAWAY_TURNS_THRESHOLD / RUNAWAY_COST_THRESHOLD: shared "this session looks
+# stuck" heuristic used by both `docket doctor` and `docket cost` -- one pair
+# of thresholds so the two commands never disagree about what counts as
+# runaway. 200 turns / $20 are round, deliberately generous defaults: past
+# either, a human should look, not assume the model is still making progress.
+RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
+RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
+# KEY_MAX_AGE_DAYS: `docket doctor`'s key-hygiene report flags a stored
+# secret as STALE past this age -- a rotation nudge, not an expiry (docket
+# never blocks anything on it).
+KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
+
 # TRACE_RETENTION_DAYS: how long a TERMINATED trace file (one with a
 # session_end event, real or the synthetic one core/trace.py's sweep_all()
 # appends to a timed-out session) survives before `docket trace expire` --
@@ -403,3 +415,52 @@ TELEGRAM_REQUEST_TIMEOUT_S = float(os.environ.get("TELEGRAM_REQUEST_TIMEOUT_S", 
 # bookkeeping, not something an operator has a reason to relocate (same
 # no-override shape as AUDIT_LOG/MODEL_REGISTRY_FILE above).
 TELEGRAM_OFFSET_FILE = DOCKET_HOME / "docket-telegram-offset.json"
+
+# ── docket-owned secrets store (core/secrets.py, cli/_doctor.py) ──
+
+
+def secrets_backend_requested() -> str:
+    """Which stored-secret backend the operator asked for: "keyring" (opt
+    into secret-tool/libsecret) or the default "file" (secrets.json).
+
+    A function, not a cached constant, because both callers
+    (``core.secrets.secret_values``'s redaction path and
+    ``cli._doctor._secrets_backend``'s health check) must see a change made
+    with ``monkeypatch.setenv``/an operator's real env edit within the same
+    process -- an import-time snapshot would freeze whichever value was set
+    before ``docket.config`` was first imported. Availability of the
+    ``secret-tool`` binary itself is a separate probe each caller does
+    locally (``edges/adapters/system.py``); this only resolves which backend
+    was requested.
+    """
+    return os.environ.get("DOCKET_SECRETS_BACKEND", "file")
+
+
+# KEYRING_SERVICE: the libsecret "service" name secrets are stored/looked up
+# under when secrets_backend_requested() is "keyring". No caller needs a
+# call-time re-read (nothing monkeypatches this one), so a plain constant
+# matches the rest of this file.
+KEYRING_SERVICE = os.environ.get("DOCKET_KEYRING_SERVICE", "docket-cli")
+
+# ── trace suppression (core/trace.py) ──
+
+
+def no_trace() -> bool:
+    """True when DOCKET_NO_TRACE=1 should no-op every trace write/ingest.
+
+    A function, not a cached constant: tests toggle this per-test with
+    ``monkeypatch.setenv`` and expect ``trace_append``/``trace_ingest`` to
+    see the change within the same process, which a module-level constant
+    (read once at import) cannot do.
+    """
+    return os.environ.get("DOCKET_NO_TRACE", "0") == "1"
+
+
+# ── sandboxed exec (edges/adapters/system.py) ──
+# SANDBOX_DOCKER_IMAGE: image for the docker exec-jail. Small and generic on
+# purpose -- this jail's job is filesystem/process containment for an
+# arbitrary shell command, not matching any particular project's runtime, so
+# there is no reason to derive it from the workspace under test. Override on
+# a host that pre-pulled a different image, or has no network to pull this
+# one.
+SANDBOX_DOCKER_IMAGE = os.environ.get("DOCKET_SANDBOX_IMAGE", "alpine:3.20")

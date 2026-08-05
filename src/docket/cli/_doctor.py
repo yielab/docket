@@ -15,7 +15,6 @@ docstring says so and why (see `_check_dependencies`, `_check_security_gates`,
 from __future__ import annotations
 
 import json as _json
-import os
 import shutil
 from typing import Any
 
@@ -29,9 +28,9 @@ from docket.core.utils import aggregate_cost, project_ids
 from docket.edges import store
 
 TEMPLATE_VERSION = _cfg.TEMPLATE_VERSION
-RUNAWAY_TURNS_THRESHOLD = int(os.environ.get("RUNAWAY_TURNS_THRESHOLD", "200"))
-RUNAWAY_COST_THRESHOLD = float(os.environ.get("RUNAWAY_COST_THRESHOLD", "20"))
-KEY_MAX_AGE_DAYS = int(os.environ.get("DOCKET_KEY_MAX_AGE_DAYS", "90"))
+RUNAWAY_TURNS_THRESHOLD = _cfg.RUNAWAY_TURNS_THRESHOLD
+RUNAWAY_COST_THRESHOLD = _cfg.RUNAWAY_COST_THRESHOLD
+KEY_MAX_AGE_DAYS = _cfg.KEY_MAX_AGE_DAYS
 
 _STALE_MODELS: dict[str, str] = {
     "anthropic/claude-haiku-3-5": "anthropic/claude-haiku-4-5",
@@ -540,7 +539,7 @@ def _fmt_num(s: str) -> str:
 
 def _secrets_backend() -> str:
     """Resolve the secrets backend (keyring if requested + available, else file)."""
-    if os.environ.get("DOCKET_SECRETS_BACKEND") == "keyring" and shutil.which("secret-tool"):
+    if _cfg.secrets_backend_requested() == "keyring" and shutil.which("secret-tool"):
         return "keyring"
     return "file"
 
