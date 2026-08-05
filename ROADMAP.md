@@ -2356,6 +2356,21 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-05 (wave 18) — two security claims were false; both are now true.** Opened against one
+  *reproduced* defect: the audit log's hash chain restarted at `seq=1` on rotation with a single
+  backup generation, so flooding past two rotations erased history while `docket audit verify`
+  still reported a clean chain. Rotation now carries the prior generation's final `seq`+hash forward
+  as a continuation claim, so a predecessor that cannot be produced is reported as a break.
+  **The wave's larger find came from the card running alongside it.** A claims audit against the
+  tree found `docket gates isolate on` did *nothing to a live turn*: the flag persisted, the
+  bwrap/docker path was implemented and tested, and `run_turn` never set `ToolContext.sandbox`, so
+  every tool call ran unsandboxed regardless of the setting — **the same shape as the MCP gap wave 17
+  closed, but in a security control the README advertised three times.** Now wired, failing closed as
+  a **turn-level refusal** (audited) rather than the per-call downgrade that would have re-created
+  the original silence. **Process note worth keeping:** the README was corrected to admit the
+  capability did not work *before* the fix landed, then corrected again after — a false security
+  claim gets fixed the day it is found, not the day the code catches up. Also corrected: `--no-gates`
+  never disabled the tool-call gate; it skips approval *routing* only.
 - **2026-08-05 (wave 17) — the MCP wire, docket's oldest recorded limit, closed.** Two cards. The
   wire itself was one injection seam; **making it safe was the card.** Role narrowing removes
   literal `denied_tools` names, and a namespaced `mcp__<server>__<tool>` can never match one — so a

@@ -77,7 +77,61 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ ACTIVE — WAVE 18: a headline guarantee is weaker than it reads (opened 2026-08-05)
+## ☑ WAVE 18 COMPLETE (2026-08-05) — two false security claims, both now true; board CLEAR
+
+Three cards. `platform` green: **2,199 tests**, 18/18 goldens byte-identical, 24/24 specs,
+`mypy --strict` clean, metrics in sync.
+
+**The wave found more than it was opened for.** It was scheduled against one reproduced defect
+(the audit chain). The claims-audit card that ran alongside it found a **second, worse one**.
+
+**W18-3 — `docket gates isolate on` did nothing.** The flag persisted to `fleet.json`;
+`get_isolation_enabled`'s only caller was a CLI inspection path; `DocketDriver.run_turn` never set
+`ToolContext.sandbox`, so it stayed `"off"` and **every tool call ran unsandboxed regardless of the
+setting.** The bwrap/docker argv construction was implemented and tested, and `core/tools.py`
+threaded `ctx.sandbox` to the handler — nothing ever set it. **Identical in shape to the MCP gap
+wave 17 closed: machinery present, tested, unreachable on the default path.** The difference is that
+this one is a security control the README advertised three times.
+
+*Now:* `run_turn` resolves the flag through the single field every writer funnels through, so it
+cannot disagree with `docket gates status`. **Fail-closed is a turn-level refusal, not a downgrade** —
+isolation on with no usable backend refuses the turn before any model call, audit-logged, because a
+refused turn emits no `dispatch_tool` entry to carry the reason. The agent explicitly rejected
+`run_bash`'s per-call degrade as a stand-in: *a marker buried in one tool's output is not isolation
+meaning something at the turn level.* Verified by forcing `DOCKET_SANDBOX_BACKEND=none`.
+
+**W18-1 — the audit chain now survives rotation.** Rotation restarted at `seq=1` with a
+single-generation backup, so flooding past two rotations erased history while `docket audit verify`
+reported clean. Rotation now carries the previous generation's final `seq`+hash forward as a
+continuation claim, checked against the retained backup, giving three distinguishable states:
+genesis, continuation verified, and **continuation whose predecessor cannot be produced** — the
+erasure case that was invisible. Re-ran the reproduction: first `seq` is now 396 rather than 1, and
+deleting the backup yields a named break.
+
+**Both agents' RED/GREEN was re-verified by the integrator, not taken on report.** Planting drift in
+rotation turned **six** audit tests red; the isolation guard was proven by its own agent and the
+fail-closed path re-run by hand.
+
+**Where the honesty rules actually bit, and it is worth keeping:** the README was corrected to say
+isolation *did not work* **before** W18-3 landed, then corrected again to describe the fix. A
+security claim that is false today gets corrected today — not held pending a fix that might slip.
+
+**What stays true and is now documented rather than implied:** only one rotation back is verifiable;
+deleting both audit files at once is still indistinguishable from a fresh install; and `--no-gates`
+never disabled the tool-call gate at all — it skips approval *routing*, while the policy engine and
+classifier are always active (`cli/_install.py` says so in its own docstring).
+
+**Three undersells found and not yet folded in** — a sixth `channel="tack"` audit label, full
+5-field cron support beyond `@every`/`HH:MM`, and baseline policies installing unconditionally
+regardless of `--gates`. Deferred deliberately so the README moves once, not three times.
+
+**A measurement note for the next wave:** worktree baselines drift from the main checkout by more
+than the one `CLAUDE.md` skip — an agent measured 2179/5 where main showed 2184/4. **Have each agent
+measure its own base commit** rather than quoting a number from the board.
+
+---
+
+## ☑ WAVE 18 board (closed) — opened 2026-08-05
 
 **Not a deferral being worked down.** The board was clear and every remaining deferral has an
 unfired trigger. This wave exists because a **reproduced defect** was found in an advertised
