@@ -187,24 +187,45 @@ vendor SDK is pulled in, and no per-vendor client is hand-rolled.
 
 ## Mobile control via Telegram
 
-Wiring a pod's Lead to Telegram (`docket wire <id>`) turns your phone into a second control
-surface, not just a notification feed:
+Wiring a pod's Lead to Telegram (`docket wire <id>`) turns your phone into a second **control
+surface**. It is a command channel, not a chat with an assistant — there are exactly four commands:
 
-- **Conversational dispatch** — message the Lead directly ("Fix the login bug," "what's the
-  status?") and it runs through the same pipeline `docket pod <id> dispatch` runs from a shell.
-  No laptop required to queue or check on work.
-- **Approve from your phone** — a gated action pings the wired group and you reply to grant or
-  deny it. This is docket's own approval store, so a Telegram decision lands in the same audit
-  chain as a CLI or HTTP one, tagged `channel="telegram"`.
-- **Status without a shell** — ask a Lead what's active, or check in on a fleet, from wherever you
-  are.
+| Command | What it does |
+| --- | --- |
+| `/status` | What is pending for the bound pod |
+| `/delegate <task description>` | Queue a task for that pod |
+| `/approve <token>` | Grant a gated action |
+| `/deny <token>` | Refuse one |
+
+**Anything else is refused with an "unrecognized command" reply — including plain prose.** That is
+deliberate, not a missing feature. A bot handle is effectively a public endpoint, so an inbound
+message is untrusted input from the open internet; docket refuses rather than guessing what the
+sender meant, and free text only becomes agent input through `/delegate`, after passing the
+`pre_input` prompt-injection policy. Only a chat explicitly bound with `docket wire` can do
+anything at all, and an unauthorized attempt is refused **and** audit-logged.
+
+A Telegram decision lands in the same hash-chained audit log as a CLI or HTTP one, tagged
+`channel="telegram"` — that is what makes this a real approval channel rather than a notification
+feed.
+
+**Two limits worth knowing before you rely on it:**
+
+- **docket never messages you first.** There is no outbound notification: a gated action does not
+  ping the group, and a finished task does not report back. `send_message` is only ever called as
+  the reply to a message you sent. Poll it with `/status`.
+- **`/delegate` returns a task id, not an answer.** It replies `Queued for pod '<project>':
+  [task-...]`; the pipeline's actual output is read through `docket pod <p> queue`, `docket trace`,
+  or the [control-plane API](#integrating-with-a-control-plane-tack). If you want the result on your
+  phone, that is the piece to build.
 
 ```bash
 docket keys add TELEGRAM_BOT_TOKEN   # stored 0600, redacted from traces
 docket wire myproject-lead           # bind a pod's Lead to a Telegram group
-docket serve                         # the process that long-polls for updates
+docket serve --telegram              # REQUIRED to poll -- plain `docket serve` does not
 docket unwire myproject-lead         # remove the binding
 ```
+
+Add `--dispatch` if you want a delegated task to actually run rather than sit queued.
 
 Setup is manual today (create a bot, add it to a group, run `wire`) — see
 [docs/commands.md](docs/commands.md#wire) for the walkthrough.
