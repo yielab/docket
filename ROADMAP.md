@@ -2356,6 +2356,22 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-05 (wave 17) — the MCP wire, docket's oldest recorded limit, closed.** Two cards. The
+  wire itself was one injection seam; **making it safe was the card.** Role narrowing removes
+  literal `denied_tools` names, and a namespaced `mcp__<server>__<tool>` can never match one — so a
+  naive load hands a Reviewer `mcp__fs__write_file` and silently voids the "structurally unable to
+  write" guarantee the README leads with, **with no test failing.** Denials are now enforced by
+  *capability*: `core/mcp_tools.py` already registered every adapted tool `kind="write"` (nothing can
+  prove a remote tool read-only), so `registry_for_role` strips the kinds a role's denied names
+  imply. **The integrator found the answer's own hole**: the kind set was derived by looking each
+  denied name up *in the registry being narrowed*, which makes the denial conditional on that
+  built-in being present — and `registry_factory` exists to inject narrower registries. Latent, not
+  live, but the same failure mode through a different door; fixed with a static map so the denial
+  depends only on the role's data. **The generalizable rule: when a capability can arrive under a
+  name you do not control, deny the capability, never the name.** Honest residue: a read-only role
+  gets zero MCP tools rather than a narrowed subset, and there is no listing cache (~0.6s per
+  configured stdio server per turn, measured; zero servers ~0.004ms). Card 2 gave every config
+  constant one owner — `config.py`'s `METRICS_WINDOW` turned out to have **no reader at all**.
 - **2026-08-04 (wave 16) — Phase 22 shipped: the control-plane write API.** Six cards, two rounds,
   four agents. `POST /tasks/<project>` (enqueue, honouring the `pre_input` gate exactly as the CLI
   does), `GET /tasks/<project>`, `GET /traces/<project>?since=` (cursor'd), the approval `channel`

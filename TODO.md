@@ -77,7 +77,65 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ ACTIVE — WAVE 17: close a recorded limit, not new scope (opened 2026-08-05)
+## ☑ WAVE 17 COMPLETE (2026-08-05) — the MCP wire landed; the board is CLEAR
+
+Two cards, two agents, both merged. `platform` green: **2,184 tests**, 18/18 goldens byte-identical,
+24/24 specs, `ruff` + `mypy --strict` (73 files) clean, `metrics.py --check` in sync.
+
+**W17-1 closed docket's oldest recorded limit.** The wire itself was one seam (`DocketDriver.mcp_loader`,
+loading *before* `run_agent_turn` narrows per role — that ordering is load-bearing). **Making it safe
+was the entire card**, and the answer used data already present rather than a new archetype field:
+`core/mcp_tools.py` already registers every adapted tool `kind="write"` unconditionally, so
+`registry_for_role` now strips by the *kinds* a role's `denied_tools` imply, via a new
+`ToolRegistry.without_kind()`.
+
+**The integrator found one hole in that answer, and it is the wave's most useful artifact.** The
+denied-kind set was derived by looking each denied name up **in the registry being narrowed**:
+
+```python
+{tool.kind for name in archetype.denied_tools if (tool := base.get(name)) is not None}
+```
+
+That makes the whole denial conditional on the denied built-in still being *present*.
+`DocketDriver.registry_factory` exists precisely so a caller can inject a narrower tool set — its own
+docstring says so — and against a base of `{read, mcp__fs__write_file}` a Reviewer **kept the
+write-capable MCP tool**, verified by running it. Production was unaffected (the driver builds
+`builtin_registry()` first), so it was latent, not live. But it is the exact failure mode the card
+exists to prevent, re-entering through a different door.
+
+Fixed with a static `BUILTIN_TOOL_KINDS` map: **the denial depends only on the role's own data,
+never on what the caller passed in.** Two tests, both proven RED first — one narrows against a base
+with no built-in write/edit/bash, one pins the map against `builtin_registry()` so a new built-in
+cannot silently gain no denial. **Every pre-existing kind-exclusion test started from
+`builtin_registry()`, which is exactly why this shape was uncovered.**
+
+The generalizable rule, worth more than the fix: **when a capability can arrive under a name you do
+not control, deny the capability, never the name.**
+
+**W17-1's honest residue**, recorded rather than carried silently: a read-only role now gets **zero**
+MCP tools rather than a correctly narrowed subset, because nothing can distinguish a genuinely
+read-only remote tool from a write-capable one. And there is no listing cache — each configured stdio
+server is re-spawned per turn (~0.6s **measured**, not assumed). Zero servers costs ~0.004ms and
+spawns nothing, so the default path is unchanged.
+
+**W17-2 found more than the card described.** `config.py`'s `METRICS_WINDOW` **had no reader at all**
+— dead code advertising a knob that did nothing, because `cli/_metrics.py` used its own declaration.
+`DOCKET_SECRETS_BACKEND` and `DOCKET_NO_TRACE` were each duplicated too. Two constants became
+**functions** rather than constants, for a reason worth keeping: tests toggle them with
+`monkeypatch.setenv` mid-test and expect the next call to observe it, which a module-level constant
+read once at import cannot do. Genuine lookups (`EDITOR`, `PATH`, per-provider API keys,
+`DOCKET_LLM_BASE_URL`) were deliberately left alone — **not every environment read is a tunable
+constant.** Guarded by an AST test, proven RED.
+
+**A measurement correction worth keeping.** The "2,162 passed / 4 skipped" baseline in the wave-16
+record is **main-checkout-only**. Every agent worktree sees **5** skips, because
+`test_docs_positioning.py` skips when `CLAUDE.md` is absent — and `CLAUDE.md` is gitignored, so it
+never exists in a fresh worktree. Quote worktree baselines as 5 skips, or an agent will waste a cycle
+reconciling a phantom regression.
+
+---
+
+## ☑ WAVE 17 board (closed) — opened 2026-08-05
 
 **This wave adds no new capability to the plan.** It closes the first of the four *known-true
 limits* CLAUDE.md lists, plus one hygiene defect. Both were **re-verified against the tree before

@@ -156,12 +156,22 @@ docket runs the agent turn itself, which is what makes the guardrails real rathe
 (domain-allowlisted, size-capped, timeout-bounded).
 
 > [!NOTE]
-> **External MCP tools are configured and gated, but not yet reachable in a turn.**
-> `docket mcp servers add` registers a server, and the client that loads its tools namespaces them
-> `mcp__<server>__<tool>` (so a remote server cannot shadow `bash`) and routes them through the same
-> gate as a built-in. What is missing is the last wire: the turn loop builds its registry from the
-> built-ins alone, so a configured server's tools do not reach a running agent yet. Stated plainly
-> because "browser support is just an MCP config" is only true once that wire exists.
+> **External MCP tools reach a live turn, and a role's capability denial reaches them back.**
+> `docket mcp servers add` registers a server; its tools are namespaced `mcp__<server>__<tool>` (so a
+> remote server can never shadow `bash`), screened for prompt injection before they are ever
+> advertised, and dispatched through the same chokepoint as a built-in.
+>
+> **The part worth knowing:** a role's `denied_tools` lists built-in *names*, and no namespaced MCP
+> name can ever match one — so a naive wire would hand a Reviewer `mcp__fs__write_file` and silently
+> void the guarantee above. Denials are therefore enforced by **capability**, not name: an adapted
+> tool is registered write-capable (nothing can prove a remote tool is read-only), so a role that
+> denies `write` denies it too. The honest consequence is that **a read-only role currently gets zero
+> MCP tools** rather than a correctly narrowed subset. That is the fail-closed answer given what is
+> knowable today, not an oversight.
+>
+> Cost is measured, not assumed: with no servers configured the path adds ~0.004ms and spawns
+> nothing; each configured stdio server costs roughly 0.6s per turn, since there is no listing cache
+> yet. Configuring a server is the opt-in.
 
 The model endpoint is any **OpenAI-compatible** chat-completions API — OpenAI, Groq, Together,
 OpenRouter, or a local llama.cpp / vLLM / LM Studio server. The adapter is stdlib `urllib`; no
@@ -289,7 +299,7 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 | Pre-merge verification gate | — | ✅ `verifyCmd` per pod + a structural Tester PASS/FAIL gate |
 | Scheduled + webhook-triggered pod dispatch | — | ✅ `@every N` / `HH:MM` UTC + `POST /dispatch/<project>` |
 | Versioned read API for dashboards | — | ✅ `/status.json` v1, `/metrics`, `/health`, `/runs`, `/approvals` |
-| External tools without writing code | varies | ⚠ MCP servers register and gate identically to built-ins, but are **not yet wired into a running turn** |
+| External tools without writing code | varies | ✅ MCP servers reach a live turn, gated identically to built-ins — and a role's capability denial applies to them |
 
 If a row isn't true for your setup, treat it as aspirational — honesty is the point of this table.
 
@@ -432,13 +442,13 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,162 tests** in the pytest suite (`tests/python/`)
-- **~27,257 lines** of Python in the shipped `docket` package
+- **2,184 tests** in the pytest suite (`tests/python/`)
+- **~27,411 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
-uv run pytest                                        # 2,162-test Python suite
+uv run pytest                                        # 2,184-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -534,7 +544,9 @@ rather than monotonic totals — don't build an alert that assumes otherwise. Th
 deliberately excluded; telemetry may be lossy, an audit log may not.
 
 Still open: **closing the egress gap** so `fetch` is the only network path rather than merely the
-inspectable one, and **wiring MCP tools into a live turn** (see the caveat above).
+inspectable one; **caching MCP tool listings** so a configured stdio server is not re-spawned every
+turn; and **telling a genuinely read-only remote tool from a write-capable one**, without which a
+read-only role can be handed no MCP tools at all rather than the right subset.
 
 ## Contributing
 
