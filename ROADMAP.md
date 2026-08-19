@@ -12,8 +12,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-19.** **Every numbered phase 0–22 is complete; Wave 20 is active.** The
-executable cards are in [TODO.md](TODO.md).
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 20 are complete; the board is
+clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,8 +37,8 @@ executable cards are in [TODO.md](TODO.md).
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
-| — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — **plus one found and NOT fixed: session compaction is never called; see §Changelog and TODO.md** |
-| — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | 🚧 active (2026-08-19) — repo skills/hooks and MCP output parity shipped; live session compaction is next |
+| — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
+| — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -51,9 +51,9 @@ trigger (see §4.5's prioritization rule, D-24, and §7):
 | A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
 | Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
 
-Session compaction is no longer in this deferred table: its trigger fired and it is scheduled as
-W20-C2. The card requires a recursion barrier, summarizer persistence/key decision, measured-usage
-accounting, trace events, and live-path tests.
+Session compaction is no longer in this deferred table: its trigger fired and W20-C2/C2b shipped
+the live fail-closed and hierarchical paths. W20-C3 then measured material cross-hop duplication,
+and W20-C4 closed it with step-scoped durable histories while preserving typed handoffs.
 
 **Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
 
