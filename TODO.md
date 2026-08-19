@@ -176,7 +176,7 @@ metrics gates pass.
 
 ### W20-C3 — measure cross-hop history redundancy after compaction
 
-**Status:** IN-PROGRESS · **Size:** S · **Owner:** integrator
+**Status:** DONE (2026-08-19) · **Size:** S · **Owner:** integrator
 
 **Goal:** re-run one four-role dispatch on the 16k endpoint and measure per-hop prompt/history size.
 If compaction removes the failure, close with evidence. If a reviewer/tester still receives material
@@ -196,6 +196,42 @@ and one real Lead -> Implementer -> Reviewer -> Tester run on `docket-dev` at 16
 content; distinguish estimates from endpoint usage; prove whether Reviewer/Tester receive shared raw
 history plus typed artifacts; close C3 with the numbers and, if material duplication remains, add a
 separate spec-first card for hop-scoped runtime session keys. Do not implement that migration here.
+
+**Measured:** a real 4-hop `docket-dev` run on llama.cpp 16k completed with 27,834 measured tokens
+(27,270 input + 564 output). Hierarchical Lead compaction reduced estimated durable history
+8,132 -> 2,012 in 4 rounds; its largest summary prompt was 1,990/2,000 tokens. Subsequent durable
+history estimates were 2,229 (Implementer), 2,663 (Reviewer), and 3,049 (Tester), while typed
+prior-hop sections added 428, 550, and 1,009 bytes respectively. The Lead artifact's 428-byte
+summary occurred in 4 stored messages; across completed artifacts the conservative duplicate lower
+bound was 1,802 bytes. No orphaned results or unanswered calls remained. This confirms material
+raw-history + typed-handoff duplication and fires W20-C4's trigger.
+
+### W20-C4 — isolate durable runtime history by pipeline step
+
+**Status:** TODO · **Size:** M · **Owner:** unclaimed
+
+**Measured trigger:** W20-C3 found at least 1,802 duplicated bytes in one controlled 4-hop task;
+Tester received 1,009 bytes of typed carryover while also replaying 3,049 estimated tokens from the
+task-wide durable session.
+
+**Goal:** give each pipeline step its own durable runtime history so cross-role context travels once
+through `HandoffArtifact`, while retries/rework of the same step retain their useful local history.
+
+**Non-goals:** no deletion or migration of existing task-wide session files, no change to dispatch
+trace/audit task identity, no removal of typed handoffs, and no weakening of resume or rework.
+
+**Required design decisions:** specify the step-key format (including parallel/repeated roles),
+separate durable-history identity from task-level trace identity if necessary, define retry/rework
+reuse, and decide how `DocketDriver.list_sessions` exposes the new keys.
+
+**Live path / files:** `core/dispatch.py::dispatch_task`, pipeline node `step_id`,
+`DocketDriver.run_turn`, `run_agent_turn`'s history/trace coordinates, `core/pod.py::session_key`,
+`session-history.spec.md`, `pod-dispatch.spec.md`, and session-scoping truth cleanup.
+
+**Acceptance:** a RED live-path test proves Implementer/Reviewer/Tester backend messages do not
+contain a previous role's raw assistant turn in durable history while their typed artifact remains;
+same-step retry and rework continuity survive; task-level traces remain queryable; old session files
+remain readable; focused tests and all repository gates pass.
 
 ---
 
