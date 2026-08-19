@@ -115,7 +115,7 @@ the value after import and prove consecutive calls honor distinct limits.
 
 ### W20-C2 — wire fail-closed session compaction into the live turn
 
-**Status:** IN-PROGRESS · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** integrator
 
 **Goal:** bound durable history before `ChatBackend.complete` without weakening message atomicity,
 tool gating, or usage honesty.
@@ -133,9 +133,19 @@ backend receives compacted history; no-op makes no summarizer call/write; failur
 history byte-identical and returns an honest result; assistant tool-call/result units remain whole;
 no recursive turn/session growth is possible; focused tests plus all repository gates are green.
 
+**Shipped:** `run_agent_turn` now checks `compact_session` before task completion through one
+tool-free call on the already-resolved backend. The summarizer uses an isolated non-persisted key,
+has an independent re-entry guard, records endpoint-measured usage, fails the turn without dropping
+history, and emits content-free no-op/success/failure traces with before/after estimates. A real
+`docket-dev` Lead -> Implementer -> Reviewer -> Tester dispatch against llama.cpp at 16k completed
+with `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`: two successful compactions reduced estimated history
+2,676 -> 94 and 10,825 -> 197 tokens; endpoint-measured session usage was 40,747 input + 382 output,
+with zero orphaned results or unanswered calls. All 2,221 tests, 18 golden cases, 24 spec checks,
+ruff, formatting, mypy, and metrics passed.
+
 ### W20-C3 — measure cross-hop history redundancy after compaction
 
-**Status:** BLOCKED (on W20-C2 evidence) · **Size:** S · **Owner:** unclaimed
+**Status:** TODO (unblocked by W20-C2 evidence) · **Size:** S · **Owner:** unclaimed
 
 **Goal:** re-run one four-role dispatch on the 16k endpoint and measure per-hop prompt/history size.
 If compaction removes the failure, close with evidence. If a reviewer/tester still receives material
