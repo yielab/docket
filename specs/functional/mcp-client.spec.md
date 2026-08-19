@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented, and **wired to the live turn path** (ROADMAP Phase 19/wave 17). Docket's
 oldest recorded known-true limit — "MCP tools are NOT reachable in a live turn" — is closed.
 `edges/adapters/docket_runtime.py`'s `DocketDriver` gained a second injection seam, `mcp_loader`
@@ -22,7 +22,9 @@ scope); a read-only role gets *zero* MCP tools rather than a correctly-narrowed 
 because no per-tool trust/capability signal exists yet to tell a genuinely read-only remote tool
 from a write-capable one (every adapted tool is `kind="write"` unconditionally, unchanged from
 1.1.0) — this is the correct fail-closed answer today, not a gap this version silently carries.
-**Last Updated**: 2026-08-05
+Remote tool results use the same live `DOCKET_TOOL_MAX_OUTPUT_CHARS` ceiling as built-ins, resolved
+for every call so a small-context endpoint cannot be bypassed through MCP output.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -59,6 +61,8 @@ This specification covers:
   site that makes a configured server's tools reachable by a running agent, and the ordering
   guarantee (loaded before role narrowing) that keeps that reachability compatible with
   `role-archetypes.spec.md`'s per-role tool sets
+- The model-visible output ceiling for a remote tool result, including visible truncation and
+  per-call resolution of `docket.config.TOOL_MAX_OUTPUT_CHARS`
 
 This specification does NOT cover:
 
@@ -217,6 +221,15 @@ This specification does NOT cover:
     future cache **MUST** invalidate on a `docket mcp servers remove`/`add`/edit, not merely on a
     TTL — a stale cache that resurrects a removed server's tool is a correctness bug, not a
     performance tradeoff.
+
+### Model-visible output bound
+
+30. `call_remote_tool` **MUST** visibly truncate rendered remote output at
+    `docket.config.TOOL_MAX_OUTPUT_CHARS`, the same operator-controlled context ceiling used by
+    built-in tools. The marker **MUST** report how many characters were omitted.
+31. The adapter **MUST** resolve `TOOL_MAX_OUTPUT_CHARS` on every call, not copy it into a module
+    constant or default argument at import time. Changing the configured value after import
+    **MUST** affect the next remote tool result.
 
 ## Interface Contracts
 
@@ -466,6 +479,14 @@ dispatch_tool(
   turn failure (backend error, timeout, budget) may do that (Requirement 28).
 
 ## Changelog
+
+### Version 1.3.0 (2026-08-19)
+
+- **Wave 20 context efficiency — MCP output ceiling parity.** Added Requirements 30-31 and wired
+  `edges/adapters/mcp_client.py` to the live `docket.config.TOOL_MAX_OUTPUT_CHARS` value for every
+  call. A configured small-context ceiling now bounds MCP results as well as built-ins, with the
+  existing visible truncation marker; a regression test changes the value after module import and
+  proves that two consecutive calls honor the two different limits.
 
 ### Version 1.2.0 (2026-08-05)
 

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import docket.config as _cfg
 from docket.core.mcp_tools import McpListResult, McpRemoteTool, McpServerConfig
 from docket.edges.adapters.toolbox import ToolOutcome
 
@@ -43,12 +44,6 @@ MISSING_SDK_HINT = (
     "Install it with:  pip install 'docket[mcp]'\n"
     "(uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')"
 )
-
-# A remote tool's output is fed straight into a model's context, exactly like
-# a built-in tool's (see edges/adapters/toolbox.py's own MAX_OUTPUT_CHARS) --
-# an unbounded result from an external server is a context-budget failure
-# waiting to happen, and nothing upstream of this module would catch it.
-MAX_OUTPUT_CHARS = 30_000
 
 
 def _sdk_available() -> bool:
@@ -62,10 +57,13 @@ def _sdk_available() -> bool:
 
 
 def _truncate(text: str) -> str:
-    if len(text) <= MAX_OUTPUT_CHARS:
+    # Resolve per call, matching toolbox.py: operators tune this to the active
+    # endpoint's window, and tests may change it after this module is imported.
+    limit = _cfg.TOOL_MAX_OUTPUT_CHARS
+    if len(text) <= limit:
         return text
-    dropped = len(text) - MAX_OUTPUT_CHARS
-    return f"{text[:MAX_OUTPUT_CHARS]}\n\n[truncated: {dropped} more characters]"
+    dropped = len(text) - limit
+    return f"{text[:limit]}\n\n[truncated: {dropped} more characters]"
 
 
 def _stdio_params(config: McpServerConfig) -> Any:

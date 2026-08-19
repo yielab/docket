@@ -669,6 +669,25 @@ class TestRealSdkStubbed:
         result = _client.call_remote_tool(_config(), "get_forecast", {"city": "Berlin"}, 5.0)
         assert result == ToolOutcome(True, content="It is sunny.")
 
+    def test_call_remote_tool_resolves_the_operator_output_limit_per_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _on_call(_name: str, _args: dict[str, Any]) -> Any:
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type="text", text="abcdefghijkl")], is_error=False
+            )
+
+        self._install_fake_client(monkeypatch, on_call=_on_call)
+        from docket.edges.adapters import mcp_client as _client
+
+        monkeypatch.setattr(_cfg, "TOOL_MAX_OUTPUT_CHARS", 8, raising=True)
+        first = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
+        monkeypatch.setattr(_cfg, "TOOL_MAX_OUTPUT_CHARS", 5, raising=True)
+        second = _client.call_remote_tool(_config(), "get_forecast", {}, 5.0)
+
+        assert first == ToolOutcome(True, content="abcdefgh\n\n[truncated: 4 more characters]")
+        assert second == ToolOutcome(True, content="abcde\n\n[truncated: 7 more characters]")
+
     def test_call_remote_tool_reports_a_tool_side_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
