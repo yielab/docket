@@ -13,14 +13,17 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-19) — W22-C1 full-workflow smoke complete
+> ## ☑ BOARD CLEAR (2026-08-19) — W23 real-model canary + startup context complete
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
 > and pipeline steps keep separate durable histories while typed handoffs carry cross-step context.
 > The repository harness and its three focused skills are also in place. W21-C1 removed the stale
 > current-state references found by the post-W20 audit. W22-C1 closed the evidence gap between many
-> focused tests and one observable whole-product workflow.
+> focused tests and one observable whole-product workflow. W23-C1 now measures the remaining
+> boundary: the same workflow against the operator's real local model endpoint rather than the
+> deterministic protocol fake. W23 also closed the startup-context defect that real inference
+> exposed, without widening tool permissions or raising loop budgets.
 > Deferred roadmap work still requires its named trigger rather than being scheduled by default.
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
@@ -83,6 +86,102 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ☑ WAVE 23 COMPLETE (2026-08-19) — real local-model workflow evidence
+
+### W23-C1 — opt-in end-to-end canary against the local model
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** the W22 smoke proves Docket's complete composition against a scripted
+OpenAI-compatible loopback endpoint, but `scripts/smoke_workflow.py` always replaces the endpoint
+and therefore cannot exercise the real model at `127.0.0.1:8081`. A read-only `/v1/models` probe on
+2026-08-19 succeeded and reported one llama.cpp-hosted Qwen model with a 16,384-token context.
+
+**Goal:** add an explicit live-local mode that discovers and registers the model served at the
+operator-selected loopback endpoint, provisions every smoke role against it, and runs the same
+observable tool/gate/approval/session/trace/audit workflow with genuine, un-scripted inference.
+
+**Non-goals:** no paid/remote endpoint, stored credential, fake response in live mode, exact model
+wording or request-count assertion, CI dependency on a running model, product guardrail removal,
+load/quality benchmarking, or automatic mutation of the operator's real `DOCKET_HOME`.
+
+**Live path / files:** `scripts/smoke_workflow.py` owns mode selection, endpoint discovery and the
+temporary-world orchestration; public `models provider add` / `models set` configure the temporary
+fleet; the existing CLI → `DocketDriver` → agent loop → tool/gate path remains unchanged.
+`tests/python/test_workflow_smoke.py`, `specs/test-framework.md`, README and CONTRIBUTING own the
+executable contract and operator instructions.
+
+**RED test:** an opt-in environment test invokes `--live-model` and fails before the flag exists;
+ordinary pytest continues to exercise only hermetic state and never contacts the operator endpoint.
+
+**Acceptance:** `--live-model` defaults to `http://127.0.0.1:8081/v1`, accepts an explicit loopback
+endpoint/model override, discovers the loaded model without embedding its host path, uses no API
+key or scripted replies, and preserves normal product inference/tool budgets rather than tightening
+them for the test. A real run creates the requested artifact through the `write` tool, crosses the
+mechanical/verdict/approval gates, ends `done`, and verifies typed handoffs, step-isolated sessions,
+atomic tool history, traces, audit and run records. The deterministic default smoke and all final
+gates remain green; documentation clearly separates CI smoke from opt-in live evidence.
+
+**Contention:** this card owns the smoke script/test/spec/docs. No parallel lane may use the same
+local endpoint while the canary runs, because inference latency and server state are shared.
+
+**Shipped:** `uv run python scripts/smoke_workflow.py --live-model` now discovers the model at
+`127.0.0.1:8081`, configures only a temporary Docket home through public provider/model commands,
+and runs the same five-hop workflow with genuine Qwen inference. It makes no exact wording/request
+count assumptions and does not tighten Docket's normal production guardrails. Three preserved live
+runs completed `SMOKE PASS`; the opt-in pytest wrapper also passed independently. The deterministic
+default remains the blocking CI smoke, while `--endpoint`/`--model` support explicit loopback-only
+overrides.
+
+### W23-C2 — make required startup state reachable without widening tool roots
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** the first real W23-C1 run passed, but a second independent run exhausted
+`max_iterations=20` in the Lead. Its durable session shows repeated searches for
+`HEARTBEAT.md`/`MEMORY.md` under the codebase. Docket's injected `WORKFLOW_AUTO.md` requires those
+reads, while `core.identity.system_prompt_for_agent` injects only SOUL/WORKFLOW and
+`DocketDriver._resolve_roots` correctly excludes the private agent workspace. The existing docs
+claim AGENTS/TOOLS/HEARTBEAT/MEMORY are re-injected, so prose and the live wire disagree.
+
+**Goal:** inject the current, relevant private-workspace control files into each turn's system
+prompt, explicitly tell the model they are already loaded/read-only for project tools, and bound
+that static context with the existing `CONTEXT_TOKEN_BUDGET` using visible truncation.
+
+**Non-goals:** no second writable root, no ability for an Implementer to self-edit SOUL or policy
+files, no higher iteration/token/tool limit, no model-specific prompt branch, no session-history
+duplication, and no claim that project tools can maintain private memory files.
+
+**Live path / files:** `core.identity.system_prompt_for_agent` →
+`core.agent_loop.run_agent_turn`; `SOUL.md`, `WORKFLOW_AUTO.md`, `HEARTBEAT.md`, `AGENTS.md`,
+optional `TOOLS.md`, and `MEMORY.md`; focused tests in `test_role_tools_and_identity.py` and
+`test_workspace_root_agreement.py`; owning `agent-loop.spec.md`.
+
+**RED test:** a real provisioned workspace's composed system prompt must contain current
+HEARTBEAT/MEMORY/AGENTS state and the read-only runtime note; before implementation those strings
+are absent. A deliberately oversized low-priority section must produce a visible omission marker.
+
+**Acceptance:** the four control files are loaded fresh per turn, never persisted in session
+history, and prioritized HEARTBEAT → AGENTS → TOOLS → MEMORY within the existing static
+budget; any cut is explicit. Tool roots remain byte-for-byte unchanged. The preserved failed
+canary proves the old loop, a new real canary completes, and focused/full validation stays green.
+
+**Contention:** W23-C1 waits for this card because both need the same local endpoint and final live
+evidence. No parallel context work may touch identity/loop composition or the mutable canary state.
+
+**Shipped:** `system_prompt_for_agent` now reads HEARTBEAT/AGENTS/optional TOOLS/MEMORY fresh every
+turn, appends them after mandatory SOUL/WORKFLOW in priority order, and fits them into the existing
+static-context budget with a visible truncation marker. A final runtime handoff tells the model the
+private state is already loaded and is not a project-tool path; tool roots are unchanged and the
+system message remains absent from durable conversation history. The first repeated live canary
+had failed at the Lead's existing `max_iterations=20`; after the fix the final run completed with
+7 Lead turns and 18,395 input tokens versus 16 turns/45,639 tokens in the pre-footer run — about
+60% less measured input, with no raised limit. Validation: opt-in live pytest passed; the ordinary
+2,233-test suite completed with 5 expected environment/opt-in skips; 18 goldens, 24 specs, Ruff,
+format, mypy and metrics all passed.
 
 ---
 

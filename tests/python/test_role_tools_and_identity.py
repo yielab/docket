@@ -7,10 +7,10 @@ Two gaps this closes rather than papering over:
    now *unable* to. `core/archetypes.py`'s `denied_tools` (data) plus
    `registry_for_role` (the one composing function) close the gap;
    `core/agent_loop.py` calls it once per turn.
-2. **The loop composed no system prompt at all.** `core/identity.py`'s
-   `system_prompt_for_agent` reads SOUL.md, the live persona, and
-   WORKFLOW_AUTO.md's resume/durability contract and folds them into one
-   prompt, wired into `run_agent_turn`.
+2. **The loop's system prompt omitted private runtime state.** `core/identity.py`'s
+   `system_prompt_for_agent` reads SOUL.md, the live persona, WORKFLOW_AUTO.md,
+   and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state into one prompt, wired into
+   `run_agent_turn` without widening project-tool roots.
 
 The load-bearing test in this file is
 `TestReviewerCannotDispatchAWrite.test_reviewer_write_is_a_dispatch_level_denial`:
@@ -31,6 +31,7 @@ import pytest
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import archetypes as _archetypes
+from docket.core import context as _context
 from docket.core import identity as _identity
 from docket.core.llm import (
     ChatMessage,
@@ -413,8 +414,7 @@ class TestComposeSystemPrompt:
 
 
 class TestSystemPromptForAgent:
-    """The I/O entry point -- reads a real workspace's SOUL.md/WORKFLOW_AUTO.md
-    and this agent's live persona."""
+    """The I/O entry point reads identity plus bounded private workspace state."""
 
     def test_composes_from_real_workspace_files(self) -> None:
         ws = _write_meta("id-agent")
@@ -425,6 +425,52 @@ class TestSystemPromptForAgent:
 
         assert "You are the Lead" in prompt
         assert "Resume before you greet" in prompt
+
+    def test_private_workspace_state_is_loaded_in_priority_order(self) -> None:
+        ws = _write_meta("context-agent")
+        (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
+        (ws / "HEARTBEAT.md").write_text("ACTIVE-CHECKPOINT\n")
+        (ws / "AGENTS.md").write_text("AGENT-RULES\n")
+        (ws / "TOOLS.md").write_text("TOOL-NOTES\n")
+        (ws / "MEMORY.md").write_text("DURABLE-MEMORY\n")
+
+        prompt = _identity.system_prompt_for_agent("context-agent")
+
+        assert "already loaded" in prompt
+        assert "Do not search for, recreate, or modify them with project tools" in prompt
+        assert prompt.rstrip().endswith(
+            "Continue with the assigned task now; do not call read/glob/write for these "
+            "private control files."
+        )
+        ordered = [
+            prompt.index(name)
+            for name in ("ACTIVE-CHECKPOINT", "AGENT-RULES", "TOOL-NOTES", "DURABLE-MEMORY")
+        ]
+        assert ordered == sorted(ordered)
+
+        (ws / "HEARTBEAT.md").write_text("UPDATED-CHECKPOINT\n")
+        refreshed = _identity.system_prompt_for_agent("context-agent")
+        assert "UPDATED-CHECKPOINT" in refreshed
+        assert "ACTIVE-CHECKPOINT" not in refreshed
+
+    def test_oversized_low_priority_state_is_visibly_truncated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "CONTEXT_TOKEN_BUDGET", 350, raising=True)
+        ws = _write_meta("bounded-context-agent")
+        (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nstartup\n")
+        (ws / "HEARTBEAT.md").write_text("KEEP-ACTIVE-ACTION\n")
+        (ws / "AGENTS.md").write_text("KEEP-AGENT-RULE\n")
+        (ws / "MEMORY.md").write_text("memory-detail-" * 1000)
+
+        prompt = _identity.system_prompt_for_agent("bounded-context-agent")
+
+        assert "KEEP-ACTIVE-ACTION" in prompt
+        assert "KEEP-AGENT-RULE" in prompt
+        assert "[... MEMORY.md truncated:" in prompt
+        assert _context.estimate_tokens(prompt) <= _cfg.CONTEXT_TOKEN_BUDGET
 
     def test_persona_reaches_the_prompt(self) -> None:
         ws = _write_meta("persona-agent", persona={"name": "Orion", "emoji": "🔭"})
@@ -497,6 +543,7 @@ class TestRunAgentTurnComposesTheSystemPrompt:
 
         ws = _write_meta("history-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nsecret identity text\n")
+        (ws / "HEARTBEAT.md").write_text("private active checkpoint\n")
         roots = tmp_path / "code3"
         roots.mkdir()
         ctx = ToolContext(
@@ -511,3 +558,4 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         record = load_session("agent:history-agent:default")
         assert all(m.role != "system" for m in record.messages)
         assert not any("secret identity text" in m.content for m in record.messages)
+        assert not any("private active checkpoint" in m.content for m in record.messages)

@@ -19,9 +19,12 @@ self-authored ``IDENTITY.md``.
 Without this module, ``core/agent_loop.py`` would compose no system prompt at all — ``SOUL.md``
 (identity, scope, session key), the docket-owned persona, and
 ``WORKFLOW_AUTO.md``'s resume/durability contract (``core/memory.py``,
-``CONTRACT_VERSION``) never reached the model. That is not decoration: the
-resume contract is what tells a just-reset agent to check ``HEARTBEAT.md``
-before announcing it is idle, and it is useless sitting unread on disk.
+``CONTRACT_VERSION``) never reached the model. The same is true of the private
+workspace state that contract names: HEARTBEAT/AGENTS/TOOLS/MEMORY are loaded
+fresh here and appended by priority under the existing static-context budget.
+That is not decoration: a just-reset agent cannot resume from a HEARTBEAT it
+was told to find under project-tool roots that deliberately exclude its private
+workspace.
 
 ``system_prompt_for_agent`` is the single function ``run_agent_turn`` calls,
 once per turn. It re-reads the persona from ``.docket-meta.json`` rather than
@@ -40,7 +43,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import docket.config as _cfg
-from docket.core.memory import REQUIRED_STARTUP_FILE
+from docket.core.memory import HEARTBEAT_FILE, MEMORY_FILE, REQUIRED_STARTUP_FILE
 from docket.core.models import AgentMeta, Persona
 from docket.edges import store as _store
 
@@ -51,6 +54,19 @@ PERSONA_END = "<!-- docket-persona:end -->"
 #: ``WORKFLOW_AUTO.md`` — kept as a local constant (not re-exported from
 #: elsewhere) since no other module currently needs the bare filename.
 SOUL_FILE = "SOUL.md"
+
+_RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
+_RUNTIME_CONTEXT_NOTE = (
+    "# Runtime-loaded Docket workspace state\n"
+    "These private control files are already loaded from the Docket workspace. "
+    "Do not search for, recreate, or modify them with project tools; project tools remain "
+    "rooted in the project workspace. Docket owns task durability for this turn."
+)
+_RUNTIME_CONTEXT_FOOTER = (
+    "\n\n# Runtime workspace state loaded\n"
+    "Continue with the assigned task now; do not call read/glob/write for these private "
+    "control files."
+)
 
 #: Base-assistant scaffolding a self-authoring runtime may leave behind, and that
 #: must not linger in a docket-managed
@@ -142,7 +158,12 @@ def upsert_persona_block(soul_text: str, persona: Persona | None) -> str:
 # ── the turn's system prompt ────────────────────────────────────────────────
 
 
-def compose_system_prompt(soul_text: str, workflow_auto_text: str, persona: Persona | None) -> str:
+def compose_system_prompt(
+    soul_text: str,
+    workflow_auto_text: str,
+    persona: Persona | None,
+    runtime_context: str = "",
+) -> str:
     """Fold SOUL.md, the live persona, and WORKFLOW_AUTO.md into one system prompt.
 
     Pure — no I/O, matching this module's own convention (``system_prompt_for_agent``
@@ -159,8 +180,74 @@ def compose_system_prompt(soul_text: str, workflow_auto_text: str, persona: Pers
     """
     effective_soul = upsert_persona_block(soul_text, persona).strip()
     workflow = workflow_auto_text.strip()
-    parts = [part for part in (effective_soul, workflow) if part]
+    runtime = runtime_context.strip()
+    parts = [part for part in (effective_soul, workflow, runtime) if part]
     return "\n\n---\n\n".join(parts)
+
+
+def _visible_truncate(text: str, max_bytes: int, label: str) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    if max_bytes <= 0:
+        return ""
+
+    marker = f"\n[... {label} truncated: {len(encoded)} bytes omitted ...]\n"
+    marker_bytes = marker.encode("utf-8")
+    if len(marker_bytes) >= max_bytes:
+        return marker_bytes[:max_bytes].decode("utf-8", errors="ignore")
+
+    content_bytes = max_bytes - len(marker_bytes)
+    head_size = content_bytes // 2
+    tail_size = content_bytes - head_size
+    omitted = len(encoded) - head_size - tail_size
+    marker = f"\n[... {label} truncated: {omitted} bytes omitted ...]\n"
+    marker_bytes = marker.encode("utf-8")
+    content_bytes = max(max_bytes - len(marker_bytes), 0)
+    head_size = content_bytes // 2
+    tail_size = content_bytes - head_size
+    head = encoded[:head_size].decode("utf-8", errors="ignore")
+    tail = encoded[-tail_size:].decode("utf-8", errors="ignore") if tail_size else ""
+    return f"{head}{marker}{tail}"
+
+
+def _runtime_workspace_context(ws: Path, base_prompt: str) -> str:
+    """Fit freshly read private workspace state after mandatory identity context."""
+    available_sections = [
+        (name, text)
+        for name in _RUNTIME_CONTEXT_FILES
+        if (text := _read_workspace_text(ws / name).strip())
+    ]
+    if not available_sections:
+        return ""
+
+    max_bytes = _cfg.CONTEXT_TOKEN_BUDGET * _cfg.CONTEXT_BYTES_PER_TOKEN
+    remaining = max_bytes - len(base_prompt.encode("utf-8"))
+    if base_prompt:
+        remaining -= len(b"\n\n---\n\n")
+    prefix = _RUNTIME_CONTEXT_NOTE
+    prefix_bytes = len(prefix.encode("utf-8"))
+    footer_bytes = len(_RUNTIME_CONTEXT_FOOTER.encode("utf-8"))
+    if remaining < prefix_bytes + footer_bytes:
+        return ""
+
+    parts = [prefix]
+    remaining -= prefix_bytes + footer_bytes
+    for name, text in available_sections:
+        header = f"\n\n## {name}\n"
+        header_bytes = len(header.encode("utf-8"))
+        if remaining <= header_bytes:
+            break
+        parts.append(header)
+        remaining -= header_bytes
+        fitted = _visible_truncate(text, remaining, name)
+        parts.append(fitted)
+        used = len(fitted.encode("utf-8"))
+        remaining -= used
+        if fitted != text:
+            break
+    parts.append(_RUNTIME_CONTEXT_FOOTER)
+    return "".join(parts)
 
 
 def load_agent_persona(agent_id: str) -> Persona | None:
@@ -193,7 +280,7 @@ def _read_workspace_text(path: Path) -> str:
 
 
 def system_prompt_for_agent(agent_id: str) -> str:
-    """Read *agent_id*'s SOUL.md / persona / WORKFLOW_AUTO.md and compose a prompt.
+    """Read *agent_id*'s identity plus bounded private state and compose a prompt.
 
     The one I/O entry point ``core/agent_loop.py`` needs for prompt
     composition — everything else in this module stays pure.
@@ -207,4 +294,6 @@ def system_prompt_for_agent(agent_id: str) -> str:
     soul_text = _read_workspace_text(ws / SOUL_FILE)
     workflow_text = _read_workspace_text(ws / REQUIRED_STARTUP_FILE)
     persona = load_agent_persona(agent_id)
-    return compose_system_prompt(soul_text, workflow_text, persona)
+    base_prompt = compose_system_prompt(soul_text, workflow_text, persona)
+    runtime_context = _runtime_workspace_context(ws, base_prompt)
+    return compose_system_prompt(soul_text, workflow_text, persona, runtime_context)

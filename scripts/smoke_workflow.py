@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Run one observable Docket workflow through the real CLI and HTTP adapter.
 
-The endpoint is a deterministic loopback server, but everything on Docket's side is production:
-CLI subprocesses, persisted state, endpoint resolution, the chat-completions adapter,
-``DocketDriver``, the agent loop, gated tools, pipeline gates, resume, sessions, traces and audit.
+The default endpoint is deterministic and loopback-only so the command is suitable for CI.
+``--live-model`` instead uses a real loopback model (port 8081 by default) without scripting its
+replies. Everything on Docket's side is production in both modes: CLI subprocesses, persisted
+state, endpoint resolution, the chat-completions adapter, ``DocketDriver``, the agent loop, gated
+tools, pipeline gates, resume, sessions, traces and audit.
 """
 
 from __future__ import annotations
@@ -15,11 +17,15 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit, urlunsplit
 
 
 class SmokeFailure(RuntimeError):
@@ -29,6 +35,13 @@ class SmokeFailure(RuntimeError):
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise SmokeFailure(message)
+
+
+@dataclass(frozen=True)
+class _LiveModel:
+    endpoint: str
+    model_id: str
+    context_tokens: int | None = None
 
 
 def _latest(messages: list[dict[str, Any]], role: str) -> dict[str, Any]:
@@ -209,7 +222,81 @@ def _model_endpoint(model: _ScriptedModel) -> Iterator[str]:
         thread.join(timeout=5)
 
 
-def _run_cli(repo: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+def _loopback_endpoint(raw: str) -> str:
+    parsed = urlsplit(raw.strip())
+    _require(parsed.scheme in {"http", "https"}, "live endpoint must use http or https")
+    _require(
+        parsed.username is None and parsed.password is None,
+        "live endpoint must not embed credentials",
+    )
+    host = (parsed.hostname or "").lower()
+    _require(
+        host == "localhost" or host == "::1" or host.startswith("127."),
+        "live smoke accepts only an explicit loopback endpoint",
+    )
+    _require(
+        not parsed.query and not parsed.fragment, "live endpoint must not contain query or fragment"
+    )
+    path = parsed.path.rstrip("/")
+    if not path:
+        path = "/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def _discover_live_model(endpoint: str, requested_model: str | None) -> _LiveModel:
+    normalized = _loopback_endpoint(endpoint)
+    request = urllib.request.Request(
+        f"{normalized}/models", headers={"Accept": "application/json"}, method="GET"
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = json.loads(response.read())
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"cannot discover a model at {normalized}: {exc}") from exc
+    _require(isinstance(payload, dict), "live /models response was not a JSON object")
+
+    entries: list[dict[str, Any]] = []
+    for field in ("data", "models"):
+        raw_entries = payload.get(field)
+        if isinstance(raw_entries, list):
+            entries.extend(
+                cast(dict[str, Any], item) for item in raw_entries if isinstance(item, dict)
+            )
+
+    candidates: list[str] = []
+    for entry in entries:
+        candidate = str(entry.get("id") or entry.get("model") or entry.get("name") or "").strip()
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    selected = (requested_model or "").strip()
+    if not selected:
+        _require(bool(candidates), "live /models response did not identify a loaded model")
+        _require(
+            len(candidates) == 1,
+            "live endpoint exposes multiple models; select one explicitly with --model",
+        )
+        selected = candidates[0]
+
+    context_tokens: int | None = None
+    for entry in entries:
+        candidate = str(entry.get("id") or entry.get("model") or entry.get("name") or "").strip()
+        if candidate != selected:
+            continue
+        meta = entry.get("meta")
+        raw_context = meta.get("n_ctx") if isinstance(meta, dict) else entry.get("context_length")
+        if isinstance(raw_context, int) and raw_context > 0:
+            context_tokens = raw_context
+            break
+    return _LiveModel(normalized, selected, context_tokens)
+
+
+def _run_cli(
+    repo: Path,
+    env: dict[str, str],
+    *args: str,
+    process_timeout: float | None = 45,
+) -> subprocess.CompletedProcess[str]:
     print(f"\n$ docket {' '.join(args)}", flush=True)
     result = subprocess.run(
         [sys.executable, "-m", "docket", *args],
@@ -217,7 +304,7 @@ def _run_cli(repo: Path, env: dict[str, str], *args: str) -> subprocess.Complete
         env=env,
         text=True,
         capture_output=True,
-        timeout=45,
+        timeout=process_timeout,
         check=False,
     )
     if result.stdout:
@@ -261,7 +348,7 @@ steps:
     role: implementer
     gate:
       type: mechanical
-      command: "test -f smoke-artifact.txt"
+      command: 'test "$(cat smoke-artifact.txt)" = "docket smoke ok"'
   - id: review
     role: reviewer
     gate:
@@ -318,7 +405,11 @@ def _verify_sessions(home: Path) -> None:
             record
             for record in records
             if any(
-                isinstance(message, dict) and message.get("toolCalls")
+                isinstance(message, dict)
+                and any(
+                    isinstance(call, dict) and call.get("name") == "write"
+                    for call in message.get("toolCalls", [])
+                )
                 for message in record.get("messages", [])
             )
         ),
@@ -330,24 +421,40 @@ def _verify_sessions(home: Path) -> None:
     if not isinstance(messages_raw, list):
         raise SmokeFailure("Implementer session messages are not a list")
     messages = messages_raw
-    tool_call_index = next(
-        i
-        for i, message in enumerate(messages)
-        if isinstance(message, dict) and message.get("toolCalls")
-    )
+    tool_call_index = -1
+    write_call_id = ""
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        calls = message.get("toolCalls")
+        if not isinstance(calls, list):
+            continue
+        write_call = next(
+            (
+                call
+                for call in calls
+                if isinstance(call, dict) and str(call.get("name", "")) == "write"
+            ),
+            None,
+        )
+        if isinstance(write_call, dict):
+            tool_call_index = index
+            write_call_id = str(write_call.get("id", ""))
+            break
+    _require(tool_call_index >= 0 and bool(write_call_id), "no durable write tool call was found")
     _require(tool_call_index + 1 < len(messages), "persisted tool call has no following result")
     tool_result = messages[tool_call_index + 1]
     _require(
         isinstance(tool_result, dict)
         and tool_result.get("role") == "tool"
-        and tool_result.get("toolCallId") == "smoke-write",
+        and tool_result.get("toolCallId") == write_call_id,
         "tool call/result did not persist as one adjacent atomic unit",
     )
     measured = sum(int(record.get("usage", {}).get("inputTokens", 0)) for record in records)
     _require(measured > 0, "endpoint token usage was not persisted")
 
 
-def _verify_final_state(world: Path, home: Path, model: _ScriptedModel) -> None:
+def _verify_final_state(world: Path, home: Path, model: _ScriptedModel | None) -> None:
     artifact = world / "codebase" / "smoke-artifact.txt"
     _require(artifact.read_text(encoding="utf-8") == "docket smoke ok\n", "artifact mismatch")
 
@@ -367,7 +474,8 @@ def _verify_final_state(world: Path, home: Path, model: _ScriptedModel) -> None:
     _require(hops[4]["artifact"].get("verdict") == "pass", "Tester verdict not persisted")
 
     _verify_sessions(home)
-    _require(len(model.requests) == 6, f"expected 6 model requests, got {len(model.requests)}")
+    if model is not None:
+        _require(len(model.requests) == 6, f"expected 6 model requests, got {len(model.requests)}")
 
     trace_files = sorted((home / "traces" / "smoke").glob("*.jsonl"))
     _require(bool(trace_files), "no trace files were persisted")
@@ -396,56 +504,108 @@ def _verify_final_state(world: Path, home: Path, model: _ScriptedModel) -> None:
     _require((home / "audit.log").is_file(), "audit log was not created")
 
 
-def _run(world: Path, repo: Path) -> None:
-    home, _codebase, pod_spec, pipeline = _write_inputs(world)
-    model = _ScriptedModel()
+def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> None:
+    provider_args = [
+        "models",
+        "provider",
+        "add",
+        "smoke-local",
+        live.endpoint,
+        "--model",
+        live.model_id,
+        "--name",
+        "Live smoke model",
+    ]
+    if live.context_tokens is not None:
+        provider_args.extend(["--ctx", str(live.context_tokens)])
+    _run_cli(repo, env, *provider_args, process_timeout=None)
 
-    with _model_endpoint(model) as endpoint:
+    model_ref = f"smoke-local/{live.model_id}"
+    for role in ("manager", "programmer", "reviewer", "tester"):
+        _run_cli(repo, env, "models", "set", role, model_ref, process_timeout=None)
+    _run_cli(repo, env, "models", "set", "default", model_ref, process_timeout=None)
+
+
+def _run(world: Path, repo: Path, live: _LiveModel | None = None) -> None:
+    home, _codebase, pod_spec, pipeline = _write_inputs(world)
+    model: _ScriptedModel | None
+    endpoint_context: AbstractContextManager[str]
+    if live is None:
+        model = _ScriptedModel()
+        endpoint_context = _model_endpoint(model)
+    else:
+        model = None
+        endpoint_context = nullcontext(live.endpoint)
+
+    with endpoint_context as endpoint:
         env = os.environ.copy()
         env.update(
             {
                 "DOCKET_HOME": str(home),
-                "DOCKET_LLM_BASE_URL": endpoint,
-                "DOCKET_LLM_API_KEY": "smoke-local",
                 "DOCKET_SERVICE_MANAGER": "none",
                 "DOCKET_LOG_DIR": str(world / "logs"),
-                "DISPATCH_RETRY_BACKOFF_S": "0",
                 "NO_COLOR": "1",
                 "NO_PROXY": "127.0.0.1,localhost",
                 "PYTHONUNBUFFERED": "1",
                 "no_proxy": "127.0.0.1,localhost",
             }
         )
+        if live is None:
+            env.update(
+                {
+                    "DOCKET_LLM_BASE_URL": endpoint,
+                    "DOCKET_LLM_API_KEY": "smoke-local",
+                    "DISPATCH_RETRY_BACKOFF_S": "0",
+                }
+            )
+        else:
+            for inherited in (
+                "DOCKET_LLM_BASE_URL",
+                "DOCKET_LLM_API_KEY",
+                "SMOKE_LOCAL_API_KEY",
+            ):
+                env.pop(inherited, None)
+
+        process_timeout: float | None = 45 if live is None else None
+
+        def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+            return _run_cli(repo, env, *args, process_timeout=process_timeout)
 
         print(f"Docket smoke world: {world}")
-        print(f"Deterministic endpoint: {endpoint} (loopback only)")
+        if live is None:
+            print(f"Deterministic endpoint: {endpoint} (loopback only)")
+        else:
+            print(f"Real model endpoint: {endpoint} (loopback only)")
+            print(f"Loaded model: {live.model_id}")
+            if live.context_tokens is not None:
+                print(f"Reported context window: {live.context_tokens:,} tokens")
+            _configure_live_model(repo, env, live)
 
-        _run_cli(repo, env, "add", "--from", str(pod_spec))
+        run_cli("add", "--from", str(pod_spec))
         fleet = _load_json(home / "fleet.json")
         _require(len(fleet.get("agents", [])) == 4, "full pod did not provision four members")
         print("[check] full pod provisioned: lead, implementer, reviewer, tester")
 
-        _run_cli(
-            repo,
-            env,
+        run_cli(
             "pod",
             "smoke",
             "delegate",
-            "Create smoke-artifact.txt through the Docket tool path.",
+            "Create smoke-artifact.txt in the workspace with exactly one line: "
+            "docket smoke ok. The Implementer must create it through Docket's write tool; "
+            "keep the change limited to that artifact, then review and verify the result.",
         )
-        _run_cli(repo, env, "pipeline", "plan", "smoke", "--file", str(pipeline))
-        _run_cli(
-            repo,
-            env,
+        run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
+        first_run = [
             "pipeline",
             "run",
             "smoke",
             "--file",
             str(pipeline),
             "--follow",
-            "--timeout",
-            "30",
-        )
+        ]
+        if live is None:
+            first_run.extend(["--timeout", "30"])
+        run_cli(*first_run)
 
         waiting = _task(home)
         _require(waiting.get("status") == "waiting_approval", "pipeline did not pause for approval")
@@ -454,26 +614,25 @@ def _run(world: Path, repo: Path) -> None:
         _require(bool(token), "waiting task has no approval token")
         print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
 
-        _run_cli(repo, env, "approve", token)
-        _run_cli(
-            repo,
-            env,
+        run_cli("approve", token)
+        second_run = [
             "pipeline",
             "run",
             "smoke",
             "--file",
             str(pipeline),
             "--follow",
-            "--timeout",
-            "30",
-        )
+        ]
+        if live is None:
+            second_run.extend(["--timeout", "30"])
+        run_cli(*second_run)
         print("[check] waiting_approval -> granted -> resumed at release-check -> done")
 
-        _run_cli(repo, env, "pod", "smoke", "queue")
-        _run_cli(repo, env, "runs", "list", "--project", "smoke", "--json")
-        _run_cli(repo, env, "trace", "export", "smoke")
-        _run_cli(repo, env, "cost", "smoke-implementer", "--json")
-        _run_cli(repo, env, "audit", "verify")
+        run_cli("pod", "smoke", "queue")
+        run_cli("runs", "list", "--project", "smoke", "--json")
+        run_cli("trace", "export", "smoke")
+        run_cli("cost", "smoke-implementer", "--json")
+        run_cli("audit", "verify")
 
     _verify_final_state(world, home, model)
     print("[check] typed handoffs and verdicts persisted for all five steps")
@@ -486,6 +645,20 @@ def _run(world: Path, repo: Path) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--live-model",
+        action="store_true",
+        help="Use genuine inference from a loopback OpenAI-compatible endpoint.",
+    )
+    parser.add_argument(
+        "--endpoint",
+        default="http://127.0.0.1:8081/v1",
+        help="Loopback base URL for --live-model (default: http://127.0.0.1:8081/v1).",
+    )
+    parser.add_argument(
+        "--model",
+        help="Loaded model id for --live-model; by default it is discovered from /models.",
+    )
+    parser.add_argument(
         "--workdir",
         type=Path,
         help="Preserve the smoke world at this new or empty directory for inspection.",
@@ -495,6 +668,9 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    if args.model and not args.live_model:
+        print("SMOKE FAIL — --model requires --live-model", file=sys.stderr)
+        return 2
     repo = Path(__file__).resolve().parents[1]
     temp: tempfile.TemporaryDirectory[str] | None = None
     if args.workdir is None:
@@ -508,8 +684,15 @@ def main() -> int:
         world.mkdir(parents=True, exist_ok=True)
 
     try:
-        _run(world, repo)
-    except (SmokeFailure, OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        live = _discover_live_model(args.endpoint, args.model) if args.live_model else None
+        _run(world, repo, live)
+    except (
+        SmokeFailure,
+        OSError,
+        ValueError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"\nSMOKE FAIL — {exc}", file=sys.stderr)
         if temp is not None:
             print("Rerun with --workdir PATH to preserve failed state.", file=sys.stderr)

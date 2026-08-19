@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -176,7 +176,13 @@ This specification does NOT cover:
     live persona (read fresh from `.docket-meta.json`, not trusted from whatever `SOUL.md` has
     on disk), and its `WORKFLOW_AUTO.md` (the resume/durability contract; `core/memory.py`,
     `CONTRACT_VERSION`) — see `core/identity.py`'s `compose_system_prompt` for the exact
-    composition rule.
+    composition rule. The same fresh composition **MUST** append current private-workspace state
+    in this priority order: `HEARTBEAT.md`, `AGENTS.md`, optional `TOOLS.md`, then `MEMORY.md`.
+    It **MUST** state that these files are already loaded and are not project-tool paths, so a
+    model does not search for or recreate them under the codebase. SOUL/WORKFLOW remain mandatory;
+    the appended state **MUST** fit the remaining `CONTEXT_TOKEN_BUDGET` estimate, preserve higher
+    priorities first, and mark any truncation/omission visibly rather than silently growing an
+    endpoint's context or dropping state.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
     so a persona change or a re-seeded `WORKFLOW_AUTO.md` is reflected on the very next turn
@@ -415,6 +421,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.8.0 (2026-08-19)
+
+- W23-C2 makes the private startup state promised by the workspace contract reach the live model:
+  HEARTBEAT/AGENTS/TOOLS/MEMORY are freshly injected under the existing static context budget,
+  visibly degraded by priority when needed, and never exposed as a second writable tool root.
 
 ### Version 1.7.0 (2026-08-19)
 

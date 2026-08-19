@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Active
 **Last Updated**: 2026-08-19
 
@@ -56,9 +56,9 @@ Run the observable happy-path proof with:
 uv run python scripts/smoke_workflow.py
 ```
 
-The command **MUST** create a temporary `DOCKET_HOME` and codebase, start only a loopback
-OpenAI-compatible fake endpoint, and invoke Docket through real subprocess CLI commands. It
-**MUST** exercise, display, and verify this sequence:
+By default, the command **MUST** create a temporary `DOCKET_HOME` and codebase, start only a
+loopback OpenAI-compatible fake endpoint, and invoke Docket through real subprocess CLI commands.
+It **MUST** exercise, display, and verify this sequence:
 
 1. Declarative provisioning of an `agentic-product` pod.
 2. Task delegation and rendering of the resolved pipeline plan.
@@ -73,6 +73,19 @@ The model endpoint is fake; the protocol boundary is not. The harness **MUST** r
 real `/chat/completions` request shapes and never use a paid endpoint, credential, or non-loopback
 network. Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS`
 line. `--workdir <path>` preserves the otherwise-temporary world for inspection.
+
+An explicitly selected live-local canary **MUST** run the same workflow against a real
+OpenAI-compatible model without replacing its replies. `--live-model` defaults to
+`http://127.0.0.1:8081/v1`; an endpoint override **MUST** remain loopback-only and the harness
+**MUST** discover the loaded model from `/models` unless the operator supplies its id. The canary
+**MUST** configure only its temporary `DOCKET_HOME` through Docket's public model-provider/policy
+commands, send no API key, and make no exact response-text or request-count assumption beyond the
+task's real artifact and pipeline gate contracts. It **MUST NOT** tighten the product's normal
+turn, tool, token, or output limits merely to make the canary predictable.
+
+Because the canary requires mutable local infrastructure and un-scripted inference, it **MUST** be
+opt-in rather than a blocking default-suite dependency. Its environment-labelled pytest wrapper
+**MUST** skip unless explicitly enabled; the standalone live command is the acceptance evidence.
 
 Test files use `test_<owned_behavior>.py`; card IDs belong in changelogs/commit history, not
 permanent filenames.
@@ -146,6 +159,11 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.4.0 (2026-08-19)
+
+- W23-C1 adds an opt-in, loopback-only full-workflow canary that uses the real local model while
+  retaining the deterministic default smoke for CI.
 
 ### Version 2.3.0 (2026-08-19)
 

@@ -132,7 +132,7 @@ Each specification document must include:
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.9.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
-| Agent Loop | 1.7.0 | Implemented and live | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver`: the production turn loop dispatches every tool call through `core.tools.dispatch_tool`, narrows tools by role, composes identity context, compacts durable history through bounded non-recursive calls, and can keep its history coordinate separate from its task trace coordinate (W20-C2/W20-C2b/W20-C4) |
+| Agent Loop | 1.8.0 | Implemented and live | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver`: the production turn loop dispatches every tool call through `core.tools.dispatch_tool`, narrows tools by role, composes bounded private-workspace startup context, compacts durable history through bounded non-recursive calls, and can keep its history coordinate separate from its task trace coordinate (W20-C2/W20-C2b/W20-C4/W23-C2) |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.8.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*`, `models.*`, `runs.cancel`, `mcp_servers.*`, and `telegram.*` are covered; actions taken outside Docket remain structurally outside its log |
 | Cost Tracking | 1.6.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
@@ -154,7 +154,7 @@ Each specification document must include:
 | docket-meta schema | 2.9.0 | Complete | Docket-owned `~/.docket` paths and `core/fleet.py` metadata access; `requireApprovalRoles`; `blueprint`/`workspaceKind`/`workDir` |
 | Serve Read API | 2.6.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs`, tasks/traces/pods, guardrail + loop metrics; the versioned `gateway` field is an always-inactive compatibility field |
 | Input Validation | 1.3.0 | Complete | Docket-owned store and protocol-boundary validation |
-| Test Framework | 2.3.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, proportional validation, and an observable CLI→HTTP→runtime full-workflow smoke |
+| Test Framework | 2.4.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, proportional validation, a deterministic CLI→HTTP→runtime smoke, and an opt-in real local-model canary |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links

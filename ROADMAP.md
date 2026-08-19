@@ -12,7 +12,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 22 are complete; the board is
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 23 are complete; the board is
 clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -41,6 +41,7 @@ clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
 | — | **Wave 21** (not a phase): daemon-free current-state truth pass | ☑ done (2026-08-19) — current contracts, docs, source prose, and hermetic fixtures now describe only Docket-owned runtime/state; explicit migration history preserved |
 | — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
+| — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -2462,6 +2463,22 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-19 (wave 23) — the full workflow now runs against the real local model, and the
+  repeated run fixed what the deterministic proof could not see.**
+  `scripts/smoke_workflow.py --live-model` discovers and registers the Qwen served at
+  `127.0.0.1:8081`, uses no credential or
+  scripted reply, preserves normal production guardrails, and completed the five-role tool/gate/
+  approval/resume workflow in multiple fresh temporary worlds. A second pre-fix run exposed a real
+  context defect: the Lead exhausted 20 iterations searching for HEARTBEAT/MEMORY because the
+  injected startup contract required those files while the model neither received them nor could
+  safely read the private workspace through project tools. `system_prompt_for_agent` now injects
+  fresh HEARTBEAT/AGENTS/TOOLS/MEMORY by priority under `CONTEXT_TOKEN_BUDGET`, marks truncation,
+  and closes with an explicit already-loaded/read-only handoff; roots remain unchanged and system
+  context is not persisted. The final canary reduced the Lead from 16 turns/45,639 input tokens to
+  7 turns/18,395 tokens (about 60% less measured input) without raising a limit. The opt-in live
+  pytest, ordinary 2,233-test suite (5 expected skips), 18 goldens, 24 specs, Ruff, format, mypy
+  and metrics passed.
 
 - **2026-08-19 (wave 22) — one command now proves the product composes end to end.**
   `uv run python scripts/smoke_workflow.py` provisions a full agentic-product pod and drives a
