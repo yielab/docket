@@ -75,6 +75,8 @@ class FakeDriver:
         env: dict[str, str] | None = None,
         *,
         on_spawn: Callable[[int], None] | None = None,
+        trace_project: str | None = None,
+        trace_session_key: str | None = None,
     ) -> TurnResult:
         """``on_spawn`` is accepted (per the ``RuntimeDriver`` Protocol's own
         signature) and ignored, matching every real driver that backs onto no

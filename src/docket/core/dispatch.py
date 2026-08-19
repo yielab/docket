@@ -88,6 +88,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote as _url_quote
 
 import docket.config as _cfg
 from docket.core import approval as _ap
@@ -127,6 +128,21 @@ _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"}
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
+
+
+def step_session_key(member_id: str, project: str, task_id: str, step_id: str) -> str:
+    """Return one collision-free durable-history key for a pipeline step.
+
+    The task-wide trace keeps its existing ``agent:<project>:<task-id>`` identity.
+    History includes the resolved member and globally-unique pipeline ``step_id``
+    so repeated roles and parallel children cannot replay each other's raw turns.
+    """
+    member = _url_quote(member_id, safe="")
+    project_part = _url_quote(project, safe="")
+    task = _url_quote(task_id, safe="")
+    step = _url_quote(step_id, safe="")
+    return f"agent:{member}:{project_part}:task:{task}:step:{step}"
+
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
 # `core/pipeline.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
@@ -1270,6 +1286,7 @@ def dispatch_task(
         role = node.role or node.agent or node.step_id
         member_id = node.member_id
         assert member_id is not None  # runnable_nodes() already filtered out skipped units
+        history_session_key = step_session_key(member_id, project, task_id, node.step_id)
 
         if _pod.pod_of(member_id) != project:
             raise DispatchError(
@@ -1390,10 +1407,17 @@ def dispatch_task(
                 # driver directly here (rather than through `run`) is what
                 # lets it take the extra `on_spawn` kwarg type-safely.
                 run_res = _dr.default_driver().run_turn(
-                    member_id, session_id, message, hop_timeout, env, on_spawn=_on_spawn
+                    member_id,
+                    history_session_key,
+                    message,
+                    hop_timeout,
+                    env,
+                    on_spawn=_on_spawn,
+                    trace_project=project,
+                    trace_session_key=session_id,
                 )
             else:
-                run_res = run(member_id, session_id, message, hop_timeout, env)
+                run_res = run(member_id, history_session_key, message, hop_timeout, env)
             if run_id_for_pids is not None and spawned_pid:
                 _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
             if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:

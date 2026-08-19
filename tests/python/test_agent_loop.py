@@ -734,6 +734,41 @@ class TestDurability:
 
 
 class TestTracing:
+    def test_trace_coordinate_can_differ_from_durable_history_coordinate(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        history_key = "agent:demo-agent:demo:task:t1:step:implementer"
+        trace_key = "agent:demo:t1"
+        backend = ScriptedBackend(
+            [_tool_call_response("c1", "echo", '{"text": "hi"}'), _final("ok")]
+        )
+
+        _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            history_key,
+            "go",
+            trace_session_key=trace_key,
+        )
+
+        assert [m.role for m in _session.load_messages(history_key)] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
+        assert _session.load_messages(trace_key) == []
+        assert not (_cfg.TRACES_DIR / "demo" / f"{history_key}.jsonl").exists()
+        tracefile = _cfg.TRACES_DIR / "demo" / f"{trace_key}.jsonl"
+        records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+        assert all(record["session_id"] == trace_key for record in records)
+        assert {record["event_type"] for record in records} >= {
+            "session_compaction",
+            "tool_call",
+            "tool_result",
+        }
+
     def test_every_dispatched_tool_call_emits_call_and_result_trace_events(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:

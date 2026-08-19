@@ -320,10 +320,14 @@ class TestToolDispatch:
             return []
 
         monkeypatch.setattr("docket.core.dispatch.dispatch_pod", _slow)
-        _mcp.tool_dispatch("demo")
+        result = _mcp.tool_dispatch("demo")
         # The audit entry exists right away — it does not wait for the
         # background pipeline thread to finish.
         assert len(_audit_actions("mcp.dispatch")) == 1
+        # Keep the background thread inside this test's monkeypatch lifetime;
+        # otherwise it can resolve dispatch_pod after the next test installs a
+        # different spy and overwrite that test's observations.
+        _wait_for_terminal_run(result["run"])
 
     def test_resume_and_timeout_are_threaded_through_to_dispatch_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -23,6 +23,7 @@ import datetime as _dt
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -35,6 +36,8 @@ import docket.config as _cfg
 # one. Callers that only care about success can still do
 # `trace_event(...) == "written"`.
 TraceStatus = Literal["written", "rejected", "suppressed"]
+
+_TRACE_APPEND_LOCK = threading.Lock()
 
 EVENT_TYPES: frozenset[str] = frozenset(
     [
@@ -190,7 +193,10 @@ def trace_event(
         with contextlib.suppress(TypeError, ValueError):
             record["duration_ms"] = int(duration_ms)  # type: ignore[arg-type]
 
-    _append(_cfg.TRACES_DIR / project / f"{session_id}.jsonl", [record])
+    # Several step-scoped histories can intentionally emit into one task trace
+    # (parallel pipeline children). Keep each in-process JSONL append whole.
+    with _TRACE_APPEND_LOCK:
+        _append(_cfg.TRACES_DIR / project / f"{session_id}.jsonl", [record])
     return "written"
 
 

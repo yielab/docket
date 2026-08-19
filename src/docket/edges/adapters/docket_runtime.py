@@ -194,6 +194,8 @@ class DocketDriver:
         env: dict[str, str] | None = None,
         *,
         on_spawn: Callable[[int], None] | None = None,
+        trace_project: str | None = None,
+        trace_session_key: str | None = None,
     ) -> TurnResult:
         """Run one turn through ``core/agent_loop.py``. Never raises.
 
@@ -256,7 +258,14 @@ class DocketDriver:
         self.mcp_loader(registry, meta.role)
         loop_config = _loop.LoopConfig(wall_clock_timeout_s=float(timeout))
         result = _loop.run_agent_turn(
-            backend, registry, ctx, session_key, message, config=loop_config
+            backend,
+            registry,
+            ctx,
+            session_key,
+            message,
+            config=loop_config,
+            trace_project=trace_project,
+            trace_session_key=trace_session_key,
         )
 
         # cost_usd stays 0.0: real token counts are recorded (result.usage,

@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` and
 `edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
 `core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
@@ -20,7 +20,8 @@ agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent
 configured MCP server's tools are reachable from a live turn and correctly narrowed by role — see
 `mcp-client.spec.md` for the wiring and `role-archetypes.spec.md`'s requirement 6 for the
 kind-based narrowing this depended on. **Wave 20 card W20-C2** made session compaction part of
-this same live path before each task-completion call.
+this same live path before each task-completion call. **Wave 20 card W20-C4** separates the durable
+history coordinate from the trace coordinate so pod steps do not replay another role's raw turns.
 **Last Updated**: 2026-08-19
 
 ## Purpose
@@ -50,6 +51,8 @@ This specification covers:
   messages sent to the backend and persisted to session history (ROADMAP Phase 19 P19-12)
 - The live trigger and adapter for `core.session.compact_session`: ordering, non-recursion,
   measured usage accounting, failure behavior, and privacy-safe trace payloads (W20-C2)
+- The optional trace-session coordinate used when one task-wide audit stream spans multiple
+  independently persisted step histories (W20-C4)
 
 This specification does NOT cover:
 
@@ -223,6 +226,26 @@ This specification does NOT cover:
 39. The compaction trace payload **MUST** additionally report summary-round count and the maximum
     estimated prompt tokens sent in any round. It **MUST NOT** include any prompt or summary text.
 
+### History and trace identity (Wave 20 W20-C4)
+
+40. `run_agent_turn`'s `session_key` **MUST** remain the sole coordinate for durable history,
+    compaction, summarizer-key derivation, and measured session usage. Optional `trace_project`
+    and `trace_session_key` values **MUST** select only the trace directory/stream; when omitted
+    they **MUST** default to `ctx.project`/`session_key` so every existing non-dispatch caller
+    remains behaviorally unchanged.
+41. Every `session_compaction`, `tool_call`, and `tool_result` event produced inside the loop
+    **MUST** use the resolved trace coordinate. No trace helper may cause messages or usage to be
+    loaded from or appended to that trace coordinate.
+42. `DocketDriver.run_turn` **MUST** pass its `session_key` to `ToolContext` and the loop as the
+    durable-history identity, and **MUST** forward optional keyword-only `trace_project` and
+    `trace_session_key` values to the loop. The `RuntimeDriver` port and its canonical fake
+    **MUST** accept the same additive keywords; callers that omit them preserve the prior
+    five-argument behavior.
+43. `DocketDriver.list_sessions(agent_id)` **MUST** continue enumerating every durable key with the
+    `agent:<agent-id>:` prefix, including base scoped sessions and W20-C4 step-scoped dispatch
+    histories. A trace-only task key is not a durable session and **MUST NOT** be fabricated by
+    session enumeration.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -264,6 +287,8 @@ def run_agent_turn(
     *,
     config: LoopConfig | None = None,
     clock: Callable[[], float] = time.monotonic,
+    trace_project: str | None = None,     # defaults to ctx.project; traces only
+    trace_session_key: str | None = None, # defaults to session_key; traces only
 ) -> AgentLoopResult: ...
 ```
 
@@ -276,7 +301,10 @@ class DocketDriver:                            # implements core.runtime_driver.
     mcp_loader: Callable[[ToolRegistry, str], list[Any]]    # default: wraps core.mcp_tools.load_mcp_tools
                                                              # (ROADMAP Phase 19/wave 17 -- see mcp-client.spec.md)
 
-    def run_turn(self, agent_id, session_key, message, timeout=300, env=None, *, on_spawn=None) -> TurnResult: ...
+    def run_turn(
+        self, agent_id, session_key, message, timeout=300, env=None, *, on_spawn=None,
+        trace_project=None, trace_session_key=None,
+    ) -> TurnResult: ...
     def provision(self, agent_id, workspace, model) -> ProvisionResult: ...
     def teardown(self, agent_id) -> TeardownResult: ...
     def list_sessions(self, agent_id) -> list[SessionSummary]: ...
@@ -380,6 +408,9 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
 - After any turn that dispatches at least one tool call, the session's trace file **MUST**
   contain exactly one `tool_call` and one `tool_result` event per dispatched call, in that
   order.
+- When trace coordinates differ from the history coordinate, messages and measured usage **MUST**
+  exist only under `session_key`, while loop trace events **MUST** exist only under
+  `<trace_project>/<trace_session_key>`.
 
 ### Invariants
 
@@ -396,6 +427,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.6.0 (2026-08-19)
+
+- **Wave 20, card W20-C4.** Split durable-history and trace coordinates with additive optional
+  `trace_project`/`trace_session_key` values. Existing callers default to one shared coordinate;
+  pod dispatch can now keep one task audit stream while each pipeline step owns its replay history.
 
 ### Version 1.5.0 (2026-08-19)
 

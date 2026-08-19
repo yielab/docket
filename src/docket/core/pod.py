@@ -93,7 +93,12 @@ def pod_prefix(project: str) -> str:
 
 
 def session_key(project: str, project_key: str = "default") -> str:
-    """Pod members share the project's session-key namespace."""
+    """Return the base scope key written to pod-member metadata.
+
+    Members keep this shared project coordinate for ``docket scope`` and
+    metadata compatibility. Pod-dispatch runtime history does not use it:
+    ``core.dispatch.step_session_key`` derives a task/step key per turn.
+    """
     return f"agent:{project}:{project_key}"
 
 

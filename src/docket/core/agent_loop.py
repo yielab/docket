@@ -271,23 +271,24 @@ def run_agent_turn(
     *,
     config: LoopConfig | None = None,
     clock: Callable[[], float] = time.monotonic,
+    trace_project: str | None = None,
+    trace_session_key: str | None = None,
 ) -> AgentLoopResult:
     """Run one full turn: compose -> call -> gate-and-execute -> feed back -> repeat.
 
-    ``session_key`` is both the durable-history key (``core/session.py``) and
-    the trace session id (``core/trace.py``) — the same coordinate
-    ``core/dispatch.py`` already uses for both purposes, so this is not a new
-    convention. ``ctx.project`` (falling back to ``ctx.agent_id``) and
-    ``ctx.role`` label the trace events; ``ctx`` also carries the tool
-    containment boundary (``ctx.roots``) that ``dispatch_tool`` enforces —
-    this function never inspects or widens it.
+    ``session_key`` is the durable-history key (``core/session.py``). The
+    optional trace coordinates select only where events are written and default
+    to ``ctx.project``/``session_key`` for backward compatibility. ``ctx`` also
+    carries the tool containment boundary (``ctx.roots``) that
+    ``dispatch_tool`` enforces — this function never inspects or widens it.
 
     Never raises for an ordinary failure mode: every stop condition, and
     every backend failure, comes back as a populated ``AgentLoopResult``.
     """
     cfg = config or LoopConfig()
     started = clock()
-    project = ctx.project or ctx.agent_id or "unknown"
+    project = trace_project or ctx.project or ctx.agent_id or "unknown"
+    trace_key = trace_session_key or session_key
     total_usage = TokenUsage()
     tool_calls_executed = 0
     iteration = 0
@@ -394,7 +395,7 @@ def run_agent_turn(
     total_usage = _accumulate(total_usage, summary_usage)
     if summary_usage.total_tokens or summary_usage.cached_tokens:
         append_messages(session_key, [], usage=summary_usage)
-    _trace_compaction(project, session_key, ctx.role, compaction)
+    _trace_compaction(project, trace_key, ctx.role, compaction)
     if not compaction.ok:
         return _done(
             ok=False,
@@ -498,12 +499,12 @@ def run_agent_turn(
 
         tool_msgs: list[ChatMessage] = []
         for call in assistant_msg.tool_calls:
-            _trace_tool_call(project, session_key, ctx.role, call.name, call.id, call.arguments)
+            _trace_tool_call(project, trace_key, ctx.role, call.name, call.id, call.arguments)
             result = dispatch_tool(call, ctx, registry)
             tool_calls_executed += 1
             _trace_tool_result(
                 project,
-                session_key,
+                trace_key,
                 ctx.role,
                 call.name,
                 call.id,

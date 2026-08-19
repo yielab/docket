@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.0.0
+**Version**: 6.1.0
 **Status**: Complete. **ROADMAP Phase 19 P19-7a (the runtime cutover)**: a pod-dispatch hop now
 executes through `edges.adapters.docket_runtime.DocketDriver` — docket's own gated turn loop
 (`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint) — not
@@ -38,7 +38,10 @@ truncation are retired, and every prior hop's rendered artifact is fit to a **pe
 budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, see `role-archetypes.spec.md`
 v1.3.0) via `core/context.py`'s `compile_artifact`, which sheds `HandoffArtifact.DROP_ORDER` fields
 before ever truncating `summary` itself.
-**Last Updated**: 2026-08-03
+**Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
+receive prior work through the bounded typed artifact once, while all audit events remain on the
+task-wide trace coordinate.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -343,13 +346,11 @@ was seeded once at binding time.)*
 
 ### Per-hop execution
 
-1. Each hop **MUST** be one real, costed agent turn via the `RuntimeDriver` port's `run_turn`
-   (`core/runtime_driver.py`; **Phase 18 L-1 / D-14** — `dispatch_task`'s default runner is
-   `edges.adapters.openclaw.default_driver().run_turn`, a one-line swap from the pre-L-1
-   `_oc.agent_run` at the same call site) — dispatch never simulates or skips a turn to save
-   cost. `OpenClawDriver.run_turn` is a thin delegation to the pre-existing `agent_run` free
-   function, so this is a containment refactor, not a behavior change: the daemon subprocess
-   call, its argv, and its JSON-parsing are exactly what they were before L-1.
+1. Each hop **MUST** be one real agent turn via the `RuntimeDriver` port's `run_turn`
+   (`core/runtime_driver.py`). The production path resolves
+   `edges.adapters.docket_runtime.default_driver().run_turn`; dispatch never simulates or skips a
+   turn to save usage. `DocketDriver` reports measured tokens but no USD cost, as specified under
+   "Runtime driver resolution" below.
 2. The message handed to each role **MUST** thread prior hops' output so a later role sees what
    earlier roles produced, subject to the bounded carryover cap (see "Bounded hop prompts"
    below); the Reviewer and Tester messages additionally state their required verdict-marker
@@ -364,6 +365,37 @@ was seeded once at binding time.)*
    see "Bounded hop prompts") and a `tool_call` trace event before the turn, and a `tool_result`
    (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST** additionally
    emit a `cost_charged` event.
+
+### Step-scoped durable runtime history (Wave 20 W20-C4)
+
+1. A pod-dispatch task's audit/trace identity **MUST** remain
+   `agent:<project>:<task-id>` for `session_start`, every hop/gate event, and `session_end`.
+   Changing history scope **MUST NOT** split one task's audit trail into per-step trace files.
+2. Each runnable pipeline unit **MUST** use a durable-history key of the form
+   `agent:<member-id>:<project>:task:<task-id>:step:<step-id>`. Every dynamic component **MUST** be
+   UTF-8 percent-encoded as necessary with no delimiter treated as safe, making the mapping
+   deterministic and collision-free even when a custom `step_id` contains `:` or `/`.
+3. The key **MUST** use the resolved pipeline node's globally unique `step_id`, not its role.
+   Distinct repeated-role steps and distinct children of a parallel group therefore receive
+   distinct histories; a parallel group container receives none because it runs no turn itself.
+4. Every retry of one hop, every bounded rework revisit to that node, and a crash `--resume` that
+   re-enters that same node **MUST** reuse its exact step-history key. A different step targeting
+   the same member **MUST NOT** reuse it.
+5. `dispatch_task` **MUST** pass the step-history key as `RuntimeDriver.run_turn`'s ordinary
+   `session_key`. On the production `DocketDriver` path it **MUST** additionally pass the project
+   and task-wide identity as `trace_project`/`trace_session_key`; an injected five-argument runner
+   remains compatible and still receives the step-history key.
+6. A downstream step's model-visible messages **MUST NOT** replay a previous step's assistant-role
+   messages from durable history. Prior cross-step work **MUST** arrive only through
+   `_hop_message`'s bounded `HandoffArtifact` sections. This does not remove the artifact summary;
+   it removes the second raw-history copy of that summary.
+7. Existing task-wide session files **MUST NOT** be deleted, renamed, or migrated. They remain
+   readable by their old key. New step histories are naturally exposed by
+   `DocketDriver.list_sessions(member_id)` because their keys begin with that member's namespace;
+   an old `agent:<project>:<task-id>` history remains discoverable under the old prefix behavior.
+8. `core.pod.session_key(project, project_key)` **MUST** continue producing the base scoped key
+   persisted in member metadata. It is not the dispatch-history key and changing pipeline steps
+   **MUST NOT** rewrite `.docket-meta.json`.
 
 ### Retries and the failure-kind taxonomy
 
@@ -654,10 +686,11 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    already finished in another (R-1's crash-safety guarantee, generalized to a concurrent
    fan-out). The task's in-memory `hops[]`/persisted queue record **MUST** reflect children in
    their **declaration** order regardless of completion order.
-5. Trace writes from concurrent children **MUST** be serialized against each other (a shared lock)
-   since they append to the same task session's tracefile — `core/trace.py`'s append is not
-   itself filelocked (the documented D-12 exemption for an append-only log), which is safe across
-   *different* sessions but not within one.
+5. Trace writes from concurrent children **MUST** be serialized against each other because they
+   append to the same task trace. `core/trace.py` owns an in-process append lock covering loop
+   events as well as dispatch events; dispatch's group-level lock additionally preserves its
+   existing event ordering. The JSONL store remains intentionally free of a cross-process
+   read-modify-write lock under the documented D-12 append-only exemption.
 6. **Known, documented limitation:** resuming a task that crashed mid-group re-runs the **entire**
    group from scratch on `--resume`, including any child that had already completed — there is no
    child-by-child resume granularity. (This does not affect the rework-replay path at all, per
@@ -1059,6 +1092,8 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 - Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
   trace tail <project>` — nothing in the pipeline is silent (including the printed
   verification-skipped notice), for any role/archetype, not only the built-in four.
+- Every production pod-turn loop event **MUST** join that same task-wide trace even though its
+  messages and measured usage are persisted under a step-scoped history key.
 - Cancelling a run (`docket runs cancel`) **MUST** kill a hop's entire process group, never leave
   an orphaned child process running after the run is marked `"cancelled"`.
 - The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region
@@ -1068,6 +1103,13 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.1.0 (2026-08-19)
+
+- **Wave 20, card W20-C4.** Replaced task-wide durable replay with deterministic step-scoped
+  history keys while retaining one task-wide trace. Keys are based on `step_id`, so retries,
+  rework, resume, repeated roles, and parallel children have explicit continuity/isolation rules;
+  typed handoffs remain the only cross-step model context.
 
 ### Version 6.0.0 (2026-08-03)
 

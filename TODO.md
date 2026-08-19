@@ -208,7 +208,7 @@ raw-history + typed-handoff duplication and fires W20-C4's trigger.
 
 ### W20-C4 — isolate durable runtime history by pipeline step
 
-**Status:** TODO · **Size:** M · **Owner:** unclaimed
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** integrator
 
 **Measured trigger:** W20-C3 found at least 1,802 duplicated bytes in one controlled 4-hop task;
 Tester received 1,009 bytes of typed carryover while also replaying 3,049 estimated tokens from the
@@ -232,6 +232,18 @@ reuse, and decide how `DocketDriver.list_sessions` exposes the new keys.
 contain a previous role's raw assistant turn in durable history while their typed artifact remains;
 same-step retry and rework continuity survive; task-level traces remain queryable; old session files
 remain readable; focused tests and all repository gates pass.
+
+**Shipped:** pod-dispatch histories now use percent-encoded
+`agent:<member>:<project>:task:<task>:step:<step-id>` keys while every loop and dispatch event stays
+on `agent:<project>:<task>`. The production-path regression proves the Implementer sees the Lead
+sentinel exactly once through its typed user handoff and never as a replayed assistant message;
+retry/rework reuse one step key, repeated-role parallel children get distinct keys, and an old
+task-wide history stays unchanged, unread by new steps, and enumerable under its old prefix.
+`DocketDriver.list_sessions(member)` exposes new histories, and in-process trace appends are
+serialized for parallel convergence. Specs are current at Agent Loop 1.6.0, Pod Dispatch 6.1.0,
+Session History 1.3.0, and Session Scoping 2.0.0. Final evidence: 2,229 pytest cases pass with 4
+environment-dependent skips; Ruff, format, mypy, 18 golden cases, 24 spec validations, and README
+metrics all pass.
 
 ---
 

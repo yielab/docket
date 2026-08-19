@@ -268,6 +268,7 @@ class _ReworkRunner:
         review_text: str = "REQUEST-CHANGES\nRename the helper and add type hints.",
     ) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.session_keys: list[tuple[str, str]] = []
         self.request_changes_count = request_changes_count
         self.review_text = review_text
         self._reviewer_calls = 0
@@ -282,6 +283,7 @@ class _ReworkRunner:
     ) -> _rd.TurnResult:
         role = _role_of(member_id)
         self.calls.append((role, message))
+        self.session_keys.append((role, session_id))
         if role == "reviewer":
             self._reviewer_calls += 1
             if self._reviewer_calls <= self.request_changes_count:
@@ -310,6 +312,11 @@ class TestReviewerReworkLoop:
             "tester",
         ]
         assert [h.role for h in res.hops] == roles_called
+        implementer_keys = [key for role, key in runner.session_keys if role == "implementer"]
+        reviewer_keys = [key for role, key in runner.session_keys if role == "reviewer"]
+        assert len(set(implementer_keys)) == 1
+        assert len(set(reviewer_keys)) == 1
+        assert implementer_keys[0] != reviewer_keys[0]
 
     def test_rework_brief_carries_the_review_text(self, tmp_path: Path) -> None:
         _seed_full_pod()

@@ -56,7 +56,7 @@ class TestBuildPod:
         assert created == ["demo-lead", "demo-implementer"]
         assert set(_ids(home)) == {"demo-lead", "demo-implementer"}
 
-    def test_members_have_correct_meta_and_shared_session_key(
+    def test_members_have_correct_meta_and_shared_base_session_key(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = _seed(tmp_path, monkeypatch)

@@ -229,6 +229,8 @@ class RuntimeDriver(Protocol):
         env: dict[str, str] | None = None,
         *,
         on_spawn: Callable[[int], None] | None = None,
+        trace_project: str | None = None,
+        trace_session_key: str | None = None,
     ) -> TurnResult:
         """Run one real, costed agent turn. Never raises for ordinary failure modes.
 
@@ -237,6 +239,9 @@ class RuntimeDriver(Protocol):
         it starts, before this call blocks on its result. A driver with no
         real process to report (or a test double) may simply ignore it —
         every existing caller omits it, so this is purely additive.
+        ``trace_project``/``trace_session_key`` optionally keep an audit stream
+        separate from the durable ``session_key``; drivers without an internal
+        trace producer may ignore them.
         """
         ...
 

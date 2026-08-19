@@ -1,9 +1,10 @@
 # Session History Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
-compactor before each task-completion backend call.
+compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
+pipeline step its own history key while preserving the task-wide trace identity.
 **Last Updated**: 2026-08-19
 
 ## Purpose
@@ -20,8 +21,9 @@ model call. This specification defines that store: `core/session.py`.
 
 This specification covers:
 
-- The on-disk storage layout for one session's turn history, keyed by docket's existing
-  session-key coordinate (`agent:<id>:<project>`, see `session-scoping.spec.md`)
+- The on-disk storage layout for one session's turn history, keyed by an opaque docket session
+  coordinate. Interactive/scoped turns use `agent:<id>:<project>`; pod-dispatch turns use the
+  step-scoped coordinate defined by `pod-dispatch.spec.md`.
 - Lossless round-trip serialisation of a chat message and its tool calls
 - The atomic tool-call/tool-result unit that compaction must never split, and the fail-closed
   contract when the summarisation call itself fails
@@ -50,88 +52,92 @@ This specification does NOT cover:
 
 ### Storage layout and isolation
 
-1. Turn history **MUST** be persisted durably, keyed by docket's session-key coordinate
-   (`agent:<id>:<project>`), so it survives a process restart.
+1. Turn history **MUST** be persisted durably by the exact opaque session key supplied by the
+   caller, so it survives a process restart. `core/session.py` **MUST NOT** parse, normalize, or
+   collapse interactive and pod-dispatch key formats.
 2. Each session's history **MUST** be stored under its own subdirectory, so that reading,
    appending to, or compacting one session's history **MUST NOT** be able to corrupt, or block
    on, another session's history.
 3. A session key **MUST** map to its storage location via a deterministic, collision-free
    encoding, so that no two distinct session keys can ever resolve to the same file.
 4. An unknown session key **MUST** load as an empty history rather than an error.
+5. Introducing a new caller-level key format **MUST NOT** delete, rename, or migrate an existing
+   session directory. Records written under older keys remain directly readable through the same
+   `load_session`/`load_messages` APIs.
 
 ### Message round-trip
 
-5. Appending messages to a session and reading them back **MUST** reproduce every message field
+6. Appending messages to a session and reading them back **MUST** reproduce every message field
    exactly, including a tool-call-carrying message's `tool_calls` (each call's `id`/`name`/
    `arguments`), and a tool-result message's `tool_call_id` and `name`.
-6. Measured token usage (real per-call counts reported by the completion endpoint) **MAY** be
+7. Measured token usage (real per-call counts reported by the completion endpoint) **MAY** be
    recorded alongside a session's history and **MUST** accumulate additively across appends.
-7. Appending to the same session key concurrently **MUST NOT** be able to silently drop either
+8. Appending to the same session key concurrently **MUST NOT** be able to silently drop either
    append's messages.
 
 ### Compaction and atomicity
 
-8. An assistant message carrying one or more tool calls, together with every tool-role message
+9. An assistant message carrying one or more tool calls, together with every tool-role message
    answering one of those calls, **MUST** be treated as one atomic unit that compaction never
    splits.
-9. Compaction **MUST NOT** produce a resulting history containing an orphaned tool result (a
+10. Compaction **MUST NOT** produce a resulting history containing an orphaned tool result (a
    tool-role message answering no preceding call in that same history) or an orphaned tool call
    (a call with no later answering tool-role message) — including the boundary case where a
    naive size-based cut would otherwise land in the middle of one atomic unit.
-10. When a session's estimated size exceeds its budget, compaction **MUST** replace the oldest
+11. When a session's estimated size exceeds its budget, compaction **MUST** replace the oldest
     atomic units with a single summarising message rather than truncating or deleting them
     outright.
-11. Compaction **MUST** always retain at least the single most-recent atomic unit, even if that
+12. Compaction **MUST** always retain at least the single most-recent atomic unit, even if that
     unit alone exceeds the configured budget.
-12. Compaction **MUST** always retain any leading system-role messages verbatim.
+13. Compaction **MUST** always retain any leading system-role messages verbatim.
 
 ### Budgeting honesty
 
-13. A session's compaction budget **MUST** be resolved via the same per-role token-budget
+14. A session's compaction budget **MUST** be resolved via the same per-role token-budget
     mechanism the hop-to-hop context compiler uses, not a second, independently-tunable table.
-14. Token counts used to decide whether to compact **MUST** be computed via the existing
+15. Token counts used to decide whether to compact **MUST** be computed via the existing
     bytes/divisor approximation and **MUST NOT** be described as an exact count.
-15. Measured usage (real counts from the completion endpoint) and estimated size (the
+16. Measured usage (real counts from the completion endpoint) and estimated size (the
     bytes/divisor approximation) **MUST** be recorded and named distinctly in code and in any
     user-facing text, and **MUST NOT** be combined into one number or used interchangeably.
 
 ### Fail-closed summarisation
 
-16. `compact_session`'s injected summarizer **MUST** retain the five-argument driver-shaped port,
+17. `compact_session`'s injected summarizer **MUST** retain the five-argument driver-shaped port,
     but its live `core/agent_loop.py` adapter **MUST** use the already-resolved `ChatBackend` port
     directly for one tool-free completion. It **MUST NOT** call `run_agent_turn`, resolve a second
     backend, or implement a vendor client.
-17. If the summarisation call fails, or replies with nothing usable, compaction **MUST** leave
+18. If the summarisation call fails, or replies with nothing usable, compaction **MUST** leave
     the session's stored history completely unchanged and report failure — mirroring the
     fail-closed contract memory distillation already gives `maintain clean`/`reset`.
-18. Compaction **MUST NOT** ever persist a candidate result that would contain an orphaned tool
+19. Compaction **MUST NOT** ever persist a candidate result that would contain an orphaned tool
     call or tool result, even if that would require refusing to persist an otherwise-valid
     summarisation.
-19. The summarizer session key **MUST** be distinct from the target session key. The live adapter
+20. The summarizer session key **MUST** be distinct from the target session key. The live adapter
     persists no summarizer messages under either key; the distinct key remains part of the port
     contract so a future adapter cannot accidentally write prompts into the history it replaces.
-20. `compact_session` **MUST** reject nested compaction before acquiring a session lock or calling
+21. `compact_session` **MUST** reject nested compaction before acquiring a session lock or calling
     another summarizer. This re-entry guard is independent of session key, so changing keys cannot
     turn recursive summarization into infinite regress.
-21. Every result **MUST** report before/after message counts and before/after *estimated* tokens.
+22. Every result **MUST** report before/after message counts and before/after *estimated* tokens.
     Failure reports identical before/after values; no-op reports the unchanged values; success
     reports the persisted candidate. These fields **MUST NOT** be presented as measured usage.
-22. The complete summarizer prompt for each compaction round **MUST** fit a bounded estimated-token
+23. The complete summarizer prompt for each compaction round **MUST** fit a bounded estimated-token
     input budget. By default that input budget is the role's configured history budget (independent
     of a caller's one-off target-budget override); an explicit input override exists for
     deterministic tests, not as a second role-budget registry.
-23. When all units selected by the compaction plan do not fit one summary prompt, compaction
+24. When all units selected by the compaction plan do not fit one summary prompt, compaction
     **MUST** summarize the largest fitting oldest prefix, preserve every remaining unit, and repeat
     hierarchically until every selected raw old unit has been folded into bounded summaries. No
     intermediate candidate may be written. A degenerate target smaller than the irreducible summary
     marker plus the mandatory newest unit **MAY** finish above target rather than repeatedly
     re-summarizing the same summary without new information.
-24. A system message produced by compaction **MAY** be summarized again in a later round. Any real
+25. A system message produced by compaction **MAY** be summarized again in a later round. Any real
     leading system message that was not produced by compaction **MUST** remain byte-identical.
-25. Every round **MUST** reduce the candidate's estimated size and the operation **MUST** have a
+26. Every round **MUST** reduce the candidate's estimated size and the operation **MUST** have a
     deterministic round cap. Failure to make progress, exceeding the cap, or finding one atomic
     unit whose complete summary prompt cannot fit **MUST** fail closed without writing.
-26. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
+27. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
     **MUST** also report the number of summary rounds and the largest estimated summary-prompt size,
     named explicitly as estimates.
 
@@ -306,6 +312,12 @@ result = sess.compact_session(
 - A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
 
 ## Changelog
+
+### Version 1.3.0 (2026-08-19)
+
+- **Wave 20, card W20-C4.** Documented caller-owned opaque history coordinates and the
+  non-destructive compatibility rule that keeps existing task-wide session records readable when
+  pod dispatch begins writing step-scoped records.
 
 ### Version 1.2.0 (2026-08-19)
 

@@ -138,6 +138,7 @@ class _ScriptedRunner:
     def __init__(self, script: dict[str, list[_rd.TurnResult]]):
         self.script = script
         self.calls: list[tuple[str, int]] = []  # (role, timeout) per call
+        self.session_keys: list[tuple[str, str]] = []  # (role, durable history key)
 
     def __call__(
         self,
@@ -149,6 +150,7 @@ class _ScriptedRunner:
     ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append((role, timeout))
+        self.session_keys.append((role, session_key))
         seq = self.script.get(role, [_rd.TurnResult(True, "done", 0.0, {})])
         idx = min(len([c for c in self.calls if c[0] == role]) - 1, len(seq) - 1)
         return seq[idx]
@@ -175,6 +177,10 @@ class TestHopRetryLoop:
         assert impl_hop.ok is True
         # 3 real calls were made for the implementer's hop alone.
         assert len([c for c in runner.calls if c[0] == "implementer"]) == 3
+        implementer_keys = [key for role, key in runner.session_keys if role == "implementer"]
+        lead_key = next(key for role, key in runner.session_keys if role == "lead")
+        assert len(set(implementer_keys)) == 1
+        assert implementer_keys[0] != lead_key
 
     def test_retries_exhausted_then_fails_with_attempts_persisted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

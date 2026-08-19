@@ -67,7 +67,7 @@ class TestDefaultPod:
         assert members["lead"].model == _MODELS["manager"]
         assert members["implementer"].model == _MODELS["programmer"]
 
-    def test_all_members_share_session_key(self) -> None:
+    def test_all_members_share_base_metadata_session_key(self) -> None:
         members = pod.plan_pod("shop", role_models=_MODELS)
         keys = {m.session_key for m in members}
         assert keys == {"agent:shop:default"}

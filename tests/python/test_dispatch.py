@@ -30,8 +30,10 @@ import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import pipeline as _pipeline
 from docket.core import resources as _res
 from docket.core import runtime_driver as _rd
+from docket.core import session as _session
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
@@ -102,8 +104,11 @@ class TestPipeline:
             "demo-lead",
             "demo-implementer",
         ]
-        # Each hop ran on the per-task session within the project namespace.
-        assert all(c[1].startswith("agent:demo:") for c in runner.calls)
+        # Each hop owns a per-step history in its member namespace.
+        assert runner.calls[0][1].startswith("agent:demo-lead:demo:task:")
+        assert runner.calls[0][1].endswith(":step:lead")
+        assert runner.calls[1][1].startswith("agent:demo-implementer:demo:task:")
+        assert runner.calls[1][1].endswith(":step:implementer")
 
     def test_task_persisted_with_status_and_hops(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -313,6 +318,103 @@ class TestEndToEnd:
         assert tasks[0]["status"] == "done"
         assert (oc_dir / "traces" / "demo").is_dir()
 
+    def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The production dispatch -> driver -> loop path must not give the
+        Implementer both Lead's raw assistant turn and the handoff that already
+        carries it."""
+        home = _seed_pod(tmp_path, monkeypatch)
+        monkeypatch.setattr(_cfg, "SESSIONS_DIR", home / "sessions", raising=True)
+
+        backend = _ScriptedBackend(
+            [_final_response("LEAD_RAW_PLAN_SENTINEL"), _final_response("implementation done")]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+        task = _dispatch.enqueue_task("demo", "Keep context bounded")
+        legacy_task_key = f"agent:demo:{task['id']}"
+        legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
+        _session.append_messages(legacy_task_key, [legacy_message])
+        result = _dispatch.dispatch_pod("demo")[0]
+        assert result.status == "done"
+
+        lead_key = _dispatch.step_session_key("demo-lead", "demo", task["id"], "lead")
+        implementer_key = _dispatch.step_session_key(
+            "demo-implementer", "demo", task["id"], "implementer"
+        )
+        assert lead_key != implementer_key
+
+        lead_history = _session.load_messages(lead_key)
+        implementer_history = _session.load_messages(implementer_key)
+        assert any(
+            m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL" for m in lead_history
+        )
+        assert not any(
+            m.role == "assistant" and m.content == "LEAD_RAW_PLAN_SENTINEL"
+            for m in implementer_history
+        )
+
+        implementer_backend_messages = backend.calls[1]
+        assert sum("LEAD_RAW_PLAN_SENTINEL" in m.content for m in implementer_backend_messages) == 1
+        assert all("LEGACY_TASK_WIDE_HISTORY" not in m.content for m in backend.calls[0])
+        assert all(
+            "LEGACY_TASK_WIDE_HISTORY" not in m.content for m in implementer_backend_messages
+        )
+        assert any(
+            m.role == "user" and "LEAD_RAW_PLAN_SENTINEL" in m.content
+            for m in implementer_backend_messages
+        )
+
+        assert [s.session_id for s in driver.list_sessions("demo-lead")] == [lead_key]
+        assert [s.session_id for s in driver.list_sessions("demo-implementer")] == [implementer_key]
+        assert _session.load_messages(legacy_task_key) == [legacy_message]
+        assert [s.session_id for s in driver.list_sessions("demo")] == [legacy_task_key]
+
+        trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
+        assert len(trace_files) == 1
+        trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+        assert trace_events[0]["session_id"] == f"agent:demo:{task['id']}"
+        assert all(e["session_id"] == f"agent:demo:{task['id']}" for e in trace_events)
+        assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
+        assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
+
+    def test_step_history_key_encodes_custom_step_ids_without_collisions(self) -> None:
+        colon = _dispatch.step_session_key("member", "demo", "task-1", "review:security")
+        slash = _dispatch.step_session_key("member", "demo", "task-1", "review/security")
+
+        assert colon.endswith(":step:review%3Asecurity")
+        assert slash.endswith(":step:review%2Fsecurity")
+        assert colon != slash
+
+    def test_parallel_children_with_one_role_receive_distinct_step_histories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        spec = _pipeline.PipelineSpec(
+            name="parallel-repeat",
+            steps=[
+                _pipeline.Step(
+                    id="fanout",
+                    parallel=[
+                        _pipeline.Step(id="implement-a", role="implementer"),
+                        _pipeline.Step(id="implement-b", role="implementer"),
+                    ],
+                )
+            ],
+        )
+        runner = FakeDriver()
+        task = {"id": "task-parallel", "description": "compare", "status": "pending"}
+
+        result = _dispatch.dispatch_task("demo", task, runner=runner, spec=spec)
+
+        assert result.status == "done"
+        assert {call[1] for call in runner.calls} == {
+            _dispatch.step_session_key("demo-implementer", "demo", "task-parallel", "implement-a"),
+            _dispatch.step_session_key("demo-implementer", "demo", "task-parallel", "implement-b"),
+        }
+
 
 # ── task state machine v2 — locked claims close the concurrent-dispatch race ─
 
@@ -371,13 +473,14 @@ class TestConcurrentDispatch:
             t.join(timeout=15)
 
         assert not errors, f"dispatch_pod raised in a worker thread: {errors}"
-        # Each task is a 2-hop pipeline (lead, implementer) on its own session id
-        # (agent:demo:<task-id>) — exactly 2 calls per task, never more (a task
-        # claimed twice would show up as 4+ calls on its session) and every task
-        # still completes (never 0, i.e. never left unclaimed).
-        counts = Counter(calls)
-        assert len(counts) == n_tasks, f"expected {n_tasks} distinct task sessions, got {counts}"
+        # Each task is a 2-hop pipeline (lead, implementer) with two distinct
+        # step-history keys. Group by the embedded task component: exactly two
+        # calls per task means no claim ran twice and no task was skipped.
+        task_ids = [key.split(":task:", 1)[1].split(":step:", 1)[0] for key in calls]
+        counts = Counter(task_ids)
+        assert len(counts) == n_tasks, f"expected {n_tasks} distinct tasks, got {counts}"
         assert all(c == 2 for c in counts.values()), counts
+        assert len(set(calls)) == n_tasks * 2
         tasks = _dispatch.read_tasks("demo")
         assert len(tasks) == n_tasks
         assert all(t["status"] == "done" for t in tasks)
