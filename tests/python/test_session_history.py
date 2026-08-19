@@ -493,6 +493,70 @@ class TestCompactSessionSuccess:
         assert not result.compacted
         assert calls == []
 
+    def test_summarizer_uses_an_isolated_key(self) -> None:
+        _sess.append_messages("agent:x:default", [user("old " * 200), user("keep me")])
+        seen_keys: list[str] = []
+
+        def _driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            seen_keys.append(session_key)
+            return TurnResult(True, "summary", 0.0, {})
+
+        result = _sess.compact_session(
+            "agent:x:default",
+            role="lead",
+            agent_id="x-lead",
+            summarizer=_driver,
+            budget_tokens=1,
+        )
+
+        assert result.ok
+        assert seen_keys == ["agent:x:default:compaction"]
+
+    def test_nested_compaction_is_rejected_before_another_summarizer_call(self) -> None:
+        _sess.append_messages("agent:x:default", [user("old " * 200), user("keep me")])
+        nested: list[_sess.CompactionResult] = []
+        calls = 0
+
+        def _driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            nonlocal calls
+            calls += 1
+            nested.append(
+                _sess.compact_session(
+                    "agent:y:default",
+                    role="lead",
+                    agent_id="y-lead",
+                    summarizer=_driver,
+                    budget_tokens=1,
+                )
+            )
+            return TurnResult(True, "summary", 0.0, {})
+
+        result = _sess.compact_session(
+            "agent:x:default",
+            role="lead",
+            agent_id="x-lead",
+            summarizer=_driver,
+            budget_tokens=1,
+        )
+
+        assert result.ok
+        assert calls == 1
+        assert len(nested) == 1
+        assert not nested[0].ok
+        assert nested[0].failure_kind == "invalid_output"
+
     def test_successful_compaction_replaces_old_units_with_a_summary(self) -> None:
         _sess.append_messages(
             "agent:x:default", [system("sys"), user("old stuff " * 50), user("keep me")]
@@ -508,6 +572,9 @@ class TestCompactSessionSuccess:
         assert result.ok
         assert result.compacted
         assert result.groups_summarized >= 1
+        assert result.before_message_count == 3
+        assert result.after_message_count <= result.before_message_count
+        assert result.after_estimated_tokens < result.before_estimated_tokens
 
         final = _sess.load_messages("agent:x:default")
         assert final[0] == system("sys")  # leading system message survives verbatim

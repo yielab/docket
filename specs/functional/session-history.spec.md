@@ -1,12 +1,10 @@
 # Session History Specification
 
-**Version**: 1.0.0
-**Status**: Implemented, not yet on a live path. `core/session.py` (ROADMAP Phase 19 P19-4) ships
-fully tested and unused, the same way `core/llm.py` (P19-1) and `core/tools.py` (P19-2) shipped
-ahead of their own callers — `core/agent_loop.py` (Phase 19 P19-5, not yet built) is the first
-consumer. This spec documents the storage/API contract ahead of that wiring so it does not drift
-before it has a caller.
-**Last Updated**: 2026-07-31
+**Version**: 1.1.0
+**Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
+history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
+compactor before each task-completion backend call.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -33,8 +31,8 @@ This specification covers:
 
 This specification does NOT cover:
 
-- The turn loop itself, or when/how often it invokes this module (`core/agent_loop.py`, ROADMAP
-  Phase 19 P19-5 — not yet built)
+- The rest of the turn loop (`core/agent_loop.py`); this spec covers only the compactor boundary
+  it consumes, while `agent-loop.spec.md` owns trigger ordering, usage accounting, and tracing
 - The chat-completion wire protocol or the gated tool registry (`core/llm.py`, `core/tools.py`,
   ROADMAP Phase 19 P19-1/P19-2) — this spec only depends on the `ChatMessage`/`ToolCall`/
   `TokenUsage` shapes those modules define
@@ -99,15 +97,25 @@ This specification does NOT cover:
 
 ### Fail-closed summarisation
 
-16. Summarising the units compaction is replacing **MUST** go through docket's own driver port
-    (the same call shape memory distillation uses, decision D-18) — never a hand-rolled
-    per-vendor completion client.
+16. `compact_session`'s injected summarizer **MUST** retain the five-argument driver-shaped port,
+    but its live `core/agent_loop.py` adapter **MUST** use the already-resolved `ChatBackend` port
+    directly for one tool-free completion. It **MUST NOT** call `run_agent_turn`, resolve a second
+    backend, or implement a vendor client.
 17. If the summarisation call fails, or replies with nothing usable, compaction **MUST** leave
     the session's stored history completely unchanged and report failure — mirroring the
     fail-closed contract memory distillation already gives `maintain clean`/`reset`.
 18. Compaction **MUST NOT** ever persist a candidate result that would contain an orphaned tool
     call or tool result, even if that would require refusing to persist an otherwise-valid
     summarisation.
+19. The summarizer session key **MUST** be distinct from the target session key. The live adapter
+    persists no summarizer messages under either key; the distinct key remains part of the port
+    contract so a future adapter cannot accidentally write prompts into the history it replaces.
+20. `compact_session` **MUST** reject nested compaction before acquiring a session lock or calling
+    another summarizer. This re-entry guard is independent of session key, so changing keys cannot
+    turn recursive summarization into infinite regress.
+21. Every result **MUST** report before/after message counts and before/after *estimated* tokens.
+    Failure reports identical before/after values; no-op reports the unchanged values; success
+    reports the persisted candidate. These fields **MUST NOT** be presented as measured usage.
 
 ## Interface Contracts
 
@@ -146,7 +154,7 @@ def append_messages(
 # the shape a caller's driver must satisfy
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
-class CompactionResult:                        # ok, compacted, groups_summarized, error, failure_kind
+class CompactionResult:                        # plus before/after message + estimated-token counts
     ...
 
 def compact_session(
@@ -155,6 +163,7 @@ def compact_session(
     role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
+    summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int | None = None,          # default: context.budget_for_role(role)
     timeout: int | None = None,
     label: str = "",
@@ -198,7 +207,7 @@ def compact_session(
 $SESSIONS_DIR/<percent-encoded session key>/session.json
 ```
 
-`$SESSIONS_DIR` defaults to `~/.openclaw/sessions` (`SESSIONS_DIR` in `config.py`, overridable
+`$SESSIONS_DIR` defaults to `~/.docket/sessions` (`SESSIONS_DIR` in `config.py`, overridable
 via the `SESSIONS_DIR` environment variable, matching every other docket-owned path).
 
 ### Return values
@@ -275,8 +284,16 @@ result = sess.compact_session(
 - `group_atomic_units` **MUST** partition any message list into groups that a compaction pass can
   only keep or replace as a whole — never a boundary internal to one assistant/tool-call group.
 - Estimated and measured token figures **MUST** remain distinct fields, never merged.
+- A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
 
 ## Changelog
+
+### Version 1.1.0 (2026-08-19)
+
+- **Wave 20, card W20-C2.** Wired compaction into the live agent loop. The live summarizer is a
+  non-recursive, tool-free call through the already-resolved `ChatBackend`; it persists no
+  summarizer conversation. Added isolated summarizer-key, re-entry-guard, and before/after
+  estimated-size result contracts.
 
 ### Version 1.0.0 (2026-07-31)
 

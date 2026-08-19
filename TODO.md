@@ -115,7 +115,7 @@ the value after import and prove consecutive calls honor distinct limits.
 
 ### W20-C2 — wire fail-closed session compaction into the live turn
 
-**Status:** TODO · **Size:** M · **Owner:** unclaimed
+**Status:** IN-PROGRESS · **Size:** M · **Owner:** @codex
 
 **Goal:** bound durable history before `ChatBackend.complete` without weakening message atomicity,
 tool gating, or usage honesty.

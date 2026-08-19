@@ -33,6 +33,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
+from docket.core import session as _session
 from docket.core.llm import (
     ChatMessage,
     ChatResponse,
@@ -41,6 +42,7 @@ from docket.core.llm import (
     ToolSpec,
     assistant,
 )
+from docket.core.session import append_messages as append_session_messages
 from docket.core.session import load_session
 from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry
@@ -114,6 +116,7 @@ class ScriptedBackend:
     def __init__(self, responses: Sequence[ChatResponse]) -> None:
         self._responses = list(responses)
         self.calls: list[list[ChatMessage]] = []
+        self.tool_specs: list[list[ToolSpec]] = []
 
     def complete(
         self,
@@ -125,6 +128,7 @@ class ScriptedBackend:
         timeout: int = 120,
     ) -> ChatResponse:
         self.calls.append(list(messages))
+        self.tool_specs.append(list(tools))
         if not self._responses:
             raise AssertionError("ScriptedBackend ran out of scripted responses")
         return self._responses.pop(0)
@@ -187,6 +191,165 @@ def _truncated(content: str = "", tool_calls: Sequence[ToolCall] = ()) -> ChatRe
         finish_reason="length",
         usage=TokenUsage(input_tokens=10, output_tokens=5),
     )
+
+
+# ── live session compaction ──────────────────────────────────────────────────
+
+
+class TestLiveSessionCompaction:
+    def test_over_budget_history_is_compacted_before_task_completion(
+        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session_key = "agent:demo-agent:demo"
+        call = ToolCall(id="old_call", name="echo", arguments='{"text":"old"}')
+        append_session_messages(
+            session_key,
+            [
+                ChatMessage(role="user", content="old context " * 100),
+                assistant("", tool_calls=[call]),
+                ChatMessage(
+                    role="tool", content="old result", tool_call_id=call.id, name=call.name
+                ),
+                ChatMessage(role="user", content="recent context"),
+            ],
+        )
+        events: list[tuple[str, dict[str, object]]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            events.append((event_type, json.loads(payload)))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        backend = ScriptedBackend(
+            [
+                _final("old decision preserved", TokenUsage(input_tokens=30, output_tokens=7)),
+                _final("task done", TokenUsage(input_tokens=11, output_tokens=3)),
+            ]
+        )
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "new request",
+            config=_loop.LoopConfig(history_budget_tokens=1),
+        )
+
+        assert result.ok
+        assert len(backend.calls) == 2
+        assert len(backend.calls[0]) == 1
+        assert backend.calls[0][0].role == "user"
+        assert backend.tool_specs[0] == []
+        assert backend.tool_specs[1]
+        assert "old context" in backend.calls[0][0].content
+        assert any("old decision preserved" in m.content for m in backend.calls[1])
+        stored = load_session(session_key)
+        stored_messages = _session.load_messages(session_key)
+        assert not _session.find_orphaned_tool_messages(stored_messages)
+        assert not _session.find_unanswered_tool_calls(stored_messages)
+        assert result.usage == TokenUsage(input_tokens=41, output_tokens=10)
+        assert stored.usage.input_tokens == 41
+        assert stored.usage.output_tokens == 10
+        assert not _session._session_path(f"{session_key}:compaction", None).exists()
+        compaction_events = [payload for kind, payload in events if kind == "session_compaction"]
+        assert len(compaction_events) == 1
+        assert compaction_events[0]["status"] == "succeeded"
+        assert (
+            compaction_events[0]["afterMessageCount"] < compaction_events[0]["beforeMessageCount"]
+        )
+        assert "summary" not in compaction_events[0]
+
+    def test_no_op_uses_one_backend_call_and_emits_bounded_trace(
+        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "session_compaction":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        backend = ScriptedBackend([_final("done")])
+        result = _loop.run_agent_turn(backend, registry, ctx, "agent:demo-agent:demo", "hello")
+
+        assert result.ok
+        assert len(backend.calls) == 1
+        assert events == [
+            {
+                "status": "no_op",
+                "beforeMessageCount": 0,
+                "afterMessageCount": 0,
+                "beforeEstimatedTokens": 0,
+                "afterEstimatedTokens": 0,
+                "groupsSummarized": 0,
+            }
+        ]
+
+    def test_summary_failure_aborts_turn_and_preserves_history_bytes(
+        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session_key = "agent:demo-agent:demo"
+        append_session_messages(
+            session_key,
+            [
+                ChatMessage(role="user", content="old " * 200),
+                ChatMessage(role="user", content="keep"),
+            ],
+        )
+        path = _session._session_path(session_key, None)
+        before = path.read_bytes()
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "session_compaction":
+                events.append(json.loads(payload))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        backend = ScriptedBackend(
+            [ChatResponse(ok=False, error="summary timed out", failure_kind="timeout")]
+        )
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "must not be appended",
+            config=_loop.LoopConfig(history_budget_tokens=1),
+        )
+
+        assert not result.ok
+        assert result.stop_reason == "compaction_failed"
+        assert result.failure_kind == "timeout"
+        assert len(backend.calls) == 1
+        assert path.read_bytes() == before
+        assert events[0]["status"] == "failed"
 
 
 # ── architectural guard: dispatch_tool is the only execution path ───────────
@@ -508,10 +671,16 @@ class TestTracing:
         assert tracefile.exists()
         records = [json.loads(line) for line in tracefile.read_text().splitlines()]
         event_types = [r["event_type"] for r in records]
-        assert event_types == ["tool_call", "tool_result"]
-        assert records[0]["payload"]["tool"] == "echo"
-        assert records[1]["payload"]["decision"] == "allow"
-        assert records[1]["payload"]["executed"] is True
+        assert [kind for kind in event_types if kind in {"tool_call", "tool_result"}] == [
+            "tool_call",
+            "tool_result",
+        ]
+        tool_records = [
+            record for record in records if record["event_type"] in {"tool_call", "tool_result"}
+        ]
+        assert tool_records[0]["payload"]["tool"] == "echo"
+        assert tool_records[1]["payload"]["decision"] == "allow"
+        assert tool_records[1]["payload"]["executed"] is True
 
     def test_no_tool_calls_means_no_trace_events(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -521,7 +690,10 @@ class TestTracing:
         _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
 
         tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
-        assert not tracefile.exists()
+        records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+        assert not [
+            record for record in records if record["event_type"] in {"tool_call", "tool_result"}
+        ]
 
     def test_trace_project_falls_back_to_agent_id_when_project_unset(
         self, workspace: Path, registry: ToolRegistry

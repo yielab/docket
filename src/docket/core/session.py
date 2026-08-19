@@ -96,10 +96,11 @@ which serves the same purpose for a different data shape.
 ## Fail-closed summarisation
 
 Compacting away old units never bare-deletes them: the units being replaced
-are summarised in one call through the injected ``SessionSummaryRunner`` —
-the same ``RuntimeDriver.run_turn`` call shape ``core/memory.py``'s
-``distill_memory`` already uses for docket's first self-originated LLM call.
-This is never a hand-rolled per-vendor client. If that call fails, or
+are summarised in one call through the injected ``SessionSummaryRunner`` --
+the same five-argument call shape ``core/memory.py``'s ``distill_memory``
+already uses. The live agent-loop adapter implements it with the already
+resolved ``ChatBackend`` and no recursive turn or session persistence. This
+is never a hand-rolled per-vendor client. If that call fails, or
 replies with nothing usable, ``compact_session`` leaves the session's stored
 history **completely unchanged** and reports ``ok=False`` — the same
 fail-closed contract ``distill_memory``'s ``DistillResult`` gives
@@ -114,6 +115,7 @@ import contextlib
 import datetime as _dt
 import os
 from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -153,6 +155,7 @@ __all__ = [
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
 _SESSION_FILENAME = "session.json"
+_COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_active", default=False)
 
 
 # ── storage models ────────────────────────────────────────────────────────────
@@ -434,6 +437,10 @@ def _unit_tokens(unit: Sequence[ChatMessage]) -> int:
     return _context.estimate_tokens(_unit_text(unit))
 
 
+def _messages_estimated_tokens(messages: Sequence[ChatMessage]) -> int:
+    return _context.estimate_tokens(_unit_text(messages))
+
+
 @dataclass(frozen=True)
 class CompactionPlan:
     """Pure plan for one compaction pass -- no I/O, no driver call.
@@ -548,6 +555,10 @@ class CompactionResult:
     ok: bool
     compacted: bool = False
     groups_summarized: int = 0
+    before_message_count: int = 0
+    after_message_count: int = 0
+    before_estimated_tokens: int = 0
+    after_estimated_tokens: int = 0
     error: str = ""
     failure_kind: FailureKind | None = None
 
@@ -558,6 +569,7 @@ def compact_session(
     role: str,
     agent_id: str,
     summarizer: SessionSummaryRunner,
+    summarizer_session_key: str | None = None,
     budget_tokens: int | None = None,
     timeout: int | None = None,
     label: str = "",
@@ -585,8 +597,24 @@ def compact_session(
     ``find_unanswered_tool_calls`` -- should be structurally impossible given
     ``plan_compaction``'s whole-unit guarantee, checked anyway as the explicit
     post-condition below), nothing is written and
-    ``CompactionResult.ok`` is False.
+    ``CompactionResult.ok`` is False. The summarizer always receives an
+    isolated key, and a context-local re-entry guard rejects nested compaction
+    before it can acquire another lock or call another summarizer.
     """
+    summary_session_key = summarizer_session_key or f"{session_key}:compaction"
+    if summary_session_key == session_key:
+        return CompactionResult(
+            ok=False,
+            error="compaction summarizer session key must differ from the target session key",
+            failure_kind="invalid_output",
+        )
+    if _COMPACTION_ACTIVE.get():
+        return CompactionResult(
+            ok=False,
+            error="nested session compaction is not allowed",
+            failure_kind="invalid_output",
+        )
+
     budget = budget_tokens if budget_tokens is not None else _context.budget_for_role(role)
     turn_timeout = timeout if timeout is not None else _cfg.DISTILL_TIMEOUT_S
     stamp = now or _utc_now()
@@ -604,16 +632,29 @@ def compact_session(
             else SessionRecord(session_key=session_key, created=stamp)
         )
         messages = [_decode(m) for m in record.messages]
+        before_count = len(messages)
+        before_estimated = _messages_estimated_tokens(messages)
         plan = plan_compaction(messages, budget)
         if not plan.needed:
-            outcome = CompactionResult(ok=True, compacted=False)
+            outcome = CompactionResult(
+                ok=True,
+                compacted=False,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
+            )
             return None
 
         prompt = _summarization_message(display_label, plan.to_summarize)
-        result = summarizer(agent_id, session_key, prompt, turn_timeout, None)
+        result = summarizer(agent_id, summary_session_key, prompt, turn_timeout, None)
         if not result.ok:
             outcome = CompactionResult(
                 ok=False,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
                 error=result.error or "compaction summarisation turn failed",
                 failure_kind=result.failure_kind,
             )
@@ -623,6 +664,10 @@ def compact_session(
         if not summary:
             outcome = CompactionResult(
                 ok=False,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
                 error="compaction summarisation turn returned an empty summary",
                 failure_kind="invalid_output",
             )
@@ -645,6 +690,10 @@ def compact_session(
         if find_orphaned_tool_messages(new_messages) or find_unanswered_tool_calls(new_messages):
             outcome = CompactionResult(
                 ok=False,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
                 error="compaction produced an orphaned tool call or result -- refusing to persist",
                 failure_kind="invalid_output",
             )
@@ -658,9 +707,19 @@ def compact_session(
             }
         )
         outcome = CompactionResult(
-            ok=True, compacted=True, groups_summarized=len(plan.to_summarize)
+            ok=True,
+            compacted=True,
+            groups_summarized=len(plan.to_summarize),
+            before_message_count=before_count,
+            after_message_count=len(new_messages),
+            before_estimated_tokens=before_estimated,
+            after_estimated_tokens=_messages_estimated_tokens(new_messages),
         )
         return updated.model_dump(by_alias=True)
 
-    _store.read_modify_write(path, _mutate)
+    guard_token = _COMPACTION_ACTIVE.set(True)
+    try:
+        _store.read_modify_write(path, _mutate)
+    finally:
+        _COMPACTION_ACTIVE.reset(guard_token)
     return outcome

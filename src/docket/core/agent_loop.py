@@ -118,8 +118,8 @@ import docket.config as _cfg
 from docket.core import archetypes as _archetypes
 from docket.core import identity as _identity
 from docket.core.llm import ChatBackend, ChatMessage, TokenUsage, system, tool_result, user
-from docket.core.runtime_driver import FailureKind
-from docket.core.session import append_messages, load_messages
+from docket.core.runtime_driver import FailureKind, TurnResult
+from docket.core.session import CompactionResult, append_messages, compact_session, load_messages
 from docket.core.tools import ToolContext, ToolRegistry, dispatch_tool
 from docket.core.trace import trace_event
 
@@ -138,6 +138,7 @@ StopReason = Literal[
     "token_budget",
     "truncated",
     "backend_error",
+    "compaction_failed",
 ]
 
 
@@ -160,6 +161,7 @@ class LoopConfig:
     request_timeout_s: int = _cfg.AGENT_LOOP_REQUEST_TIMEOUT_S
     max_tokens: int | None = None
     temperature: float | None = None
+    history_budget_tokens: int | None = None
 
 
 @dataclass
@@ -232,6 +234,31 @@ def _trace_tool_result(
     )
 
 
+def _trace_compaction(
+    project: str,
+    session_key: str,
+    role: str,
+    result: CompactionResult,
+) -> None:
+    status = "failed" if not result.ok else "succeeded" if result.compacted else "no_op"
+    trace_event(
+        project,
+        session_key,
+        role,
+        "session_compaction",
+        json.dumps(
+            {
+                "status": status,
+                "beforeMessageCount": result.before_message_count,
+                "afterMessageCount": result.after_message_count,
+                "beforeEstimatedTokens": result.before_estimated_tokens,
+                "afterEstimatedTokens": result.after_estimated_tokens,
+                "groupsSummarized": result.groups_summarized,
+            }
+        ),
+    )
+
+
 def run_agent_turn(
     backend: ChatBackend,
     registry: ToolRegistry,
@@ -258,21 +285,6 @@ def run_agent_turn(
     cfg = config or LoopConfig()
     started = clock()
     project = ctx.project or ctx.agent_id or "unknown"
-
-    # Resolved once per turn, not per iteration -- neither the role's
-    # toolset nor this agent's identity files change mid-turn.
-    registry = _archetypes.registry_for_role(registry, ctx.role)
-    system_prompt = _identity.system_prompt_for_agent(ctx.agent_id)
-
-    history = load_messages(session_key)
-    incoming = user(message)
-    append_messages(session_key, [incoming])
-    messages: list[ChatMessage] = [*history, incoming]
-    if system_prompt:
-        # Composed fresh, never persisted -- see the module docstring's
-        # "Per-role tool sets and the system prompt" section.
-        messages = [system(system_prompt), *messages]
-
     total_usage = TokenUsage()
     tool_calls_executed = 0
     iteration = 0
@@ -297,6 +309,93 @@ def run_agent_turn(
             failure_kind=failure_kind,
             raw=last_raw,
         )
+
+    # Resolved once per turn, not per iteration -- neither the role's
+    # toolset nor this agent's identity files change mid-turn.
+    registry = _archetypes.registry_for_role(registry, ctx.role)
+    system_prompt = _identity.system_prompt_for_agent(ctx.agent_id)
+
+    summary_usage = TokenUsage()
+
+    def _summarize_without_reentry(
+        agent_id: str,
+        summary_session_key: str,
+        prompt: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> TurnResult:
+        """One tool-free backend call: no loop recursion and no session writes."""
+        nonlocal last_raw, summary_usage
+        if summary_session_key == session_key:
+            return TurnResult(
+                False,
+                "",
+                0.0,
+                {},
+                "compaction summarizer key matched the target session",
+                "invalid_output",
+            )
+        response = backend.complete(
+            [user(prompt)],
+            tools=(),
+            max_tokens=cfg.max_tokens,
+            temperature=cfg.temperature,
+            timeout=timeout,
+        )
+        last_raw = response.raw
+        summary_usage = _accumulate(summary_usage, response.usage)
+        if not response.ok:
+            return TurnResult(
+                False,
+                "",
+                0.0,
+                response.raw,
+                response.error,
+                response.failure_kind or "daemon_error",
+            )
+        if response.tool_calls:
+            return TurnResult(
+                False,
+                "",
+                0.0,
+                response.raw,
+                "compaction summarizer requested tools on a tool-free call",
+                "invalid_output",
+            )
+        return TurnResult(True, response.message.content, 0.0, response.raw)
+
+    elapsed = clock() - started
+    remaining = max(1, int(cfg.wall_clock_timeout_s - elapsed))
+    compaction = compact_session(
+        session_key,
+        role=ctx.role,
+        agent_id=ctx.agent_id,
+        summarizer=_summarize_without_reentry,
+        summarizer_session_key=f"{session_key}:compaction",
+        budget_tokens=cfg.history_budget_tokens,
+        timeout=min(cfg.request_timeout_s, remaining),
+        label=f"{ctx.role} session",
+    )
+    total_usage = _accumulate(total_usage, summary_usage)
+    if summary_usage.total_tokens or summary_usage.cached_tokens:
+        append_messages(session_key, [], usage=summary_usage)
+    _trace_compaction(project, session_key, ctx.role, compaction)
+    if not compaction.ok:
+        return _done(
+            ok=False,
+            stop_reason="compaction_failed",
+            error=compaction.error,
+            failure_kind=compaction.failure_kind or "invalid_output",
+        )
+
+    history = load_messages(session_key)
+    incoming = user(message)
+    append_messages(session_key, [incoming])
+    messages: list[ChatMessage] = [*history, incoming]
+    if system_prompt:
+        # Composed fresh, never persisted -- see the module docstring's
+        # "Per-role tool sets and the system prompt" section.
+        messages = [system(system_prompt), *messages]
 
     while True:
         iteration += 1

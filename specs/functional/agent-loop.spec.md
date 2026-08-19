@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` and
 `edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
 `core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
@@ -19,8 +19,9 @@ agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent
 `DocketDriver` an `mcp_loader` seam, called before this loop's registry-narrowing step, so a
 configured MCP server's tools are reachable from a live turn and correctly narrowed by role — see
 `mcp-client.spec.md` for the wiring and `role-archetypes.spec.md`'s requirement 6 for the
-kind-based narrowing this depended on.
-**Last Updated**: 2026-08-05
+kind-based narrowing this depended on. **Wave 20 card W20-C2** made session compaction part of
+this same live path before each task-completion call.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -47,6 +48,8 @@ This specification covers:
   `core.archetypes.registry_for_role`) and composes a system prompt (via
   `core.identity.system_prompt_for_agent`), once per turn, and what effect each has on the
   messages sent to the backend and persisted to session history (ROADMAP Phase 19 P19-12)
+- The live trigger and adapter for `core.session.compact_session`: ordering, non-recursion,
+  measured usage accounting, failure behavior, and privacy-safe trace payloads (W20-C2)
 
 This specification does NOT cover:
 
@@ -61,9 +64,8 @@ This specification does NOT cover:
   the identity file layout itself (`SOUL.md`, `WORKFLOW_AUTO.md`) — see `workspace-structure.spec.md`
   and `core/identity.py`'s own docstring; this spec only covers that `run_agent_turn` composes
   and injects the result
-- Durable session storage or compaction (`core/session.py`, ROADMAP Phase 19 P19-4,
-  `session-history.spec.md`) — this spec only depends on `load_messages`/`append_messages`'s
-  documented contract
+- Durable session storage and compaction planning internals (`core/session.py`, ROADMAP Phase 19
+  P19-4, `session-history.spec.md`) — this spec owns only their live-loop integration
 - Repointing any existing caller's default driver, deleting the OpenClaw ACL, or the
   docket-native fleet registry (ROADMAP Phase 19 P19-6/P19-7) — those are separate cards with
   their own specs when they land
@@ -114,8 +116,9 @@ This specification does NOT cover:
 
 ### Durability
 
-13. The incoming user message **MUST** be persisted to the session before any model call is
-    made for that turn.
+13. The incoming user message **MUST** be persisted after the pre-turn compaction check and before
+    the first task-completion model call. The compaction summarizer is the sole model call allowed
+    before that append; if it fails, the incoming message is not accepted into durable history.
 14. Each iteration that dispatches tool calls **MUST** persist the assistant message and every
     tool result answering it in one call to `core.session.append_messages` — never split
     across two separate calls, which could leave an orphaned `tool_calls` entry durable if
@@ -188,6 +191,32 @@ This specification does NOT cover:
     so a persona change or a re-seeded `WORKFLOW_AUTO.md` is reflected on the very next turn
     rather than frozen into a stored message.
 
+### Live session compaction (Wave 20 W20-C2)
+
+32. Before loading replay history or appending the incoming message, `run_agent_turn` **MUST** call
+    `compact_session` with the role's history budget (or the explicit test/operator override).
+    The compaction check and any required summary completion **MUST** finish before the first
+    task-completion `ChatBackend.complete` call.
+33. The live summarizer **MUST** be one direct, tool-free call through the `ChatBackend` instance
+    already supplied to `run_agent_turn`. It **MUST NOT** call `run_agent_turn`, advertise tools,
+    resolve another backend, or persist its prompt/output as a conversation. This structural path,
+    together with `compact_session`'s re-entry guard, is the explicit recursion barrier.
+34. The summarizer runner **MUST** receive a deterministic session key distinct from the target
+    key. No summarizer messages are persisted under that isolated key or the target key; only the
+    resulting compacted summary is written to the target on success.
+35. The summarizer response's endpoint-reported `TokenUsage` **MUST** be added to both the returned
+    turn usage and the target session's measured usage. These measured values **MUST NOT** drive
+    compaction; before/after window sizes remain named estimates from
+    `core.context.estimate_tokens`.
+36. A failed or empty summarizer response **MUST** abort the turn with
+    `stop_reason="compaction_failed"`, preserve the prior message history byte-for-byte, and make
+    no task-completion backend call. Endpoint-reported usage, when non-zero, is still recorded as
+    usage metadata and does not alter the preserved messages.
+37. Every pre-turn compaction check **MUST** emit one `session_compaction` trace event with status
+    `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
+    and groups summarized. The payload **MUST NOT** contain raw history, prompts, summaries, or
+    measured token counts mislabeled as estimates.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -195,7 +224,7 @@ This specification does NOT cover:
 ```python
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
-    "timeout", "token_budget", "truncated", "backend_error",
+    "timeout", "token_budget", "truncated", "backend_error", "compaction_failed",
 ]
 
 class LoopConfig:                              # frozen
@@ -206,6 +235,7 @@ class LoopConfig:                              # frozen
     request_timeout_s: int      # default config.AGENT_LOOP_REQUEST_TIMEOUT_S
     max_tokens: int | None = None
     temperature: float | None = None
+    history_budget_tokens: int | None = None # None resolves through context.budget_for_role
 
 class AgentLoopResult:
     ok: bool
@@ -359,6 +389,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-19)
+
+- **Wave 20, card W20-C2 (live session compaction).** Added the pre-turn compaction trigger, a
+  direct non-recursive `ChatBackend` summarizer adapter with no conversation persistence, honest
+  measured-usage accounting, fail-closed turn behavior, and privacy-safe compaction traces.
 
 ### Version 1.3.0 (2026-08-05)
 
