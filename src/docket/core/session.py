@@ -60,7 +60,7 @@ next request either carries a ``tool_call_id`` with no preceding call, or a
 call with no result, and every endpoint rejects it outright. ``compact_session``
 never drops or summarises part of a group: ``group_atomic_units`` partitions
 history into whole units first, and every later stage (``plan_compaction``,
-the driver-backed summarisation) operates on whole units only — a unit is
+the bounded hierarchical summarisation) operates on whole units only — a unit is
 either entirely kept or entirely folded into the summary, by construction,
 never split. ``find_orphaned_tool_messages``/``find_unanswered_tool_calls`` are
 the explicit post-condition checks ``compact_session`` runs on its own output
@@ -155,6 +155,7 @@ __all__ = [
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
 _SESSION_FILENAME = "session.json"
+_COMPACTED_SUMMARY_PREFIX = "[compacted summary of "
 _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_active", default=False)
 
 
@@ -445,8 +446,9 @@ def _messages_estimated_tokens(messages: Sequence[ChatMessage]) -> int:
 class CompactionPlan:
     """Pure plan for one compaction pass -- no I/O, no driver call.
 
-    ``keep_head``: leading messages preserved verbatim (any run of leading
-    ``system``-role messages). ``keep_tail``: the most-recent atomic units
+    ``keep_head``: real leading ``system`` messages preserved verbatim;
+    generated compacted summaries may be folded into a later hierarchical
+    round. ``keep_tail``: the most-recent atomic units
     that already fit ``budget_tokens``, flattened back into a plain message
     list. ``to_summarize``: the atomic units in between, oldest first --
     always whole units, never a partial one.
@@ -469,6 +471,8 @@ def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> Comp
     ``keep_tail`` or ``to_summarize``, never both). Leading ``system``
     messages are always kept and are counted against the same budget, so the
     plan cannot claim to fit while quietly excluding them from the count.
+    Real leading ``system`` messages are always kept; generated compaction
+    summaries are deliberately eligible for a later hierarchical round.
     Units are walked newest-first and kept while they still fit; **at least
     the single most recent unit is always kept**, even if it alone exceeds
     ``budget_tokens`` -- there must always be something to answer with, and a
@@ -480,7 +484,12 @@ def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> Comp
 
     idx = 0
     head: list[ChatMessage] = []
-    while idx < len(groups) and len(groups[idx]) == 1 and groups[idx][0].role == "system":
+    while (
+        idx < len(groups)
+        and len(groups[idx]) == 1
+        and groups[idx][0].role == "system"
+        and not groups[idx][0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
+    ):
         head.append(groups[idx][0])
         idx += 1
     body = groups[idx:]
@@ -541,6 +550,35 @@ def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -
     return f"{header}\n{body}"
 
 
+def _bounded_summary_batch(
+    label: str,
+    units: Sequence[Sequence[ChatMessage]],
+    input_budget_tokens: int,
+) -> tuple[list[list[ChatMessage]], str, int]:
+    """Largest oldest prefix whose complete summary prompt fits the estimate."""
+    selected: list[list[ChatMessage]] = []
+    prompt = ""
+    estimated = 0
+    for unit in units:
+        candidate = [*selected, list(unit)]
+        candidate_prompt = _summarization_message(label, candidate)
+        candidate_estimated = _context.estimate_tokens(candidate_prompt)
+        if candidate_estimated > input_budget_tokens:
+            break
+        selected = candidate
+        prompt = candidate_prompt
+        estimated = candidate_estimated
+    return selected, prompt, estimated
+
+
+def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
+    return (
+        len(unit) == 1
+        and unit[0].role == "system"
+        and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
+    )
+
+
 @dataclass
 class CompactionResult:
     """Outcome of one ``compact_session`` call.
@@ -555,6 +593,8 @@ class CompactionResult:
     ok: bool
     compacted: bool = False
     groups_summarized: int = 0
+    summary_rounds: int = 0
+    max_summary_prompt_estimated_tokens: int = 0
     before_message_count: int = 0
     after_message_count: int = 0
     before_estimated_tokens: int = 0
@@ -571,6 +611,7 @@ def compact_session(
     summarizer: SessionSummaryRunner,
     summarizer_session_key: str | None = None,
     budget_tokens: int | None = None,
+    summary_input_budget_tokens: int | None = None,
     timeout: int | None = None,
     label: str = "",
     now: str | None = None,
@@ -591,8 +632,10 @@ def compact_session(
     is never touched, let alone blocked (see module docstring's storage
     layout section).
 
-    Fails closed: if the summarisation
-    call fails, or replies with nothing usable, or the candidate compacted
+    Each summarizer prompt is bounded independently. Histories that need more
+    than one prompt are reduced hierarchically in memory; only the final
+    candidate is written. Fails closed: if any summarisation call fails, or
+    replies with nothing usable, or the candidate compacted
     history would contain an orphaned tool call/result (``find_orphaned_tool_messages``/
     ``find_unanswered_tool_calls`` -- should be structurally impossible given
     ``plan_compaction``'s whole-unit guarantee, checked anyway as the explicit
@@ -615,7 +658,11 @@ def compact_session(
             failure_kind="invalid_output",
         )
 
-    budget = budget_tokens if budget_tokens is not None else _context.budget_for_role(role)
+    role_budget = _context.budget_for_role(role)
+    budget = budget_tokens if budget_tokens is not None else role_budget
+    summary_input_budget = (
+        summary_input_budget_tokens if summary_input_budget_tokens is not None else role_budget
+    )
     turn_timeout = timeout if timeout is not None else _cfg.DISTILL_TIMEOUT_S
     stamp = now or _utc_now()
     display_label = label or session_key
@@ -631,11 +678,32 @@ def compact_session(
             if current
             else SessionRecord(session_key=session_key, created=stamp)
         )
-        messages = [_decode(m) for m in record.messages]
-        before_count = len(messages)
-        before_estimated = _messages_estimated_tokens(messages)
-        plan = plan_compaction(messages, budget)
-        if not plan.needed:
+        original_messages = [_decode(m) for m in record.messages]
+        before_count = len(original_messages)
+        before_estimated = _messages_estimated_tokens(original_messages)
+        working = original_messages
+        rounds = 0
+        groups_summarized = 0
+        max_prompt_estimated = 0
+        round_cap = max(1, len(group_atomic_units(original_messages)) + 1)
+
+        def _fail(error: str, failure_kind: FailureKind = "invalid_output") -> None:
+            nonlocal outcome
+            outcome = CompactionResult(
+                ok=False,
+                groups_summarized=groups_summarized,
+                summary_rounds=rounds,
+                max_summary_prompt_estimated_tokens=max_prompt_estimated,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
+                error=error,
+                failure_kind=failure_kind,
+            )
+
+        initial_plan = plan_compaction(working, budget)
+        if not initial_plan.needed:
             outcome = CompactionResult(
                 ok=True,
                 compacted=False,
@@ -646,74 +714,96 @@ def compact_session(
             )
             return None
 
-        prompt = _summarization_message(display_label, plan.to_summarize)
-        result = summarizer(agent_id, summary_session_key, prompt, turn_timeout, None)
-        if not result.ok:
-            outcome = CompactionResult(
-                ok=False,
-                before_message_count=before_count,
-                after_message_count=before_count,
-                before_estimated_tokens=before_estimated,
-                after_estimated_tokens=before_estimated,
-                error=result.error or "compaction summarisation turn failed",
-                failure_kind=result.failure_kind,
-            )
-            return None
+        while True:
+            plan = plan_compaction(working, budget)
+            if not plan.needed:
+                break
+            if rounds and all(_is_compacted_summary_unit(unit) for unit in plan.to_summarize):
+                # The target can be smaller than the irreducible summary
+                # marker + mandatory newest unit (common in tiny tests). All
+                # raw old units are already represented, so re-summarizing
+                # the same summary alone would spend tokens without adding
+                # information or guaranteeing further progress.
+                break
+            if rounds >= round_cap:
+                _fail(f"compaction exceeded its deterministic round cap ({round_cap})")
+                return None
 
-        summary = result.output.strip()
-        if not summary:
-            outcome = CompactionResult(
-                ok=False,
-                before_message_count=before_count,
-                after_message_count=before_count,
-                before_estimated_tokens=before_estimated,
-                after_estimated_tokens=before_estimated,
-                error="compaction summarisation turn returned an empty summary",
-                failure_kind="invalid_output",
+            batch, prompt, prompt_estimated = _bounded_summary_batch(
+                display_label,
+                plan.to_summarize,
+                summary_input_budget,
             )
-            return None
+            if not batch:
+                first_prompt = _summarization_message(display_label, plan.to_summarize[:1])
+                required = _context.estimate_tokens(first_prompt)
+                _fail(
+                    "one compaction atomic unit exceeds the summary input budget "
+                    f"(estimated {required} tokens > {summary_input_budget})"
+                )
+                return None
 
-        summarized_count = sum(len(u) for u in plan.to_summarize)
-        summary_message = ChatMessage(
-            role="system",
-            content=(
-                f"[compacted summary of {len(plan.to_summarize)} earlier turn(s), "
-                f"{summarized_count} message(s)]\n{summary}"
-            ),
-        )
-        new_messages = [*plan.keep_head, summary_message, *plan.keep_tail]
+            max_prompt_estimated = max(max_prompt_estimated, prompt_estimated)
+            result = summarizer(agent_id, summary_session_key, prompt, turn_timeout, None)
+            if not result.ok:
+                _fail(
+                    result.error or "compaction summarisation turn failed",
+                    result.failure_kind or "daemon_error",
+                )
+                return None
 
-        # Post-condition checks (see module docstring): should be structurally
-        # impossible given plan_compaction's whole-unit guarantee, verified
-        # here so a bug in the grouping logic fails the compaction instead of
-        # ever persisting a broken history.
-        if find_orphaned_tool_messages(new_messages) or find_unanswered_tool_calls(new_messages):
-            outcome = CompactionResult(
-                ok=False,
-                before_message_count=before_count,
-                after_message_count=before_count,
-                before_estimated_tokens=before_estimated,
-                after_estimated_tokens=before_estimated,
-                error="compaction produced an orphaned tool call or result -- refusing to persist",
-                failure_kind="invalid_output",
+            summary = result.output.strip()
+            if not summary:
+                _fail("compaction summarisation turn returned an empty summary")
+                return None
+
+            summarized_count = sum(len(unit) for unit in batch)
+            summary_message = ChatMessage(
+                role="system",
+                content=(
+                    f"{_COMPACTED_SUMMARY_PREFIX}{len(batch)} earlier turn(s), "
+                    f"{summarized_count} message(s)]\n{summary}"
+                ),
             )
-            return None
+            remaining_old = [
+                message for unit in plan.to_summarize[len(batch) :] for message in unit
+            ]
+            candidate = [*plan.keep_head, summary_message, *remaining_old, *plan.keep_tail]
+
+            if find_orphaned_tool_messages(candidate) or find_unanswered_tool_calls(candidate):
+                _fail("compaction produced an orphaned tool call or result -- refusing to persist")
+                return None
+
+            current_estimated = _messages_estimated_tokens(working)
+            candidate_estimated = _messages_estimated_tokens(candidate)
+            if candidate_estimated >= current_estimated:
+                _fail(
+                    "compaction summary did not reduce estimated history size "
+                    f"({current_estimated} -> {candidate_estimated})"
+                )
+                return None
+
+            working = candidate
+            rounds += 1
+            groups_summarized += len(batch)
 
         updated = record.model_copy(
             update={
                 "session_key": session_key,
-                "messages": [_encode(m) for m in new_messages],
+                "messages": [_encode(m) for m in working],
                 "updated": stamp,
             }
         )
         outcome = CompactionResult(
             ok=True,
             compacted=True,
-            groups_summarized=len(plan.to_summarize),
+            groups_summarized=groups_summarized,
+            summary_rounds=rounds,
+            max_summary_prompt_estimated_tokens=max_prompt_estimated,
             before_message_count=before_count,
-            after_message_count=len(new_messages),
+            after_message_count=len(working),
             before_estimated_tokens=before_estimated,
-            after_estimated_tokens=_messages_estimated_tokens(new_messages),
+            after_estimated_tokens=_messages_estimated_tokens(working),
         )
         return updated.model_dump(by_alias=True)
 

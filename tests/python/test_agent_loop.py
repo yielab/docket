@@ -268,6 +268,80 @@ class TestLiveSessionCompaction:
         )
         assert "summary" not in compaction_events[0]
 
+    def test_live_path_aggregates_usage_across_bounded_summary_rounds(
+        self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session_key = "agent:hierarchical:demo"
+        append_session_messages(
+            session_key,
+            [ChatMessage(role="user", content=f"old-{index} " * 30) for index in range(10)],
+        )
+        events: list[dict[str, object]] = []
+
+        def _trace(
+            project: str,
+            traced_session: str,
+            role: str,
+            event_type: str,
+            payload: str,
+            *args: object,
+            **kwargs: object,
+        ) -> str:
+            if event_type == "session_compaction":
+                events.append(json.loads(payload))
+            return "written"
+
+        class _Backend:
+            def __init__(self) -> None:
+                self.summary_prompts: list[str] = []
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    self.summary_prompts.append(messages[0].content)
+                    return _final(
+                        f"bounded summary {len(self.summary_prompts)}",
+                        TokenUsage(input_tokens=10, output_tokens=2),
+                    )
+                return _final("task done", TokenUsage(input_tokens=5, output_tokens=1))
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        backend = _Backend()
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "new request",
+            config=_loop.LoopConfig(
+                history_budget_tokens=80,
+                summary_input_budget_tokens=180,
+            ),
+        )
+
+        rounds = len(backend.summary_prompts)
+        assert result.ok
+        assert rounds > 1
+        assert all(
+            _session._context.estimate_tokens(prompt) <= 180 for prompt in backend.summary_prompts
+        )
+        assert result.usage == TokenUsage(
+            input_tokens=rounds * 10 + 5,
+            output_tokens=rounds * 2 + 1,
+        )
+        stored = load_session(session_key)
+        assert stored.usage.input_tokens == result.usage.input_tokens
+        assert stored.usage.output_tokens == result.usage.output_tokens
+        assert events[0]["summaryRounds"] == rounds
+        assert events[0]["maxSummaryPromptEstimatedTokens"] <= 180
+
     def test_no_op_uses_one_backend_call_and_emits_bounded_trace(
         self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -300,6 +374,8 @@ class TestLiveSessionCompaction:
                 "beforeEstimatedTokens": 0,
                 "afterEstimatedTokens": 0,
                 "groupsSummarized": 0,
+                "summaryRounds": 0,
+                "maxSummaryPromptEstimatedTokens": 0,
             }
         ]
 

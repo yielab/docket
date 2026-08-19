@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call.
@@ -116,6 +116,24 @@ This specification does NOT cover:
 21. Every result **MUST** report before/after message counts and before/after *estimated* tokens.
     Failure reports identical before/after values; no-op reports the unchanged values; success
     reports the persisted candidate. These fields **MUST NOT** be presented as measured usage.
+22. The complete summarizer prompt for each compaction round **MUST** fit a bounded estimated-token
+    input budget. By default that input budget is the role's configured history budget (independent
+    of a caller's one-off target-budget override); an explicit input override exists for
+    deterministic tests, not as a second role-budget registry.
+23. When all units selected by the compaction plan do not fit one summary prompt, compaction
+    **MUST** summarize the largest fitting oldest prefix, preserve every remaining unit, and repeat
+    hierarchically until every selected raw old unit has been folded into bounded summaries. No
+    intermediate candidate may be written. A degenerate target smaller than the irreducible summary
+    marker plus the mandatory newest unit **MAY** finish above target rather than repeatedly
+    re-summarizing the same summary without new information.
+24. A system message produced by compaction **MAY** be summarized again in a later round. Any real
+    leading system message that was not produced by compaction **MUST** remain byte-identical.
+25. Every round **MUST** reduce the candidate's estimated size and the operation **MUST** have a
+    deterministic round cap. Failure to make progress, exceeding the cap, or finding one atomic
+    unit whose complete summary prompt cannot fit **MUST** fail closed without writing.
+26. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
+    **MUST** also report the number of summary rounds and the largest estimated summary-prompt size,
+    named explicitly as estimates.
 
 ## Interface Contracts
 
@@ -154,7 +172,7 @@ def append_messages(
 # the shape a caller's driver must satisfy
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
-class CompactionResult:                        # plus before/after message + estimated-token counts
+class CompactionResult:                        # plus summary rounds/prompt max and before/after counts
     ...
 
 def compact_session(
@@ -165,6 +183,7 @@ def compact_session(
     summarizer: SessionSummaryRunner,
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int | None = None,          # default: context.budget_for_role(role)
+    summary_input_budget_tokens: int | None = None, # default: context.budget_for_role(role)
     timeout: int | None = None,
     label: str = "",
     now: str | None = None,
@@ -287,6 +306,12 @@ result = sess.compact_session(
 - A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
 
 ## Changelog
+
+### Version 1.2.0 (2026-08-19)
+
+- **Wave 20, card W20-C2b.** Bounded every summarizer prompt and made oversized aggregate history
+  compact through atomic, hierarchical rounds. Intermediate summaries remain in memory until the
+  final candidate fits; any later failure leaves the original record untouched.
 
 ### Version 1.1.0 (2026-08-19)
 

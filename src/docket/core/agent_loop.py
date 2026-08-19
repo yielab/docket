@@ -162,6 +162,7 @@ class LoopConfig:
     max_tokens: int | None = None
     temperature: float | None = None
     history_budget_tokens: int | None = None
+    summary_input_budget_tokens: int | None = None
 
 
 @dataclass
@@ -254,6 +255,8 @@ def _trace_compaction(
                 "beforeEstimatedTokens": result.before_estimated_tokens,
                 "afterEstimatedTokens": result.after_estimated_tokens,
                 "groupsSummarized": result.groups_summarized,
+                "summaryRounds": result.summary_rounds,
+                "maxSummaryPromptEstimatedTokens": (result.max_summary_prompt_estimated_tokens),
             }
         ),
     )
@@ -335,12 +338,23 @@ def run_agent_turn(
                 "compaction summarizer key matched the target session",
                 "invalid_output",
             )
+        elapsed = clock() - started
+        remaining = int(cfg.wall_clock_timeout_s - elapsed)
+        if remaining <= 0:
+            return TurnResult(
+                False,
+                "",
+                0.0,
+                {},
+                "compaction exhausted the turn wall-clock budget",
+                "timeout",
+            )
         response = backend.complete(
             [user(prompt)],
             tools=(),
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
-            timeout=timeout,
+            timeout=min(timeout, remaining),
         )
         last_raw = response.raw
         summary_usage = _accumulate(summary_usage, response.usage)
@@ -373,6 +387,7 @@ def run_agent_turn(
         summarizer=_summarize_without_reentry,
         summarizer_session_key=f"{session_key}:compaction",
         budget_tokens=cfg.history_budget_tokens,
+        summary_input_budget_tokens=cfg.summary_input_budget_tokens,
         timeout=min(cfg.request_timeout_s, remaining),
         label=f"{ctx.role} session",
     )

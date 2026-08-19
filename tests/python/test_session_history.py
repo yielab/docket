@@ -581,6 +581,112 @@ class TestCompactSessionSuccess:
         assert any("the gist of it" in m.content for m in final)
         assert final[-1] == user("keep me")
 
+    def test_large_history_uses_multiple_bounded_atomic_summary_rounds(self) -> None:
+        key = "agent:large:default"
+        real_system = system("immutable operator instruction")
+        call = ToolCall(id="atomic", name="read", arguments='{"path":"fixture"}')
+        messages = [real_system]
+        for index in range(8):
+            messages.append(user(f"old-{index} " * 30))
+        messages.extend(
+            [
+                assistant("ATOMIC_CALL", tool_calls=[call]),
+                tool_result(call, "ATOMIC_RESULT"),
+                user("recent unit must remain"),
+            ]
+        )
+        _sess.append_messages(key, messages)
+        prompts: list[str] = []
+
+        def _driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            prompts.append(message)
+            return TurnResult(True, f"bounded round {len(prompts)}", 0.0, {})
+
+        result = _sess.compact_session(
+            key,
+            role="lead",
+            agent_id="large-lead",
+            summarizer=_driver,
+            budget_tokens=80,
+            summary_input_budget_tokens=180,
+        )
+
+        assert result.ok
+        assert result.compacted
+        assert result.summary_rounds == len(prompts)
+        assert result.summary_rounds > 1
+        assert result.max_summary_prompt_estimated_tokens <= 180
+        assert all(_sess._context.estimate_tokens(prompt) <= 180 for prompt in prompts)
+        assert any("[compacted summary" in prompt for prompt in prompts[1:])
+        assert all(("ATOMIC_CALL" in prompt) == ("ATOMIC_RESULT" in prompt) for prompt in prompts)
+        final = _sess.load_messages(key)
+        assert final[0] == real_system
+        assert final[-1] == user("recent unit must remain")
+        assert _sess._messages_estimated_tokens(final) < result.before_estimated_tokens
+        assert _sess.find_orphaned_tool_messages(final) == []
+        assert _sess.find_unanswered_tool_calls(final) == []
+
+    def test_failure_in_a_later_round_writes_no_intermediate_candidate(self) -> None:
+        key = "agent:late-failure:default"
+        _sess.append_messages(key, [user(f"old-{index} " * 30) for index in range(10)])
+        path = _sess._session_path(key, None)
+        before = path.read_bytes()
+        calls = 0
+
+        def _driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                return TurnResult(False, "", 0.0, {}, "later timeout", "timeout")
+            return TurnResult(True, "first bounded summary", 0.0, {})
+
+        result = _sess.compact_session(
+            key,
+            role="lead",
+            agent_id="late-failure-lead",
+            summarizer=_driver,
+            budget_tokens=60,
+            summary_input_budget_tokens=180,
+        )
+
+        assert not result.ok
+        assert result.failure_kind == "timeout"
+        assert calls == 2
+        assert path.read_bytes() == before
+
+    def test_one_oversized_atomic_unit_fails_closed_without_calling_summarizer(self) -> None:
+        key = "agent:oversized:default"
+        _sess.append_messages(key, [user("x" * 4000), user("recent")])
+        path = _sess._session_path(key, None)
+        before = path.read_bytes()
+        driver, calls = _recording_driver()
+
+        result = _sess.compact_session(
+            key,
+            role="lead",
+            agent_id="oversized-lead",
+            summarizer=driver,
+            budget_tokens=10,
+            summary_input_budget_tokens=150,
+        )
+
+        assert not result.ok
+        assert result.failure_kind == "invalid_output"
+        assert calls == []
+        assert path.read_bytes() == before
+
     def test_compaction_preserves_measured_usage_totals(self) -> None:
         _sess.append_messages(
             "agent:x:default",

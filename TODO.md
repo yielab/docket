@@ -143,15 +143,59 @@ with `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`: two successful compactions reduced est
 with zero orphaned results or unanswered calls. All 2,221 tests, 18 golden cases, 24 spec checks,
 ruff, formatting, mypy, and metrics passed.
 
+### W20-C2b — bound oversized compaction prompts hierarchically
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** integrator
+
+**Measured trigger:** W20-C2's real 16k dispatch succeeded, but its unresolved-risk review found
+that `compact_session` still renders every selected old unit into one summarizer prompt. A durable
+history much larger than the endpoint window can therefore fail before it has a chance to shrink.
+
+**Goal:** compact arbitrarily many normal-sized atomic units through bounded hierarchical summary
+rounds, preserving real leading system messages and writing only the final successful candidate.
+
+**Non-goals:** no truncation of a single oversized atomic unit, no tokenizer dependency, no role
+session-key migration, and no weakening of fail-closed or tool-call/result atomicity.
+
+**Live path / files:** `core/session.py::plan_compaction` / `compact_session`,
+`core/agent_loop.py::run_agent_turn`, their two functional specs, and owning tests.
+
+**Acceptance:** RED proves an aggregate history far above a tiny summary-input budget never sends
+an oversized prompt; multiple summarizer calls converge below the role budget; generated summaries
+may be summarized again while real leading system messages remain byte-identical; a later-round
+failure writes none of the earlier candidates; all prompts contain whole atomic units; focused and
+full gates pass.
+
+**Shipped:** `compact_session` now selects the largest oldest atomic prefix whose complete prompt
+fits the role's input budget, folds additional raw history through in-memory hierarchical rounds,
+and writes only the final candidate. Generated summaries can be re-summarized; real leading system
+messages remain verbatim. Oversized single units, non-shrinking output, round-cap exhaustion, and
+failure in any later round all preserve the original record. Trace output adds round count and the
+maximum estimated prompt size without content. All 2,225 tests plus static, spec, golden, and
+metrics gates pass.
+
 ### W20-C3 — measure cross-hop history redundancy after compaction
 
-**Status:** TODO (unblocked by W20-C2 evidence) · **Size:** S · **Owner:** unclaimed
+**Status:** IN-PROGRESS · **Size:** S · **Owner:** integrator
 
 **Goal:** re-run one four-role dispatch on the 16k endpoint and measure per-hop prompt/history size.
 If compaction removes the failure, close with evidence. If a reviewer/tester still receives material
 raw history already represented by `HandoffArtifact`, write a separate spec/card for hop-scoped
 session keys before changing `core/pod.py`'s shared-key contract. No speculative key migration in
 this card.
+
+**Measured trigger:** W20-C2's successful run showed a Reviewer history estimate of 10,825 tokens
+before compaction while `_hop_message` also carried typed prior-hop artifacts. C2b removes summary
+prompt overflow as a confounder; redundancy can now be measured directly.
+
+**Live path / evidence:** `dispatch_task`'s task-wide `session_id`, `_hop_message` and its
+`context_composed` event, per-role `session_compaction` events, final measured `SessionRecord.usage`,
+and one real Lead -> Implementer -> Reviewer -> Tester run on `docket-dev` at 16k.
+
+**Acceptance:** record per-role composed-prompt bytes and durable-history estimates without raw
+content; distinguish estimates from endpoint usage; prove whether Reviewer/Tester receive shared raw
+history plus typed artifacts; close C3 with the numbers and, if material duplication remains, add a
+separate spec-first card for hop-scoped runtime session keys. Do not implement that migration here.
 
 ---
 

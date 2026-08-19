@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` and
 `edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
 `core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
@@ -216,6 +216,12 @@ This specification does NOT cover:
     `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
     and groups summarized. The payload **MUST NOT** contain raw history, prompts, summaries, or
     measured token counts mislabeled as estimates.
+38. A live compaction **MAY** make multiple bounded summary completions. Every completion **MUST**
+    stay on the same non-recursive, tool-free adapter; its endpoint-reported usage **MUST** be
+    accumulated into turn/session measured usage, and its timeout **MUST** be capped by the turn's
+    remaining wall-clock budget at call time.
+39. The compaction trace payload **MUST** additionally report summary-round count and the maximum
+    estimated prompt tokens sent in any round. It **MUST NOT** include any prompt or summary text.
 
 ## Interface Contracts
 
@@ -236,6 +242,7 @@ class LoopConfig:                              # frozen
     max_tokens: int | None = None
     temperature: float | None = None
     history_budget_tokens: int | None = None # None resolves through context.budget_for_role
+    summary_input_budget_tokens: int | None = None # None follows resolved history budget
 
 class AgentLoopResult:
     ok: bool
@@ -389,6 +396,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.5.0 (2026-08-19)
+
+- **Wave 20, card W20-C2b.** The live adapter now supports bounded multi-round hierarchical
+  compaction, aggregates every summary response's measured usage, and recomputes remaining timeout
+  before each backend call. Compaction traces expose only round/max-prompt estimates.
 
 ### Version 1.4.0 (2026-08-19)
 
