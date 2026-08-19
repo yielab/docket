@@ -27,3 +27,21 @@ task; load only the referenced section or spec.
 
 Prefer compact evidence in handoffs: decision, files changed, tests run, unresolved risk, next
 action. Do not paste raw logs or whole documents when a path and precise section are sufficient.
+
+## End-of-work control
+
+End every roadmap, implementation, diagnosis, or review handoff with a compact control summary:
+
+- **Feature:** explain the product capability in plain language before internal details.
+- **Outcome:** say `complete`, `partial`, or `blocked`, with the decisive evidence.
+- **Missing / failed:** name any unmet acceptance criterion, failed check, skipped evidence, or
+  unresolved defect; say `none` when there is none.
+- **Pending:** separate work still required by the current card from newly discovered follow-ups.
+- **Next ideal task:** recommend exactly one evidence-backed next action. If no ready board card or
+  measured trigger exists, say that triage/measurement is required instead of inventing work.
+- **Parallel work:** say `no` when the next action depends on current work or overlaps its files,
+  functions, specs, persisted state, or live environment. Otherwise name at most two independent
+  lanes and their non-overlap boundary.
+
+Do not equate “interesting” with “scheduled,” or a passing focused test with a complete feature.
+Keep this summary short enough to resume from directly without reopening large planning documents.

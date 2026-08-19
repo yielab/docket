@@ -23,3 +23,12 @@ Read [references/board-contract.md](references/board-contract.md) only when chan
 
 Return or record a task packet containing only: decision, evidence, scope, contract/spec, validation,
 risks, and next action. Link to large sources rather than copying them.
+
+At close or resume, run the snapshot again and apply `AGENTS.md`'s end-of-work control. Choose the
+next ideal task only from a ready card, an unmet acceptance criterion, or a measured risk whose
+trigger fired. Keep “pending in this card” separate from later follow-up work.
+
+Assess parallel work by dependency and contention, not by similar titles. Two lanes are parallel-safe
+only when neither needs the other's result and they do not share owning specs, files/functions,
+persisted state, or a mutable live environment. If the board has no ready card, report that the next
+ideal action is bounded triage/measurement; do not revive historical work implicitly.

@@ -22,3 +22,13 @@ packaging, specs, documentation claims, or dependency bounds are affected.
 
 Keep test output out of the conversation unless it explains a failure. Report command + outcome,
 not full logs. Never change a golden or metrics/spec validator merely to turn a gate green.
+
+Before the final handoff, compare the delivered behavior against every acceptance criterion and use
+`AGENTS.md`'s end-of-work control. Explain the feature at product level, then state what actually
+shipped. A focused pass with missing full gates is `partial`, not `complete`; a skipped environment
+case is missing evidence unless the contract explicitly marks it expected.
+
+Name the exact failed check or unimplemented behavior instead of saying only “there are issues.”
+Recommend one next action that closes the highest-impact remaining gap. Suggest parallel work only
+when its owning spec and touched code/state do not overlap this change; roadmap scheduling still
+belongs to `$docket-roadmap`.
