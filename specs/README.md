@@ -154,7 +154,7 @@ Each specification document must include:
 | docket-meta schema | 2.9.0 | Complete | Docket-owned `~/.docket` paths and `core/fleet.py` metadata access; `requireApprovalRoles`; `blueprint`/`workspaceKind`/`workDir` |
 | Serve Read API | 2.6.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs`, tasks/traces/pods, guardrail + loop metrics; the versioned `gateway` field is an always-inactive compatibility field |
 | Input Validation | 1.3.0 | Complete | Docket-owned store and protocol-boundary validation |
-| Test Framework | 2.2.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, and proportional validation |
+| Test Framework | 2.3.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, proportional validation, and an observable CLI→HTTP→runtime full-workflow smoke |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links

@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Active
 **Last Updated**: 2026-08-19
 
@@ -9,6 +9,10 @@
 Docket's test system has four blocking layers: pytest behavior, byte-for-byte CLI goldens, static
 analysis, and specification validation. Docket owns its runtime; tests exercise that runtime
 directly and replace only real external protocol/process boundaries.
+
+It also ships one executable full-workflow smoke test. That test is not a fifth exhaustive layer;
+it proves the separately tested components compose across real CLI subprocess and HTTP protocol
+boundaries into one completed, inspectable task.
 
 ## Philosophy
 
@@ -34,7 +38,8 @@ contract before implementation, and the smallest coherent change makes it green.
 tests/
 ├── python/                 pytest behavior and contract tests
 │   ├── conftest.py         shared hermetic Docket-home fixtures
-│   └── fakes.py            ChatBackend/runtime fakes
+│   ├── fakes.py            ChatBackend/runtime fakes
+│   └── test_workflow_smoke.py  executable workflow acceptance
 ├── golden/
 │   ├── cases/              expected CLI output
 │   ├── fixtures/seed.sh    deterministic ~/.docket state
@@ -42,6 +47,32 @@ tests/
 │   └── run.sh              verify/update harness
 └── run-all-tests.sh        local aggregate gate
 ```
+
+### Full-workflow smoke
+
+Run the observable happy-path proof with:
+
+```bash
+uv run python scripts/smoke_workflow.py
+```
+
+The command **MUST** create a temporary `DOCKET_HOME` and codebase, start only a loopback
+OpenAI-compatible fake endpoint, and invoke Docket through real subprocess CLI commands. It
+**MUST** exercise, display, and verify this sequence:
+
+1. Declarative provisioning of an `agentic-product` pod.
+2. Task delegation and rendering of the resolved pipeline plan.
+3. Lead planning, an Implementer `write` tool call through `dispatch_tool`, and a real mechanical
+   file check.
+4. Reviewer verdict, a pipeline-defined human approval pause, CLI approval, exact-position resume,
+   and final Tester verdict.
+5. Terminal task state plus typed handoffs, isolated durable step histories, an atomic tool-call/
+   tool-result pair, traces, audit chain, measured usage, and two successful run records.
+
+The model endpoint is fake; the protocol boundary is not. The harness **MUST** receive and validate
+real `/chat/completions` request shapes and never use a paid endpoint, credential, or non-loopback
+network. Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS`
+line. `--workdir <path>` preserves the otherwise-temporary world for inspection.
 
 Test files use `test_<owned_behavior>.py`; card IDs belong in changelogs/commit history, not
 permanent filenames.
@@ -115,6 +146,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.3.0 (2026-08-19)
+
+- W22-C1 adds one observable subprocess-to-HTTP-to-runtime smoke test covering provisioning,
+  dispatch, tools, mechanical/verdict/approval gates, resume, handoffs, sessions, traces, audit,
+  usage, and run records in a hermetic temporary world.
 
 ### Version 2.2.0 (2026-08-19)
 

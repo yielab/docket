@@ -113,6 +113,9 @@ All contributions must include appropriate tests:
 Run the full aggregator before submitting:
 
 ```bash
+# Observable full workflow (temporary state + deterministic loopback model; no credentials)
+uv run python scripts/smoke_workflow.py
+
 # All tests (pytest + golden parity)
 ./tests/run-all-tests.sh
 

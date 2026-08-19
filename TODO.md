@@ -13,14 +13,15 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-19) — W21-C1 daemon-free truth pass complete
+> ## ☑ BOARD CLEAR (2026-08-19) — W22-C1 full-workflow smoke complete
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
 > and pipeline steps keep separate durable histories while typed handoffs carry cross-step context.
 > The repository harness and its three focused skills are also in place. W21-C1 removed the stale
-> current-state references found by the post-W20 audit. Deferred roadmap work still requires its
-> named trigger rather than being scheduled by default.
+> current-state references found by the post-W20 audit. W22-C1 closed the evidence gap between many
+> focused tests and one observable whole-product workflow.
+> Deferred roadmap work still requires its named trigger rather than being scheduled by default.
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
 > the retired-brand scan of `src/docket/` — now returns zero references, including prose. Docket
@@ -82,6 +83,59 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ☑ WAVE 22 COMPLETE (2026-08-19) — observable full-workflow proof
+
+### W22-C1 — executable end-to-end workflow smoke
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** the 2,229-test suite covers provisioning, CLI routing, dispatch, approvals,
+the HTTP model adapter, tools, sessions, traces, and run records in separate focused tests, but no
+single executable test crosses the real CLI process boundary and proves those parts compose into a
+completed task. The existing `pipeline run` CLI test replaces `DocketDriver` with `FakeDriver`, and
+the HTTP-adapter tests stop below dispatch.
+
+**Goal:** provide one hermetic, human-readable smoke command that provisions a full pod, queues a
+task, plans and runs a custom pipeline against a deterministic local OpenAI-compatible endpoint,
+executes a real tool call and mechanical check, pauses for and resumes after approval, passes
+Reviewer/Tester verdict gates, and verifies durable task, session, trace, audit, and run state.
+
+**Non-goals:** no paid/live endpoint, credentials, remote network, Docker/MCP/Telegram coverage, UI
+automation, load testing, exhaustive failure cases, or replacement for focused tests.
+
+**Live path / files:** `scripts/smoke_workflow.py`; `tests/python/test_workflow_smoke.py`; public
+commands `add --from` → `pod delegate` → `pipeline plan/run --follow` → `approve` → resumed
+`pipeline run`; `edges/adapters/llm.py` → `DocketDriver` → `core/agent_loop.py` →
+`core/tools.py::dispatch_tool`; `TASK_LIST.json`, sessions, traces, audit, and run registry.
+
+**RED test:** the focused pytest invokes the documented smoke command in an isolated directory and
+must fail before the harness exists; after implementation it asserts the visible PASS summary and
+the created artifact/state root.
+
+**Acceptance:** one documented command runs without real credentials or non-loopback network;
+subprocess CLI output exposes every stage; the fake endpoint receives real chat-completions payloads;
+the Implementer writes an artifact through the gated tool chokepoint; the pipeline proves
+`waiting_approval` → grant → exact-position resume → `done`; persisted hops contain typed artifacts
+and verdicts; step-scoped sessions retain the tool-call/result atomically; trace/audit/run records
+are queryable; focused pytest plus Ruff/format/mypy, full pytest, goldens, spec validation, and
+metrics are green.
+
+**Contention:** the harness/test/framework spec are card-owned. `TODO.md`, `ROADMAP.md`,
+`specs/README.md`, and README metrics remain integrator roll-ups and are updated only at close.
+
+**Shipped:** `uv run python scripts/smoke_workflow.py` now displays and asserts the complete
+happy-path composition across real CLI subprocesses and the real OpenAI-compatible HTTP adapter,
+using only a deterministic loopback model. It provisions `agentic-product`, delegates and plans,
+runs Lead → Implementer (`write` tool + mechanical check) → Reviewer, pauses at a pipeline approval,
+grants via CLI, resumes exactly at the gated step, runs release-check → Tester, and finishes `done`.
+The harness then verifies five typed hop artifacts, five step-scoped sessions, atomic tool-call/result
+persistence, measured usage, traces, a clean audit chain, and two successful run records. The pytest
+suite contains a subprocess acceptance wrapper and README/CONTRIBUTING/test-framework document the
+standalone command. Validation: 2,230 tests passed (4 expected environment skips), 18 goldens, 24
+specs, Ruff, format, mypy for product + harness, and metrics all green.
 
 ---
 

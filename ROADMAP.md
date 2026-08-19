@@ -12,7 +12,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 21 are complete; the board is
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 22 are complete; the board is
 clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -40,6 +40,7 @@ clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
 | — | **Wave 21** (not a phase): daemon-free current-state truth pass | ☑ done (2026-08-19) — current contracts, docs, source prose, and hermetic fixtures now describe only Docket-owned runtime/state; explicit migration history preserved |
+| — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -2461,6 +2462,17 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-19 (wave 22) — one command now proves the product composes end to end.**
+  `uv run python scripts/smoke_workflow.py` provisions a full agentic-product pod and drives a
+  real CLI → OpenAI-compatible loopback HTTP → `DocketDriver` → agent loop → governed `write`
+  tool path. Its five-step custom pipeline exercises mechanical and Reviewer/Tester verdict gates,
+  deliberately pauses at a human approval, grants it through the CLI, and proves exact-position
+  resume to `done`. It validates the artifact plus typed handoffs, five isolated step histories,
+  atomic tool-call/result persistence, endpoint-measured usage, traces, audit-chain verification,
+  and two successful run records. The endpoint is deterministic and local; no real credential or
+  non-loopback network is used. A pytest subprocess wrapper makes the composition proof part of the
+  2,230-test suite; all static/spec/golden/metrics gates passed.
 
 - **2026-08-19 (wave 21) — the clean runtime break is now reflected in every current contract.**
   Product source, ordinary docs/tests, golden fixtures, and normative spec sections no longer
