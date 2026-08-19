@@ -13,7 +13,13 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-04) — Phases 19, 20 and 21 all closed; nothing is scheduled
+> ## ☑ BOARD CLEAR (2026-08-19) — Wave 20 closed; nothing is scheduled
+>
+> **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
+> compaction runs fail-closed on the production path, oversized histories compact hierarchically,
+> and pipeline steps keep separate durable histories while typed handoffs carry cross-step context.
+> The repository harness and its three focused skills are also in place. No follow-up card is open;
+> deferred roadmap work still requires its named trigger rather than being scheduled by default.
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
 > `command grep -ril openclaw src/` — returns only comments and docstrings narrating the removal;
@@ -77,7 +83,7 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ▶ WAVE 20 IN PROGRESS (2026-08-19) — bounded development context and live-turn efficiency
+## ☑ WAVE 20 COMPLETE (2026-08-19) — bounded development context and live-turn efficiency
 
 The trigger is measured, not aspirational: a real 16k endpoint rejected the reviewer at 19,827
 tokens while the live loop never called the already-built compactor; MCP output also bypassed the

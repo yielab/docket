@@ -37,7 +37,7 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
     if not path.is_file():
         return "TODO.md missing", {}, 0
     text = path.read_text(encoding="utf-8")
-    headings = list(re.finditer(r"^## (?:▶|☑) .+$", text, flags=re.MULTILINE))
+    headings = list(re.finditer(r"^(?:>\s*)?## (?:▶|☑) .+$", text, flags=re.MULTILINE))
     if not headings:
         return "no active/clear heading found", {}, 0
     active = next(
@@ -56,8 +56,9 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
             headings[0],
         ),
     )
-    end = text.find("\n## ", active.end())
-    section = text[active.end() : end if end >= 0 else len(text)]
+    next_heading = re.search(r"^(?:>\s*)?## .+$", text[active.end() :], flags=re.MULTILINE)
+    end = active.end() + next_heading.start() if next_heading is not None else len(text)
+    section = text[active.end() : end]
     headings = list(re.finditer(r"^### (.+)$", section, flags=re.MULTILINE))
     cards: dict[str, list[str]] = {
         "in_progress": [],
@@ -73,7 +74,8 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
             closed += 1
         else:
             cards[kind].append(heading.group(1).strip())
-    return active.group(0).removeprefix("## ").strip(), cards, closed
+    label = re.sub(r"^(?:>\s*)?##\s+", "", active.group(0)).strip()
+    return label, cards, closed
 
 
 def snapshot(root: Path, max_files: int, max_chars: int) -> str:
