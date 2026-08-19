@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docket Roadmap"
+  short_description: "Scope Docket roadmap work with minimal context"
+  default_prompt: "Use $docket-roadmap to produce a bounded task packet for the next measured Docket change."

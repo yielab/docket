@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docket Context Runtime"
+  short_description: "Protect Docket live-turn context and budgets"
+  default_prompt: "Use $docket-context-runtime to trace and improve this live-turn context path without weakening its contracts."

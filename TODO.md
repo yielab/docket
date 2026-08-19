@@ -45,9 +45,9 @@
 ## How to use this board (read before claiming a task)
 
 1. **Claim:** set Status → `IN-PROGRESS (@you)`. One agent per task.
-2. **Read first (always):** ROADMAP.md's section for the card's phase, §2 (Python ground truth), §4.5
-   (architectural principles, incl. the 2026-07-30 Platformization amendment), [CLAUDE.md](CLAUDE.md),
-   and the task's own "Read" list.
+2. **Read first (bounded):** use `$docket-roadmap` to load the active card, its named ROADMAP
+   decision/section, the owning spec, and the card's own "Read" list. Do not ingest all of
+   `ROADMAP.md`, `TODO.md`, or local `CLAUDE.md` as startup context.
 3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. OpenClaw formats live **only**
    in `edges/adapters/openclaw.py` (the ACL). docket-owned JSON goes **only** through `edges/store.py`
    (JSONL append logs are the one D-12 exemption). Every shell-out goes through `edges/adapters/`.
@@ -74,6 +74,74 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ▶ WAVE 20 IN PROGRESS (2026-08-19) — bounded development context and live-turn efficiency
+
+The trigger is measured, not aspirational: a real 16k endpoint rejected the reviewer at 19,827
+tokens while the live loop never called the already-built compactor; MCP output also bypassed the
+operator's small-context ceiling. Separately, the repository had no Codex instruction/skill/hook
+layer, so an agent had to rediscover these facts from multi-thousand-line planning files.
+
+This wave keeps two boundaries explicit. Repository skills and hooks improve how contributors work;
+they are not a claim that Docket itself has a product skill system. Product changes remain
+spec-first and must prove the default live caller.
+
+### W20-H1 — repository development harness
+
+**Status:** DONE (2026-08-19) · **Size:** S · **Owner:** integrator
+
+**Goal:** restore only bounded repository state after start/resume/compaction and load specialized
+instructions on demand.
+
+**Shipped:** a concise root `AGENTS.md`; three repo skills (`docket-roadmap`, `docket-spec-work`,
+`docket-context-runtime`) with progressive references; a deterministic, 1,800-character-capped
+snapshot script; a trusted-project `SessionStart` hook definition; and
+`docs/DEVELOPMENT-HARNESS.md`.
+
+**Acceptance:** every skill passes `skill-creator` quick validation; hook JSON parses; the snapshot
+selects this active wave, bounds dirty paths/output, and makes no model/network call.
+
+### W20-C1 — MCP tool output obeys the live context ceiling
+
+**Status:** DONE (2026-08-19) · **Size:** S · **Owner:** integrator
+
+**Goal:** make `DOCKET_TOOL_MAX_OUTPUT_CHARS` cover MCP results as well as built-ins.
+
+**Shipped:** `edges/adapters/mcp_client.py` resolves `config.TOOL_MAX_OUTPUT_CHARS` per call and
+keeps the visible omitted-character marker. `mcp-client.spec.md` 1.3.0 and a regression test change
+the value after import and prove consecutive calls honor distinct limits.
+
+### W20-C2 — wire fail-closed session compaction into the live turn
+
+**Status:** TODO · **Size:** M · **Owner:** unclaimed
+
+**Goal:** bound durable history before `ChatBackend.complete` without weakening message atomicity,
+tool gating, or usage honesty.
+
+**Read:** `specs/functional/agent-loop.spec.md`, `session-history.spec.md`,
+`core/agent_loop.py::run_agent_turn`, `core/session.py::compact_session`, and the
+`$docket-context-runtime` live-path reference.
+
+**Required design decisions:** an explicit non-recursive summarizer path; whether it persists to an
+isolated key or nowhere; how its measured tokens enter turn/session usage; what happens when
+summarization fails; and trace payloads for no-op/success/failure without raw history.
+
+**Acceptance:** a live-path RED test exceeds a deliberately tiny history budget and proves the
+backend receives compacted history; no-op makes no summarizer call/write; failure leaves prior
+history byte-identical and returns an honest result; assistant tool-call/result units remain whole;
+no recursive turn/session growth is possible; focused tests plus all repository gates are green.
+
+### W20-C3 — measure cross-hop history redundancy after compaction
+
+**Status:** BLOCKED (on W20-C2 evidence) · **Size:** S · **Owner:** unclaimed
+
+**Goal:** re-run one four-role dispatch on the 16k endpoint and measure per-hop prompt/history size.
+If compaction removes the failure, close with evidence. If a reviewer/tester still receives material
+raw history already represented by `HandoffArtifact`, write a separate spec/card for hop-scoped
+session keys before changing `core/pod.py`'s shared-key contract. No speculative key migration in
+this card.
 
 ---
 

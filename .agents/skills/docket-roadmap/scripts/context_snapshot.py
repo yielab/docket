@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Emit a bounded, deterministic Docket development context snapshot."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+from pathlib import Path
+
+
+def _git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=root, check=False, capture_output=True, text=True, timeout=3
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _board_summary(root: Path) -> tuple[str, list[str]]:
+    path = root / "TODO.md"
+    if not path.is_file():
+        return "TODO.md missing", []
+    text = path.read_text(encoding="utf-8")
+    headings = list(re.finditer(r"^## (?:▶|☑) .+$", text, flags=re.MULTILINE))
+    if not headings:
+        return "no active/clear heading found", []
+    active = next(
+        (
+            match
+            for match in headings
+            if "▶" in match.group(0)
+            and re.search(r"\b(ACTIVE|IN PROGRESS)\b", match.group(0), flags=re.IGNORECASE)
+        ),
+        next(
+            (
+                match
+                for match in headings
+                if "☑" in match.group(0) and "BOARD CLEAR" in match.group(0).upper()
+            ),
+            headings[0],
+        ),
+    )
+    end = text.find("\n## ", active.end())
+    section = text[active.end() : end if end >= 0 else len(text)]
+    cards = re.findall(r"^### (.+)$", section, flags=re.MULTILINE)
+    return active.group(0).removeprefix("## ").strip(), cards[:4]
+
+
+def snapshot(root: Path, max_files: int, max_chars: int) -> str:
+    branch = _git(root, "branch", "--show-current") or "detached/unknown"
+    dirty = _git(root, "status", "--short").splitlines()
+    board, cards = _board_summary(root)
+    lines = [
+        "Docket development snapshot (bounded; inspect sources only as needed)",
+        f"branch: {branch}",
+        f"board: {board}",
+    ]
+    if cards:
+        lines.append("active cards: " + " | ".join(cards))
+    if dirty:
+        shown = dirty[:max_files]
+        suffix = f" (+{len(dirty) - len(shown)} more)" if len(dirty) > len(shown) else ""
+        lines.append("dirty: " + " | ".join(shown) + suffix)
+    else:
+        lines.append("dirty: clean")
+    lines.extend(
+        [
+            "routing: roadmap->$docket-roadmap; behavior->$docket-spec-work; "
+            "context/loop/session/MCP->$docket-context-runtime",
+            "authority: TODO active card; owning spec; live-path tests/code; ROADMAP named decisions",
+        ]
+    )
+    output = "\n".join(lines)
+    if len(output) > max_chars:
+        output = output[: max_chars - 24].rstrip() + "\n[context snapshot clipped]"
+    return output
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--max-files", type=int, default=12)
+    parser.add_argument("--max-chars", type=int, default=1800)
+    parser.add_argument("--hook", action="store_true", help="Compatibility flag for SessionStart")
+    args = parser.parse_args()
+    print(snapshot(args.root.resolve(), max(1, args.max_files), max(256, args.max_chars)))
+
+
+if __name__ == "__main__":
+    main()

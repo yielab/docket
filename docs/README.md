@@ -35,6 +35,7 @@ talks to any OpenAI-compatible chat-completions endpoint.
 | [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
+| [Development Harness](DEVELOPMENT-HARNESS.md) | Contributor/agent context routing, repository skills, hooks, and token-efficient validation |
 
 For how features are specified before implementation, see the specs under
 [`../specs/`](../specs/) and the [SSD workflow guide](../SSD-WORKFLOW.md).

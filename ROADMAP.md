@@ -12,8 +12,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-05.** **Every phase 0–22 is COMPLETE. Nothing is scheduled.** The active
-board is [TODO.md](TODO.md); when it says the board is clear, it is.
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 is complete; Wave 20 is active.** The
+executable cards are in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -38,6 +38,7 @@ board is [TODO.md](TODO.md); when it says the board is clear, it is.
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — **plus one found and NOT fixed: session compaction is never called; see §Changelog and TODO.md** |
+| — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | 🚧 active (2026-08-19) — repo skills/hooks and MCP output parity shipped; live session compaction is next |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -49,7 +50,10 @@ trigger (see §4.5's prioritization rule, D-24, and §7):
 | Egress lockdown | Deferred (D-23). `fetch` is the inspectable path, not the only one. |
 | A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
 | Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
-| **Wiring `compact_session` into the turn loop** | **Deferred, trigger ALREADY FIRED** (wave 19, 2026-08-05) — not cut. Every hop shares one session key, so history grows unbounded; a 16k endpoint refuses the reviewer hop at 19,827 tokens. A hosted large-context model hides it. Needs a recursion guard and a summariser session-key decision, so it is a card, not a patch. |
+
+Session compaction is no longer in this deferred table: its trigger fired and it is scheduled as
+W20-C2. The card requires a recursion barrier, summarizer persistence/key decision, measured-usage
+accounting, trace events, and live-path tests.
 
 **Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
 

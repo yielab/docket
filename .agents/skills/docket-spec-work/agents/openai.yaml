@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docket Spec Work"
+  short_description: "Ship Docket changes from spec to verified code"
+  default_prompt: "Use $docket-spec-work to implement this Docket behavior from contract through focused tests and final gates."
