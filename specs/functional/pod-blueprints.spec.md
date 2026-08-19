@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -157,7 +157,7 @@ This specification does NOT cover:
 
 1. Unlike role archetypes (`docket roles add <file.yaml>`), there is currently no
    `docket blueprints add` — the four built-ins in `core/blueprints.py` are Python literals and
-   are the entire registry. A future card may add a `~/.openclaw/docket-blueprints.json` user
+   are the entire registry. A future card may add a `~/.docket/docket-blueprints.json` user
    overlay following the same pattern `docket-roles.json` established; until then, composing a
    custom pod shape means adding roles to an existing pod with `docket pod <project> add <role>`
    after provisioning from the closest built-in blueprint.
@@ -241,7 +241,7 @@ docket add myproj --blueprint wizard-pod
 
 ### Pre-conditions
 
-- `~/.openclaw` **MUST** be writable (pod provisioning, same as any `docket add`).
+- `~/.docket` **MUST** be writable (pod provisioning, same as any `docket add`).
 - For a `workdir` blueprint with an explicit location, that path (or its parent) **MUST** be
   creatable — docket creates it (`mkdir -p`, mode `700`) if absent.
 
@@ -264,6 +264,10 @@ docket add myproj --blueprint wizard-pod
   `tests/python/test_pod_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
+
+### Version 1.2.0 (2026-08-19)
+
+- Corrected the prospective user-overlay and provisioning paths to Docket-owned state.
 
 ### Version 1.1.0 (2026-08-03)
 

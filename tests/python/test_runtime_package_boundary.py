@@ -27,7 +27,7 @@ wheel. Every file in that table must, at any import depth:
      claim is measured against.
 
 AST-based, not line-scanning -- modelled on `test_no_subprocess_in_core.py`
-and `test_no_openclaw_references.py`. A sibling guard elsewhere in this
+and `test_no_external_daemon_coupling.py`. A sibling guard elsewhere in this
 suite once scanned source line by line and a constant that happened to wrap
 across lines evaded it completely; parsing the real syntax tree is what
 avoids that class of miss here.

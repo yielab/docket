@@ -111,20 +111,19 @@ the RuntimeDriver port, below).
 
 ### No external daemon — docket owns the loop
 
-Through Phase 18, docket was a control plane wrapped around a separate OpenClaw daemon process:
-an Anti-Corruption Layer module (`edges/adapters/openclaw.py`) was the only code allowed to know
-`openclaw.json`'s on-disk shape, every agent turn ran inside that daemon's own process, and a
-config change ended with docket restarting its systemd gateway unit so the daemon would pick it
-up. **Phase 19 (decision D-19) removed all of that outright, not incrementally.** There is no
-`openclaw` binary, no `openclaw.json`, no auth-profile store, no ACL module, and no gateway
-service to restart — `edges/adapters/system.py`'s `restart_gateway()`/`gateway_active()` are kept
+Through Phase 18, Docket was a control plane wrapped around a separate agent daemon. An
+Anti-Corruption Layer owned that daemon's state shape, every agent turn ran in its process, and
+config changes restarted its gateway. **Phase 19 (decision D-19) removed that architecture
+outright, not incrementally.** There is no external agent binary, shared daemon config,
+auth-profile store, ACL module, or gateway service to restart —
+`edges/adapters/system.py`'s `restart_gateway()`/`gateway_active()` are kept
 as stable, always-no-op/always-`False` call sites (so the ~20 pre-existing call sites across
 `cli/` need no individual rewrite), not a live integration. docket runs the agent turn itself
 (`core/agent_loop.py`) and talks to any OpenAI-compatible chat-completions endpoint directly
 (`edges/adapters/llm.py`, stdlib `urllib`, no vendor SDK).
 
 This was a scope ruling, not a migration: **no compatibility layer, no migration steps** — a
-pre-Phase-19 install's files at old daemon-relative paths are simply not read again; `docket
+pre-Phase-19 install's files at retired daemon-relative paths are simply not read again; `docket
 install` re-creates a docket-native home from scratch under `~/.docket/` (`DOCKET_HOME`).
 
 ### The RuntimeDriver port (decision D-14)
@@ -174,8 +173,8 @@ by docket, through `edges/store.py`:
 
 This is a narrower split than it looks: `fleet.json` deliberately does **not** duplicate `model`/
 `sessionKey`/`projectKey` — those stay `.docket-meta.json`'s job alone. Before Phase 19, the
-second store was `openclaw.json`, owned by an external daemon that could mutate it independently
-of docket (or be hand-edited, or touched by a raw `openclaw` CLI call) — which is exactly what
+second store was owned by an external daemon that could mutate it independently of Docket (or be
+hand-edited, or touched by its own CLI) — which is exactly what
 `core/sync.py`'s drift check used to exist to catch. With both files now written only by docket
 through one code path, "a different program touched this file" is no longer possible, and that
 drift-detection machinery (the ACL, `core/sync.py`, `docket doctor`'s session-key-sync check) is

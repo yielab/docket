@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Complete
-**Last Updated**: 2026-08-04
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -235,10 +235,8 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 **Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
 
 #### docket auth
-**Purpose**: Report which provider API-key credentials are stored. **ROADMAP Phase 19 P19-7b
-deleted the daemon `docket auth login/key/setup` used to shell out to** (`openclaw models auth
-setup-token`/`paste-token`) — there is no docket-native subscription/OAuth-style auth flow to
-replace it with, and this command says so plainly rather than faking success. Distinct from
+**Purpose**: Report which provider API-key credentials are stored. Docket has no
+subscription/OAuth-style auth flow, and this command says so plainly rather than faking success. Distinct from
 `docket keys`, which manages the workspace secrets that are the real working credential path.
 **Syntax**: `docket auth [action] [--provider <name>]`
 **Actions**:
@@ -400,8 +398,8 @@ an unrecognized subcommand was given
 
 `search`/`snapshot`/`index`/`compress` and the `SNAPSHOT.md` artifact were **removed** — see the
 CHANGELOG's Unreleased "Removed" entry. Semantic search over an agent's memory (`memory_search`/
-`memory_get`) was the now-deleted OpenClaw daemon's job (ROADMAP Phase 19 P19-7b) — there is no
-successor, and docket does not maintain a rival keyword index, so this is a real, named gap
+`memory_get`) is not part of Docket's runtime — there is no keyword-index successor, so this is a
+real, named gap
 rather than a capability delegated elsewhere. Folding logs into `MEMORY.md` is
 `docket maintain <id> distill`.
 **Output**: Context view or action confirmation
@@ -513,9 +511,8 @@ narrower: approval-routing destination and isolation-mode posture.
 exists yet), 1 when a broken link is detected
 
 `docket eval` (the specialist-role eval harness: structural checks + optional live golden
-tasks) was **removed** (CL-J) — `tests/evals/` was dead code, wired to the deleted OpenClaw
-daemon (`WORKSPACE` under `$HOME/.openclaw/workspaces/<role>`, `openclaw agent --local --json`)
-and skipped silently rather than failing, which is why the drift went unnoticed. Unlike
+tasks) was **removed** (CL-J) — `tests/evals/` was dead code wired to the retired runtime and
+skipped silently rather than failing, which is why the drift went unnoticed. Unlike
 `docket workflow`/`docket team`, there is **no replacement command**: no CLI entry point runs a
 single agent turn to repoint the harness at (`DocketDriver.run_turn` is only reached from pod
 dispatch and `maintain distill`), so repairing it would mean inventing new surface against a
@@ -697,12 +694,12 @@ Default table uses column alignment:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DOCKET_HOME` | Base directory for all docket-owned state (renamed from `OPENCLAW_DIR`, ROADMAP Phase 19 P19-6/P19-7b — the old variable and its `~/.openclaw` default are deleted, no fallback) | `~/.docket` |
+| `DOCKET_HOME` | Base directory for all Docket-owned state | `~/.docket` |
 | `DOCKET_DEBUG` | Enable debug (0/1) | 0 |
 | `DOCKET_NO_COLOR` | Disable colors (0/1) | 0 |
 | `DOCKET_MODEL_DEFAULT` | Override the fallback default model (`provider/model`) | (role policy) |
 | `DOCKET_EDITOR` | Preferred editor | $EDITOR or nano |
-| `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` | Process-wide override of the OpenAI-compatible chat endpoint `DocketDriver` talks to (`edges/adapters/llm.py`'s `resolve_endpoint`) — replaces the deleted `OPENCLAW_API` daemon endpoint; there is no daemon left to point at | (per-provider resolution; no daemon endpoint) |
+| `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY` | Process-wide override of the OpenAI-compatible chat endpoint `DocketDriver` talks to (`edges/adapters/llm.py`'s `resolve_endpoint`) | (per-provider resolution) |
 
 ## Return Code Convention
 
@@ -797,9 +794,8 @@ Format: `"Action description. Continue? (y/N): "`
 ## Backwards Compatibility
 
 ### Version Detection
-- No config migration exists or is planned — ROADMAP decision D-19 (Phase 19) is an explicit
-  clean break: a pre-P19-7b install's `~/.openclaw` state (including any version marker there)
-  is not read, moved, or migrated. A fresh `docket install` simply writes a new `~/.docket` home.
+- Docket's supported state root is `~/.docket` (or `DOCKET_HOME`). It does not import state from a
+  retired runtime; a fresh `docket install` writes a Docket-owned home.
 
 ### Deprecated Features
 - `docket reset <level>` → Use `docket maintain clean|reset|rebuild`
@@ -809,6 +805,11 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.16.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: removed retired-runtime commands, paths, and variables from the
+  current CLI contract while preserving the clean-break decision in ROADMAP/Git history.
 
 ### Version 1.15.0 (2026-08-04)
 

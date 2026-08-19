@@ -163,9 +163,7 @@ def _cmd_cost_all() -> None:
             ui.warn(f"  Runaway session: {r}")
 
     ui.console.print()
-    # There is no daemon (and no ~/.openclaw session JSONL) any more, so this
-    # footer names the real, current source of recorded spend -- docket's own
-    # durable per-session storage (core/session.py).
+    # Name the real source of recorded usage: docket's durable session store.
     ui.dim(f"  Recorded spend from session data in {_cfg.SESSIONS_DIR}/*/session.json")
     ui.dim(
         f"  Comparative estimates use a price snapshot (as of {_mp.MODEL_PRICING_AS_OF})"

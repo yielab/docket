@@ -1,7 +1,7 @@
 """Shared pytest fixtures for the docket Python suite.
 
-There is no external daemon, no `openclaw` binary, no `openclaw.json`, and no
-ACL module to isolate around. Every fixture below isolates docket's own state
+There is no external daemon or compatibility layer to isolate around. Every fixture below
+isolates Docket's own state
 instead (fleet.json, the `DOCKET_HOME`-derived registries, docket-owned
 secrets).
 """

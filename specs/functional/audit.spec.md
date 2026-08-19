@@ -1,17 +1,16 @@
 # Audit Log Specification
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
-**ROADMAP Phase 19 P19-7a** moved the log file itself from `$OPENCLAW_DIR/audit.log` to
-`$DOCKET_HOME/audit.log` — see Requirement 5. **ROADMAP Phase 19 P19-8** gave the
+The log file lives at `$DOCKET_HOME/audit.log`; see Requirement 5. **ROADMAP Phase 19 P19-8** gave the
 `channel=telegram` tag on `approval.grant`/`approval.deny` a real producer for the first time —
 see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1** closed the gap
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-08-05
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -32,9 +31,8 @@ This specification covers:
   chain (`docket audit verify`)
 - Why there is no environment kill switch
 
-This specification does NOT cover the daemon's own security audit
-(see security-gates.spec.md).
-It also does NOT cover cost accounting (see cost-tracking.spec.md).
+This specification does NOT cover audit events emitted by programs outside Docket, tool-approval
+policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.md).
 
 ## Requirements
 
@@ -112,8 +110,8 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
    Version 2.1.0 — role→model policy changes and `runs.cancel` — are recorded as of Version
    2.3.0; the two cards that closed them (Phase 15 G-4b, Phase 16 W-4) landed in the same wave.
    What remains uncovered is **structural**: the log records what *docket* does, so an action
-   taken outside docket — a raw Telegram session with an agent, direct `openclaw` CLI use, a
-   human editing `openclaw.json` by hand — leaves no entry, and this spec **MUST NOT** be cited
+   taken outside Docket — a direct model/channel session or a human editing state files by hand —
+   leaves no entry, and this spec **MUST NOT** be cited
    as evidence that it would. That boundary is D-9's "docket orchestrates hops" line, not a gap a
    future card closes.
 3. `action` **MUST** be a dotted verb (e.g. `gates.enable`, `approval.grant`); `detail`
@@ -122,16 +120,12 @@ It also does NOT cover cost accounting (see cost-tracking.spec.md).
 4. Each entry **MUST** record `ts` (UTC ISO-8601, millisecond resolution — see
    Requirement 8), `user`, `pid`, `action`, `detail`, and the tamper-evidence
    fields `seq` and `prev_hash` (Requirement 9).
-5. The log file **MUST** live at `$DOCKET_HOME/audit.log` (moved from `$OPENCLAW_DIR/audit.log`
-   at ROADMAP P19-7a — the last docket-owned state that lived under the daemon's directory) and
-   **MUST** be created with mode `0600`.
+5. The log file **MUST** live at `$DOCKET_HOME/audit.log` and **MUST** be created with mode
+   `0600`.
 6. Recording **MUST** be best-effort: a write failure **MUST NOT** fail the calling command. A
    missing parent directory **MUST** be created (`mkdir(parents=True, exist_ok=True)`), not
-   treated as a reason to skip recording — before P19-7a, a missing `$OPENCLAW_DIR` meant "OpenClaw
-   was never installed" and correctly no-op'd; `$DOCKET_HOME` is genuinely docket-owned with
-   nothing external to bootstrap it, so a missing parent now means only "first-ever docket write",
-   and self-creating it is what stops the log silently losing its very first entry on a fresh
-   `~/.docket`.
+   treated as a reason to skip recording. `$DOCKET_HOME` is Docket-owned, so a missing parent
+   means only "first-ever Docket write"; self-creation prevents losing the first audit entry.
 7. **There is no environment kill switch.** A prior `DOCKET_NO_AUDIT=1` escape
    hatch has been removed entirely — it was an unauthenticated way to silently
    disable the only tamper record docket keeps, indistinguishable from the
@@ -389,6 +383,11 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.8.0 (2026-08-19)
+
+- Recast the current contract around Docket-owned state only. Migration details remain in older
+  changelog entries and git history, while requirements now describe the live audit boundary.
 
 ### Version 2.7.0 (2026-08-05)
 

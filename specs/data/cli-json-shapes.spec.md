@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: Complete
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -15,8 +15,7 @@ against that code.
 
 Covers every command that supports `--json` output: `list`, `info`, `cost` (and
 `cost --history`), `doctor`, `snapshot`, `runs list`/`runs show <id>` (R-3), and the `serve` HTTP
-endpoints. It does **not** cover human-readable (Rich) output, nor the OpenClaw daemon's own
-`openclaw.json` format (owned by the daemon; see the Anti-Corruption Layer).
+endpoints. It does **not** cover human-readable (Rich) output or third-party protocol payloads.
 
 ## Structure
 
@@ -121,15 +120,16 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
   "healthy": "boolean",
   "issues":  "number",
   "checks": {
-    "openclaw":    { "ok": "boolean", "path": "string | null" },
     "python3":     { "ok": "boolean", "path": "string | null" },
     "fzf":         { "available": "boolean", "path": "string | null" },
-    "config":      { "ok": "boolean", "path": "string", "agentCount": "number", "bindingCount": "number" },
-    "gateway":     { "ok": "boolean", "status": "string" },
-    "telegram":    { "enabled": "boolean" },
-    "agents":      "array of { id, model, budget, cost, turns, paused }",
-    "modelConfig": { "ok": "boolean", "invalid": "array of strings" },
-    "drift":       "array of { id, metaModel, ocModel, synced }",
+    "fleet":       { "ok": "boolean", "path": "string", "agents": "number", "bindings": "number" },
+    "agents":      "array of { id, ok, tg, issues }",
+    "modelConfig": {
+      "ok": "boolean",
+      "invalid": "array of { id, model, suggest }"
+    },
+    "modelRegistry": { "migrated": "string", "residualProfilesKey": "boolean" },
+    "dispatchLedger": "array of { project, ok, missingFromLedger, staleInLedger }",
     "budget":      "array of agent budget status objects",
     "runaway":     "array of agent runaway detection objects",
     "keyHygiene":  { "keys": "array", "missingForAgents": "array of strings" },
@@ -187,7 +187,7 @@ The snapshot command writes to a file (or stdout). The outer shape:
 {
   "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
   "gateway":      "active | inactive",
-  "channels":     "array of strings (enabled OpenClaw channel names)",
+  "channels":     "array of strings (channels present in Docket fleet bindings)",
   "agents":       "array of agent objects (see below)",
   "totalCostUsd": "number"
 }
@@ -280,6 +280,13 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
 ```
 
 ## Changelog
+
+### Version 1.5.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: corrected `doctor --json` to its Docket-owned `fleet`,
+  `modelRegistry`, and `dispatchLedger` checks; removed deleted daemon/config/gateway/drift keys;
+  and described snapshot channels as fleet-binding channels. These are documentation corrections
+  to the existing output, not shape changes.
 
 ### Version 1.4.0 (2026-07-30)
 

@@ -1,8 +1,8 @@
 # Input Validation Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Complete
-**Last Updated**: 2026-07-02
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -14,9 +14,8 @@ into three layers — `cli/ → core/ → edges/`. Validation lives in the **`co
 (Pydantic models in `core/models.py`, typed helpers in `core/utils.py` /
 `core/models_policy.py`), is surfaced to the user from the **`cli/`** layer via
 `typer.Exit` and the Rich helpers in `src/docket/ui.py` (`info`/`success`/`warn`/`error`),
-and all side-effecting I/O is funnelled through the **`edges/`** layer (docket-owned JSON via
-`src/docket/edges/store.py`; OpenClaw config only via the ACL
-`src/docket/edges/adapters/openclaw.py`). The rules below are the **contract**; the Python
+and all side-effecting I/O is funnelled through the **`edges/`** layer (Docket-owned JSON via
+`src/docket/edges/store.py`; external protocols via focused adapters). The rules below are the **contract**; the Python
 snippets and module pointers show how that contract is enforced today.
 
 ## Rules
@@ -38,14 +37,14 @@ function or Pydantic model).
 - **MUST** be unique (for creation)
 
 **Reserved Words**:
-- system, docket, openclaw, manager
+- system, docket, manager
 - admin, root, daemon, service
 - config, settings, help, version
 
 **Reference**: ids are derived from a display name by the slugifier in the `add` flow
 (`src/docket/cli/__init__.py`, `_slugify` → `re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")`),
 then checked for the format/length/reserved-word rules and for uniqueness against
-`config.PROJECTS_DIR` (`~/.openclaw/workspaces/projects/<agent-id>/`). The canonical
+`config.PROJECTS_DIR` (`~/.docket/workspaces/projects/<agent-id>/`). The canonical
 predicate is expressed as:
 
 ```python
@@ -57,7 +56,7 @@ from docket import ui
 _AGENT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 _RESERVED = frozenset(
     {
-        "system", "docket", "openclaw", "manager",
+        "system", "docket", "manager",
         "admin", "root", "daemon", "service",
         "config", "settings", "help", "version",
     }
@@ -365,12 +364,11 @@ JSON strings, so the old `sanitize_for_shell` / `escape_json_value` helpers are 
 - **Shell injection**: every external call goes through typed argv wrappers in
   `src/docket/edges/adapters/system.py` (`subprocess.run([...])` with an argument **list** —
   never `shell=True`), so user input can never be interpreted by a shell.
-- **JSON escaping**: all docket-owned JSON is serialised by the standard library via
+- **JSON escaping**: all Docket-owned JSON is serialised by the standard library via
   `src/docket/edges/store.py` (`json` with atomic write + `filelock` + `.bak` rotation +
-  `0600` perms); OpenClaw config is serialised the same way behind the ACL
-  `src/docket/edges/adapters/openclaw.py`. Escaping is the encoder's job.
+  `0600` perms). Escaping is the encoder's job.
 - **Path traversal**: agent workspaces are addressed by validated agent id under
-  `config.PROJECTS_DIR` (`~/.openclaw/workspaces/projects/<agent-id>/`). To confine a
+  `config.PROJECTS_DIR` (`~/.docket/workspaces/projects/<agent-id>/`). To confine a
   user-supplied path to a base, resolve and check containment with `pathlib`:
 
 ```python
@@ -482,6 +480,12 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.3.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: updated state paths and I/O ownership to `DOCKET_HOME`,
+  `edges/store.py`, and focused protocol adapters; removed the retired runtime from current
+  validation examples.
 
 ### Version 1.2.0 (2026-07-02)
 - CH-10 spec truth pass: tier names (`economy`/`standard`/`premium`) were "deprecated

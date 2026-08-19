@@ -221,7 +221,7 @@ message naming the missing path; an install failure follows pip's own exit-code 
   surface later.
 - Both boundary invariants **MUST** be enforced by
   `tests/python/test_runtime_package_boundary.py`, an AST-based (not line-scanning) guard modelled
-  on `test_no_subprocess_in_core.py` / `test_no_openclaw_references.py`.
+  on `test_no_subprocess_in_core.py` / `test_no_external_daemon_coupling.py`.
 - A wheel built from `packages/docket-runtime/pyproject.toml` **MUST** install, in a virtual
   environment containing nothing else from this repository, with `pydantic` and `filelock` as the
   only non-transitive dependencies pulled in.

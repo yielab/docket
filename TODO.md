@@ -13,17 +13,18 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-19) — Wave 20 closed; nothing is scheduled
+> ## ☑ BOARD CLEAR (2026-08-19) — W21-C1 daemon-free truth pass complete
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
 > and pipeline steps keep separate durable histories while typed handoffs carry cross-step context.
-> The repository harness and its three focused skills are also in place. No follow-up card is open;
-> deferred roadmap work still requires its named trigger rather than being scheduled by default.
+> The repository harness and its three focused skills are also in place. W21-C1 removed the stale
+> current-state references found by the post-W20 audit. Deferred roadmap work still requires its
+> named trigger rather than being scheduled by default.
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
-> `command grep -ril openclaw src/` — returns only comments and docstrings narrating the removal;
-> zero live string literals. docket now owns the loop, the tool registry, all three policy hooks,
+> the retired-brand scan of `src/docket/` — now returns zero references, including prose. Docket
+> owns the loop, the tool registry, all three policy hooks,
 > approvals, audit and sessions, and rents only protocols (OpenAI-compatible HTTP, MCP, containers,
 > the Telegram Bot API).
 >
@@ -54,10 +55,11 @@
 2. **Read first (bounded):** use `$docket-roadmap` to load the active card, its named ROADMAP
    decision/section, the owning spec, and the card's own "Read" list. Do not ingest all of
    `ROADMAP.md`, `TODO.md`, or local `CLAUDE.md` as startup context.
-3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. OpenClaw formats live **only**
-   in `edges/adapters/openclaw.py` (the ACL). docket-owned JSON goes **only** through `edges/store.py`
-   (JSONL append logs are the one D-12 exemption). Every shell-out goes through `edges/adapters/`.
-   `core/`/`edges/` never import `ui.py` or print (D-3 from Phase 12).
+3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. docket-owned JSON goes
+   **only** through `edges/store.py` (JSONL append logs are the one D-12 exemption), external
+   protocols terminate in `edges/adapters/`, and there is no compatibility layer for the retired
+   daemon. Every shell-out goes through `edges/adapters/`. `core/`/`edges/` never import `ui.py` or
+   print (D-3 from Phase 12).
 4. **No-behavior-change rule, except where a card says otherwise:** the golden suite
    (`bash tests/golden/run.sh verify-all`) must stay byte-identical unless a card explicitly adds new
    CLI surface — those cards say so and require regenerated goldens with the diff explained.
@@ -80,6 +82,42 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ☑ WAVE 21 COMPLETE (2026-08-19) — daemon-free truth pass
+
+### W21-C1 — remove stale current-state OpenClaw contracts
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** the post-W20 roadmap audit found no live runtime dependency, but current
+acceptance stories, JSON/API specs, source comments, golden fixtures, and the board's own layer rule
+still named the deleted daemon, its home directory, or its removed driver as if they were current.
+
+**Goal:** make every current-state contract describe Docket's owned runtime, state root, fleet,
+sessions, and protocol boundaries without presenting the retired daemon as a dependency or product
+anchor.
+
+**Non-goals:** no runtime behavior change, no deletion of explicit changelog/decision history, no
+rename of Docket, and no removal of versioned neutral fields such as `gateway` where compatibility
+requires them.
+
+**Live path / files:** current sections of `ROADMAP.md`, `TODO.md`, `README.md`/`NOTICE`, owning
+specs and acceptance stories, `src/docket/` comments/names, and the golden fixture root.
+
+**Acceptance:** `src/docket/` has zero OpenClaw references; current examples use `~/.docket`;
+normative JSON/API shapes match their live producers; remaining repository references are explicitly
+historical; focused tests, Ruff/format/mypy, full pytest, golden parity, spec validation, and metrics
+checks are green.
+
+**Shipped:** product code and ordinary docs/tests now carry no retired-brand references; the golden
+harness uses `$DOCKET_HOME`/`.docket`; live specs describe the Docket-owned driver, fleet, sessions,
+audit, costs, cancellation, Telegram channel, overlays, and JSON shapes directly. A source-tree
+guard prevents the coupling from returning. Explicit migration history remains only in
+`CHANGELOG.md`, ROADMAP/TODO history, and older spec changelogs. Validation: 2,229 tests passed
+(4 environment skips), 18 golden cases passed, 24 specs valid, Ruff/format/mypy green, and README
+metrics synchronized.
 
 ---
 

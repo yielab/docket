@@ -50,7 +50,7 @@ team-coordination.spec.md, 2026-07-30 — `docket team` was retired per D-11; po
 owns delegation now. workflow-integration.spec.md, 2026-07-30 — `docket workflow`'s Lobster YAML
 surface was retired per D-16; pipeline-format.spec.md owns the pipeline dialect docket actually
 executes now. eval.spec.md, 2026-08-04 — `docket eval` was removed per CL-J; the specialist-role
-eval harness (`tests/evals/`) was dead code wired to the deleted OpenClaw daemon, and — unlike
+eval harness (`tests/evals/`) was dead code wired to the retired runtime, and — unlike
 `workflow`/`team` — has no successor command; `docket eval`/`docket evals` now print a
 removed-command notice with no replacement.)
 
@@ -113,8 +113,8 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-08-04 (CL-J: `docket eval` removed — eval.spec.md deleted and its row
-> dropped below; `scripts/metrics.py`'s `count_specs()` now reports 24, down from 25).
+> Last synchronized: 2026-08-19 (W21-C1 daemon-free truth pass: current contracts, examples, and
+> fixture paths now describe Docket's owned runtime and state root).
 > Previously synchronized 2026-08-03 (Phase 19 CLOSED — the removal wave P19-7a/P19-7b deleted the
 > daemon, and P19-8 made Telegram a real approval channel; every row below re-derived from its
 > spec's own header, not carried forward).
@@ -131,31 +131,31 @@ Each specification document must include:
 
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
-| Agent Lifecycle | 1.8.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
-| Agent Loop | 1.6.0 | Implemented and live | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver`: the production turn loop dispatches every tool call through `core.tools.dispatch_tool`, narrows tools by role, composes identity context, compacts durable history through bounded non-recursive calls, and can keep its history coordinate separate from its task trace coordinate (W20-C2/W20-C2b/W20-C4) |
+| Agent Lifecycle | 1.9.0 | Complete | `docket add` blueprint selection (Phase 16 W-7); `maintain distill` + distill-before-delete (Phase 17 C-2) |
+| Agent Loop | 1.7.0 | Implemented and live | `core/agent_loop.py` + `edges/adapters/docket_runtime.py`'s `DocketDriver`: the production turn loop dispatches every tool call through `core.tools.dispatch_tool`, narrows tools by role, composes identity context, compacts durable history through bounded non-recursive calls, and can keep its history coordinate separate from its task trace coordinate (W20-C2/W20-C2b/W20-C4) |
 | API Keys | 1.1.0 | Complete | |
-| Audit | 2.6.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*` (Phase 18 L-3), `models.*` (Phase 15 G-4b), `runs.cancel` (Phase 16 W-4) `mcp_servers.*` (Phase 19 P19-13) and `telegram.*` (Phase 19 P19-8) all covered; what remains uncovered is structural (actions taken outside docket) |
-| Cost Tracking | 1.5.0 | Implemented, **but reports no dollars since P19-7a** | Auto-pause is real (Phase 14 R-5); session-JSONL parsing lives behind the RuntimeDriver port (Phase 18 L-1); enforcement stays scoped to the pod-dispatch lane. **Since the P19-7a cutover `DocketDriver` reports `cost_usd = 0.0` and `capabilities().reports_cost_usd = False`** — real token counts are recorded, but docket will not turn tokens into a billing claim. `docket cost --history` is consequently empty (`usage().by_day == []`, no per-turn timestamp). Do not read this row as "cost tracking works" |
-| Model Profiles | 2.5.2 | Complete | Overridable rank anchors, local preset (Phase 18 L-2); archetype-modelClass fallback (Phase 16 W-6); `models.*` audit coverage (Phase 15 G-4b); carries the L-5 spike's evidence that a sidecar gateway needs no new capability (Phase 18 L-5); tier-name vocabulary now has zero surviving user-facing use since CL-J closed the `docket eval --tier` carve-out |
+| Audit | 2.8.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*`, `models.*`, `runs.cancel`, `mcp_servers.*`, and `telegram.*` are covered; actions taken outside Docket remain structurally outside its log |
+| Cost Tracking | 1.6.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
+| Model Profiles | 2.6.0 | Complete | Overridable rank anchors, local preset, archetype-modelClass fallback, and `models.*` audit coverage; tier-name vocabulary has no surviving user-facing use |
 | Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
-| Pod Blueprints | 1.1.0 | Implemented | **Five** built-ins — software/research/content/ops plus `agentic-product` (Phase 21 P21-5): the pod shape for a product that ships its own agent, running reviewer+tester by default and naming `docket-runtime` as the substrate to embed. Deliberately **data, not scaffolding** — a blueprint describes a pod shape and provisions no repository contents. `docket add --blueprint`/extended `--from` (Phase 16 W-7); no user-authored blueprints yet |
-| Pod Dispatch | 6.1.0 | Complete | A hop executes on `DocketDriver` through docket's gated loop. W20-C4 keeps one task-wide audit trace while isolating durable model history by pipeline `step_id`; bounded typed handoffs are the only cross-step context. The v2 state machine, approval/rework/resume, parallel groups, generalized gates, diff artifacts, and token-budgeted hop compiler remain live. |
-| Role Archetypes | 1.4.0 | Implemented | Built-ins byte-identical to pre-W-6 generators; `gateContract` now load-bearing via the executor (Phase 16 W-8); composed into pod blueprints (Phase 16 W-7); per-role `tokenBudget` for the context compiler (Phase 17 C-1); enforced `deniedTools` + `registry_for_role` (Phase 19 P19-12) |
-| Security Gates | 0.12.1 | Implemented (on by default) | **P19-7b removed the daemon, and with it the split enforcement story** — every gate docket describes is now enforced by docket itself at `core/tools.py`'s single chokepoint, so the long-standing caveat that the daemon gated by binary path while docket gated by argument no longer applies. Approval store has a real producer (Phase 15 G-1); the G-5 daemon-gate bridge is moot (the other side of it is deleted); the policy engine is on the live dispatch path (Phase 15 G-2); **`pre_tool_call` is live** for calls docket dispatches itself, with argument-aware command classification (Phase 19 P19-2/P19-3); opt-in container/bwrap jail for the bash tool (Phase 19 P19-9); allowlisted `fetch` tool as an inspectable egress path (Phase 19 P19-11) — **egress itself stays open**, `python3`/`node`/`git clone` remain unattended escape hatches by design (D-23) |
+| Pod Blueprints | 1.2.0 | Implemented | Five built-ins — software/research/content/ops plus `agentic-product`; deliberately data, not scaffolding. `docket add --blueprint`/extended `--from`; no user-authored blueprints yet |
+| Pod Dispatch | 6.2.0 | Complete | A hop executes on `DocketDriver` through Docket's gated loop. W20-C4 keeps one task-wide audit trace while isolating durable model history by pipeline `step_id`; bounded typed handoffs are the only cross-step context |
+| Role Archetypes | 1.6.0 | Implemented | Built-ins, load-bearing `gateContract`, pod-blueprint composition, per-role `tokenBudget`, enforced `deniedTools`, and Docket-owned user overlays |
+| Security Gates | 0.14.0 | Implemented (on by default) | Every tool call Docket dispatches passes through `core/tools.py`; approvals, argument-aware policy, optional isolation, and inspectable allowlisted fetch share that chokepoint. General egress remains open by decision D-23 |
 | Session History | 1.3.0 | Implemented and live | `core/session.py`: durable history under caller-owned opaque keys, lossless message round-trip, bounded hierarchical atomic compaction, isolated summarizer key, recursion guard, and whole-operation fail-closed behavior; W20-C4 adds step-scoped dispatch keys without migrating old records |
 | Session Scoping | 2.0.0 | Complete | Base metadata scope remains `agent:<id>:<project>`; pod dispatch derives isolated step-history keys and keeps a separate task trace without deleting prior sessions (W20-C4) |
-| Telegram Integration | 2.0.0 | Complete | **Major bump: Telegram is now a real docket approval channel (Phase 19 P19-8)** — docket owns the bot (stdlib long-poll, `docket serve --telegram`), so a grant/deny writes an audit entry tagged `channel="telegram"` like the CLI/HTTP/MCP channels. This **reverses** the caveat carried since Phase 15, when a Telegram reply answered the *daemon's* native prompt that docket never saw; P19-7b deleted that prompt. Authorization is the `fleet.json` binding — an unbound chat is refused and the attempt audited as `telegram.unauthorized`; delegated text is screened through `pre_input`/`prompt-injection` |
-| Workspace Structure | 1.7.0 | Complete | Specialist workspace contract shipped (Phase 17 C-4); `workdir` workspace kind + role-aware `TOOLS.md` (Phase 16 W-7) |
-| CLI Interface | 1.14.0 | Complete | Signatures/exit codes; semantics live in functional specs; `docket pipeline`/`docket runs cancel` (Phase 16 W-2); `pipeline run --follow` (Phase 16 W-4); `docket eval` removed (CL-J), dropping exit code 2 (SKIP), the one exception to the flat 0/1 convention |
+| Telegram Integration | 2.1.0 | Complete | Docket owns the bot, fleet binding, and CLI/HTTP/MCP/Telegram approval path; unbound chats fail closed and delegated text passes through input policy |
+| Workspace Structure | 1.8.0 | Complete | `DOCKET_HOME` is the only state root; specialist and workdir workspace contracts plus role-aware `TOOLS.md` are live |
+| CLI Interface | 1.16.0 | Complete | Signatures/exit codes and Docket-owned environment variables; semantics live in functional specs |
 | MCP Client | 1.3.0 | Implemented and wired to the live turn path | External tools are namespaced, description-screened, loaded before role narrowing, and dispatched through the same gated chokepoint. Remote results honor the live `DOCKET_TOOL_MAX_OUTPUT_CHARS` context ceiling per call. Remaining limits: stdio only, no listing cache, and fail-closed zero MCP tools for read-only roles without trusted capability metadata. |
 | Runtime Library | 1.0.0 | Implemented (packaging + boundary test; **not published to any index**) | `packages/docket-runtime/pyproject.toml` (Phase 21 P21-1): the runtime slice built as a second wheel over the *same* source tree via `force-include` — **zero files moved or duplicated**. Verified standalone: the wheel installs into a clean venv pulling only `pydantic` + `filelock`, and a real `dispatch_tool` call, path containment and argument-aware `classify_command` all work there. Public surface is deliberately "every non-underscore name in a shipped module" — D-21 forbids designing a facade. `uv build` sdist round-trip does **not** work (force-include paths are monorepo-relative); `--wheel` is the supported path |
-| MCP Server | 1.3.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra (Phase 18 L-3); on the `mcp` 2.x SDK, pin `>=2.0.0` (Phase 18 L-6); carries the L-4 spike's dated evidence that the daemon-side MCP registry is real upstream but absent from the targeted daemon |
-| CLI JSON Shapes | 1.4.0 | Complete | |
-| docket-meta schema | 2.8.0 | Complete | `requireApprovalRoles` (Phase 15 G-1); `blueprint`/`workspaceKind`/`workDir` (Phase 16 W-7) |
-| Serve Read API | 2.3.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs` tier (Phase 14 R-3); `mcp` run source (Phase 18 L-3); `POST /dispatch/<project>` variable binding + 400s (Phase 16 W-4); guardrail + loop metrics, derived per-scrape, with the audit-rotation and scrape-cost limits stated (Phase 20 P20-2) |
-| Input Validation | 1.2.0 | Complete | |
-| Test Framework | 2.1.0 | Active | Conventions doc (not a `.spec.md`); eval-stub harness section removed (CL-J) |
-| User Stories | 1.3.0 | Active | Acceptance criteria (not a `.spec.md`) |
+| MCP Server | 1.4.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra, using the `mcp` 2.x SDK |
+| CLI JSON Shapes | 1.5.0 | Complete | Docket-owned doctor/fleet contract and current snapshot channel provenance |
+| docket-meta schema | 2.9.0 | Complete | Docket-owned `~/.docket` paths and `core/fleet.py` metadata access; `requireApprovalRoles`; `blueprint`/`workspaceKind`/`workDir` |
+| Serve Read API | 2.6.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs`, tasks/traces/pods, guardrail + loop metrics; the versioned `gateway` field is an always-inactive compatibility field |
+| Input Validation | 1.3.0 | Complete | Docket-owned store and protocol-boundary validation |
+| Test Framework | 2.2.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, and proportional validation |
+| User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links
 

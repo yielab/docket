@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Active
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-19
 
 ## Overview
 
@@ -106,14 +106,14 @@ are not yet test-backed are tracked as gaps in `spec-coverage.sh`.
 
 **Acceptance Criteria:**
 - [ ] Cost command shows tokens used (input/output/cache)
-- [ ] Dollar figures are the daemon's recorded spend, with provenance stated
-- [ ] `--history [--days N]` shows daily recorded-cost history
+- [ ] Recorded spend preserves its source; budget warnings label any usage-derived estimate
+- [ ] `--history [--days N]` shows daily usage-derived cost history
 - [ ] Aggregates across all agents when no id is given
 - [ ] `--json` output available for scripting (cli-json-shapes.spec.md)
 - [ ] Budget warnings render at ≥80% and ≥100% of a configured cap
 
 **Definition of Done:**
-- Cost figures match the session JSONL totals exactly
+- Token totals match Docket's durable session records exactly
 - Performance handles 1000+ sessions (incremental cost index)
 - Budget warning thresholds implemented (display; enforcement per cost-tracking.spec.md)
 
@@ -244,7 +244,7 @@ D-16.
 **So that** I can quickly identify and fix issues
 
 **Acceptance Criteria:**
-- [ ] Check OpenClaw daemon status
+- [ ] Validate the Docket-owned state root and fleet registry
 - [ ] Verify all dependencies present
 - [ ] Validate configuration files
 - [ ] Test workspace permissions
@@ -267,7 +267,7 @@ D-16.
 Given a clean docket installation
 When I run "docket add testapp ~/projects/app"
 Then the pod should be created successfully with members testapp-lead and testapp-implementer
-And workspaces should exist at ~/.openclaw/workspaces/projects/testapp-lead/ and testapp-implementer/
+And workspaces should exist at ~/.docket/workspaces/projects/testapp-lead/ and testapp-implementer/
 
 When I run "docket info testapp-lead"
 Then I should see the agent details
@@ -296,9 +296,9 @@ Then I should see:
   | Metric        | Value          |
   | Input Tokens  | 50,000         |
   | Output Tokens | 25,000         |
-  | Total cost    | $X.XX (recorded from daemon) |
+  | Total cost    | none recorded for these sessions |
 
-And the total should reflect the daemon's recorded spend, not an estimate
+And the total should be labelled as an estimate derived from measured session usage
 ```
 
 ## Epic: Pod Lifecycle (Phase 10)
@@ -311,7 +311,7 @@ And the total should reflect the daemon's recorded spend, not an estimate
 
 **Acceptance Criteria:**
 - [ ] `docket add myapp ~/code/myapp` creates `myapp-lead` and `myapp-implementer`
-- [ ] Each member gets an isolated workspace at `~/.openclaw/workspaces/projects/<member-id>/`
+- [ ] Each member gets an isolated workspace at `~/.docket/workspaces/projects/<member-id>/`
 - [ ] All members share the pod's session key `agent:myapp:default`
 - [ ] `docket pod myapp` lists the pod members with their roles
 - [ ] `docket add myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
@@ -338,7 +338,7 @@ And the total should reflect the daemon's recorded spend, not an estimate
 - [ ] After completion, `docket pod myapp queue` shows the task as `done` with recorded cost
 
 **Definition of Done:**
-- Dispatch pipeline covered by integration tests with a real openclaw shim
+- Dispatch pipeline covered by live-path tests with a deterministic `ChatBackend`
 - Budget-gating tested (over-budget task is set to `blocked`, never rewritten to `pending`)
 - Trace events verified per-hop
 
@@ -379,6 +379,11 @@ And the total should reflect the daemon's recorded spend, not an estimate
 
 ## Changelog
 
+### Version 1.4.0 (2026-08-19)
+- W21-C1 daemon-free truth pass: replaced the retired daemon's status/path/cost language with
+  Docket's owned state root, fleet registry, durable session usage, and live `ChatBackend` path.
+  No acceptance behavior changed; the stories now describe the implementation that already ships.
+
 ### Version 1.3.0 (2026-07-30)
 - ROADMAP Phase 16 W-3 (D-16): `docket workflow`/Lobster was retired — removed the retired
   WF-001/WF-002 historical story bodies (banner + pointer to pipeline-format.spec.md remain;
@@ -395,7 +400,8 @@ And the total should reflect the daemon's recorded spend, not an estimate
 ### Version 1.1.0 (2026-06-26)
 - Updated TEAM-001 to reflect pod model: Manager is an org specialist, not a router to programmer/reviewer/tester
 - Fixed Gherkin lifecycle scenario: `docket reset testapp 1` → `docket maintain testapp-lead clean`; creation now shows pod members
-- Fixed cost scenario: removed "standard profile" tier language; cost output is daemon-recorded spend, not an estimate
+- Fixed cost scenario: recorded spend and the separately labelled budget estimate now have
+  distinct provenance.
 - Added POD-001 (provision pod), POD-002 (dispatch pipeline), POD-003 (grow/shrink pod) for Phase 10 coverage
 - Updated story index table and "Last Updated" date
 

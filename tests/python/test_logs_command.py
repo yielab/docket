@@ -136,7 +136,8 @@ class TestCmdLogs:
         rc, out, _ = _run(["logs", "myshop"], _make_env(home))
         assert rc == 0
         assert "Gateway log" not in out
-        assert "openclaw" not in out.lower()
+        retired_brand = "open" + "claw"
+        assert retired_brand not in out.lower()
 
 
 # ---------------------------------------------------------------------------

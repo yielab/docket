@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete
-**Last Updated**: 2026-08-03
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -122,9 +122,8 @@ commands. Six modes **MUST** be supported.
 - Verify and fix missing workspace directory → recreate
 - Regenerate missing core files from templates
 - Reset invalid permissions to 700/600
-- Backfill a specialist's missing `.docket-meta.json` from the role→model policy (ROADMAP Phase
-  19 P19-6 retired the older openclaw.json-model fallback this backfill used to prefer — the
-  fleet registry never tracked per-agent model, so the policy resolver is now the only source)
+- Backfill a specialist's missing `.docket-meta.json` from the role→model policy; the fleet
+  registry does not track per-agent models, so the policy resolver is the only source.
 - Re-register a missing fleet registration
 - Clean up orphaned Telegram bindings
 
@@ -245,9 +244,7 @@ Continue? (y/N): y
 ## Validation
 
 ### Pre-conditions
-- User **MUST** have write permissions to ~/.docket (corrected ROADMAP Phase 19 P19-7b: there
-  is no external daemon to have running any more — `edges/adapters/openclaw.py` and every
-  `openclaw` shell-out are deleted; `DocketDriver` talks to a model endpoint directly)
+- User **MUST** have write permissions to `~/.docket`.
 - Python 3.11+ **MUST** be available (docket's runtime requirement)
 
 ### Post-conditions
@@ -290,6 +287,10 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.9.0 (2026-08-19)
+
+- Removed retired-runtime migration detail from the live maintenance and precondition contract.
 
 ### Version 1.8.0 (2026-08-03)
 

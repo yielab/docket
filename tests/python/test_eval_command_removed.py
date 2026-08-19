@@ -1,9 +1,8 @@
 """`docket eval` is retired — it must exit 1 with an explanation, not run anything.
 
 `tests/evals/` was a "non-blocking specialist-role eval harness" that could not
-actually run: it shelled out to the deleted OpenClaw daemon (`WORKSPACE` under
-`$HOME/.openclaw/workspaces/<role>`, `openclaw agent --local --json`), and
-`eval_skip_unless_command openclaw` made it skip silently rather than fail,
+actually run: it depended on the retired external runtime, and its command-availability guard
+made it skip silently rather than fail,
 which is why the drift went unnoticed. Unlike `docket workflow`/`docket team`,
 there is no replacement command — no CLI entry point runs a single agent turn
 to repoint the harness at (`DocketDriver.run_turn` is only reached from pod

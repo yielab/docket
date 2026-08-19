@@ -15,7 +15,7 @@ Pure `core/` coverage — no CLI, no subprocess, no live daemon. Covers:
 
 Uses `tests/python/fakes.py`'s `FakeDriver` (the one test double for the
 `RuntimeDriver` port, ROADMAP §4.5) throughout -- this suite is green on a
-machine with no `openclaw` binary and no daemon at all. CLI-level wiring
+machine with no external agent binary or daemon. CLI-level wiring
 (`docket maintain <id> clean/reset/distill`, the `--no-distill-first`
 opt-out) is covered separately in test_maintain_distill_cli.py.
 """

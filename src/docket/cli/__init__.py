@@ -1430,13 +1430,15 @@ def cmd_snapshot(
     import datetime as _dt
 
     gw = "active" if gateway_active() else "inactive"
-    oc = _fleet.load_fleet()
-    channels = _fleet.channel_names(oc)
-    registered_ids = {a.id for a in _fleet.list_agents(oc)}
+    fleet_state = _fleet.load_fleet()
+    channels = _fleet.channel_names(fleet_state)
+    registered_ids = {a.id for a in _fleet.list_agents(fleet_state)}
 
     def _agent_bindings(aid: str) -> list[dict[str, Any]]:
         return [
-            {"channel": b.channel, "peerId": b.peer_id} for b in oc.bindings if b.agent_id == aid
+            {"channel": b.channel, "peerId": b.peer_id}
+            for b in fleet_state.bindings
+            if b.agent_id == aid
         ]
 
     agents_out: list[dict[str, Any]] = []

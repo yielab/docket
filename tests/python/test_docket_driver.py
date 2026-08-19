@@ -2,7 +2,7 @@
 (`edges/adapters/docket_runtime.py`).
 
 `DocketDriver` implements the 7-method `RuntimeDriver` Protocol on top of
-`core/agent_loop.py` with no OpenClaw daemon underneath. Covers:
+`core/agent_loop.py` with no external daemon underneath. Covers:
 
 * **`run_turn`** maps `AgentLoopResult` onto `TurnResult` honestly: `cost_usd`
   stays `0.0` always, real tool calls actually execute end-to-end (through
@@ -289,7 +289,7 @@ class TestProvisionTeardownCapabilities:
         assert caps.driver_name == "docket"
         # cost_usd is never populated by this driver -- see run_turn/usage.
         assert caps.reports_cost_usd is False
-        # provision/teardown are no-ops, unlike OpenClawDriver's real ones.
+        # Provision/teardown are no-ops because Docket owns its local state.
         assert caps.supports_provisioning is False
         # list_sessions/read_new_turns/usage are real, unlike a driver with
         # no durable store at all.

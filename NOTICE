@@ -1,11 +1,8 @@
 docket-cli
 Copyright (c) Santiago Yie
 
-This is an independent, open-source project. It is NOT affiliated with,
-sponsored by, or endorsed by OpenClaw or the OpenClaw Foundation. As of
-Phase 19, docket has no runtime dependency on OpenClaw or any other external
-agent daemon; "OpenClaw" is referenced only where this project's own
-documentation discusses it for historical or comparative context. All
-trademarks are the property of their respective owners.
+This is an independent, open-source project. Docket owns its runtime and has
+no dependency on an external agent daemon. Third-party names retained in
+historical records remain the property of their respective owners.
 
 docket-cli is distributed under the Apache License, Version 2.0. See LICENSE for terms.

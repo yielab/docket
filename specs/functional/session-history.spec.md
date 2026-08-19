@@ -9,13 +9,10 @@ pipeline step its own history key while preserving the task-wide trace identity.
 
 ## Purpose
 
-Before ROADMAP Phase 19, docket already owned every piece of durable state that survives
-*between* agent turns — the `HEARTBEAT.md` task ledger, the conversation registry, memory logs,
-the hash-chained audit log, per-hop traces (see `workspace-structure.spec.md`, `audit.spec.md`).
-It never owned the message history *inside* a turn, because the OpenClaw daemon owned the turn
-loop and kept that history itself. Decision D-19 has docket take over the loop, which means
-docket now needs to durably store, and safely shrink, the turn history the loop replays on every
-model call. This specification defines that store: `core/session.py`.
+Docket owns the durable state that survives between and inside agent turns: the `HEARTBEAT.md`
+task ledger, conversation registry, memory logs, hash-chained audit log, per-hop traces, and the
+turn history replayed on each model call (see `workspace-structure.spec.md`, `audit.spec.md`).
+This specification defines the bounded turn-history store: `core/session.py`.
 
 ## Scope
 

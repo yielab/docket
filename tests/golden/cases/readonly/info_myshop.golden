@@ -2,7 +2,7 @@ EXIT:0
 
 Project: My Shop (myshop)
 
-  Workspace:         <HOME>/.openclaw/workspaces/projects/myshop
+  Workspace:         <HOME>/.docket/workspaces/projects/myshop
   Codebase:          <HOME>/Sites/myshop
   Stack:             Docker,git
   Model:             anthropic/claude-sonnet-4-6

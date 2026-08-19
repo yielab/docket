@@ -1,26 +1,21 @@
 # Telegram Integration Specification
 
-**Version**: 2.0.0
-**Status**: Implemented — **ROADMAP Phase 19 P19-8 shipped docket's own Telegram bot.** With no
-external daemon left (P19-7b), docket owns the whole channel: `docket wire`/`docket unwire`
-record a peer/group binding in `fleet.json` (unchanged from 1.1.0), and `docket serve
+**Version**: 2.1.0
+**Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
+record a peer/group binding in `fleet.json`, and `docket serve
 --telegram` long-polls the Telegram Bot API (`edges/adapters/telegram.py`, stdlib `urllib`, zero
 new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through docket's
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
 fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny through it writes an
-`audit_log()` entry tagged `channel="telegram"`, exactly like the other three. This closes the
-gap CLAUDE.md has had to explicitly deny since Phase 15 (G-5: a Telegram reply used to answer the
-daemon's own native exec-approval prompt, which docket never saw and never audited — that prompt
-no longer exists).
-**Last Updated**: 2026-08-03
+`audit_log()` entry tagged `channel="telegram"`, exactly like the other three.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
 This specification defines two things: (1) how docket records which Telegram peer/group maps to
 which agent (`docket wire`/`docket unwire`, unchanged in shape since 1.1.0), and (2) how docket's
 own bot (`docket serve --telegram`) turns an inbound message on a bound chat into an approve/
-deny/status/delegate action against docket's real state — never a daemon, never a second
-approval mechanism.
+deny/status/delegate action against Docket's real state and approval mechanism.
 
 ## Scope
 
@@ -70,11 +65,10 @@ blocked policy verdict never default to granting or denying anything.
 
 ### Wiring a group (docket wire)
 
-1. **MUST** prompt for the peer/group ID directly (manual entry) — ROADMAP Phase 19 P19-7b
-   removed log-based Telegram group auto-discovery (`scan_telegram_groups`) along with the
-   daemon gateway log it read; there is no list of "recently active groups" to present any more.
+1. **MUST** prompt for the peer/group ID directly (manual entry). Docket has no channel activity
+   log from which to infer a safe list of recently active groups.
 2. **MUST** write a binding mapping the entered peer ID to the target agent into `fleet.json`
-   (`core/fleet.py`'s `upsert_binding`), not `openclaw.json` (deleted).
+   (`core/fleet.py`'s `upsert_binding`).
 3. **MUST** state plainly that the binding is the channel's entire authorization boundary: anyone
    who can post in the bound chat can act as that agent's operator once the bot is running.
 4. **SHOULD** show an existing binding for the agent, if any, before prompting for a new one.
@@ -265,6 +259,11 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Version 2.1.0 (2026-08-19)
+
+- Removed retired channel-runtime comparisons from the live contract; Docket's bot, fleet
+  binding, and approval store are now stated directly as the complete implementation.
 
 ### Version 2.0.0 (2026-08-03)
 

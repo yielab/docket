@@ -16,7 +16,7 @@ Role→model policy
   rank anchors  anthropic/claude-opus-4-6 → anthropic/claude-sonnet-4-6 → anthropic/claude-haiku-4-5
   (role-default seed table — not a runtime fallback chain; overridable in docket-models.json)
 
-  Registry file: <HOME>/.openclaw/docket-models.json
+  Registry file: <HOME>/.docket/docket-models.json
   (user overrides active)
   PRICE column is an estimate from a snapshot (as of <DATE>); override in docket-models.json
 

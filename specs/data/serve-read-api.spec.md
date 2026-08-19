@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Stable
-**Last Updated**: 2026-08-04
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -102,12 +102,12 @@ Full fleet snapshot. Keys are **stable**; additional keys may be added in minor 
 | Field | Type | Notes |
 |---|---|---|
 | `apiVersion` | string | Always matches `SERVE_API_VERSION` in `src/docket/serve.py` — currently `"2"`. |
-| `gateway` | `"active" \| "inactive"` | Systemd is-active result for `openclaw-gateway.service`. |
-| `channels` | string[] | Enabled OpenClaw channel names (e.g. `["telegram"]`). |
+| `gateway` | `"active" \| "inactive"` | Compatibility field. Docket owns its runtime, so the shipped `gateway_active()` stub returns `False` and this is always `"inactive"`. |
+| `channels` | string[] | Distinct channel names present in Docket's `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].scope` | `"project" \| "org"` | `project` for pod agents, `org` for shared specialists. |
 | `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
 | `agents[*].lastActivity` | date string \| `"never"` | Date of the newest memory log file, or `"never"`. |
-| `totalCostUsd` | float | Sum of all agent `costUsd` values (daemon-recorded). |
+| `totalCostUsd` | float | Sum of all agents' usage-derived cost estimates. |
 
 ### GET /metrics
 
@@ -179,7 +179,8 @@ Liveness check. Always returns HTTP 200 while the process is alive.
 {"status": "ok", "gateway": 1}
 ```
 
-`gateway` is `1` (active) or `0` (inactive).
+`gateway` is retained for API compatibility and is always `0`: Docket has no external gateway
+process. Liveness is represented by the HTTP 200 and `status="ok"`.
 
 ### GET /runs
 
@@ -536,6 +537,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.6.0 — 2026-08-19
+
+W21-C1 daemon-free truth pass: documented the versioned `gateway` field as an always-inactive
+compatibility field, sourced channels from Docket's fleet bindings, and corrected cost provenance
+to usage-derived estimates. No response shape or runtime behavior changed.
 
 ### 2.5.0 — 2026-08-04
 

@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented
-**Last Updated**: 2026-07-31
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -31,102 +31,7 @@ It does NOT cover:
 - The approval token lifecycle itself (`pending → granted/denied/expired`) — see
   `security-gates.spec.md`
 - The audit log's format and tamper-evidence chain — see `audit.spec.md`
-- Agent-side MCP *client* configuration (docket consuming other MCP servers' tools inside an
-  agent turn) — this is explicitly out of scope for this server; see `mcp-client.spec.md`
-  (ROADMAP Phase 19 P19-10). **This supersedes the L-4 framing below**: L-4 asked whether the
-  *OpenClaw daemon's own* MCP client config could be managed through the ACL, which presumed the
-  daemon stayed the thing that owned an agent turn. Decision D-19 has docket own the loop
-  directly instead, so P19-10 builds docket's own MCP client straight into `core/tools.py`'s
-  gated registry — no daemon, and no ACL involvement at all. The L-4 spike findings below remain
-  an accurate historical record of what the (now bypassed) daemon-side registry would have
-  offered; they are not a description of how MCP client configuration actually works today.
-
-## L-4 spike findings (investigated 2026-07-30, capability real, not yet usable by this fleet)
-
-1. **Question.** ROADMAP Phase 18 L-4 asks the *other* direction from this server: can docket
-   manage the OpenClaw daemon's own MCP client configuration — which MCP servers the daemon
-   itself connects to and exposes as tools inside an agent turn — through the ACL
-   (`edges/adapters/openclaw.py`), the way the card sketches (`docket mcp add <agent> <server>`
-   writing it via the driver, `docket doctor` checking it)? Investigated directly against this
-   project's actual ground-truth daemon — the version cited throughout `edges/adapters/
-   openclaw.py`, `core/dispatch.py`, `core/models_policy.py`, and `core/runtime_driver.py`:
-   `openclaw 2026.2.23`, installed and running live (real gateway, real registered agents) — and
-   against the real upstream project (github.com/openclaw/openclaw) and its published docs
-   (docs.openclaw.ai).
-
-2. **Confirmed absent in the fleet's actual daemon.** Against the live, already-running
-   `openclaw 2026.2.23`:
-   - `openclaw mcp --help` does not recognize `mcp` as a subcommand — it silently falls through
-     to the top-level `openclaw --help` listing (no `mcp` entry appears anywhere in that
-     listing), exit `0`.
-   - `openclaw config get mcp.servers --json` returns `Config path not found: mcp.servers` — the
-     config key does not exist in this daemon's schema at all.
-   Both were run against the real production gateway, not a scratch install.
-
-3. **Confirmed present upstream, in general availability.** The live upstream docs
-   (docs.openclaw.ai/cli/mcp, /tools/mcp, /gateway/configuration-reference) describe a full
-   MCP-server *registry*, entirely distinct from this spec's own `mcp serve` role: OpenClaw-
-   managed server definitions live under an `mcp.servers` config key (stdio `command`/`args`/
-   `env`/`cwd`, or remote `url`/`transport: streamable-http|sse`, plus `enabled`,
-   `toolFilter.include/exclude`, `auth: oauth`, `connectionTimeoutMs`/`requestTimeoutMs`), managed
-   by a CLI family: `openclaw mcp add|set|list|show|status|doctor|probe|configure|tools|login|
-   logout|reload|unset`. Cross-checked against the upstream repo's real commit history (`gh api
-   search/commits` against `openclaw/openclaw`): the registry's HTTP/SSE transport and tool-
-   namespacing landed in `414d730` "feat(mcp): add HTTP transport support and tool namespacing"
-   (2026-03-17), with docs following the next day (`a74091e` "docs(mcp): add CHANGELOG entries
-   and MCP transport/namespacing docs", 2026-03-18); a later fix (`93e3bce`, 2026-06-17)
-   explicitly confirms "`openclaw mcp list`, `show`, `set`, and `unset` manage the OpenClaw
-   `mcp.servers` registry" as a stable surface, distinct from a separate "mcporter registry."
-
-4. **Verified live, not just from docs.** Since the installed daemon (2026.2.23) predates this
-   feature, it could not be probed directly, so the current stable release was exercised in an
-   isolated sandbox instead of upgrading the live production install: `npx --yes
-   openclaw@2026.7.1` (the real current stable tag, confirmed via `gh release list --repo
-   openclaw/openclaw`) under a scratch `--profile`, with `OPENCLAW_STATE_DIR`/`XDG_CONFIG_HOME`
-   pointed at a throwaway directory, on a locally-installed Node 24 (the newer CLI's `engines`
-   floor; added via `nvm install 24`, an isolated, additive, reversible action — no existing
-   toolchain was changed). Against that isolated instance:
-   - `openclaw mcp --help` listed the full registry command family above, verbatim.
-   - A real, non-network roundtrip worked exactly as documented: `openclaw mcp add test-server
-     --command echo --arg hello --no-probe` (saved without connecting), `openclaw mcp list
-     --json`, `openclaw mcp show test-server --json`, `openclaw mcp status --json` (returned
-     `{"path": "...", "servers": [...]}`), then `openclaw mcp unset test-server` — all succeeded,
-     all as plain JSON on request, all reachable via the exact subprocess-CLI pattern
-     `edges/adapters/openclaw.py` already uses everywhere (`_sp.run(["openclaw", ...],
-     capture_output=True, text=True)`). No new dependency, protocol, or credential type would be
-     needed to drive this from the ACL — unlike G-5's finding, both halves of what L-4 asked for
-     are real and reachable here.
-
-5. **Methodology note for future reproduction.** The isolated `npx openclaw@2026.7.1` run
-   auto-triggered a one-time "legacy state migration" that, despite `OPENCLAW_STATE_DIR` pointing
-   at the scratch directory, still located and renamed the real, pre-existing
-   `~/.openclaw/exec-approvals.json` to `~/.openclaw/exec-approvals.json.migrated` (a fresh copy
-   was also written under the scratch state dir). `OPENCLAW_STATE_DIR`/`XDG_CONFIG_HOME` alone do
-   not fully sandbox a newer CLI probe on a host with an existing `~/.openclaw` install — a future
-   repro of this spike should additionally isolate `$HOME` (or run inside a container) before
-   invoking a newer CLI build this way. The rename needs a plain `mv
-   ~/.openclaw/exec-approvals.json.migrated ~/.openclaw/exec-approvals.json` to restore; this is
-   an upstream migration side effect of probing a newer CLI, not anything docket's ACL did or
-   would do.
-
-6. **Verdict: yes, the capability exists upstream — but the fleet's targeted daemon predates
-   it.** Both halves of what L-4 asked for are real and reachable in the upstream project today:
-   a genuine `mcp.servers` config surface, and a full CLI family to manage it, driveable through
-   the exact subprocess pattern the ACL already uses. If this project's daemon were on a current
-   release, an ACL extension (`edges/adapters/openclaw.py` functions wrapping `openclaw mcp
-   add/set/list/show/unset --json`, a `docket doctor` check calling `openclaw mcp status --json`)
-   would indeed be "genuinely small," per this card's own bar for building rather than just
-   documenting. But the version this project actually targets and has verified everywhere else in
-   the codebase (`openclaw 2026.2.23`) does not have it — confirmed by direct, live probing, not
-   inference. Implementing the ACL functions today would ship code with no real daemon in this
-   fleet able to execute it — exactly the speculative-feature trap this card warns against. **No
-   code was written for this spike.**
-
-7. **What would change this answer.** Once docket's targeted/verified daemon version moves to a
-   release at or after the March 2026 introduction of the MCP registry (confirmed present as of
-   the current stable `2026.7.1`), this becomes a small, well-scoped follow-up card: a handful of
-   ACL wrapper functions plus a doctor check, not a research question. Until then, this spec
-   records the capability as upstream-real-but-unavailable-to-this-fleet, not "does not exist."
+- Agent-side MCP *client* configuration (Docket consuming MCP tools inside a turn); see `mcp-client.spec.md`. The retired external-runtime feasibility spike is historical and lives in this spec’s changelog, ROADMAP, and Git history.
 
 ## Design constraint: a server, never a host
 
@@ -434,6 +339,12 @@ concern, not docket's — see the Phase 18 L-4 scope note above).
 ```
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: removed the superseded daemon-side MCP registry spike from the
+  current contract. Docket's MCP server and client boundaries now point only at their owning specs;
+  the dated investigation remains in ROADMAP and Git history.
 
 ### Version 1.3.0 (2026-07-31)
 

@@ -88,7 +88,7 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
 def _check_dependencies() -> int:
     """python3 (required) and fzf (optional).
 
-    Does not check for the `openclaw` binary — there is no daemon to probe for.
+    Docket owns its runtime, so only its direct dependencies are probed.
     """
     issues = 0
 
@@ -585,10 +585,8 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
 def _doctor_json() -> dict[str, Any]:
     """Assemble the machine-readable health report.
 
-    The ``openclaw``/``gateway``/``telegram`` keys this payload used to
-    carry are gone — there is no daemon binary and no gateway, and
-    channel-binding presence is already covered per-agent below. This is a
-    breaking change to the public ``docket doctor --json`` contract.
+    Legacy daemon/gateway keys are absent. Channel-binding presence is already
+    covered per agent below. This is the Docket-owned health contract.
     """
     issues = 0
     ids = project_ids()

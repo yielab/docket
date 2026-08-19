@@ -2,13 +2,10 @@
 
 Agent registration, channel bindings, gates/isolation flags, and the
 org-wide default model are read/written **only** by docket, through
-``edges/store.py`` — nothing else ever writes ``fleet.json``. This state used
-to live in ``openclaw.json``, a file that could be mutated by more than one
-writer (the daemon, a raw ``openclaw`` CLI call, or a hand edit) independently
-of docket — exactly the kind of drift a single-writer file makes
-structurally impossible rather than merely harder: with one writer, "an
-older docket version partially wrote this" is still possible in principle,
-but "a different program touched this file" is not.
+``edges/store.py`` — nothing else ever writes ``fleet.json``. The single-writer
+contract makes cross-runtime configuration drift structurally impossible:
+with one writer, "an older docket version partially wrote this" is still
+possible in principle, but "a different program touched this file" is not.
 
 **Deliberately not duplicated:** a registered agent's ``model``, ``sessionKey``
 and ``projectKey`` remain ``.docket-meta.json``'s job (see ``core/models.py``'s
@@ -22,10 +19,8 @@ version round-trips through an older one instead of being silently dropped.
 
 This module also carries the read/write functions
 (``meta_get``/``meta_set``/``list_agents``/``add_agent``/``get_binding``/…)
-for fleet and agent-metadata state. None of these ever touched an OpenClaw
-file format — they are, and always were, docket-owned state read through
-``edges/store.py``, so they live as a plain ``core/`` module rather than
-needing an anti-corruption layer of their own.
+for fleet and agent-metadata state. These are docket-owned formats read through
+``edges/store.py``, so they live as a plain ``core/`` module.
 """
 
 from __future__ import annotations
@@ -105,7 +100,7 @@ class FleetConfig(BaseModel):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Read/write API. Every function below is docket-owned state — fleet.json
-# and .docket-meta.json — never an OpenClaw file format, so this is a plain
+# and .docket-meta.json — both Docket-owned formats, so this is a plain
 # core/ module (imports only edges/store.py for I/O).
 # ─────────────────────────────────────────────────────────────────────────────
 

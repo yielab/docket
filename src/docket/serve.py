@@ -71,9 +71,8 @@ from typing import Any
 
 import docket.config as cfg
 from docket.core import audit as _audit
-from docket.core import fleet as oc
+from docket.core import fleet, utils
 from docket.core import trace as _trace
-from docket.core import utils
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -115,7 +114,7 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
         "scope": str(meta.get("scope", default_scope)),
         "model": str(meta.get("model", "")),
         "registered": agent_id in registered,
-        "bindings": oc.agent_bindings(agent_id),
+        "bindings": fleet.agent_bindings(agent_id),
         "lastActivity": _last_activity_or_never(agent_id),
         "costUsd": cost,
         "budgetUsd": budget,
@@ -135,8 +134,8 @@ def build_status() -> dict[str, Any]:
     ``specs/data/serve-read-api.spec.md``.
     """
     gateway = "active" if utils.gateway_active() else "inactive"
-    channels = oc.channel_names()
-    registered = {a.id for a in oc.list_agents()}
+    channels = fleet.channel_names()
+    registered = {a.id for a in fleet.list_agents()}
 
     agents: list[dict[str, Any]] = []
     total_cost = 0.0

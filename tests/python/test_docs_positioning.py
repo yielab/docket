@@ -124,7 +124,7 @@ class TestContrastLinesPresent:
     def test_governed_fleet_not_solo_contrast(self) -> None:
         text = _readme()
         assert "solo" in text.lower() or "personal assistant" in text.lower(), (
-            "README must contrast docket with 'solo personal assistant' (vs raw OpenClaw)"
+            "README must contrast a governed fleet with a solo personal assistant"
         )
 
     def test_dashboard_feed_not_is_dashboard(self) -> None:

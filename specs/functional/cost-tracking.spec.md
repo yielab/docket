@@ -1,14 +1,10 @@
 # Cost Tracking Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
-scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). **ROADMAP Phase 19
-P19-7a (the runtime cutover)** repointed cost reporting at `edges.adapters.docket_runtime`'s
-`DocketDriver`. **ROADMAP Phase 19 P19-7b then deleted the ACL and `OpenClawDriver` outright**
-— `DocketDriver` is now the *only* `RuntimeDriver`, not merely the default one; every "daemon
-recorded no cost" phrasing below is corrected to "no cost recorded" (there is no daemon left to
-attribute the absence to). See requirements 2-4 below.
-**Last Updated**: 2026-08-03
+scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
+Docket's own `DocketDriver` and session store. See requirements 2-4 below.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -36,29 +32,23 @@ pod-dispatch.spec.md).
 2. Costs **MUST** be derived from `DocketDriver`'s session data
    (`core.utils.aggregate_cost`/`cost_history`, delegating to
    `edges.adapters.docket_runtime.default_driver()`), reading `core/session.py`'s own storage
-   under `$DOCKET_HOME/sessions` — the **only** shape there is to read since ROADMAP Phase 19
-   P19-7b deleted the ACL and `OpenClawDriver` outright. There is no more `~/.openclaw/agents/
-   */sessions/*.jsonl` daemon format, and no second driver implementation to read it.
+   under `$DOCKET_HOME/sessions`, the only live session shape.
 3. Dollar figures are the resolved driver's **recorded** spend, never docket's own pricing math
    substituted for it: when the driver records no cost, `docket cost` **MUST** say so ("none
    recorded for these sessions") rather than print a computed figure as if recorded.
    `DocketDriver` **never** reports a cost (`capabilities().reports_cost_usd` is always `False`
    — see `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this branch is the
-   **only** case in production now (not merely "the normal case" alongside a daemon-recorded
-   alternative — that alternative no longer exists); the bundled pricing table powers
-   comparative estimates only (see model-profiles.spec.md).
-4. **(Phase 18 L-1 / D-14; the ACL half retired at P19-7b)** The session-format parsing behind
-   requirement 2 **MUST** live entirely inside `DocketDriver`
+   production case; the bundled pricing table powers comparative estimates only (see
+   model-profiles.spec.md).
+4. The session-format parsing behind requirement 2 **MUST** live entirely inside `DocketDriver`
    (`edges/adapters/docket_runtime.py`, docket-native `core/session.py` storage) and **MUST
    NOT** appear anywhere under `core/`. `core/utils.py`'s `aggregate_cost`/`cost_history` are
    pure translations of whatever `edges.adapters.docket_runtime.default_driver()` resolves —
    `DocketDriver`, unconditionally — into the legacy `CostTotals`/`DayRecord` shapes
    `cli/_cost.py`, `cli/_doctor.py`, and `core/dispatch.py` already depend on; they no longer
    open a session file themselves. A guard test
-   (`test_no_openclaw_references.py::test_no_live_openclaw_reference_outside_comments_and_docstrings`,
-   which replaced the retired `test_ch2_openclaw_acl_guard.py::test_core_has_no_session_format_knowledge`)
-   fails the build if daemon session-format knowledge — or any other live `openclaw` reference
-   — regresses back into `src/`.
+   (`test_no_external_daemon_coupling.py::test_product_code_has_no_retired_daemon_reference`)
+   fails the build if external-runtime coupling regresses into `src/`.
 
 ### Budget caps
 
@@ -67,9 +57,8 @@ pod-dispatch.spec.md).
 3. Setting a non-zero budget **MUST** clear a prior `paused` state (and, when the target is a
    pod's Lead, unblocks that pod's budget-blocked tasks — see pod-dispatch.spec.md).
 4. The budget value **MUST** be a non-negative number.
-5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are docket-local (decision D-9) —
-   there is no daemon left to read them even if one wanted to (ROADMAP Phase 19 P19-7b).
-   Enforcement therefore exists only where docket itself is in the execution path.
+5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are Docket-local (decision D-9).
+   Enforcement therefore exists only where Docket itself is in the execution path.
 6. `docket profile <id> --resume` **MUST** clear `paused`/`pausedReason` on *id* and **MUST**
    write a `profile.resume` audit-log entry. When *id* is a pod's Lead, it additionally
    unblocks that pod's budget-blocked tasks (mirroring the `--budget` behavior above) — a
@@ -83,8 +72,7 @@ pod-dispatch.spec.md).
    (pod-dispatch.spec.md).
 2. **Implemented — auto-pause.** The same check that blocks a task also marks the pod's Lead
    `paused = true`, `pausedReason = "budget"` (`core/dispatch.py`'s `_pause_lead_for_budget`,
-   through `edges/store.py` — `openclaw.json` is deleted, there is nothing left to sync to,
-   per D-9). Once paused,
+   through `edges/store.py`, per D-9). Once paused,
    dispatch refuses **every** further claim for that pod outright — before a task is even
    flipped to `running`, not merely re-blocked hop by hop — and emits a `paused_refused` trace
    event each time. This is a claim-time check (`core/dispatch.py`'s `_claim_next_task`), so a
@@ -95,12 +83,11 @@ pod-dispatch.spec.md).
    reads `0` always now: `DocketDriver` never reports a cost at all
    (`capabilities().reports_cost_usd` is unconditionally `False` — see requirement 3 above and
    `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this is the **only** case in
-   production, not an occasional gap the pre-P19-7b daemon might close. The budget gate falls
+   production. The budget gate falls
    back to a token-count × pricing-table estimate (`core/utils.estimate_cost_usd`) so a real
    cap can still trip. This estimate is used **only** for gating and warning displays — it is
    always rendered clearly labelled (`core/dispatch.py`'s literal label string is `~$X.XX
-   (estimated — no cost recorded)`; corrected at P19-7b from the stale `daemon recorded no
-   cost` wording, which had no daemon left to refer to) and **MUST NOT** be mixed into, or
+   (estimated — no cost recorded)`) and **MUST NOT** be mixed into, or
    presented as, recorded spend; `docket cost`'s reported figures and provenance line are
    completely unaffected by this fallback (see "Cost reporting" above).
 5. `docket doctor` and `docket cost` **MUST** warn at ≥80% and flag ≥100% of cap (using recorded
@@ -130,13 +117,11 @@ docket doctor                     # Includes budget/runaway check (display only)
 - `0`: Success
 - `1`: Any error (unknown agent, invalid budget value)
 
-### Known gap: `--history` is always empty against the production driver (P19-7a; the only driver since P19-7b)
+### Known gap: `--history` is always empty
 
 `DocketDriver.usage().by_day` is always `[]` — a session's stored usage
 (`core.session.MeasuredUsage`) is one running total for its whole lifetime, with no per-turn
-timestamp to bucket by day (unlike the now-deleted `OpenClawDriver.usage()`'s daemon-JSONL
-reads, which timestamped every record — historical comparison only; that driver no longer
-exists to fall back to). `docket cost --history` therefore returns an honest empty history
+timestamp to bucket by day. `docket cost --history` therefore returns an honest empty history
 against real production data, regardless of `--days`; `docket cost` (non-history) is unaffected —
 totals still aggregate correctly. Adding a per-turn usage log to fabricate a daily breakdown is
 new scope for `core/session.py`, not part of P19-7a; this is a named capability gap, not a bug.
@@ -210,6 +195,12 @@ $ docket pod myproject dispatch
 
 ## Changelog
 
+### Version 1.6.0 (2026-08-19)
+
+- Removed retired-runtime migration detail from the current contract. Cost reporting now states
+  only the live Docket session source, recorded-spend semantics, and the distinct estimate used
+  for budget gating; older migration detail remains in changelog history.
+
 ### Version 1.5.0 (2026-08-03)
 
 - **ROADMAP Phase 19 P19-7b — the OpenClaw daemon and `OpenClawDriver` are deleted outright.**
@@ -218,7 +209,7 @@ $ docket pod myproject dispatch
   codebase ships. Updated requirements 2 and 4 (Cost reporting) to drop the "`OpenClawDriver`
   still reads daemon-format JSONL when directly constructed" carve-out — there is no such driver
   left to construct — and to name the new guard test
-  (`test_no_openclaw_references.py`, which replaced the retired
+  (`test_no_external_daemon_coupling.py`, which replaced the retired
   `test_ch2_openclaw_acl_guard.py`). Corrected the Enforcement section's estimate-fallback
   reasoning (requirement 4): recorded pod spend reading `0` is not an occasional daemon quirk
   ("may never write `usage.cost.total`") any more, it is the unconditional, only case in

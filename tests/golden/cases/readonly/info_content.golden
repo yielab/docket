@@ -2,7 +2,7 @@ EXIT:0
 
 Project: Content Blog (content)
 
-  Workspace:         <HOME>/.openclaw/workspaces/projects/content
+  Workspace:         <HOME>/.docket/workspaces/projects/content
   Codebase:
   Stack:
   Model:             anthropic/claude-haiku-4-5

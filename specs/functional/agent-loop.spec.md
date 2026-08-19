@@ -1,18 +1,9 @@
 # Agent Loop Specification
 
-**Version**: 1.6.0
-**Status**: Implemented and **live in production**. `core/agent_loop.py` and
-`edges/adapters/docket_runtime.py` (ROADMAP Phase 19 P19-5) are the first live callers of
-`core/llm.py` (P19-1), `core/tools.py` (P19-2/P19-3) and `core/session.py` (P19-4).
-`DocketDriver` was a complete, independently-tested `RuntimeDriver` implementation as of P19-5,
-but not yet wired as any caller's default driver. **ROADMAP Phase 19 P19-7a (the runtime
-cutover, 2026-08-03) is what wires it**: `edges.adapters.docket_runtime.default_driver()` (new
-in that card) is now the resolution point `core/dispatch.py`'s hop execution, `core/trace.py`'s
-`trace_ingest`, `core/utils.py`'s cost aggregation, and `cli/_agents.py`'s distillation turn all
-call — this is the card that makes the OpenClaw daemon *unused* by production traffic, not yet
-uninstalled (P19-7b removes it). See `pod-dispatch.spec.md`'s "Runtime driver resolution
-(P19-7a)" for the dispatch-side contract this made real. ROADMAP Phase 19's P19-12 closed two
-omissions P19-5 recorded honestly rather than papering over: the loop now narrows the tool
+**Version**: 1.7.0
+**Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
+`edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
+point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
 agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent`) — see the new
 "Per-role tool narrowing" and "System prompt composition" requirements below. **Wave 17** gave
@@ -26,8 +17,7 @@ history coordinate from the trace coordinate so pod steps do not replay another 
 
 ## Purpose
 
-Decision D-19 has docket take ownership of the agent turn loop instead of delegating it to
-the OpenClaw daemon. Every governance primitive docket had already built — the gated tool
+Decision D-19 has docket own the agent turn loop. Every governance primitive docket had built — the gated tool
 registry, the `pre_tool_call` policy hook, the approval store, the argument-aware command
 classifier, hash-chained audit, durable session history — could previously only act *between*
 turns, because the daemon owned what happened *inside* one. This specification defines the
@@ -69,9 +59,7 @@ This specification does NOT cover:
   and injects the result
 - Durable session storage and compaction planning internals (`core/session.py`, ROADMAP Phase 19
   P19-4, `session-history.spec.md`) — this spec owns only their live-loop integration
-- Repointing any existing caller's default driver, deleting the OpenClaw ACL, or the
-  docket-native fleet registry (ROADMAP Phase 19 P19-6/P19-7) — those are separate cards with
-  their own specs when they land
+- The docket-native fleet registry; see `agent-lifecycle.spec.md`
 - Turning measured token usage into a dollar figure — `cost_usd` is `0.0` on every result this
   driver produces; see the Requirements section below and `cost-tracking.spec.md`
 
@@ -427,6 +415,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.7.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: collapsed the transitional P19-5/P19-7 status narrative into the
+  current Docket-owned runtime contract and removed a stale non-goal for work that already shipped.
+  Turn-loop behavior is unchanged.
 
 ### Version 1.6.0 (2026-08-19)
 

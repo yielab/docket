@@ -1,13 +1,11 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.1.0
-**Status**: Complete. **ROADMAP Phase 19 P19-7a (the runtime cutover)**: a pod-dispatch hop now
-executes through `edges.adapters.docket_runtime.DocketDriver` — docket's own gated turn loop
-(`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint) — not
-`edges.adapters.openclaw.OpenClawDriver`/the daemon. `core/dispatch.py`'s two production driver
-call sites resolve `edges.adapters.docket_runtime.default_driver()`, not the ACL's; see "Runtime
-driver resolution (P19-7a)" and "Cancellation" below for what changed in each hop-execution and
-mid-hop-cancellation requirement. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
+**Version**: 6.2.0
+**Status**: Complete. A pod-dispatch hop executes through
+`edges.adapters.docket_runtime.DocketDriver`, docket's own gated turn loop
+(`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint). See
+"Runtime driver resolution" and "Cancellation" below for the hop-execution and cancellation
+contracts. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
 registry auto-population) are now implemented — see "Mechanical HEARTBEAT ledger" and
 "Conversation registry auto-population" below: the pod Lead's `HEARTBEAT.md` dispatch ledger and
 a wired agent's conversation `last_message`/`task_ref` are now kept current mechanically, at the
@@ -399,15 +397,12 @@ was seeded once at binding time.)*
 
 ### Retries and the failure-kind taxonomy
 
-1. Every agent turn's outcome (`core.runtime_driver.TurnResult` — the pre-Phase-18 alias
-   `edges/adapters/openclaw.AgentRunResult` that used to re-export this same type is gone as of
-   ROADMAP Phase 16 W-5, which finished Phase 18 CL-1's blocked sweep: `core/dispatch.py`'s
-   `Runner` type alias and every test call site now spell `TurnResult` directly, so the alias had
-   zero references left anywhere in the tree) **MUST** carry a `failure_kind` on failure: `timeout` (the turn exceeded
-   its timeout), `daemon_error` (a CLI/daemon-level failure — process couldn't run, OS error,
-   malformed daemon response), `nonzero_exit` (the daemon ran and returned a real non-zero
-   result), or `invalid_output` (the daemon succeeded but its output couldn't be used). A
-   successful turn carries no `failure_kind`.
+1. Every agent turn's outcome (`core.runtime_driver.TurnResult`) **MUST** carry a `failure_kind`
+   on failure: `timeout` (the turn exceeded its timeout), `daemon_error` (the stable compatibility
+   label for a runtime or transport failure), `nonzero_exit` (an invoked process returned a real
+   non-zero result), or `invalid_output` (the runtime returned output that could not be used). A
+   successful turn carries no `failure_kind`. The `daemon_error` enum spelling is persisted API
+   vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable — a transient hiccup, not a
    real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer/Tester
    verdict — see those gates) **MUST NEVER** be retried: retrying a real failure risks masking it
@@ -461,8 +456,8 @@ was seeded once at binding time.)*
    emitted naming the role the budget was checked before, the spend, the cap, and whether the
    spend figure was estimated.
 4. The same check that blocks the task **MUST** also mark the pod's Lead paused
-   (`_pause_lead_for_budget`: `paused = true`, `pausedReason = "budget"`, through the ACL/`meta_set`
-   — never synced to `openclaw.json`, per D-9). From that point on, **every** further claim
+   (`_pause_lead_for_budget`: `paused = true`, `pausedReason = "budget"`, through the Docket
+   store's `meta_set`). From that point on, **every** further claim
    attempt against this pod — for this task or any other in its queue — **MUST** be refused
    outright at claim time (see "Claiming", item 6), not merely re-blocked hop by hop, until an
    operator clears the pause (`docket profile <lead-id> --resume`; see `cost-tracking.spec.md`).
@@ -696,21 +691,15 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    child-by-child resume granularity. (This does not affect the rework-replay path at all, per
    requirement 3.)
 
-### Runtime driver resolution (ROADMAP Phase 19 P19-7a)
+### Runtime driver resolution
 
-1. `core/dispatch.py`'s two production hop-execution call sites (the `runner or ...run_turn`
-   fallback, and the pid-tracking call inside the retry loop) **MUST** resolve
-   `edges.adapters.docket_runtime.default_driver()` — `DocketDriver`, which dispatches every tool
-   call through `core/tools.py`'s gated chokepoint (`pre_tool_call`/approval/audit all live) —
-   never `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`, the daemon-shelling ACL
-   driver). An **injected** `runner` (a test double, or a future non-default driver passed
-   explicitly) always wins over both — this requirement governs only the no-injected-runner
-   fallback path every real `docket pod <p> dispatch` / `docket pipeline run` invocation takes.
-2. `edges.adapters.openclaw.OpenClawDriver` and its `default_driver()` **MUST NOT** be deleted by
-   this requirement — they remain real, directly-constructible, fully-tested code; nothing outside
-   their own module resolves them anymore, which is what leaves them for a later removal card
-   (ROADMAP P19-7b) rather than this one.
-3. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
+1. `core/dispatch.py`'s production hop-execution call sites **MUST** resolve
+   `edges.adapters.docket_runtime.default_driver()`. `DocketDriver` dispatches every tool call
+   through `core/tools.py`'s gated chokepoint (`pre_tool_call`, approval, and audit). An
+   **injected** `runner` (a test double or explicit alternate implementation) always wins; this
+   requirement governs the no-injected-runner path used by real `docket pod <p> dispatch` and
+   `docket pipeline run` invocations.
+2. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
    `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) — real measured
    token counts are still recorded (`core.session`'s `MeasuredUsage`, surfaced through
    `core.utils.aggregate_cost`), but a token count **MUST NOT** be converted into a dollar figure
@@ -718,24 +707,21 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    a driver that records tokens but not cost; it works unchanged against `DocketDriver` for
    exactly that reason.
 
-### Cancellation (ROADMAP Phase 16 W-2; scope narrowed by P19-7a)
+### Cancellation
 
-1. `docket runs cancel <id>` **MUST** kill every hop subprocess currently recorded as in-flight
-   for that run's id, and **MUST** mark the run a new terminal state, `"cancelled"` — see
+1. `docket runs cancel <id>` **MUST** mark the run as the terminal state `"cancelled"` and kill
+   every tracked process group currently recorded as in-flight for that run — see
    `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
    fields; this spec covers only how a hop's pid gets into that list and what killing it does to
    the task it belongs to.
-2. Each hop subprocess (`edges.adapters.openclaw.agent_run`) **MUST** run in its own session
-   (`start_new_session=True`), so its pid doubles as its process group id. Cancelling **MUST**
-   kill the whole group (`edges.adapters.system.kill_process_group`: SIGTERM, a bounded grace
-   period, then SIGKILL if still alive), not just the immediate `openclaw` process — it may have
-   shelled out further, and an orphaned process group is exactly the failure mode this guards
-   against. The same mechanism **MUST** apply when a hop's own turn timeout expires (not only an
-   explicit operator cancel).
-3. A hop's pid **MUST** be tracked only while its production driver's subprocess is actually
-   running (added right before the blocking call, removed right after it returns) — never for an
-   injected test runner/fake, which has no real OS process to report. A long multi-hop task
-   **MUST NOT** accumulate stale pids from hops that already finished.
+2. Any external verification command or other tracked child process **MUST** run in its own
+   session (`start_new_session=True`), so its pid doubles as its process-group id. Cancelling
+   **MUST** kill the whole group through `edges.adapters.system.kill_process_group` (SIGTERM, a
+   bounded grace period, then SIGKILL), and completed work **MUST NOT** leave stale pids behind.
+3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
+   one. The current in-process model/tool call is not interrupted by cancellation because
+   `core/agent_loop.py` has no cooperative cancellation hook; the run still remains cancelled
+   and completion **MUST NOT** clobber that terminal state.
 4. Killing a hop's process group **MUST NOT** invent a new task-status vocabulary: the killed
    subprocess surfaces as an ordinary hop failure (a nonzero/negative exit code) through the
    existing state machine ("Hop-failure semantics"), transitioning the task to `failed` exactly as
@@ -744,18 +730,9 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    reported as such, never re-signalled or double-finished. A run's own normal completion
    (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
    wrote back to `"succeeded"`/`"failed"`.
-6. **Known gap, P19-7a (not fixed by this spec version):** requirements 1-3 above describe real,
-   still-shipped behavior for a hop that happens to run through `OpenClawDriver` (constructed
-   directly, or resolved by an explicit override) — but a hop running through the production
-   default, `DocketDriver`, has **no OS subprocess to track or kill**: its `run_turn` makes
-   in-process HTTP calls, and its `on_spawn` parameter is accepted but never invoked (see
-   `core/runtime_driver.py`'s `RuntimeDriver.run_turn` docstring). `docket runs cancel` against
-   such a hop still marks the run `"cancelled"` honestly (reported as "nothing in flight to kill"
-   — never a false claim that a process was killed) and requirement 5's no-op/no-clobber rules
-   still hold, but the in-flight model/tool call itself is **not interrupted** — it keeps running
-   to completion in its own thread. `core/agent_loop.py` has no cooperative-cancellation hook
-   today. Closing this gap is out of scope for P19-7a (it is new capability work on the loop, not
-   a driver-resolution flip) and is not currently scheduled on the board.
+6. **Known gap:** an in-flight `DocketDriver` model/tool call continues in its worker thread after
+   the run is marked cancelled. Adding cooperative cancellation to `core/agent_loop.py` is new
+   capability work and is not scheduled by this specification.
 
 ### Hop-failure semantics (general)
 
@@ -1103,6 +1080,12 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.2.0 (2026-08-19)
+
+- Removed the retired runtime bridge from the current dispatch contract. The spec now describes
+  only `DocketDriver`, its stable failure vocabulary, and the actual cancellation boundary;
+  migration detail remains in older changelog entries and git history.
 
 ### Version 6.1.0 (2026-08-19)
 

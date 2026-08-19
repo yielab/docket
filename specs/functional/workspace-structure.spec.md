@@ -1,18 +1,9 @@
 # Workspace Structure Specification
 
-**Version**: 1.7.0
-**Status**: Complete. **ROADMAP Phase 19 P19-7a** moved `PROJECTS_DIR` (`docket.config`) from
-`OPENCLAW_DIR` to `DOCKET_HOME` — a project-agent (pod-member) workspace lives at
-`~/.docket/workspaces/projects/<agent-id>/`, not `~/.openclaw/workspaces/projects/<agent-id>/`.
-**ROADMAP Phase 19 P19-7b completed the move**: `OPENCLAW_DIR` itself is deleted, and
-`WORKSPACES_DIR` (`docket.config`) — the base every org-specialist workspace resolves against
-too — now points at `DOCKET_HOME` unconditionally. An org-specialist workspace (`manager`,
-`knowledge`, `security`, `portfolio-manager`) lives at `~/.docket/workspaces/<role>/`, not
-`~/.openclaw/workspaces/<role>/`, as of this version — there is no daemon-owned workspace tier
-left. No migration: per D-19's clean break, a pre-existing install's workspaces at the old path
-are not moved or read from; `docket install`/`docket add` on this version simply write new
-workspaces at the new path.
-**Last Updated**: 2026-08-03
+**Version**: 1.8.0
+**Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
+`~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -27,8 +18,8 @@ This specification covers:
 - The org-specialist layout
 - Permission invariants and scaffolding quarantine
 
-This specification does NOT cover the `.docket-meta.json` field schema or the
-meta↔`openclaw.json` synchronization contract (both owned by ../data/docket-meta.spec.md), the
+This specification does NOT cover the `.docket-meta.json` field schema (owned by
+../data/docket-meta.spec.md), the
 pod task queue's semantics (see pod-dispatch.spec.md), *how* a pod member's SOUL.md/AGENTS.md
 prose is generated (ROADMAP Phase 16 W-6's declarative role archetypes — see
 role-archetypes.spec.md; this spec covers only which files must exist and their permissions, not
@@ -41,8 +32,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
 ### Project-agent workspace
 
 1. Each project agent **MUST** have a workspace at
-   `~/.docket/workspaces/projects/<agent-id>/` (`docket.config.PROJECTS_DIR`; moved from
-   `OPENCLAW_DIR` to `DOCKET_HOME` at ROADMAP P19-7a) containing:
+   `~/.docket/workspaces/projects/<agent-id>/` (`docket.config.PROJECTS_DIR`) containing:
    - `SOUL.md` — agent identity, scope, session key, and (optional) docket-owned persona block
    - `AGENTS.md` — session protocol and delegation rules
    - `TOOLS.md` — project-specific commands. For a standalone (non-pod) project agent this is
@@ -84,15 +74,14 @@ covers the resulting file set for either workspace kind, not blueprint selection
 4. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
    workspace under `projects/`; the pod **Lead's** workspace additionally holds
    `TASK_LIST.json`, the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md).
-5. OpenClaw self-authoring scaffolding (`IDENTITY.md`, `BOOTSTRAP.md`) **MUST NOT** remain
+5. Self-authoring scaffolding (`IDENTITY.md`, `BOOTSTRAP.md`) **MUST NOT** remain
    live in a managed workspace: provisioning and `docket doctor` quarantine it to
    `.docket-archive/` (identity is docket-owned — role + optional persona from metadata).
 
 ### Org specialists
 
 1. Org specialists (security, knowledge, manager, and the opt-in
-   `portfolio-manager`) live at `~/.docket/workspaces/<role>/` (moved from
-   `~/.openclaw/workspaces/<role>/` at ROADMAP P19-7b) and **MUST**
+   `portfolio-manager`) live at `~/.docket/workspaces/<role>/` and **MUST**
    have the same durable workspace set a project agent gets, minus `TOOLS.md`
    and any codebase-specific field neither exists for:
    - `SOUL.md` — role identity, scope, and a session key of the form
@@ -120,9 +109,8 @@ covers the resulting file set for either workspace kind, not blueprint selection
    (`.docket-meta.json` only, no `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` at all)
    is backfilled by re-running `docket install`, which never touches a file
    that already exists.
-4. The legacy org-wide manager queue (`~/.openclaw/workspaces/manager/TASK_LIST.json` on a
-   pre-P19-7b install, or `~/.docket/workspaces/manager/TASK_LIST.json` on one already migrated
-   to `DOCKET_HOME`) is retired; if present it is left on disk untouched and is read by nothing.
+4. The retired org-wide manager queue (`~/.docket/workspaces/manager/TASK_LIST.json`) is not part
+   of the current contract; if present it is left untouched and read by nothing.
 
 ### Permissions
 
@@ -191,9 +179,8 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 ### Pre-conditions
 
-- `~/.docket` **MUST** be writable — every workspace tier (project-agent/pod-member since
-  P19-7a, org-specialist since P19-7b) lives here now; `OPENCLAW_DIR`/`~/.openclaw` is deleted
-  and no longer a pre-condition of anything.
+- `~/.docket` (or the configured `DOCKET_HOME`) **MUST** be writable; every workspace tier lives
+  below that one Docket-owned root.
 
 ### Post-conditions
 
@@ -217,6 +204,11 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.8.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: collapsed migration prose into the single current
+  `DOCKET_HOME`/`~/.docket` contract and removed retired-runtime paths from normative sections.
 
 ### Version 1.7.0 (2026-08-03)
 

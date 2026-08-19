@@ -1,8 +1,8 @@
 """Conversation registry (Option B) — docket's durable index of channel threads.
 
 Guards core/conversations.py: pure registry ops + the load/save round-trip, plus
-the CLI resolver helpers. OpenClaw keeps no durable transcript, so this registry is
-docket's source of truth for what conversations exist and their resume state.
+the CLI resolver helpers. This registry is Docket's source of truth for what conversations exist
+and their resume state.
 """
 
 from __future__ import annotations

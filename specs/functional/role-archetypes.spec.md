@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Implemented. `gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
 executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
 `pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
@@ -16,7 +16,7 @@ gained a production caller this wave (see `mcp-client.spec.md`), so a registry `
 narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
 in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
 for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-08-05
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
@@ -46,7 +46,7 @@ This specification covers:
   guarantee
 - The starter library (researcher/analyst/writer/critic/operator/monitor)
 - The template rendering contract (`${var}`-style substitution, the guaranteed variable set)
-- The user-overlay registry (`~/.openclaw/docket-roles.json`) and its merge/override semantics
+- The user-overlay registry (`~/.docket/docket-roles.json`) and its merge/override semantics
 - How `modelClass` integrates with the existing role→model policy (`model-profiles.spec.md`)
   without replacing it
 - How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`/`POD_ROLES`/
@@ -264,7 +264,7 @@ This specification does NOT cover:
 ### User registry overlay
 
 1. User archetypes **MUST** overlay built-ins and the starter library via
-   `~/.openclaw/docket-roles.json` — the same overlay pattern `model-profiles.spec.md`'s
+   `~/.docket/docket-roles.json` — the same overlay pattern `model-profiles.spec.md`'s
    `docket-models.json` uses: a top-level `roles:` map keyed by archetype name, read fresh on
    every access (not cached), silently skipping a malformed entry (never crashing a live fleet)
    rather than raising.
@@ -363,7 +363,7 @@ agentsTemplate: |
 
 ### User overlay file
 
-- Path: `~/.openclaw/docket-roles.json`
+- Path: `~/.docket/docket-roles.json`
 - Shape: `{"roles": {"<name>": {<archetype fields, camelCase>}}}`
 
 ### Return Codes
@@ -399,7 +399,7 @@ docket roles validate   # validates the whole live registry
 
 ### Pre-conditions
 
-- `~/.openclaw/` exists (created by `docket install`); `docket roles add`/`validate` create the
+- `~/.docket/` exists (created by `docket install`); `docket roles add`/`validate` create the
   overlay file's parent directory if needed
 
 ### Post-conditions
@@ -418,6 +418,10 @@ docket roles validate   # validates the whole live registry
   library, other user entries) from loading
 
 ## Changelog
+
+### Version 1.6.0 (2026-08-19)
+
+- Corrected every live archetype-overlay path to `$DOCKET_HOME`/`~/.docket`.
 
 ### Version 1.5.0 (2026-08-05)
 

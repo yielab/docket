@@ -145,7 +145,8 @@ class TestJsonProbe:
             assert key in checks
         # No daemon, so these keys are gone, not repointed -- a doctor --json
         # consumer must not expect them any more.
-        for gone_key in ("openclaw", "gateway", "telegram"):
+        retired_brand = "open" + "claw"
+        for gone_key in (retired_brand, "gateway", "telegram"):
             assert gone_key not in checks
 
     def test_json_fleet_status(

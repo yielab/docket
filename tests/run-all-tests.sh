@@ -48,7 +48,7 @@ echo ""
 # Note: command/lifecycle behaviour is covered by the pytest suite (tests/python/)
 # and the golden parity suite above — the old Bash integration test was retired in
 # the Python cutover. The specialist-role eval harness (tests/evals/) was removed
-# (CL-J): it was dead code, wired to the deleted OpenClaw daemon.
+# (CL-J): it was dead code wired to the retired runtime.
 
 echo "========================================"
 echo "  Final Summary"

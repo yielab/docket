@@ -5,14 +5,11 @@ also write an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``
 detail carrying ``token=... project=... channel=...``) so ``docket audit`` has
 a record of who approved/denied what, and through which surface.
 
-Covers the three channels that actually have a call site in this codebase:
+Covers the channel argument and the concrete call sites in this codebase:
   - CLI      (``docket approve`` / ``docket deny``  -> cli/_approve.py, cli/_deny.py)
   - HTTP     (``serve.py``'s POST /approvals/<token> webhook)
-  - explicit channel argument (e.g. ``"telegram"``) for future callers — no
-    distinct Telegram-triggered code path exists yet in this codebase (Telegram
-    approval routing today is OpenClaw's own inline exec-gate prompt, a
-    separate mechanism from this token-based HITL flow), so this is exercised
-    directly against the core function rather than through a real channel.
+  - explicit channel argument (e.g. ``"telegram"``), exercised directly against the core
+    function here while the channel adapter has its own integration coverage.
 
 Acceptance criteria:
   - grant/deny via each of the three call sites produces both the existing

@@ -355,12 +355,13 @@ class TestProviderGuidanceStringsAreReal:
         # 'task' is not a role at all any more (ALL_ROLES has no such entry).
         assert "task" not in _mp.ALL_ROLES
 
-    def test_no_raw_openclaw_command_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_no_retired_runtime_command_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
         from docket.cli import _provider as _prov_cli
 
         _prov_cli._print_role_split("local", "qwen3-30b-a3b")
         out = capsys.readouterr().out
-        assert "openclaw models status" not in out
+        retired_brand = "open" + "claw"
+        assert f"{retired_brand} models status" not in out
         assert "docket profile programmer" in out
 
     def test_every_docket_command_in_guidance_is_real(

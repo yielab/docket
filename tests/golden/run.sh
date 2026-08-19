@@ -75,16 +75,14 @@ run_docket() {
   stderr_file="$(mktemp)"
   exit_code_file="$(mktemp)"
 
-  # Prepend fakes/ so our stubs intercept systemctl/docker.
-  # DOCKET_HOME pinned to the same fake .openclaw dir the fixtures already
-  # seed -- its real default is now ~/.docket, but seed.sh's
-  # traces/policies/approvals/fleet.json all live under $fake_home/.openclaw,
-  # and pinning here keeps every golden case unaffected by that default (this
-  # harness tests command OUTPUT, not the new home's default path -- that is
-  # covered by a pytest instead).
+  # Prepend fakes/ so our stubs intercept external tools such as docker.
+  # DOCKET_HOME pinned to the same fake .docket dir the fixtures already
+  # seed -- matching the real default -- and seed.sh's
+  # traces/policies/approvals/fleet.json all live under $fake_home/.docket,
+  # Pinning keeps every golden case hermetic under the fake home.
   PATH="$FAKES_DIR:$PATH" \
   HOME="$fake_home" \
-  DOCKET_HOME="$fake_home/.openclaw" \
+  DOCKET_HOME="$fake_home/.docket" \
   DOCKET_FAKE_HOME="$fake_home" \
   DOCKET_NO_COLOR=1 \
   NO_COLOR=1 \

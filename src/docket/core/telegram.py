@@ -1,11 +1,7 @@
 """docket-owned Telegram approval channel.
 
-docket's own docs used to have to explicitly deny that Telegram was a real
-approval channel: the OpenClaw daemon had its own native exec-approval
-prompt, a Telegram reply answered *that* prompt, docket never saw it, and no
-audit entry was written (a spike found no practical bridge). That daemon-side
-gap is gone along with the daemon itself; this module closes the other
-side by making docket itself the bot -- long-polling the Bot API
+docket owns the complete approval path. This module makes docket itself the
+bot -- long-polling the Bot API
 (``edges/adapters/telegram.py``, wire format only) and routing every message
 through docket's own, already-existing approval store and pod-delegation
 APIs. Nothing here reimplements approval logic: :func:`_handle_decision`

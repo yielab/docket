@@ -17,7 +17,7 @@ def _make_fleet(home: Path) -> Path:
     """Write a minimal fleet.json and return its path.
 
     Agent registration and channel bindings live here — fleet.json is
-    docket's only registry; there is no openclaw.json.
+    Docket's only registry; there is no external state registry.
     """
     fleet = {
         "agents": [{"id": "myshop"}],
@@ -332,7 +332,7 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 class TestFleet:
-    """core/fleet.py, replacing the deleted edges/adapters/openclaw.py ACL.
+    """The Docket-owned `core/fleet.py` registry.
 
     oc_get_path/oc_set_path had no fleet.py successor: fleet.json is read
     through a validated Pydantic model now, not raw dotted-path string
@@ -451,7 +451,7 @@ class TestFleet:
         assert _fleet.meta_get("myshop", "model") == "anthropic/claude-haiku-4-5"
 
 
-# core/sync.py (meta<->openclaw.json drift check) does not exist -- with
+# The retired cross-registry drift check does not exist -- with
 # fleet.json as the single source of truth for registration/bindings/gates/
 # defaults, and .docket-meta.json the single source for model/sessionKey,
 # there is nothing left to drift between.
@@ -515,8 +515,7 @@ class TestJsonBridge:
         assert rc == 0
         assert out == ""
 
-    # test_oc_get/test_oc_get_missing deleted: the "oc-get" verb read raw
-    # openclaw.json dotted paths through the now-deleted ACL and has no
+    # The retired raw dotted-path lookup verbs have no
     # successor in the _json bridge (fleet.json is read through a validated
     # model, not dotted-path string lookups).
 

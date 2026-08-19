@@ -40,7 +40,7 @@ def _check_dependencies() -> list[str]:
     """Report required (python3/git) + optional (fzf) tools.
 
     Returns the list of MISSING required dependencies (empty when all present).
-    Does not check for `openclaw` — there is no daemon binary to depend on.
+    Docket owns its runtime, so only its direct tools belong in this check.
     """
     missing: list[str] = []
 

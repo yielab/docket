@@ -1,17 +1,17 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 2.8.0
+**Version**: 2.9.0
 **Status**: Complete
-**Last Updated**: 2026-08-02
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
 This specification defines the schema for `.docket-meta.json`, the per-agent metadata file
 that docket treats as its source of truth for an agent's identity and configuration. One file
-exists per agent at `~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json` (project
-agents) or `~/.openclaw/workspaces/<role>/.docket-meta.json` (specialist agents), and is read
-and written exclusively through the typed ACL helpers (`meta_get` / `meta_set` / `meta_read`) in
-`src/docket/edges/adapters/openclaw.py`, over the atomic JSON store in `src/docket/edges/store.py`.
+exists per agent at `~/.docket/workspaces/projects/<agent-id>/.docket-meta.json` (project agents)
+or `~/.docket/workspaces/<role>/.docket-meta.json` (specialist agents), and is read and written
+through `core/fleet.py`'s typed `meta_get` / `meta_set` / `meta_read` helpers over the atomic JSON
+store in `edges/store.py`.
 
 ## Scope
 
@@ -21,21 +21,19 @@ This specification covers:
 - Which fields are required versus optional
 - Validation rules applied on write by `meta_set`
 
-It does NOT cover the OpenClaw daemon's own configuration schema (`openclaw.json`), which is
-owned by the daemon, nor docket's own fleet registry (`fleet.json`, `core/fleet.py`) — agent
-registration, channel bindings, gates/isolation flags, and the org-wide default model (see
-agent-lifecycle.spec.md and security-gates.spec.md). ROADMAP Phase 19 P19-6: **no field in this
+It does NOT cover docket's fleet registry (`fleet.json`, `core/fleet.py`) — agent registration,
+channel bindings, gates/isolation flags, and the org-wide default model (see
+agent-lifecycle.spec.md and security-gates.spec.md). **No field in this
 file is mirrored anywhere else.** Every field here, including `model` and `sessionKey`, is
-docket's single source of truth for that value — see "Sync contract (retired)" below for why
-that is a behavior change worth calling out explicitly, not just a quiet edit.
+docket's single source of truth for that value.
 
 ## Structure
 
 `.docket-meta.json` is a single **flat JSON object** stored at the root of each agent's workspace:
 
-- Project / pod agents: `~/.openclaw/workspaces/projects/<agent-id>/.docket-meta.json`
+- Project / pod agents: `~/.docket/workspaces/projects/<agent-id>/.docket-meta.json`
   (pod members use the compound id `<project>-<role>`, e.g. `myapp-implementer`).
-- Org specialists: `~/.openclaw/workspaces/<role>/.docket-meta.json`.
+- Org specialists: `~/.docket/workspaces/<role>/.docket-meta.json`.
 
 Every value is a JSON scalar (string, number, or boolean) — there are no nested objects or
 arrays (`persona` is the one structured exception; see its row). The documented field set below
@@ -55,13 +53,9 @@ The field table below is the authoritative source. The same set is declared as t
 model in `src/docket/core/models.py`; the model validates every write, so a field that drifts from
 this table fails type-checking or the test suite.
 
-**Sync classes (retired, ROADMAP Phase 19 P19-6):** every row below is `local` now. Before this
-card, `model` and `sessionKey` were `synced` — mirrored into `openclaw.json` and compared for
-drift by `docket doctor`. `openclaw.json`'s agent registry was replaced by docket's own
-`fleet.json` (see agent-lifecycle.spec.md), and `fleet.json` does not duplicate `model`/
-`sessionKey` at all — this file is their one home. The `Sync` column is kept (rather than
-reshaping the table) so the historical distinction stays visible, but no value in it is anything
-but `local` today, and there is no drift check left to run.
+**Storage ownership:** every row below is `local`. `fleet.json` (see agent-lifecycle.spec.md) does
+not duplicate `model`/`sessionKey`; this file is their one home. The `Sync` column remains for
+schema continuity, but every value is `local` and there is no cross-file drift check.
 
 | Field | Type | Enum / constraints | Sync | Required | Written by | Description |
 |-------|------|--------------------|------|----------|------------|-------------|
@@ -82,7 +76,7 @@ but `local` today, and there is no drift check left to run.
 | `sessionKey` | string | `agent:<id>:<project>` | local | Yes | `add`, `scope` | Isolation key. Not mirrored anywhere (P19-6) — this is its one home |
 | `projectKey` | string | — | local | Yes | `add`, `scope` | Project component of `sessionKey` (default `default`) |
 | `budgetUsd` | number | ≥ 0 | local | No | `profile --budget` | Per-agent spend cap in USD |
-| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when the pod's spend (recorded, or estimated when the daemon recorded none) reaches its `budgetUsd` cap (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
+| `paused` | bool | — | local | No | `core/dispatch.py`'s budget gate (set); `profile --budget`/`profile --resume` (clear) | Whether the agent is paused. Set to `true` on a pod's Lead when its usage-derived cost estimate reaches `budgetUsd` (ROADMAP Phase 14 R-5); dispatch then refuses every further claim for that pod at claim time. Read through `AgentMeta.is_paused()`/`AgentMeta.coerce_paused()` (a real `bool`, tolerant of a legacy `"true"`/`"false"` string) — never a raw string compare |
 | `pausedReason` | string | — | local | No | `core/dispatch.py`'s budget gate (set to `"budget"`); `profile --budget`/`profile --resume` (clear) | Human-readable pause reason. Currently always the literal `"budget"` — the only writer today is the budget-cap gate |
 | `turnTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide agent-turn timeout override in seconds (ROADMAP Phase 14 R-2), read the same way `budgetUsd` is: only the Lead's value is consulted (`core/dispatch.py`'s `pod_turn_timeout`). Falls back to `DEFAULT_TIMEOUT` (or a serve-wide config knob) when unset; a per-invocation `docket pod <p> dispatch --timeout` overrides both this and `verifyTimeoutS` |
 | `verifyTimeoutS` | number | integer > 0 | local | No (Lead only) | `meta_set` (no dedicated CLI setter) | Pod-wide `verifyCmd` timeout override in seconds (R-2), independent of `turnTimeoutS` — a hung test suite and a hung LLM turn no longer share one budget. Same Lead-only read convention and fallback chain as `turnTimeoutS` |
@@ -95,14 +89,15 @@ but `local` today, and there is no drift check left to run.
 | `templateVersion` | string | — | local | No | `add` | Template schema version used at agent creation |
 | `persona` | object | `{name, emoji}` | local | No | `docket persona set/clear` | Optional docket-owned cosmetic identity, rendered into `SOUL.md` between persona markers and re-applied on `maintain rebuild`. Display only — the agent's structural identity is its role (never read from a self-authored `IDENTITY.md`) |
 
-## Sync contract (retired, ROADMAP Phase 19 P19-6)
+## Single-source contract
 
-Before this card, **`model`** and **`sessionKey`** were mirrored to `openclaw.json`:
+Before the Docket-owned registry shipped, **`model`** and **`sessionKey`** were mirrored to a
+second, external registry:
 
-- `model` — written to `agents.list[id].model` by `set_agent_model()` (via `docket profile`).
+- `model` — written to a second `agents.list[id].model` by `set_agent_model()`.
 - `sessionKey` — written to `agents.list[id].metadata.sessionKey` by `sync_session_key()` (via
   `docket scope`); `projectKey` was written alongside it to `metadata.projectKey`.
-- `docket doctor` compared every `synced` field between `.docket-meta.json` and `openclaw.json`
+- `docket doctor` compared every `synced` field between the two registries
   and reported drift; `--fix` re-synced from `.docket-meta.json`.
 
 **None of this exists anymore.** `set_agent_model`, `sync_session_key`, `core/sync.py`
@@ -112,14 +107,14 @@ the part worth stating plainly — **`fleet.json` does not track `model` or `ses
 It was never a design goal to give them a *new* second home; the goal was one home. `.docket-meta.json`
 is that home for every field in the schema table above, unconditionally. See
 agent-lifecycle.spec.md's registration requirements and `core/fleet.py`'s module docstring for the
-full rationale (a second writer — the daemon, a raw `openclaw` CLI call, an older docket version —
-was the actual source of the drift this section used to describe; a single-writer JSON file
+full rationale (a second writer was the actual source of the drift this section used to describe;
+a single-writer JSON file
 docket alone touches cannot drift from itself).
 
 ## Runtime environment injection (FD-0)
 
-`portRangeStart`/`portRangeCount`/`scratchDir` are **local** fields (never synced to
-`openclaw.json`), but they are not docket-only bookkeeping either: `core/dispatch.py` reads
+`portRangeStart`/`portRangeCount`/`scratchDir` are local metadata fields, but they are not passive
+bookkeeping: `core/dispatch.py` reads
 them for every Implementer hop and, when `portRangeStart` is set, passes
 `DOCKET_PORT_BASE`/`DOCKET_PORT_COUNT`/`DOCKET_SCRATCH_DIR` into that hop's real subprocess
 environment via `agent_run`'s `env` parameter (layered on top of the parent process's own
@@ -222,7 +217,7 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
   "name": "my-market-scan researcher",
   "codebase": "",
   "workspaceKind": "workdir",
-  "workDir": "/home/user/.openclaw/workspaces/pods/my-market-scan/workdir",
+  "workDir": "/home/user/.docket/workspaces/pods/my-market-scan/workdir",
   "stack": "",
   "model": "anthropic/claude-sonnet-4-6",
   "modelSource": "policy",
@@ -236,6 +231,13 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 ```
 
 ## Changelog
+
+### Version 2.9.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: corrected workspace paths and metadata ownership to the live
+  `~/.docket` + `core/fleet.py` contract, removed the deleted adapter/second-registry language from
+  current requirements, and labelled budget enforcement as usage-derived estimation. The
+  historical migration record remains below.
 
 ### Version 2.8.0 (2026-08-02)
 

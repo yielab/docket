@@ -1,7 +1,7 @@
 """Durable turn history + compaction (`core/session.py`).
 
-Pure `core/` coverage -- no CLI, no subprocess, no live daemon, no OpenClaw
-format knowledge. Mirrors `test_memory_distillation.py`'s style (custom
+Pure `core/` coverage -- no CLI, no subprocess, no live daemon, no foreign
+session-format knowledge. Mirrors `test_memory_distillation.py`'s style (custom
 driver functions matching the `DistillRunner`/`SessionSummaryRunner` 5-arg
 shape) since compaction's summarisation step is the same call pattern.
 

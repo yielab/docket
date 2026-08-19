@@ -1505,9 +1505,9 @@ in order:
     (`IDENTITY.md`/`BOOTSTRAP.md`)
 12. Eval-results freshness
 
-There is no more "config file valid JSON"/"gateway service running" check — docket has no
-external daemon or gateway process to validate, and no `openclaw.json` to detect drift against
-`.docket-meta.json` (both docket-owned files are now written by docket alone, through one code
+There is no more "external config valid JSON"/"gateway service running" check — Docket has no
+external daemon or gateway process to validate, and no second registry to detect drift against
+`.docket-meta.json` (both Docket-owned files are now written by Docket alone, through one code
 path, so that drift can no longer occur — see [DOCKET.md](DOCKET.md#configuration--one-owner-one-writer)).
 
 **Example:**
@@ -2224,7 +2224,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |
 | `workflow`, `wf` | `docket pipeline validate` / `plan` / `run` — the single pipeline dialect docket actually executes (the Lobster YAML validator ignored constructs its own template emitted). Existing `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read |
-| `eval`, `evals` | **removed, no replacement** — the specialist-role eval harness (`tests/evals/`) was dead code, wired to the deleted OpenClaw daemon, and skipped silently instead of failing. Unlike `workflow`/`team`, no CLI entry point runs a single agent turn to repoint it at, so it was deleted outright rather than redesigned |
+| `eval`, `evals` | **removed, no replacement** — the specialist-role eval harness (`tests/evals/`) was dead code wired to the retired runtime, and skipped silently instead of failing. Unlike `workflow`/`team`, no CLI entry point runs a single agent turn to repoint it at, so it was deleted outright rather than redesigned |
 
 ---
 

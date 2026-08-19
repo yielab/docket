@@ -1,8 +1,8 @@
-"""Agent identity: docket-owned persona + quarantine of OpenClaw scaffolding.
+"""Agent identity: Docket-owned persona + quarantine of foreign scaffolding.
 
 Guards the congruence fix (agent-structure-analysis.md §6): identity is a pure
 function of docket metadata (persona → name → role), rendered into SOUL.md; the
-self-authored OpenClaw IDENTITY.md/BOOTSTRAP.md are pollution to be quarantined.
+self-authored IDENTITY.md/BOOTSTRAP.md files are pollution to be quarantined.
 """
 
 from __future__ import annotations

@@ -1,126 +1,17 @@
 # Security Gates Specification
 
-**Version**: 0.13.0
-**Status**: Implemented (on by default for new installs; docket-enforced end to end — **Phase 19 P19-7b deleted the OpenClaw daemon outright**, so the "daemon still executes everything else" hedge every prior version of this Status line carried no longer applies; see the approval-seam note below for what that leaves of the G-1/G-5 narrative). Docket's own approval store has three real production producers now (G-1's pod-level/pipeline-step gates, G-2's `pre_input` enqueue gate, and — since P19-3 — `core/tools.py`'s in-turn `pre_tool_call` gate); `pre_output` has a real per-hop producer feeding `docket metrics`, and — since G-3 — also classifies hop output against the built-in high-risk class list; the daemon-gate bridge the G-5 spike investigated is now **moot, not merely unavailable** — there is no daemon left to bridge to (see the approval-seam note and the G-5 findings section, both retained as historical record of why no such bridge was ever built). **`pre_tool_call` is no longer universally unevaluated, and is no longer one of two execution paths — it is the only one.** ROADMAP Phase 19 P19-3 gave docket its own tool dispatcher (`core/tools.py`'s `dispatch_tool`, built by P19-2) and wired all four shipped `pre_tool_call` templates into its one decision point (`evaluate_tool_call`). **Precisely what this means, stated once here so it is not overclaimed anywhere else in this spec: docket gates the tool calls it dispatches itself; since P19-7b it no longer shares that role with any external enforcer.** As of this version, **every pod-dispatch hop runs through `core/tools.py`**: `core/dispatch.py`'s hop-execution call sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`, `edges/adapters/docket_runtime.py`, live in production since Phase 19 P19-5/P19-7a), whose `run_turn` calls `core.agent_loop.run_agent_turn`, which dispatches every tool call through `dispatch_tool` — see "In-turn tool-call gate" below for the full contract, corrected for this. G-3 also gave the high-risk classifier (`match_high_risk`) its first real, non-test callers, and deleted the three sibling helpers that never acquired any — see "High-risk action classes" below. **ROADMAP Phase 19 P19-9 adds an exec sandbox for `core/tools.py`'s `bash` tool** — a container (docker) or namespace jail (bwrap) that constrains what an already-*allowed* command can reach while it runs, layered underneath the gate above, never a replacement for it. It is **opt-in, default off** (`ToolContext.sandbox`, default `"off"`) — this is a deliberately narrower default than the gate itself, for reasons given in "Exec sandbox" below. **As of W18-3, it also has a live-path caller**: `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` resolves `ToolContext.sandbox` from the operator's `docket gates isolate on`/`off` posture (`core.fleet.get_isolation_enabled`) fresh on every real turn — `"off"` unless isolation is on, `"auto"` when it is on and a backend is usable, and an outright, audited refusal of the whole turn (never a silent unsandboxed run) when it is on and neither docker nor bwrap is usable. The default install still ships isolation off, so the overwhelmingly common path is unchanged; what changed is that turning it on now does something. **ROADMAP Phase 19 P19-11 adds the `fetch` tool** (decisions D-23/D-24) — a domain-allowlisted, size-capped, timed-out HTTP client gated exactly like every other built-in, giving an agent an inspectable way to reach the network. **This does not close docket's network-egress gap and was never meant to**: `python3`/`node`/`git clone` stay curated-allowlist members that reach the network unattended, same as before this card, and the opt-in `--network none`/`--unshare-net` sandbox lockdown remains deferred (D-24) — off by default, breaks `npm install`/`pip`/`git clone` when on, no measured need. Say it plainly: network egress is open by default on this fleet; `fetch` is an inspectable alternative path, not a closed gate.
-**Last Updated**: 2026-08-05
+**Version**: 0.14.0
+**Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
+`DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
+argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
+Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
+**Last Updated**: 2026-08-19
 
 ## Purpose
 
-This specification defines the tool-approval and workspace-isolation model for docket agents:
-requiring explicit approval before dangerous tool calls and confining agents to their own
-workspace. **Phase 19 P19-7b deleted the OpenClaw daemon outright — there is no external
-enforcer left to defer to.** The gate is docket's own: `core/tools.py`'s `dispatch_tool` — the
-single chokepoint every `DocketDriver`-backed turn routes through (`edges/adapters/
-docket_runtime.py`) — evaluates the argument-aware command classifier (`core/security.py`'s
-`classify_command`) and the `pre_tool_call` policy hooks on every tool call docket dispatches.
-Approval-routing and workspace-isolation are `core/fleet.py`-recorded posture flags (`docket
-gates enable`/`disable`, `docket gates isolate on`/`off`), not daemon configuration — docket now
-both configures and enforces this gate itself.
-
-> **Implementation status.** `docket install` applies the tool-call gate unconditionally: there
-> is nothing left to "enable" there — Phase 19 P19-3 already made `core/tools.py`'s policy engine
-> and high-risk command classifier always active on every tool call docket dispatches, and Phase
-> 19 P19-7b removed the daemon that used to need a separate exec-approval configuration step
-> (the old `security: allowlist`/`ask: on-miss`/`askFallback: deny` config plus a curated-allowlist
-> seed file — deleted with the daemon, no successor). What `--no-gates`/`--gates` at install time
-> (and `docket gates enable`/`disable` afterward) actually control is narrower: whether
-> **approval-routing** is turned on (`core/security.py`'s `apply_approval_routing`/
-> `disable_approval_routing`, recorded via `core/fleet.py`'s `FleetSecurity`) — i.e. whether a
-> `require_approval`/`ask` verdict's prompt is routed to each channel-bound agent's session,
-> answerable via `docket approve`/`docket deny`, `POST /approvals/<token>`, or — since ROADMAP
-> Phase 19 P19-8 — a `/approve`/`/deny` reply in a chat bound via `docket wire`, answered by
-> docket's own bot (`docket serve --telegram`). `docket gates isolate
-> on`/`off` separately records (`core/security.py`'s `apply_workspace_isolation`/
-> `disable_workspace_isolation`) whether tool execution should be confined to a sandbox —
-> **consulted by the turn loop as of W18-3**: `edges/adapters/docket_runtime.py`'s `DocketDriver`
-> reads the flag (`core.fleet.get_isolation_enabled`) fresh on every real turn and resolves
-> `ToolContext.sandbox` from it — `"off"` when isolation is off (byte-identical to every prior
-> version), `"auto"` when isolation is on and `system.sandbox_availability()` finds a usable
-> docker/bwrap backend, and an outright, audited refusal (`isolation.refused`) of the whole turn
-> — never a silent unsandboxed fallback — when isolation is on and neither backend is usable. See
-> "Exec sandbox" below for the full contract, corrected for this. `docket doctor`
-> reports gate status (always-active), approval routing, isolation, and config-permission
-> hardening. `docket gates enable [--force]` keeps the `--force` flag for CLI compatibility, but
-> there is no longer an existing-config idempotency distinction for it to force over — routing is
-> either on or off, full stop.
->
-> **Why on-by-default now.** The previous version of this spec deferred on-by-default pending
-> "per-agent headless approval routing," reasoning that session-mode (Telegram) delivery "only
-> answers prompts during an interactive session" and default-on "could deny an unattended agent
-> with no approver." That blocking condition is now met: docket ships two headless-capable
-> approval channels alongside Telegram —
->
-> - **CLI channel**: `docket approve [token]` / `docket deny <token>` grant or deny a pending
->   approval from any shell (interactive or scripted); omitting the token lists everything
->   pending. No chat session required.
-> - **HTTP channel**: `docket serve`'s `GET /approvals` (list) and `POST /approvals/<token>`
->   (`{"action": "grant"|"deny"}`, bearer-token authenticated) let CI jobs, cron, or any
->   automation vote on a pending approval without a human at a keyboard.
->
-> Both channels are real, shipped surfaces (Phase 13) — **but note what they operate on.**
-> **Since ROADMAP Phase 19 P19-8, Telegram itself is also headless** — docket's own bot
-> (`docket serve --telegram`) answers a bound chat's `/approve`/`/deny` with no interactive
-> session or daemon in the loop, the same "session-mode delivery only works interactively"
-> limitation this paragraph originally cited no longer applies to it either. Counting the MCP
-> channel below (`cli/_mcp.py`'s `approve`/`deny` tools, `channel="mcp"`), docket's approval
-> store now has **four** headless channels — CLI, HTTP, MCP, Telegram — all calling the same
-> `approval_grant`/`approval_deny` + `resolve_waiting_approval` pair.
->
-> **Superseded by Phase 19 P19-7b (2026-08-03): the daemon side of this seam no longer exists.**
-> The two paragraphs immediately below describe a two-system world — the daemon's own
-> exec-approval prompt versus docket's `apr-*` token store — that was real when G-1/G-5 shipped.
-> P19-7b deleted the daemon outright, so there is now only **one** approval system: docket's own.
-> The G-5 investigation and its "no bridge" verdict are kept verbatim below as the evidenced
-> record of why no such bridge was ever built; read every present-tense claim about "the daemon's
-> exec-approval prompt" in them as **historical**, describing a system this codebase no longer
-> ships, not a live gap. The `telegram` audit-channel tag referenced throughout is likewise no
-> longer "reserved for a future daemon bridge" — there is no daemon left to bridge to, and as of
-> ROADMAP Phase 19 P19-8 it is no longer reserved for anything: docket's own bot writes it on
-> every real grant/deny (`core/telegram.py`, see the requirement above).
->
-> **The approval seam (updated 2026-07-30 — G-1 shipped, G-5 concluded "no bridge"; historical
-> as of P19-7b, see note above).** There are two approval systems in play, and **the daemon-facing
-> half of the seam is still not bridged**:
-> (a) the **daemon's** exec-approval prompt — the thing that actually fires when a gated binary
-> is invoked — which is delivered to the agent's chat session and answered with the daemon's own
-> `/approve <id>` mechanism; and (b) **docket's** approval store (`apr-*` tokens under
-> `$APPROVALS_DIR`), which the CLI/HTTP channels above read and write. The daemon's gate prompt
-> still does not mint an `apr-*` token, so `docket approve` still cannot answer a *live daemon*
-> gate.
->
-> **G-5 spike verdict: No — a practical bridge does not exist today.** ROADMAP Phase 15 G-5 asked
-> whether the daemon's exec-approval prompt can notify an external hook. It was investigated
-> against a locally installed `openclaw 2026.2.23` daemon (live gateway, real registered agents)
-> plus its published documentation. Short answer: half of a bridge is real and reachable
-> (resolving a *known* prompt), while the other, load-bearing half (learning that a prompt exists
-> at all) is not reachable from anywhere in docket's current toolbox. See "The `[GATE]` seam —
-> G-5 spike findings" below for the full evidence trail. That card shipped no code, per its own
-> evidence standard — so this remains a documented, evidenced upstream limitation rather than an
-> open question.
->
-> What changed: docket's store previously had **zero** production producers (`approval_create`
-> was called only by tests). ROADMAP Phase 15 G-1 ("approval-gated dispatch") gave it its first
-> one — `core/dispatch.py`'s require_approval gate, evaluated pre-hop in the pod dispatch
-> pipeline (see `pod-dispatch.spec.md` v2.1.0). A gated hop now genuinely creates a real approval
-> record, and `docket approve`/`docket deny` (and the HTTP endpoint below) genuinely resume or
-> kill the *dispatch task* that gate stopped — this is real, shipped behavior, not a future
-> contract. It is still scoped narrowly: it gates a pod dispatch hop, not the daemon's own
-> exec-approval prompt for an arbitrary tool call. Three trigger sources feed this one gate: a
-> pod-level Lead-meta role list (G-1), a pipeline `approval` step (W-1/W-2), and — since G-2 — a
-> `pre_input` guardrail policy match evaluated once at task enqueue, not per hop (see "Policy
-> engine on the live path" below and `pod-dispatch.spec.md`).
->
-> **Why on-by-default is still safe:** at the time this was written, the fail-closed property for
-> an unattended agent's *daemon-side* gate was the daemon's own `askFallback: deny` — a prompt
-> nobody answers denied by the daemon, full stop. **That daemon-side backstop no longer exists
-> (P19-7b) because the daemon it belonged to doesn't.** Its replacement is docket's own: an
-> unanswered in-turn tool call fails closed via `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call
-> gate" below), the same fail-closed contract, just owned by docket instead of an external daemon.
-> Separately, `approval_sweep_expired` now resolves a stale pending record in docket's own store to
-> **denied** (fail-closed) after `APPROVAL_TIMEOUT`, not the prior, read-by-nobody `"expired"`
-> state — and, for a G-1-originated record specifically, that resolution also fails the waiting
-> dispatch task, so an unanswered gate on a pod dispatch hop now genuinely fail-closes end to end,
-> not just on paper. This sweep still runs only while `docket serve` is up.
+This specification defines Docket’s tool-approval, policy, workspace-isolation, sandbox, and
+network-egress contracts. `core/tools.py` is the single chokepoint, `core/fleet.py` owns posture,
+and Docket’s approval store owns every grant/deny path. There is no external enforcer or bridge.
 
 ## Scope
 
@@ -199,81 +90,6 @@ are owned here, not there.
    a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
    one; see the G-5 findings section below for why that path was investigated and closed.
 
-### The `[GATE]` seam — G-5 spike findings (investigated 2026-07-30, not bridged; historical — the daemon this investigated was deleted by P19-7b)
-
-1. **Question.** Can the daemon's native exec-approval prompt notify an external hook, so docket
-   could bridge it into its own `apr-*` token store and answer it via `docket approve`/`docket
-   deny`/`POST /approvals/<token>`, making the target-state example below genuinely real?
-   Investigated against a locally installed `openclaw 2026.2.23` daemon — a live, already-running
-   gateway with real registered agents — plus its published docs at docs.openclaw.ai.
-
-2. **Confirmed present: the write half.** `exec.approval.resolve` is a real, registered Gateway
-   RPC method on the installed daemon: calling it with no params returns a schema-validation
-   error (`must have required property 'id'; must have required property 'decision'`), not
-   `unknown method` — the daemon's distinct error for a genuinely absent method (see point 3). It
-   is reachable via `openclaw gateway call exec.approval.resolve --params '{...}'`, the same
-   CLI-subprocess pattern `edges/adapters/openclaw.py` already uses everywhere else — so
-   *writing* a decision back to the daemon, once its id is known, needs no new client, dependency,
-   or credential type beyond what docket already shells out to.
-
-3. **Confirmed absent: the notify half.** Official docs (docs.openclaw.ai/gateway/clients,
-   /tools/exec-approvals-advanced) describe an `exec.approval.requested` broadcast event plus an
-   `exec.approval.list` backfill call, consumed by a WebSocket "operator" client holding the
-   `operator.approvals` scope, via the officially "published Gateway packages"
-   `@openclaw/gateway-client` / `@openclaw/gateway-protocol` — both **npm-only**; no Python SDK is
-   published or documented anywhere. The docs themselves flag this surface as still rolling out
-   ("npm may return `E404` until the first package-bearing OpenClaw release is published").
-   Probing the installed daemon's `openclaw gateway call <method>` escape hatch (a request/
-   response CLI call, not a subscription) for a backfill/list method under every plausible name
-   returned `unknown method` in every case: `exec.approval.list`, `exec.approvals.list`,
-   `exec.approval.pending`, `exec.approvals.pending`, `approval.list`, `approvals.list`,
-   `commands.list`. There is no `openclaw gateway subscribe`/`listen`/`watch` CLI command either —
-   `openclaw gateway call` is the only CLI-level RPC surface, and it is strictly request/response,
-   so it structurally cannot deliver a push notification.
-
-4. **Confirmed absent: a generic webhook.** `openclaw webhooks --help` covers only Gmail Pub/Sub
-   (via `gogcli`) — unrelated to exec approvals. No config key under `approvals.exec` accepts an
-   arbitrary URL; the only built-in "forwarding" is `approvals.exec.targets`, a fixed enum of
-   native chat channels (Slack/Telegram/Discord/Matrix/Google Chat/WhatsApp/Signal/QQ bot),
-   resolved via each channel's own `/approve` command — not an integration point docket (a CLI
-   tool, not a chat channel) can register into.
-
-5. **Confirmed absent: an HTTP path to resolution.** The bundled, opt-in `admin-http-rpc` plugin
-   (disabled by default) exposes a curated method allowlist over plain HTTP —
-   `exec.approvals.get`/`exec.approvals.set`/`exec.approvals.node.get`/`exec.approvals.node.set`
-   (the static *policy* file: allowlist entries, `security`/`ask`/`askFallback` mode) — but
-   explicitly **excludes** `exec.approval.resolve`/`approval.resolve` (the live per-request
-   grant/deny action) from that allowlist per its own documentation. So even enabling that plugin
-   does not give docket's HTTP-based `serve.py` a way to resolve a live prompt, let alone list one.
-
-6. **Confirmed absent: the plugin hook system is a different, independent gate.** OpenClaw
-   plugins can register `before_tool_call` with `requireApproval` (matched on tool ids like
-   `exec`) to add their *own* approval step — but per the docs, "`approvals.plugin` is
-   independent from `approvals.exec`. Enabling exec approval forwarding does not route plugin
-   approval prompts." A plugin cannot use this hook to observe or resolve the *native*
-   exec-approval prompt; it can only bolt on a second, parallel approval gate with its own,
-   separate prompt.
-
-7. **Verdict: No.** Half of a bridge exists and is genuinely reachable
-   (`exec.approval.resolve`, over the existing CLI-subprocess pattern) — but the other,
-   load-bearing half (learning that a prompt exists, and its `id`) is not reachable from
-   anywhere in docket's current toolbox (subprocess calls + JSON file I/O). The only documented
-   way to receive it is a persistent, authenticated WebSocket "operator" session — a protocol
-   with no Python implementation published anywhere, requiring docket to mint and hold a new,
-   high-privilege `operator.approvals` device credential (described by OpenClaw's own docs as
-   "remote-execution-grade authority") that docket has never needed before. Implementing that
-   from the wire-protocol docs alone, with no official Python SDK to validate against and no
-   confirmation the backfill/list call even exists in the shipped daemon, is a multi-week
-   protocol-implementation project, not a spike-scoped bridge — so no bridge was built. The
-   `[GATE]` example below stays labeled target state, not shipped.
-
-8. **What would change this answer.** Either (a) OpenClaw ships a Python-compatible client (or a
-   documented, HTTP-reachable equivalent of `exec.approval.list` / `exec.approval.requested`), or
-   (b) the `admin-http-rpc` plugin's exposed method allowlist is extended to include
-   `exec.approval.resolve` *and* a way to list or stream pending requests over plain HTTP. Until
-   one of those lands upstream, this spec's `[GATE]` bridge example remains aspirational by
-   necessity, not by omission.
-
 ### Workspace isolation (implemented, opt-in)
 
 1. An agent **MUST NOT** read or write outside its own workspace and codebase path.
@@ -328,7 +144,7 @@ are owned here, not there.
    item described the daemon's own exec-approval allowlist reaching the same outcome; the
    mechanism changed at P19-7b, the enforcement claim did not.)
 4. **Prod-deploy is now fully enforced, corrected for P19-7b.** Its two bins that overlap the
-   curated allowlist (`git`, `npm`) were, pre-P19-7b, gated only by the OpenClaw daemon's own
+   curated allowlist (`git`, `npm`) were, before Docket owned the loop, gated only by the retired runtime's
    exec-approval allowlist — binary-path-only, unable to distinguish `git push origin main`
    from `git status` — so this item used to say prod-deploy **MUST NOT** be described as fully
    enforced. **That daemon no longer exists.** Since P19-7b, `core/tools.py`'s `dispatch_tool`
@@ -379,7 +195,7 @@ requirement 2 above for why `resolve_command_action` in particular could never h
    stronger posture than routing to an approval prompt, and it is the only honest one available
    here: `run_verify_cmd` runs synchronously inside a dispatch hop with no interactive approver
    reachable to answer — the same fail-closed philosophy `TOOL_APPROVAL_TIMEOUT` and
-   `approval_sweep_expired` apply elsewhere in this spec (formerly the OpenClaw daemon's own
+   `approval_sweep_expired` apply elsewhere in this spec (formerly the retired runtime's own
    `askFallback: deny`, before P19-7b deleted it) when nobody answers a live prompt.
 3. `core/dispatch.py`'s `pre_output` guardrail scan (see "Policy engine on the live path" below)
    **MUST** also classify each hop's real output against `core.security.match_high_risk`,
@@ -835,30 +651,6 @@ docket policies validate [id|file.json]     # MUST schema-check installed polici
 
 ## Examples
 
-### Gate flow, pre-P19-7b (historical — the daemon this describes no longer exists)
-
-An agent invoking a non-allowlisted binary (e.g. `docker stop mywebsite-db`) used to be stopped
-by the daemon's exec-approval gate; the prompt was delivered to the agent's session and
-answered with the daemon's `/approve <id>` (or denied by `askFallback: deny` when nobody
-answered). Kept as the historical record of what P19-7b deleted; see "In-turn tool-call gate —
-examples" below for the live equivalent (`core/tools.py`'s `dispatch_tool`, which now gates
-`git push origin main` too — see "High-risk action classes" above for the P19-7b correction).
-
-### Approval flow — pre-P19-7b target state (historical: investigated by G-5, never bridged, and the daemon it targeted is now deleted)
-
-```text
-[GATE] Agent 'mywebsite' requested: docker stop mywebsite-db
-       Approve via: docket approve <token>  ·  docket deny <token>
-       ·  POST /approvals/<token>  ·  or, if Telegram-bound, reply ✅/❌
-       Times out in APPROVAL_TIMEOUT → denied.
-```
-
-This worked example would require the daemon-notify bridge that the G-5 spike investigated and
-found **not practically buildable today** — see "The `[GATE]` seam — G-5 spike findings" above
-for the evidence. No docket code emits a `[GATE]` line, and none is planned until OpenClaw
-exposes a Python-reachable way to learn that a live exec-approval prompt exists. The example is
-retained as the target contract only. **Do not cite it as shipped behavior.**
-
 ### Approval flow — shipped state (dispatch-gated, ROADMAP Phase 15 G-1)
 
 This one *is* real today — narrower than the target state above (it gates a pod dispatch hop,
@@ -1124,12 +916,8 @@ $ git clone https://anywhere.example/repo.git
 
 ### Pre-conditions
 
-- None external — since Phase 19 P19-7b deleted the daemon, this gate depends on no external
-  process or its capabilities. `core/tools.py`'s policy engine and high-risk command classifier
-  are unconditionally active on every tool call docket dispatches (Phase 19 P19-3); every
-  `DocketDriver`-backed turn routes through it (Phase 19 P19-5/P19-7a). (Pre-P19-7b, this
-  precondition read "The OpenClaw daemon MUST support tool-approval hooks for this to be
-  enforceable" — kept here only as the historical contrast.)
+- No external runtime is required. Docket’s policy engine and high-risk classifier are active on
+  every tool call, and every `DocketDriver` turn routes through that chokepoint.
 
 ### Post-conditions
 
@@ -1239,6 +1027,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.14.0 (2026-08-19)
+
+- W21-C1 daemon-free truth pass: reduced the transitional status to the current single-chokepoint
+  contract and removed the superseded bridge spike/target examples from normative sections.
+  Historical evidence remains in older changelog entries, ROADMAP, and Git history.
 
 ### Version 0.13.0 (2026-08-05)
 

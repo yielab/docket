@@ -1,7 +1,7 @@
 """docket-owned secrets storage: ~/.docket/secrets.json + secrets.meta.json.
 
 Provider API keys `docket keys` manages, and their bookkeeping metadata
-(added/rotated timestamps). Always docket-owned — never an OpenClaw file
+(added/rotated timestamps). Always docket-owned — never an external-runtime file
 format — and living under ``DOCKET_HOME``.
 
 Three consumers share this module rather than each reading the files

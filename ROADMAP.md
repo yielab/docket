@@ -12,7 +12,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 20 are complete; the board is
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 21 are complete; the board is
 clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -39,6 +39,7 @@ clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
+| — | **Wave 21** (not a phase): daemon-free current-state truth pass | ☑ done (2026-08-19) — current contracts, docs, source prose, and hermetic fixtures now describe only Docket-owned runtime/state; explicit migration history preserved |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -72,24 +73,26 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 ## Tracked decisions (not yet scheduled)
 
 - 🗓️ **Project rename (deferred).** "docket" collides with Ruby Docket, is a generic word, and is
-  hard to search. The decision is to **keep "docket" for now but anchor it to "OpenClaw" on every
-  public surface** (README first line, repo description, social preview), so a later rename to a
-  searchable, namespace-clean name (candidates: `clawfleet`, `docketctl`, `openclaw-docket`) stays
-  low-cost. Revisit before any wide public launch. Touch points a rename must update: binary
+  hard to search. The decision is to **keep "docket" as an independent product name for now** and
+  revisit a searchable, namespace-clean rename (candidate: `docketctl`) before any wide public
+  launch. Do not anchor positioning to the retired runtime: D-19 made Docket own the loop and
+  removed that compatibility relationship. Touch points a rename must update: binary
   name, `install.sh`/`uninstall.sh` paths, Homebrew `Formula/`, docs, and the metrics script.
-- 🗓️ **OpenClaw version-pinned CI.** Install the latest OpenClaw weekly, run the integration
-  suite, and open an auto-issue on schema break. Until then [COMPATIBILITY.md](COMPATIBILITY.md)
-  reflects manual verification.
+- ☑ **Version-pinned CI for the retired daemon — CUT (2026-08-19).** Superseded by D-19's clean
+  break: Docket has no daemon binary, adapter, shared schema, package dependency, or compatibility
+  layer to test. Current compatibility is the OpenAI-compatible model endpoint plus optional MCP,
+  as recorded in [COMPATIBILITY.md](COMPATIBILITY.md). Installing an unrelated runtime weekly would
+  add a false signal rather than protect a live contract.
 - ☑ **Telegram conversation memory (TC-1…TC-7, shipped 2026-07-20).** A live investigation
   (triggered by the docket Telegram group dropping an accepted task across a context reset) found
   three gaps *beyond* the memory-durability fix (WORKFLOW_AUTO `CONTRACT_VERSION` v3): split
-  identity from leftover OpenClaw scaffolding, no durable conversation persistence, and no
+  identity from leftover external-runtime scaffolding, no durable conversation persistence, and no
   registry. **Delivered:** docket-owned identity — optional `Persona` on `AgentMeta` rendered into
   `SOUL.md`, `docket persona`, and `docket doctor` quarantine of `IDENTITY.md`/`BOOTSTRAP.md`
   (`core/identity.py`); a docket-owned **conversation registry** (`core/conversations.py`,
   `docket conversations list/show/resume/set`, seeded at `docket wire`); and a doctor advisory on
-  the memory index. TC-3 established OpenClaw's per-agent sqlite is a rebuildable RAG index (not a
-  transcript), so durability is docket-owned by design. Full record:
+  the memory index. TC-3 established the retired runtime's per-agent sqlite as a rebuildable RAG
+  index (not a transcript), so durability is docket-owned by design. Full record:
   [internal-docs/telegram-conversation-memory.md](internal-docs/telegram-conversation-memory.md)
   and [agent-structure-analysis.md §6](internal-docs/agent-structure-analysis.md). Deferred:
   `--persona` at `docket add` time; auto-populating `last_message`/`task_ref` from dispatch/serve.
@@ -97,12 +100,12 @@ planned · 🚧 in progress · 🗓️ planned / deferred
   (`DESIGN-PATTERN-AUDIT.md`, `SECURITY-AUDIT-REPORT.md`) were reviewed against the code and
   **deleted** as net-negative: they fabricated non-existent functions (`_create_agent_meta`,
   `exec_in_workspace`), flagged a dispatch "layer violation" that doesn't exist (`core/dispatch.py`
-  delegates execution to `_oc.agent_run`/`_sys.*`, no raw subprocess), cited a stale
+  delegates execution through the runtime driver and system adapter, no raw subprocess), cited a stale
   `_install.py` size, and otherwise recommended cargo-cult OOP against the deliberate
   functional style. The **one** actionable idea — a boundary guard — was implemented as the true
   invariant: `tests/python/test_no_subprocess_in_core.py` (core/ must be process-free),
-  a sibling of the CH-3 no-UI-in-core test. Optional-only leftover: splitting the 1204-line
-  `edges/adapters/openclaw.py` into a sub-package (maintainability, not a need).
+  a sibling of the CH-3 no-UI-in-core test. Its optional adapter-split suggestion became moot when
+  D-19 deleted the external-runtime adapter outright.
 
 > This document is self-contained. A developer or AI agent should be able to start from
 > here **without reading anything else first** and not lose scope. Read §1–§4 once, then
@@ -2458,6 +2461,15 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-19 (wave 21) — the clean runtime break is now reflected in every current contract.**
+  Product source, ordinary docs/tests, golden fixtures, and normative spec sections no longer
+  teach a deleted daemon, adapter, binary, or home directory as a live boundary. The golden suite
+  now seeds `.docket`; JSON/API documentation was checked against live producers (including a
+  corrected `doctor --json` `modelConfig.invalid` shape); and a source-tree guard keeps retired
+  coupling out of `src/docket`. Explicit names remain only where they are evidence: durable
+  changelogs, roadmap/TODO history, and older spec changelog entries. All 2,229 tests passed with
+  four environment skips; Ruff, format, mypy, 18 goldens, 24-spec validation, and metrics passed.
 
 - **2026-08-05 (wave 19) — running a real pod against a real endpoint found three defects in one
   session, and 2,209 tests had caught none of them.** The local environment gained a llama.cpp
