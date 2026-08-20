@@ -439,7 +439,10 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         token = _approval.approval_create(
             ctx.project or "operator",
             ctx.role or "tool",
-            f"tool call {tool.name!r}: {verdict.reason}"[:1000],
+            (
+                f"tool call {tool.name!r}: {verdict.reason}; "
+                f"call={render_tool_call(tool.name, args)}"
+            )[:1000],
             context={"tool": tool.name, "callId": call.id},
         )
         wait_outcome = _approval.wait_for_approval(token)

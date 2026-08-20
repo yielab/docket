@@ -471,15 +471,15 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,233 tests** in the pytest suite (`tests/python/`)
-- **~28,000 lines** of Python in the shipped `docket` package
+- **2,238 tests** in the pytest suite (`tests/python/`)
+- **~28,154 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **36 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
 uv run python scripts/smoke_workflow.py                # observable full workflow, no credentials
-uv run python scripts/smoke_workflow.py --live-model   # same workflow, real local model on :8081
-uv run pytest                                        # 2,233-test Python suite
+uv run python scripts/smoke_workflow.py --live-model   # realistic memory-backed repair on :8081
+uv run pytest                                        # 2,238-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -488,14 +488,22 @@ The smoke command provisions a temporary four-role pod, talks to a deterministic
 OpenAI-compatible endpoint through the real HTTP adapter, executes a gated file write, passes a
 mechanical check and Reviewer verdict, pauses for CLI approval, resumes, passes Tester, then verifies
 sessions, typed handoffs, traces, audit, usage, and run records. Add `--workdir <empty-path>` to keep
-the generated world for inspection. `--live-model` runs that same workflow with genuine,
-un-scripted inference from `http://127.0.0.1:8081/v1`; use `--endpoint <loopback-url>` or
-`--model <id>` only when discovery needs an override. The live canary configures its temporary
-Docket home, sends no API key, and is intentionally opt-in rather than a CI dependency.
+the generated world for inspection. `--live-model` defaults to a realistic scenario: it distills
+dated memory with a superseded decision, requires that decision to cross the Lead handoff, repairs
+a Git-worktree checkout module after proving its existing regressions fail for the intended defects,
+and runs project plus hidden behavioral acceptance against that effective worktree. Sparse
+`- [exact]` memory records preserve normative IDs/formulas literally and fail closed before archive
+if the model corrupts them; ordinary log narration remains summarized. Genuine
+tool-policy prompts are answered through
+`docket approve` in the isolated canary home; the pipeline approval
+remains a separate pause. Use `--scenario basic` for the smaller W23 live workflow, or
+`--endpoint <loopback-url>`/`--model <id>` when discovery needs an override. The live canary uses
+un-scripted inference from `http://127.0.0.1:8081/v1`, sends no API key, and stays opt-in.
 
 Every live turn also receives the current private HEARTBEAT/AGENTS/TOOLS/MEMORY state directly in
 its system context. Higher-priority active work is retained first under the existing static-context
-budget, cuts are visibly marked, and project tools never gain access to the private agent workspace.
+budget, cuts are visibly marked, and the prompt treats the private state as read-only through every
+project tool, including bash; Docket, not the model, owns task durability.
 
 Every figure above is drift-guarded in CI by `uv run python scripts/metrics.py --check`, which
 fails the build when this list and the tree disagree — and fails just as loudly if the prose stops

@@ -439,9 +439,12 @@ class TestSystemPromptForAgent:
 
         assert "already loaded" in prompt
         assert "Do not search for, recreate, or modify them with project tools" in prompt
+        assert "including bash" in prompt
+        assert "returning the completed task result is sufficient" in prompt
         assert prompt.rstrip().endswith(
-            "Continue with the assigned task now; do not call read/glob/write for these "
-            "private control files."
+            "Continue with the assigned task now. Do not access or update private control files "
+            "through any project tool, including bash. Return the completed task result when "
+            "the work is done; Docket owns task durability."
         )
         ordered = [
             prompt.index(name)

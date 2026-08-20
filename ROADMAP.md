@@ -12,7 +12,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 23 are complete; the board is
+**Last updated: 2026-08-19.** **Every numbered phase 0–22 and Wave 24 are complete; the board is
 clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -42,6 +42,7 @@ clear.** Executable cards, when a measured trigger opens one, live in [TODO.md](
 | — | **Wave 21** (not a phase): daemon-free current-state truth pass | ☑ done (2026-08-19) — current contracts, docs, source prose, and hermetic fixtures now describe only Docket-owned runtime/state; explicit migration history preserved |
 | — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
 | — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
+| — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -2463,6 +2464,17 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-19 (wave 24) — a realistic memory-backed Git canary found and closed three product
+  defects hidden by the one-line/flat-workspace smoke.** The live scenario starts from two
+  intentional checkout regressions in a committed repository, distills superseding private
+  decisions, repairs the Implementer's isolated worktree, and validates four public regressions
+  plus hidden behavioral/AST acceptance. Preserved failed runs exposed private-state completion
+  ambiguity and opaque approvals, a model-corrupted `10_000`→`1_000` invariant, and Tester reading
+  the untouched origin. Runtime context now releases completed turns; approvals show the redacted
+  call; sparse `- [exact]` records validate normative literals fail-closed; downstream roots are
+  accepted only from a registered same-pod Implementer. The final run
+  `/tmp/docket-live-memory-w24-k` passed every gate without raised limits or scripted replies.
 
 - **2026-08-19 (wave 23) — the full workflow now runs against the real local model, and the
   repeated run fixed what the deterministic proof could not see.**

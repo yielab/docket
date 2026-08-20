@@ -852,6 +852,14 @@ def _implementer_diff_probe(member_id: str, role: str) -> tuple[list[str], str |
     return files_changed, diff_ref
 
 
+def _prior_implementer_worktree(prior: list[HopResult]) -> str:
+    """Effective checkout produced by the latest successful Implementer hop."""
+    for hop in reversed(prior):
+        if hop.role == "implementer" and hop.ok:
+            return str(_fleet.meta_get(hop.member_id, "worktreeDir", "") or "")
+    return ""
+
+
 def _hop_record(h: HopResult) -> dict[str, Any]:
     """The persisted-queue-file shape of one hop (round-trips via ``_hop_from_record``).
 
@@ -1354,6 +1362,23 @@ def dispatch_task(
                 )
 
         message, composition = _hop_message(task, role, prior_snapshot, rework_hop)
+        pipeline_worktree = ""
+        if role not in {"lead", "implementer"}:
+            pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
+            if pipeline_worktree:
+                checkout_note = (
+                    "\nEffective implementation checkout for this downstream hop: "
+                    f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
+                    "codebase; keep your role's existing tool permissions."
+                )
+                if isinstance(node.gate, _pipeline.VerdictGate):
+                    checkout_note += (
+                        " Your final reply must still put one recognized verdict marker "
+                        "on its first non-blank line, before all reasons."
+                    )
+                checkout_note += "\n"
+                message += checkout_note
+                composition.total_bytes += len(checkout_note.encode("utf-8"))
         _trace_locked(
             project,
             session_id,
@@ -1377,6 +1402,9 @@ def dispatch_task(
             _json.dumps({"hop": role, "agent": member_id}),
         )
         env = _hop_env(member_id, role)
+        if pipeline_worktree:
+            env = dict(env or {})
+            env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
 
         # Retry only a retryable failure (a transient hiccup running the turn) —
         # a non-zero exit or a bad verdict is a real answer and stops here.

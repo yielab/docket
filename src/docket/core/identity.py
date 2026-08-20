@@ -59,13 +59,16 @@ _RUNTIME_CONTEXT_FILES = (HEARTBEAT_FILE, "AGENTS.md", "TOOLS.md", MEMORY_FILE)
 _RUNTIME_CONTEXT_NOTE = (
     "# Runtime-loaded Docket workspace state\n"
     "These private control files are already loaded from the Docket workspace. "
-    "Do not search for, recreate, or modify them with project tools; project tools remain "
-    "rooted in the project workspace. Docket owns task durability for this turn."
+    "Do not search for, recreate, or modify them with project tools, including bash; project "
+    "tools remain rooted in the project workspace. Treat this private state as read-only. "
+    "Docket owns task durability for this turn, so returning the completed task result is "
+    "sufficient; do not maintain HEARTBEAT or memory yourself."
 )
 _RUNTIME_CONTEXT_FOOTER = (
     "\n\n# Runtime workspace state loaded\n"
-    "Continue with the assigned task now; do not call read/glob/write for these private "
-    "control files."
+    "Continue with the assigned task now. Do not access or update private control files through "
+    "any project tool, including bash. Return the completed task result when the work is done; "
+    "Docket owns task durability."
 )
 
 #: Base-assistant scaffolding a self-authoring runtime may leave behind, and that

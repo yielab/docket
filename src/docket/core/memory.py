@@ -87,6 +87,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -466,6 +467,12 @@ def seed_contract(
 #: log can never be "found" and re-distilled or re-deleted by mistake.
 DISTILLED_ARCHIVE_DIRNAME = ".distilled"
 
+#: A daily-log line with this prefix is a compact, operator-authored invariant.
+#: The prose summary remains model-owned; these sparse records are validated
+#: mechanically and carried verbatim so identifiers, constants, and formulas
+#: cannot silently drift during summarization.
+EXACT_RECORD_PREFIX = "- [exact] "
+
 #: The shape `distill_memory` needs from a driver: `run_turn`'s core 5-arg
 #: call, nothing more. Mirrors ``core/dispatch.py``'s own ``Runner`` alias
 #: (a plain ``Callable``, not the full ``RuntimeDriver`` Protocol) for the
@@ -529,7 +536,10 @@ def _distillation_message(label: str, logs: list[Path]) -> str:
         "write a concise, durable summary suitable for appending to "
         "MEMORY.md: keep facts that matter long-term (decisions, "
         "architecture, open issues, durable state); drop day-to-day "
-        "narration and anything already captured elsewhere. Reply with the "
+        "narration and anything already captured elsewhere. Lines beginning "
+        f"with `{EXACT_RECORD_PREFIX}` are exact durable records: preserve their "
+        "decision identifier and every backtick-delimited literal byte-for-byte; "
+        "never rewrite their arithmetic, paths, versions, or quoted constants. Reply with the "
         "summary text only -- no preamble, no repeating the raw logs "
         "verbatim.\n"
     )
@@ -553,6 +563,43 @@ def _distillation_message(label: str, logs: list[Path]) -> str:
         parts.append(chunk)
         used += len(chunk_bytes)
     return "".join(parts)
+
+
+def _exact_durable_records(logs: list[Path]) -> list[str]:
+    """Return unique operator-marked records in source order, without their marker."""
+    records: list[str] = []
+    for path in logs:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(EXACT_RECORD_PREFIX):
+                record = stripped.removeprefix(EXACT_RECORD_PREFIX).strip()
+                if record and record not in records:
+                    records.append(record)
+    return records
+
+
+def _summary_preserves_exact_records(summary: str, records: list[str]) -> bool:
+    """Check the compact machine-verifiable parts of every exact record."""
+    for record in records:
+        identifier_match = re.search(r"\b[A-Z][A-Z0-9]*-\d+\b", record)
+        identifier = identifier_match.group(0) if identifier_match else ""
+        literals = re.findall(r"`([^`]+)`", record)
+        if (identifier and identifier not in summary) or any(
+            f"`{literal}`" not in summary for literal in literals
+        ):
+            return False
+    return True
+
+
+def _append_exact_records(summary: str, records: list[str]) -> str:
+    if not records:
+        return summary
+    rendered = "\n".join(f"- {record}" for record in records)
+    return f"{summary}\n\n## Exact durable records\n\n{rendered}"
 
 
 def _append_distilled_summary(ws: Path, summary: str, day: _dt.date) -> None:
@@ -644,6 +691,15 @@ def distill_memory(
             error="distillation turn returned an empty summary",
             failure_kind="invalid_output",
         )
+
+    exact_records = _exact_durable_records(logs)
+    if not _summary_preserves_exact_records(summary, exact_records):
+        return DistillResult(
+            ok=False,
+            error="distillation turn corrupted or omitted an exact durable record",
+            failure_kind="invalid_output",
+        )
+    summary = _append_exact_records(summary, exact_records)
 
     d = day or today()
     _append_distilled_summary(ws, summary, d)

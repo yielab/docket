@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Active
 **Last Updated**: 2026-08-19
 
@@ -83,6 +83,27 @@ commands, send no API key, and make no exact response-text or request-count assu
 task's real artifact and pipeline gate contracts. It **MUST NOT** tighten the product's normal
 turn, tool, token, or output limits merely to make the canary predictable.
 
+The default live scenario **MUST** be `memory-maintenance`, a realistic code-repair task whose
+critical current decision exists only in the Lead's private dated memory logs. The scenario
+**MUST** call the public `docket maintain <lead> distill` command against the genuine model, verify
+that pending logs were archived and the superseding `- [exact]` decisions survived byte-faithfully
+into `MEMORY.md`, then
+delegate a task that refers to durable project decisions without restating their values. Its
+acceptance **MUST** prove the Lead carried the current decision through its typed artifact and that
+the Implementer repaired a real module against a pre-existing failing regression suite and a
+behavioral check outside project-tool roots. The public regressions **MUST** define the arithmetic
+edge and required metadata shape without revealing the current private tenant value, so the model
+does not have to invent expected behavior and memory transfer remains necessary. Before delegation,
+the canary **MUST** run that suite and prove it is red for precisely those seeded defects, then
+commit the seed as a real Git repository before pod provisioning. Mechanical and hidden acceptance
+**MUST** inspect the Implementer's effective worktree rather than the untouched origin checkout.
+Exact model prose is not contractual; retained fact values and the resulting behavior are. If the
+un-scripted agent requests a policy-gated `bash` validation, the
+canary **MUST** exercise a genuine operator grant through `docket approve` in its isolated home;
+it **MUST NOT** disable the policy or shorten its timeout. Pipeline approval remains a distinct,
+explicit pause/resume assertion. `--scenario basic` **MUST** retain the smaller W23 live workflow for focused
+infrastructure diagnosis, while the deterministic default invocation remains unchanged.
+
 Because the canary requires mutable local infrastructure and un-scripted inference, it **MUST** be
 opt-in rather than a blocking default-suite dependency. Its environment-labelled pytest wrapper
 **MUST** skip unless explicitly enabled; the standalone live command is the acceptance evidence.
@@ -159,6 +180,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.5.0 (2026-08-19)
+
+- W24-C1 makes the default live-local canary exercise memory distillation, superseding-decision
+  fidelity, typed-handoff propagation, and a non-trivial maintenance change with hidden behavioral
+  acceptance; the deterministic CI smoke remains small and stable.
 
 ### Version 2.4.0 (2026-08-19)
 

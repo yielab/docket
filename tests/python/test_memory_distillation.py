@@ -135,6 +135,43 @@ class TestDistillMemoryFailsClosed:
         assert log.exists()
         assert not (ws / "MEMORY.md").exists()
 
+    def test_corrupted_exact_record_fails_closed(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        log = _write_log(
+            ws,
+            "2026-07-01",
+            "- [exact] MONEY-104: use `(subtotal * basis_points + 5_000) // 10_000`.\n",
+        )
+
+        def corrupting_driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            return TurnResult(
+                True,
+                "MONEY-104: use `(subtotal * basis_points + 5_000) // 1_000`.",
+                0.0,
+                {},
+            )
+
+        result = _mem.distill_memory(
+            ws,
+            label="demo",
+            agent_id="demo",
+            session_key="agent:demo:default",
+            driver=corrupting_driver,
+        )
+
+        assert result.ok is False
+        assert result.failure_kind == "invalid_output"
+        assert "exact durable record" in result.error
+        assert log.exists()
+        assert not (ws / "MEMORY.md").exists()
+        assert not (ws / "memory" / _mem.DISTILLED_ARCHIVE_DIRNAME).exists()
+
 
 # ── distill_memory: success ──────────────────────────────────────────────────
 
@@ -217,6 +254,62 @@ class TestDistillMemorySuccess:
         )
 
         assert fake.calls[0][3] == 7
+
+    def test_exact_records_are_preserved_verbatim(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        exact = "MONEY-104: use `(subtotal * basis_points + 5_000) // 10_000`."
+        _write_log(ws, "2026-07-01", f"- [exact] {exact}\n")
+
+        def faithful_driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            return TurnResult(True, f"Keep {exact}", 0.0, {})
+
+        result = _mem.distill_memory(
+            ws,
+            label="demo",
+            agent_id="demo",
+            session_key="agent:demo:default",
+            driver=faithful_driver,
+        )
+
+        assert result.ok is True
+        assert f"## Exact durable records\n\n- {exact}" in result.summary
+        assert f"## Exact durable records\n\n- {exact}" in (ws / "MEMORY.md").read_text()
+
+    def test_exact_identifier_survives_summary_reformatting(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        exact = "META-202 supersedes META-201: tenant `cobalt-7`, never `amber-2`."
+        _write_log(ws, "2026-07-01", f"- [exact] {exact}\n")
+
+        def reformatted_driver(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> TurnResult:
+            return TurnResult(
+                True,
+                "**META-202**: supersedes META-201; tenant `cobalt-7`, never `amber-2`.",
+                0.0,
+                {},
+            )
+
+        result = _mem.distill_memory(
+            ws,
+            label="demo",
+            agent_id="demo",
+            session_key="agent:demo:default",
+            driver=reformatted_driver,
+        )
+
+        assert result.ok is True
+        assert f"- {exact}" in result.summary
 
 
 # ── the prompt itself is byte-budgeted ──────────────────────────────────────

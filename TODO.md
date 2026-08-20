@@ -13,17 +13,22 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-19) — W23 real-model canary + startup context complete
+> ## ◉ ACTIVE BOARD (2026-08-19) — clear after Wave 24
+>
+> No executable card is currently open. Wave 24's durable record follows; new work requires a
+> measured trigger and a newly claimed card.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
 > and pipeline steps keep separate durable histories while typed handoffs carry cross-step context.
 > The repository harness and its three focused skills are also in place. W21-C1 removed the stale
 > current-state references found by the post-W20 audit. W22-C1 closed the evidence gap between many
-> focused tests and one observable whole-product workflow. W23-C1 now measures the remaining
+> focused tests and one observable whole-product workflow. W23-C1 measured the remaining
 > boundary: the same workflow against the operator's real local model endpoint rather than the
 > deterministic protocol fake. W23 also closed the startup-context defect that real inference
-> exposed, without widening tool permissions or raising loop budgets.
+> exposed, without widening tool permissions or raising loop budgets. Wave 24 replaced that
+> one-line artifact with memory-backed Git maintenance and closed the fidelity/worktree defects it
+> exposed.
 > Deferred roadmap work still requires its named trigger rather than being scheduled by default.
 >
 > **Phase 19 closed with wave 11.** All 13 cards shipped. The acceptance test for the whole phase —
@@ -86,6 +91,123 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ☑ WAVE 24 COMPLETE (2026-08-19) — realistic local-model evaluation
+
+### W24-C1 — memory-backed maintenance canary
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** W23's real local-model canary completed the production workflow and exposed a
+startup-context defect, but its task is still an exact one-line file creation. The current harness
+never invokes `docket maintain <lead> distill`, never checks whether a superseding decision survives
+into `MEMORY.md`, and never requires the Lead to carry a private durable fact through a typed handoff
+so an Implementer can repair real code. Infrastructure is proven; memory-assisted product work is
+not.
+
+**Goal:** make the default live-local scenario repair a small but non-trivial Python checkout bug
+using durable project decisions that exist only in the Lead's dated memory logs. Cross the public
+distillation CLI, real runtime/model turn, fresh system-context injection, pipeline handoffs, tool
+path, review, approval, test, observability, and hidden behavioral acceptance in one preserved world.
+
+**Non-goals:** no scripted live replies, exact prose/request/turn-count assertions, model-specific
+prompt branch, artificial subprocess/pipeline timeout, reduced retry/backoff, raised product limit,
+remote endpoint, credential, benchmark score, broad eval framework, or mutation of the operator's
+real Docket home. The deterministic basic smoke remains the blocking CI composition proof.
+
+**Live path / files:** `scripts/smoke_workflow.py` owns scenario fixtures/orchestration/evidence;
+public `docket maintain smoke-lead distill` reaches `cli/_agents.py::_run_distillation` →
+`core.memory.distill_memory` → `DocketDriver.run_turn`; `core.identity.system_prompt_for_agent`
+injects the resulting MEMORY; `core.dispatch._hop_message` carries the Lead artifact to the
+Implementer. `tests/python/test_workflow_smoke.py` and `specs/test-framework.md` own acceptance.
+
+**RED test:** the opt-in live subprocess selects `memory-maintenance`, expects archived daily logs,
+current-decision evidence, a memory-bearing Lead handoff, and passing hidden checkout behavior. It
+fails before the scenario flag and fixtures exist; ordinary pytest remains hermetic and skipped.
+
+**Acceptance:** `--live-model` defaults to the memory-maintenance scenario while `--scenario basic`
+keeps the W23 live task available. The scenario seeds two dated logs where the newer tenant decision
+explicitly supersedes the older one, distills them through the public CLI with genuine inference,
+and verifies source logs were archived and the current invariant survived in MEMORY. The delegated
+task refers to durable decisions without copying their values; the Lead artifact must carry the
+current tenant/integer-rounding constraints, and the Implementer must repair a real Python module.
+The module must begin with a failing regression suite that defines the rounding edge and required
+metadata key without exposing the private tenant value; that suite plus an acceptance check outside
+project-tool roots must pass, including rejection of the superseded tenant. The canary must also
+prove that the untouched fixture starts red for exactly those two seeded defects, commit it as a
+real Git repository before provisioning, and validate the Implementer's effective worktree rather
+than the unchanged origin checkout. An un-scripted policy-gated `bash` request must be
+granted through the real CLI in the isolated canary home rather than by disabling the policy or
+waiting for a timeout; the pipeline's own approval remains a separate asserted pause. All normal
+production guardrails remain intact.
+Focused/default/full gates and an actual port-8081 run must pass; docs must explain both scenarios.
+
+**Contention:** this card owns the smoke script/test/spec/docs and the mutable local inference
+endpoint. No parallel lane may run the same live canary or edit memory/context composition while its
+evidence is being collected.
+
+**Shipped evidence:** the preserved Git-backed run at `/tmp/docket-live-memory-w24-k` began with
+exactly two failing regressions, distilled three logs, carried the current exact formula/tenant
+through the Lead artifact, repaired the Implementer worktree, passed four public regressions plus
+hidden acceptance, received Reviewer APPROVE and Tester PASS, crossed real approval pause/resume,
+verified five isolated histories, two run records and 31 chained audit lines, and attempted no
+private-state tool access.
+
+### W24-C2 — make private-state completion unambiguous and tool approvals decidable
+
+**Status:** DONE (2026-08-19) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** the first W24 run proved MEMORY → Lead handoff → correct code. With genuine
+tool approvals enabled, the Implementer passed its tests but then tried to locate and rewrite its
+private `HEARTBEAT.md` through `bash`, despite project `read/edit` correctly rejecting that root.
+It continued redundant validations until the unchanged 100,000-token turn budget failed at 105,119.
+The approval record exposed only “`cd` is not on the curated allowlist,” not the rendered command,
+so an operator could not distinguish project validation from private-state access before granting.
+
+**Goal:** make runtime-loaded private state explicitly read-only through every project tool,
+including bash, and state that returning the completed task is sufficient because Docket owns task
+durability. Include the redacted rendered tool call in an `ask` approval's action so a CLI/HTTP/
+Telegram operator can decide what is actually being requested.
+
+**Non-goals:** no new tool root, sandbox default change, command parser, silent truncation, higher
+token/iteration limit, shorter approval timeout, model-specific branch, or bypass of the approval
+store. This does not claim unsandboxed bash is a filesystem jail; opt-in isolation remains separate.
+
+**Live path / files:** `core.identity._RUNTIME_CONTEXT_NOTE/_FOOTER` → every live turn;
+`core.tools.dispatch_tool` → `approval_create` → CLI approval surfaces; focused tests in
+`test_role_tools_and_identity.py` and `test_pre_tool_call_policy.py`; owning agent-loop and
+security-gates specs. W24's operator monitor may grant only an inspectable project validation call.
+
+**RED test:** runtime context must forbid all project tools (naming bash) from private state and say
+a final task response completes durability; an approval created by the real dispatch chokepoint must
+contain the redacted rendered call, not only the classifier reason. Both fail before the change.
+
+**Acceptance:** no private control file is accessed by any tool in a fresh W24 run; safe validation
+commands remain approvable through the public CLI with the call visible in the record; the agent
+stops after implementation/validation under existing budgets; memory, hidden acceptance, gates,
+history atomicity and observability all pass. Specs, focused/full suite, goldens and static gates pass.
+
+**Contention:** owns `core/identity.py`, `core/tools.py`, their focused tests/specs and the W24
+approval monitor. W24-C1 waits for its result; no parallel context/security lane is safe.
+
+### W24-C3 — fail-closed exact memory and downstream worktree continuity
+
+**Status:** DONE (2026-08-19) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** a Git-backed canary caught the model silently changing the durable tax
+divisor from `10_000` to `1_000`; a later run proved Implementer and its mechanical gate used the
+repaired worktree while Tester correctly rejected the untouched origin checkout.
+
+**Goal / shipped:** sparse `- [exact]` records now validate decision IDs and backtick literals
+before any memory write/archive and are carried verbatim; malformed output leaves all logs
+untouched. Dispatch passes the latest successful Implementer worktree as a bounded coordinate;
+`DocketDriver` accepts it only from a registered same-pod Implementer, strips it from tool env, and
+keeps Reviewer/Tester permissions unchanged. Focused tests and the final live canary pass.
+
+**Non-goals:** no raw-log retention, semantic database, arbitrary root override, shared model
+history, relaxed verdict parser, raised token/turn limit, scripted reply, or weaker role gate.
 
 ---
 

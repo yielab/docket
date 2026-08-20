@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.14.0
+**Version**: 0.15.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
@@ -89,6 +89,11 @@ are owned here, not there.
    never, as this spec used to (mis)describe before a daemon existed for the ambiguity to matter,
    a bridge to any external `/approve` mechanism. There is no daemon and never was a bridge to
    one; see the G-5 findings section below for why that path was investigated and closed.
+5. An in-turn tool approval's stored `action` **MUST** include the redacted rendered tool call in
+   addition to the classifier/policy reason. Every approval channel reads this same record, so an
+   operator **MUST** be able to distinguish, for example, project test execution from a shell call
+   targeting private workspace state before deciding. The record **MUST NOT** store an unredacted
+   secret and its existing 1,000-character action ceiling remains in force.
 
 ### Workspace isolation (implemented, opt-in)
 
@@ -1027,6 +1032,11 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.15.0 (2026-08-19)
+
+- W24-C2 makes in-turn approvals decidable by including the redacted rendered tool call in the
+  approval record instead of persisting only the classifier reason.
 
 ### Version 0.14.0 (2026-08-19)
 

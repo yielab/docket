@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.2.0
+**Version**: 6.3.0
 **Status**: Complete. A pod-dispatch hop executes through
 `edges.adapters.docket_runtime.DocketDriver`, docket's own gated turn loop
 (`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint). See
@@ -807,6 +807,21 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 5. `git_current_branch` (`edges/adapters/system.py`) is this probe's `diff_ref` source — it has a
    real production caller as of this version.
 
+### Downstream worktree continuity
+
+1. Once a successful Implementer hop has a registered `worktreeDir`, every later non-Lead,
+   non-Implementer hop **MUST** receive that effective checkout path in a short explicit prompt
+   note and as an internal dispatch→driver coordinate. It **MUST NOT** inspect the unchanged origin
+   checkout when judging or testing the Implementer's result.
+2. `DocketDriver` **MUST** accept that root only when it byte-resolves to a registered
+   Implementer's `worktreeDir` in the same pod. An absent, malformed, cross-pod, or unregistered
+   path **MUST** be ignored; it is never a caller-controlled arbitrary root expansion.
+3. The coordinate **MUST** be removed before constructing the tool subprocess environment.
+   Reviewer/Tester tool capabilities remain role-narrowed and unchanged; this changes what checkout
+   they can read/test, not whether they can write.
+4. The effective path note is additive bounded context, not copied session history. The existing
+   typed artifact remains the only prior-hop content carried into the downstream session.
+
 ### Bounded hop prompts (ROADMAP Phase 17 C-1 — the context compiler)
 
 *(Before this version, ROADMAP Phase 14 R-7 bounded this same message with one process-wide byte
@@ -1080,6 +1095,15 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.3.0 (2026-08-19)
+
+- W24's Git-backed live canary proved the Implementer fixed and mechanically validated its
+  worktree while Tester correctly failed against the untouched origin checkout. Dispatch now
+  carries the latest successful Implementer's registered worktree to downstream verification;
+  DocketDriver validates same-pod ownership, uses it as the sole tool root for that turn, and
+  strips the internal coordinate from tool environments. Role permissions and bounded typed
+  handoff semantics are unchanged.
 
 ### Version 6.2.0 (2026-08-19)
 

@@ -32,6 +32,7 @@ from docket.cli import _gates
 from docket.core import fleet as _fleet
 from docket.core.audit import read_audit
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
+from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV
 from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
 from docket.edges.adapters import system as _system
@@ -268,6 +269,34 @@ class TestRootResolutionPrecedence:
             "prec-d", "agent:prec-d:default", "go", 30
         )
         assert _tool_reply(backend) == "worktree"
+
+    def test_registered_same_pod_worktree_wins_for_reviewer(self, tmp_path: Path) -> None:
+        origin = tmp_path / "origin"
+        origin.mkdir()
+        (origin / "marker.txt").write_text("origin")
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        (worktree / "marker.txt").write_text("implementation")
+        _write_meta(
+            "demo-implementer",
+            role="implementer",
+            codebase=str(origin),
+            worktreeDir=str(worktree),
+        )
+        _write_meta("demo-reviewer", role="reviewer", codebase=str(origin))
+        _fleet.add_agent("demo-implementer", "test/model", "agent:demo:default", "default")
+        _fleet.add_agent("demo-reviewer", "test/model", "agent:demo:default", "default")
+        backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
+
+        DocketDriver(backend_factory=lambda model: backend).run_turn(
+            "demo-reviewer",
+            "agent:demo-reviewer:default",
+            "go",
+            30,
+            {PIPELINE_WORKTREE_ENV: str(worktree)},
+        )
+
+        assert _tool_reply(backend) == "implementation"
 
 
 # ── provision / teardown / capabilities ──────────────────────────────────────

@@ -46,6 +46,11 @@ from typing import Any, Literal, Protocol, runtime_checkable
 # model backend, not a real answer) — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS.
 FailureKind = Literal["timeout", "daemon_error", "nonzero_exit", "invalid_output"]
 
+# Internal dispatch→driver coordinate for a downstream hop that must inspect
+# the worktree which produced its handoff. The shipped driver validates it
+# against same-pod Implementer metadata before using it as a tool root.
+PIPELINE_WORKTREE_ENV = "DOCKET_PIPELINE_WORKTREE"
+
 
 @dataclass
 class TurnResult:

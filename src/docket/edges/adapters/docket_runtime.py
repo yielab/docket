@@ -28,11 +28,13 @@ import docket.config as _cfg
 from docket.core import agent_loop as _loop
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
+from docket.core import pod as _pod
 from docket.core import session as _session
 from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
+    PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
     ProvisionResult,
     SessionSlice,
@@ -108,6 +110,24 @@ def _resolve_roots(meta: AgentMeta | None, worktree_dir: str, agent_id: str) -> 
     if meta is not None and meta.work_dir:
         return (Path(meta.work_dir),)
     return (_cfg.workspace_dir(agent_id),)
+
+
+def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> str:
+    """Accept a downstream root only when same-pod Implementer metadata owns it."""
+    candidate = str((env or {}).get(PIPELINE_WORKTREE_ENV, "")).strip()
+    project = _pod.pod_of(agent_id)
+    if not candidate or project is None:
+        return ""
+    candidate_path = Path(candidate).resolve()
+    for registered in _fleet.list_agents():
+        parsed = _pod.parse_member_id(registered.id, project)
+        if parsed is None or parsed[0] != "implementer":
+            continue
+        raw = _store.read_json(_cfg.meta_path(registered.id))
+        recorded = str(raw.get("worktreeDir") or "").strip()
+        if recorded and Path(recorded).resolve() == candidate_path:
+            return str(candidate_path)
+    return ""
 
 
 def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, TurnResult | None]:
@@ -238,12 +258,17 @@ class DocketDriver:
                 failure_kind="daemon_error",
             )
 
+        pipeline_worktree = _validated_pipeline_worktree(agent_id, env)
+        tool_env = dict(env or {})
+        tool_env.pop(PIPELINE_WORKTREE_ENV, None)
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
-            roots=_resolve_roots(meta, worktree_dir, agent_id),
+            roots=(Path(pipeline_worktree),)
+            if pipeline_worktree
+            else _resolve_roots(meta, worktree_dir, agent_id),
             timeout=timeout,
-            env=dict(env or {}),
+            env=tool_env,
             role=meta.role,
             project=agent_id,
             sandbox="auto" if want_sandbox else "off",

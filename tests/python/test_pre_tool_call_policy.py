@@ -397,6 +397,7 @@ class TestDispatchToolApprovalRouting:
         def _grant_the_pending_call(_seconds: float) -> None:
             pending = _approval.list_pending()
             assert pending, "dispatch_tool should have created a pending approval by now"
+            assert 'custom x="launch-codes"' in pending[0]["action"]
             _approval.approval_grant(pending[0]["token"])
 
         monkeypatch.setattr(

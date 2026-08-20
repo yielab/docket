@@ -116,9 +116,12 @@ Run the full aggregator before submitting:
 # Observable full workflow (temporary state + deterministic loopback model; no credentials)
 uv run python scripts/smoke_workflow.py
 
-# Opt-in canary with genuine inference from the local model on port 8081
+# Opt-in realistic memory-backed repair with genuine inference on port 8081
 uv run python scripts/smoke_workflow.py --live-model
 DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/python/test_workflow_smoke.py
+
+# Smaller live infrastructure-only scenario retained for diagnosis
+uv run python scripts/smoke_workflow.py --live-model --scenario basic
 
 # All tests (pytest + golden parity)
 ./tests/run-all-tests.sh

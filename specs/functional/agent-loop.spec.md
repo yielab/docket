@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -179,7 +179,10 @@ This specification does NOT cover:
     composition rule. The same fresh composition **MUST** append current private-workspace state
     in this priority order: `HEARTBEAT.md`, `AGENTS.md`, optional `TOOLS.md`, then `MEMORY.md`.
     It **MUST** state that these files are already loaded and are not project-tool paths, so a
-    model does not search for or recreate them under the codebase. SOUL/WORKFLOW remain mandatory;
+    model does not search for, recreate, read, or update them through any project tool, explicitly
+    including shell execution. It **MUST** tell the model that returning its completed task result
+    is sufficient because Docket owns task durability; private logging is not a prerequisite for
+    finishing the turn. SOUL/WORKFLOW remain mandatory;
     the appended state **MUST** fit the remaining `CONTEXT_TOKEN_BUDGET` estimate, preserve higher
     priorities first, and mark any truncation/omission visibly rather than silently growing an
     endpoint's context or dropping state.
@@ -421,6 +424,12 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.9.0 (2026-08-19)
+
+- W24-C2 closes the completion loop exposed by a realistic canary: runtime-loaded private state is
+  explicitly read-only through every project tool, including bash, and task completion no longer
+  implies that the model must locate or update private HEARTBEAT/memory files itself.
 
 ### Version 1.8.0 (2026-08-19)
 

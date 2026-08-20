@@ -110,6 +110,42 @@ class TestPipeline:
         assert runner.calls[1][1].startswith("agent:demo-implementer:demo:task:")
         assert runner.calls[1][1].endswith(":step:implementer")
 
+    def test_downstream_hops_receive_implementer_worktree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch, roles=_pod.pod.FULL_POD_ROLES)
+        worktree = tmp_path / "implementer-worktree"
+        worktree.mkdir()
+        _fleet.meta_set("demo-implementer", "worktreeDir", str(worktree))
+        calls: list[tuple[str, str, dict[str, str] | None]] = []
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            calls.append((agent_id, message, env))
+            output = "APPROVE" if agent_id.endswith("-reviewer") else "PASS"
+            if agent_id.endswith(("-lead", "-implementer")):
+                output = "done"
+            return _rd.TurnResult(True, output, 0.0, {})
+
+        task: dict[str, Any] = {"id": "wt1", "description": "work", "status": "pending"}
+        result = _dispatch.dispatch_task("demo", task, runner=runner)
+
+        assert result.status == "done", result.reason
+        downstream = [call for call in calls if call[0].endswith(("-reviewer", "-tester"))]
+        assert len(downstream) == 2
+        for _agent_id, message, env in downstream:
+            assert (
+                f"Effective implementation checkout for this downstream hop: `{worktree}`"
+                in message
+            )
+            assert "verdict marker on its first non-blank line, before all reasons" in message
+            assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
+
     def test_task_persisted_with_status_and_hops(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

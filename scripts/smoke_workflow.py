@@ -2,10 +2,11 @@
 """Run one observable Docket workflow through the real CLI and HTTP adapter.
 
 The default endpoint is deterministic and loopback-only so the command is suitable for CI.
-``--live-model`` instead uses a real loopback model (port 8081 by default) without scripting its
-replies. Everything on Docket's side is production in both modes: CLI subprocesses, persisted
-state, endpoint resolution, the chat-completions adapter, ``DocketDriver``, the agent loop, gated
-tools, pipeline gates, resume, sessions, traces and audit.
+``--live-model`` instead defaults to a realistic memory-backed code repair against a real loopback
+model (port 8081 by default), without scripting its replies. ``--scenario basic`` retains the
+smaller live infrastructure diagnostic. Everything on Docket's side is production in every mode:
+CLI subprocesses, persisted state, endpoint resolution, the chat-completions adapter,
+``DocketDriver``, the agent loop, gated tools, pipeline gates, resume, sessions, traces and audit.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -30,6 +33,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 class SmokeFailure(RuntimeError):
     """A smoke assertion or subprocess failed."""
+
+
+_BASIC_SCENARIO = "basic"
+_MEMORY_SCENARIO = "memory-maintenance"
+_SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -316,11 +324,210 @@ def _run_cli(
     return result
 
 
-def _write_inputs(world: Path) -> tuple[Path, Path, Path, Path]:
+@contextmanager
+def _approve_live_tool_calls(repo: Path, env: dict[str, str], home: Path) -> Iterator[list[str]]:
+    """Act as the canary operator for in-turn bash approvals in its isolated home.
+
+    The model remains free to choose its tools. When Docket's real policy creates
+    a pending bash approval, this monitor grants it through the public CLI, just
+    as an operator would. Pipeline approval records are deliberately ignored and
+    remain controlled by the main workflow's explicit pause/resume assertion.
+    """
+    stop = threading.Event()
+    granted: list[str] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    implementer_meta = _load_json(
+        home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+    )
+    allowed_worktree = str(implementer_meta.get("worktreeDir", "")).lower()
+
+    def monitor() -> None:
+        approvals_dir = home / "approvals"
+        while not stop.wait(0.1):
+            for path in sorted(approvals_dir.glob("*.json")):
+                try:
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(record, dict) or record.get("state") != "pending":
+                    continue
+                context = record.get("context")
+                if not isinstance(context, dict) or context.get("tool") != "bash":
+                    continue
+                token = str(record.get("token", ""))
+                project = str(record.get("project", ""))
+                if not token or token in seen or not project.startswith("smoke-"):
+                    continue
+                seen.add(token)
+                action = str(record.get("action", ""))
+                action_lower = action.lower()
+                if allowed_worktree:
+                    action_lower = action_lower.replace(allowed_worktree, "<implementer-worktree>")
+                private_markers = (".docket", "heartbeat.md", "memory.md", "/memory/")
+                if any(marker in action_lower for marker in private_markers):
+                    try:
+                        _run_cli(repo, env, "deny", token, process_timeout=30)
+                    except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
+                        errors.append(f"{token}: could not deny private-state tool call: {exc}")
+                        continue
+                    errors.append(f"{token}: model attempted private-state access: {action}")
+                    print(f"[operator] denied private-state tool approval: {token}", flush=True)
+                    continue
+                try:
+                    _run_cli(repo, env, "approve", token, process_timeout=30)
+                except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
+                    errors.append(f"{token}: {exc}")
+                    continue
+                granted.append(token)
+                print(f"[operator] granted isolated canary tool approval: {token}", flush=True)
+
+    thread = threading.Thread(target=monitor, name="smoke-approval-operator", daemon=True)
+    thread.start()
+    try:
+        yield granted
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+        if thread.is_alive():
+            errors.append("approval monitor did not stop")
+        if errors:
+            raise SmokeFailure("live tool approval monitor failed: " + "; ".join(errors))
+
+
+def _write_realistic_codebase(codebase: Path, acceptance: Path) -> None:
+    """Seed a maintenance task whose decisive rules are absent from the repo."""
+    (codebase / "src").mkdir(parents=True)
+    (codebase / "tests").mkdir()
+    (codebase / ".gitignore").write_text("__pycache__/\n*.py[cod]\n", encoding="utf-8")
+    (codebase / "README.md").write_text(
+        """# Checkout service
+
+This tiny service calculates invoice totals and produces receipt metadata.
+
+Run its project-visible tests with:
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```
+
+Keep the public function signatures stable. Durable product decisions are maintained by the pod
+Lead rather than duplicated in this repository.
+""",
+        encoding="utf-8",
+    )
+    (codebase / "src" / "checkout.py").write_text(
+        '''"""Checkout calculations and receipt metadata."""
+
+
+def invoice_total(subtotal_cents: int, tax_basis_points: int) -> int:
+    """Return the subtotal plus tax in cents."""
+    tax_cents = round(subtotal_cents * tax_basis_points / 10_000)
+    return subtotal_cents + tax_cents
+
+
+def receipt_metadata(order_id: str) -> dict[str, str]:
+    """Return stable metadata for a generated receipt."""
+    return {"order_id": order_id}
+''',
+        encoding="utf-8",
+    )
+    (codebase / "tests" / "test_checkout.py").write_text(
+        """import unittest
+
+from checkout import invoice_total, receipt_metadata
+
+
+class CheckoutTests(unittest.TestCase):
+    def test_regular_invoice_total(self) -> None:
+        self.assertEqual(invoice_total(10_000, 500), 10_500)
+
+    def test_half_up_rounding_edge(self) -> None:
+        self.assertEqual(invoice_total(500, 1_250), 563)
+
+    def test_receipt_preserves_order_id(self) -> None:
+        self.assertEqual(receipt_metadata("order-17")["order_id"], "order-17")
+
+    def test_receipt_has_tenant_key(self) -> None:
+        self.assertIn("tenant", receipt_metadata("order-17"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+""",
+        encoding="utf-8",
+    )
+    acceptance.write_text(
+        '''"""Canary-owned acceptance: intentionally outside the agent's project roots."""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+from checkout import invoice_total, receipt_metadata
+
+
+assert invoice_total(1_001, 825) == 1_084, "half-up boundary was not preserved"
+metadata = receipt_metadata("order-17")
+assert metadata == {"order_id": "order-17", "tenant": "cobalt-7"}, metadata
+
+source = Path.cwd() / "src" / "checkout.py"
+tree = ast.parse(source.read_text(encoding="utf-8"))
+assert not any(isinstance(node, ast.Div) for node in ast.walk(tree)), (
+    "checkout arithmetic still uses true division rather than integer math"
+)
+assert not any(
+    isinstance(node, ast.Constant) and isinstance(node.value, float) for node in ast.walk(tree)
+)
+''',
+        encoding="utf-8",
+    )
+
+
+def _verify_realistic_fixture_is_red(codebase: Path) -> None:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+        cwd=codebase,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    evidence = result.stdout + result.stderr
+    _require(result.returncode != 0, "realistic fixture unexpectedly started green")
+    for regression in ("test_half_up_rounding_edge", "test_receipt_has_tenant_key"):
+        _require(regression in evidence, f"fixture did not exercise {regression}")
+    _require("FAILED (failures=2)" in evidence, "fixture failed for unexpected reasons")
+
+
+def _initialize_fixture_repo(codebase: Path) -> None:
+    commands = (
+        ("git", "init", "--quiet"),
+        ("git", "config", "user.name", "Docket Smoke"),
+        ("git", "config", "user.email", "smoke@invalid.example"),
+        ("git", "add", "."),
+        ("git", "commit", "--quiet", "-m", "Seed failing checkout regressions"),
+    )
+    for command in commands:
+        result = subprocess.run(command, cwd=codebase, text=True, capture_output=True, check=False)
+        _require(
+            result.returncode == 0,
+            f"could not prepare realistic git fixture: {result.stdout}{result.stderr}",
+        )
+
+
+def _write_inputs(world: Path, scenario: str) -> tuple[Path, Path, Path, Path]:
     home = world / ".docket"
     codebase = world / "codebase"
     codebase.mkdir(parents=True, exist_ok=True)
-    (codebase / "README.md").write_text("# Docket smoke world\n", encoding="utf-8")
+    acceptance = world / "checkout_acceptance.py"
+    if scenario == _MEMORY_SCENARIO:
+        _write_realistic_codebase(codebase, acceptance)
+    else:
+        (codebase / "README.md").write_text("# Docket smoke world\n", encoding="utf-8")
 
     pod_spec = world / "pod.json"
     pod_spec.write_text(
@@ -337,10 +544,22 @@ def _write_inputs(world: Path) -> tuple[Path, Path, Path, Path]:
         encoding="utf-8",
     )
 
+    if scenario == _MEMORY_SCENARIO:
+        verify_command = (
+            "PYTHONPATH=src python -m unittest discover -s tests -v && "
+            f"PYTHONPATH=src python {shlex.quote(str(acceptance))}"
+        )
+        pipeline_description = (
+            "Realistic memory-backed maintenance workflow with every gate family."
+        )
+    else:
+        verify_command = 'test "$(cat smoke-artifact.txt)" = "docket smoke ok"'
+        pipeline_description = "Observable full workflow with every gate family."
+
     pipeline = world / "smoke.pipeline.yaml"
     pipeline.write_text(
-        r"""name: end-to-end-smoke
-description: Observable full workflow with every gate family.
+        f"""name: end-to-end-smoke
+description: {pipeline_description}
 steps:
   - id: plan
     role: lead
@@ -348,12 +567,12 @@ steps:
     role: implementer
     gate:
       type: mechanical
-      command: 'test "$(cat smoke-artifact.txt)" = "docket smoke ok"'
+      command: {json.dumps(verify_command)}
   - id: review
     role: reviewer
     gate:
       type: verdict
-      pattern: '^\s*(APPROVE|REQUEST-CHANGES)\b'
+      pattern: '^\\s*(APPROVE|REQUEST-CHANGES)\\b'
       passValues: [approve]
       rework:
         to: implement
@@ -368,7 +587,7 @@ steps:
     role: tester
     gate:
       type: verdict
-      pattern: '^\s*(PASS|FAIL)\b'
+      pattern: '^\\s*(PASS|FAIL)\\b'
       passValues: [pass]
 """,
         encoding="utf-8",
@@ -394,12 +613,34 @@ def _task(home: Path) -> dict[str, Any]:
     return cast(dict[str, Any], task)
 
 
-def _verify_sessions(home: Path) -> None:
+def _verify_sessions(home: Path, *, memory_scenario: bool) -> None:
     session_files = sorted((home / "sessions").glob("*/session.json"))
+    expected = 6 if memory_scenario else 5
     _require(
-        len(session_files) == 5, f"expected 5 step-scoped sessions, found {len(session_files)}"
+        len(session_files) == expected, f"expected {expected} sessions, found {len(session_files)}"
     )
     records = [_load_json(path) for path in session_files]
+    mutating_tools = {"bash", "edit", "write"} if memory_scenario else {"write"}
+    if memory_scenario:
+        implementer_meta = _load_json(
+            home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+        )
+        allowed_worktree = str(implementer_meta.get("worktreeDir", "")).lower()
+        for record in records:
+            for message in record.get("messages", []):
+                if not isinstance(message, dict):
+                    continue
+                for call in message.get("toolCalls", []):
+                    if not isinstance(call, dict):
+                        continue
+                    arguments = str(call.get("arguments", "")).lower()
+                    if allowed_worktree:
+                        arguments = arguments.replace(allowed_worktree, "<implementer-worktree>")
+                    private_markers = (".docket", "heartbeat.md", "memory.md", "/memory/")
+                    _require(
+                        not any(marker in arguments for marker in private_markers),
+                        f"project tool attempted private-state access: {call.get('name')}",
+                    )
     implementer = next(
         (
             record
@@ -407,7 +648,7 @@ def _verify_sessions(home: Path) -> None:
             if any(
                 isinstance(message, dict)
                 and any(
-                    isinstance(call, dict) and call.get("name") == "write"
+                    isinstance(call, dict) and call.get("name") in mutating_tools
                     for call in message.get("toolCalls", [])
                 )
                 for message in record.get("messages", [])
@@ -429,17 +670,17 @@ def _verify_sessions(home: Path) -> None:
         calls = message.get("toolCalls")
         if not isinstance(calls, list):
             continue
-        write_call = next(
+        mutating_call = next(
             (
                 call
                 for call in calls
-                if isinstance(call, dict) and str(call.get("name", "")) == "write"
+                if isinstance(call, dict) and str(call.get("name", "")) in mutating_tools
             ),
             None,
         )
-        if isinstance(write_call, dict):
+        if isinstance(mutating_call, dict):
             tool_call_index = index
-            write_call_id = str(write_call.get("id", ""))
+            write_call_id = str(mutating_call.get("id", ""))
             break
     _require(tool_call_index >= 0 and bool(write_call_id), "no durable write tool call was found")
     _require(tool_call_index + 1 < len(messages), "persisted tool call has no following result")
@@ -454,9 +695,89 @@ def _verify_sessions(home: Path) -> None:
     _require(measured > 0, "endpoint token usage was not persisted")
 
 
-def _verify_final_state(world: Path, home: Path, model: _ScriptedModel | None) -> None:
-    artifact = world / "codebase" / "smoke-artifact.txt"
-    _require(artifact.read_text(encoding="utf-8") == "docket smoke ok\n", "artifact mismatch")
+def _normalized_fact_text(text: str) -> str:
+    return re.sub(r"[\s,_`]+", "", text.lower())
+
+
+def _seed_memory_logs(home: Path) -> Path:
+    lead_ws = home / "workspaces" / "projects" / "smoke-lead"
+    memory_dir = lead_ws / "memory"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    (memory_dir / "2026-08-17.md").write_text(
+        """# Checkout incident notes
+
+- [exact] MONEY-104: integer cents; tax uses `(subtotal_cents * tax_basis_points + 5_000) // 10_000`; binary floats are forbidden.
+- META-201: receipt metadata tenant was temporarily `amber-2`.
+- Transient note: a staging worker was restarted; do not retain this as product behavior.
+""",
+        encoding="utf-8",
+    )
+    (memory_dir / "2026-08-18.md").write_text(
+        """# Checkout decision follow-up
+
+- [exact] META-202 supersedes META-201: every receipt must use tenant `cobalt-7`, never `amber-2`.
+- Keep the public APIs `invoice_total(subtotal_cents, tax_basis_points)` and
+  `receipt_metadata(order_id)` stable.
+- The MONEY-104 integer half-up rule remains active.
+""",
+        encoding="utf-8",
+    )
+    return lead_ws
+
+
+def _verify_distilled_memory(lead_ws: Path) -> None:
+    pending = sorted((lead_ws / "memory").glob("*.md"))
+    _require(not pending, "daily memory logs remained pending after distillation")
+    archived = sorted((lead_ws / "memory" / ".distilled").glob("*/*.md"))
+    archived_names = {path.name for path in archived}
+    expected_names = {"2026-08-17.md", "2026-08-18.md"}
+    _require(
+        expected_names <= archived_names,
+        f"scenario memory logs were not both archived: {sorted(archived_names)}",
+    )
+    memory_text = (lead_ws / "MEMORY.md").read_text(encoding="utf-8")
+    facts = _normalized_fact_text(memory_text)
+    for expected_fact in ("cobalt-7", "5000", "10000", "integer"):
+        _require(expected_fact in facts, f"distilled MEMORY.md lost {expected_fact!r}")
+
+
+def _verify_memory_maintenance(world: Path, home: Path, task: dict[str, Any]) -> None:
+    hops = cast(list[dict[str, Any]], task["hops"])
+    lead_artifact = cast(dict[str, Any], hops[0]["artifact"])
+    lead_facts = _normalized_fact_text(str(lead_artifact.get("summary", "")))
+    for expected_fact in ("cobalt-7", "5000", "10000", "integer"):
+        _require(expected_fact in lead_facts, f"Lead handoff lost {expected_fact!r}")
+
+    implementer_meta = _load_json(
+        home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+    )
+    effective_checkout = Path(
+        str(implementer_meta.get("worktreeDir") or implementer_meta.get("codebase") or "")
+    )
+    _require(effective_checkout.is_dir(), "Implementer has no effective checkout")
+    acceptance = subprocess.run(
+        [sys.executable, str(world / "checkout_acceptance.py")],
+        cwd=effective_checkout,
+        env={**os.environ, "PYTHONPATH": str(effective_checkout / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    _require(
+        acceptance.returncode == 0,
+        f"hidden checkout acceptance failed: {acceptance.stdout}{acceptance.stderr}",
+    )
+
+
+def _verify_final_state(
+    world: Path,
+    home: Path,
+    model: _ScriptedModel | None,
+    scenario: str,
+) -> None:
+    if scenario == _BASIC_SCENARIO:
+        artifact = world / "codebase" / "smoke-artifact.txt"
+        _require(artifact.read_text(encoding="utf-8") == "docket smoke ok\n", "artifact mismatch")
 
     task = _task(home)
     _require(task.get("status") == "done", f"task ended as {task.get('status')!r}, not done")
@@ -473,7 +794,10 @@ def _verify_final_state(world: Path, home: Path, model: _ScriptedModel | None) -
     _require(hops[2]["artifact"].get("verdict") == "approve", "Reviewer verdict not persisted")
     _require(hops[4]["artifact"].get("verdict") == "pass", "Tester verdict not persisted")
 
-    _verify_sessions(home)
+    memory_scenario = scenario == _MEMORY_SCENARIO
+    _verify_sessions(home, memory_scenario=memory_scenario)
+    if memory_scenario:
+        _verify_memory_maintenance(world, home, task)
     if model is not None:
         _require(len(model.requests) == 6, f"expected 6 model requests, got {len(model.requests)}")
 
@@ -526,8 +850,13 @@ def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> 
     _run_cli(repo, env, "models", "set", "default", model_ref, process_timeout=None)
 
 
-def _run(world: Path, repo: Path, live: _LiveModel | None = None) -> None:
-    home, _codebase, pod_spec, pipeline = _write_inputs(world)
+def _run(
+    world: Path,
+    repo: Path,
+    live: _LiveModel | None = None,
+    scenario: str = _BASIC_SCENARIO,
+) -> None:
+    home, codebase, pod_spec, pipeline = _write_inputs(world, scenario)
     model: _ScriptedModel | None
     endpoint_context: AbstractContextManager[str]
     if live is None:
@@ -581,19 +910,37 @@ def _run(world: Path, repo: Path, live: _LiveModel | None = None) -> None:
                 print(f"Reported context window: {live.context_tokens:,} tokens")
             _configure_live_model(repo, env, live)
 
+        if scenario == _MEMORY_SCENARIO:
+            _verify_realistic_fixture_is_red(codebase)
+            print("[check] pre-existing regressions fail for the intended checkout defects")
+            _initialize_fixture_repo(codebase)
+            print("[check] realistic checkout fixture committed before worktree provisioning")
+
         run_cli("add", "--from", str(pod_spec))
         fleet = _load_json(home / "fleet.json")
         _require(len(fleet.get("agents", [])) == 4, "full pod did not provision four members")
         print("[check] full pod provisioned: lead, implementer, reviewer, tester")
 
-        run_cli(
-            "pod",
-            "smoke",
-            "delegate",
-            "Create smoke-artifact.txt in the workspace with exactly one line: "
-            "docket smoke ok. The Implementer must create it through Docket's write tool; "
-            "keep the change limited to that artifact, then review and verify the result.",
-        )
+        if scenario == _MEMORY_SCENARIO:
+            lead_ws = _seed_memory_logs(home)
+            run_cli("maintain", "smoke-lead", "distill")
+            _verify_distilled_memory(lead_ws)
+            print("[check] memory logs distilled and archived with current decisions retained")
+
+        if scenario == _MEMORY_SCENARIO:
+            task_description = (
+                "Diagnose and repair the checkout calculation and receipt metadata so they comply "
+                "with the Lead's current durable project decisions. Keep both public function "
+                "signatures stable, make the existing failing regression suite pass, and validate "
+                "the behavior. Do not copy private memory logs into the repository."
+            )
+        else:
+            task_description = (
+                "Create smoke-artifact.txt in the workspace with exactly one line: docket smoke "
+                "ok. The Implementer must create it through Docket's write tool; keep the change "
+                "limited to that artifact, then review and verify the result."
+            )
+        run_cli("pod", "smoke", "delegate", task_description)
         run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
         first_run = [
             "pipeline",
@@ -605,27 +952,38 @@ def _run(world: Path, repo: Path, live: _LiveModel | None = None) -> None:
         ]
         if live is None:
             first_run.extend(["--timeout", "30"])
-        run_cli(*first_run)
+        approval_context: AbstractContextManager[list[str]]
+        if scenario == _MEMORY_SCENARIO:
+            approval_context = _approve_live_tool_calls(repo, env, home)
+        else:
+            approval_context = nullcontext([])
+        with approval_context as tool_approvals:
+            run_cli(*first_run)
 
-        waiting = _task(home)
-        _require(waiting.get("status") == "waiting_approval", "pipeline did not pause for approval")
-        _require(len(waiting.get("hops", [])) == 3, "approval pause occurred at the wrong step")
-        token = str(waiting.get("approvalToken") or "")
-        _require(bool(token), "waiting task has no approval token")
-        print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
+            waiting = _task(home)
+            _require(
+                waiting.get("status") == "waiting_approval",
+                "pipeline did not pause for approval",
+            )
+            _require(len(waiting.get("hops", [])) == 3, "approval pause occurred at the wrong step")
+            token = str(waiting.get("approvalToken") or "")
+            _require(bool(token), "waiting task has no approval token")
+            print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
 
-        run_cli("approve", token)
-        second_run = [
-            "pipeline",
-            "run",
-            "smoke",
-            "--file",
-            str(pipeline),
-            "--follow",
-        ]
-        if live is None:
-            second_run.extend(["--timeout", "30"])
-        run_cli(*second_run)
+            run_cli("approve", token)
+            second_run = [
+                "pipeline",
+                "run",
+                "smoke",
+                "--file",
+                str(pipeline),
+                "--follow",
+            ]
+            if live is None:
+                second_run.extend(["--timeout", "30"])
+            run_cli(*second_run)
+        if tool_approvals:
+            print(f"[check] operator granted {len(tool_approvals)} in-turn tool approval(s)")
         print("[check] waiting_approval -> granted -> resumed at release-check -> done")
 
         run_cli("pod", "smoke", "queue")
@@ -634,7 +992,10 @@ def _run(world: Path, repo: Path, live: _LiveModel | None = None) -> None:
         run_cli("cost", "smoke-implementer", "--json")
         run_cli("audit", "verify")
 
-    _verify_final_state(world, home, model)
+    _verify_final_state(world, home, model, scenario)
+    if scenario == _MEMORY_SCENARIO:
+        print("[check] current durable decisions crossed the Lead handoff")
+        print("[check] hidden checkout acceptance passed")
     print("[check] typed handoffs and verdicts persisted for all five steps")
     print("[check] five isolated step histories retain measured usage")
     print("[check] tool call/result persisted atomically")
@@ -659,6 +1020,13 @@ def _parse_args() -> argparse.Namespace:
         help="Loaded model id for --live-model; by default it is discovered from /models.",
     )
     parser.add_argument(
+        "--scenario",
+        choices=_SCENARIOS,
+        help=(
+            "Scenario to run; defaults to memory-maintenance with --live-model and basic otherwise."
+        ),
+    )
+    parser.add_argument(
         "--workdir",
         type=Path,
         help="Preserve the smoke world at this new or empty directory for inspection.",
@@ -670,6 +1038,10 @@ def main() -> int:
     args = _parse_args()
     if args.model and not args.live_model:
         print("SMOKE FAIL — --model requires --live-model", file=sys.stderr)
+        return 2
+    scenario = args.scenario or (_MEMORY_SCENARIO if args.live_model else _BASIC_SCENARIO)
+    if scenario == _MEMORY_SCENARIO and not args.live_model:
+        print("SMOKE FAIL — memory-maintenance requires --live-model", file=sys.stderr)
         return 2
     repo = Path(__file__).resolve().parents[1]
     temp: tempfile.TemporaryDirectory[str] | None = None
@@ -685,7 +1057,7 @@ def main() -> int:
 
     try:
         live = _discover_live_model(args.endpoint, args.model) if args.live_model else None
-        _run(world, repo, live)
+        _run(world, repo, live, scenario)
     except (
         SmokeFailure,
         OSError,

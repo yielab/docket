@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.9.0
+**Version**: 1.10.0
 **Status**: Complete
 **Last Updated**: 2026-08-19
 
@@ -176,6 +176,11 @@ commands. Six modes **MUST** be supported.
 - **MUST** fail closed: a driver failure (timeout, model error, non-zero exit) or an empty reply
   leaves every file on disk untouched and returns a non-zero exit code — no partial archive, no
   partial MEMORY.md write
+- A sparse operator-authored line beginning `- [exact] ` **MUST** retain its decision identifier
+  and every backtick-delimited literal byte-for-byte in the model summary. Docket **MUST** validate
+  those fields before writing or archiving, fail closed on omission/corruption, and append the
+  marked records verbatim under `## Exact durable records`. Ordinary unmarked narration remains
+  model-summarized; this mechanism **MUST NOT** copy whole logs into long-term context.
 - No pending logs is a no-op success (there is nothing undistilled to lose)
 - **MUST NOT** require interactive confirmation — it is additive/non-destructive to the daily logs
   (they are archived, not deleted), unlike `reset`/`rebuild`
@@ -287,6 +292,13 @@ After successful creation:
   real, costed LLM call, not a file operation
 
 ## Changelog
+
+### Version 1.10.0 (2026-08-19)
+
+- W24's real memory canary caught a model changing an exact tax divisor from `10_000` to `1_000`
+  while distilling. Added sparse `- [exact]` durable records: their identifier/backtick literals
+  are validated before any write/archive and carried verbatim; corruption now fails closed without
+  turning every daily log into permanent context.
 
 ### Version 1.9.0 (2026-08-19)
 
