@@ -207,7 +207,7 @@ def install_policies() -> PolicyInstallResult:
     if that distinction matters to the caller.
 
     Pure logic, no UI: this is the shared producer behind both ``docket policies init`` and
-    ``docket install``'s own policy-provisioning step — one implementation, two callers, so
+    `the workstation foundation bootstrap`'s own policy-provisioning step — one implementation, two callers, so
     the two can never drift on what "installed" means.
     """
     template_dir = _cfg.policy_templates_dir()

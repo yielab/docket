@@ -5,7 +5,7 @@ _docket_complete() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   cword=$COMP_CWORD
 
-  local commands="install list add info delete maintain context wire unwire scope profile persona keys auth models pod pipeline roles logs edit cost doctor gates conversations runs mcp audit snapshot serve completions trace metrics policies approve deny help"
+  local commands="list status add init info delete maintain context wire unwire scope profile persona keys auth models pod pipeline roles logs edit cost doctor gates conversations runs mcp audit snapshot serve completions trace metrics policies approve deny help"
 
   # Live agent ids (project + specialist) from the workspace tree, basenames only.
   local _dh="${DOCKET_HOME:-$HOME/.docket}"
@@ -30,6 +30,7 @@ _docket_complete() {
   local cmd="${COMP_WORDS[1]}"
   local words=""
   case "$cmd" in
+    status)          words="--all --json" ;;
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;

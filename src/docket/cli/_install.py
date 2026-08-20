@@ -1,10 +1,10 @@
-"""docket install — bootstrap a docket-native home + specialist agents.
+"""Internal workstation bootstrap used lazily by the first ``docket init``.
 
-`run_install(want_gates, assume_yes)`
+`bootstrap_workstation(want_gates, assume_yes)`
 returns the process exit code (0 on success, 1 when a hard preflight fails); the
-coordinator wraps it in a Typer command and raises typer.Exit(code).
+the project initializer returns that code to the CLI.
 
-There is no external daemon. `docket install` provisions a purely
+There is no external daemon. The workstation foundation bootstrap provisions a purely
 docket-native home: directory structure under `DOCKET_HOME`, the fleet
 registry (`fleet.json`), specialist agents (fleet registration + workspace +
 meta), and the baseline guardrail policy templates. `.docket-meta.json`/
@@ -147,7 +147,7 @@ def _step_security(want_gates: bool) -> None:
     ui.dim("  Nothing to enable/disable there — see: docket gates status")
 
     if not want_gates:
-        ui.dim("Approval-routing setup skipped (--no-gates).")
+        ui.dim("Approval routing disabled for this workstation (--no-gates).")
         ui.console.print("  Enable later: 'docket gates enable'.")
         return
 
@@ -275,7 +275,7 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
     skipped — a specialist has no fixed codebase or build commands to document.
 
     Idempotent and backfill-safe: ``SOUL.md``/``AGENTS.md``/``HEARTBEAT.md``
-    are written only when absent, so re-running `docket install` (or healing
+    are written only when absent, so re-running the workstation foundation bootstrap (or healing
     an older install via `docket doctor`) never clobbers an agent-written
     ``HEARTBEAT.md`` or a persona-decorated ``SOUL.md``. ``seed_contract``
     itself only ever creates ``MEMORY.md``/the daily log when absent —
@@ -395,7 +395,7 @@ def _provision_portfolio_manager() -> None:
     """Provision the single opt-in org Portfolio Manager.
 
     A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
-    over fleet metadata (not project code). Opt-in (`docket install --portfolio`),
+    over fleet metadata (not project code). Opt-in (`first docket init --portfolio`),
     never auto-installed, never a pod member. Idempotent. Gets the same full
     workspace contract as the other org specialists.
     """
@@ -432,8 +432,11 @@ def _provision_portfolio_manager() -> None:
         _write_specialist_contract_files(role, ws, soul)
 
 
-def run_install(
-    want_gates: bool = True, assume_yes: bool = False, want_portfolio: bool = False
+def bootstrap_workstation(
+    want_gates: bool = True,
+    assume_yes: bool = False,
+    want_portfolio: bool = False,
+    continuing_to_project: bool = False,
 ) -> int:
     """Bootstrap a docket-native home + specialist agents. Returns the process exit code.
 
@@ -444,11 +447,16 @@ def run_install(
     assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
     want_portfolio:  also provision the opt-in org Portfolio Manager.
     """
-    ui.header("Docket Installation")
+    ui.header("Preparing Shared Workstation Foundation")
+    ui.console.print()
+    ui.info("One Docket home with shared org specialists, policies, and security defaults.")
+    ui.dim(
+        "  Project pods remain separate; the current project is initialized immediately after this."
+    )
     ui.console.print()
 
     if _cfg.FLEET_FILE.is_file():
-        ui.info("Existing docket installation detected")
+        ui.info("Existing Docket workstation foundation detected")
         ui.console.print()
 
         missing_specialists = [
@@ -461,7 +469,7 @@ def run_install(
         if not needs_update:
             ui.success("Docket is fully configured!")
             ui.console.print()
-            ui.console.print("Current setup:")
+            ui.console.print("Current foundation:")
             ui.console.print(f"  • Fleet registry: {_cfg.FLEET_FILE}")
             ui.console.print(f"  • Projects: {_cfg.PROJECTS_DIR}")
             ui.console.print(f"  • Agents: {_fleet.agent_count()}")
@@ -503,7 +511,7 @@ def run_install(
     ui.console.print(f"  Default model: {_cfg.DEFAULT_MODEL}")
     ui.console.print()
 
-    ui.header("Step 4: Setting up specialist agents")
+    ui.header("Step 4: Provisioning specialist agents")
     _provision_specialists()
     if want_portfolio:
         ui.console.print()
@@ -523,13 +531,18 @@ def run_install(
     _step_policies()
     ui.console.print()
 
-    _print_summary(auth_missing)
+    if continuing_to_project:
+        ui.header("Shared Workstation Foundation Ready")
+        ui.console.print()
+        ui.info("Continuing with project initialization...")
+    else:
+        _print_summary(auth_missing)
     return 0
 
 
 def _print_summary(auth_missing: bool) -> None:
     """Closing summary + next steps."""
-    ui.header("Installation Complete!")
+    ui.header("Workstation Foundation Ready")
     ui.console.print()
     ui.console.print("[bold]Next Steps:[/bold]")
     ui.console.print()
@@ -541,8 +554,8 @@ def _print_summary(auth_missing: bool) -> None:
         ui.console.print("     [green]docket keys add ANTHROPIC_API_KEY[/green]")
         ui.console.print()
         step += 1
-    ui.console.print(f"  {step}. Add your first project agent:")
-    ui.console.print("     [green]docket add[/green]")
+    ui.console.print(f"  {step}. Initialize a project pod (run inside its repository):")
+    ui.console.print("     [green]docket init[/green]")
     ui.console.print()
     step += 1
     ui.console.print(
@@ -561,7 +574,7 @@ def _print_summary(auth_missing: bool) -> None:
     ui.console.print("  • security   - Security audits and risk checks")
     ui.console.print()
     ui.console.print("[dim]Code workers (implementer/reviewer/tester) are per-project pod[/dim]")
-    ui.console.print("[dim]members — run 'docket add <project>' to create a pod.[/dim]")
+    ui.console.print("[dim]members — run 'docket init' inside a project to create its pod.[/dim]")
     ui.console.print()
     ui.console.print("[bold]Configuration:[/bold]")
     ui.console.print(f"  Fleet registry: {_cfg.FLEET_FILE}")

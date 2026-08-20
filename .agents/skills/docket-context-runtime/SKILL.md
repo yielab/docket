@@ -14,6 +14,12 @@ dispatch through driver, loop, session, and backend before proposing a fix. Dist
 - one turn's hard budget: measured backend usage;
 - durable session history: stored messages and compaction.
 
+For an overflow, capture the exact failing backend-call ordinal and break the prospective request
+into system context, replay/active-turn messages, tool schemas, protocol overhead, and requested
+output reserve. Compare it with the selected provider/model's live registered window. Label byte-
+ratio or payload estimates as estimates; endpoint tokenizer counts are measured only when the
+endpoint reports them.
+
 Do not claim one budget bounds another. Avoid sending both raw cross-role history and a typed handoff
 unless the contract explicitly requires both.
 
@@ -33,3 +39,10 @@ live-path gap explicitly.
 The next ideal context task should target the largest measured remaining waste or correctness risk.
 Parallel context work is safe only when the lanes have independent history/trace identities and do
 not touch the same compiler, loop, session, handoff, budget, or live endpoint state.
+
+Preflight every imminent model request, including compaction calls and later tool-loop iterations;
+include advertised tools and an output reserve. A pre-turn compaction does not bound messages added
+during the active turn. When reduction is required, preserve assistant tool calls with every
+answering result as atomic units, reload the accepted compacted state, and retry the fit check. If
+the irreducible request cannot fit, fail locally before transport with an actionable reason; never
+silently cut a task, tool decision/result, or unresolved action.

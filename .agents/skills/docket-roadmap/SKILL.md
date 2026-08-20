@@ -18,6 +18,11 @@ For a new card, record the measured trigger, goal, non-goals, exact live-path ow
 acceptance criteria, focused tests, full gates, and any file-contention dependency. Prefer one
 independently shippable behavior over a phase-sized bundle.
 
+For a runtime incident, separate independently shippable causes instead of giving the symptom one
+catch-all card. Record the failing call ordinal, configured limit, measured or estimated request
+size, and which context source grew. Do not schedule a larger limit as the fix unless bounded
+composition already exists and the measured workload genuinely requires the capacity.
+
 Read [references/board-contract.md](references/board-contract.md) only when changing `TODO.md` or
 `ROADMAP.md`, claiming work, or closing a card.
 

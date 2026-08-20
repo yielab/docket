@@ -1,4 +1,4 @@
-"""docket add / info / delete / maintain — agent (and pod) workspace CRUD.
+"""docket init / add / info / delete / maintain — agent/pod workspace CRUD.
 
 Each ``run_*`` function returns the process exit code; the coordinator
 (``cli/__init__.py``) wraps it in a Typer command and raises
@@ -115,26 +115,36 @@ def _parse_add_args(
     return from_file, codebase, name, blueprint
 
 
-def run_add(all_args: list[str]) -> int:
-    """Dispatch `docket add` (interactive, or `--from <spec-file>`).
+def run_init(all_args: list[str]) -> int:
+    """Initialize a project pod, deriving ordinary defaults from the cwd.
 
-    Interactive flow: provisions a pod from a blueprint —
-    ``--blueprint <name>`` selects one; omitted defaults to
-    `software`, the Lead+Implementer pod against a codebase.
-    A `codebase`-kind blueprint prompts for the codebase path (defaults to
-    the directory `docket add` ran in); a `workdir`-kind blueprint
-    (research/content/ops) prompts for a working directory instead — no
-    codebase is assumed, and none is auto-detected for stack. The project
-    name is suggested from that path's directory name.
+    The zero-argument path is intentionally non-interactive: current directory
+    becomes the location, its basename becomes the pod id, stack is detected,
+    and the default software blueprint creates Lead + Implementer. Explicit
+    arguments/options override those defaults; ``--from`` retains the
+    declarative multi-project path.
     """
-    from_file, cli_codebase, cli_name, cli_blueprint = _parse_add_args(all_args)
+    want_gates = "--no-gates" not in all_args
+    want_portfolio = "--portfolio" in all_args
+    project_args = [arg for arg in all_args if arg not in ("--gates", "--no-gates", "--portfolio")]
+
+    if not _cfg.FLEET_FILE.is_file():
+        from docket.cli import _install
+
+        ui.info("First project: preparing Docket's shared workstation foundation...")
+        bootstrap_rc = _install.bootstrap_workstation(
+            want_gates=want_gates,
+            assume_yes=True,
+            want_portfolio=want_portfolio,
+            continuing_to_project=True,
+        )
+        if bootstrap_rc != 0:
+            return bootstrap_rc
+
+    from_file, cli_codebase, cli_name, cli_blueprint = _parse_add_args(project_args)
 
     if from_file is not None:
         return _cmd_add_declarative(from_file)
-
-    if not sys.stdin.isatty():
-        ui.error("interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.")
-        return 1
 
     from docket.core import blueprints as _bp
 
@@ -145,32 +155,23 @@ def run_add(all_args: list[str]) -> int:
         ui.error(str(exc))
         return 1
 
-    # Location: an explicit path set up front is trusted and not re-prompted;
-    # otherwise offer a sensible default. Meaning depends on workspace_kind —
-    # a codebase to detect stack from, or a plain working directory.
+    # Location and identity are deterministic defaults, not a prompt sequence.
+    # This makes `docket init` behave like a conventional project initializer.
     is_workdir = blueprint.workspace_kind == "workdir"
-    prompt_label = "Working directory" if is_workdir else "Codebase path"
     if cli_codebase is not None:
         location = str(Path(cli_codebase).expanduser())
     else:
-        default_loc = str(_prov.default_codebase())
-        location = input(f"{prompt_label} [{default_loc}]: ").strip() or default_loc
-        location = str(Path(location).expanduser())
+        location = str(_prov.default_codebase())
     loc_path = Path(location)
 
-    # Name: suggested from the location's directory name; not prompted if given.
     suggested_name = cli_name or _prov.suggest_project_name(loc_path)
-    if cli_name is not None:
-        name = cli_name
-    else:
-        name = input(f"Display name [{suggested_name}]: ").strip() or suggested_name
+    name = cli_name or suggested_name
     if not name:
         ui.error("Name is required.")
         return 1
 
     slug = _prov.slugify(name)
-    aid_input = input(f"Agent ID [{slug}]: ").strip() or slug
-    aid: str = aid_input
+    aid = slug
 
     if (_cfg.PROJECTS_DIR / aid).is_dir() or (_cfg.PROJECTS_DIR / f"{aid}-lead").is_dir():
         ui.error(f"A project or pod '{aid}' already exists.")
@@ -179,19 +180,17 @@ def run_add(all_args: list[str]) -> int:
     # No codebase to inspect for a workdir blueprint — stack is whatever the
     # operator types (or blank), never auto-detected from marker files.
     detected_stack = "" if is_workdir else _prov.detect_stack(loc_path)
-    stack = input(f"Stack [{detected_stack or 'unknown'}]: ").strip() or detected_stack or "unknown"
-
-    description = input("Description (one line): ").strip()
-    tg_group = input("Telegram group ID (Enter to skip): ").strip()
+    stack = detected_stack or ("" if is_workdir else "unknown")
+    description = ""
 
     from docket.cli import _pod
 
     # --pod full / --with only make sense against the `software` roster —
     # any other blueprint provisions its own fixed roster as-is.
     if blueprint.name == "software":
-        roles = _pod.parse_pod_roles(all_args)
+        roles = _pod.parse_pod_roles(project_args)
     else:
-        if any(a in ("--pod", "--with") or a.startswith("--with=") for a in all_args):
+        if any(a in ("--pod", "--with") or a.startswith("--with=") for a in project_args):
             ui.warn(
                 f"--pod/--with only apply to the 'software' blueprint — ignoring for '{blueprint.name}'."
             )
@@ -213,10 +212,6 @@ def run_add(all_args: list[str]) -> int:
         return 1
 
     lead_id = f"{aid}-lead"
-    if tg_group:
-        _fleet.upsert_binding(lead_id, tg_group, "telegram", "group")
-        ui.success(f"Telegram binding: {lead_id} ← group {tg_group}")
-
     ui.console.print()
     ui.success(f"Pod '{aid}' created with {len(created)} members!")
     for mid in created:
@@ -224,7 +219,100 @@ def run_add(all_args: list[str]) -> int:
     ui.console.print()
     ui.console.print(f"  docket pod {aid}              # inspect the pod")
     ui.console.print(f"  docket pod {aid} add reviewer # add a role")
-    ui.console.print(f"  docket wire {lead_id}   (if no Telegram group yet)")
+    ui.console.print(f"  docket wire {lead_id}   # optional Telegram binding")
+    return 0
+
+
+def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[str]]:
+    """Return an explicit ``--project`` and the args forwarded to ``pod add``."""
+    project: str | None = None
+    forwarded: list[str] = []
+    i = 0
+    while i < len(all_args):
+        arg = all_args[i]
+        if arg == "--project":
+            if i + 1 >= len(all_args):
+                ui.error("--project requires a pod id")
+                return "", []
+            project = all_args[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--project="):
+            project = arg.split("=", 1)[1]
+            i += 1
+            continue
+        forwarded.append(arg)
+        i += 1
+    return project, forwarded
+
+
+def _pod_for_directory(directory: Path) -> tuple[str | None, list[str]]:
+    """Resolve the most-specific registered pod containing ``directory``.
+
+    Project metadata is the authority: every member of a pod repeats the same
+    codebase/workDir, so results are deduplicated by pod id before ambiguity is
+    evaluated. A nested cwd chooses the longest matching root.
+    """
+    try:
+        cwd = directory.expanduser().resolve()
+    except OSError:
+        cwd = directory.expanduser().absolute()
+
+    matches: dict[str, int] = {}
+    for aid in project_ids():
+        raw = store.read_json(_cfg.meta_path(aid))
+        pod_id = str(raw.get("pod", ""))
+        if not pod_id:
+            continue
+        root_s = str(raw.get("workDir") or raw.get("codebase") or "")
+        if not root_s:
+            continue
+        try:
+            root = Path(root_s).expanduser().resolve()
+            cwd.relative_to(root)
+        except (OSError, ValueError):
+            continue
+        matches[pod_id] = max(matches.get(pod_id, 0), len(root.parts))
+
+    if not matches:
+        return None, []
+    best_depth = max(matches.values())
+    best = sorted(project for project, depth in matches.items() if depth == best_depth)
+    return (best[0] if len(best) == 1 else None), best
+
+
+def run_add(all_args: list[str]) -> int:
+    """Add role agents to an existing pod; never provisions a new project."""
+    explicit_project, forwarded = _parse_existing_pod_add_args(all_args)
+    if explicit_project == "":
+        return 1
+
+    project = explicit_project
+    if not project:
+        project, matches = _pod_for_directory(Path.cwd())
+        if project is None:
+            if matches:
+                ui.error(
+                    "Current directory matches multiple pods: "
+                    f"{', '.join(matches)}. Select one with --project <pod>."
+                )
+            else:
+                ui.error(
+                    "No initialized pod matches the current directory. "
+                    "Run 'docket init' here first, or select one with --project <pod>."
+                )
+            return 1
+
+    if not forwarded or forwarded[0].startswith("-"):
+        ui.error(
+            "A role is required. Use: docket add <role> "
+            '[--project <pod>] [--count N] [--verify "<cmd>"]'
+        )
+        return 1
+
+    from docket.cli import _pod
+
+    _pod.dispatch(project, "add", forwarded)
     return 0
 
 
@@ -743,7 +831,7 @@ def run_delete(agent_id: str | None) -> int:
     if _cfg.is_specialist(aid):
         ui.error(
             f"'{aid}' is a specialist agent — shared team infrastructure managed by"
-            " 'docket install'. It cannot be deleted with 'docket delete'."
+            " the workstation foundation. It cannot be deleted with 'docket delete'."
         )
         return 1
 
@@ -864,7 +952,18 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     issues: list[str] = []
 
     perm_ok = True
-    for dirpath in ws.rglob("*"):
+    managed_paths = [ws]
+    for top_level in ws.iterdir():
+        # A pod Implementer's Git worktree is repository content. Recursing
+        # through it used to turn executables into 0600 files and directories
+        # into 0700, corrupting the checkout while claiming to heal Docket's
+        # workspace. Only Docket-owned prompt/meta/memory paths belong here.
+        if top_level.name == "worktree" or top_level.is_symlink():
+            continue
+        managed_paths.append(top_level)
+        if top_level.is_dir():
+            managed_paths.extend(path for path in top_level.rglob("*") if not path.is_symlink())
+    for dirpath in managed_paths:
         try:
             mode = dirpath.stat().st_mode
             if dirpath.is_dir():

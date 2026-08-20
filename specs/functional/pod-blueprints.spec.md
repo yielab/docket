@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented
 **Last Updated**: 2026-08-19
 
@@ -24,7 +24,7 @@ This specification covers:
   the byte-identical guarantee `software` carries over the pre-W-7 default `docket add`
 - The `workspaceKind` (`codebase` | `workdir`) distinction and how a `workdir` blueprint's shared
   working directory is resolved/auto-provisioned
-- How `docket add --blueprint <name>` and the extended `docket add --from <spec.yaml>` select and
+- How `docket init --blueprint <name>` and `docket init --from <spec.yaml>` select and
   provision a blueprint
 - The additive `.docket-meta.json` fields a blueprint-provisioned pod member carries (`blueprint`,
   `workspaceKind`, `workDir`) — schema authority for these fields is `docket-meta.spec.md`; this
@@ -93,7 +93,7 @@ This specification does NOT cover:
    APPROVE/REJECT verdict with a bounded rework edge back to the Writer step; `ops` gates its
    Operator step mechanically (deferring to that member's own `verifyCmd`, mirroring the
    Implementer's convention) and its Monitor step on human approval.
-4. `docket add <project>` with **no** `--blueprint` **MUST** resolve to `software`
+4. `docket init <project>` with **no** `--blueprint` **MUST** resolve to `software`
    (`core.blueprints.DEFAULT_BLUEPRINT`) — omitting the flag and passing `--blueprint software`
    explicitly **MUST** be behaviorally indistinguishable.
 5. `agentic-product` (ROADMAP Phase 21 P21-5) **MUST** be `workspaceKind: "codebase"` and its
@@ -134,13 +134,13 @@ This specification does NOT cover:
 
 ### CLI surface
 
-1. `docket add <project> [location] [--blueprint <name>]` **MUST** select a blueprint (default
+1. `docket init <project> [location] [--blueprint <name>]` **MUST** select a blueprint (default
    `software`) before prompting for anything else, and **MUST** fail cleanly (exit 1, no prompts
    issued) if `<name>` is not a registered blueprint.
 2. `--pod full` / `--with <roles>` **MUST** continue to apply only to the `software` blueprint's
    roster (unchanged pre-W-7 behavior); passing them against any other blueprint **MUST** warn and
    provision that blueprint's own fixed roster, not silently combine the two.
-3. `docket add --from <spec.yaml>` **MUST** accept a `blueprint` field on any spec entry. An entry
+3. `docket init --from <spec.yaml>` **MUST** accept a `blueprint` field on any spec entry. An entry
    carrying one **MUST** provision a pod (`build_pod_from_blueprint`) instead of the single flat
    agent the declarative path has always provisioned for an entry without that field — existing
    spec files with no `blueprint` field anywhere **MUST** be entirely unaffected (same single-agent
@@ -167,8 +167,8 @@ This specification does NOT cover:
 ### CLI Command Signatures
 
 ```text
-docket add <project> [location] [--blueprint <name>]
-docket add --from <spec.yaml>       # spec entries may carry a `blueprint` field
+docket init <project> [location] [--blueprint <name>]
+docket init --from <spec.yaml>       # spec entries may carry a `blueprint` field
 ```
 
 ### Built-in blueprints
@@ -227,7 +227,7 @@ agents:
 ```
 
 ```bash
-docket add --from spec.yaml
+docket init --from spec.yaml
 ```
 
 ### An unknown blueprint fails cleanly
@@ -247,9 +247,9 @@ docket add myproj --blueprint wizard-pod
 
 ### Post-conditions
 
-- After `docket add <project> --blueprint software` (or no flag at all), the resulting pod's
+- After `docket init <project> --blueprint software` (or no flag at all), the resulting pod's
   workspace files and `.docket-meta.json` (modulo the additive `blueprint` key) **MUST** be
-  identical to what `docket add <project>` produced before this spec existed.
+  identical to what `docket init <project>` produced before this spec existed.
 - After provisioning a `workdir` blueprint, every member's `WORKFLOW_AUTO.md` **MUST** contain
   `## Your working directory` and **MUST NOT** contain `## Your codebase`.
 - `docket doctor` **MUST** report zero issues for a freshly provisioned, unmodified pod of any

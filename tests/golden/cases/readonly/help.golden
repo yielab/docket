@@ -3,27 +3,26 @@ EXIT:0
 docket — agent fleet control plane
 
 AGENT TYPES
-  Org Specialists     Created by 'docket install' — shared across all projects
+  Org Specialists     Created lazily by the first 'docket init' — shared across all projects
                         → manager, knowledge, security
                         → Work across ALL projects (don't create/delete manually)
-  Project Pods        Created by 'docket add' — one isolated pod per project
+  Project Pods        Created by 'docket init' — one isolated pod per project
                         → lead + implementer (+ optional reviewer, tester)
                         → Manage with 'docket pod <project>'
 
-  Project Agents      Created by 'docket add' — one per project/codebase
+  Project Agents      Created by 'docket init' and expanded by 'docket add'
                         → Each has its own workspace, memory, and Telegram group
 
 USAGE
   docket [--debug] <command> [agent-id] [args]
   If agent-id is omitted an interactive picker is shown (fzf or numbered list).
 
-SETUP
-  install            Bootstrap a docket-native home + create specialist agents
-
 LIFECYCLE
-  list               List all project agents and their status
-  add                Add a new project agent (interactive)
-  add --from <f>     Provision agent(s) from a YAML/JSON spec (declarative)
+  init               Initialize everything needed + this project's minimum pod
+  init --from <f>    Initialize project(s) from YAML/JSON (declarative)
+  add <role>         Add role agent(s) to an existing/current pod
+  status             Current project status; --all summarizes every project
+  list               Detailed global inventory of project agents
   info     [id]      Detailed status for a project
   delete   [id]      Remove a project agent
   maintain [id]      Health check & maintenance (see subcommands below)
@@ -54,7 +53,7 @@ CONTEXT & MEMORY  (docket context [id] <subcommand>)
 
 MONITORING
   cost     [id]      Token usage and cost breakdown with budget status
-  doctor             System health: fleet registry, drift, budget, runaway
+  doctor             Global fleet health: registry, isolation, budget, runaway
   gates              Tool-call gate status (always on); approval routing / isolation
   audit    [N]       Recent mutating operations (keys, gates, profile, agents)
 
@@ -100,10 +99,13 @@ FLAGS
   --debug         Verbose mode — or set DEBUG=1 in env
 
 EXAMPLES
-  docket                            # show project list
-  docket add                        # add a new project (interactive)
-  docket add --from agents.yaml     # provision a fleet from a spec file
-  docket doctor                     # full health check
+  docket                            # show the compact command guide
+  docket init                       # initialize this repository's project pod
+  docket status                     # status for the project containing the current directory
+  docket status --all               # global summary, one row per project
+  docket add reviewer               # add a Reviewer to the current project's pod
+  docket init --from agents.yaml    # initialize project pods from a spec file
+  docket doctor                     # workstation-wide health check
   docket info myproject             # inspect one project
   docket maintain myproject clean   # clear memory logs
   docket profile myproject default  # follow the role policy model

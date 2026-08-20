@@ -17,7 +17,7 @@ DOCKET_HOME = Path(os.environ.get("DOCKET_HOME", Path.home() / ".docket"))
 # MODEL_REGISTRY_FILE / ARCHETYPE_REGISTRY_FILE / PROJECTS_DIR / AUDIT_LOG /
 # WORKSPACES_DIR / PODS_DIR: all docket-owned, all under DOCKET_HOME. No
 # migration/fallback by design: a pre-existing install's files at old
-# daemon-relative paths are simply not read again -- `docket install`
+# daemon-relative paths are simply not read again -- the workstation foundation bootstrap
 # re-creates a docket-native home from scratch.
 MODEL_REGISTRY_FILE = DOCKET_HOME / "docket-models.json"
 # ARCHETYPE_REGISTRY_FILE: user overlay for role archetypes — the same
@@ -170,7 +170,7 @@ DISPATCH_VERIFY_TIMEOUT_S: int | None = _optional_int_env("DISPATCH_VERIFY_TIMEO
 TEMPLATE_VERSION = int(os.environ.get("TEMPLATE_VERSION", "4"))
 
 # Opt-in org Portfolio Manager: cross-pod planning, never a default specialist.
-# Installed via `docket install --portfolio`; excluded from ORG_SPECIALIST_ORDER
+# Installed via `first docket init --portfolio`; excluded from ORG_SPECIALIST_ORDER
 # so it is never auto-provisioned or flagged missing on a default install.
 PORTFOLIO_MANAGER_ROLE = "portfolio-manager"
 
@@ -212,7 +212,7 @@ PROJECT_ROLES: frozenset[str] = frozenset(["programmer", "reviewer", "tester"])
 ORG_SPECIALIST_ORDER: tuple[str, ...] = tuple(r for r in SPECIALIST_ORDER if r in ORG_ROLES)
 
 # Display order includes the opt-in Portfolio Manager. Consumers skip entries whose workspace
-# doesn't exist, so the Portfolio Manager appears only after `docket install --portfolio`.
+# doesn't exist, so the Portfolio Manager appears only after `first docket init --portfolio`.
 ORG_DISPLAY_ORDER: tuple[str, ...] = (*ORG_SPECIALIST_ORDER, PORTFOLIO_MANAGER_ROLE)
 
 

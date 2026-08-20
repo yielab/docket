@@ -1,7 +1,9 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.3.0
-**Status**: Complete. A pod-dispatch hop executes through
+**Version**: 6.4.0
+**Status**: Complete. The public CLI reconstructs the full delegated task from every task
+positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
+positional words. A pod-dispatch hop executes through
 `edges.adapters.docket_runtime.DocketDriver`, docket's own gated turn loop
 (`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint). See
 "Runtime driver resolution" and "Cancellation" below for the hop-execution and cancellation
@@ -39,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-20
 
 ## Purpose
 
@@ -165,6 +167,16 @@ This specification does NOT cover:
    no separate migration step exists or is required.
 3. A task's status **MUST** be one of exactly five values: `pending`, `running`, `done`,
    `failed`, `blocked`. (See "Task status vocabulary" below for terminal vs. non-terminal.)
+
+#### Delegation input reconstruction (W25-C1)
+
+The public CLI contract requires the full free-form task text to reach `enqueue_task` whether the
+shell supplied it as one quoted argv item or equivalent split positional items. Quoting is still
+needed for shell metacharacters, but is not application metadata and is not itself a Docket
+requirement. `_pod_delegate` **MUST** remove a well-formed `--priority`/`-p` option, join every
+remaining task positional with one space, and apply the existing empty and 500-character checks to
+that reconstructed description before calling `enqueue_task`. A missing or invalid priority
+**MUST** fail without enqueueing.
 
 ### Claiming (locked, race-free)
 
@@ -1095,6 +1107,12 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.4.0 (2026-08-20)
+
+- **Wave 25 card W25-C1.** The public `docket pod ... delegate` boundary now reconstructs complete
+  free-form task text from quoted or split argv, validates the reconstructed value, and fails
+  malformed priority options without writing to the queue.
 
 ### Version 6.3.0 (2026-08-19)
 

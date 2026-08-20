@@ -340,7 +340,7 @@ class TestUnknownBlueprintFailsCleanly:
             raise AssertionError("must fail before prompting for anything")
 
         monkeypatch.setattr("builtins.input", _no_input)
-        rc = _agents.run_add(["myproj", "--blueprint", "wizard-pod"])
+        rc = _agents.run_init(["myproj", "--blueprint", "wizard-pod"])
         assert rc == 1
 
     def test_from_spec_unknown_blueprint_is_skipped_not_aborted(
@@ -354,7 +354,7 @@ class TestUnknownBlueprintFailsCleanly:
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
-        rc = _agents.run_add(["--from", str(spec_file)])
+        rc = _agents.run_init(["--from", str(spec_file)])
 
         assert rc == 0
         ids = _ids(oc_dir)
@@ -382,7 +382,7 @@ class TestFromSpecBlueprint:
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
-        rc = _agents.run_add(["--from", str(spec_file)])
+        rc = _agents.run_init(["--from", str(spec_file)])
 
         assert rc == 0
         ids = _ids(oc_dir)
@@ -404,7 +404,7 @@ class TestFromSpecBlueprint:
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
-        rc = _agents.run_add(["--from", str(spec_file)])
+        rc = _agents.run_init(["--from", str(spec_file)])
 
         assert rc == 0
         assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
@@ -419,7 +419,7 @@ class TestFromSpecBlueprint:
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
-        rc = _agents.run_add(["--from", str(spec_file)])
+        rc = _agents.run_init(["--from", str(spec_file)])
 
         assert rc == 0
         assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
@@ -434,7 +434,7 @@ class TestFromSpecBlueprint:
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(json.dumps(spec))
 
-        rc = _agents.run_add(["--from", str(spec_file)])
+        rc = _agents.run_init(["--from", str(spec_file)])
 
         assert rc == 0
         assert _ids(oc_dir) == ["legacyagent"]

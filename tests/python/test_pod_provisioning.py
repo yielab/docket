@@ -24,6 +24,9 @@ def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "PODS_DIR", home / "workspaces" / "pods", raising=True)
+    monkeypatch.setattr(_cfg, "SESSIONS_DIR", home / "sessions", raising=True)
+    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
     # audit_log() has no kill switch, and pod add/remove/delete now write
     # entries — repoint AUDIT_LOG alongside everything else this pod sandbox owns.
@@ -76,6 +79,20 @@ class TestBuildPod:
             from docket.core.models import AgentMeta
 
             assert AgentMeta.model_validate(m).template_version == str(_pod.POD_TEMPLATE_VERSION)
+
+    def test_managed_workspace_modes_are_owner_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+
+        for mid in ("demo-lead", "demo-implementer"):
+            ws = home / "workspaces" / "projects" / mid
+            assert ws.stat().st_mode & 0o777 == 0o700
+            assert (ws / "memory").stat().st_mode & 0o777 == 0o700
+            for path in ws.iterdir():
+                if path.is_file():
+                    assert path.stat().st_mode & 0o777 == 0o600, path.name
 
     def test_lead_soul_forbids_editing_implementer_has_codebase(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -195,6 +212,50 @@ class TestDeletePod:
         cli._delete_pod("demo", _pod.pod_member_ids("demo"))
         assert _ids(home) == []
         assert not (home / "workspaces" / "projects" / "demo-lead").exists()
+
+    def test_delete_pod_purges_runtime_sessions_and_traces_but_preserves_audit(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from docket import cli
+
+        home = _seed(tmp_path, monkeypatch)
+        _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
+        members = _pod.pod_member_ids("demo")
+
+        (home / "workspaces" / "pods" / "demo" / ".scratch").mkdir(parents=True, exist_ok=True)
+        for encoded_key in (
+            "agent%3Ademo%3Adefault",
+            "agent%3Ademo-lead%3Ademo%3Atask%3At1%3Astep%3As1",
+            "agent%3Ademo-implementer%3Ademo%3Atask%3At1%3Astep%3As2",
+        ):
+            session_dir = home / "sessions" / encoded_key
+            session_dir.mkdir(parents=True)
+            (session_dir / "session.json").write_text("{}")
+        unrelated_session = home / "sessions" / "agent%3Aother%3Adefault"
+        unrelated_session.mkdir(parents=True)
+
+        for trace_owner in ("demo", *members):
+            trace_dir = home / "traces" / trace_owner
+            trace_dir.mkdir(parents=True)
+            (trace_dir / "trace.jsonl").write_text("{}\n")
+        unrelated_trace = home / "traces" / "other"
+        unrelated_trace.mkdir(parents=True)
+
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        cli._delete_pod("demo", members)
+
+        assert not (home / "workspaces" / "pods" / "demo").exists()
+        assert not any("demo" in entry.name for entry in (home / "sessions").iterdir())
+        assert not any((home / "traces" / owner).exists() for owner in ("demo", *members))
+        assert unrelated_session.exists()
+        assert unrelated_trace.exists()
+        assert (home / "audit.log").is_file()
+        output = capsys.readouterr().out
+        assert "demo-lead  (lead)" in output
+        assert "demo-implementer  (implementer)" in output
 
     def test_delete_pod_writes_one_agent_delete_audit_entry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -192,7 +192,9 @@ class TestChecks:
         ]
         (home / "fleet.json").write_text(json.dumps(fleet))
         assert _doctor._check_project_agents(["myshop"]) == 0
-        assert "OK  →  group -100" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "global fleet" in out
+        assert "OK  →  group -100" in out
 
     def test_pod_lead_missing_tools_md_not_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

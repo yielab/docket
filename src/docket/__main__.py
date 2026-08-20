@@ -7,9 +7,6 @@ import sys
 from docket.cli import app
 
 _ALIASES = {
-    "setup": "install",
-    "create": "add",
-    "new": "add",
     "show": "info",
     "remove": "delete",
     "rm": "delete",
@@ -80,7 +77,7 @@ _REMOVED: dict[str, tuple[str, ...]] = {
         'Use: docket pod <project> delegate "<task>"  (was: team delegate "<task>")',
         "Use: docket pod <project> queue                (was: team queue)",
         "Use: docket pod <project> dispatch              to actually run queued tasks",
-        "Org-wide view: docket install --portfolio       (Portfolio Manager)",
+        "Org-wide portfolio view is initialized automatically by the first docket init.",
         "Any old manager TASK_LIST.json from a legacy install is untouched on disk "
         "but no longer read by docket.",
     ),

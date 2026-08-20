@@ -1,7 +1,7 @@
 # Agent Loop Specification
 
-**Version**: 1.9.0
-**Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
+**Version**: 1.10.0
+**Status**: Partially implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
@@ -13,7 +13,9 @@ configured MCP server's tools are reachable from a live turn and correctly narro
 kind-based narrowing this depended on. **Wave 20 card W20-C2** made session compaction part of
 this same live path before each task-completion call. **Wave 20 card W20-C4** separates the durable
 history coordinate from the trace coordinate so pod steps do not replay another role's raw turns.
-**Last Updated**: 2026-08-19
+The loop does not yet preflight each prospective request against the selected endpoint's registered
+context window; W25-C2 tracks the measured same-turn overflow described below.
+**Last Updated**: 2026-08-20
 
 ## Purpose
 
@@ -243,6 +245,32 @@ This specification does NOT cover:
     histories. A trace-only task key is not a durable session and **MUST NOT** be fabricated by
     session enumeration.
 
+### Known imminent-request-fit discrepancy (W25-C2)
+
+The selected local provider records `contextWindow` and `maxTokens`, but
+`edges.adapters.llm.resolve_endpoint` currently drops both values and `run_agent_turn` calls
+`backend.complete` without checking the complete prospective wire request. Pre-turn compaction
+cannot protect an initially empty session that grows through tool results during the same turn.
+A measured fifth request contained 17,643 endpoint-tokenizer tokens against a registered 16,384-
+token window and failed at transport.
+
+The required W25-C2 contract is:
+
+- resolve the exact provider/model limits at call time and define explicit behavior for an
+  environment-overridden or hosted endpoint whose window is unknown;
+- before every task and summarizer completion, estimate all model-visible messages, advertised tool
+  schemas/protocol framing, and the requested output reserve against that window;
+- when over budget, reduce only complete history units using the existing visible, fail-closed
+  compaction contract, then reload and recheck the accepted state;
+- never silently truncate the current task, an assistant tool call without all answering results,
+  a tool decision/result, or an unresolved action; and
+- when the irreducible request cannot fit, make no backend call and return a distinct actionable,
+  non-retryable local result.
+
+Until those properties are live-path tested, the loop's cumulative measured `token_budget`, static
+startup-context budget, per-result output ceiling, and pre-turn history budget **MUST NOT** be
+described as an endpoint request-window guarantee.
+
 ## Interface Contracts
 
 ### Module API (`docket.core.agent_loop`)
@@ -424,6 +452,13 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.10.0 (2026-08-20)
+
+- Recorded the live per-request context-fit gap exposed by a 17,643-token request to a registered
+  16,384-token endpoint. Distinguished endpoint-window fit from cumulative measured turn usage,
+  static startup context, tool-result ceilings, and pre-turn durable-history compaction. W25-C2
+  owns implementation; this version intentionally marks the spec partial.
 
 ### Version 1.9.0 (2026-08-19)
 

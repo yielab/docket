@@ -59,7 +59,7 @@ This specification does NOT cover:
   lean/full presets) — that remains `core/pod.py`'s `plan_pod`/`DEFAULT_POD_ROLES`/
   `FULL_POD_ROLES`, unchanged by this spec; see `workspace-structure.spec.md` and
   `docket-meta.spec.md`
-- Named pod *rosters/blueprints* (`docket add --blueprint`) that let `docket add` compose a
+- Named pod *rosters/blueprints* (`docket init --blueprint`) that let `docket init` compose a
   non-default set of archetypes for a whole pod in one step — shipped as ROADMAP Phase 16 W-7;
   see `pod-blueprints.spec.md`
 - The dispatch executor's actual gate *enforcement* — `core.orchestrator.resolve_gate`/
@@ -399,7 +399,7 @@ docket roles validate   # validates the whole live registry
 
 ### Pre-conditions
 
-- `~/.docket/` exists (created by `docket install`); `docket roles add`/`validate` create the
+- `~/.docket/` exists (created lazily by the first `docket init`); `docket roles add`/`validate` create the
   overlay file's parent directory if needed
 
 ### Post-conditions

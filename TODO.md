@@ -13,10 +13,11 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD (2026-08-19) — clear after Wave 24
+> ## ◉ ACTIVE BOARD (2026-08-20) — Wave 25 context-fit incident
 >
-> No executable card is currently open. Wave 24's durable record follows; new work requires a
-> measured trigger and a newly claimed card.
+> A real unquoted `docket pod ... delegate create a file ...` stored only `"create"`. The resulting
+> underspecified turn then grew to 17,643 tokens against the selected endpoint's registered
+> 16,384-token window. Wave 25 separates those two independently shippable defects.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -91,6 +92,105 @@
 **Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
 fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
 `platform`, never directly into `main`.
+
+---
+
+## ◉ WAVE 25 ACTIVE (2026-08-20) — lossless delegation and request fit
+
+### W25-C1 — preserve the complete delegated task text
+
+**Status:** DONE (2026-08-20) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** the public CLI received ten task words after `delegate`, but the persisted
+`TASK_LIST.json` description was exactly `"create"`. `_pod_delegate` collects every non-priority
+argument into `rest` and then discards all but `rest[0]`.
+
+**Goal:** preserve the operator's complete task description whether the shell supplies it as one
+quoted argument or several ordinary positional words.
+
+**Non-goals:** no mandatory-quotation rule, shell parser, change to the 500-character limit,
+priority grammar, input-policy trust, queue schema, or dispatch retry behavior. Quoting remains
+recommended when a task contains shell metacharacters; by the time Typer receives argv, ordinary
+quote delimiters are gone and cannot be treated as durable task metadata.
+
+**Live path / files:** `cli/__init__.py::cmd_pod` forwards `ctx.args` →
+`cli/_pod.py::dispatch` → `_pod_delegate` → `core/dispatch.py::enqueue_task` →
+`edges/store.py` queue write. Own `_pod_delegate`, a focused CLI test, the delegation contract in
+`specs/functional/pod-dispatch.spec.md`, and command/troubleshooting text only if it currently
+implies quotes are required.
+
+**RED test:** invoke the real `cmd_pod`/Typer boundary in hermetic state with both
+`delegate "create a file called test.md"` and the equivalent split argv; assert the exact same
+description reaches the real queue. It fails today because the split form persists only
+`"create"`.
+
+**Acceptance:** join every task positional after removing a well-formed priority option; reject an
+empty description and invalid/missing priority without enqueueing; apply the length check to the
+reconstructed text; preserve the existing quoted form and output/exit behavior. Focused CLI pytest,
+`uv run ruff check src/docket/cli/_pod.py <test>`, spec validation, full pytest/static/golden gates
+all pass.
+
+**Contention:** owns only `_pod_delegate`, its focused test, and the pod-dispatch delegation clause.
+It does not depend on W25-C2 and may run in parallel if central spec/board rollups remain integrator-
+owned.
+
+**Shipped:** the public Typer boundary now reconstructs the complete free-form description from all
+task positionals after removing a valid priority option. Quoted and split argv persist identical
+text; empty input, missing/invalid priority, and reconstructed descriptions over 500 characters
+fail before enqueue. The focused six-case CLI suite, 2,262-test full collection, 18 goldens, 24
+specs, Ruff, format, mypy, metrics, and development-harness validation all pass (five expected
+environment/opt-in skips).
+
+### W25-C2 — fit every imminent model request to the selected endpoint
+
+**Status:** TODO · **Size:** M
+
+**Measured trigger:** the failing fifth `/v1/chat/completions` request was 17,643 tokenizer tokens
+for a registered 16,384-token endpoint: about 1.6K tokens of always-on system context and roughly
+13K tokens of active conversation/tool results, including one 30,035-character read. The
+100,000-token turn budget measures cumulative backend usage and does not bound the next request;
+pre-turn session compaction ran before this initially empty session grew.
+
+**Goal:** before every task or compaction completion, prove the prospective request—including
+messages, tool schemas, protocol overhead, and output reserve—fits the selected model's registered
+context window; deterministically reduce complete low-priority history units and fail locally when
+the irreducible request cannot fit.
+
+**Non-goals:** no blanket 32K requirement, exact-tokenizer dependency, silent slicing of a tool
+call/result, higher loop/token limits, model-specific prompt branch, raw-history plus typed-handoff
+duplication, or global lowering of `DOCKET_TOOL_MAX_OUTPUT_CHARS` as the final fix. The separately
+observed run-registry success-on-task-failure defect needs its own measured card and is not hidden
+inside context management.
+
+**Live path / files:** `core/dispatch.py` resolves a hop →
+`edges/adapters/docket_runtime.py::DocketDriver.run_turn` selects the model →
+`edges/adapters/llm.py::resolve_endpoint/client_for` currently drops the provider model's
+`contextWindow`/`maxTokens` → `core/agent_loop.py::run_agent_turn` calls `backend.complete` once for
+each compaction round and loop iteration. Request encoding lives in
+`edges/adapters/llm.py::build_payload`; atomic history and fail-closed hierarchical reduction live
+in `core/session.py`; estimates live in `core/context.py`. Own those exact seams, agent-loop tests,
+and `specs/functional/agent-loop.spec.md`.
+
+**RED test:** through the default `DocketDriver`, use a deliberately small registered context
+window and a scripted tool response large enough that iteration two would overflow. Assert no
+oversized backend call occurs, the assistant/tool-result unit is never split, and the turn either
+continues from a bounded compacted history or returns a distinct local context-fit failure. The
+current path makes the oversized second call.
+
+**Acceptance:** resolve limits for the exact provider/model at call time, including explicit
+environment-override behavior; estimate the same wire components the adapter will send and label
+the value as an estimate; reserve configured completion capacity; preflight every summarizer and
+task completion, not only iteration one; reduce only whole atomic units with visible, traced
+compaction and reload the resulting history before retrying fit; never discard the current task,
+a tool decision/result, or an unresolved action silently; if the minimum request cannot fit, make
+no HTTP call and return an actionable non-retryable context-fit result. Tests cover no-op, bounded
+reduction, irreducible failure, summarizer recursion/atomicity, unknown hosted-window fallback, and
+the 16,384-token incident shape. Focused loop/driver/adapter/session tests, spec validation, full
+pytest/static/golden gates, and the opt-in live small-context canary pass without raising the
+endpoint window.
+
+**Contention:** owns the loop/request-limit/session-compaction seams and the mutable local endpoint.
+No parallel context/session/MCP-output lane may touch those functions or run the same live canary.
 
 ---
 

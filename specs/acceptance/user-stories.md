@@ -306,7 +306,7 @@ And the total should be labelled as an estimate derived from measured session us
 ### Story: POD-001 - Provision a Project Pod
 
 **As a** developer
-**I want** to create an isolated pod for my project with `docket add <project>`
+**I want** to create an isolated pod for my project with `docket init <project>`
 **So that** each project gets its own Lead + Implementer with no shared state
 
 **Acceptance Criteria:**

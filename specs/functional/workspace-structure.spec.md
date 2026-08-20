@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Complete. `DOCKET_HOME` is the only state root: project/pod workspaces live under
 `~/.docket/workspaces/projects/`, and org specialists under `~/.docket/workspaces/`.
 **Last Updated**: 2026-08-19
@@ -95,8 +95,8 @@ covers the resulting file set for either workspace kind, not blueprint selection
    - `.docket-meta.json` (`kind: specialist`)
    - `TOOLS.md` **MUST NOT** be written for a specialist — it has no fixed
      codebase or build commands to document.
-2. `docket install` provisions the full set above for every org specialist and
-   the opt-in Portfolio Manager (`docket install --portfolio`). Provisioning is
+2. The first `docket init` lazily provisions the full set above for every org specialist before
+   it creates the project pod. Provisioning is
    idempotent and backfill-safe: `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` are
    written only when absent (never clobbering agent-written content or a
    persona-decorated `SOUL.md`), and `seed_contract` never overwrites an
@@ -107,7 +107,7 @@ covers the resulting file set for either workspace kind, not blueprint selection
    missing or stale `WORKFLOW_AUTO.md` is re-seeded exactly like a project
    agent's. A specialist workspace left fully bare by a pre-C-4 install
    (`.docket-meta.json` only, no `SOUL.md`/`AGENTS.md`/`HEARTBEAT.md` at all)
-   is backfilled by re-running `docket install`, which never touches a file
+   is backfilled by the internal workstation bootstrap, which never touches a file
    that already exists.
 4. The retired org-wide manager queue (`~/.docket/workspaces/manager/TASK_LIST.json`) is not part
    of the current contract; if present it is left untouched and read by nothing.
@@ -116,6 +116,10 @@ covers the resulting file set for either workspace kind, not blueprint selection
 
 1. Workspace directories **MUST** be `700`.
 2. Workspace files **MUST** be `600`.
+3. A pod Implementer's `worktree/` is a checkout of the project codebase, not a Docket prompt/
+   metadata file set. Permission healing **MUST NOT** recursively rewrite that checkout's modes;
+   executable bits and repository-owned permissions remain intact. Provisioning and maintenance
+   enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
 
 ## Interface Contracts
 
@@ -125,7 +129,6 @@ Workspaces are created and repaired through commands, not edited by hand:
 docket add <agent-id> [location] [--blueprint <name>]  # Provision a pod (see pod-blueprints.spec.md)
 docket maintain <agent-id> check          # Verify/repair structure and permissions
 docket maintain <agent-id> rebuild        # Regenerate all files from metadata
-docket install                            # Provision (or backfill) org specialist workspaces
 docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.md, project or specialist
 ```
 
@@ -186,7 +189,7 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
 
 - After `docket add`, all required core files **MUST** exist with `700`/`600` permissions and
   a current-version contract marker in `WORKFLOW_AUTO.md`.
-- After `docket install`, every org specialist (and the opt-in Portfolio Manager, when
+- After the first `docket init`, every org specialist (and the opt-in Portfolio Manager, when
   provisioned) **MUST** have the specialist file set above with `700`/`600` permissions and a
   current-version contract marker in `WORKFLOW_AUTO.md`.
 - After `docket maintain rebuild`, core files **MUST** be regenerated from metadata (persona
@@ -204,6 +207,12 @@ docket doctor [--fix]                     # Heal a missing/stale WORKFLOW_AUTO.m
   entries under the same `## Active Tasks` heading, survives byte-for-byte.
 
 ## Changelog
+
+### Version 1.9.0 (2026-08-19)
+
+- Closed the pod-provisioning permission gap: newly written managed root files are owner-only even
+  under a permissive user umask. Clarified that an Implementer's nested Git worktree retains
+  repository-owned modes and is excluded from workspace permission healing.
 
 ### Version 1.8.0 (2026-08-19)
 

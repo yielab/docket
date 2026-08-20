@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.16.0
+**Version**: 1.18.0
 **Status**: Complete
 **Last Updated**: 2026-08-19
 
@@ -42,7 +42,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | Argument | Applies to | Rules |
 |----------|------------|-------|
 | `agent-id` | most commands | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; MAY be omitted where an interactive picker can supply it |
-| `location` | `add` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable, same as the pre-W-7 `codebase-path`; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
+| `location` | `init` | MUST be absolute or tilde-expanded. For a `codebase`-kind blueprint (`software`) MUST exist and be readable; for a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates it if absent |
 | `provider/model` | `profile` | MUST be well-formed `<provider>/<model-id>`; or the literal `default` to re-attach to the role policy |
 | `action` | `scope`, `keys`, `pod`, `gates` | MUST be a verb from that command's documented action set |
 
@@ -82,23 +82,19 @@ docket [global-options] <command> [command-options] [arguments]
 
 ### Core Commands
 
-#### docket install
-**Purpose**: Bootstrap a docket-native home and specialist agents (ROADMAP Phase 19 P19-7b —
-no external daemon involved any more)
-**Syntax**: `docket install [--portfolio] [--gates]`
-**Arguments**: None
-**Options**:
-- `--portfolio`: Also provision the optional org Portfolio Manager (one `portfolio-manager` agent, `scope: org`)
-- `--gates`: Enable enforced exec-approval gates at install time (otherwise opt-in via `docket gates enable`)
-**Output**: Progress messages and success confirmation
-**Return**: 0 on success, 1-5 on various failures
+Invoking `docket` with no command **MUST** print only a compact command guide. It **MUST NOT**
+read or render the fleet, project agents, specialist agents, costs, bindings, or health checks.
 
-#### docket add
+#### docket init
 **Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
-default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7)
-**Syntax**: `docket add <project> [location] [--blueprint <name>] [options]`
+default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7). On the first project only, it **MUST**
+also bootstrap the workstation-wide Docket home, shared org specialists, baseline policies, and
+default security posture before provisioning the project. This global foundation is necessary;
+an extra user-facing setup command is not.
+**Syntax**: `docket init [project] [location] [--blueprint <name>] [options]`
 **Arguments**:
-- `project` (required): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
+- `project` (optional): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`);
+  omitted defaults to the current directory name
 - `location` (optional): Meaning depends on the selected blueprint's `workspaceKind` — a codebase
   path for `software` (the default), or a working directory for `research`/`content`/`ops`
   (auto-provisioned if omitted)
@@ -118,6 +114,40 @@ default — see pod-blueprints.spec.md, ROADMAP Phase 16 W-7)
 **Output**: Creation progress and confirmation with member IDs
 **Return**: 0 on success, 1 on error (pod already exists, invalid arguments, unknown blueprint,
 or provisioning registered no member — docket's flat convention, see Return Code Convention below)
+
+With no explicit project or location, `init` **MUST** derive both from the current working
+directory without an interactive questionnaire. The intended first-run flow is package-manager
+installation followed directly by `docket init` once per project. Declarative `--from`
+provisioning belongs to `init`, including multi-project automation.
+
+#### docket add
+**Purpose**: Add one or more role agents to an existing pod. It **MUST NOT** create a project.
+**Syntax**: `docket add <role> [--project <pod>] [--count N] [--verify "<cmd>"]`
+**Arguments**:
+- `role` (required): A built-in or installed archetype role; duplicate non-singleton roles are
+  indexed using the existing pod-member rules.
+**Options**:
+- `--project <pod>`: Target pod explicitly. When omitted, Docket resolves the pod whose configured
+  `codebase`/`workDir` contains the current working directory; zero or ambiguous matches fail with
+  an actionable error.
+- `--count N`: Add N members of that role.
+- `--verify "<cmd>"`: Set the mechanical verification command for a new Implementer.
+**Output**: Confirmation with the created member ID(s).
+**Return**: 0 on success, 1 when the pod/role is missing or invalid.
+
+#### docket status
+**Purpose**: Show project-level status without mixing it with workstation diagnostics or the
+agent inventory.
+**Syntax**: `docket status [--all] [--json]`
+**Behavior**:
+- With no flag, resolve the most-specific initialized pod whose `codebase`/`workDir` contains the
+  current directory and report its path, members, task counts, and readiness.
+- `--all` reports the same summary for every registered pod, once per project rather than once per
+  agent.
+- No current-directory match **MUST** fail with an actionable `docket init`/`--all` message.
+- `doctor` remains workstation-wide technical health; `list` remains the detailed global agent
+  inventory. Neither behavior is an implicit side effect of `status` or bare `docket`.
+**Return**: 0 on success, 1 when current-project resolution fails.
 
 #### docket list
 **Purpose**: Display all agents
@@ -311,7 +341,8 @@ was removed 2026-07-30; ROADMAP decision D-11 is the durable retirement record.)
   (FD-1); rejected with an error for a non-implementer member id; validated (no NUL/newline,
   length-capped) and audit-logged (`pod.set-verify`, ROADMAP Phase 14 R-6)
 - `remove <member-id>`: Remove a pod member
-- `delegate "<task>" [--priority high|normal|low]`: Queue a task on this pod's own list
+- `delegate <task> [--priority high|normal|low]`: Queue the complete free-form task on this pod's
+  own list whether it arrives as one quoted argv item or several ordinary positional words
   (one queue per pod, at `~/.docket/workspaces/<project>-lead/TASK_LIST.json`)
 - `queue [--retry <task-id>]`: List the pod's task queue (all statuses, not just pending);
   `--retry <task-id>` (Phase 14 R-1) moves one `blocked` task back to `pending` — the only
@@ -426,7 +457,10 @@ peer's activity, and no successor; the command reports memory logs only.
 ### Maintenance Commands
 
 #### docket doctor
-**Purpose**: System diagnostics
+**Purpose**: Workstation-wide diagnostics across the complete registered fleet. Human-readable
+output **MUST** label the project-agent section as global so running it from one repository cannot
+be mistaken for a repository-local listing; seeing another registered project is inventory
+visibility, not shared workspace or session state.
 **Syntax**: `docket doctor [--verbose]`
 **Options**:
 - `--verbose`: Detailed diagnostic output
@@ -757,7 +791,6 @@ When agent-id is omitted for commands that need it:
 Required for destructive operations:
 - `docket delete` (unless --force)
 - `docket maintain` reset/rebuild
-- `docket install --clean`
 
 Format: `"Action description. Continue? (y/N): "`
 
@@ -795,9 +828,11 @@ Format: `"Action description. Continue? (y/N): "`
 
 ### Version Detection
 - Docket's supported state root is `~/.docket` (or `DOCKET_HOME`). It does not import state from a
-  retired runtime; a fresh `docket install` writes a Docket-owned home.
+  retired runtime; the first `docket init` writes a Docket-owned home.
 
 ### Deprecated Features
+- `docket install` and `docket setup` do not exist. Package installation belongs to the package
+  manager; first-project initialization bootstraps global state lazily.
 - `docket reset <level>` → Use `docket maintain clean|reset|rebuild`
 - `docket repair` → Use `docket maintain check`
 - `docket cleanup` → Use `docket maintain sessions`
@@ -805,6 +840,18 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.18.0 (2026-08-19)
+
+- Bare `docket` is now a compact, state-free command guide. Added `docket status` for the current
+  directory's project and `docket status --all` for a global one-row-per-project summary, keeping
+  `list` as the agent inventory and `doctor` as workstation health.
+
+### Version 1.17.0 (2026-08-19)
+
+- Simplified the lifecycle to two user-facing verbs: `init` lazily creates the workstation
+  foundation and the current project's minimum isolated pod, while `add` adds role agents to an
+  existing pod. `doctor` deliberately reports the global fleet and labels it accordingly.
 
 ### Version 1.16.0 (2026-08-19)
 

@@ -86,6 +86,7 @@ _docket_complete() {
   local cmd="${COMP_WORDS[1]}"
   local words=""
   case "$cmd" in
+    status)          words="--all --json" ;;
     maintain)        [[ $cword -eq 2 ]] && words="$_ids" || words="check clean reset rebuild sessions distill" ;;
     scope)           [[ $cword -eq 2 ]] && words="$_ids" || words="show set reset" ;;
     context)         [[ $cword -eq 2 ]] && words="$_ids" || words="show project" ;;
@@ -139,6 +140,7 @@ __ZSH_COMMANDS__
   fi
 
   case "${words[2]}" in
+    status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;

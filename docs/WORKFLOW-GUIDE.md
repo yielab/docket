@@ -33,7 +33,7 @@ another project:
 The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the work warrants it.
 
 ### 3. Org Specialists
-A **shared team** created once by `docket install` — genuinely cross-cutting, one instance for
+A **shared team** created lazily by the first `docket init` — genuinely cross-cutting, one instance for
 the whole fleet (`scope: org`):
 
 - **manager** — cross-cutting coordination (transitional; `docket team`'s own task queue was
@@ -41,7 +41,7 @@ the whole fleet (`scope: org`):
   per-pod Leads).
 - **knowledge** — documentation, research, pattern extraction across projects.
 - **security** — deep security audits and threat modelling.
-- **portfolio-manager** *(optional, `docket install --portfolio`)* — advisory cross-pod
+- **portfolio-manager** *(optional, `docket init --portfolio`)* — advisory cross-pod
   planner over fleet *metadata* (which pods exist, their queues, budgets, health). Never a pod
   member, never edits code, never dispatches into pods.
 
@@ -572,12 +572,12 @@ names.
 
 There is **no command that runs one pod's work from another pod.** When you need a cross-pod
 *plan* (where to focus, what to rebalance or pause), use the advisory
-**Portfolio Manager** (`docket install --portfolio`). It reads fleet *metadata* and recommends —
+**Portfolio Manager** (`docket init --portfolio`). It reads fleet *metadata* and recommends —
 in words, for you — which pods to prioritise. **You** then `delegate` into the chosen pods and
 `dispatch` each one. The Portfolio Manager never dispatches and never touches code.
 
 ```bash
-docket install --portfolio          # add the optional advisory planner (one-time)
+docket init --portfolio          # add the optional advisory planner (one-time)
 # ask it (via Telegram or its workspace) which pods need attention this week,
 # then act on its advice:
 docket pod myapp dispatch

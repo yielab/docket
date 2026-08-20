@@ -374,7 +374,7 @@ def enqueue_task(
     """
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
-        raise DispatchError(f"no pod for '{project}' (run: docket add {project})")
+        raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
 
     task_id = f"task-{_uuid.uuid4()}"
     source = "operator"

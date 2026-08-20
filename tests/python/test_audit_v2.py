@@ -29,7 +29,7 @@ import docket.config as _cfg
 from docket import cli
 from docket.cli import _audit as audit_cli
 from docket.cli import _keys as keys_cli
-from docket.cli._agents import run_add, run_delete
+from docket.cli._agents import run_delete, run_init
 from docket.core import audit as _audit
 
 # ── shared helpers ───────────────────────────────────────────────────────────
@@ -626,7 +626,7 @@ class TestAgentAddDeleteAudit:
             )
         )
 
-        rc = run_add(["--from", str(spec_file)])
+        rc = run_init(["--from", str(spec_file)])
         assert rc == 0
 
         entries = _entries("agent.add")

@@ -29,27 +29,26 @@ def run_help() -> int:
 {B}docket — agent fleet control plane{R}
 
 {B}AGENT TYPES{R}
-  {C}Org Specialists{R}     Created by 'docket install' — shared across all projects
+  {C}Org Specialists{R}     Created lazily by the first 'docket init' — shared across all projects
                         → manager, knowledge, security
                         → Work across ALL projects (don't create/delete manually)
-  {C}Project Pods{R}        Created by 'docket add' — one isolated pod per project
+  {C}Project Pods{R}        Created by 'docket init' — one isolated pod per project
                         → lead + implementer (+ optional reviewer, tester)
                         → Manage with 'docket pod <project>'
 
-  {C}Project Agents{R}      Created by 'docket add' — one per project/codebase
+  {C}Project Agents{R}      Created by 'docket init' and expanded by 'docket add'
                         → Each has its own workspace, memory, and Telegram group
 
 {B}USAGE{R}
   docket [--debug] <command> [agent-id] [args]
   If agent-id is omitted an interactive picker is shown (fzf or numbered list).
 
-{B}SETUP{R}
-  {G}install{R}            Bootstrap a docket-native home + create specialist agents
-
 {B}LIFECYCLE{R}
-  {G}list{R}               List all project agents and their status
-  {G}add{R}                Add a new project agent (interactive)
-  {G}add{R} {D}--from <f>{R}     Provision agent(s) from a YAML/JSON spec (declarative)
+  {G}init{R}               Initialize everything needed + this project's minimum pod
+  {G}init{R} {D}--from <f>{R}    Initialize project(s) from YAML/JSON (declarative)
+  {G}add{R} <role>         Add role agent(s) to an existing/current pod
+  {G}status{R}             Current project status; --all summarizes every project
+  {G}list{R}               Detailed global inventory of project agents
   {G}info{R}     [id]      Detailed status for a project
   {G}delete{R}   [id]      Remove a project agent
   {G}maintain{R} [id]      Health check & maintenance (see subcommands below)
@@ -80,7 +79,7 @@ def run_help() -> int:
 
 {B}MONITORING{R}
   {G}cost{R}     [id]      Token usage and cost breakdown with budget status
-  {G}doctor{R}             System health: fleet registry, drift, budget, runaway
+  {G}doctor{R}             Global fleet health: registry, isolation, budget, runaway
   {G}gates{R}              Tool-call gate status (always on); approval routing / isolation
   {G}audit{R}    [N]       Recent mutating operations (keys, gates, profile, agents)
 
@@ -126,10 +125,13 @@ def run_help() -> int:
   --debug         Verbose mode — or set DEBUG=1 in env
 
 {B}EXAMPLES{R}
-  docket                            # show project list
-  docket add                        # add a new project (interactive)
-  docket add --from agents.yaml     # provision a fleet from a spec file
-  docket doctor                     # full health check
+  docket                            # show the compact command guide
+  docket init                       # initialize this repository's project pod
+  docket status                     # status for the project containing the current directory
+  docket status --all               # global summary, one row per project
+  docket add reviewer               # add a Reviewer to the current project's pod
+  docket init --from agents.yaml    # initialize project pods from a spec file
+  docket doctor                     # workstation-wide health check
   docket info myproject             # inspect one project
   docket maintain myproject clean   # clear memory logs
   docket profile myproject default  # follow the role policy model

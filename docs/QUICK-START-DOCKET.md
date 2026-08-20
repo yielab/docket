@@ -29,30 +29,18 @@ DOCKET is an architecture for autonomous agent teams that:
 > allowlist (`rm`, `dd`, `docker`, `systemctl`, …) need an explicit approve/deny before they run.
 > Pass `--no-gates` below to opt out for now — see [Security](SECURITY-SIMPLE.md) and `docket gates`.
 
-### Create the Org Specialists
+### Initialize a Project
 ```bash
-docket install
+cd ~/code/myapp
+docket init
 ```
 
-This creates 3 shared org specialists: **manager**, **knowledge**, **security**.
-
-Optionally add the cross-pod **Portfolio Manager** — an advisory, opt-in org agent
-that sees fleet metadata (queues, budgets, health) but never code and never dispatches:
+On the first run, this also creates the shared workstation foundation and the three org
+specialists (**manager**, **knowledge**, **security**). Each project then gets an isolated pod:
+a **lead** + **implementer** by default. Grow it when the work earns it:
 ```bash
-docket install --portfolio
-```
-
-### Add a Project Pod
-```bash
-docket add myapp ~/code/myapp
-```
-
-Each project is an isolated **pod**: a **lead** + **implementer** by default. Grow it
-when the work earns it:
-```bash
-docket add myapp --pod full           # + reviewer + tester
-docket add myapp --with reviewer      # lean pod + a reviewer
-docket pod myapp add reviewer         # add a role later
+docket add reviewer                   # current pod + reviewer
+docket add tester --project myapp     # explicit pod selection
 ```
 
 The default pod shape is a **blueprint** called `software` (codebase, lead + implementer). For
@@ -70,9 +58,11 @@ Templates are generated per-pod at `add` time — there is no separate upgrade s
 ## Verify Installation
 
 ```bash
-docket list                 # org specialists + pods, with scope and pod
+docket status               # current project summary
+docket status --all         # global summary by project
+docket list                 # detailed org specialists + agent inventory
 docket pod myapp            # just this project's pod members
-docket doctor              # health check + auto-fix
+docket doctor               # workstation health check + auto-fix
 ```
 
 **Expected:** `docket list` shows the org specialists (manager, knowledge, security)
@@ -138,6 +128,7 @@ single project. For the full before/after picture and the pipeline diagram, see
 ### Fleet Management
 ```bash
 docket list               # Org specialists + pods (with scope)
+docket status --all       # One global row per project
 docket doctor             # Health check + auto-fix
 docket pod <project>      # Inspect a project's pod and its roles
 docket pod <project> queue # That pod's pending task queue
@@ -210,10 +201,10 @@ are scoped to this one pod, never a shared cross-project history.
 
 ## Pod Roles
 
-A project pod is created by `docket add <project>` and managed with `docket pod <project>`. By
+A project pod is created by `docket init` and managed with `docket pod <project>`. By
 default it is a lean **Lead + Implementer**; add a Reviewer and Tester with `--pod full` or
 `--with reviewer,tester`. The org specialists (`manager`, `knowledge`, `security`) are shared and
-created once by `docket install` — they are not part of any single pod. Full per-role detail
+created lazily by the first `docket init` — they are not part of any single pod. Full per-role detail
 (capabilities, tools, model class) lives in **[DOCKET.md](DOCKET.md#pod-roles)** and
 **[AGENT-TEAMS.md](AGENT-TEAMS.md)** — the short version: the Lead orchestrates and never edits
 code, the Implementer writes the code, an optional Reviewer is a read-only veto, and an optional
@@ -221,7 +212,7 @@ Tester validates behavior only (never reads code).
 
 Roles are declarative, not a hardcoded four (`docket roles list`) — a starter library
 (`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`) ships alongside the four
-legacy roles, and `docket add --blueprint <name>` composes several of them into a non-software
+legacy roles, and `docket init --blueprint <name>` composes several of them into a non-software
 pod shape in one step. See [Agent Teams](AGENT-TEAMS.md) for the full roster and blueprint table.
 
 ---
@@ -242,7 +233,7 @@ doesn't project dollar savings.
 ### Q: Will this break my existing agents?
 **A:** No. Templates are generated per-pod by `docket add` and refreshed by
 `docket maintain <id> rebuild`:
-- Org specialists (manager, knowledge, security) are created once by `docket install`
+- Org specialists (manager, knowledge, security) are created by the first `docket init`
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
 - Another project's setup never touches your project agents
 

@@ -44,6 +44,7 @@ _member_agents = _pp._member_agents
 _member_tools = _pp._member_tools
 teardown_member = _pp.teardown_member
 free_pod_resources = _pp.free_pod_resources
+purge_pod_history = _pp.purge_pod_history
 pod_member_ids = _pp.pod_member_ids
 
 
@@ -279,7 +280,7 @@ def _pod_list(project: str) -> None:
     all_ids = [a.id for a in _fleet.list_agents()]
     members = pod.members_of(all_ids, project)
     if not members:
-        ui.warn(f"No pod found for '{project}'. Create one with: docket add {project}")
+        ui.warn(f"No pod found for '{project}'. Create one with: docket init {project}")
         return
     has_resources = any(bool(_fleet.meta_get(mid, "portRangeStart", "")) for mid, _, _ in members)
     table = Table(title=f"Pod — {project}")
@@ -312,7 +313,7 @@ def _pod_list(project: str) -> None:
 
 def _pod_add(project: str, extra: list[str]) -> None:
     if not pod_member_ids(project):
-        ui.error(f"No pod for '{project}'. Create one first: docket add {project}")
+        ui.error(f"No pod for '{project}'. Create one first: docket init {project}")
         raise typer.Exit(1)
     role, count, verify_cmd = _parse_add_args(extra)
     if role is None:
@@ -476,20 +477,23 @@ def _pod_set_verify(project: str, extra: list[str]) -> None:
 
 
 def _pod_delegate(project: str, extra: list[str]) -> None:
-    """Queue a task for the pod: ``docket pod <project> delegate [--priority P] "<task>"``."""
+    """Queue a task for the pod: ``docket pod <project> delegate [--priority P] <task>``."""
     priority = "normal"
     rest: list[str] = []
     i = 0
     while i < len(extra):
-        if extra[i] in ("--priority", "-p") and i + 1 < len(extra):
+        if extra[i] in ("--priority", "-p"):
+            if i + 1 >= len(extra):
+                ui.error("Missing priority. Use: high | normal | low")
+                raise typer.Exit(1)
             priority = extra[i + 1]
             i += 2
         else:
             rest.append(extra[i])
             i += 1
-    description = rest[0] if rest else ""
-    if not description:
-        ui.error('Usage: docket pod <project> delegate [--priority high|normal|low] "<task>"')
+    description = " ".join(rest)
+    if not description.strip():
+        ui.error("Usage: docket pod <project> delegate [--priority high|normal|low] <task>")
         raise typer.Exit(1)
     if priority not in ("high", "normal", "low"):
         ui.error(f"Invalid priority '{priority}'. Use: high | normal | low")

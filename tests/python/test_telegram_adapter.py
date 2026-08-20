@@ -77,7 +77,11 @@ class _Handler(BaseHTTPRequestHandler):
                         {
                             "update_id": 42,
                             "message": {
-                                "chat": {"id": -100123},
+                                "chat": {
+                                    "id": -100123,
+                                    "type": "supergroup",
+                                    "title": "Docket Team",
+                                },
                                 "from": {"id": 555},
                                 "text": "/status",
                             },
@@ -132,6 +136,8 @@ class TestGetUpdatesHappyPath:
         upd = result.updates[0]
         assert upd.update_id == 42
         assert upd.chat_id == "-100123"
+        assert upd.chat_type == "supergroup"
+        assert upd.chat_title == "Docket Team"
         assert upd.user_id == "555"
         assert upd.text == "/status"
 

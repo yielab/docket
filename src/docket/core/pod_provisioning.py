@@ -35,6 +35,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote as _url_unquote
 
 import docket.config as _cfg
 from docket.core import archetypes as _arch
@@ -412,6 +413,24 @@ def _write_member_workspace(
     meta_file = ws / _cfg.META_FILE
     _store.write_json(meta_file, meta)
 
+    # Text files inherit the operator's umask when written above. Docket's
+    # workspace contract is stricter (0700 directories, 0600 managed files),
+    # so enforce it explicitly after the atomic metadata writer has also
+    # created its sibling lock file. The Implementer's ``worktree/`` is a Git
+    # checkout, not managed prompt state; never recurse into it or strip
+    # repository-owned executable bits.
+    for path in ws.iterdir():
+        if path.name == "worktree" or path.is_symlink():
+            continue
+        with contextlib.suppress(OSError):
+            path.chmod(0o700 if path.is_dir() else 0o600)
+        if path.name == "memory" and path.is_dir():
+            for memory_path in path.rglob("*"):
+                if memory_path.is_symlink():
+                    continue
+                with contextlib.suppress(OSError):
+                    memory_path.chmod(0o700 if memory_path.is_dir() else 0o600)
+
 
 def provision_member(
     member: pod.PodMember,
@@ -501,9 +520,32 @@ def free_pod_resources(project: str) -> None:
     if table:
         updated = _res.free_pod_ports(project, table)
         _store.write_json(_cfg.PORT_ALLOC_FILE, updated)
-    scratch = _cfg.pod_scratch_dir(project)
-    if scratch.is_dir():
-        shutil.rmtree(scratch, ignore_errors=True)
+    # The whole directory is Docket-owned. Removing only ``.scratch`` left
+    # empty pod ids behind forever and leaked an auto-provisioned ``workdir``.
+    pod_runtime = _cfg.PODS_DIR / project
+    if pod_runtime.is_dir():
+        shutil.rmtree(pod_runtime, ignore_errors=True)
+
+
+def purge_pod_history(project: str, member_ids: list[str]) -> None:
+    """Remove durable sessions and traces owned by a deleted pod.
+
+    Session directory names are percent-encoded opaque keys. A pod can own
+    project-wide keys (``agent:<project>:...``) and step-scoped member keys
+    (``agent:<member>:<project>:...``), so both exact prefixes are removed.
+    The audit log is deliberately untouched: deletion must leave evidence.
+    """
+    prefixes = (f"agent:{project}:", *(f"agent:{member_id}:" for member_id in member_ids))
+    if _cfg.SESSIONS_DIR.is_dir():
+        for entry in _cfg.SESSIONS_DIR.iterdir():
+            if not entry.is_dir() or not _url_unquote(entry.name).startswith(prefixes):
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+
+    for trace_owner in (project, *member_ids):
+        trace_dir = _cfg.TRACES_DIR / trace_owner
+        if trace_dir.is_dir():
+            shutil.rmtree(trace_dir, ignore_errors=True)
 
 
 def teardown_member(member_id: str) -> tuple[bool, str]:

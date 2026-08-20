@@ -71,6 +71,73 @@ def _seed_pod(
     return home
 
 
+# ── public delegation boundary ──────────────────────────────────────────────────
+
+
+class TestDelegateCliBoundary:
+    def test_quoted_and_split_task_text_reach_the_queue_losslessly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        _seed_pod(tmp_path, monkeypatch)
+        runner = CliRunner()
+        description = "create a file called test.md"
+
+        quoted = runner.invoke(app, ["pod", "demo", "delegate", description])
+        split = runner.invoke(app, ["pod", "demo", "delegate", *description.split()])
+
+        assert quoted.exit_code == 0, quoted.output
+        assert split.exit_code == 0, split.output
+        assert [task["description"] for task in _dispatch.read_tasks("demo")] == [
+            description,
+            description,
+        ]
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["pod", "demo", "delegate"],
+            ["pod", "demo", "delegate", ""],
+            ["pod", "demo", "delegate", "task", "--priority"],
+            ["pod", "demo", "delegate", "task", "--priority", "urgent"],
+        ],
+    )
+    def test_invalid_input_does_not_enqueue(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str]
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        _seed_pod(tmp_path, monkeypatch)
+
+        result = CliRunner().invoke(app, args)
+
+        assert result.exit_code == 1
+        assert _dispatch.read_tasks("demo") == []
+
+    def test_length_limit_applies_to_reconstructed_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        _seed_pod(tmp_path, monkeypatch)
+
+        result = CliRunner().invoke(
+            app,
+            ["pod", "demo", "delegate", "a" * 250, "b" * 250],
+        )
+
+        assert result.exit_code == 1
+        assert "501 chars" in result.output
+        assert _dispatch.read_tasks("demo") == []
+
+
 # The pipeline-semantics tests below inject `FakeDriver` (the one
 # RuntimeDriver test double, tests/python/fakes.py) as dispatch.py's Runner —
 # it is callable with agent_run's exact signature, so it drops in unchanged

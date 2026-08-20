@@ -354,7 +354,7 @@ Success response (task queued, `pending`):
 
 - A malformed JSON body, or a body that is valid JSON but not an object, is rejected with `400`
   before `enqueue_task` is ever called.
-- A project with no pod (`docket add <project>` never run) is rejected with `404`, naming the
+- A project with no pod (`docket init <project>` never run) is rejected with `404`, naming the
   project — this is a real "nothing to enqueue against" condition, not a server error.
 - A `pre_input` guardrail policy matching the description with a `block` verdict is rejected with a
   `4xx` naming the policy id (the same `DispatchError` message `docket pod <p> delegate` prints) —

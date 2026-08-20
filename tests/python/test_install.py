@@ -1,6 +1,6 @@
 """Install — docket-native home + specialist bootstrap.
 
-There is no external daemon. These tests call ``run_install()`` in-process
+There is no external daemon. These tests call ``bootstrap_workstation()`` in-process
 with ``DOCKET_HOME``/``FLEET_FILE`` monkeypatched to a temp seed; specialist
 registration writes straight to fleet.json (no shell-out to stub), and Step 5
 (model credentials) is driven by seeding ``core/secrets.py``'s store
@@ -77,7 +77,7 @@ def test_install_creates_only_org_specialists(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    rc = _install.run_install(want_gates=False, assume_yes=True)
+    rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     assert rc == 0
 
     ids = {a.id for a in _fleet.list_agents()}
@@ -86,11 +86,26 @@ def test_install_creates_only_org_specialists(
     assert not (ids & set(_PROJECT_ROLES))
 
 
+def test_install_explains_workstation_vs_project_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _ok_auth()
+
+    assert _install.bootstrap_workstation(want_gates=False, assume_yes=True) == 0
+    out = capsys.readouterr().out
+    assert "shared workstation foundation" in out.lower()
+    assert "project pods remain separate" in out.lower()
+    assert "docket init" in out
+
+
 def test_specialist_meta_matches_bash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     for spec in _ORG_SPECIALISTS:
         meta_file = home / "workspaces" / spec / _cfg.META_FILE
@@ -125,7 +140,7 @@ def test_specialist_gets_full_workspace_contract(
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     for spec in _ORG_SPECIALISTS:
         ws = home / "workspaces" / spec
@@ -160,12 +175,12 @@ def test_specialist_gets_full_workspace_contract(
 def test_specialist_reprovisioning_preserves_real_content(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Re-running `docket install` on an already-provisioned fleet must not
+    """Re-running the workstation foundation bootstrap on an already-provisioned fleet must not
     clobber a HEARTBEAT.md/MEMORY.md the agent has actually written to.
     """
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     ws = home / "workspaces" / "security"
     hb = ws / "HEARTBEAT.md"
@@ -174,7 +189,7 @@ def test_specialist_reprovisioning_preserves_real_content(
     mem_md.write_text("# MEMORY.md — security\n\nreal curated memory, do not lose this\n")
     soul_before = (ws / "SOUL.md").read_text()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     assert "real in-flight task" in hb.read_text()
     assert "real curated memory, do not lose this" in mem_md.read_text()
@@ -185,7 +200,7 @@ def test_specialist_backfills_bare_legacy_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A legacy install could leave specialists with only `.docket-meta.json`
-    — a subsequent `docket install` must backfill the full workspace set
+    — a subsequent the workstation foundation bootstrap must backfill the full workspace set
     without needing a fresh agent registration.
     """
     from docket.core import memory as _mem
@@ -215,7 +230,7 @@ def test_specialist_backfills_bare_legacy_workspace(
 
     assert not (ws / "SOUL.md").exists()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     assert (ws / "SOUL.md").is_file()
     assert (ws / "AGENTS.md").is_file()
@@ -227,7 +242,7 @@ def test_install_configures_default_model(tmp_path: Path, monkeypatch: pytest.Mo
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     assert _fleet.get_default_model() == _cfg.DEFAULT_MODEL
 
@@ -236,7 +251,7 @@ def test_install_creates_directories(tmp_path: Path, monkeypatch: pytest.MonkeyP
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     assert (home / "workspaces" / "projects").is_dir()
     assert (home / "Sites").is_dir()
@@ -247,8 +262,8 @@ def test_install_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    assert _install.run_install(want_gates=False, assume_yes=True) == 0
-    assert _install.run_install(want_gates=False, assume_yes=True) == 0
+    assert _install.bootstrap_workstation(want_gates=False, assume_yes=True) == 0
+    assert _install.bootstrap_workstation(want_gates=False, assume_yes=True) == 0
 
     ids = [a.id for a in _fleet.list_agents()]
     # No duplicate registrations on the second pass.
@@ -264,7 +279,7 @@ def test_step5_detects_existing_credential(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
     assert "Model credential(s) available" in out
     # auth_missing is False → next steps must NOT include the credential nudge.
@@ -277,7 +292,7 @@ def test_step5_missing_credential_warns(
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
 
-    rc = _install.run_install(want_gates=False, assume_yes=True)
+    rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     assert rc == 0
     out = capsys.readouterr().out
     assert "No model-provider credential found yet" in out
@@ -292,7 +307,7 @@ def test_step5_reads_env_var_credential(
     _no_auth()
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
     assert "Model credential(s) available" in out
     assert "ANTHROPIC_API_KEY" in out
@@ -308,9 +323,9 @@ def test_install_no_gates_skips_approval_routing(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Approval-routing setup skipped (--no-gates)" in out
+    assert "Approval routing disabled for this workstation (--no-gates)" in out
     r_state, _mode = _fleet.get_approval_routing()
     assert r_state != "on"
 
@@ -321,7 +336,7 @@ def test_install_with_gates_turns_on_approval_routing(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    rc = _install.run_install(want_gates=True, assume_yes=True)
+    rc = _install.bootstrap_workstation(want_gates=True, assume_yes=True)
     assert rc == 0
     out = capsys.readouterr().out
     assert "Approval routing on" in out
@@ -339,30 +354,33 @@ def test_install_always_reports_tool_call_gate_always_active(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
     assert "policy engine" in out or "high-risk classifier" in out
 
 
 # ── gates-default-on at the CLI layer ───────────────────────────────────────────
 #
-# The tests above drive run_install() directly with an explicit want_gates=
-# True/False, exercising the security step in isolation. The two tests below
-# instead go through the real Typer `install` command (docket.cli.app) to prove
-# the *CLI flag's own default* now applies routing with zero flags passed, and
-# that --no-gates remains a working, explicit opt-out.
+# The tests above drive the internal workstation bootstrap directly. These two
+# go through the public first-project `init` path to prove its lazy bootstrap
+# applies routing by default and still accepts an explicit --no-gates opt-out.
 
 
-def test_install_cli_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_first_init_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from typer.testing import CliRunner
 
     from docket.cli import app
 
-    _seed_fresh(tmp_path, monkeypatch)
+    home = tmp_path / ".docket"
+    home.mkdir()
+    _point_at(home, monkeypatch)
     _ok_auth()
+    repo = tmp_path / "project"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
 
     runner = CliRunner()
-    result = runner.invoke(app, ["install", "--yes"])  # no --gates/--no-gates passed
+    result = runner.invoke(app, ["init"])
 
     assert result.exit_code == 0
     assert "Approval routing on" in result.output
@@ -370,18 +388,21 @@ def test_install_cli_defaults_to_gates_on(tmp_path: Path, monkeypatch: pytest.Mo
     assert r_state == "on"
 
 
-def test_install_cli_no_gates_flag_still_opts_out(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_first_init_no_gates_flag_opts_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from typer.testing import CliRunner
 
     from docket.cli import app
 
-    _seed_fresh(tmp_path, monkeypatch)
+    home = tmp_path / ".docket"
+    home.mkdir()
+    _point_at(home, monkeypatch)
     _ok_auth()
+    repo = tmp_path / "project"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
 
     runner = CliRunner()
-    result = runner.invoke(app, ["install", "--yes", "--no-gates"])
+    result = runner.invoke(app, ["init", "--no-gates"])
 
     assert result.exit_code == 0
     r_state, _mode = _fleet.get_approval_routing()
@@ -400,7 +421,7 @@ def test_install_hardens_world_readable_secrets(
     secrets_file.write_text("{}")
     secrets_file.chmod(0o644)
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     assert secrets_file.stat().st_mode & 0o777 == 0o600
     assert "Tightened permissions to 600" in capsys.readouterr().out
@@ -412,7 +433,7 @@ def test_install_reports_already_hardened(
     _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     assert "permissions already owner-only" in capsys.readouterr().out
 
 
@@ -422,12 +443,12 @@ def test_install_reports_already_hardened(
 def test_install_seeds_guardrail_policies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`docket install` runs the same producer as `docket policies init` —
+    """the workstation foundation bootstrap runs the same producer as `docket policies init` —
     the policy engine has nothing to evaluate against an empty $POLICIES_DIR."""
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
 
     policies_dir = home / "policies"
     assert policies_dir.is_dir()
@@ -442,9 +463,9 @@ def test_install_policies_step_is_idempotent(
     home = _seed_fresh(tmp_path, monkeypatch)
     _ok_auth()
 
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     capsys.readouterr()
-    _install.run_install(want_gates=False, assume_yes=True)
+    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
 
     assert "already installed" in out
@@ -477,4 +498,4 @@ def test_check_dependencies_flags_missing_git(
     home = _seed_fresh(tmp_path, monkeypatch)
     monkeypatch.setenv("PATH", str(empty))  # _seed_fresh's fixtures don't touch PATH; re-assert
     assert home.exists()
-    assert _install.run_install(want_gates=False, assume_yes=True) == 1
+    assert _install.bootstrap_workstation(want_gates=False, assume_yes=True) == 1

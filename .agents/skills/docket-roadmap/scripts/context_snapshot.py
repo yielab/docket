@@ -23,7 +23,7 @@ def _status_kind(body: str) -> str:
     status = match.group(1).strip().upper()
     if status.startswith(("DONE", "COMPLETE", "CLOSED")):
         return "closed"
-    if status.startswith("IN PROGRESS"):
+    if status.startswith(("IN PROGRESS", "IN-PROGRESS")):
         return "in_progress"
     if status.startswith(("TODO", "READY")):
         return "ready"
@@ -37,25 +37,24 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
     if not path.is_file():
         return "TODO.md missing", {}, 0
     text = path.read_text(encoding="utf-8")
-    headings = list(re.finditer(r"^(?:>\s*)?## (?:▶|☑) .+$", text, flags=re.MULTILINE))
+    headings = list(re.finditer(r"^(?:>\s*)?## (?:▶|◉|☑) .+$", text, flags=re.MULTILINE))
     if not headings:
         return "no active/clear heading found", {}, 0
-    active = next(
+    active_candidates = [
+        match
+        for match in headings
+        if ("▶" in match.group(0) or "◉" in match.group(0))
+        and re.search(r"\b(ACTIVE|IN[ -]PROGRESS)\b", match.group(0), flags=re.IGNORECASE)
+    ]
+    clear = next(
         (
             match
             for match in headings
-            if "▶" in match.group(0)
-            and re.search(r"\b(ACTIVE|IN PROGRESS)\b", match.group(0), flags=re.IGNORECASE)
+            if "☑" in match.group(0) and "BOARD CLEAR" in match.group(0).upper()
         ),
-        next(
-            (
-                match
-                for match in headings
-                if "☑" in match.group(0) and "BOARD CLEAR" in match.group(0).upper()
-            ),
-            headings[0],
-        ),
+        headings[0],
     )
+    active = active_candidates[-1] if active_candidates else clear
     next_heading = re.search(r"^(?:>\s*)?## .+$", text[active.end() :], flags=re.MULTILINE)
     end = active.end() + next_heading.start() if next_heading is not None else len(text)
     section = text[active.end() : end]

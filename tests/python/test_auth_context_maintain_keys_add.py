@@ -47,6 +47,7 @@ def _run(
     args: list[str],
     env: dict[str, str],
     stdin_text: str = "",
+    cwd: Path | None = None,
 ) -> tuple[int, str, str]:
     result = subprocess.run(
         [sys.executable, "-m", "docket", *args],
@@ -54,6 +55,7 @@ def _run(
         capture_output=True,
         text=True,
         env=env,
+        cwd=cwd,
     )
     return result.returncode, result.stdout, result.stderr
 
@@ -192,6 +194,18 @@ class TestCmdMaintain:
         assert rc == 0
         combined = out + err
         assert "healthy" in combined.lower() or "ok" in combined.lower()
+
+    def test_check_preserves_repository_modes_inside_worktree(self, tmp_path: Path) -> None:
+        home = _setup_agent(tmp_path)
+        executable = home / "workspaces" / "projects" / "test-agent" / "worktree" / "tool.sh"
+        executable.parent.mkdir()
+        executable.write_text("#!/bin/sh\n")
+        executable.chmod(0o755)
+
+        rc, _out, _err = _run(["maintain", "test-agent", "check"], _make_env(home))
+
+        assert rc == 0
+        assert executable.stat().st_mode & 0o777 == 0o755
 
     def test_clean_non_tty_cancelled(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_memory=True)
@@ -363,7 +377,7 @@ class TestCmdAdd:
                 }
             ),
         )
-        rc, _out, _err = _run(["add", "--from", str(spec)], _make_env(home))
+        rc, _out, _err = _run(["init", "--from", str(spec)], _make_env(home))
         assert rc == 0
         # Check workspace created
         ws = home / "workspaces" / "projects" / "myshop"
@@ -380,10 +394,18 @@ class TestCmdAdd:
 
     def test_from_missing_file_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["add", "--from", "/nonexistent/spec.json"], _make_env(home))
+        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], _make_env(home))
         assert rc == 1
         combined = out + err
         assert "not found" in combined.lower() or "spec file" in combined.lower()
+
+    def test_init_uses_project_provisioning_path(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], _make_env(home))
+        assert rc == 1
+        combined = out + err
+        assert "spec file" in combined.lower()
+        assert "no such command" not in combined.lower()
 
     def test_from_existing_agent_skips(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, "test-agent")
@@ -391,21 +413,111 @@ class TestCmdAdd:
             tmp_path,
             json.dumps({"id": "test-agent", "name": "Test Agent"}),
         )
-        rc, out, err = _run(["add", "--from", str(spec)], _make_env(home))
+        rc, out, err = _run(["init", "--from", str(spec)], _make_env(home))
         assert rc == 0
         combined = out + err
         assert "already exists" in combined.lower() or "skipping" in combined.lower()
 
-    def test_interactive_non_tty_exits_1(self, tmp_path: Path) -> None:
+    def test_init_without_tty_derives_project_from_cwd(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["add"], _make_env(home))
+        repo = tmp_path / "my-project"
+        repo.mkdir()
+
+        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+
+        assert rc == 0, out + err
+        assert (home / "workspaces" / "projects" / "my-project-lead").is_dir()
+        assert (home / "workspaces" / "projects" / "my-project-implementer").is_dir()
+
+    def test_first_init_bootstraps_global_foundation_and_project(self, tmp_path: Path) -> None:
+        home = tmp_path / ".docket"
+        repo = tmp_path / "fresh-project"
+        repo.mkdir()
+
+        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+
+        assert rc == 0, out + err
+        fleet = json.loads((home / "fleet.json").read_text())
+        ids = {agent["id"] for agent in fleet["agents"]}
+        assert {"manager", "knowledge", "security"} <= ids
+        assert {"fresh-project-lead", "fresh-project-implementer"} <= ids
+
+    def test_add_extends_current_projects_existing_pod(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+        repo = tmp_path / "current-project"
+        repo.mkdir()
+        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        assert rc == 0, out + err
+
+        rc, out, err = _run(["add", "reviewer"], _make_env(home), cwd=repo)
+
+        assert rc == 0, out + err
+        assert (home / "workspaces" / "projects" / "current-project-reviewer").is_dir()
+
+    @pytest.mark.parametrize("command", ["install", "setup"])
+    def test_redundant_bootstrap_commands_do_not_exist(self, tmp_path: Path, command: str) -> None:
+        home = tmp_path / ".docket"
+
+        rc, out, err = _run([command], _make_env(home))
+
+        assert rc == 2
+        assert "No such command" in (out + err)
+        assert not home.exists()
+
+    def test_bare_docket_prints_only_a_compact_command_guide(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+
+        rc, out, err = _run([], _make_env(home))
+
+        assert rc == 0, err
+        assert "docket init" in out
+        assert "docket status" in out
+        assert "docket doctor" in out
+        assert "PROJECT AGENTS" not in out
+        assert "ORG SPECIALISTS" not in out
+
+    def test_status_resolves_the_current_project(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+        repo = tmp_path / "current-project"
+        repo.mkdir()
+        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        assert rc == 0, out + err
+
+        rc, out, err = _run(["status"], _make_env(home), cwd=repo)
+
+        assert rc == 0, out + err
+        assert "current-project" in out
+        assert str(repo) in out
+        assert "lead" in out
+        assert "implementer" in out
+        assert "dispatch history scoped by step" in out
+
+    def test_status_all_summarizes_projects_not_agents(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+        for name in ("project-one", "project-two"):
+            repo = tmp_path / name
+            repo.mkdir()
+            rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+            assert rc == 0, out + err
+
+        rc, out, err = _run(["status", "--all", "--json"], _make_env(home))
+
+        assert rc == 0, out + err
+        payload = json.loads(out)
+        assert [project["id"] for project in payload["projects"]] == [
+            "project-one",
+            "project-two",
+        ]
+        assert all(project["memberCount"] == 2 for project in payload["projects"])
+
+    def test_status_outside_a_project_is_actionable(self, tmp_path: Path) -> None:
+        home = _setup_bare(tmp_path)
+
+        rc, out, err = _run(["status"], _make_env(home), cwd=tmp_path)
+
         assert rc == 1
-        combined = out + err
-        assert (
-            "tty" in combined.lower()
-            or "interactive" in combined.lower()
-            or "requires" in combined.lower()
-        )
+        assert "docket init" in (out + err)
+        assert "--all" in (out + err)
 
     def test_from_yaml_without_pyyaml_gives_error(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
@@ -420,7 +532,7 @@ class TestCmdAdd:
         except ImportError:
             pass
 
-        rc, out, err = _run(["add", "--from", str(spec)], _make_env(home))
+        rc, out, err = _run(["init", "--from", str(spec)], _make_env(home))
         assert rc == 1
         combined = out + err
         assert (
@@ -440,7 +552,7 @@ class TestCmdAdd:
                 ]
             ),
         )
-        rc, _out, _err = _run(["add", "--from", str(spec)], _make_env(home))
+        rc, _out, _err = _run(["init", "--from", str(spec)], _make_env(home))
         assert rc == 0
         assert (home / "workspaces" / "projects" / "agent-a").is_dir()
         assert (home / "workspaces" / "projects" / "agent-b").is_dir()

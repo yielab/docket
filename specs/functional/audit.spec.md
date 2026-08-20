@@ -48,7 +48,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      command; `profile.resume` is ROADMAP Phase 14 R-5's auto-pause clear)
    - `scope.set` / `scope.reset` (`cli/__init__.py`'s `scope` command)
    - `agent.add` — both the interactive pod flow (`docket add`, `cli/_agents.py`'s
-     `run_add`) and the declarative flow (`docket add --from <spec>`,
+     `run_add`) and the declarative flow (`docket init --from <spec>`,
      `_provision_agent`)
    - `agent.delete` — both a single non-pod agent (`run_delete`) and a whole pod
      teardown (`cli/__init__.py`'s `_delete_pod`, one line per pod summarizing all
@@ -141,7 +141,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    out of this card's scope.
 8. Timestamps **MUST** be millisecond resolution
    (`YYYY-MM-DDTHH:MM:SS.mmmZ`) — second resolution collided under
-   scripted/rapid-fire use (e.g. a declarative `docket add --from spec.json`
+   scripted/rapid-fire use (e.g. a declarative `docket init --from spec.json`
    provisioning several agents inside one process).
 9. **Tamper evidence.** Every entry **MUST** carry a monotonically increasing
    `seq` (integer, starting at 1) and a `prev_hash` — the SHA-256 hex digest

@@ -107,12 +107,12 @@ are owned here, not there.
 
 1. The tool-call gate itself (`core/tools.py`'s policy engine + argument-aware command
    classifier) **MUST** be unconditionally active on every tool call docket dispatches — there
-   is nothing to "enable" here since Phase 19 P19-3; `docket install` never skips it, and
+   is nothing to "enable" here since Phase 19 P19-3; project initialization never skips it, and
    `--no-gates` does not turn it off (superseded requirement: pre-P19-7b this item described
-   `docket install` applying a daemon exec-approval allowlist by default, with `--no-gates` as
+   the retired installer applying a daemon exec-approval allowlist by default, with `--no-gates` as
    an escape hatch that skipped that daemon config entirely — that daemon config no longer
    exists to skip).
-2. What `--gates`/`--no-gates` at install time, and `docket gates enable`/`disable` afterward,
+2. What `--gates`/`--no-gates` on the first `docket init`, and `docket gates enable`/`disable` afterward,
    actually control is **approval routing** (`core/fleet.py`'s `FleetSecurity.approval_routing_state`):
    whether a `require_approval`/`ask` verdict's prompt is routed to a channel-bound agent's
    session. `docket gates enable [--force]` **MUST** remain available for CLI compatibility;
@@ -238,12 +238,12 @@ requirement 2 above for why `resolve_command_action` in particular could never h
 
 Before this card, `core/policy.py` was fully built and unit-tested (`policy_eval`, hooks,
 actions, most-restrictive-wins ranking) but had exactly one caller anywhere: the CLI's own
-dry-run printer, `docket policies test`. `docket install` never installed the six shipped
+dry-run printer, `docket policies test`. The retired installer never installed the six shipped
 templates. `cli/_metrics.py` already shipped a reader for guardrail-trip trace events with no
 producer anywhere. This section is what closes that gap — the same "built, tested, connected to
 nothing" shape G-1 fixed for the approval store one card earlier.
 
-1. `docket install` **MUST** install the baseline policy templates into `$POLICIES_DIR`
+1. On the first run, `docket init` **MUST** install the baseline policy templates into `$POLICIES_DIR`
    (idempotent — an existing file is left untouched, never overwritten), via the same producer
    `docket policies init` uses (`core.policy.install_policies`). An empty `$POLICIES_DIR` makes
    every hook evaluation a no-op (`policy_eval` returns `allow` unconditionally), so this step is
@@ -612,9 +612,9 @@ docket gates isolate [on|off]  # MUST record/clear a workspace-isolation flag (r
                                 #   turn on; recorded only -- DocketDriver does not yet consult it,
                                 #   so tools still run unsandboxed regardless of this setting)
 docket gates classes           # MUST list the documented high-risk action classes, read-only
-docket install                 # the tool-call gate needs no install step (always active); this
+docket init                    # the tool-call gate needs no install step (always active); this
                                 #   MUST apply approval routing by default
-docket install --no-gates      # MUST skip the approval-routing step only (explicit opt-out)
+docket init --no-gates      # MUST skip the approval-routing step only (explicit opt-out)
 docket doctor                  # MUST report gate status, approval routing, and isolation posture
 ```
 
@@ -648,8 +648,7 @@ POST /approvals/<token>        # docket serve: {"action": "grant"|"deny"} (beare
 docket policies list                        # MUST list installed policies (id/hook/action/description)
 docket policies show <id>                   # MUST print one installed policy's raw JSON
 docket policies init                        # MUST seed $POLICIES_DIR from the shipped templates
-                                             #   (idempotent; same producer docket install's own
-                                             #   policy step uses)
+                                             #   (idempotent; same producer first init uses)
 docket policies test <hook> <role> "<text>" # MUST dry-run the evaluator (no trace emitted)
 docket policies validate [id|file.json]     # MUST schema-check installed policies, one, or a file
 ```

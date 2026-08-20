@@ -235,7 +235,7 @@ use `store.py`.
 
 **Don't add workers you don't need.**
 
-`docket add <project>` provisions a lean **Lead + Implementer** pod:
+`docket init <project>` provisions a lean **Lead + Implementer** pod:
 ```
 Pod size            Members                    When
 ─────────────────────────────────────────────────────
@@ -343,8 +343,8 @@ work. Measure actuals for your own workload rather than relying on fixed figures
 > deep-dive: routing, context isolation, dispatch internals, and per-role wiring.
 
 There are two kinds of agent. **Pod roles** are project-scoped and created per project by
-`docket add <project>` (managed with `docket pod <project>`). **Org specialists** are shared
-across the whole fleet and created once by `docket install`.
+`docket init <project>` (managed with `docket pod <project>`). **Org specialists** are shared
+across the whole fleet and created lazily by the first `docket init`.
 
 ## Pod Roles
 
@@ -460,7 +460,7 @@ acceptance-criteria files.
 
 ## Org Specialists
 
-Shared across all projects, created once by `docket install`. The `manager` is a cross-cutting
+Shared across all projects, created lazily by the first `docket init`. The `manager` is a cross-cutting
 coordinator — **not** a router with a classifier, and it does not compress prompts into briefs.
 Its own task queue (`docket team`) was retired in Phase 12: per-pod dispatch
 (`docket pod <project> delegate/queue/dispatch`) is the only queue now, and the manager role is
@@ -543,7 +543,7 @@ same tool-call gate and high-risk classifier every agent's calls pass through.
 
 **Role:** Cross-pod planning and visibility surface (opt-in)
 
-Provisioned only by `docket install --portfolio`, which adds **one** `portfolio-manager`
+Provisioned only by `docket init --portfolio`, which adds **one** `portfolio-manager`
 (`scope: org`). It is a fleet-wide advisory layer, never a pod member.
 
 **Capabilities:**
@@ -594,7 +594,7 @@ There is no generated `SNAPSHOT.md`, and `docket context` no longer has `snapsho
 were removed because nothing read them back (there is no separate semantic memory index today —
 docket's own turn loop has no `memory_search` tool of its own; an agent searches its memory files
 the same way it reads any other file, with `read`/`grep`). What actually scopes a pod's context is
-the **workspace startup contract** docket provisions on `docket add`/`docket install` and
+the **workspace startup contract** docket provisions on `docket add`/`docket init` and
 `docket doctor` re-seeds if a workspace is missing one or has a stale version:
 
 - **`WORKFLOW_AUTO.md`** — the startup protocol. docket's own turn loop forces every agent to
@@ -755,7 +755,7 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Behavior-only validation
 - [x] HITL gate protocols
 - [x] Cost tracking & optimization
-- [x] Declarative role archetypes (`docket roles`) and pod blueprints (`docket add --blueprint`)
+- [x] Declarative role archetypes (`docket roles`) and pod blueprints (`docket init --blueprint`)
 - [x] Docket-native pipeline format + executor (`docket pipeline validate/plan/run`), generalized
   mechanical/verdict/approval gates and bounded rework, replacing the retired `docket workflow`
   ("Lobster") dialect
@@ -933,14 +933,14 @@ See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full role model details.
 
 ### Q: Do I need to change how I use docket?
 
-**A:** No. `docket install` creates the org specialists and `docket add <project>`
+**A:** No. `docket init` creates the org specialists and `docket init <project>`
 provisions each project's pod with the right templates. Everything else works the same.
 
 ### Q: Will this break my existing agents?
 
 **A:** No. Templates are generated per-pod by `docket add` and refreshed by
 `docket maintain <id> rebuild`:
-- Org specialists (manager, knowledge, security) are created once by `docket install`
+- Org specialists (manager, knowledge, security) are created lazily by the first `docket init`
 - Each project pod (lead + implementer, optionally reviewer/tester) is isolated
 - Project agents are never touched by another project's setup
 
@@ -955,8 +955,8 @@ plus a clearly labelled dollar estimate**, never a savings promise.
 
 ## Next Steps
 
-1. **If not installed:** `docket install` (creates org specialists)
-2. **Add a project pod:** `docket add <project>` (provisions lead + implementer)
+1. **If not installed:** `docket init` (creates org specialists)
+2. **Add a project pod:** `docket init <project>` (provisions lead + implementer)
 3. **Inspect context:** `docket context <project> show` (quick per-project view)
 4. **Test workflow:** Assign bug fix, observe token usage
 5. **Monitor spend:** `docket cost` (measured tokens + a labelled estimate)

@@ -69,6 +69,8 @@ class TelegramUpdate:
     chat_id: str
     user_id: str
     text: str
+    chat_type: str = ""
+    chat_title: str = ""
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,8 @@ def _parse_updates(raw: list[object]) -> list[TelegramUpdate]:
                 chat_id=str(chat_id_raw),
                 user_id=str(user_id_raw) if user_id_raw is not None else "",
                 text=text,
+                chat_type=str(chat.get("type") or "") if isinstance(chat, dict) else "",
+                chat_title=str(chat.get("title") or "") if isinstance(chat, dict) else "",
             )
         )
     return out

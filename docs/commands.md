@@ -4,7 +4,6 @@ Complete reference for all docket commands with detailed examples and options.
 
 ## Table of Contents
 
-- [Setup Commands](#setup-commands)
 - [Lifecycle Commands](#lifecycle-commands)
 - [Session & Context Management](#session--context-management)
 - [Pod Coordination](#pod-coordination)
@@ -18,94 +17,6 @@ Complete reference for all docket commands with detailed examples and options.
 - [Removed Commands](#removed-commands)
 - [Exit Codes](#exit-codes)
 - [Environment Variables](#environment-variables)
-
-## Setup Commands
-
-### install
-
-Bootstrap a docket-native home under `~/.docket/` (`DOCKET_HOME`) from scratch, including the
-shared **org specialists**. docket has no external daemon dependency — there is no separate
-runtime to install or configure; this command provisions docket's own state directly.
-
-**Syntax:**
-```bash
-docket install                  # manager, knowledge, security — exec-approval gates ON by default
-docket install --portfolio      # + the optional org Portfolio Manager
-docket install --no-gates       # opt out of approval routing at install time
-docket install --yes            # skip confirmation prompts (non-interactive/CI)
-```
-
-**What it does** (`cli/_install.py`'s `run_install`, step by step):
-1. Checks for required dependencies: `python3` and `git` (both required — missing either aborts
-   before anything is written); `fzf` is optional (interactive pickers fall back to a numbered
-   list without it)
-2. Creates the directory structure under `DOCKET_HOME` (`~/.docket/projects/`, and
-   `~/Sites/` if it doesn't exist yet), permissioned 700
-3. Sets the org-wide default model in docket's own fleet registry (`~/.docket/fleet.json`)
-4. Creates the org specialists (`scope: org`): **manager**, **knowledge**, **security** — fleet
-   registration, `.docket-meta.json`, and the full workspace contract (`SOUL.md`, `AGENTS.md`,
-   `HEARTBEAT.md`, `WORKFLOW_AUTO.md`, `MEMORY.md`) for each; idempotent, so re-running only
-   backfills what's missing
-5. Checks whether a model-provider credential is already stored or exported (does **not** run a
-   login flow — there isn't one; see [`auth`](#auth) below) and tells you plainly if none is found
-6. Hardens permissions on docket-owned secrets/config files to 0600, and (unless `--no-gates`)
-   turns on approval **routing** — the tool-call gate itself (policy engine + high-risk command
-   classifier) is unconditionally active on every tool call regardless of this flag; there is
-   nothing to "enable" there. See [`gates`](#gates).
-7. Installs the baseline guardrail policy templates (idempotent — skips files already present)
-
-**Flags:**
-- **`--portfolio`**: also provision the optional org **Portfolio Manager** — one
-  `portfolio-manager` agent (`scope: org`) that is an advisory cross-pod planner over fleet
-  *metadata* (which pods exist, their queues, budgets, health). It never edits code, never
-  dispatches into a pod, and is never a pod member. Opt-in.
-- **`--gates`/`--no-gates`** (default `--gates`, i.e. **on**): applies approval routing so a
-  gated tool call's "ask" verdict reaches a channel; pass `--no-gates` to skip that (the call
-  still blocks on docket's approval store either way — it just times out to denied faster with
-  nobody watching for it). Re-apply or reverse anytime with `docket gates enable`/
-  `docket gates disable` — see `specs/functional/security-gates.spec.md`.
-- **`--yes`/`-y`**: skip interactive confirmation prompts — for scripted/CI installs.
-
-**Example:**
-```bash
-# First-time setup (approval routing on by default)
-docket install
-
-# With the org Portfolio Manager, opting out of approval routing
-docket install --portfolio --no-gates
-
-# Non-interactive (CI)
-docket install --yes
-
-# Output:
-# Step 1: Checking dependencies
-# ✓ python3: 3.11.9
-# ✓ git: found
-# Step 2: Creating directory structure
-# ✓ Directories created
-# Step 3: Configuring the default model
-# Step 4: Setting up specialist agents
-# ✓ manager: created (anthropic/claude-haiku-4-5 — ...)
-# ✓ knowledge: created (...)
-# ✓ security: created (anthropic/claude-sonnet-4-6 — ...)
-# Step 5: Model authentication
-# Step 6: Configuring security best practices
-# ✓ Tool-call gate: always active (policy engine + high-risk command classifier)
-# Step 7: Guardrail policies
-# ✓ Installed 6 baseline policies
-# Installation Complete!
-```
-
-**Aliases:** `setup`
-
-**Notes:**
-- Safe to run multiple times (idempotent)
-- Preserves existing agents
-- Recommended on clean systems
-- Project pods are created separately with [`docket add`](#add); see
-  [Agent Teams (Pods)](AGENT-TEAMS.md)
-
----
 
 ## Lifecycle Commands
 
@@ -149,19 +60,21 @@ DEBUG=1 docket list
 
 ---
 
-### add
+### init
 
 Create a new project **pod** — an isolated team of project-scoped agents that owns one codebase.
 The default pod is **lean: a Lead + an Implementer**. See [Agent Teams (Pods)](AGENT-TEAMS.md).
+The first invocation also creates Docket's shared workstation foundation (fleet registry, org
+specialists, policies, and default gates). There is no separate setup step.
 
 **Syntax:**
 ```bash
-docket add                               # interactive
-docket add <project> [path]              # lean pod: <project>-lead + <project>-implementer
-docket add <project> [path] --pod full   # full pod: + reviewer + tester
-docket add <project> [path] --with reviewer,tester   # lean pod + named roles
-docket add --blueprint <name> [path]     # a named pod shape other than the default (software)
-docket add --from <spec-file>            # non-interactive: provision one or many pods from JSON/YAML
+docket init                              # derive project id/path/stack from the current directory
+docket init <project> [path]              # lean pod: <project>-lead + <project>-implementer
+docket init <project> [path] --pod full   # full pod: + reviewer + tester
+docket init <project> [path] --with reviewer,tester   # lean pod + named roles
+docket init --blueprint <name> [path]     # a named pod shape other than the default (software)
+docket init --from <spec-file>            # non-interactive: provision one or many pods from JSON/YAML
 ```
 
 **Flags:**
@@ -184,50 +97,33 @@ docket add --from <spec-file>            # non-interactive: provision one or man
   exclusive with every other flag/prompt. See [Declarative provisioning](#declarative-provisioning)
   below.
 
-Interactive mode requires a TTY; without one (and without `--from`), `docket add` errors:
-`interactive mode requires a TTY. Use --from <spec-file> for non-interactive add.`
+The default path is deterministic and non-interactive: location = cwd, id = slugified directory
+name, stack = detected markers, roster = Lead + Implementer.
 
 Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-reviewer`, `myapp-tester`
 (duplicated roles get `-2`, `-3` suffixes). A pod has **exactly one Lead**. Resize the pod later
 with [`docket pod`](#pod), and tear the whole pod down with [`docket delete`](#delete).
 
 Every project is a **repo** — a pod tied to a codebase. The codebase defaults to the directory
-you run `docket add` in (or the `path` argument / `--codebase <path>`, in which case you are not
+you run `docket init` in (or the `path` argument / `--codebase <path>`, in which case you are not
 re-prompted), and the project name is suggested from that directory's name.
-
-**Interactive prompts** (each prompt is skipped when the value is supplied up front):
-1. **Codebase path:** defaults to the current directory
-2. **Project name:** suggested from the codebase directory name
-3. **Agent ID:** slug suggested from the name
-4. **Tech stack:** auto-detected from the codebase, or entered manually
-5. **Description:** optional
-6. **Telegram group:** optional group ID for wiring
 
 **Example:**
 ```bash
 # Lean pod (Lead + Implementer) for a codebase
-docket add myapp ~/code/myapp
+docket init myapp ~/code/myapp
 
 # From inside the repo — codebase + name are detected from the cwd
-cd ~/code/myapp && docket add
+cd ~/code/myapp && docket init
 
 # Full pod with a review + test gate
-docket add myapp ~/code/myapp --pod full
+docket init myapp ~/code/myapp --pod full
 
 # Lean pod plus a reviewer
-docket add myapp ~/code/myapp --with reviewer
-
-# Interactive session (run from inside ~/code/myapp):
-# → Codebase path [/home/you/code/myapp]:
-# → Display name [myapp]: My Awesome Project
-# → Agent ID [my-awesome-project]:
-# → Detecting stack...
-# → Stack [Node.js]:
-#
-# ✓ Pod 'my-awesome-project' created (…-lead, …-implementer)
+docket init myapp ~/code/myapp --with reviewer
 ```
 
-**Aliases:** `create`, `new`
+**Aliases:** None
 
 **Notes:**
 - Member ids auto-generated via slugification (`<project>-<role>[-N]`)
@@ -243,10 +139,11 @@ pod for work that isn't "implement against a codebase." Four ship built-in:
 
 | Blueprint | Kind | Roles | Default budget | Shape |
 |---|---|---|---|---|
-| `software` (default) | codebase | lead, implementer | none | Today's plain lean pod, byte-identical to `docket add` with no `--blueprint` |
+| `software` (default) | codebase | lead, implementer | none | Default lean project pod |
 | `research` | workdir | lead, researcher, analyst, writer, critic | $20 | Critic gates the final step (`APPROVE`\|`REJECT`), one rework cycle back to writer |
 | `content` | workdir | lead, writer, critic | $15 | Same Critic-gate pattern, no researcher/analyst step |
 | `ops` | workdir | lead, operator, monitor | $30 | Operator is gated on its own `verifyCmd`; Monitor is a human-approval gate |
+| `agentic-product` | codebase | lead, implementer, reviewer, tester | none | Full software pipeline for products that ship agents |
 
 A **codebase** blueprint (`software`) treats the location argument as an existing codebase path
 (never auto-created) and auto-detects its stack. A **workdir** blueprint (`research`/`content`/
@@ -257,22 +154,22 @@ prompt label ("Working directory" instead of "Codebase path").
 
 ```bash
 # A research pod against its own working directory
-docket add briefing --blueprint research
+docket init briefing --blueprint research
 
 # An ops pod with an explicit shared working directory
-docket add rollout --blueprint ops --codebase ~/ops/rollout
+docket init rollout --blueprint ops --codebase ~/ops/rollout
 ```
 
 `--pod full`/`--with` only extend the `software` roster; passing either alongside a different
 blueprint is ignored with a warning, since every other blueprint's roster is fixed.
 
-Only the four built-ins exist today — there is no `docket blueprints add <file>` to register a
+Only the five built-ins exist today — there is no `docket blueprints add <file>` to register a
 custom one yet (that overlay mechanism is unbuilt, unlike `docket roles add` for archetypes).
 See [pod-blueprints.spec.md](../specs/functional/pod-blueprints.spec.md).
 
 #### Declarative provisioning
 
-`docket add --from <spec-file>` provisions one or many agents/pods from a single JSON or YAML
+`docket init --from <spec-file>` provisions one or many agents/pods from a single JSON or YAML
 file, without any prompts — the same mechanism a CI job or a fleet-bootstrap script would use.
 The file is either a bare list of entries, `{"agents": [...]}`, or a single entry object.
 
@@ -307,14 +204,48 @@ flat agent the same shape `docket add` always has (fields: `name`, `codebase`, `
 ```
 
 ```bash
-docket add --from spec.json
-docket add --from spec.yaml   # requires PyYAML: pip install pyyaml
+docket init --from spec.json
+docket init --from spec.yaml   # requires PyYAML: pip install pyyaml
 ```
 
 An entry whose id already exists is skipped with a warning, not an error; an unknown blueprint
 name is likewise skipped, not fatal to the rest of the file. The command always exits 0 and
 prints a summary of what was created vs. skipped — check the output, not just the exit code, in
 a script.
+
+---
+
+### add
+
+Add role agents to an existing pod. This command never creates a project.
+
+```bash
+docket add reviewer                       # pod inferred from the current directory
+docket add tester --project myapp         # explicit pod
+docket add implementer --count 2          # indexed additional Implementers
+docket add implementer --verify "uv run pytest"
+```
+
+Use `--project <pod>` when running outside the project's configured `codebase`/`workDir`.
+Otherwise Docket chooses the most-specific registered pod containing the cwd and fails clearly
+when there is no match or the result is ambiguous.
+
+---
+
+### status
+
+Show project-level state without mixing it with the global agent inventory or workstation health.
+
+```bash
+docket status          # project containing the current directory
+docket status --all    # every project, one row per pod
+docket status --json   # machine-readable current-project result
+docket status --all --json
+```
+
+The current-project view includes the configured path, readiness, pod roles, and task counts.
+`docket list` remains the detailed global agent inventory; `docket doctor` remains the global
+technical health check.
 
 ---
 
@@ -371,7 +302,7 @@ docket info
 
 ### delete
 
-Remove an agent and optionally its workspace.
+Remove a project pod, or a legacy flat agent.
 
 **Syntax:**
 ```bash
@@ -379,31 +310,33 @@ docket delete <agent-id>
 docket delete           # Interactive picker
 ```
 
-**Interactive prompts:**
-1. Confirm deletion (yes/no)
-2. Delete workspace files (yes/no)
+For a pod id, Docket lists every member and requires typing the pod id in an interactive terminal.
+It then removes every member registration, binding, conversation entry, workspace/worktree,
+pod runtime directory, durable session, and trace. The global audit record is preserved.
+
+For a legacy flat agent id, Docket separately asks whether to remove its workspace before requiring
+the exact agent id.
 
 **Example:**
 ```bash
 docket delete myproject
-
-# Prompts:
-# ⚠ Delete agent 'myproject'? (yes/no): yes
-# ⚠ Also delete workspace directory? (yes/no): yes
-# ✓ Agent deleted
-# ✓ Workspace removed
+# Type the pod id to confirm deletion [myproject]: myproject
+# ✓ Pod 'myproject' deleted.
 ```
 
 **Aliases:** `remove`, `rm`
 
 **Notes:**
 - Removes agent registration from docket's fleet registry (`~/.docket/fleet.json`)
-- Optionally deletes `~/.docket/workspaces/projects/<id>/`
+- Pod deletion removes all Docket-owned operational state for that pod; a legacy flat agent can
+  keep its workspace when explicitly requested
 - Cannot be undone (backup first if unsure)
 - Given a pod id (not a single member id), removes the whole pod — see [`docket pod`](#pod) to
   remove one member instead
 - Org specialists (manager, knowledge, security) cannot be removed with `docket delete` — it
   errors outright rather than deleting a shared, fleet-wide agent
+- A Git worktree is removed, but its dedicated branch remains in the source repository so committed
+  code is not silently destroyed; remove that branch separately after reviewing it
 
 ---
 
@@ -611,7 +544,7 @@ docket persona <agent-id> clear           # remove it (back to role/name)
 > - [`docket pod <project> delegate`/`dispatch`](#pod) — the **per-project pipeline**. Queues
 >   and runs work for one project's pod (Lead → Implementer → Reviewer → Tester), pod-local and
 >   budget-gated.
-> - Org-wide fleet visibility (no queue, no dispatch): `docket install --portfolio` (the advisory
+> - Org-wide fleet visibility (no queue, no dispatch): `docket init --portfolio` (the advisory
 >   Portfolio Manager).
 >
 > See [Agent Teams (Pods)](AGENT-TEAMS.md) for the full pod model.
@@ -630,7 +563,7 @@ docket pod <project> list                              # same as above
 docket pod <project> add <role> [--count N|-n N] [--verify "<cmd>"]  # add member(s)
 docket pod <project> remove <member-id>                # remove one member
 docket pod <project> set-verify <member-id> "<cmd>"    # set an implementer's verify command
-docket pod <project> delegate [--priority high|normal|low] "<task>"   # queue a task
+docket pod <project> delegate [--priority high|normal|low] <task>   # queue a task
 docket pod <project> queue [--retry <task-id>]         # show the queue, or un-block one task
 docket pod <project> dispatch [--resume] [--timeout <seconds>]   # run pending tasks through the pipeline
 ```
@@ -698,7 +631,8 @@ docket pod myapp set-verify myapp-implementer "npm test"
 #### delegate
 Queue a task on the **pod's** task queue (which lives in the Lead's workspace). Optional
 `--priority`/`-p` `high|normal|low` (default `normal`). The task description is capped at 500
-characters. This queues only; run it with `dispatch`.
+characters and is preserved whether passed as one quoted argument or as ordinary positional words.
+Quote it when it contains shell metacharacters. This queues only; run it with `dispatch`.
 
 ```bash
 docket pod myapp delegate "Fix the null-token login crash"
@@ -963,20 +897,22 @@ docket wire             # Interactive picker
   breaking change to `wire`'s syntax.
 
 **Interactive prompts:**
-1. Enter the Telegram peer/group ID — manual entry only; docket has no daemon gateway log to
-   discover a group id from, so create the bot, add it to a group, and get the group's chat id
-   from Telegram itself (e.g. forward a message from the group to `@userinfobot`, or check the
-   Bot API's `getUpdates` response) before running `wire`.
+1. With `TELEGRAM_BOT_TOKEN` configured, Docket shows a one-time command such as
+   `/wire A1B2C3`. Send it in the Telegram group, return to the terminal, and press Enter.
+   Docket discovers and binds that group automatically.
+2. You can paste a numeric group ID instead. Manual entry is also the fallback when the bot token
+   is missing, Telegram cannot be reached, or no matching message is found.
 
 **Example:**
 ```bash
-# Step 1: docket keys add TELEGRAM_BOT_TOKEN, create a bot, add it to a group
-# Step 2: get the group's chat id from Telegram directly (see above)
+# Store the bot token once, create a bot, and add it to the group
+docket keys add TELEGRAM_BOT_TOKEN
 
-# Step 3: Wire agent
+# Start the guided setup
 docket wire myproject
-# → Enter the peer/group ID from your telegram setup.
-# Telegram peer/group ID: -1001234567890
+# → In the group, send: /wire A1B2C3
+# → Return here and press Enter
+# ✓ Found Telegram group "My Project Team"
 # ✓ Binding: myproject ← telegram group -1001234567890
 # ✓ Done. 'myproject' is now wired to telegram peer -1001234567890
 ```
@@ -990,6 +926,9 @@ docket wire myproject
   `TELEGRAM_BOT_TOKEN` is stored) — the binding is the **entire authorization boundary**: anyone
   who can post in that chat can `/approve`, `/deny`, `/status`, or `/delegate` as this agent the
   moment the bot is running
+- Guided discovery reads the matching one-time `/wire` message without advancing the Telegram
+  poller's durable offset or processing unrelated messages. If `docket serve --telegram` is
+  already polling, stop it during setup so it does not receive the one-time command first.
 
 ---
 
@@ -1891,7 +1830,7 @@ docket gates classes
 **Aliases:** `security`
 
 **Notes:**
-- `docket install` applies approval routing by default; pass `--no-gates` to opt out
+- `docket init` applies approval routing by default; pass `--no-gates` to opt out
 - Every state change is written to the audit log (`gates.enable`/`gates.disable`/`gates.isolate`)
 - Approvals are answerable headlessly via `docket approve`/`docket deny` or `POST /approvals/<token>`
   (`docket serve`), or MCP, in addition to Telegram — all four channels are audit-logged. See
@@ -2134,7 +2073,7 @@ DEBUG=1 docket <command>
 **Example:**
 ```bash
 docket --debug list
-DEBUG=1 docket add
+DEBUG=1 docket status
 ```
 
 Sets the `DEBUG` environment variable for the process (`--debug` is sugar for `DEBUG=1`). As of
@@ -2184,8 +2123,6 @@ source of truth. `docket <alias>` rewrites to `docket <command>` before argument
 
 | Alias | Command |
 |-------|---------|
-| `setup` | `install` |
-| `create`, `new` | `add` |
 | `show` | `info` |
 | `remove`, `rm` | `delete` |
 | `telegram` | `wire` |
@@ -2222,7 +2159,7 @@ These command names are **not aliases** — typing them prints a migration notic
 | `context <id> <search\|index\|snapshot\|compress>` | removed — the per-agent index/snapshot artifacts they wrote were read by nothing; use `docket context [id] <show\|project>` or `docket snapshot` (fleet JSON) |
 | `smart`, `ai` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
 | `mode`, `terminal`, `term` | `docket models` (role policy) or `docket profile [id] <provider/model>` |
-| `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket install --portfolio` |
+| `team` | `docket pod <project> delegate "<task>"` / `queue` / `dispatch`; org-wide view: `docket init --portfolio` |
 | `workflow`, `wf` | `docket pipeline validate` / `plan` / `run` — the single pipeline dialect docket actually executes (the Lobster YAML validator ignored constructs its own template emitted). Existing `<workspace>/workflows/*.lobster.yml` files are left on disk, untouched but no longer read |
 | `eval`, `evals` | **removed, no replacement** — the specialist-role eval harness (`tests/evals/`) was dead code wired to the retired runtime, and skipped silently instead of failing. Unlike `workflow`/`team`, no CLI entry point runs a single agent turn to repoint it at, so it was deleted outright rather than redesigned |
 

@@ -34,7 +34,7 @@ how a role is actually defined and how you add your own.
 
 ## Project pods — one isolated team per project
 
-`docket add <project>` provisions a **pod**: a small team of project-scoped agents that owns one
+`docket init <project>` provisions a **pod**: a small team of project-scoped agents that owns one
 codebase (or, for a non-software pod, one shared working directory — see "Pod blueprints" below).
 Each member is a distinct registered agent with its **own permission-locked workspace**
 (`700`/`600`, with `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, `.docket-meta.json`, and a `memory/`
@@ -142,7 +142,7 @@ compose a custom shape today, provision the closest built-in and add roles by ha
 
 ## Org specialists — shared across the fleet
 
-`docket install` creates the cross-cutting specialists once. They are genuinely fleet-wide, so a
+`docket init` creates the cross-cutting specialists once. They are genuinely fleet-wide, so a
 per-project copy would be waste:
 
 - **manager** — cross-cutting coordination (transitional; `docket team`'s queue was retired in
@@ -155,7 +155,7 @@ any starter or custom role) are pod-scoped — see "Project pods" above — neve
 
 ### Optional: the org Portfolio Manager
 
-`docket install --portfolio` adds **one** `portfolio-manager` (`scope: org`): a cross-pod
+`docket init --portfolio` adds **one** `portfolio-manager` (`scope: org`): a cross-pod
 **planning and visibility** surface. It sees fleet *metadata* — which pods exist, their queues,
 budgets, and health — **not project code.** It is advisory: it recommends where to focus,
 rebalance, or pause, in words for a human. It never edits code and does not dispatch into pods
@@ -349,10 +349,10 @@ See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 
 ```bash
 # Provision / resize a pod
-docket add <project> [path]              # lean pod (Lead + Implementer)
-docket add <project> --pod full          # + Reviewer + Tester
-docket add <project> --with reviewer,tester
-docket add <project> [path] --blueprint <name>   # software (default) | research | content | ops
+docket init <project> [path]              # lean pod (Lead + Implementer)
+docket init <project> --pod full          # + Reviewer + Tester
+docket init <project> --with reviewer,tester
+docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
 docket pod <project>                     # list members
 docket pod <project> add <role> [--count N]
 docket pod <project> remove <member-id>
@@ -378,8 +378,8 @@ docket persona <member-id> clear
 docket persona <member-id> show
 
 # Org specialists
-docket install                           # manager, knowledge, security
-docket install --portfolio               # + the optional org Portfolio Manager (advisory, read-only)
+docket init                           # manager, knowledge, security
+docket init --portfolio               # + the optional org Portfolio Manager (advisory, read-only)
 ```
 
 > `docket team` (the org manager's own task queue) was **retired** — every project's pod owns

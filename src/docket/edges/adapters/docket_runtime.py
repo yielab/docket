@@ -310,7 +310,7 @@ class DocketDriver:
         """No daemon exists to register *agent_id* with.
 
         An honest no-op, not a silent ``ok=True`` standing in for real work:
-        ``docket add``/``docket install`` already create the workspace and
+        ``docket add``/`the workstation foundation bootstrap` already create the workspace and
         ``.docket-meta.json`` directly, with no daemon-registration step in
         between, and ``run_turn`` above needs nothing pre-created — it reads
         ``.docket-meta.json`` and resolves an endpoint fresh on every call,

@@ -2,13 +2,13 @@
 
 ``core/policy.py`` was once fully built and tested but had exactly
 one caller: the CLI's own dry-run printer (``docket policies test``).
-``docket install`` never installed the shipped templates, ``pre_input`` was
+`the workstation foundation bootstrap` never installed the shipped templates, ``pre_input`` was
 never evaluated anywhere real, and ``pre_output`` had no producer at all —
 ``cli/_metrics.py``'s "Guardrail trips" reader existed with nothing to read.
 This suite exercises the wiring:
 
   * TestInstallPolicies     — ``core.policy.install_policies()``, the shared
-    producer behind both ``docket policies init`` and ``docket install``'s
+    producer behind both ``docket policies init`` and `the workstation foundation bootstrap`'s
     Step 9 (see also ``test_install.py``'s own Step 9 assertion).
   * TestPolicyEvalDetail    — the new ``PolicyHit``-returning evaluator
     underneath the unchanged ``policy_eval``/``policy_test`` (regression: every

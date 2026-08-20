@@ -255,7 +255,7 @@ docket scope <agent-id> reset
 ### `docket pod <p> dispatch` does nothing / "No pending tasks"
 There's nothing queued for the pod to run.
 ```bash
-docket pod <p> delegate "<task>"   # queue a task first
+docket pod <p> delegate <task>     # quote only when shell metacharacters require it
 docket pod <p> queue               # check what's pending
 ```
 
@@ -331,9 +331,9 @@ docket add <p>
 ```
 
 ### The Portfolio Manager didn't appear
-The org Portfolio Manager is opt-in — it isn't created by a plain `docket install`.
+The org Portfolio Manager is opt-in — it isn't created by a plain `docket init`.
 ```bash
-docket install --portfolio
+docket init --portfolio
 ```
 
 ### A pod member wasn't created

@@ -1,8 +1,8 @@
 # Agent Lifecycle Specification
 
-**Version**: 1.10.0
+**Version**: 1.12.0
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-20
 
 ## Purpose
 
@@ -49,12 +49,12 @@ This specification does NOT cover:
 9. **SHOULD** suggest appropriate model profile based on project type
 10. **MAY** initialize with custom description
 11. **MUST** stamp the active template version into agent metadata so prompt drift is detectable
-12. **MAY** provision one or more agents declaratively from a spec file (`docket add --from <file>`)
+12. **MAY** provision one or more agents declaratively from a spec file (`docket init --from <file>`)
 13. **MUST** select a pod blueprint (`--blueprint <name>`, default `software`) before provisioning
     and **MUST** fail cleanly, before any interactive prompt, if the name is not registered (see
     pod-blueprints.spec.md)
 
-#### Declarative Provisioning (docket add --from)
+#### Declarative Provisioning (docket init --from)
 
 1. **MUST** accept a JSON spec; **SHOULD** accept YAML when a YAML parser is available
 2. **MUST** support a list of agents, a `{agents: [...]}` mapping, or a single agent mapping
@@ -112,6 +112,11 @@ The exact table rendering is pinned by the golden suite; the machine-readable sh
 5. **SHOULD** display deletion summary
 6. Deleting a pod project **MUST** tear down every pod member and free the pod's
    allocated resources (port range, scratch dir)
+7. Deleting a pod **MUST** remove its Docket-owned runtime directory, durable session histories,
+   and JSONL trace directories for both the project id and its member ids. It **MUST NOT** delete
+   or rewrite the global audit log; the deletion record remains as durable evidence.
+8. The pre-deletion summary **MUST** render each member's role literally, without markup syntax
+   hiding the value.
 
 ### Agent Maintenance (docket maintain)
 
@@ -196,11 +201,11 @@ a confirmation prompt.
 ```bash
 # Create a project pod from a blueprint (interactive or with args); --blueprint
 # defaults to `software`. --pod full/--with apply only to the software blueprint.
-docket add <project> [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
+docket init <project> [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
 
 # Create one or more agents (or, with a `blueprint` field, pods) declaratively
 # from a spec file (JSON, or YAML when PyYAML is present)
-docket add --from <agents.yaml|agents.json>
+docket init --from <agents.yaml|agents.json>
 
 # List agents
 docket list [--json]
@@ -293,6 +298,11 @@ After successful creation:
 
 ## Changelog
 
+### Version 1.12.0 (2026-08-20)
+
+- Pod deletion now removes orphanable runtime/session/trace state while preserving the global
+  audit log, and its confirmation summary renders member roles literally.
+
 ### Version 1.10.0 (2026-08-19)
 
 - W24's real memory canary caught a model changing an exact tax divisor from `10_000` to `1_000`
@@ -354,7 +364,7 @@ After successful creation:
   <name>`, default `software`) before provisioning; the codebase-path validation and stack
   auto-detection requirements are now scoped to `codebase`-kind blueprints (a `workdir`-kind
   blueprint has no codebase and auto-provisions its shared working directory instead — see the
-  new pod-blueprints.spec.md). `docket add --from`'s declarative contract gained a `blueprint`
+  new pod-blueprints.spec.md). `docket init --from`'s declarative contract gained a `blueprint`
   field that provisions a pod instead of a single flat agent for the entry that carries it,
   leaving every entry without one unaffected. Also fixed two stale CLI-signature claims this
   section had drifted on: `TOOLS.md` was never actually required-initialize-for every pod member
@@ -380,7 +390,7 @@ After successful creation:
 
 ### Version 1.2.0 (2026-06-11)
 - Added template-version stamping requirement (drift surfaced in `docket doctor`)
-- Added declarative provisioning (`docket add --from <file>`): JSON/YAML specs, fleet lists,
+- Added declarative provisioning (`docket init --from <file>`): JSON/YAML specs, fleet lists,
   idempotent re-apply, shared defaults with interactive creation
 
 ### Version 1.1.0 (2026-06-09)

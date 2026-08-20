@@ -916,9 +916,14 @@ def _run(
             _initialize_fixture_repo(codebase)
             print("[check] realistic checkout fixture committed before worktree provisioning")
 
-        run_cli("add", "--from", str(pod_spec))
+        run_cli("init", "--from", str(pod_spec))
         fleet = _load_json(home / "fleet.json")
-        _require(len(fleet.get("agents", [])) == 4, "full pod did not provision four members")
+        project_agents = [
+            agent
+            for agent in fleet.get("agents", [])
+            if str(agent.get("id", "")).startswith("smoke-")
+        ]
+        _require(len(project_agents) == 4, "full pod did not provision four members")
         print("[check] full pod provisioned: lead, implementer, reviewer, tester")
 
         if scenario == _MEMORY_SCENARIO:

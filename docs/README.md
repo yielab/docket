@@ -45,17 +45,19 @@ For how features are specified before implementation, see the specs under
 ## Most common commands
 
 ```bash
-# Setup (once)
-docket install                 # Bootstrap docket's home + org specialist agents
+# Start a project (also bootstraps shared workstation state on the first run)
+docket init                     # Current directory -> Lead + Implementer pod
+docket add reviewer             # Add an extra role to the current pod
 
 # Daily use
-docket add                     # Create a project agent
+docket status                  # Current project summary
+docket status --all            # Global summary by project
 docket list                    # Show all agents
 docket info <id>               # Agent details
 docket context <id> show       # Recent activity and context stats
 
 # Pod teams (see Agent Teams guide)
-docket add <project>                       # Provision a pod (Lead + Implementer)
+docket init <project>                      # Provision a pod (Lead + Implementer)
 docket pod <project>                       # Inspect / resize the pod
 docket pod <project> delegate "<task>"     # Queue a task for the pod
 docket pod <project> dispatch              # Run the pod's pipeline once
@@ -107,7 +109,7 @@ daemon and no second config file anywhere else:
     ├── manager/                   # Org specialist: orchestrator (delegation only)
     ├── knowledge/                 # Org specialist: docs / research
     ├── security/                  # Org specialist: security audits
-    ├── portfolio-manager/         # Optional org specialist (docket install --portfolio)
+    ├── portfolio-manager/         # Optional org specialist (docket init --portfolio)
     └── projects/
         └── <project>-<role>/      # Pod member workspace (e.g. myapp-lead, myapp-implementer)
             ├── SOUL.md            # Identity + session key (+ optional persona)

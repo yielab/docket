@@ -92,25 +92,13 @@ def _default(
     if debug:
         os.environ["DEBUG"] = "1"
     if ctx.invoked_subcommand is None:
-        cmd_list(json_out=False)
-
-
-@app.command("install")
-def cmd_install(
-    gates: bool = typer.Option(
-        True,
-        "--gates/--no-gates",
-        help="Exec-approval gates (on by default; use --no-gates to opt out)",
-    ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
-    portfolio: bool = typer.Option(
-        False, "--portfolio", help="Also provision the optional org Portfolio Manager"
-    ),
-) -> None:
-    """Bootstrap a docket-native home + specialist agents."""
-    from docket.cli._install import run_install
-
-    raise typer.Exit(run_install(want_gates=gates, assume_yes=yes, want_portfolio=portfolio))
+        ui.console.print("[bold]docket[/bold] — project agent manager")
+        ui.console.print("  docket init          initialize this project (Lead + Implementer)")
+        ui.console.print("  docket status        show the current project's status")
+        ui.console.print("  docket status --all  show global status by project")
+        ui.console.print("  docket add <role>    add an agent to the current pod")
+        ui.console.print("  docket doctor        check workstation-wide health")
+        ui.console.print("  docket help          show the full command reference")
 
 
 @app.command("list")
@@ -120,6 +108,17 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
         _cmd_list_json()
     else:
         _cmd_list_human()
+
+
+@app.command("status")
+def cmd_status(
+    all_projects: bool = typer.Option(False, "--all", help="Show every project"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
+) -> None:
+    """Show current-project status, or every project with --all."""
+    from docket.cli._status import run_status
+
+    raise typer.Exit(run_status(all_projects=all_projects, json_out=json_out))
 
 
 def _cmd_list_json() -> None:
@@ -159,7 +158,7 @@ def _cmd_list_human() -> None:
     ids = project_ids()
     if not ids:
         ui.warn("No project agents found.")
-        ui.console.print("Run: docket add")
+        ui.console.print("Run: docket init")
         raise typer.Exit(0)
 
     fleet = _fleet.load_fleet()
@@ -257,7 +256,7 @@ def _cmd_list_human() -> None:
         ui.console.print()
         ui.dim(
             "  Steps: 1) Create Telegram group  2) Add bot"
-            "  3) Get group ID from logs  4) docket wire <id>"
+            "  3) docket wire <id> and follow the on-screen steps"
         )
 
     ui.console.print()
@@ -300,10 +299,21 @@ def _cmd_list_human() -> None:
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
 )
 def cmd_add(ctx: typer.Context) -> None:
-    """Add a new project agent (interactive or --from <spec-file>)."""
+    """Add role agents to an existing project pod."""
     from docket.cli._agents import run_add
 
     raise typer.Exit(run_add(list(ctx.args)))
+
+
+@app.command(
+    "init",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_init(ctx: typer.Context) -> None:
+    """Initialize the current project with its minimum isolated pod."""
+    from docket.cli._agents import run_init
+
+    raise typer.Exit(run_init(list(ctx.args)))
 
 
 @app.command("info")
@@ -340,9 +350,12 @@ def _delete_pod(project: str, members: list[str]) -> int:
     ui.console.print()
     for mid in members:
         role = _fleet.meta_get(mid, "role", "?")
-        ui.console.print(f"  - {mid}  [{role}]")
+        ui.console.print(f"  - {mid}  ({role})")
     ui.console.print()
-    ui.warn("This removes every member's registration, binding, and workspace.")
+    ui.warn(
+        "This removes every member's registration, binding, workspace, runtime, session history, "
+        "and traces. The audit record is preserved."
+    )
     ui.console.print()
 
     if sys.stdin.isatty():
@@ -367,6 +380,7 @@ def _delete_pod(project: str, members: list[str]) -> int:
 
     # Free pod runtime resources (port range + scratch dir) after all members gone.
     _pod.free_pod_resources(project)
+    _pod.purge_pod_history(project, members)
 
     audit_log("agent.delete", f"{project} pod ({len(members)} members)")
     ui.success(f"Pod '{project}' deleted.")
@@ -445,11 +459,56 @@ def cmd_wire(
     if existing:
         ui.warn(f"Currently wired to: {existing}")
 
-    # There is no daemon gateway log to scan for a group id automatically.
-    # Every channel — telegram included — is manual entry only.
-    ui.dim(f"Enter the peer/group ID from your {channel} setup.")
-    ui.console.print()
-    peer_id = input(f"{channel.capitalize()} peer/group ID: ").strip()
+    peer_id = ""
+    if channel == "telegram":
+        import secrets
+
+        from docket.core import telegram as _telegram
+
+        if _telegram.wire_discovery_configured():
+            challenge = secrets.token_hex(3).upper()
+            ui.console.print("Easy setup:")
+            ui.console.print("  1. Add your Docket bot to the Telegram group.")
+            ui.console.print(f"  2. In that group, send: [bold]/wire {challenge}[/bold]")
+            ui.console.print("  3. Return here and press Enter.")
+            ui.console.print()
+            entered = input("Press Enter after sending it, or paste the group ID: ").strip()
+            if entered:
+                peer_id = entered
+            else:
+                result = _telegram.discover_wire_groups(challenge)
+                if not result.ok:
+                    ui.warn(f"Could not check Telegram: {result.error}")
+                elif len(result.groups) == 1:
+                    group = result.groups[0]
+                    peer_id = group.chat_id
+                    label = f' "{group.title}"' if group.title else ""
+                    ui.success(f"Found Telegram group{label}")
+                elif len(result.groups) > 1:
+                    ui.console.print("Matching Telegram groups:")
+                    for index, group in enumerate(result.groups, 1):
+                        label = group.title or group.chat_id
+                        ui.console.print(f"  {index}) {label}")
+                    raw_pick = input("Choose a group number: ").strip()
+                    try:
+                        peer_id = result.groups[int(raw_pick) - 1].chat_id
+                    except (ValueError, IndexError):
+                        ui.warn("Invalid selection; switching to manual entry.")
+                else:
+                    ui.warn(
+                        "No matching group message found. If docket serve --telegram is running,"
+                        " stop it, send the shown command again, and rerun docket wire."
+                    )
+        else:
+            ui.warn(
+                "Automatic Telegram setup needs a bot token. First run:"
+                " docket keys add TELEGRAM_BOT_TOKEN"
+            )
+
+    if not peer_id:
+        ui.dim(f"Manual fallback: enter the peer/group ID from your {channel} setup.")
+        ui.console.print()
+        peer_id = input(f"{channel.capitalize()} peer/group ID (or Enter to abort): ").strip()
     if not peer_id:
         ui.warn("Aborted.")
         raise typer.Exit(0)

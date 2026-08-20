@@ -389,14 +389,16 @@ class TestCmdCost:
 
 
 # ---------------------------------------------------------------------------
-# docket list (default invocation — no subcommand)
+# default invocation — no subcommand
 # ---------------------------------------------------------------------------
 
 
 class TestDefaultInvocation:
-    def test_no_args_calls_list(self, tmp_path: Path) -> None:
-        """Running `python -m docket` with no args invokes list."""
+    def test_no_args_prints_state_free_command_guide(self, tmp_path: Path) -> None:
+        """Bare docket is concise and does not render the fleet implicitly."""
         oc_dir = _setup_agent(tmp_path)
         rc, out, _ = _run([], oc_dir)
         assert rc == 0
-        assert "myshop" in out
+        assert "docket init" in out
+        assert "docket status" in out
+        assert "myshop" not in out

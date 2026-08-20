@@ -113,11 +113,11 @@ def _check_project_agents(ids: list[str]) -> int:
     """Per-project workspace files, fleet registration, and channel binding."""
     if not ids:
         ui.console.print()
-        ui.warn("No project agents found — run: docket add")
+        ui.warn("No project agents found — run: docket init")
         return 0
 
     ui.console.print()
-    ui.console.print("[bold]Project agents:[/bold]")
+    ui.console.print("[bold]Project agents (global fleet across all registered projects):[/bold]")
     issues = 0
     fleet = _fleet.load_fleet()
     registered = {a.id for a in _fleet.list_agents(fleet)}
@@ -136,7 +136,7 @@ def _check_project_agents(ids: list[str]) -> int:
 
         if proj_issues:
             ui.console.print(f"[red]✗[/red]   {aid}: {' '.join(proj_issues)}")
-            ui.console.print(f"    Fix with: docket repair {aid}")
+            ui.console.print(f"    Fix with: docket maintain {aid} check")
             issues += 1
         elif not tg:
             ui.warn(f"  {aid}: OK, no channel binding  →  docket wire {aid}")
@@ -494,7 +494,7 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
     """Project pod members plus any provisioned org specialists — all docket-managed.
 
     Includes the opt-in Portfolio Manager when it has been provisioned
-    (``docket install --portfolio``) — it is docket-managed too, just never
+    (``first docket init --portfolio``) — it is docket-managed too, just never
     auto-installed.
     """
     specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]

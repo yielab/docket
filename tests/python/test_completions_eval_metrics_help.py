@@ -29,7 +29,7 @@ class TestCompletions:
         assert "_docket_complete()" in out
         assert "complete -F _docket_complete docket" in out
         # command table is present
-        assert "install list add info delete maintain" in out
+        assert "list status add init info delete maintain" in out
 
     def test_zsh_emits_completion_function(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = _completions.run_completions("zsh")
@@ -38,7 +38,7 @@ class TestCompletions:
         assert "#compdef docket" in out
         assert "_docket()" in out
         assert "_docket_ids()" in out
-        assert "'install:Bootstrap a docket-native home + specialist agents'" in out
+        assert "'init:Initialize the current project with its minimum isolated pod'" in out
 
     def test_no_arg_prints_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = _completions.run_completions(None)
@@ -215,7 +215,6 @@ class TestHelp:
         for section in (
             "AGENT TYPES",
             "USAGE",
-            "SETUP",
             "LIFECYCLE",
             "MAINTENANCE",
             "TELEGRAM",

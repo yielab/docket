@@ -263,8 +263,11 @@ docket audit verify       # confirm the audit log hasn't been tampered with
 ## Commands You Actually Use
 
 ```bash
-# Start work (creates agent if needed)
-docket add
+# Initialize the current project once (Lead + Implementer)
+docket init
+
+# Check only this project's readiness and task state
+docket status
 
 # Agent does work automatically
 # (Reviewer checks security automatically)

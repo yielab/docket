@@ -20,7 +20,7 @@ PROJECT AGENTS (your work - each is dedicated to one codebase/project) (2)
 
     ○ manager  → create group "Manager" then: docket wire manager
 
-  Steps: 1) Create Telegram group  2) Add bot  3) Get group ID from logs  4) docket wire <id>
+  Steps: 1) Create Telegram group  2) Add bot  3) docket wire <id> and follow the on-screen steps
 
 ORG SPECIALISTS (shared across all projects)
 

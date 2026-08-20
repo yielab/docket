@@ -35,8 +35,10 @@ anything happening:
 **Fail closed, always.** An unknown sender, an unparseable command, a
 missing/ambiguous token, or a blocked policy verdict all refuse -- none of
 them ever default to granting or denying an approval. Approve/deny/status/
-delegate are the only four actions this module recognizes; anything else is
-an "unrecognized command" reply, not a guess at what the sender meant.
+delegate are the only four operational actions this module recognizes. The
+inert ``/wire <code>`` setup handshake only confirms a binding that the CLI
+already created; anything else is an "unrecognized command" reply, not a
+guess at what the sender meant.
 
 **The bot token is never handled here.** This module reads it once (from
 ``core.secrets``, the same store ``docket keys`` uses) to hand to
@@ -75,11 +77,16 @@ __all__ = [
     "InboundMessage",
     "PollSummary",
     "TelegramActionResult",
+    "TelegramGroup",
+    "WireDiscoveryResult",
+    "discover_wire_groups",
     "handle_message",
     "poll_once",
+    "wire_discovery_configured",
 ]
 
-# Command grammar. Deliberately narrow (four verbs, no inline keyboards, no
+# Command grammar. Deliberately narrow (four operational verbs plus the inert
+# setup handshake; no inline keyboards, no
 # rich UI) -- see the module docstring's "fail closed, always" note. The verb
 # is matched independently of its argument (the trailing group is OPTIONAL on
 # approve/deny/delegate) so `/approve` with a missing token is still
@@ -92,6 +99,7 @@ _APPROVE_RE = re.compile(r"^/approve(?:@\w+)?(?:\s+(\S+))?\s*$")
 _DENY_RE = re.compile(r"^/deny(?:@\w+)?(?:\s+(\S+))?\s*$")
 _STATUS_RE = re.compile(r"^/status(?:@\w+)?\s*$")
 _DELEGATE_RE = re.compile(r"^/delegate(?:@\w+)?\s*(.*)$", re.DOTALL)
+_WIRE_RE = re.compile(r"^/wire(?:@\w+)?\s+\S+\s*$", re.IGNORECASE)
 
 _UNRECOGNIZED_REPLY = (
     "Unrecognized command. Use:\n"
@@ -120,14 +128,32 @@ class TelegramActionResult:
     ``reply`` (never containing raw untrusted input beyond what a human
     already typed to the bot themselves) is what the poll loop sends back,
     if anything. ``action`` buckets the outcome for tests/observability:
-    ``"approve"``/``"deny"``/``"status"``/``"delegate"``/``"unauthorized"``/
-    ``"unparseable"``.
+    ``"approve"``/``"deny"``/``"status"``/``"delegate"``/``"wire"``/
+    ``"unauthorized"``/``"unparseable"``.
     """
 
     ok: bool
     reply: str
     authorized: bool
     action: str = ""
+
+
+@dataclass(frozen=True)
+class TelegramGroup:
+    """A Telegram group found during the guided ``docket wire`` flow."""
+
+    chat_id: str
+    title: str = ""
+
+
+@dataclass(frozen=True)
+class WireDiscoveryResult:
+    """Read-only result of looking for a one-time ``/wire`` challenge."""
+
+    ok: bool
+    configured: bool
+    groups: tuple[TelegramGroup, ...] = ()
+    error: str = ""
 
 
 def _authorize(chat_id: str) -> str | None:
@@ -291,6 +317,10 @@ def handle_message(msg: InboundMessage) -> TelegramActionResult:
     m = _DELEGATE_RE.match(text)
     if m:
         return _handle_delegate(agent_id, m.group(1).strip())
+    if _WIRE_RE.match(text):
+        return TelegramActionResult(
+            True, f"Telegram setup complete for '{agent_id}'.", True, "wire"
+        )
 
     return TelegramActionResult(True, _UNRECOGNIZED_REPLY, True, "unparseable")
 
@@ -316,6 +346,12 @@ class PollSummary:
 
 def _load_token() -> str:
     return _secrets.load_secrets().get(_cfg.TELEGRAM_BOT_TOKEN_KEY, "").strip()
+
+
+def wire_discovery_configured() -> bool:
+    """Whether guided Telegram discovery can use a stored bot token."""
+
+    return bool(_load_token())
 
 
 def _load_offset() -> int:
@@ -346,6 +382,46 @@ def _default_send_message() -> SendMessageFn:
     from docket.edges.adapters import telegram as _client
 
     return _client.send_message
+
+
+def discover_wire_groups(
+    challenge: str,
+    *,
+    get_updates: GetUpdatesFn | None = None,
+) -> WireDiscoveryResult:
+    """Find group messages matching ``/wire <challenge>`` exactly.
+
+    This is deliberately a read-only peek at Telegram updates. It starts at
+    the normal poller's durable offset but never advances that offset, routes
+    a message, or replies, so setup cannot consume unrelated channel work.
+    The one-time challenge prevents stale activity from another chat from
+    becoming a binding accidentally.
+    """
+
+    token = _load_token()
+    if not token:
+        return WireDiscoveryResult(ok=True, configured=False)
+
+    get_updates_fn = get_updates if get_updates is not None else _default_get_updates()
+    result = get_updates_fn(
+        token,
+        offset=_load_offset(),
+        timeout=2,
+        request_timeout=12.0,
+    )
+    if not result.ok:
+        return WireDiscoveryResult(ok=False, configured=True, error=result.error)
+
+    command = re.compile(rf"/wire(?:@\w+)?\s+{re.escape(challenge)}", re.IGNORECASE)
+    found: dict[str, TelegramGroup] = {}
+    for update in result.updates:
+        if update.chat_type not in {"group", "supergroup"}:
+            continue
+        if command.fullmatch(update.text.strip()) is None:
+            continue
+        found[update.chat_id] = TelegramGroup(update.chat_id, update.chat_title)
+
+    return WireDiscoveryResult(ok=True, configured=True, groups=tuple(found.values()))
 
 
 # The gap the built-in defaults (poll=25, request=35) leave above the poll

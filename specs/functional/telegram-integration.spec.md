@@ -1,14 +1,15 @@
 # Telegram Integration Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented. Docket owns the whole channel: `docket wire`/`docket unwire`
-record a peer/group binding in `fleet.json`, and `docket serve
+discovers a Telegram group from a one-time `/wire <code>` message (with manual entry as a
+fallback), records its binding in `fleet.json`, and `docket serve
 --telegram` long-polls the Telegram Bot API (`edges/adapters/telegram.py`, stdlib `urllib`, zero
 new dependencies) and routes `/approve`, `/deny`, `/status`, `/delegate` through docket's
 *existing* approval store and pod-delegation APIs (`core/telegram.py`). Telegram is now a real,
 fourth docket approval channel alongside CLI/HTTP/MCP — every grant/deny through it writes an
 `audit_log()` entry tagged `channel="telegram"`, exactly like the other three.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-20
 
 ## Purpose
 
@@ -65,15 +66,22 @@ blocked policy verdict never default to granting or denying anything.
 
 ### Wiring a group (docket wire)
 
-1. **MUST** prompt for the peer/group ID directly (manual entry). Docket has no channel activity
-   log from which to infer a safe list of recently active groups.
-2. **MUST** write a binding mapping the entered peer ID to the target agent into `fleet.json`
+1. For Telegram, when `TELEGRAM_BOT_TOKEN` is configured, **MUST** offer guided discovery before
+   manual entry: show a short one-time `/wire <code>` command, read Telegram updates after the
+   operator confirms it was sent, and accept only a group/supergroup message whose command and
+   code match exactly. The operator **MUST NOT** need `curl`, JSON inspection, or prior knowledge
+   of Telegram's numeric chat id.
+2. Discovery **MUST NOT** acknowledge, route, or reply to any Telegram update; the normal poller
+   remains responsible for the durable offset and for processing messages. A transport error, a
+   missing token, or no matching message **MUST** fall back to manual ID entry with a useful
+   explanation rather than inventing a binding.
+3. **MUST** write a binding mapping the discovered or entered peer ID to the target agent into `fleet.json`
    (`core/fleet.py`'s `upsert_binding`).
-3. **MUST** state plainly that the binding is the channel's entire authorization boundary: anyone
+4. **MUST** state plainly that the binding is the channel's entire authorization boundary: anyone
    who can post in the bound chat can act as that agent's operator once the bot is running.
-4. **SHOULD** show an existing binding for the agent, if any, before prompting for a new one.
-5. **MUST** fall back to the interactive agent picker when no agent id is supplied.
-6. **MUST NOT** invent a binding from empty input; an empty entry **MUST** abort cleanly
+5. **SHOULD** show an existing binding for the agent, if any, before prompting for a new one.
+6. **MUST** fall back to the interactive agent picker when no agent id is supplied.
+7. **MUST NOT** invent a binding from empty manual input; an empty entry **MUST** abort cleanly
    (exit 0, "Aborted").
 
 ### Unwiring a group (docket unwire)
@@ -104,9 +112,11 @@ blocked policy verdict never default to granting or denying anything.
 
 ### Command grammar (core/telegram.py)
 
-1. **MUST** recognize exactly four verbs: `/approve <token>`, `/deny <token>`, `/status`,
-   `/delegate <task description>`. No inline keyboards, no Markdown/HTML rich replies — a plain
-   text reply is the entire UI surface.
+1. **MUST** recognize four operational verbs: `/approve <token>`, `/deny <token>`, `/status`,
+   `/delegate <task description>`, plus the inert `/wire <code>` setup handshake. `/wire` never
+   creates or changes a binding inside the bot; after the CLI has bound the group, the normal
+   poller acknowledges the retained setup message with a plain confirmation. No inline keyboards,
+   no Markdown/HTML rich replies — a plain text reply is the entire UI surface.
 2. **MUST** route `/approve`/`/deny` through the *existing* `core.approval.approval_grant`/
    `approval_deny` (`channel="telegram"`) followed by `core.dispatch.resolve_waiting_approval` —
    the identical sequence `cli/_approve.py`/`cli/_deny.py` already use. This module never
@@ -134,7 +144,8 @@ blocked policy verdict never default to granting or denying anything.
 - Webhook mode (long-poll only)
 - Any outbound/unprompted message, including approval notifications and task-completion
   reports (see Command grammar 7) — a wired chat is a command surface, not a feed
-- Conversational chat: prose that is not one of the four verbs is refused, never routed
+- Conversational chat: prose that is not one of the four operational verbs or the inert `/wire`
+  setup handshake is refused, never routed
   to the bound agent as a turn
 - Inline keyboards or any rich UI beyond a plain-text reply
 - Discord/Slack/other chat platforms
@@ -146,7 +157,7 @@ blocked policy verdict never default to granting or denying anything.
 ### CLI Command Signatures
 
 ```bash
-# Bind a Telegram group/peer to an agent (manual peer/group ID entry)
+# Bind a Telegram group/peer to an agent (guided discovery, manual ID fallback)
 docket wire [agent-id] [--channel <name>]
 
 # Remove an agent's channel binding
@@ -171,6 +182,7 @@ docket serve --telegram
 /deny <token>              Deny a pending approval (channel="telegram" audit entry)
 /status                    List pending approvals scoped to the bound agent's project
 /delegate <task text>      Queue a task for the bound agent's pod (Lead bindings only)
+/wire <setup code>          Confirm an already-completed guided wire (no state change)
 ```
 
 ## Examples
@@ -181,9 +193,11 @@ docket serve --telegram
 $ docket wire mywebsite
 Wire Telegram: My Shop (mywebsite)
 
-Enter the peer/group ID from your telegram setup.
+In the Telegram group, send: /wire A1B2C3
+Then return here and press Enter.
 
-Telegram peer/group ID: -1001234567890
+Press Enter after sending it, or paste the group ID:
+[SUCCESS] Found Telegram group "My Shop Team"
 [SUCCESS] Binding: mywebsite ← telegram group -1001234567890
   This binding is the whole authorization story: whoever can post in this chat can now
   /approve, /deny, /status, or /delegate for 'mywebsite' once docket's own bot is running
@@ -232,9 +246,9 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
 ### Pre-conditions
 
 - No daemon-related pre-conditions — there is none. The operator **MUST** already know the
-  peer/group ID to enter for `docket wire` (no auto-discovery exists).
-- The bot **MUST** have a stored `TELEGRAM_BOT_TOKEN` to do anything beyond idling
-  (`docket keys add TELEGRAM_BOT_TOKEN`).
+  peer/group ID only when using the manual fallback.
+- The bot **MUST** have a stored `TELEGRAM_BOT_TOKEN` for guided discovery or polling
+  (`docket keys add TELEGRAM_BOT_TOKEN`); manual ID entry remains available without it.
 
 ### Post-conditions
 
@@ -259,6 +273,18 @@ entry `docket approve`/`POST /approvals/<token>` would write for the CLI/HTTP ch
   entries for a refusal carry only the chat id/update id/policy id, never the raw text.
 
 ## Changelog
+
+### Version 2.2.0 (2026-08-20)
+
+- Replaced Telegram's manual-ID-first setup with guided discovery: `docket wire` gives the
+  operator a one-time `/wire <code>` command and resolves the matching group/supergroup directly
+  from the existing Bot API adapter. Manual ID entry remains the fallback for missing tokens,
+  transport failures, and advanced use.
+- Discovery is read-only with respect to Telegram's durable update offset: it neither consumes
+  nor routes unrelated messages, and an exact one-time code prevents stale activity in another
+  group from being selected accidentally.
+- The normal poller treats the retained `/wire` update as an inert setup confirmation after the
+  CLI has created the binding, avoiding a misleading “unrecognized command” reply.
 
 ### Version 2.1.0 (2026-08-19)
 

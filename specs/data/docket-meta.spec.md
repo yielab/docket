@@ -149,7 +149,8 @@ this one file (P19-6: there is no longer a second file to mirror either into).
 
 ## Field rules
 
-- `kind` MUST be `project` (for `docket add` agents) or `specialist` (for `docket install` agents).
+- `kind` MUST be `project` (for project agents) or `specialist` (for the org agents lazily
+  bootstrapped by the first `docket init`).
 - `workspaceKind`, when present, MUST be `codebase` or `workdir` (ROADMAP Phase 16 W-7); absent
   means `codebase` (every record written before W-7, and every `codebase`-kind pod member since).
 - `codebase` MUST be a readable absolute path for a `codebase`-kind agent; MUST be empty for a

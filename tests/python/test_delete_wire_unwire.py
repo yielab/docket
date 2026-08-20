@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -201,13 +202,48 @@ class TestCmdUnwire:
 
 
 class TestCmdWire:
-    """`docket wire` is manual entry only -- there is no gateway log to scan
-    a peer's activity from (see cli/__init__.py's cmd_wire). docket's own
-    Telegram bot (`docket serve --telegram`) makes the binding this command
-    records the *entire* authorization boundary for it (see
-    core/telegram.py), so the output says that plainly instead of "nothing
-    listens on it yet".
+    """`docket wire` discovers Telegram groups through docket's bot, while
+    retaining manual entry as a fallback. The binding it records is the
+    *entire* authorization boundary (see core/telegram.py), so the output
+    states that plainly.
     """
+
+    def test_wire_discovers_group_without_numeric_id_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        import docket.config as cfg
+        from docket.cli import app
+        from docket.core import telegram
+
+        home = _setup_agent(tmp_path)
+        monkeypatch.setattr(cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+        monkeypatch.setattr(cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+        monkeypatch.setattr(
+            cfg, "CONVERSATIONS_FILE", home / "docket-conversations.json", raising=True
+        )
+        monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
+        monkeypatch.setattr(
+            telegram,
+            "discover_wire_groups",
+            lambda challenge: SimpleNamespace(
+                ok=True,
+                configured=True,
+                groups=(SimpleNamespace(chat_id="-100456", title="My Shop Team"),),
+                error="",
+            ),
+            raising=False,
+        )
+        monkeypatch.setattr("secrets.token_hex", lambda size: "a1b2c3")
+
+        result = CliRunner().invoke(app, ["wire", "myshop"], input="\n")
+
+        assert result.exit_code == 0, result.output
+        assert "/wire A1B2C3" in result.output
+        assert "My Shop Team" in result.output
+        fleet = json.loads((home / "fleet.json").read_text())
+        assert fleet["bindings"][0]["peerId"] == "-100456"
 
     def test_wire_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)

@@ -4,9 +4,10 @@ EXIT:0
 _docket() {
   local -a commands
   commands=(
-    'install:Bootstrap a docket-native home + specialist agents'
     'list:List all project agents'
-    'add:Add a new project agent (interactive or --from <spec-file>)'
+    'status:Show current-project status, or every project with --all'
+    'add:Add role agents to an existing project pod'
+    'init:Initialize the current project with its minimum isolated pod'
     'info:Detailed status of one agent'
     'delete:Remove a project agent or a whole pod, and optionally its workspace'
     'maintain:Maintain an agent workspace (check/clean/reset/rebuild/sessions/distill)'
@@ -56,6 +57,7 @@ _docket() {
   fi
 
   case "${words[2]}" in
+    status)          compadd --all --json ;;
     maintain)        (( CURRENT == 3 )) && _docket_ids || compadd check clean reset rebuild sessions distill ;;
     scope)           (( CURRENT == 3 )) && _docket_ids || compadd show set reset ;;
     context)         (( CURRENT == 3 )) && _docket_ids || compadd show project ;;

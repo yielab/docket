@@ -45,6 +45,7 @@ from docket.core import fleet as _fleet
 from docket.core import policy as _policy
 from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
+from docket.edges.adapters.telegram import TelegramUpdate
 
 
 @pytest.fixture(autouse=True)
@@ -91,6 +92,10 @@ class TestUnauthorizedSenderIsRefused:
         outcome = _tg.handle_message(_msg("-999999", "/delegate do something"))
         assert not outcome.authorized
 
+    def test_an_unbound_chat_cannot_wire_itself(self) -> None:
+        outcome = _tg.handle_message(_msg("-999999", "/wire A1B2C3"))
+        assert not outcome.authorized
+
     def test_unauthorized_attempt_is_audited_without_the_message_body(self) -> None:
         _tg.handle_message(
             _msg("-999999", "/approve apr-fake-token-should-not-appear", update_id=7)
@@ -109,6 +114,17 @@ class TestUnauthorizedSenderIsRefused:
         outcome = _tg.handle_message(_msg("-100200", "/status"))
         assert outcome.authorized
         assert outcome.ok
+
+
+def test_wire_handshake_only_confirms_an_existing_binding() -> None:
+    _bind("demo-lead", "-100456")
+
+    outcome = _tg.handle_message(_msg("-100456", "/wire A1B2C3"))
+
+    assert outcome.ok
+    assert outcome.authorized
+    assert outcome.action == "wire"
+    assert "setup complete" in outcome.reply.lower()
 
 
 class TestUnauthorizedSenderIsAPlantedDriftProof:
@@ -420,6 +436,49 @@ class TestRequestTimeoutIsThreadedFromConfig:
         assert summary.ok
         assert summary.warning == ""
         assert calls[0]["request_timeout"] == 40.0
+
+
+class TestWireDiscovery:
+    def test_exact_challenge_discovers_only_groups_without_advancing_offset(self) -> None:
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        _cfg.TELEGRAM_OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _cfg.TELEGRAM_OFFSET_FILE.write_text('{"offset": 40}')
+        calls: list[dict[str, object]] = []
+
+        def _updates(token: str, **kwargs: object) -> _tg.GetUpdatesResult:
+            calls.append({"token": token, **kwargs})
+            return _tg.GetUpdatesResult(
+                True,
+                updates=(
+                    TelegramUpdate(41, "101", "7", "/wire A1B2C3", "private", "Ada"),
+                    TelegramUpdate(42, "-100123", "7", "/wire WRONG", "supergroup", "Wrong Team"),
+                    TelegramUpdate(
+                        43, "-100456", "7", "/wire@docket_bot A1B2C3", "group", "Right Team"
+                    ),
+                ),
+            )
+
+        result = _tg.discover_wire_groups("A1B2C3", get_updates=_updates)
+
+        assert result.ok
+        assert result.configured
+        assert result.groups == (_tg.TelegramGroup("-100456", "Right Team"),)
+        assert calls == [{"token": "123:abc", "offset": 40, "timeout": 2, "request_timeout": 12.0}]
+        assert json.loads(_cfg.TELEGRAM_OFFSET_FILE.read_text()) == {"offset": 40}
+
+    def test_missing_token_and_transport_failure_are_typed_fallbacks(self) -> None:
+        missing = _tg.discover_wire_groups("A1B2C3")
+        assert missing.ok
+        assert not missing.configured
+
+        _secrets.save_secrets({"TELEGRAM_BOT_TOKEN": "123:abc"})
+        failed = _tg.discover_wire_groups(
+            "A1B2C3",
+            get_updates=lambda *a, **k: _tg.GetUpdatesResult(False, error="offline"),
+        )
+        assert not failed.ok
+        assert failed.configured
+        assert failed.error == "offline"
 
 
 class TestRequestTimeoutInvariantIsEnforced:

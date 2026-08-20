@@ -32,3 +32,9 @@ Name the exact failed check or unimplemented behavior instead of saying only “
 Recommend one next action that closes the highest-impact remaining gap. Suggest parallel work only
 when its owning spec and touched code/state do not overlap this change; roadmap scheduling still
 belongs to `$docket-roadmap`.
+
+For CLI commands that accept free-form text, test the real parser boundary with both one quoted argv
+item and equivalent split positional argv. Shell quote delimiters are gone before application
+parsing; do not declare quoting mandatory when the command can preserve the same text by rebuilding
+its documented positional field. Assert the exact value that reaches persisted or dispatched state,
+not only the success message.

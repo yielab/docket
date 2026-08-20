@@ -111,8 +111,9 @@ back to running unsandboxed.
 **Everything else** (provisioning, health, cost guardrails) is operational tooling that keeps
 this three-layer stack running reliably:
 
-- **One-command provisioning**: `docket add` provisions a pod (Lead + Implementer by default);
-  `docket add --from agents.yaml` provisions a declarative, version-controlled fleet.
+- **One-command provisioning**: `docket init` lazily prepares shared workstation state and
+  provisions the current project's pod (Lead + Implementer by default); `docket init --from
+  agents.yaml` provisions a declarative, version-controlled fleet.
 - **Real pod dispatch**: `docket pod <project> dispatch` runs one full Lead → Implementer →
   Reviewer → Tester pipeline turn, budget-gated and traced. `docket serve --dispatch` drives
   every pod's queue in the background.
@@ -227,7 +228,8 @@ docket unwire myproject-lead         # remove the binding
 
 Add `--dispatch` if you want a delegated task to actually run rather than sit queued.
 
-Setup is manual today (create a bot, add it to a group, run `wire`) — see
+Setup is guided: create a bot, add it to a group, then run `wire` and send the one-time command it
+shows—no numeric Telegram ID lookup is required. See
 [docs/commands.md](docs/commands.md#wire) for the walkthrough.
 
 ## Install
@@ -244,8 +246,8 @@ curl -fsSL https://raw.githubusercontent.com/yielab/docket/main/install.sh | bas
 git clone https://github.com/yielab/docket.git
 cd docket && ./install.sh   # installs to ~/.local; DOCKET_PREFIX to override
 
-# Then bootstrap docket's home + the org specialist team
-docket install
+# Then, from a project, initialize everything Docket needs + its minimum pod
+cd ~/code/myproject && docket init
 ```
 
 ```bash
@@ -267,12 +269,15 @@ Point docket at a model with `docket keys add <PROVIDER>_API_KEY`, or set `DOCKE
 ## 60-second tour
 
 ```bash
-docket add myproject ~/code/myproject    # provision a pod (Lead + Implementer)
+docket init                              # in a repo: provision its pod (Lead + Implementer)
+docket add reviewer                     # expand the current pod with another role
 docket pod myproject                     # inspect pod members, roles, isolation details
 docket pod myproject delegate "Add auth" # queue a task for the pod
 docket pod myproject dispatch            # run Lead → Implementer pipeline once
-docket list                              # see every agent, scope, and pod at a glance
-docket doctor                            # fleet health: drift, runaway, stale sessions
+docket status                            # current project: members, tasks, readiness
+docket status --all                      # global summary, one row per project
+docket list                              # detailed global agent inventory
+docket doctor                            # workstation health: drift, runaway, stale sessions
 docket gates status                      # governance posture: approval gates, audit log
 docket profile myproject --budget 5      # cap spend; auto-pauses the pod on breach
 docket profile myproject --resume        # clear an auto-pause, unblock the pod's queue
@@ -314,12 +319,12 @@ That's the loop: **provision → delegate → dispatch → keep healthy → keep
 | **Every tool call through one policy chokepoint** | — | ✅ `pre_input`/`pre_tool_call`/`pre_output`, AST-enforced single path |
 | **Argument-aware command classification** | allowlist by binary, if any | ✅ reads the whole line and every `;`/`&&`/`\|` segment |
 | **Role→toolset as data** | prompt-level instruction | ✅ a Reviewer's registry has no `write`/`edit`/`bash` to call |
-| One-command per-project pod provisioning | — | ✅ `docket add` (stack auto-detect) |
+| One-command per-project pod provisioning | — | ✅ `docket init` (lazy global bootstrap + stack auto-detect) |
 | Project isolation: session keys (no context leak) | — | ✅ `agent:<id>:<project>` per pod member |
 | Project isolation: runtime resources (ports + scratch) | — | ✅ disjoint port range + scratch dir, injected into the real env |
 | Project isolation: git worktree per Implementer | partial | ✅ dedicated branch + worktree; flat-workspace fallback |
 | Pod pipeline dispatch (Lead → Implementer → Reviewer → Tester) | — | ✅ `docket pod <p> dispatch` / `serve --dispatch` |
-| Declarative fleet from version-controlled YAML | — | ✅ `docket add --from` |
+| Declarative fleet from version-controlled YAML | — | ✅ `docket init --from` |
 | Drift / health / runaway detection | — | ✅ `docket doctor` |
 | Role → cheapest-adequate-model policy | manual | ✅ one-command repolicy |
 | Per-agent USD budget cap + auto-pause | — | ✅ `docket profile <id> --budget` |
@@ -388,9 +393,8 @@ change was reviewed and validated before it landed." Full model in **[Agent Team
   line must read `PASS`/`FAIL` — a `FAIL` or unparseable report ends the task the same way
   (a rework-eligible verdict is retried first, bounded by `maxReworkCycles`),
   instead of "the Tester agent said it was fine" being taken on faith.
-- **Org specialists** — `security`, `knowledge`, and `manager` are created once by `docket install`
-  and shared across the fleet (`scope: org`). An optional org **Portfolio Manager**
-  (`docket install --portfolio`) adds cross-pod fleet visibility — advisory only, never a pod member.
+- **Org specialists** — `security`, `knowledge`, and `manager` are created lazily by the first
+  `docket init` and shared across the fleet (`scope: org`).
 - **Session key** (`agent:<id>:<project>`) — the isolation primitive; prevents cross-project
   contamination and enables parallel work. Change with `docket scope <id> set <key>`.
 - **Role→model policy** — each role maps to the cheapest adequate model; change a role once and
@@ -440,8 +444,8 @@ a context reset — all of it under `~/.docket/`:
 ## Command reference
 
 ```bash
-docket install [--portfolio] [--no-gates]  # Bootstrap docket's home + org specialists
-docket add [id] [path]                     # Create a project pod (--from spec.yaml for a fleet)
+docket init [id] [path]                    # Bootstrap if needed + create a minimum project pod
+docket add <role> [--project <id>]         # Add role agent(s) to an existing pod
 docket pod <id> [add <role> | remove <m>]  # Inspect/resize a pod
 docket pod <id> delegate/queue/dispatch    # Queue and run pod work
 docket list / info <id> / delete <id>      # Fleet-wide view / one agent / teardown
@@ -471,15 +475,15 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,238 tests** in the pytest suite (`tests/python/`)
-- **~28,154 lines** of Python in the shipped `docket` package
+- **2,262 tests** in the pytest suite (`tests/python/`)
+- **~28,601 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
-- **36 commands**, each documented in [docs/commands.md](docs/commands.md)
+- **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
 uv run python scripts/smoke_workflow.py                # observable full workflow, no credentials
 uv run python scripts/smoke_workflow.py --live-model   # realistic memory-backed repair on :8081
-uv run pytest                                        # 2,238-test Python suite
+uv run pytest                                        # 2,262-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
