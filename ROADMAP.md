@@ -44,7 +44,7 @@ open from a measured small-context dispatch failure.** Executable cards live in
 | — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
 | — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
 | — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
-| — | **Wave 25** (not a phase): lossless CLI delegation + endpoint-aware request fit | ◉ triggered (2026-08-20) — an unquoted task was reduced to one word, then an empty-history turn grew to 17,643 tokens against a registered 16,384-token endpoint; cards W25-C1/C2 are on the active board |
+| — | **Wave 25** (not a phase): live-model request and outcome truth | ◉ triggered (2026-08-20) — lossless delegation/request fit plus measured convergence, run-outcome, and byte-exact smoke defects; cards W25-C1–C5 are on the active board |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):

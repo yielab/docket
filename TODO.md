@@ -13,11 +13,15 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD (2026-08-20) — Wave 25 context-fit incident
+> ## ◉ ACTIVE BOARD (2026-08-20) — Wave 25 live-model truth pass
 >
 > A real unquoted `docket pod ... delegate create a file ...` stored only `"create"`. The resulting
 > underspecified turn then grew to 17,643 tokens against the selected endpoint's registered
-> 16,384-token window. Wave 25 separates those two independently shippable defects.
+> 16,384-token window. Re-running realistic work after the model recovered exposed three further
+> independent failures: a correct repair exhausted the cumulative turn budget before finalizing,
+> its failed task was recorded as a successful run, and the basic canary's mechanical gate accepted
+> an artifact that violated its own byte-exact final assertion. Wave 25 keeps each cause separately
+> testable and shippable.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -95,7 +99,7 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ◉ WAVE 25 ACTIVE (2026-08-20) — lossless delegation and request fit
+## ◉ WAVE 25 ACTIVE (2026-08-20) — live-model request and outcome truth
 
 ### W25-C1 — preserve the complete delegated task text
 
@@ -191,6 +195,141 @@ endpoint window.
 
 **Contention:** owns the loop/request-limit/session-compaction seams and the mutable local endpoint.
 No parallel context/session/MCP-output lane may touch those functions or run the same live canary.
+
+### W25-C3 — reserve a truthful terminal response inside the turn budget
+
+**Status:** BLOCKED (needs W25-C2) · **Size:** M
+
+**Measured trigger:** the repeated real `memory-maintenance` canary reached the correct product
+result: the Implementer repaired the module and the four regressions plus hidden acceptance passed.
+The agent then made three further tool-enabled rounds instead of returning a tool-free final
+response. After 13 assistant turns and 18 tool results, cumulative usage reached 100,724 tokens
+against the normal 100,000-token budget; `run_agent_turn` failed the task at the start of the next
+iteration. No individual request exceeded the endpoint's 16,384-token context window in this run.
+
+**Goal:** preserve the hard cumulative turn budget while reserving a bounded opportunity to
+finalize: when another tool-enabled round no longer fits the remaining budget, make at most one
+explicit tool-free finalization request if that request and its output reserve fit; otherwise fail
+locally before another backend call. A model must not be able to spend the final usable budget on
+another optional tool round and strand already-correct work without a terminal response.
+
+**Non-goals:** no higher token/iteration limits, inference that a task is complete merely because a
+shell command passed, filename/test-wording heuristic, model-specific branch, silent truncation of
+history, splitting an assistant tool-call/result unit, or bypass of mechanical, Reviewer, Tester,
+policy, or approval gates. W25-C2 still owns per-request context-window fit; this card owns only
+cumulative turn convergence after that request-fit seam exists.
+
+**Live path / files:** `core/dispatch.py` calls
+`edges/adapters/docket_runtime.py::DocketDriver.run_turn` →
+`core/agent_loop.py::run_agent_turn`. Own `LoopConfig.token_budget`, cumulative usage accounting,
+the decision immediately before `backend.complete`, the tool-free terminal-response path, focused
+agent-loop/driver tests, and `specs/functional/agent-loop.spec.md`. Reuse W25-C2's prospective
+request estimate and selected-endpoint limits rather than introducing a second estimator.
+
+**RED test:** through the default driver, script a correct edit and validation followed by a model
+attempt to request another tool when the remaining cumulative budget cannot fund another normal
+tool-enabled completion but can fund one bounded finalization. Assert the next backend call carries
+no tools, explicitly requests the terminal response, persists that response, and returns success
+without exceeding the budget. The current loop sends the next ordinary tool-enabled request or
+fails on the following iteration. A second case leaves too little budget even for finalization and
+asserts no backend call is made and the existing actionable `token_budget` failure is returned.
+
+**Acceptance:** preflight cumulative usage before every completion using measured prior usage plus
+the same request/output reserve established by W25-C2; enter finalization at most once; offer no
+tools during that call; preserve complete atomic history; trace why finalization was entered and
+the remaining estimate without raw content; keep cancellation and backend errors fail-closed. A
+focused deterministic test covers normal continuation, successful forced finalization,
+irreducible-budget failure, and a finalization reply that still attempts a tool call. The repeated
+real `memory-maintenance` canary completes under the existing 100,000-token budget without weakening
+its public/hidden acceptance, followed by the full static/pytest/golden/spec/metrics gates.
+
+**Contention:** blocked until W25-C2 lands because both edit `run_agent_turn`, request estimation,
+driver tests, the agent-loop spec, and use the mutable local endpoint. It cannot run in parallel
+with C2; once C2 closes, C3 owns the cumulative-budget/finalization branch only.
+
+### W25-C4 — make run records reflect returned task failures
+
+**Status:** TODO · **Size:** S
+
+**Measured trigger:** the realistic canary returned a normal `TaskResult` with
+`status="failed"` and reason `exceeded token_budget=100000 (used 100724)`, while its persisted run
+record ended `state="succeeded"` with an empty `error`. `core.runs.execute` currently marks every
+non-throwing result list successful; focused coverage proves exceptions and `status="done"` but not
+a returned failed task.
+
+**Goal:** make the run registry report the result of the dispatch invocation, not merely whether
+Python raised: any returned failed task makes the run failed, preserves every returned task id, and
+records a bounded actionable reason. All dispatch sources must observe the same truth through the
+existing `runs.execute` chokepoint.
+
+**Non-goals:** no new run state or persisted-shape migration, change to `TaskResult` statuses,
+dispatch retry/rework semantics, task-state mutation, exception propagation, or conversion of
+`waiting_approval`/`blocked` into failures. Concurrent cancellation remains terminal and wins over a
+later returned result.
+
+**Live path / files:** CLI, webhook, schedule, sweep, and MCP dispatch already converge on
+`core/runs.py::execute`; `dispatch.TaskResult` exposes `task_id`, `status`, and `reason` for
+duck-typed folding. Own that outcome fold, `tests/python/test_dispatch_run_records.py`, the run
+semantics in `specs/data/serve-read-api.spec.md`, and the existing state/error description in
+`specs/data/cli-json-shapes.spec.md` only if clarification is required; no writer bypasses
+`edges/store.py`.
+
+**RED test:** have the real `runs.execute` wrapper receive a normal list containing
+`TaskResult(task_id="task-failed", status="failed", reason="turn budget exhausted")`. Assert the
+persisted run is `failed`, retains the task id, carries the reason, and emits the same error trace
+class as an exception failure. The current path records `succeeded`. Cover a mixed result list,
+`done`, `waiting_approval`, `blocked`, and a concurrent cancellation that must not be clobbered.
+
+**Acceptance:** fold the returned list once after `fn` completes; `failed` wins if any item has that
+status, with a deterministic bounded summary of failing task ids/reasons and no raw model/tool
+content; otherwise preserve current successful invocation semantics. Keep the result list return
+value and exception behavior unchanged. Focused tests exercise the shared wrapper rather than five
+source-specific copies; the run specs receive a truthful version/status/changelog update; full
+pytest/static/golden/spec/metrics gates pass.
+
+**Contention:** owns only `core/runs.py::execute`, its focused run-record tests, and run-semantics
+spec clauses. It is independent of C2/C3/C5 and may run in parallel if central board/spec-index
+rollups remain integrator-owned.
+
+### W25-C5 — make the basic live gate enforce its byte-exact artifact contract
+
+**Status:** TODO · **Size:** S
+
+**Measured trigger:** the repeated real basic canary completed all five hops and reached task state
+`done`, but the final harness rejected `smoke-artifact.txt`: it contained the 15 bytes
+`docket smoke ok` with no terminal LF instead of the asserted 16 bytes `docket smoke ok\n`.
+The mechanical command `test "$(cat smoke-artifact.txt)" = "docket smoke ok"` strips trailing
+newlines by shell command substitution, so it accepts both files and cannot enforce the final
+contract Reviewer and Tester rely on.
+
+**Goal:** state one byte-exact artifact contract and enforce it at the Implementer's mechanical
+gate, before review/approval/task completion, while retaining the independent final harness
+assertion as defense in depth.
+
+**Non-goals:** no product-wide newline policy, global prompt change, model-specific instruction,
+pipeline-engine change, weakening of the final exact assertion, or replacement of the real tool and
+gate path with direct harness writes.
+
+**Live path / files:** `scripts/smoke_workflow.py::_write_inputs` creates the basic scenario's task
+description and `verify_command`; the final artifact assertion is in the same harness.
+`tests/python/test_workflow_smoke.py` and the Full-workflow smoke section of
+`specs/test-framework.md` own acceptance.
+
+**RED test:** generate the real basic mechanical command, run it against a 15-byte no-newline
+artifact, and assert non-zero; then run it against the exact 16-byte artifact and assert success.
+The current command passes both. Keep a separate assertion that the delegated task text explicitly
+requires one terminal LF and an end-to-end deterministic smoke case that reaches `done` only for
+the exact artifact.
+
+**Acceptance:** use a portable mechanical check that compares exact bytes including the single
+terminal LF and rejects missing/extra bytes or lines; make the delegated task wording unambiguous;
+leave the hidden final `read_text() == "docket smoke ok\n"` check intact. Deterministic smoke and
+focused pytest pass; the opt-in real `--live-model --scenario basic` canary completes without a
+post-`done` artifact mismatch; full static/pytest/golden/spec/metrics gates pass.
+
+**Contention:** owns the basic fixture/gate/assertion in `scripts/smoke_workflow.py`, its focused
+workflow-smoke tests, and the test-framework smoke clause. It does not overlap C2–C4, but no second
+live canary may share the mutable local endpoint while its acceptance run is in progress.
 
 ---
 
