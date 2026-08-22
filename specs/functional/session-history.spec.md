@@ -1,11 +1,13 @@
 # Session History Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented and live. `core/agent_loop.py` loads, compacts, and appends this durable
 history on the production `DocketDriver` path. Wave 20 card W20-C2 wired the previously dormant
 compactor before each task-completion backend call. Wave 20 card W20-C4 gives every pod-dispatch
-pipeline step its own history key while preserving the task-wide trace identity.
-**Last Updated**: 2026-08-19
+pipeline step its own history key while preserving the task-wide trace identity. Wave 25 adds a
+bounded range mode so per-request fit can preserve the current task verbatim while compacting only
+older history or completed same-turn tool units.
+**Last Updated**: 2026-08-22
 
 ## Purpose
 
@@ -84,8 +86,10 @@ This specification does NOT cover:
 11. When a session's estimated size exceeds its budget, compaction **MUST** replace the oldest
     atomic units with a single summarising message rather than truncating or deleting them
     outright.
-12. Compaction **MUST** always retain at least the single most-recent atomic unit, even if that
-    unit alone exceeds the configured budget.
+12. Whole-session compaction **MUST** always retain at least the single most-recent atomic unit,
+    even if that unit alone exceeds the configured budget. A caller selecting a bounded message
+    range **MAY** explicitly allow every unit in that range to be summarized only when at least one
+    unselected message remains as the verbatim conversational anchor.
 13. Compaction **MUST** always retain any leading system-role messages verbatim.
 
 ### Budgeting honesty
@@ -137,6 +141,12 @@ This specification does NOT cover:
 27. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
     **MUST** also report the number of summary rounds and the largest estimated summary-prompt size,
     named explicitly as estimates.
+28. An optional half-open compaction range **MUST** preserve every message outside that range
+    byte-for-byte and **MUST** reject a boundary that splits an assistant/tool-result atomic unit.
+    Range indexes apply to the record loaded under the session lock. This mode exists for the live
+    request-fit caller to compact prior history separately from completed same-turn tool units while
+    retaining the current user task verbatim; it **MUST NOT** introduce an in-memory-only history
+    that differs from the durable record sent after reload.
 
 ## Interface Contracts
 
@@ -157,7 +167,9 @@ def find_unanswered_tool_calls(messages: Sequence[ChatMessage]) -> list[str]: ..
 class CompactionPlan:                          # keep_head, to_summarize, keep_tail, .needed
     ...
 
-def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> CompactionPlan: ...
+def plan_compaction(
+    messages: Sequence[ChatMessage], budget_tokens: int, *, keep_latest_unit: bool = True,
+) -> CompactionPlan: ...
 
 # durable I/O (edges/store.py underneath)
 def load_session(session_key: str, *, sessions_dir: Path | None = None) -> SessionRecord: ...
@@ -187,6 +199,8 @@ def compact_session(
     summarizer_session_key: str | None = None, # default: derived key distinct from session_key
     budget_tokens: int | None = None,          # default: context.budget_for_role(role)
     summary_input_budget_tokens: int | None = None, # default: context.budget_for_role(role)
+    compact_range: tuple[int, int] | None = None, # half-open; boundaries must be atomic
+    keep_latest_unit: bool = True, # False requires a non-empty unselected anchor
     timeout: int | None = None,
     label: str = "",
     now: str | None = None,
@@ -309,6 +323,12 @@ result = sess.compact_session(
 - A compaction summarizer **MUST NOT** be able to re-enter compaction, even with another key.
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-22)
+
+- W25-C2 adds fail-closed ranged compaction: the request-fit loop can preserve the exact current
+  task outside the selected range while atomically summarizing older history or completed
+  same-turn tool units, then reload the single durable result before transport.
 
 ### Version 1.3.0 (2026-08-19)
 

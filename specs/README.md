@@ -132,7 +132,7 @@ Each specification document must include:
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.12.0 | Complete | `docket init` creates the project pod; `docket add` only extends an existing pod; pod deletion purges runtime/session/trace state but preserves audit; `maintain distill` + exact durable records |
-| Agent Loop | 1.10.0 | Partially implemented and live | The production turn loop is gated, role-narrowed, durably compacted, and trace-separated; W25-C2 tracks the measured missing per-request fit check against the selected endpoint's context window |
+| Agent Loop | 1.11.0 | Implemented and live | The production turn loop is gated, role-narrowed, durably compacted, trace-separated, and preflights every known-window task/summary request including tools and output reserve; same-turn growth compacts atomically or fails locally |
 | API Keys | 1.1.0 | Complete | |
 | Audit | 2.8.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*`, `models.*`, `runs.cancel`, `mcp_servers.*`, and `telegram.*` are covered; actions taken outside Docket remain structurally outside its log |
 | Cost Tracking | 1.6.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
@@ -142,7 +142,7 @@ Each specification document must include:
 | Pod Dispatch | 6.4.0 | Complete | Hop execution/history/handoff behavior is live; the CLI preserves complete delegated task text from quoted or split argv |
 | Role Archetypes | 1.6.0 | Implemented | Built-ins, load-bearing `gateContract`, pod-blueprint composition, per-role `tokenBudget`, enforced `deniedTools`, and Docket-owned user overlays |
 | Security Gates | 0.15.0 | Implemented (on by default) | Every tool call Docket dispatches passes through `core/tools.py`; approvals include the redacted rendered call, and argument-aware policy, optional isolation, and inspectable allowlisted fetch share that chokepoint. General egress remains open by decision D-23 |
-| Session History | 1.3.0 | Implemented and live | `core/session.py`: durable history under caller-owned opaque keys, lossless message round-trip, bounded hierarchical atomic compaction, isolated summarizer key, recursion guard, and whole-operation fail-closed behavior; W20-C4 adds step-scoped dispatch keys without migrating old records |
+| Session History | 1.4.0 | Implemented and live | `core/session.py`: durable opaque-key history, lossless round-trip, bounded hierarchical atomic/ranged compaction, isolated summarizer key, recursion guard, and whole-operation fail-closed behavior; request fit can preserve the current task while compacting selected history |
 | Session Scoping | 2.0.0 | Complete | Base metadata scope remains `agent:<id>:<project>`; pod dispatch derives isolated step-history keys and keeps a separate task trace without deleting prior sessions (W20-C4) |
 | Telegram Integration | 2.2.0 | Complete | `docket wire` discovers a group from a one-time Telegram command with manual fallback; Docket owns the bot and approval path, unbound chats fail closed, and delegated text passes through input policy |
 | Workspace Structure | 1.8.0 | Complete | `DOCKET_HOME` is the only state root; specialist and workdir workspace contracts plus role-aware `TOOLS.md` are live |
@@ -154,7 +154,7 @@ Each specification document must include:
 | docket-meta schema | 2.9.0 | Complete | Docket-owned `~/.docket` paths and `core/fleet.py` metadata access; `requireApprovalRoles`; `blueprint`/`workspaceKind`/`workDir` |
 | Serve Read API | 2.6.0 | Stable | Pinned by `tests/python/test_serve_read_api.py`; `/runs`, tasks/traces/pods, guardrail + loop metrics; the versioned `gateway` field is an always-inactive compatibility field |
 | Input Validation | 1.3.0 | Complete | Docket-owned store and protocol-boundary validation |
-| Test Framework | 2.5.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, proportional validation, a deterministic CLI→HTTP→runtime smoke, and opt-in real-model basic plus memory-maintenance canaries |
+| Test Framework | 2.6.0 | Active | Hermetic `DOCKET_HOME`, injectable runtime ports, golden fixtures, proportional validation, a deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, and a basic artifact gate that enforces its terminal LF byte-exactly |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links

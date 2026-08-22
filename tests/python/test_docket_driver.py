@@ -78,6 +78,7 @@ class _ScriptedBackend:
     def __init__(self, responses: Sequence[ChatResponse]) -> None:
         self._responses = list(responses)
         self.calls: list[list[ChatMessage]] = []
+        self.max_tokens_seen: list[int | None] = []
 
     def complete(
         self,
@@ -89,6 +90,7 @@ class _ScriptedBackend:
         timeout: int = 120,
     ) -> ChatResponse:
         self.calls.append(list(messages))
+        self.max_tokens_seen.append(max_tokens)
         return self._responses.pop(0)
 
 
@@ -116,6 +118,34 @@ def _never_called(model: str):  # pragma: no cover - only exercised on a real bu
 
 
 class TestRunTurn:
+    def test_registered_limits_reach_the_loop_and_transport(self) -> None:
+        _write_meta("bounded-agent")
+        backend = _ScriptedBackend([_final_response("bounded")])
+        backend.context_window_tokens = 4096  # type: ignore[attr-defined]
+        backend.max_output_tokens = 64  # type: ignore[attr-defined]
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn("bounded-agent", "agent:bounded-agent:default", "hi", 60)
+
+        assert result.ok
+        assert backend.max_tokens_seen == [64]
+
+    def test_irreducible_registered_window_fails_before_transport(self) -> None:
+        _write_meta("tiny-window-agent")
+        backend = _ScriptedBackend([_final_response("must not be called")])
+        backend.context_window_tokens = 1  # type: ignore[attr-defined]
+        backend.max_output_tokens = 1  # type: ignore[attr-defined]
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn(
+            "tiny-window-agent", "agent:tiny-window-agent:default", "keep this exact", 60
+        )
+
+        assert not result.ok
+        assert result.failure_kind == "invalid_output"
+        assert "registered context window 1" in result.error
+        assert backend.calls == []
+
     def test_happy_path_final_message_costs_nothing(self) -> None:
         _write_meta("solo-agent")
         backend = _ScriptedBackend([_final_response("hello there", TokenUsage(12, 4))])

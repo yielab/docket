@@ -1,7 +1,7 @@
 # Agent Loop Specification
 
-**Version**: 1.10.0
-**Status**: Partially implemented and **live in production**. `core/agent_loop.py` owns the turn and
+**Version**: 1.11.0
+**Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
@@ -13,9 +13,10 @@ configured MCP server's tools are reachable from a live turn and correctly narro
 kind-based narrowing this depended on. **Wave 20 card W20-C2** made session compaction part of
 this same live path before each task-completion call. **Wave 20 card W20-C4** separates the durable
 history coordinate from the trace coordinate so pod steps do not replay another role's raw turns.
-The loop does not yet preflight each prospective request against the selected endpoint's registered
-context window; W25-C2 tracks the measured same-turn overflow described below.
-**Last Updated**: 2026-08-20
+Every prospective task or compaction request is preflighted against the selected endpoint's
+registered context window when that endpoint advertises one; same-turn tool growth is compacted
+through the durable atomic path before transport rather than relying only on pre-turn history size.
+**Last Updated**: 2026-08-22
 
 ## Purpose
 
@@ -232,7 +233,7 @@ This specification does NOT cover:
     and `trace_session_key` values **MUST** select only the trace directory/stream; when omitted
     they **MUST** default to `ctx.project`/`session_key` so every existing non-dispatch caller
     remains behaviorally unchanged.
-41. Every `session_compaction`, `tool_call`, and `tool_result` event produced inside the loop
+41. Every `session_compaction`, `request_fit`, `tool_call`, and `tool_result` event produced inside the loop
     **MUST** use the resolved trace coordinate. No trace helper may cause messages or usage to be
     loaded from or appended to that trace coordinate.
 42. `DocketDriver.run_turn` **MUST** pass its `session_key` to `ToolContext` and the loop as the
@@ -245,31 +246,37 @@ This specification does NOT cover:
     histories. A trace-only task key is not a durable session and **MUST NOT** be fabricated by
     session enumeration.
 
-### Known imminent-request-fit discrepancy (W25-C2)
+### Per-request endpoint fit (Wave 25 W25-C2)
 
-The selected local provider records `contextWindow` and `maxTokens`, but
-`edges.adapters.llm.resolve_endpoint` currently drops both values and `run_agent_turn` calls
-`backend.complete` without checking the complete prospective wire request. Pre-turn compaction
-cannot protect an initially empty session that grows through tool results during the same turn.
-A measured fifth request contained 17,643 endpoint-tokenizer tokens against a registered 16,384-
-token window and failed at transport.
-
-The required W25-C2 contract is:
-
-- resolve the exact provider/model limits at call time and define explicit behavior for an
-  environment-overridden or hosted endpoint whose window is unknown;
-- before every task and summarizer completion, estimate all model-visible messages, advertised tool
-  schemas/protocol framing, and the requested output reserve against that window;
-- when over budget, reduce only complete history units using the existing visible, fail-closed
-  compaction contract, then reload and recheck the accepted state;
-- never silently truncate the current task, an assistant tool call without all answering results,
-  a tool decision/result, or an unresolved action; and
-- when the irreducible request cannot fit, make no backend call and return a distinct actionable,
-  non-retryable local result.
-
-Until those properties are live-path tested, the loop's cumulative measured `token_budget`, static
-startup-context budget, per-result output ceiling, and pre-turn history budget **MUST NOT** be
-described as an endpoint request-window guarantee.
+44. The stored provider's model entry **MUST** reach the live client with its positive
+    `contextWindow` and `maxTokens` values. Selection **MUST** match the exact model id, not merely
+    the provider. A process-wide `DOCKET_LLM_BASE_URL` override **MUST NOT** inherit stored limits
+    from the provider it replaces; without independently advertised override limits its window is
+    explicitly unknown and existing hosted/override behavior remains available without a false fit
+    guarantee.
+45. Before every task or compaction `ChatBackend.complete` call whose context window is known, the
+    loop **MUST** estimate the complete prospective input—messages, tool-call metadata, advertised
+    tool schemas, model/protocol framing—and add the configured maximum-output reserve. The shipped
+    OpenAI-compatible backend **MUST** estimate from the same payload builder used for transport.
+    This bytes/`CONTEXT_BYTES_PER_TOKEN` figure **MUST** be labelled an estimate and **MUST NOT** be
+    folded into measured `TokenUsage`.
+46. A known-window request with no positive maximum-output reserve **MUST** fail locally rather than
+    claim it fits. When the window is unknown, the loop **MUST** preserve existing behavior and
+    expose that no registered-window guarantee was applied; it **MUST NOT** invent a model/window
+    table.
+47. When a task request is estimated over-window, the loop **MUST** invoke the existing durable,
+    fail-closed session compactor with a smaller target, preserve complete assistant-tool/result
+    atomic units, reload the accepted messages, and retry the estimate before transport. Every
+    compactor completion is subject to the same request preflight with tools disabled.
+48. If compaction fails, makes no further reduction, or the irreducible request plus output reserve
+    still exceeds the registered window, the loop **MUST** make no task HTTP call and return
+    `stop_reason="context_fit"`, `failure_kind="invalid_output"`, and an actionable error containing
+    the estimated request, registered window, and output reserve. Already-durable history remains
+    valid and no tool call/result unit is split.
+49. Every prospective completion **MUST** emit a privacy-safe `request_fit` trace containing its
+    purpose (`task` or `compaction`), status (`fits`, `failed`, or `unknown_window`), estimated
+    input, output reserve, registered window (or null), and an explicit estimate marker. It **MUST
+    NOT** contain messages, prompts, tool arguments/results, or measured usage.
 
 ## Interface Contracts
 
@@ -278,7 +285,7 @@ described as an endpoint request-window guarantee.
 ```python
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
-    "timeout", "token_budget", "truncated", "backend_error", "compaction_failed",
+    "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
 ]
 
 class LoopConfig:                              # frozen
@@ -291,6 +298,7 @@ class LoopConfig:                              # frozen
     temperature: float | None = None
     history_budget_tokens: int | None = None # None resolves through context.budget_for_role
     summary_input_budget_tokens: int | None = None # None follows resolved history budget
+    context_window_tokens: int | None = None # selected endpoint's registered input+output window
 
 class AgentLoopResult:
     ok: bool
@@ -452,6 +460,13 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.11.0 (2026-08-22)
+
+- W25-C2 carries the exact stored model's context/output limits into the live loop, estimates the
+  real wire components plus output reserve before every task and summary call, compacts/reloads
+  same-turn history by whole atomic units, and fails locally with `context_fit` when the minimum
+  request cannot fit. Unknown hosted or URL-overridden windows remain explicitly unguaranteed.
 
 ### Version 1.10.0 (2026-08-20)
 

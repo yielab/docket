@@ -463,7 +463,12 @@ class CompactionPlan:
         return bool(self.to_summarize)
 
 
-def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> CompactionPlan:
+def plan_compaction(
+    messages: Sequence[ChatMessage],
+    budget_tokens: int,
+    *,
+    keep_latest_unit: bool = True,
+) -> CompactionPlan:
     """Decide what a compaction pass would summarize, without calling anything.
 
     Never splits a tool-call/tool-result atomic unit (``group_atomic_units``
@@ -473,10 +478,11 @@ def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> Comp
     plan cannot claim to fit while quietly excluding them from the count.
     Real leading ``system`` messages are always kept; generated compaction
     summaries are deliberately eligible for a later hierarchical round.
-    Units are walked newest-first and kept while they still fit; **at least
-    the single most recent unit is always kept**, even if it alone exceeds
-    ``budget_tokens`` -- there must always be something to answer with, and a
-    compactor cannot shrink one message below itself.
+    Units are walked newest-first and kept while they still fit. By default,
+    at least the single most recent unit is kept even if it alone exceeds the
+    budget. ``keep_latest_unit=False`` lets the ranged live caller summarize
+    the complete selected suffix when an exact conversational anchor remains
+    outside that range.
     """
     groups = group_atomic_units(messages)
     if not groups:
@@ -502,7 +508,7 @@ def plan_compaction(messages: Sequence[ChatMessage], budget_tokens: int) -> Comp
     for pos in range(len(body) - 1, -1, -1):
         unit = body[pos]
         cost = _unit_tokens(unit)
-        if kept and used + cost > budget_tokens:
+        if used + cost > budget_tokens and (kept or not keep_latest_unit):
             break
         used += cost
         kept.append(unit)
@@ -612,6 +618,8 @@ def compact_session(
     summarizer_session_key: str | None = None,
     budget_tokens: int | None = None,
     summary_input_budget_tokens: int | None = None,
+    compact_range: tuple[int, int] | None = None,
+    keep_latest_unit: bool = True,
     timeout: int | None = None,
     label: str = "",
     now: str | None = None,
@@ -631,6 +639,12 @@ def compact_session(
     interleave with it and get silently discarded; a different session's file
     is never touched, let alone blocked (see module docstring's storage
     layout section).
+
+    ``compact_range`` optionally selects a half-open slice of the record to
+    compact while preserving messages outside it verbatim. Its boundaries
+    must fall between complete atomic units. ``keep_latest_unit=False`` is
+    valid only in that ranged mode with at least one unselected message left
+    as the exact conversational anchor.
 
     Each summarizer prompt is bounded independently. Histories that need more
     than one prompt are reduced hierarchically in memory; only the final
@@ -681,11 +695,43 @@ def compact_session(
         original_messages = [_decode(m) for m in record.messages]
         before_count = len(original_messages)
         before_estimated = _messages_estimated_tokens(original_messages)
-        working = original_messages
+        start_index, end_index = compact_range or (0, len(original_messages))
+        boundaries = {0}
+        cursor = 0
+        for unit in group_atomic_units(original_messages):
+            cursor += len(unit)
+            boundaries.add(cursor)
+        if (
+            start_index < 0
+            or end_index < start_index
+            or end_index > len(original_messages)
+            or start_index not in boundaries
+            or end_index not in boundaries
+            or (
+                not keep_latest_unit
+                and (
+                    compact_range is None
+                    or (start_index == 0 and end_index == len(original_messages))
+                )
+            )
+        ):
+            outcome = CompactionResult(
+                ok=False,
+                before_message_count=before_count,
+                after_message_count=before_count,
+                before_estimated_tokens=before_estimated,
+                after_estimated_tokens=before_estimated,
+                error="compaction range must be atomic and leave a verbatim message anchor",
+                failure_kind="invalid_output",
+            )
+            return None
+        preserved_prefix = original_messages[:start_index]
+        preserved_suffix = original_messages[end_index:]
+        working = original_messages[start_index:end_index]
         rounds = 0
         groups_summarized = 0
         max_prompt_estimated = 0
-        round_cap = max(1, len(group_atomic_units(original_messages)) + 1)
+        round_cap = max(1, len(group_atomic_units(working)) + 1)
 
         def _fail(error: str, failure_kind: FailureKind = "invalid_output") -> None:
             nonlocal outcome
@@ -702,7 +748,7 @@ def compact_session(
                 failure_kind=failure_kind,
             )
 
-        initial_plan = plan_compaction(working, budget)
+        initial_plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
         if not initial_plan.needed:
             outcome = CompactionResult(
                 ok=True,
@@ -715,7 +761,7 @@ def compact_session(
             return None
 
         while True:
-            plan = plan_compaction(working, budget)
+            plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
             if not plan.needed:
                 break
             if rounds and all(_is_compacted_summary_unit(unit) for unit in plan.to_summarize):
@@ -769,13 +815,17 @@ def compact_session(
                 message for unit in plan.to_summarize[len(batch) :] for message in unit
             ]
             candidate = [*plan.keep_head, summary_message, *remaining_old, *plan.keep_tail]
+            full_candidate = [*preserved_prefix, *candidate, *preserved_suffix]
 
-            if find_orphaned_tool_messages(candidate) or find_unanswered_tool_calls(candidate):
+            if find_orphaned_tool_messages(full_candidate) or find_unanswered_tool_calls(
+                full_candidate
+            ):
                 _fail("compaction produced an orphaned tool call or result -- refusing to persist")
                 return None
 
-            current_estimated = _messages_estimated_tokens(working)
-            candidate_estimated = _messages_estimated_tokens(candidate)
+            current_full = [*preserved_prefix, *working, *preserved_suffix]
+            current_estimated = _messages_estimated_tokens(current_full)
+            candidate_estimated = _messages_estimated_tokens(full_candidate)
             if candidate_estimated >= current_estimated:
                 _fail(
                     "compaction summary did not reduce estimated history size "
@@ -787,10 +837,11 @@ def compact_session(
             rounds += 1
             groups_summarized += len(batch)
 
+        final_messages = [*preserved_prefix, *working, *preserved_suffix]
         updated = record.model_copy(
             update={
                 "session_key": session_key,
-                "messages": [_encode(m) for m in working],
+                "messages": [_encode(m) for m in final_messages],
                 "updated": stamp,
             }
         )
@@ -801,9 +852,9 @@ def compact_session(
             summary_rounds=rounds,
             max_summary_prompt_estimated_tokens=max_prompt_estimated,
             before_message_count=before_count,
-            after_message_count=len(working),
+            after_message_count=len(final_messages),
             before_estimated_tokens=before_estimated,
-            after_estimated_tokens=_messages_estimated_tokens(working),
+            after_estimated_tokens=_messages_estimated_tokens(final_messages),
         )
         return updated.model_dump(by_alias=True)
 

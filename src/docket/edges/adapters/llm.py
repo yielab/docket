@@ -28,6 +28,7 @@ import urllib.request
 from collections.abc import Sequence
 from typing import Any
 
+from docket.core import context as _context
 from docket.core.llm import (
     ChatMessage,
     ChatResponse,
@@ -46,6 +47,7 @@ from docket.core.runtime_driver import FailureKind
 _RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
 _VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
+_PROTOCOL_OVERHEAD_TOKENS = 16
 
 
 # ── wire encoding ─────────────────────────────────────────────────────────────
@@ -255,6 +257,33 @@ class OpenAIChatClient:
     def url(self) -> str:
         return f"{self.endpoint.base_url.rstrip('/')}/chat/completions"
 
+    @property
+    def context_window_tokens(self) -> int | None:
+        return self.endpoint.context_window_tokens
+
+    @property
+    def max_output_tokens(self) -> int | None:
+        return self.endpoint.max_output_tokens
+
+    def estimate_input_tokens(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> int:
+        """Estimate the exact prospective JSON payload plus HTTP framing.
+
+        The payload is built by the same function transport uses. The fixed
+        framing allowance covers request-line/header/tokenizer separators; the
+        result remains the documented bytes-per-token estimate, never measured
+        model usage.
+        """
+        payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return max(1, _context.estimate_tokens(encoded)) + _PROTOCOL_OVERHEAD_TOKENS
+
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if self.endpoint.api_key:
@@ -388,7 +417,35 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     if api_key == "local":
         api_key = ""
 
-    return Endpoint(base_url=base_url, model_id=model_id, api_key=api_key, provider=provider)
+    context_window: int | None = None
+    max_output: int | None = None
+    if not env_base:
+        models = stored.get("models")
+        if isinstance(models, list):
+            exact = next(
+                (
+                    entry
+                    for entry in models
+                    if isinstance(entry, dict) and str(entry.get("id") or "") == model_id
+                ),
+                None,
+            )
+            if exact is not None:
+                raw_window = exact.get("contextWindow")
+                raw_output = exact.get("maxTokens")
+                if isinstance(raw_window, int) and raw_window > 0:
+                    context_window = raw_window
+                if isinstance(raw_output, int) and raw_output > 0:
+                    max_output = raw_output
+
+    return Endpoint(
+        base_url=base_url,
+        model_id=model_id,
+        api_key=api_key,
+        provider=provider,
+        context_window_tokens=context_window,
+        max_output_tokens=max_output,
+    )
 
 
 def client_for(model: str) -> OpenAIChatClient | None:

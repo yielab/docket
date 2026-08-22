@@ -6,6 +6,7 @@ failure matrix; this test owns one observable proof that the happy-path componen
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -13,6 +14,36 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from docket.core.pipeline import MechanicalGate, load_pipeline
+
+_SMOKE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "smoke_workflow.py"
+_SMOKE_SPEC = importlib.util.spec_from_file_location("docket_smoke_workflow", _SMOKE_PATH)
+assert _SMOKE_SPEC is not None and _SMOKE_SPEC.loader is not None
+_smoke = importlib.util.module_from_spec(_SMOKE_SPEC)
+sys.modules[_SMOKE_SPEC.name] = _smoke
+_SMOKE_SPEC.loader.exec_module(_smoke)
+
+
+def test_basic_smoke_mechanical_gate_is_byte_exact(tmp_path: Path) -> None:
+    _, codebase, _, pipeline_path = _smoke._write_inputs(tmp_path, _smoke._BASIC_SCENARIO)
+    loaded = load_pipeline(pipeline_path.read_text(encoding="utf-8"))
+    assert loaded.errors == [] and loaded.spec is not None
+    gate = loaded.spec.steps[1].gate
+    assert isinstance(gate, MechanicalGate) and gate.command is not None
+
+    artifact = codebase / "smoke-artifact.txt"
+    artifact.write_bytes(b"docket smoke ok")
+    missing_lf = subprocess.run(gate.command, cwd=codebase, shell=True, check=False)
+    artifact.write_bytes(b"docket smoke ok\n")
+    exact = subprocess.run(gate.command, cwd=codebase, shell=True, check=False)
+    artifact.write_bytes(b"docket smoke ok\n\n")
+    extra_lf = subprocess.run(gate.command, cwd=codebase, shell=True, check=False)
+
+    assert missing_lf.returncode != 0
+    assert exact.returncode == 0
+    assert extra_lf.returncode != 0
+    assert "terminal LF" in _smoke._basic_task_description()
 
 
 def test_full_workflow_smoke_is_observable_and_preserves_state(tmp_path: Path) -> None:

@@ -40,6 +40,15 @@ _MEMORY_SCENARIO = "memory-maintenance"
 _SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO)
 
 
+def _basic_task_description() -> str:
+    return (
+        "Create smoke-artifact.txt in the workspace containing exactly the UTF-8 bytes "
+        "docket smoke ok followed by one terminal LF, with no other bytes or lines. The "
+        "Implementer must create it through Docket's write tool; keep the change limited to "
+        "that artifact, then review and verify the result."
+    )
+
+
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise SmokeFailure(message)
@@ -553,7 +562,10 @@ def _write_inputs(world: Path, scenario: str) -> tuple[Path, Path, Path, Path]:
             "Realistic memory-backed maintenance workflow with every gate family."
         )
     else:
-        verify_command = 'test "$(cat smoke-artifact.txt)" = "docket smoke ok"'
+        verify_command = (
+            'python -c "from pathlib import Path; import sys; '
+            "sys.exit(Path('smoke-artifact.txt').read_bytes() != b'docket smoke ok\\n')\""
+        )
         pipeline_description = "Observable full workflow with every gate family."
 
     pipeline = world / "smoke.pipeline.yaml"
@@ -940,11 +952,7 @@ def _run(
                 "the behavior. Do not copy private memory logs into the repository."
             )
         else:
-            task_description = (
-                "Create smoke-artifact.txt in the workspace with exactly one line: docket smoke "
-                "ok. The Implementer must create it through Docket's write tool; keep the change "
-                "limited to that artifact, then review and verify the result."
-            )
+            task_description = _basic_task_description()
         run_cli("pod", "smoke", "delegate", task_description)
         run_cli("pipeline", "plan", "smoke", "--file", str(pipeline))
         first_run = [

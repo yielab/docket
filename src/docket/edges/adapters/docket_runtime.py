@@ -281,7 +281,19 @@ class DocketDriver:
         # docstring for the kind-based rule that makes this safe.
         registry = self.registry_factory()
         self.mcp_loader(registry, meta.role)
-        loop_config = _loop.LoopConfig(wall_clock_timeout_s=float(timeout))
+        context_window = getattr(backend, "context_window_tokens", None)
+        max_output_tokens = getattr(backend, "max_output_tokens", None)
+        loop_config = _loop.LoopConfig(
+            wall_clock_timeout_s=float(timeout),
+            context_window_tokens=(
+                context_window if isinstance(context_window, int) and context_window > 0 else None
+            ),
+            max_tokens=(
+                max_output_tokens
+                if isinstance(max_output_tokens, int) and max_output_tokens > 0
+                else None
+            ),
+        )
         result = _loop.run_agent_turn(
             backend,
             registry,

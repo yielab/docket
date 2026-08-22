@@ -162,6 +162,19 @@ class TestWireEncoding:
         full = adapter.build_payload(ENDPOINT, [llm.user("hi")], max_tokens=64, temperature=0.2)
         assert full["max_tokens"] == 64 and full["temperature"] == 0.2
 
+    def test_request_estimate_uses_wire_payload_and_accounts_for_tools(self) -> None:
+        client = adapter.OpenAIChatClient(ENDPOINT)
+        spec = ToolSpec(
+            name="lookup",
+            description="Look up a deliberately descriptive diagnostic value.",
+            parameters={"type": "object", "properties": {"query": {"type": "string"}}},
+        )
+
+        bare = client.estimate_input_tokens([llm.user("hi")], max_tokens=64)
+        with_tool = client.estimate_input_tokens([llm.user("hi")], tools=[spec], max_tokens=64)
+
+        assert with_tool > bare
+
 
 class TestWireDecoding:
     def test_plain_reply(self) -> None:
@@ -401,6 +414,55 @@ class TestEndpointResolution:
         assert ep.model_id == "qwen3.6-35b-a3b"
         assert ep.provider == "local"
         assert ep.is_local is True
+
+    def test_stored_provider_resolves_limits_for_the_exact_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        from docket.core import fleet as _fleet
+
+        monkeypatch.setattr(
+            _fleet,
+            "get_local_provider",
+            lambda name: {
+                "baseUrl": "http://127.0.0.1:8081/v1",
+                "models": [
+                    {"id": "other", "contextWindow": 32768, "maxTokens": 4096},
+                    {"id": "wanted", "contextWindow": 16384, "maxTokens": 2048},
+                ],
+            },
+        )
+
+        ep = adapter.resolve_endpoint("local/wanted")
+
+        assert ep is not None
+        assert ep.context_window_tokens == 16384
+        assert ep.max_output_tokens == 2048
+        client = adapter.client_for("local/wanted")
+        assert client is not None
+        assert client.context_window_tokens == 16384
+        assert client.max_output_tokens == 2048
+
+    def test_url_override_does_not_inherit_limits_from_replaced_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
+        from docket.core import fleet as _fleet
+
+        monkeypatch.setattr(
+            _fleet,
+            "get_local_provider",
+            lambda name: {
+                "baseUrl": "http://127.0.0.1:8081/v1",
+                "models": [{"id": "m", "contextWindow": 16384, "maxTokens": 2048}],
+            },
+        )
+
+        ep = adapter.resolve_endpoint("local/m")
+
+        assert ep is not None
+        assert ep.context_window_tokens is None
+        assert ep.max_output_tokens is None
 
     def test_placeholder_local_key_is_not_sent_as_a_credential(
         self, monkeypatch: pytest.MonkeyPatch

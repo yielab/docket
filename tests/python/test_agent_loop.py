@@ -197,6 +197,110 @@ def _truncated(content: str = "", tool_calls: Sequence[ToolCall] = ()) -> ChatRe
 
 
 class TestLiveSessionCompaction:
+    def test_same_turn_request_growth_compacts_and_reloads_before_transport(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        class FitAwareBackend(ScriptedBackend):
+            context_window_tokens = 1_000
+            max_output_tokens = 200
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    return 700
+                if any(message.role == "tool" for message in messages):
+                    return 900
+                if any(
+                    message.content.startswith("[compacted summary of ") for message in messages
+                ):
+                    return 300
+                return 200
+
+        large_result = "result " * 400
+        large_registry = ToolRegistry()
+        large_registry.register(
+            _Tool(
+                name="large",
+                description="Return a large diagnostic result.",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, tool_ctx: ToolOutcome(ok=True, content=large_result),
+                kind="read",
+            )
+        )
+        backend = FitAwareBackend(
+            [
+                _tool_call_response("large-1", "large", "{}"),
+                _final("diagnostic result retained"),
+                _final("task complete"),
+            ]
+        )
+        session_key = "agent:request-fit:demo"
+
+        result = _loop.run_agent_turn(
+            backend,
+            large_registry,
+            ctx,
+            session_key,
+            "inspect the diagnostic",
+            config=_loop.LoopConfig(
+                context_window_tokens=backend.context_window_tokens,
+                max_tokens=backend.max_output_tokens,
+            ),
+        )
+
+        assert result.ok
+        assert result.output == "task complete"
+        assert len(backend.calls) == 3
+        assert "compacting durable turn history" in backend.calls[1][0].content
+        assert backend.tool_specs[1] == []
+        assert not any(large_result in message.content for message in backend.calls[2])
+        stored = _session.load_messages(session_key)
+        assert not _session.find_orphaned_tool_messages(stored)
+        assert not _session.find_unanswered_tool_calls(stored)
+        assert any(message.content == "inspect the diagnostic" for message in stored)
+        assert any(message.content.startswith("[compacted summary of ") for message in stored)
+
+    def test_irreducible_request_fails_locally_before_backend_call(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        class NeverFitsBackend(ScriptedBackend):
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                return 900
+
+        backend = NeverFitsBackend([_final("must not be used")])
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            "agent:irreducible:demo",
+            "current task must remain exact",
+            config=_loop.LoopConfig(context_window_tokens=1_000, max_tokens=200),
+        )
+
+        assert not result.ok
+        assert result.stop_reason == "context_fit"
+        assert result.failure_kind == "invalid_output"
+        assert "estimated" in result.error
+        assert "1000" in result.error
+        assert backend.calls == []
+        assert [
+            message.content for message in _session.load_messages("agent:irreducible:demo")
+        ] == ["current task must remain exact"]
+
     def test_over_budget_history_is_compacted_before_task_completion(
         self, registry: ToolRegistry, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -805,6 +909,22 @@ class TestTracing:
         assert not [
             record for record in records if record["event_type"] in {"tool_call", "tool_result"}
         ]
+
+    def test_request_fit_trace_is_registered_and_contains_only_estimates(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        session_key = "agent:fit-trace:default"
+        backend = ScriptedBackend([_final("done")])
+
+        _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+        fit = next(record["payload"] for record in records if record["event_type"] == "request_fit")
+        assert fit["status"] == "unknown_window"
+        assert fit["purpose"] == "task"
+        assert fit["estimate"] is True
+        assert "messages" not in fit and "prompt" not in fit and "usage" not in fit
 
     def test_trace_project_falls_back_to_agent_id_when_project_unset(
         self, workspace: Path, registry: ToolRegistry

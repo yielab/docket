@@ -332,6 +332,14 @@ class TestPlanCompactionBasics:
         assert plan.keep_tail == []
         assert not plan.needed
 
+    def test_ranged_plan_can_summarize_its_only_unit_when_anchor_is_external(self) -> None:
+        latest = user("large completed tool context " * 100)
+
+        plan = _sess.plan_compaction([latest], budget_tokens=1, keep_latest_unit=False)
+
+        assert plan.keep_tail == []
+        assert plan.to_summarize == [[latest]]
+
 
 class TestPlanCompactionAtomicityBoundary:
     """The card's named trap: a cut that would land inside a tool-call group."""
@@ -477,6 +485,52 @@ class TestCompactSessionFailClosed:
 
 
 class TestCompactSessionSuccess:
+    def test_ranged_compaction_preserves_external_messages_verbatim(self) -> None:
+        call = ToolCall(id="c-range", name="read", arguments='{"path":"large.txt"}')
+        task = user("current task must remain exact")
+        tool_unit = [assistant("", tool_calls=[call]), tool_result(call, "large " * 400)]
+        final = assistant("later durable answer")
+        _sess.append_messages("agent:x:default", [task, *tool_unit, final])
+
+        result = _sess.compact_session(
+            "agent:x:default",
+            role="lead",
+            agent_id="x-lead",
+            summarizer=_summarizing_driver("tool outcome retained"),
+            budget_tokens=1,
+            compact_range=(1, 3),
+            keep_latest_unit=False,
+        )
+
+        assert result.ok and result.compacted
+        stored = _sess.load_messages("agent:x:default")
+        assert stored[0] == task
+        assert stored[-1] == final
+        assert stored[1].content.startswith("[compacted summary of ")
+        assert not _sess.find_orphaned_tool_messages(stored)
+        assert not _sess.find_unanswered_tool_calls(stored)
+
+    def test_ranged_compaction_rejects_a_boundary_inside_tool_unit(self) -> None:
+        task = user("task")
+        tool_unit = _tool_call_turn()
+        _sess.append_messages("agent:x:default", [task, *tool_unit])
+        path = _sess._session_path("agent:x:default", None)
+        before = path.read_bytes()
+
+        result = _sess.compact_session(
+            "agent:x:default",
+            role="lead",
+            agent_id="x-lead",
+            summarizer=_summarizing_driver(),
+            budget_tokens=1,
+            compact_range=(2, 3),
+            keep_latest_unit=False,
+        )
+
+        assert not result.ok
+        assert "atomic" in result.error
+        assert path.read_bytes() == before
+
     def test_no_compaction_needed_makes_no_driver_call(self) -> None:
         _sess.append_messages("agent:x:default", [user("hi")])
         driver, calls = _recording_driver()

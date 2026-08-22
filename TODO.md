@@ -147,7 +147,7 @@ environment/opt-in skips).
 
 ### W25-C2 — fit every imminent model request to the selected endpoint
 
-**Status:** TODO · **Size:** M
+**Status:** DONE (2026-08-22) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the failing fifth `/v1/chat/completions` request was 17,643 tokenizer tokens
 for a registered 16,384-token endpoint: about 1.6K tokens of always-on system context and roughly
@@ -193,12 +193,20 @@ the 16,384-token incident shape. Focused loop/driver/adapter/session tests, spec
 pytest/static/golden gates, and the opt-in live small-context canary pass without raising the
 endpoint window.
 
+**Shipped:** the exact selected provider/model now carries its registered context window and output
+limit into the loop. Every task and summarizer request estimates the adapter's complete wire payload,
+reserves output capacity, traces privacy-safe fit evidence, compacts only complete durable ranges,
+reloads them before retry, and returns `context_fit` before transport when irreducible. Deterministic
+tests cover the 16,384-token incident and all fail-closed branches. The real 16k basic canary passed;
+the realistic maintenance canary kept every observed request within the same window and preserved
+MONEY-104/META-202, then exposed only W25-C3's already-scoped terminal-verdict convergence defect.
+
 **Contention:** owns the loop/request-limit/session-compaction seams and the mutable local endpoint.
 No parallel context/session/MCP-output lane may touch those functions or run the same live canary.
 
 ### W25-C3 — reserve a truthful terminal response inside the turn budget
 
-**Status:** BLOCKED (needs W25-C2) · **Size:** M
+**Status:** TODO · **Size:** M
 
 **Measured trigger:** the repeated real `memory-maintenance` canary reached the correct product
 result: the Implementer repaired the module and the four regressions plus hidden acceptance passed.
@@ -243,9 +251,9 @@ irreducible-budget failure, and a finalization reply that still attempts a tool 
 real `memory-maintenance` canary completes under the existing 100,000-token budget without weakening
 its public/hidden acceptance, followed by the full static/pytest/golden/spec/metrics gates.
 
-**Contention:** blocked until W25-C2 lands because both edit `run_agent_turn`, request estimation,
-driver tests, the agent-loop spec, and use the mutable local endpoint. It cannot run in parallel
-with C2; once C2 closes, C3 owns the cumulative-budget/finalization branch only.
+**Contention:** W25-C2 is complete, so this card is ready and owns only the cumulative-budget /
+finalization branch in `run_agent_turn`, its focused driver tests, and the mutable local endpoint.
+It may run alongside W25-C4, whose run-record fold does not overlap these seams.
 
 ### W25-C4 — make run records reflect returned task failures
 
@@ -293,7 +301,7 @@ rollups remain integrator-owned.
 
 ### W25-C5 — make the basic live gate enforce its byte-exact artifact contract
 
-**Status:** TODO · **Size:** S
+**Status:** DONE (2026-08-22) · **Size:** S · **Owner:** @codex
 
 **Measured trigger:** the repeated real basic canary completed all five hops and reached task state
 `done`, but the final harness rejected `smoke-artifact.txt`: it contained the 15 bytes
@@ -330,6 +338,12 @@ post-`done` artifact mismatch; full static/pytest/golden/spec/metrics gates pass
 **Contention:** owns the basic fixture/gate/assertion in `scripts/smoke_workflow.py`, its focused
 workflow-smoke tests, and the test-framework smoke clause. It does not overlap C2–C4, but no second
 live canary may share the mutable local endpoint while its acceptance run is in progress.
+
+**Shipped:** the basic task now states the exact UTF-8 artifact bytes and one terminal LF, while its
+mechanical gate compares `read_bytes()` with `b"docket smoke ok\n"`. Focused tests prove missing,
+extra, and exact newline behavior through the generated command; the independent final assertion
+remains intact. The opt-in real basic workflow completed all five hops, reached `done`, and passed
+the byte-exact final harness in `/tmp/docket-w25-c5-live-0w3Qtv`.
 
 ---
 

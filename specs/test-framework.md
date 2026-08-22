@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Active
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-22
 
 ## Overview
 
@@ -73,6 +73,12 @@ The model endpoint is fake; the protocol boundary is not. The harness **MUST** r
 real `/chat/completions` request shapes and never use a paid endpoint, credential, or non-loopback
 network. Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS`
 line. `--workdir <path>` preserves the otherwise-temporary world for inspection.
+
+The basic scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain exactly
+the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST** state the
+terminal-LF requirement, its Implementer mechanical gate **MUST** reject the 15-byte no-newline
+variant as well as any extra byte/line, and the harness **MUST** retain an independent final exact
+read assertion after the pipeline completes.
 
 An explicitly selected live-local canary **MUST** run the same workflow against a real
 OpenAI-compatible model without replacing its replies. `--live-model` defaults to
@@ -180,6 +186,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.6.0 (2026-08-22)
+
+- W25-C5 makes the basic smoke artifact contract byte-exact at both the delegated instruction and
+  the Implementer mechanical gate; shell command-substitution newline stripping can no longer let
+  a 15-byte artifact reach `done` before the independent final assertion rejects it.
 
 ### Version 2.5.0 (2026-08-19)
 

@@ -232,6 +232,8 @@ class Endpoint:
     model_id: str
     api_key: str = ""
     provider: str = ""
+    context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
 
     @property
     def is_local(self) -> bool:

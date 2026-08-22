@@ -116,8 +116,17 @@ from typing import Any, Literal
 
 import docket.config as _cfg
 from docket.core import archetypes as _archetypes
+from docket.core import context as _context
 from docket.core import identity as _identity
-from docket.core.llm import ChatBackend, ChatMessage, TokenUsage, system, tool_result, user
+from docket.core.llm import (
+    ChatBackend,
+    ChatMessage,
+    TokenUsage,
+    ToolSpec,
+    system,
+    tool_result,
+    user,
+)
 from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.core.session import CompactionResult, append_messages, compact_session, load_messages
 from docket.core.tools import ToolContext, ToolRegistry, dispatch_tool
@@ -139,6 +148,7 @@ StopReason = Literal[
     "truncated",
     "backend_error",
     "compaction_failed",
+    "context_fit",
 ]
 
 
@@ -163,6 +173,7 @@ class LoopConfig:
     temperature: float | None = None
     history_budget_tokens: int | None = None
     summary_input_budget_tokens: int | None = None
+    context_window_tokens: int | None = None
 
 
 @dataclass
@@ -199,6 +210,97 @@ def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
         input_tokens=current.input_tokens + delta.input_tokens,
         output_tokens=current.output_tokens + delta.output_tokens,
         cached_tokens=current.cached_tokens + delta.cached_tokens,
+    )
+
+
+def _usage_delta(current: TokenUsage, previous: TokenUsage) -> TokenUsage:
+    return TokenUsage(
+        input_tokens=current.input_tokens - previous.input_tokens,
+        output_tokens=current.output_tokens - previous.output_tokens,
+        cached_tokens=current.cached_tokens - previous.cached_tokens,
+    )
+
+
+def _fallback_input_estimate(
+    messages: list[ChatMessage],
+    tools: list[ToolSpec],
+    max_tokens: int | None,
+    temperature: float | None,
+) -> int:
+    """Estimate all model-visible components for a non-wire-aware backend."""
+    payload = {
+        "messages": [
+            {
+                "role": message.role,
+                "content": message.content,
+                "tool_calls": [
+                    {"id": call.id, "name": call.name, "arguments": call.arguments}
+                    for call in message.tool_calls
+                ],
+                "tool_call_id": message.tool_call_id,
+                "name": message.name,
+            }
+            for message in messages
+        ],
+        "tools": [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            }
+            for tool in tools
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    return max(1, _context.estimate_tokens(json.dumps(payload, ensure_ascii=False))) + 16
+
+
+def _estimate_input_tokens(
+    backend: ChatBackend,
+    messages: list[ChatMessage],
+    tools: list[ToolSpec],
+    max_tokens: int | None,
+    temperature: float | None,
+) -> int:
+    estimator = getattr(backend, "estimate_input_tokens", None)
+    if callable(estimator):
+        estimated = estimator(
+            messages,
+            tools=tools,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return max(1, int(estimated))
+    return _fallback_input_estimate(messages, tools, max_tokens, temperature)
+
+
+def _trace_request_fit(
+    project: str,
+    session_key: str,
+    role: str,
+    *,
+    purpose: str,
+    status: str,
+    estimated_input_tokens: int,
+    output_reserve_tokens: int,
+    context_window_tokens: int | None,
+) -> None:
+    trace_event(
+        project,
+        session_key,
+        role,
+        "request_fit",
+        json.dumps(
+            {
+                "purpose": purpose,
+                "status": status,
+                "estimatedInputTokens": estimated_input_tokens,
+                "outputReserveTokens": output_reserve_tokens,
+                "contextWindowTokens": context_window_tokens,
+                "estimate": True,
+            }
+        ),
     )
 
 
@@ -286,6 +388,15 @@ def run_agent_turn(
     every backend failure, comes back as a populated ``AgentLoopResult``.
     """
     cfg = config or LoopConfig()
+    backend_window = getattr(backend, "context_window_tokens", None)
+    context_window = cfg.context_window_tokens
+    if context_window is None and isinstance(backend_window, int) and backend_window > 0:
+        context_window = backend_window
+    backend_output = getattr(backend, "max_output_tokens", None)
+    request_max_tokens = cfg.max_tokens
+    if request_max_tokens is None and isinstance(backend_output, int) and backend_output > 0:
+        request_max_tokens = backend_output
+    output_reserve = request_max_tokens if request_max_tokens is not None else 0
     started = clock()
     project = trace_project or ctx.project or ctx.agent_id or "unknown"
     trace_key = trace_session_key or session_key
@@ -318,6 +429,57 @@ def run_agent_turn(
     # toolset nor this agent's identity files change mid-turn.
     registry = _archetypes.registry_for_role(registry, ctx.role)
     system_prompt = _identity.system_prompt_for_agent(ctx.agent_id)
+    tool_specs = registry.specs()
+
+    def _preflight_request(
+        request_messages: list[ChatMessage],
+        request_tools: list[ToolSpec],
+        *,
+        purpose: str,
+    ) -> tuple[int, str]:
+        estimated_input = _estimate_input_tokens(
+            backend,
+            request_messages,
+            request_tools,
+            request_max_tokens,
+            cfg.temperature,
+        )
+        if context_window is None:
+            _trace_request_fit(
+                project,
+                trace_key,
+                ctx.role,
+                purpose=purpose,
+                status="unknown_window",
+                estimated_input_tokens=estimated_input,
+                output_reserve_tokens=output_reserve,
+                context_window_tokens=None,
+            )
+            return estimated_input, ""
+        if output_reserve <= 0:
+            error = (
+                "context fit: selected endpoint has registered context window "
+                f"{context_window} but no positive maximum-output reserve"
+            )
+        elif estimated_input + output_reserve > context_window:
+            error = (
+                "context fit: estimated request "
+                f"{estimated_input + output_reserve} tokens (input {estimated_input} + output "
+                f"reserve {output_reserve}) exceeds registered context window {context_window}"
+            )
+        else:
+            error = ""
+        _trace_request_fit(
+            project,
+            trace_key,
+            ctx.role,
+            purpose=purpose,
+            status="failed" if error else "fits",
+            estimated_input_tokens=estimated_input,
+            output_reserve_tokens=output_reserve,
+            context_window_tokens=context_window,
+        )
+        return estimated_input, error
 
     summary_usage = TokenUsage()
 
@@ -350,10 +512,18 @@ def run_agent_turn(
                 "compaction exhausted the turn wall-clock budget",
                 "timeout",
             )
+        summary_messages = [user(prompt)]
+        _, fit_error = _preflight_request(
+            summary_messages,
+            [],
+            purpose="compaction",
+        )
+        if fit_error:
+            return TurnResult(False, "", 0.0, {}, fit_error, "invalid_output")
         response = backend.complete(
-            [user(prompt)],
+            summary_messages,
             tools=(),
-            max_tokens=cfg.max_tokens,
+            max_tokens=request_max_tokens,
             temperature=cfg.temperature,
             timeout=min(timeout, remaining),
         )
@@ -379,27 +549,42 @@ def run_agent_turn(
             )
         return TurnResult(True, response.message.content, 0.0, response.raw)
 
-    elapsed = clock() - started
-    remaining = max(1, int(cfg.wall_clock_timeout_s - elapsed))
-    compaction = compact_session(
-        session_key,
-        role=ctx.role,
-        agent_id=ctx.agent_id,
-        summarizer=_summarize_without_reentry,
-        summarizer_session_key=f"{session_key}:compaction",
-        budget_tokens=cfg.history_budget_tokens,
-        summary_input_budget_tokens=cfg.summary_input_budget_tokens,
-        timeout=min(cfg.request_timeout_s, remaining),
-        label=f"{ctx.role} session",
-    )
-    total_usage = _accumulate(total_usage, summary_usage)
-    if summary_usage.total_tokens or summary_usage.cached_tokens:
-        append_messages(session_key, [], usage=summary_usage)
-    _trace_compaction(project, trace_key, ctx.role, compaction)
+    def _run_compaction(
+        *,
+        budget_tokens: int | None,
+        compact_range: tuple[int, int] | None = None,
+        keep_latest_unit: bool = True,
+    ) -> CompactionResult:
+        nonlocal total_usage
+        usage_before = summary_usage
+        elapsed_now = clock() - started
+        remaining_now = max(1, int(cfg.wall_clock_timeout_s - elapsed_now))
+        result = compact_session(
+            session_key,
+            role=ctx.role,
+            agent_id=ctx.agent_id,
+            summarizer=_summarize_without_reentry,
+            summarizer_session_key=f"{session_key}:compaction",
+            budget_tokens=budget_tokens,
+            summary_input_budget_tokens=cfg.summary_input_budget_tokens,
+            compact_range=compact_range,
+            keep_latest_unit=keep_latest_unit,
+            timeout=min(cfg.request_timeout_s, remaining_now),
+            label=f"{ctx.role} session",
+        )
+        usage_delta = _usage_delta(summary_usage, usage_before)
+        total_usage = _accumulate(total_usage, usage_delta)
+        if usage_delta.total_tokens or usage_delta.cached_tokens:
+            append_messages(session_key, [], usage=usage_delta)
+        _trace_compaction(project, trace_key, ctx.role, result)
+        return result
+
+    compaction = _run_compaction(budget_tokens=cfg.history_budget_tokens)
     if not compaction.ok:
+        context_failure = compaction.error.startswith("context fit:")
         return _done(
             ok=False,
-            stop_reason="compaction_failed",
+            stop_reason="context_fit" if context_failure else "compaction_failed",
             error=compaction.error,
             failure_kind=compaction.failure_kind or "invalid_output",
         )
@@ -412,6 +597,76 @@ def run_agent_turn(
         # Composed fresh, never persisted -- see the module docstring's
         # "Per-role tool sets and the system prompt" section.
         messages = [system(system_prompt), *messages]
+
+    def _task_message_index(durable: list[ChatMessage]) -> int:
+        for index in range(len(durable) - 1, -1, -1):
+            candidate = durable[index]
+            if candidate.role == "user" and candidate.content == message:
+                return index
+        return -1
+
+    def _selected_estimate(selected: list[ChatMessage]) -> int:
+        return max(1, _fallback_input_estimate(selected, [], None, None) - 16)
+
+    def _fit_task_request() -> tuple[list[ChatMessage], str]:
+        current_messages = messages
+        attempts = 0
+        while True:
+            estimated_input, fit_error = _preflight_request(
+                current_messages,
+                tool_specs,
+                purpose="task",
+            )
+            if not fit_error:
+                return current_messages, ""
+            if context_window is None or output_reserve <= 0:
+                return current_messages, fit_error
+
+            durable = load_messages(session_key)
+            task_index = _task_message_index(durable)
+            if task_index < 0:
+                return (
+                    current_messages,
+                    f"{fit_error}; current task was not found in durable history",
+                )
+            overflow = estimated_input + output_reserve - context_window
+            candidate_ranges: list[tuple[tuple[int, int], bool]] = []
+            if task_index + 1 < len(durable):
+                candidate_ranges.append(((task_index + 1, len(durable)), False))
+            if task_index > 0:
+                candidate_ranges.append(((0, task_index), True))
+
+            progressed = False
+            last_compaction_error = ""
+            for selected_range, keep_latest in candidate_ranges:
+                selected = durable[selected_range[0] : selected_range[1]]
+                selected_tokens = _selected_estimate(selected)
+                target = max(1, selected_tokens - overflow - 32)
+                if target >= selected_tokens:
+                    continue
+                fit_compaction = _run_compaction(
+                    budget_tokens=target,
+                    compact_range=selected_range,
+                    keep_latest_unit=keep_latest,
+                )
+                if not fit_compaction.ok:
+                    last_compaction_error = fit_compaction.error
+                    continue
+                if fit_compaction.compacted:
+                    progressed = True
+                    break
+
+            if not progressed:
+                suffix = (
+                    f"; compaction failed: {last_compaction_error}" if last_compaction_error else ""
+                )
+                return current_messages, f"{fit_error}; irreducible durable request{suffix}"
+
+            durable = load_messages(session_key)
+            current_messages = [*([system(system_prompt)] if system_prompt else []), *durable]
+            attempts += 1
+            if attempts > max(2, len(durable) + 1):
+                return current_messages, f"{fit_error}; request-fit compaction did not converge"
 
     while True:
         iteration += 1
@@ -449,10 +704,18 @@ def run_agent_turn(
 
         remaining = max(1, int(cfg.wall_clock_timeout_s - elapsed))
         request_timeout = min(cfg.request_timeout_s, remaining)
+        messages, fit_error = _fit_task_request()
+        if fit_error:
+            return _done(
+                ok=False,
+                stop_reason="context_fit",
+                error=fit_error,
+                failure_kind="invalid_output",
+            )
         response = backend.complete(
             messages,
-            tools=registry.specs(),
-            max_tokens=cfg.max_tokens,
+            tools=tool_specs,
+            max_tokens=request_max_tokens,
             temperature=cfg.temperature,
             timeout=request_timeout,
         )
