@@ -1,8 +1,8 @@
 # Input Validation Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-25
 
 ## Purpose
 
@@ -306,13 +306,14 @@ elif action not in {"show", "set", "reset"}:
 - `OPENAI_API_KEY`: prefix `sk-`, min length 40
 - `GOOGLE_AI_API_KEY`: prefix `AIza`
 - `OPENROUTER_API_KEY`: prefix `sk-or-`
+- `AI_GATEWAY_API_KEY`: no stable prefix requirement; non-empty value only
 
 **Reference**: `_keys_add()` enforces the name grammar and non-empty value
 (`ui.error` + `typer.Exit`), then calls `_validate_key_format()`, whose format mismatch is
 surfaced as a `ui.warn`:
 
 ```python
-# src/docket/cli/__init__.py
+# src/docket/cli/_keys.py
 _KEY_PREFIXES: dict[str, tuple[str, int]] = {
     "ANTHROPIC_API_KEY": ("sk-ant-", 40),
     "OPENAI_API_KEY": ("sk-", 40),
@@ -480,6 +481,11 @@ signatures), not in the validators. Persisted reads that validators depend on go
 `src/docket/edges/store.py`, which already serialises access with a `filelock`.
 
 ## Changelog
+
+### Version 1.4.0 (2026-08-25)
+
+- Added Vercel AI Gateway's non-empty credential contract without inventing a fixed prefix, and
+  corrected the key-validation implementation pointer.
 
 ### Version 1.3.0 (2026-08-19)
 

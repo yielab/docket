@@ -1091,7 +1091,7 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.console.print("Apply: docket models preset <name>")
         ui.console.print()
         ui.console.print(
-            "Free options: openrouter-free (zero per-token cost, free account at openrouter.ai)"
+            "Free options: openrouter-free (experimental zero-cost router at openrouter.ai)"
             " · local (no API key, run your own OpenAI-compatible endpoint)"
         )
         return
@@ -1170,7 +1170,7 @@ def _cmd_models_preset(preset: str | None) -> None:
         if not key_present:
             ui.console.print()
             ui.warn(f"API key {key_name} is not stored yet.")
-            ui.console.print(f"  Add it: docket keys add {key_name} <your-key>")
+            ui.console.print(f"  Add it: docket keys add {key_name}")
             if preset in ("openrouter-free", "openrouter"):
                 ui.console.print("  Get one: https://openrouter.ai/keys (free account available)")
     elif preset == "local":

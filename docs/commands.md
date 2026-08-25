@@ -988,7 +988,8 @@ docket conversations set <agent-id> <peer-id> [--topic ..] [--status ..] [--last
 
 ### keys
 
-Manage API keys for model providers, stored centrally and synced to every agent workspace.
+Manage API keys for model providers. Docket's model client reads them centrally; matching provider
+credentials are also synced to the agent workspaces that need them.
 
 **Syntax:**
 ```bash
@@ -999,7 +1000,7 @@ docket keys remove <KEY_NAME>      # remove a key (confirms if interactive)
 docket keys rotate <KEY_NAME>      # replace an existing key's value
 docket keys validate [KEY_NAME]    # check format (all keys if name omitted)
 docket keys export                 # print `export NAME='value'` lines
-docket keys setup                  # interactive wizard (Anthropic/OpenAI/Google/OpenRouter)
+docket keys setup                  # interactive wizard (Anthropic/OpenAI/Google/OpenRouter/Vercel)
 ```
 
 **Subcommands:**
@@ -1015,7 +1016,8 @@ docket keys list
 #### add
 Key name must be `UPPERCASE_WITH_UNDERSCORES` (e.g. `ANTHROPIC_API_KEY`). Prompts for the hidden
 value via `getpass`; errors (exit 1) if the name already exists — use `rotate` instead. On
-success: stores it and re-syncs `.env` files into every agent workspace.
+success: stores it, makes it available to Docket's model client, and re-syncs matching provider
+credentials into agent workspaces.
 
 ```bash
 docket keys add ANTHROPIC_API_KEY
@@ -1056,7 +1058,7 @@ eval "$(docket keys export)"
 
 #### setup
 Interactive wizard (requires a TTY) that walks through Anthropic / OpenAI / Google AI /
-OpenRouter keys one at a time.
+OpenRouter / Vercel AI Gateway keys one at a time.
 
 ```bash
 docket keys setup
@@ -1068,9 +1070,11 @@ docket keys setup
 - Stored in `~/.docket/secrets.json` (values, 0600) and `secrets.meta.json` (added/rotated
   timestamps) — docket-owned JSON, written through `edges/store.py`
 - Recognized provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`,
-  `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`,
-  `HUGGINGFACE_TOKEN`
-- `add`/`remove`/`rotate` all re-sync `.env` files to agent workspaces
+  `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`,
+  `MISTRAL_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `HUGGINGFACE_TOKEN`
+- The runtime reads a selected provider's stored credential directly; exporting is optional.
+- `add`/`remove`/`rotate` re-sync only matching provider credentials (plus allowed custom keys)
+  to agent workspaces.
 
 ---
 
@@ -1080,8 +1084,8 @@ Model-provider credential **status** — separate from `docket keys` only in nam
 Phase 19, `auth login`/`key`/`setup` shelled out to the (now-deleted) daemon for an OAuth-like
 setup-token exchange. **That flow no longer exists, and there is no docket-native replacement.**
 `docket keys add <PROVIDER>_API_KEY` is the real, working credential path —
-`edges/adapters/llm.py`'s `resolve_endpoint` reads it (or the bare `<PROVIDER>_API_KEY`
-environment variable) directly.
+`edges/adapters/llm.py`'s `resolve_endpoint` reads it directly; the matching environment variable
+is an optional process-only override.
 
 **Syntax:**
 ```bash
@@ -1275,7 +1279,10 @@ docket models reset                      # Restore built-in defaults (asks for c
 docket models provider add <name> <base-url> [--model ID] [--name NAME] [--ctx N] [--max-tokens N]
 ```
 
-**Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (zero per-token cost), `openrouter`, `local` (no API key — run your own OpenAI-compatible endpoint, priced at `$0 (local)`)
+**Presets:** `anthropic` (default), `openai`, `google`, `openrouter-free` (experimental
+zero-cost router), `openrouter`, `ai-gateway` (Vercel), `local` (no API key — run your own
+OpenAI-compatible endpoint, priced at `$0 (local)`). See
+[Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
 
 **Example:**
 ```bash
@@ -1286,10 +1293,10 @@ docket models set programmer openai/gpt-4.1
 ```
 
 #### provider add
-Registers a local OpenAI-compatible endpoint (e.g. a self-hosted vLLM/Ollama server) so its
+Registers an OpenAI-compatible endpoint (e.g. another hosted service or self-hosted vLLM/Ollama) so its
 models can be referenced from `docket models set`/`preset`. `--model` sets the model id served
 at that endpoint; `--name` a friendly label; `--ctx`/`--max-tokens` record context-window and
-output-token limits for display only.
+output-token limits consumed by exact-model request preflight as well as display.
 
 ```bash
 docket models provider add homelab http://localhost:8000/v1 --model llama-3.1-70b
@@ -1306,8 +1313,8 @@ docket models provider add homelab http://localhost:8000/v1 --model llama-3.1-70
   if the preset's required key isn't stored yet
 - Unknown models are accepted if well-formed (`provider/model`) — docket has no provider-side
   catalog to validate against, so a bad model id only surfaces the first time an agent actually
-  calls the endpoint; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter route
-  outside docket's curated free-tier rows, and `$0 (local)` for a local/ollama/lmstudio
+  calls the endpoint; pricing shows `n/a` (or `n/a (bring your own)` for an OpenRouter/AI Gateway
+  route other than the explicit free router, and `$0 (local)` for a local/ollama/lmstudio
   provider — never a fabricated dollar figure)
 - Tier names (`economy`/`standard`/`premium`) are rejected everywhere a model/role value is
   expected — including here — per D-2 (0.2.0); an invalid model prints the current role policy

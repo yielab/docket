@@ -49,6 +49,19 @@ _RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 _VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
 _PROTOCOL_OVERHEAD_TOKENS = 16
 
+_HOSTED_GATEWAY_BASE_URLS: dict[str, str] = {
+    "openrouter": "https://openrouter.ai/api/v1",
+    "ai-gateway": "https://ai-gateway.vercel.sh/v1",
+}
+
+_PROVIDER_CREDENTIAL_NAMES: dict[str, tuple[str, ...]] = {
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "google": ("GOOGLE_AI_API_KEY",),
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "ai-gateway": ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"),
+}
+
 
 # ── wire encoding ─────────────────────────────────────────────────────────────
 
@@ -206,6 +219,17 @@ def decode_response(data: dict[str, Any]) -> ChatResponse:
             ok=False, raw=data, error="malformed choice entry", failure_kind="invalid_output"
         )
 
+    finish_reason = str(first.get("finish_reason") or "")
+    choice_error = first.get("error")
+    if finish_reason == "error" or (isinstance(choice_error, dict) and choice_error):
+        detail = choice_error if isinstance(choice_error, dict) else {}
+        reason = str(detail.get("message") or detail or "endpoint returned finish_reason=error")
+        code = detail.get("code")
+        failure_kind: FailureKind = "invalid_output"
+        if isinstance(code, int) and not isinstance(code, bool):
+            failure_kind = _classify_http_status(code)
+        return ChatResponse(ok=False, raw=data, error=reason, failure_kind=failure_kind)
+
     wire_msg = first.get("message")
     wire_msg = wire_msg if isinstance(wire_msg, dict) else {}
     content = wire_msg.get("content")
@@ -220,7 +244,7 @@ def decode_response(data: dict[str, Any]) -> ChatResponse:
     return ChatResponse(
         ok=True,
         message=message,
-        finish_reason=str(first.get("finish_reason") or ""),
+        finish_reason=finish_reason,
         usage=_decode_usage(data.get("usage")),
         raw=data,
     )
@@ -382,10 +406,12 @@ def resolve_endpoint(model: str) -> Endpoint | None:
        development and for tests that want a stub server without touching
        stored config.
     2. The stored provider block for ``<provider>``.
+    3. A built-in base URL for a known hosted gateway.
 
     The API key falls back through ``DOCKET_LLM_API_KEY``, then the provider
-    block's own key, then ``<PROVIDER>_API_KEY`` from the environment. Returns
-    ``None`` when no base URL can be found, so callers report an actionable
+    block's own non-placeholder key, then the provider credential from the
+    environment, then Docket's central key store. Returns ``None`` when no base URL can be found,
+    so callers report an actionable
     "no endpoint configured" rather than posting into the void.
 
     The stored-config lookup reads docket's own fleet registry
@@ -405,17 +431,33 @@ def resolve_endpoint(model: str) -> Endpoint | None:
 
         stored = _fleet.get_local_provider(provider) or {}
 
-    base_url = env_base or str(stored.get("baseUrl") or "").strip()
+    base_url = (
+        env_base
+        or str(stored.get("baseUrl") or "").strip()
+        or _HOSTED_GATEWAY_BASE_URLS.get(provider, "")
+    )
     if not base_url:
         return None
 
-    api_key = env_key or str(stored.get("apiKey") or "").strip()
+    stored_key = str(stored.get("apiKey") or "").strip()
+    if stored_key == "local":
+        stored_key = ""
+    api_key = env_key or stored_key
     if not api_key and provider:
-        api_key = os.environ.get(f"{provider.upper().replace('-', '_')}_API_KEY", "").strip()
-    # Local servers conventionally require *some* bearer token but ignore its
-    # value; "local" is what docket already writes into the provider block.
-    if api_key == "local":
-        api_key = ""
+        credential_names = _PROVIDER_CREDENTIAL_NAMES.get(
+            provider, (f"{provider.upper().replace('-', '_')}_API_KEY",)
+        )
+        for name in credential_names:
+            api_key = os.environ.get(name, "").strip()
+            if api_key:
+                break
+        if not api_key:
+            from docket.core import secrets as _secrets
+
+            for name in credential_names:
+                api_key = _secrets.secret_value(name) or ""
+                if api_key:
+                    break
 
     context_window: int | None = None
     max_output: int | None = None

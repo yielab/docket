@@ -9,10 +9,9 @@ through ``edges/store.py``.
 There is no daemon left to own an interactive OAuth-style provider login flow,
 and no docket-native replacement exists yet — rather than silently no-op or
 pretend to succeed, every ``docket auth`` subcommand says so plainly and
-points at ``docket keys add <PROVIDER>_API_KEY`` as the one credential path
-that is real today (``edges/adapters/llm.py``'s ``resolve_endpoint`` reads
-``<PROVIDER>_API_KEY`` from the environment as one of its lookup precedence
-steps).
+points at ``docket keys add <PROVIDER>_API_KEY`` as the credential path that
+is real today (``edges/adapters/llm.py`` reads the central store directly,
+after explicit process/provider overrides).
 """
 
 from __future__ import annotations
@@ -51,6 +50,8 @@ _PROVIDER_KEYS: dict[str, str] = {
     "OPENAI_API_KEY": "openai",
     "GOOGLE_AI_API_KEY": "google",
     "OPENROUTER_API_KEY": "openrouter",
+    "AI_GATEWAY_API_KEY": "ai-gateway",
+    "VERCEL_OIDC_TOKEN": "ai-gateway",
     "GROQ_API_KEY": "groq",
     "MISTRAL_API_KEY": "mistral",
     "XAI_API_KEY": "xai",
@@ -285,6 +286,7 @@ def _keys_setup() -> int:
         ("OPENAI_API_KEY", "OpenAI (GPT)", "sk-"),
         ("GOOGLE_AI_API_KEY", "Google AI (Gemini)", "AIza"),
         ("OPENROUTER_API_KEY", "OpenRouter", "sk-or-"),
+        ("AI_GATEWAY_API_KEY", "Vercel AI Gateway", ""),
     ]
 
     secrets = _load_secrets()
@@ -329,7 +331,7 @@ def _keys_setup() -> int:
         _save_secrets(secrets)
         _sync_keys_to_agents()
 
-        ui.success("Keys saved and synced to agent workspaces.")
+        ui.success("Keys saved; matching credentials synced to agent workspaces.")
     else:
         ui.info("No changes made.")
     return 0
@@ -414,9 +416,8 @@ _AUTH_GONE_MESSAGE = (
     " left to shell out to for an OAuth-like token exchange).\n"
     "  What works today: store a credential directly and docket's own chat client reads it —\n"
     "    docket keys add {env_var}\n"
-    "  edges/adapters/llm.py's resolve_endpoint falls back to the <PROVIDER>_API_KEY\n"
-    "  environment variable, so exporting {env_var} (or storing it via 'docket keys add' and\n"
-    "  sourcing 'docket keys export') is the real, working credential path."
+    "  edges/adapters/llm.py reads that stored key directly; a matching environment variable\n"
+    "  remains an optional process-only override."
 )
 
 _PROVIDER_ENV_VAR: dict[str, str] = {
@@ -424,6 +425,7 @@ _PROVIDER_ENV_VAR: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_AI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "ai-gateway": "AI_GATEWAY_API_KEY",
     "groq": "GROQ_API_KEY",
     "mistral": "MISTRAL_API_KEY",
     "xai": "XAI_API_KEY",

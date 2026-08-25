@@ -5,7 +5,7 @@ description: Diagnose or change Docket session history, context compilation, han
 
 # Docket Context Runtime
 
-Use this together with `$docket-spec-work` for behavior changes.
+Use this together with the `docket-spec-work` skill for behavior changes.
 
 Begin with targeted searches for the exact setting/helper and every caller. Build the live path from
 dispatch through driver, loop, session, and backend before proposing a fix. Distinguish:
@@ -14,11 +14,16 @@ dispatch through driver, loop, session, and backend before proposing a fix. Dist
 - one turn's hard budget: measured backend usage;
 - durable session history: stored messages and compaction.
 
-For an overflow, capture the exact failing backend-call ordinal and break the prospective request
-into system context, replay/active-turn messages, tool schemas, protocol overhead, and requested
-output reserve. Compare it with the selected provider/model's live registered window. Label byte-
-ratio or payload estimates as estimates; endpoint tokenizer counts are measured only when the
-endpoint reports them.
+For an overflow, capture the exact prospective request ordinal and break it into system context,
+replay/active-turn messages, tool schemas, protocol overhead, and requested output reserve. Record
+separately whether transport was attempted. Compare the request with the selected provider/model's
+live registered window. Label byte-ratio or payload estimates as estimates; endpoint tokenizer
+counts are measured only when the endpoint reports them.
+
+Distinguish the prospective request sequence from backend transports actually attempted in the
+incident evidence and recording test. Use the shipped trace vocabulary from the owning spec:
+`purpose=task|compaction`, fit status, estimated input, output reserve, registered window, and the
+estimate marker. Do not invent ordinal or transport-count trace fields without a scoped spec change.
 
 Do not claim one budget bounds another. Avoid sending both raw cross-role history and a typed handoff
 unless the contract explicitly requires both.
@@ -26,6 +31,14 @@ unless the contract explicitly requires both.
 Read [references/live-path.md](references/live-path.md) before editing session compaction, loop
 composition, handoff/session keys, MCP output, or memory injection. It contains the non-obvious
 atomicity, recursion, trace, and small-context validation requirements.
+
+Read [references/provider-compatibility.md](references/provider-compatibility.md) when changing a
+model endpoint, hosted gateway, provider credential, model id, or gateway-reported usage/context.
+
+Read [references/real-world-tests.md](references/real-world-tests.md) when reproducing a context
+incident or designing its RED test. Skill maintainers use
+[references/forward-tests.md](references/forward-tests.md) only as an evaluator-side rubric after
+the evaluated agent finishes. An evaluated agent must not load that rubric.
 
 Prefer deterministic reduction in this order: omit irrelevant sources, select a bounded section,
 use typed artifacts, visibly truncate low-priority fields, then summarize. Never silently truncate a
@@ -43,6 +56,8 @@ not touch the same compiler, loop, session, handoff, budget, or live endpoint st
 Preflight every imminent model request, including compaction calls and later tool-loop iterations;
 include advertised tools and an output reserve. A pre-turn compaction does not bound messages added
 during the active turn. When reduction is required, preserve assistant tool calls with every
-answering result as atomic units, reload the accepted compacted state, and retry the fit check. If
-the irreducible request cannot fit, fail locally before transport with an actionable reason; never
-silently cut a task, tool decision/result, or unresolved action.
+answering result as atomic units keyed by tool-call ID, reload the accepted compacted state, and
+retry the fit check. Do not compact the same stored revision repeatedly: after one accepted summary
+and recheck, use another bounded reduction or fail locally. If the irreducible request cannot fit,
+fail before transport with an actionable reason; never silently cut a task, tool decision/result,
+or unresolved action.

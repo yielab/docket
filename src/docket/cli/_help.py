@@ -71,7 +71,7 @@ def run_help() -> int:
   {G}models{R}             View/change the role→model policy; switch provider presets
   {G}scope{R}    [id] [a]  Manage session scopes for multi-project isolation
   {G}auth{R}     <action>  Show which provider credentials are stored (no login flow yet)
-  {G}keys{R}     <action>  Manage workspace secrets — syncs to all agents
+  {G}keys{R}     <action>  Manage model credentials and workspace secrets
 
 {B}CONTEXT & MEMORY  (docket context [id] <subcommand>){R}
   {G}show{R}               Recent activity, active tasks, stats (default)

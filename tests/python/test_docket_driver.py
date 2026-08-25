@@ -24,17 +24,20 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import docket.config as _cfg
-from docket.cli import _gates
+from docket.cli import _gates, _keys
 from docket.core import fleet as _fleet
+from docket.core import secrets as _secrets
 from docket.core.audit import read_audit
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV
 from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
+from docket.edges.adapters import llm as _llm_adapter
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.docket_runtime import DocketDriver
 from docket.edges.adapters.system import SandboxAvailability
@@ -118,6 +121,97 @@ def _never_called(model: str):  # pragma: no cover - only exercised on a real bu
 
 
 class TestRunTurn:
+    @pytest.mark.parametrize(
+        ("provider_key", "secret", "model", "expected_url", "wire_model"),
+        [
+            (
+                "OPENROUTER_API_KEY",
+                "sk-or-runtime-test",
+                "openrouter/anthropic/claude-sonnet-4.6",
+                "https://openrouter.ai/api/v1/chat/completions",
+                "anthropic/claude-sonnet-4.6",
+            ),
+            (
+                "AI_GATEWAY_API_KEY",
+                "vercel-runtime-test",
+                "ai-gateway/anthropic/claude-sonnet-4.6",
+                "https://ai-gateway.vercel.sh/v1/chat/completions",
+                "anthropic/claude-sonnet-4.6",
+            ),
+        ],
+    )
+    def test_stored_gateway_key_reaches_real_driver_and_http_adapter(
+        self,
+        provider_key: str,
+        secret: str,
+        model: str,
+        expected_url: str,
+        wire_model: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.delenv(provider_key, raising=False)
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
+        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        monkeypatch.setattr(_keys, "project_ids", lambda: [])
+        monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: secret)
+
+        assert _keys.run_keys("add", [provider_key]) == 0
+        _write_meta("gateway-agent", model=model)
+
+        captured: dict[str, object] = {}
+
+        class _Response:
+            def read(self) -> bytes:
+                return json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {"role": "assistant", "content": "gateway ok"},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 9, "completion_tokens": 2},
+                    }
+                ).encode()
+
+            def __enter__(self) -> _Response:
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                return None
+
+        def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
+            captured["url"] = request.full_url
+            captured["auth"] = request.get_header("Authorization")
+            captured["payload"] = json.loads(request.data.decode())
+            return _Response()
+
+        monkeypatch.setattr(_llm_adapter.urllib.request, "urlopen", fake_urlopen)
+
+        result = DocketDriver().run_turn(
+            "gateway-agent", "agent:gateway-agent:default", "Use the available tools if needed.", 60
+        )
+
+        assert result.ok is True
+        assert result.output == "gateway ok"
+        assert captured["url"] == expected_url
+        assert captured["auth"] == f"Bearer {secret}"
+        payload = captured["payload"]
+        assert isinstance(payload, dict)
+        assert payload["model"] == wire_model
+        assert payload["stream"] is False
+        assert payload["tools"]
+        assert secret not in json.dumps(payload)
+        trace_text = "".join(
+            path.read_text(encoding="utf-8")
+            for path in _cfg.TRACES_DIR.rglob("*")
+            if path.is_file()
+        )
+        assert secret not in trace_text
+
     def test_registered_limits_reach_the_loop_and_transport(self) -> None:
         _write_meta("bounded-agent")
         backend = _ScriptedBackend([_final_response("bounded")])

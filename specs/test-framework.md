@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Active
-**Last Updated**: 2026-08-22
+**Last Updated**: 2026-08-25
 
 ## Overview
 
@@ -15,6 +15,24 @@ it proves the separately tested components compose across real CLI subprocess an
 boundaries into one completed, inspectable task.
 
 ## Philosophy
+
+### Coding-harness portability
+
+`AGENTS.md` and `.agents/skills/` are the canonical shared contract. Codex and OpenCode discover
+those paths directly. Claude Code receives a short tracked `.claude/CLAUDE.md` bridge that imports
+`AGENTS.md` and tells it to load canonical skills from `.agents/skills`; the repository **MUST NOT**
+duplicate those skills under `.claude/skills`, because clients that scan both locations require
+unique skill names.
+
+Tracked hook configuration **MUST** use a PATH-resolved `python3` and the harness's documented
+project-root variable or root discovery, never a machine-specific interpreter path. Hooks are
+context convenience only: correctness and permissions continue to come from the current spec,
+tests, process sandbox, and operator trust. A harness that does not run the snapshot **MUST** be
+able to invoke it manually.
+
+Model transport and coding harness are independent axes. Gateway tests exercise Docket's public
+endpoint/key semantics with deterministic HTTP fakes; they do not use Codex, Claude Code, or
+OpenCode as the model backend. Live-model canaries remain opt-in and budgeted.
 
 ### Spec-first, then test-first
 
@@ -186,6 +204,13 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.7.0 (2026-08-25)
+
+- Established one canonical instruction/skill tree for Codex, Claude Code, and OpenCode, with a
+  minimal Claude bridge and portable hooks rather than duplicated skills.
+- Separated coding-harness conformance from gateway/model transport tests and kept remote canaries
+  opt-in and budgeted.
 
 ### Version 2.6.0 (2026-08-22)
 

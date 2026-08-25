@@ -51,10 +51,12 @@ TERMINAL-MODE-QUICKSTART.txt
 .env.local
 .secrets
 
-# Claude artifacts
-.claude/
+# Claude artifacts (keep the portable project bridge; local settings stay private)
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
 # AI assistant dev guidance (kept local, not published)
-CLAUDE.md
+/CLAUDE.md
 __pycache__/
 .venv/
 

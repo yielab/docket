@@ -119,7 +119,8 @@ auth-profile store, ACL module, or gateway service to restart —
 `edges/adapters/system.py`'s `restart_gateway()`/`gateway_active()` are kept
 as stable, always-no-op/always-`False` call sites (so the ~20 pre-existing call sites across
 `cli/` need no individual rewrite), not a live integration. docket runs the agent turn itself
-(`core/agent_loop.py`) and talks to any OpenAI-compatible chat-completions endpoint directly
+(`core/agent_loop.py`) and talks through one non-streaming OpenAI-compatible chat-completions
+adapter; built-in gateways or explicitly registered compatible endpoints supply the base URL
 (`edges/adapters/llm.py`, stdlib `urllib`, no vendor SDK).
 
 This was a scope ruling, not a migration: **no compatibility layer, no migration steps** — a

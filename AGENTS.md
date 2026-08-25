@@ -6,10 +6,10 @@ task; load only the referenced section or spec.
 
 ## Source routing
 
-- Planning, card selection, or roadmap updates: use `$docket-roadmap`.
-- Any behavior change: use `$docket-spec-work` before editing implementation code.
+- Planning, card selection, or roadmap updates: load the `docket-roadmap` skill.
+- Any behavior change: load the `docket-spec-work` skill before editing implementation code.
 - Session history, handoffs, token budgets, tool output, agent loop, memory, or MCP context:
-  also use `$docket-context-runtime`.
+  also load the `docket-context-runtime` skill.
 - `TODO.md` is the active board. `ROADMAP.md` holds durable decisions and history. `specs/` holds
   current-state contracts. Tests and the live code path are the implementation evidence.
 - If a spec, prose claim, and live behavior disagree, do not choose the convenient one: record the

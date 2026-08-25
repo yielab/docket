@@ -8,6 +8,9 @@ description: Scope, schedule, claim, or resume Docket roadmap work from the acti
 Build a small task packet instead of loading the planning corpus.
 
 1. Run `python3 .agents/skills/docket-roadmap/scripts/context_snapshot.py`.
+   Treat `dirty: unknown`, an ambiguous board marker, or clipped dirty paths as a fail-closed
+   precondition: obtain the full read-only Git status before claiming work or declaring lanes
+   parallel-safe. Never interpret an unavailable Git probe as a clean worktree.
 2. Treat `TODO.md` as the active board. Read only its current active section and the selected
    card. If the board is clear, do not mine historical sections for work.
 3. Use `ROADMAP.md` only for a named decision, principle, phase, or trigger. Locate it with `rg -n`
@@ -18,6 +21,14 @@ For a new card, record the measured trigger, goal, non-goals, exact live-path ow
 acceptance criteria, focused tests, full gates, and any file-contention dependency. Prefer one
 independently shippable behavior over a phase-sized bundle.
 
+For a quantitative or deferred scheduling trigger, evidence names a source/locator, metric,
+observation window, threshold, and observed value. An estimate may justify bounded measurement; it
+does not fire that trigger. For an explicit scoped request or deterministic regression, record the
+request or exact expected/actual reproduction instead of inventing a metric, window, or threshold.
+Make acceptance executable with at least one representative initial state, public action,
+observable result, side-effect/rollback check, and named oracle. A card whose only test claim is
+“works” or a helper-only assertion is not ready.
+
 For a runtime incident, separate independently shippable causes instead of giving the symptom one
 catch-all card. Record the failing call ordinal, configured limit, measured or estimated request
 size, and which context source grew. Do not schedule a larger limit as the fix unless bounded
@@ -26,8 +37,15 @@ composition already exists and the measured workload genuinely requires the capa
 Read [references/board-contract.md](references/board-contract.md) only when changing `TODO.md` or
 `ROADMAP.md`, claiming work, or closing a card.
 
-Return or record a task packet containing only: decision, evidence, scope, contract/spec, validation,
-risks, and next action. Link to large sources rather than copying them.
+Read [references/real-world-tests.md](references/real-world-tests.md) when designing a card's
+real-case acceptance evidence; do not load it for ordinary board lookup. Skill maintainers use
+[references/forward-tests.md](references/forward-tests.md) only as an evaluator-side rubric after
+the evaluated agent finishes. An evaluated agent must not load that rubric.
+
+Return or record a task packet covering decision, evidence, scope, contract/spec, validation, risks,
+next action, pending work in the current card, and later follow-ups. Link to large sources rather
+than copying them. Keep this packet separate from, and append, `AGENTS.md`'s required end-of-work
+control summary; neither shape replaces the other.
 
 At close or resume, run the snapshot again and apply `AGENTS.md`'s end-of-work control. Choose the
 next ideal task only from a ready card, an unmet acceptance criterion, or a measured risk whose

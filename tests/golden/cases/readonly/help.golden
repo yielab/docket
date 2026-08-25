@@ -45,7 +45,7 @@ CONFIGURATION
   models             View/change the role→model policy; switch provider presets
   scope    [id] [a]  Manage session scopes for multi-project isolation
   auth     <action>  Show which provider credentials are stored (no login flow yet)
-  keys     <action>  Manage workspace secrets — syncs to all agents
+  keys     <action>  Manage model credentials and workspace secrets
 
 CONTEXT & MEMORY  (docket context [id] <subcommand>)
   show               Recent activity, active tasks, stats (default)

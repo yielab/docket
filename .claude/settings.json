@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.agents/skills/docket-roadmap/scripts/context_snapshot.py\" --hook",
+            "timeout": 3,
+            "statusMessage": "Loading bounded Docket context"
+          }
+        ]
+      }
+    ]
+  }
+}

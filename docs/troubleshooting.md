@@ -164,11 +164,13 @@ rather than assuming something is broken.
 
 ### "no endpoint configured for this model"
 **Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
-provider — no `DOCKET_LLM_BASE_URL`, no stored local-provider entry, and (for a hosted provider)
-this error specifically means the provider block itself isn't registered.
+provider — no `DOCKET_LLM_BASE_URL`, no registered provider entry, and no built-in hosted mapping.
+OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`) have built-in mappings;
+arbitrary hosted provider prefixes do not.
 
-**Fix:** for a hosted provider, store a credential (`docket keys add <PROVIDER>_API_KEY`); for a
-local server, register it first (`docket models provider add <name> <base-url>`).
+**Fix:** for OpenRouter/Vercel, apply the matching preset and store its key. For any other hosted or
+local server, register it first (`docket models provider add <name> <base-url>`). A credential
+authenticates a known endpoint; it cannot supply a missing URL.
 
 ### "cannot reach `<url>`: ..." / "timed out after Ns calling `<url>`"
 **Cause:** the configured endpoint (hosted or local) isn't reachable — wrong URL, the local

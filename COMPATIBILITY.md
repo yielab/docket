@@ -9,17 +9,21 @@ README's [Compatibility](README.md#compatibility) section for the short version.
 
 | docket-cli | Model endpoint | MCP | Notes |
 |------------|-----------------|-----|-------|
-| 0.2.x | OpenAI-compatible `/chat/completions` (tool calling) | stdio servers, optional `[mcp]` extra | Verified against hosted providers and local llama.cpp / vLLM / LM Studio |
+| 0.2.x | Non-streaming OpenAI-compatible `/chat/completions` (function tools) | stdio servers, optional `[mcp]` extra | Hermetic wire coverage for OpenRouter/Vercel and explicitly registered compatible endpoints; no live-provider CI |
 
 - **Model endpoint.** `edges/adapters/llm.py` is the one module that knows the
   chat-completions wire format, built on stdlib `urllib` — no vendor SDK is pulled in. Any
-  endpoint that speaks the OpenAI-compatible `/chat/completions` shape works: a hosted
-  provider's API, or a local llama.cpp / vLLM / LM Studio server. Point docket at one with
-  `docket keys add <PROVIDER>_API_KEY`, or override every model at once with
-  `DOCKET_LLM_BASE_URL` / `DOCKET_LLM_API_KEY`.
+  endpoint that speaks Docket's non-streaming OpenAI-compatible `/chat/completions` and function
+  tool shapes can be used. OpenRouter and Vercel AI Gateway have built-in base URLs and central-key
+  resolution. Register another hosted or local llama.cpp / vLLM / LM Studio endpoint with
+  `docket models provider add`; the process-wide `DOCKET_LLM_BASE_URL` /
+  `DOCKET_LLM_API_KEY` override remains useful for a temporary single endpoint.
 - **Tool calling.** An endpoint that does not implement tool calling still runs text-only
   turns; anything that requires a tool fails cleanly (a typed, non-`ok` response) rather than
   silently.
+- **Deliberate limits.** Streaming, Responses API payloads, vendor routing options, remote catalog
+  discovery, and live price synchronization are not part of the current adapter. See
+  [the gateway guide](docs/MODEL-GATEWAYS.md) for setup and test boundaries.
 - **MCP.** `docket mcp servers add` points at any MCP stdio server; its tools are gated
   through the exact same chokepoint as a built-in, namespaced `mcp__<server>__<tool>`.
   Requires the optional `[mcp]` extra (`pip install 'docket[mcp]'` or `uv sync --extra mcp`);

@@ -87,6 +87,8 @@ def _step_auth() -> int:
         "OPENAI_API_KEY",
         "GOOGLE_AI_API_KEY",
         "OPENROUTER_API_KEY",
+        "AI_GATEWAY_API_KEY",
+        "VERCEL_OIDC_TOKEN",
         "DOCKET_LLM_API_KEY",
     )
     present = sorted(stored) + [v for v in known_env_vars if v in os.environ and v not in stored]

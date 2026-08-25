@@ -88,7 +88,8 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:ANTHROPIC|OPENAI|GOOGLE|OPENROUTER|COHERE)[_A-Z]*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
+        r"(?:ANTHROPIC|OPENAI|GOOGLE|OPENROUTER|AI_GATEWAY|VERCEL|COHERE)"
+        r"[_A-Z]*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
         re.IGNORECASE,
     ),
     re.compile(r"[A-Z][A-Z0-9_]{5,}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+", re.IGNORECASE),

@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-25
 
 ## Purpose
 
@@ -23,10 +23,11 @@ This specification covers:
 - Viewing/changing the policy (`docket models`) and pinning agents (`docket profile`)
 - Automatic re-resolution of policy-following agents on policy changes
 - The built-in provider presets (`docket models preset`), including the free/local path
+- Hosted OpenAI-compatible gateway endpoint and credential resolution
 - Removed tier names and the private internal rank-anchor seed table; the one-shot legacy
   `profiles:` registry migration
 - The pricing table used for cost estimation, including local-provider and marketplace-
-  provider (OpenRouter) pricing honesty
+  provider (OpenRouter/Vercel AI Gateway) pricing honesty
 
 This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md),
 nor the declarative role-archetype registry itself (`name`/`scope`/`gateContract`/…, ROADMAP
@@ -40,12 +41,12 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 
 ### Roles and built-in policy
 
-1. The policy **MUST** know exactly eight roles: the six specialist roles
-   (`manager`, `programmer`, `reviewer`, `tester`, `knowledge`, `security`) plus the two
-   project-agent types (`repo`, `task`), which double as project agents' policy roles.
+1. The policy **MUST** know exactly seven roles: the six specialist roles
+   (`manager`, `programmer`, `reviewer`, `tester`, `knowledge`, `security`) plus the `repo`
+   project-agent policy role. There is no `task` role.
 2. Each role **MUST** belong to one of two built-in classes, chosen for token efficiency:
    - **cheap** (high-volume, low reasoning density): `manager`, `reviewer`, `tester`,
-     `knowledge`, `task` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
+     `knowledge` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
    - **strong** (reasoning-dense): `programmer`, `security`, `repo` → the standard rank
      anchor (default `anthropic/claude-sonnet-4-6`)
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
@@ -89,12 +90,12 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 ### Changing the policy (docket models)
 
 1. `docket models` **MUST** list ROLE, MODEL, PRICE, SOURCE (builtin/user), and WHY for all
-   eight roles, plus the default model and the rank anchors (labeled "rank anchors", not
+   seven roles, plus the default model and the rank anchors (labeled "rank anchors", not
    "fallback" — see Tier names below for why that label was corrected).
 2. `docket models set <role> <provider/model>` **MUST** validate the model, persist the
    override to the registry, and apply it live.
 3. `docket models preset <name>` **MUST** map the preset's cheap/strong classes onto all
-   eight roles and persist them, plus the rank anchors and default.
+   seven roles and persist them, plus the rank anchors and default.
 4. After any policy change (set/preset/reset), every **policy-following** agent (specialist
    and project, registered or not) **MUST** be re-resolved to its role's new model in
    `.docket-meta.json` — the only place a model lives (ROADMAP Phase 19 P19-6: `fleet.json`
@@ -160,7 +161,7 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 ### Presets (docket models preset)
 
 1. The built-in presets **MUST** include `anthropic` (default), `openai`, `google`,
-   `openrouter-free`, `openrouter`, and `local`.
+   `openrouter-free`, `openrouter`, `ai-gateway`, and `local`.
 2. The `local` preset **MUST** require no API key (a local OpenAI-compatible endpoint —
    llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket models provider`) and
    **MUST** price its models at `$0 (local)`.
@@ -168,18 +169,51 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
    registry's `rankAnchors` (see User registry overlay), not just the per-role overrides — so
    the anchor value `docket models` displays never lags behind the fleet's actual preset after
    a non-Anthropic preset is applied.
+4. `openrouter-free` **MUST** route every rank through Docket model id
+   `openrouter/openrouter/free`, which transports `openrouter/free` to OpenRouter. It **MUST**
+   report zero per-token price, and its note **MUST** identify the router as experimental:
+   the selected model and availability can change between calls.
+5. `ai-gateway` **MUST** use Docket model ids with the `ai-gateway/` prefix and retain the
+   gateway's nested `creator/model` id on the wire. Marketplace prices **MUST NOT** be copied
+   from a dated provider snapshot; they report `n/a (bring your own)`.
+
+### Hosted gateway resolution
+
+1. Docket's shipped model wire **MUST** remain the non-streaming OpenAI-compatible
+   `/chat/completions` surface with function tools. A provider/model claim **MUST NOT** imply
+   support for streaming, the Responses API, vendor routing options, or a model that lacks tool
+   calling.
+2. Without process-wide overrides or a registered provider block, `resolve_endpoint` **MUST**
+   recognize `openrouter` as `https://openrouter.ai/api/v1` and `ai-gateway` as
+   `https://ai-gateway.vercel.sh/v1`. It **MUST** strip only Docket's first provider segment,
+   retaining nested gateway model ids.
+3. Credential precedence **MUST** be: `DOCKET_LLM_API_KEY`, a non-placeholder key in the exact
+   registered provider block, the provider's environment credential, then the same credential in
+   Docket's central key store. `openrouter` uses `OPENROUTER_API_KEY`; `ai-gateway` uses
+   `AI_GATEWAY_API_KEY` with `VERCEL_OIDC_TOKEN` as a fallback. The provider-registration
+   placeholder `local` **MUST NOT** mask these fallbacks or be sent as bearer auth.
+4. `DOCKET_LLM_BASE_URL` remains a process-wide override for tests and local development. It
+   **MUST** take endpoint precedence and **MUST NOT** inherit registered context/output limits from
+   the endpoint it replaces. Otherwise, an exact registered model row **MUST** retain those limits.
+5. Default tests **MUST** cover both hosted gateways together from public configuration semantics
+   without network or real credentials. A live gateway canary is opt-in and **MUST** have an
+   explicit cost/request budget.
+6. A gateway response with `finish_reason: error` or an error object inside its first choice
+   **MUST** produce a non-OK response. A numeric embedded status **MUST** use the same retry
+   classification as that HTTP status; it **MUST NOT** become an empty successful answer.
 
 ### Pricing
 
-1. Each built-in model **MUST** have a pricing entry in USD per million tokens, expressed
-   as `input:output:cacheWrite:cacheRead`.
+1. Each built-in direct-provider model whose price Docket claims **MUST** have a pricing entry in
+   USD per million tokens, expressed as `input:output:cacheWrite:cacheRead`. Marketplace gateway
+   models are the explicit exception described in requirement 4.
 2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
 3. A model whose provider prefix is a recognized local provider (`local`, `ollama`,
    `lmstudio`) **MUST** report `$0 (local)` — this is the true cost, not a placeholder for
    missing data, and **MUST NOT** fall through to the generic `n/a` path.
 4. A model routed through a marketplace provider whose per-model pricing docket does not
-   track (`openrouter`, unless the specific model id is one of the curated
-   `openrouter-free` rows priced at `$0.00`) **MUST** report a distinct, informative label
+   track (`openrouter` or `ai-gateway`, except the explicit `openrouter/openrouter/free`
+   router priced at `$0.00`) **MUST** report a distinct, informative label
    (`n/a (bring your own)`) rather than the plain `n/a` used for an ordinary uncatalogued
    model — docket does not invent a number for pricing that changes per model/account.
 
@@ -190,7 +224,7 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
 ```bash
 docket models                              # Show the role→model policy
 docket models set <role|default> <provider/model>
-docket models preset [anthropic|openai|google|openrouter-free|openrouter|local]
+docket models preset [anthropic|openai|google|openrouter-free|openrouter|ai-gateway|local]
 docket models reset                        # Restore built-in defaults
 docket profile <agent-id>                  # Show model, role, source, budget
 docket profile <agent-id> <provider/model> # Pin
@@ -226,14 +260,13 @@ table unless set — a known display quirk.
 Pricing is a manual snapshot (`MODEL_PRICING`, dated by `MODEL_PRICING_AS_OF`) used for
 display and comparative estimates only — recorded spend comes from measured token counts in
 docket's own per-session storage (ROADMAP Phase 19 P19-4/P19-7b; `_cfg.SESSIONS_DIR`, see
-cost-tracking.spec.md), not a daemon. Resolved gap (Phase 18 L-2): the table now carries a `local/
-qwen3-30b-a3b` row and the three `openrouter-free` preset models, all priced at zero
-(sourced from docket's own free-tier/local claims, not an invented figure); `LOCAL_PROVIDERS`
+cost-tracking.spec.md), not a daemon. The table carries a `local/qwen3-30b-a3b` row and the
+`openrouter/openrouter/free` router at zero (the router contract, not a dated selection of free
+models); `LOCAL_PROVIDERS`
 (`local`, `ollama`, `lmstudio`) independently price at `$0 (local)` regardless of whether the
-specific model id is catalogued. The `openrouter` (paid) preset's two non-free-tier models
-are deliberately left uncatalogued — OpenRouter re-prices per underlying model and account
-tier and docket will not hardcode a number it cannot keep current — and report `n/a (bring
-your own)` instead.
+specific model id is catalogued. Paid OpenRouter and AI Gateway preset models are deliberately
+left uncatalogued — gateways can route and re-price by provider/account — and report
+`n/a (bring your own)` instead.
 
 ### Registry file shape (current)
 
@@ -325,9 +358,20 @@ $ docket models
 
 - A role **MUST** always resolve to exactly one model id.
 - A pinned agent's model **MUST** survive any number of policy/preset changes.
-- Pricing **MUST** exist for every built-in policy model.
+- Pricing **MUST** exist for every built-in model that Docket displays with a numeric price;
+  marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.7.0 (2026-08-25)
+
+- Added first-party hosted resolution for OpenRouter and Vercel AI Gateway, including nested model
+  ids, central-store/environment credential precedence, exact registered limits, and hermetic
+  dual-gateway acceptance.
+- Replaced the stale curated `openrouter-free` list with OpenRouter's stable `openrouter/free`
+  router and added an `ai-gateway` preset using current creator/model ids.
+- Corrected the contradictory opening role count to the seven-role `ALL_ROLES` contract already
+  stated by the interface and implementation.
 
 ### Version 2.6.0 (2026-08-19)
 

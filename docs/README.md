@@ -5,7 +5,8 @@ provisioning and isolating **teams** of autonomous coding agents: an isolated pe
 (Lead + Implementer, optionally Reviewer + Tester) for each codebase, not just single agents —
 with role-based model routing, budget guardrails, and every tool call gated through one policy
 chokepoint. docket owns the agent turn loop itself; it has no external daemon dependency, and
-talks to any OpenAI-compatible chat-completions endpoint.
+talks through one non-streaming OpenAI-compatible chat-completions adapter. OpenRouter and Vercel
+AI Gateway are built in; other compatible endpoints require explicit registration.
 
 > New here? Start with the [project README](../README.md) for the overview and install steps,
 > then come back for the guides below.
@@ -32,6 +33,7 @@ talks to any OpenAI-compatible chat-completions endpoint.
 | **[Agent Teams (Pods)](AGENT-TEAMS.md)** | **The core model** — org specialists vs project pods, the Lead/Implementer/Reviewer/Tester roles, and real pipeline dispatch. |
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
+| [Models, gateways, and harnesses](MODEL-GATEWAYS.md) | Codex/Claude Code/OpenCode portability; OpenRouter and Vercel AI Gateway setup and limits |
 | [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |

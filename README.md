@@ -182,9 +182,11 @@ docket runs the agent turn itself, which is what makes the guardrails real rathe
 > nothing; each configured stdio server costs roughly 0.6s per turn, since there is no listing cache
 > yet. Configuring a server is the opt-in.
 
-The model endpoint is any **OpenAI-compatible** chat-completions API — OpenAI, Groq, Together,
-OpenRouter, or a local llama.cpp / vLLM / LM Studio server. The adapter is stdlib `urllib`; no
-vendor SDK is pulled in, and no per-vendor client is hand-rolled.
+The model wire is a non-streaming **OpenAI-compatible** chat-completions API with function tools.
+OpenRouter and Vercel AI Gateway have built-in endpoint/key resolution; other hosted or local
+llama.cpp / vLLM / LM Studio endpoints can be registered explicitly. The adapter is stdlib
+`urllib`; no vendor SDK is pulled in, and no per-vendor client is hand-rolled. See
+[Models, gateways, and coding harnesses](docs/MODEL-GATEWAYS.md).
 
 ## Mobile control via Telegram
 
@@ -256,14 +258,16 @@ uv pip install .   # or: pip install .  — then run `python -m docket --version
 
 > Installs to `~/.local` (no `sudo`); add `~/.local/bin` to `PATH` if it isn't already.
 
-**Prerequisites:** Python 3.11+ · an **OpenAI-compatible chat-completions endpoint** (a hosted
-provider's API key, or a local llama.cpp/vLLM/LM Studio server) · `git` · `bash` (launcher and
+**Prerequisites:** Python 3.11+ · an **OpenAI-compatible chat-completions endpoint** (a built-in
+OpenRouter/Vercel gateway key, or a registered compatible/local server) · `git` · `bash` (launcher and
 installer only). Optional: `fzf` (interactive picker), `docker` (workspace isolation),
 `systemctl` (nothing requires it; docket degrades gracefully without it). The package pulls in
 Typer, Rich, Pydantic, pydantic-settings, and filelock; MCP support is the optional `[mcp]` extra.
 
-Point docket at a model with `docket keys add <PROVIDER>_API_KEY`, or set `DOCKET_LLM_BASE_URL` /
-`DOCKET_LLM_API_KEY` to override every model at once. Everything docket owns lives under
+Use `docket keys add OPENROUTER_API_KEY` plus `docket models preset openrouter`, or
+`docket keys add AI_GATEWAY_API_KEY` plus `docket models preset ai-gateway`. Register other
+compatible endpoints with `docket models provider add`; reserve `DOCKET_LLM_BASE_URL` /
+`DOCKET_LLM_API_KEY` for a process-wide override. Everything docket owns lives under
 `~/.docket/` (`DOCKET_HOME` to relocate).
 
 ## 60-second tour
@@ -475,15 +479,15 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,274 tests** in the pytest suite (`tests/python/`)
-- **~28,989 lines** of Python in the shipped `docket` package
+- **2,302 tests** in the pytest suite (`tests/python/`)
+- **~29,054 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
 
 ```bash
 uv run python scripts/smoke_workflow.py                # observable full workflow, no credentials
 uv run python scripts/smoke_workflow.py --live-model   # realistic memory-backed repair on :8081
-uv run pytest                                        # 2,274-test Python suite
+uv run pytest                                        # 2,302-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -706,7 +710,7 @@ docket has no external daemon dependency. Its compatibility surface is the model
 
 | docket-cli | Model endpoint | MCP | Notes |
 |------------|----------------|-----|-------|
-| 0.2.x | OpenAI-compatible `/chat/completions` (tool calling) | stdio servers, optional `[mcp]` extra | Verified against hosted providers and local llama.cpp / vLLM / LM Studio |
+| 0.2.x | Non-streaming OpenAI-compatible `/chat/completions` (function tools) | stdio servers, optional `[mcp]` extra | Hermetic wire coverage for OpenRouter/Vercel plus compatible registered endpoints; no live-provider CI |
 
 An endpoint that does not implement tool calling will run text-only turns; anything requiring a
 tool will fail cleanly rather than silently. See [COMPATIBILITY.md](COMPATIBILITY.md) for the

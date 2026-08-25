@@ -133,10 +133,10 @@ Each specification document must include:
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.12.0 | Complete | `docket init` creates the project pod; `docket add` only extends an existing pod; pod deletion purges runtime/session/trace state but preserves audit; `maintain distill` + exact durable records |
 | Agent Loop | 1.11.0 | Implemented and live | The production turn loop is gated, role-narrowed, durably compacted, trace-separated, and preflights every known-window task/summary request including tools and output reserve; same-turn growth compacts atomically or fails locally |
-| API Keys | 1.1.0 | Complete | |
+| API Keys | 1.2.0 | Complete | Central keys feed the selected model endpoint directly; matching workspace sync and AI Gateway credentials are covered |
 | Audit | 2.8.0 | Implemented | Hash-chained + `docket audit verify`; `mcp.*`, `models.*`, `runs.cancel`, `mcp_servers.*`, and `telegram.*` are covered; actions taken outside Docket remain structurally outside its log |
 | Cost Tracking | 1.6.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
-| Model Profiles | 2.6.0 | Complete | Overridable rank anchors, local preset, archetype-modelClass fallback, and `models.*` audit coverage; tier-name vocabulary has no surviving user-facing use |
+| Model Profiles | 2.7.0 | Complete | Hosted OpenRouter/Vercel resolution, stable free router, nested model ids, overridable rank anchors, local preset, and archetype-modelClass fallback |
 | Pipeline Format | 2.1.0 | Implemented | `core/pipeline.py` format + `core/orchestrator.py` executor; `docket pipeline validate/plan/run` (Phase 16 W-1 + W-2); webhook payload → pipeline variables (Phase 16 W-4) |
 | Pod Blueprints | 1.3.0 | Implemented | Five built-ins — software/research/content/ops plus `agentic-product`; deliberately data, not scaffolding. `docket init --blueprint`/`--from`; no user-authored blueprints yet |
 | Pod Dispatch | 6.4.0 | Complete | Hop execution/history/handoff behavior is live; the CLI preserves complete delegated task text from quoted or split argv |

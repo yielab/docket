@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.18.0
+**Version**: 1.19.0
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-25
 
 ## Purpose
 
@@ -234,7 +234,10 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 **Actions**:
 - (no args): Show the current role→model table (role, model, price, source, why)
 - `set <role> <provider/model>`: Override the model for a specific role
-- `preset <name>`: Switch all roles to a provider preset (`anthropic`, `openai`, `google`, `openrouter`, `openrouter-free`)
+- `preset <name>`: Switch all roles to a provider preset (`anthropic`, `openai`, `google`,
+  `openrouter`, `openrouter-free`, `ai-gateway`, `local`)
+- `provider add <name> <base-url> [--model ID] [--name LABEL] [--ctx N] [--max-tokens N]`:
+  Register an OpenAI-compatible endpoint and exact-model limits
 - `reset`: Restore built-in defaults
 **Output**: Role→model table or update confirmation
 **Return**: 0 on success, 1 on invalid role or preset
@@ -250,19 +253,22 @@ mode is unknown, or (`clean`/`reset`/`distill`) the distillation turn fails
 **Return**: 0 on success, 1 on error (agent not found, or invalid input)
 
 #### docket keys
-**Purpose**: Manage API keys centrally; keys auto-sync to all agents
+**Purpose**: Manage API keys centrally; the model resolver reads selected-provider keys directly
+and matching credentials sync to agent workspaces
 **Syntax**: `docket keys [action] [key-name]`
 **Actions**:
 - `list`: Show all stored keys (values masked) — default
 - `setup`: Interactive setup wizard for all keys
 - `add <KEY_NAME>`: Add or update a specific key
-- `validate [KEY_NAME]`: Test whether keys work
+- `validate [KEY_NAME]`: Check known local format rules (no network validation)
 - `remove <KEY_NAME>`: Remove a key
 - `export`: Print keys as shell environment variables
-**Key names**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`
+**Key names**: at least `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`,
+`OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`; other syntactically valid uppercase names are allowed
 **Output**: Key status or update confirmation
-**Return**: 0 on success, 1 on invalid key name
-**Note**: `keys` manages *workspace* secrets (project work, synced to agent `.env`). It does NOT set model auth — use `docket auth` for that.
+**Return**: 0 on success, 1 on missing/invalid arguments or invalid key-name syntax
+**Note**: `keys` is the real model-auth credential store. `docket auth` only reports status and
+explains that no subscription/OAuth login flow exists.
 
 #### docket auth
 **Purpose**: Report which provider API-key credentials are stored. Docket has no
@@ -840,6 +846,12 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.19.0 (2026-08-25)
+
+- Added the `ai-gateway`/`local` preset and the previously omitted `models provider add` action.
+- Corrected `keys` to the real central model-auth path, documented format-only validation and
+  least-privilege workspace sync, and added `AI_GATEWAY_API_KEY`.
 
 ### Version 1.18.0 (2026-08-19)
 

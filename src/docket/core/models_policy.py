@@ -39,10 +39,10 @@ LOCAL_PROVIDERS: tuple[str, ...] = ("local", "ollama", "lmstudio")
 # Providers whose per-model pricing docket deliberately does NOT hardcode: a
 # marketplace router (OpenRouter) re-prices per underlying model and account
 # tier, changes often, and isn't something a manual snapshot table can track
-# honestly. Anything under this prefix that isn't an explicit MODEL_PRICING
-# row (e.g. the curated openrouter-free models below) reports the informative
+# honestly. Anything under these prefixes that isn't an explicit MODEL_PRICING
+# row (the stable OpenRouter free router below is the exception) reports the informative
 # "unpriced, bring your own" label instead of a stale or invented number.
-UNPRICED_MARKETPLACE_PROVIDERS: tuple[str, ...] = ("openrouter",)
+UNPRICED_MARKETPLACE_PROVIDERS: tuple[str, ...] = ("openrouter", "ai-gateway")
 
 ALL_ROLES: tuple[str, ...] = (
     "manager",
@@ -99,16 +99,9 @@ MODEL_PRICING: dict[str, tuple[float, float, float, float]] = {
     "google/gemini-2.0-flash-lite": (0.075, 0.30, 0.0, 0.0),
     "google/gemini-2.5-flash": (0.15, 0.60, 0.0, 0.0),
     "google/gemini-2.5-flash-lite": (0.10, 0.40, 0.0, 0.0),
-    # The three models the `openrouter-free` preset pins (below): OpenRouter's
-    # own free-tier catalog is advertised at zero per-token cost — that claim
-    # already lives on this preset's `cost`/`note` fields; this just makes
-    # the pricing table agree with it instead of reporting "n/a" for a
-    # preset docket itself labels "free". Not a sourced live OpenRouter
-    # price lookup — a restatement of docket's own free-tier selection.
-    # Revisit if OpenRouter's free tier changes terms.
-    "openrouter/google/gemini-flash-1.5-8b": (0.0, 0.0, 0.0, 0.0),
-    "openrouter/meta-llama/llama-3.3-70b-instruct": (0.0, 0.0, 0.0, 0.0),
-    "openrouter/deepseek/deepseek-r1": (0.0, 0.0, 0.0, 0.0),
+    # OpenRouter's capability-aware free router. The actual model can change
+    # between calls, so only the stable router id is pinned and priced here.
+    "openrouter/openrouter/free": (0.0, 0.0, 0.0, 0.0),
     # Local OpenAI-compatible endpoint (core/provider.py's DEFAULT_MODEL_ID) —
     # genuinely zero per-token cost, not an estimate. pricing_label() also
     # short-circuits on LOCAL_PROVIDERS, so this row is belt-and-suspenders
@@ -122,6 +115,7 @@ KNOWN_PRESETS: tuple[str, ...] = (
     "google",
     "openrouter-free",
     "openrouter",
+    "ai-gateway",
     "local",
 )
 
@@ -151,20 +145,31 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "note": "No distinct premium Gemini model yet; standard=premium.",
     },
     "openrouter-free": {
-        "economy": "openrouter/google/gemini-flash-1.5-8b",
-        "standard": "openrouter/meta-llama/llama-3.3-70b-instruct",
-        "premium": "openrouter/deepseek/deepseek-r1",
+        "economy": "openrouter/openrouter/free",
+        "standard": "openrouter/openrouter/free",
+        "premium": "openrouter/openrouter/free",
         "key": "OPENROUTER_API_KEY",
         "cost": "free",
-        "note": "Zero per-token cost on free-tier models. Free account at openrouter.ai.",
+        "note": (
+            "Experimental zero-cost router; model selection and availability can change per call. "
+            "Free account at openrouter.ai."
+        ),
     },
     "openrouter": {
-        "economy": "openrouter/google/gemini-flash-1.5-8b",
-        "standard": "openrouter/anthropic/claude-3.5-haiku",
-        "premium": "openrouter/anthropic/claude-3-opus",
+        "economy": "openrouter/anthropic/claude-haiku-4.5",
+        "standard": "openrouter/anthropic/claude-sonnet-4.6",
+        "premium": "openrouter/anthropic/claude-opus-4.6",
         "key": "OPENROUTER_API_KEY",
         "cost": "paid",
         "note": "Unified access to 200+ models via one key.",
+    },
+    "ai-gateway": {
+        "economy": "ai-gateway/anthropic/claude-haiku-4.5",
+        "standard": "ai-gateway/anthropic/claude-sonnet-4.6",
+        "premium": "ai-gateway/anthropic/claude-opus-4.6",
+        "key": "AI_GATEWAY_API_KEY",
+        "cost": "paid",
+        "note": "Vercel AI Gateway with unified routing and observability.",
     },
     "local": {
         "economy": "local/qwen3-30b-a3b",

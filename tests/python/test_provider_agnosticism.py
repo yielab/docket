@@ -127,11 +127,13 @@ class TestPricingHonesty:
         _canonical, warnings = _mp.validate_model("local/some-custom-finetune")
         assert warnings == []
 
-    def test_curated_openrouter_free_models_price_zero_not_na(self) -> None:
-        for model in _mp.PRESET_TABLE["openrouter-free"].values():
-            if "/" not in model:
-                continue
-            assert _mp.pricing_label(model) == "$0.00/$0.00"
+    def test_openrouter_free_uses_the_capability_aware_free_router(self) -> None:
+        preset = _mp.PRESET_TABLE["openrouter-free"]
+        assert {preset[rank] for rank in ("economy", "standard", "premium")} == {
+            "openrouter/openrouter/free"
+        }
+        assert _mp.pricing_label("openrouter/openrouter/free") == "$0.00/$0.00"
+        assert "experimental" in preset["note"].lower()
 
     def test_unpriced_openrouter_model_reports_bring_your_own(self) -> None:
         label = _mp.pricing_label("openrouter/some-vendor/some-model")
@@ -173,6 +175,26 @@ class TestLocalPreset:
         t = _mp.PRESET_TABLE["local"]
         for rank in ("economy", "standard", "premium"):
             assert _mp.pricing_label(t[rank]) == "$0 (local)"
+
+
+class TestHostedGatewayPreset:
+    def test_ai_gateway_preset_uses_nested_creator_model_ids(self) -> None:
+        assert "ai-gateway" in _mp.KNOWN_PRESETS
+        preset = _mp.PRESET_TABLE["ai-gateway"]
+        assert preset["key"] == "AI_GATEWAY_API_KEY"
+        assert preset["economy"] == "ai-gateway/anthropic/claude-haiku-4.5"
+        assert preset["standard"] == "ai-gateway/anthropic/claude-sonnet-4.6"
+        assert preset["premium"] == "ai-gateway/anthropic/claude-opus-4.6"
+        for rank in ("economy", "standard", "premium"):
+            assert _mp.pricing_label(preset[rank]).startswith("n/a (bring your own)")
+
+    def test_paid_openrouter_preset_does_not_pin_retired_model_ids(self) -> None:
+        models = {
+            _mp.PRESET_TABLE["openrouter"][rank] for rank in ("economy", "standard", "premium")
+        }
+        assert "openrouter/google/gemini-flash-1.5-8b" not in models
+        assert "openrouter/anthropic/claude-3.5-haiku" not in models
+        assert "openrouter/anthropic/claude-3-opus" not in models
 
 
 # ---------------------------------------------------------------------------

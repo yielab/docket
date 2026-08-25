@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.error
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -278,6 +279,39 @@ class TestWireDecoding:
         res = adapter.decode_response({"error": {"message": "model not found"}})
         assert not res.ok and "model not found" in res.error
 
+    def test_gateway_choice_error_in_a_200_body_is_retryable_by_status(self) -> None:
+        res = adapter.decode_response(
+            {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": ""},
+                        "finish_reason": "error",
+                        "error": {"code": 429, "message": "upstream rate limited"},
+                    }
+                ]
+            }
+        )
+
+        assert res.ok is False
+        assert res.failure_kind == "daemon_error"
+        assert "upstream rate limited" in res.error
+
+    def test_gateway_error_finish_without_detail_is_not_empty_success(self) -> None:
+        res = adapter.decode_response(
+            {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": ""},
+                        "finish_reason": "error",
+                    }
+                ]
+            }
+        )
+
+        assert res.ok is False
+        assert res.failure_kind == "invalid_output"
+        assert "finish_reason" in res.error
+
 
 class TestTransport:
     def test_successful_post_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -389,6 +423,87 @@ class TestRetryVocabularyStaysAlignedWithDispatch:
 
 
 class TestEndpointResolution:
+    def test_stored_keys_enable_both_hosted_gateways_without_global_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
+        monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+
+        from docket.cli import _keys
+        from docket.core import fleet as _fleet
+        from docket.core import secrets as _secrets
+
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
+        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
+        monkeypatch.setattr(_keys, "project_ids", lambda: [])
+        monkeypatch.setattr(_keys, "audit_log", lambda *args: None)
+        entered = iter(("sk-or-stored", "vercel-stored"))
+        monkeypatch.setattr(_keys._getpass, "getpass", lambda prompt: next(entered))
+
+        assert _keys.run_keys("add", ["OPENROUTER_API_KEY"]) == 0
+        assert _keys.run_keys("add", ["AI_GATEWAY_API_KEY"]) == 0
+
+        openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
+        gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")
+
+        assert openrouter is not None
+        assert openrouter.base_url == "https://openrouter.ai/api/v1"
+        assert openrouter.model_id == "anthropic/claude-sonnet-4.6"
+        assert openrouter.api_key == "sk-or-stored"
+        assert gateway is not None
+        assert gateway.base_url == "https://ai-gateway.vercel.sh/v1"
+        assert gateway.model_id == "anthropic/claude-sonnet-4.6"
+        assert gateway.api_key == "vercel-stored"
+
+    def test_registered_gateway_placeholder_does_not_mask_env_key_or_exact_limits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
+        from docket.core import fleet as _fleet
+
+        monkeypatch.setattr(
+            _fleet,
+            "get_local_provider",
+            lambda name: {
+                "baseUrl": "https://openrouter.ai/api/v1",
+                "apiKey": "local",
+                "models": [
+                    {
+                        "id": "anthropic/claude-sonnet-4.6",
+                        "contextWindow": 1_000_000,
+                        "maxTokens": 128_000,
+                    }
+                ],
+            },
+        )
+
+        endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
+
+        assert endpoint is not None
+        assert endpoint.api_key == "sk-or-env"
+        assert endpoint.context_window_tokens == 1_000_000
+        assert endpoint.max_output_tokens == 128_000
+
+    def test_ai_gateway_accepts_oidc_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
+        monkeypatch.setenv("VERCEL_OIDC_TOKEN", "oidc-token")
+        from docket.core import fleet as _fleet
+
+        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
+
+        endpoint = adapter.resolve_endpoint("ai-gateway/anthropic/claude-haiku-4.5")
+
+        assert endpoint is not None
+        assert endpoint.api_key == "oidc-token"
+
     def test_env_override_wins_and_short_circuits_stored_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -490,6 +605,24 @@ class TestEndpointResolution:
         )
         ep = adapter.resolve_endpoint("openrouter/some-model")
         assert ep is not None and ep.api_key == "sk-or"
+
+    def test_provider_environment_key_overrides_central_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-env")
+        from docket.core import fleet as _fleet
+        from docket.core import secrets as _secrets
+
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
+        monkeypatch.setattr(_fleet, "get_local_provider", lambda name: None)
+        _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
+
+        endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")
+
+        assert endpoint is not None
+        assert endpoint.api_key == "sk-or-env"
 
     def test_unknown_provider_resolves_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)

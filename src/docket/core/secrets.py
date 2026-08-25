@@ -4,11 +4,9 @@ Provider API keys `docket keys` manages, and their bookkeeping metadata
 (added/rotated timestamps). Always docket-owned — never an external-runtime file
 format — and living under ``DOCKET_HOME``.
 
-Three consumers share this module rather than each reading the files
-directly: ``cli/_keys.py`` (add/remove/rotate/list), ``cli/_doctor.py``
-(key-hygiene/provider-coverage checks), and ``core/trace.py`` (redacting
-stored secret values out of every trace payload — security-relevant, not
-cosmetic). Centralising here is what keeps those three consistent.
+Consumers share this module rather than reading files directly: the keys CLI,
+doctor checks, model endpoint resolver, and trace redaction. Centralising those
+lookups keeps file/keyring behavior and secret handling consistent.
 """
 
 from __future__ import annotations
@@ -46,6 +44,19 @@ def save_secrets_meta(meta: dict[str, Any]) -> None:
 def secrets_keys() -> set[str]:
     """Return the set of stored key names."""
     return set(load_secrets().keys())
+
+
+def secret_value(name: str) -> str | None:
+    """Resolve one stored secret without exposing unrelated credentials."""
+    raw = load_secrets()
+    if name not in raw:
+        return None
+    if _cfg.secrets_backend_requested() == "keyring" and _system.secret_tool_available():
+        value = _system.secret_tool_lookup(_cfg.KEYRING_SERVICE, name)
+    else:
+        value = raw.get(name)
+    clean = str(value or "").strip()
+    return clean or None
 
 
 def secrets_meta() -> dict[str, Any]:

@@ -3,11 +3,11 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "^(startup|resume|compact)$",
+        "matcher": "^(startup|resume|clear|compact)$",
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/skills/docket-roadmap/scripts/context_snapshot.py\" --hook",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/skills/docket-roadmap/scripts/context_snapshot.py\" --hook",
             "timeout": 3,
             "statusMessage": "Loading bounded Docket context",
             "additionalContextLimit": 1800
