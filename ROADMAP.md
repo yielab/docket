@@ -12,9 +12,10 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-20.** **Every numbered phase 0–22 and Wave 24 are complete; Wave 25 is
-open from a measured small-context dispatch failure.** Executable cards live in
-[TODO.md](TODO.md).
+**Last updated: 2026-08-30.** **Every numbered phase 0–22 and Wave 24 are complete; all Wave 25
+behavior and live acceptance cards pass. Wave 25 remains open only for integration of the current
+45-path working tree, and Phase 23 remains queued behind that reconciliation.** Executable cards
+live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,6 +38,7 @@ open from a measured small-context dispatch failure.** Executable cards live in
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◇ queued — Wave 26 is fully scoped in TODO but cannot activate until Wave 25 closes and the pre-plan 22-path product baseline plus planning changes are reconciled |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -44,7 +46,7 @@ open from a measured small-context dispatch failure.** Executable cards live in
 | — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
 | — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
 | — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
-| — | **Wave 25** (not a phase): live-model request and outcome truth | ◉ triggered (2026-08-20) — lossless delegation/request fit plus measured convergence, run-outcome, and byte-exact smoke defects; cards W25-C1–C5 are on the active board |
+| — | **Wave 25** (not a phase): live-model request and outcome truth | ◉ active (2026-08-20) — cards W25-C1–C6 and C8–C10 shipped; W25-C7 remains blocked on live Reviewer-verdict conformance |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -52,7 +54,8 @@ trigger (see §4.5's prioritization rule, D-24, and §7):
 | Not doing | Why |
 | --- | --- |
 | Multi-tenancy / the tenant axis | **CUT** (D-22, D-24). Trigger to revisit: docket itself serving more than one end customer from one host. |
-| OpenTelemetry · streaming · browser automation | **CUT** by D-24 — no measured need in *this* system. |
+| Streaming · browser automation | **CUT** by D-24 — no measured need in *this* system. Use MCP for browser tooling. |
+| OpenTelemetry export | Still unscheduled. D-25 permits a bounded adapter-era card only if two-runtime evidence shows JSONL cannot preserve cross-runtime trace identity. |
 | Egress lockdown | Deferred (D-23). `fetch` is the inspectable path, not the only one. |
 | A dashboard of our own | Ruled out since Phase 11 and reaffirmed by 22 — docket feeds one. |
 | Build-agent profile · MCP listing cache · Go/Rust rewrite | Deferred behind named triggers. |
@@ -116,6 +119,116 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 > here **without reading anything else first** and not lose scope. Read §1–§4 once, then
 > work the tasks in §5 top to bottom. Every task has: goal, exact files, technical
 > requirements, acceptance criteria, and tests. Do not skip the acceptance criteria.
+
+---
+
+## Current planned program — PHASE 23: product truth and ecosystem proof
+
+**Status:** ◇ QUEUED (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 26 in
+[TODO.md](TODO.md) · **Resumable coordinator packet:**
+[`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md)
+
+### Why this phase is scheduled
+
+The 2026-08-30 read-only audit inspected the live `platform` tree, its release surfaces, 24
+current-state specs, 2,374 collected tests, and current open-source peers. The core governed loop,
+durable pipeline, role-narrowed registry, typed handoffs, and one `dispatch_tool` policy chokepoint
+are valuable. Adoption is nevertheless blocked before those strengths are reached:
+
+- the default `anthropic/claude-sonnet-4-6` onboarding path stores a key but resolves no built-in
+  endpoint, while only OpenRouter and Vercel have built-in compatible URLs;
+- the recommended Homebrew formula has an all-zero SHA and the wrong license, the installer reads
+  mutable `main`, the root wheel exposes `docket-py` rather than the documented `docket`, and the
+  release workflow publishes no installable Python artifacts;
+- `docket-runtime` and the full distribution install overlapping `docket/*` files;
+- audit append, approval resolution, and port/conversation allocation contain unlocked
+  read-modify-write transitions reachable from parallel dispatch or the threaded API;
+- verdict gates depend on marker placement in free-form model prose, and shipped in-process
+  cancellation changes state without interrupting the active turn.
+
+These are deterministic findings from this repository, not generic market-feature requests. They
+fire D-24's measured-need rule. The user explicitly requested the resulting productization and
+ecosystem plan on 2026-08-30.
+
+### Product boundary and exit contract
+
+Phase 23 ships in this order:
+
+1. **Trustworthy first use:** a clean install reaches one deterministic governed tool turn using a
+   provider configuration the onboarding path can actually resolve.
+2. **Truthful local governance:** concurrent decisions preserve one audit chain and one state
+   transition; verdict and cancellation outcomes match what actually happened.
+3. **Hardened single-host operation:** isolation, recovery, secrets, provider compatibility, MCP,
+   and parameterized pipelines are improved only from measured Wave 26 evidence.
+4. **Portable enforcement proof:** two external runtimes demonstrate the same policy, approval,
+   budget, trace identity, and handoff contract before Docket claims framework neutrality.
+5. **Adoption evidence:** reproducible releases, a starter integration, failure/chaos cases, and
+   published completion/cost/safety/recovery measurements.
+
+Phase 23 is complete only when those claims have executable evidence. It does not add a tenant
+axis, hosted scheduler, Docket-owned dashboard, no-code workflow builder, provider-SDK zoo, or a
+second orchestration graph language.
+
+### Activation gate — no Phase 23 card may bypass it
+
+Wave 25 remains the only active board. Before Wave 26 activation, the integrator must close or
+explicitly re-scope W25-C7, obtain a complete `git status`, reconcile the 22-path pre-plan product
+baseline and every planning change into owned commits or preserved user work, rerun the full
+required gates, and update the active-board marker once. Planning this phase does not authorize
+another unchanged paid-model retry. Central files (`ROADMAP.md`, `TODO.md`, `README.md`,
+`specs/README.md`) remain integrator-owned.
+
+### Wave 26 — first-use and governance truth (fully scoped, queued)
+
+Wave 26 contains independently shippable cards rather than one release-sized branch. Its initial
+ready pool after activation is W26-C1, C2, and C6–C10; C0 is an integrator/maintainer decision, C3
+depends on C0+C2, C4 depends on C1–C3, C5 depends on C2, and C11 is the final truth/release
+integrator. The detailed trigger, non-goals, live paths, RED cases, acceptance oracles, gates, and
+contention boundaries live once in `TODO.md`.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W26-C0 | One public release source/commit lineage | Integrator-only; external branch setting requires maintainer approval |
+| W26-C1 | Clean configuration reaches the first governed turn | Owns provider/onboarding path; independent of release and governance files |
+| W26-C2 | Canonical installable `docket` wheel/sdist | Owns root packaging; predecessor to C3/C5 |
+| W26-C3 | Immutable, checksummed release artifacts | After C0+C2; owns release/formula/installer files |
+| W26-C4 | Clean-install-to-first-turn CI release oracle | After C1–C3; owns a new isolated acceptance fixture |
+| W26-C5 | Non-overlapping, documented runtime distribution | After C2 and D-28; owns runtime package boundary |
+| W26-C6 | Atomic, durable audit append | Owns audit JSONL/rotation path; no approval-state edits |
+| W26-C7 | Compare-and-set approval resolution | Owns approval state/functions; consumes store/audit unchanged |
+| W26-C8 | Collision-free pod resource allocation | Owns allocation functions, not generic store code |
+| W26-C9 | Lost-update-free conversation mutation | Owns conversation mutation and one narrow dispatch call site |
+| W26-C10 | Cooperative, truthful run cancellation | Owns run/driver cancellation seam; no status-only claim |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C0–C10; integrator-only truth pass |
+
+### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
+
+Wave 27 is scheduled only from Wave 26 measurements. The bounded triage must rank: an isolated
+coding profile and scoped egress/secrets without silently changing D-23; recovery from corrupt or
+old persisted state; real pipeline-variable injection; provider structured-output/streaming needs;
+MCP transport/cache/capability metadata; and a supported local service/TLS-proxy/backup profile.
+Each resulting card needs a representative product fixture and a measured failure or explicit user
+requirement. A built-in dashboard and tenant model remain out of scope.
+
+### Wave 28 — portable governance proof (blocked on Wave 27 evidence)
+
+Define the smallest stable execution envelope only after the local governance contract is reliable.
+Prove it with exactly two adapters: one coding-agent runtime (prefer OpenHands/ACP) and one general
+Python framework (choose PydanticAI, LangGraph, or Agno from a bounded spike). Both must traverse
+the same Docket policy/approval/budget/audit boundary; an adapter that only imports or launches a
+foreign runtime is not evidence. A2A is added only if the coding adapter needs remote task
+discovery/state/cancellation. OTLP export is added only if cross-runtime trace identity cannot be
+preserved through the existing trace contract. No plugin framework precedes the second real
+caller.
+
+### Wave 29 — adoption and comparative evidence (blocked on Wave 28)
+
+Publish a ten-minute starter repository and a benchmark harness that records completion rate,
+measured tokens, estimated dollars labeled as estimates, policy violations prevented, approval
+latency, crash/restart recovery, and handoff failures. Add adversarial tool-policy and persisted
+state recovery cases, artifact signing/SBOM/provenance, supported-version/deprecation policy, and a
+small governance/succession document. Stars and feature counts are not exit criteria; executable
+outcomes are.
 
 ---
 
@@ -540,6 +653,11 @@ address exactly those.
 | D-22 | Multi-tenancy model: stay project-scoped (`agent:<id>:<project>`), or add an end-user/tenant axis? | — (no longer scheduled) | **CUT 2026-07-31 — stay project-scoped; build nothing.** D-20's answer scopes the substrate to an *embedded library*, and an embedding product owns its own tenant model, so docket does not need one. The decision stays **on the record, not deleted**, because the original warning is still true: session keys, workspaces, budgets, traces, audit entries and approval records are all keyed on *project*, and retrofitting a tenant key is expensive. **Re-open only on a concrete trigger** — docket itself serving more than one end customer from one host. Until then, writing the tenant axis is speculative generality of the exact kind §4.5 bans. |
 | D-23 | Network egress for agent tool calls: open by default, or closed with an allowlisted `fetch` tool? | Phase 19 P19-11 | **Open by default, lockdown opt-in** (integrator's call, reversible config; say so if you disagree). Measured 2026-07-31: `curl`/`wget` correctly ask, but `python3 -c "import urllib..."`, `node`, and `git clone <url>` are all **allowed unattended** — `python3` and `node` are universal escape hatches on the curated allowlist, so **network egress is effectively ungated today**, and P19-9's sandbox does not close it either (both backends leave the network reachable). Closing egress by default breaks `npm install`, `pip` and `git clone`, which is why the default stays open; P19-11 ships an always-available, domain-allowlisted `fetch` tool so there is an inspectable path that does not require the escape hatch. **Re-scoped 2026-07-31 (prioritization ruling, §5 Phase 19):** P19-11 ships **the `fetch` tool only**. The opt-in lockdown mechanism (`--network none` / `--unshare-net`) is **deferred** — it is a knob that is off by default, that breaks the three commands agents use most when turned on, and that no measured need has asked for. It buys a *config option*, not a guarantee. **Say the true thing in the docs instead**: egress is open, `fetch` is the inspectable path, and the escape hatches are known and named. An honestly-open gate beats a gate that reads as closed. Re-open when a product needs an actually-network-isolated agent. |
 | D-24 | Phases 20/21 were drafted as "best practice for an agent platform". Under the answered goal (a factory for agentic products, D-20), which of those items are genuinely viable and which are overengineering? | Phases 20/21, before either starts | **Ruling 2026-07-31 — cut roughly half, and the cuts include the integrator's own earlier recommendations.** Full verdict table in §5 under *"Prioritization ruling"*. Headline: **OpenTelemetry (P20-1) is CUT**, having been proposed the same day as "the industry standard" — correct at platform scale, wrong at **one host and one operator** with JSONL traces and six Prometheus metrics already shipped. Also cut: **streaming (P21-2)** and the **tenant axis (P21-3)**, both of which only existed to serve the hosted-runtime reading D-20 rejected. Deferred: fleet trace query (P20-3), egress lockdown (D-23), build-agent profile (P21-4). Kept: the removal wave, per-role tool sets, the MCP CLI, the `fetch` tool, the package split, guardrail metrics, the `runs cancel` audit entry, and one new **XS** card — an `agentic-product` pod blueprint, which is *data in an existing registry*, not code. **The principle being applied is already written down** (§4.5, "we will NOT"): the test is not "is this best practice for someone", it is *"does a measured need in **this** system ask for it"*. It applies to the integrator's proposals exactly as it applies to a card's. |
+| D-25 | After the 2026-08-30 CTO/OSS audit, should Docket compete as a broad agent framework or productize its governed coding-agent runtime and only then prove portable enforcement? | Phase 23 | **Productize the narrow wedge first; prove portability second.** The explicit request is to make Docket useful in the AI-orchestration ecosystem, but the audit found that the immediate blockers are a default first run that cannot resolve its advertised Anthropic endpoint, invalid release/install metadata, overlapping runtime wheel contents, non-atomic governance transitions, brittle free-text verdicts, and cancellation that does not interrupt the owned loop. Wave 26 fixes those truths before adding ecosystem surface. Docket does **not** compete on graph/pattern count and does not claim framework neutrality while it owns only `DocketDriver`. A later interoperability wave may add the smallest stable execution envelope and exactly two evidence-producing adapters—one coding runtime and one general agent framework—without surrendering `dispatch_tool` as the enforcement chokepoint. This decision does **not** reopen multi-tenancy, hosted queues/workers, a Docket dashboard, generic streaming, or default-closed egress. D-23 still governs egress. OpenTelemetry/A2A become schedulable only when the two-runtime proof names a concrete trace/remote-task requirement that existing JSONL/MCP cannot satisfy. |
+| D-26 | What is the release-blocking adoption journey? | Wave 26 | **One immutable source commit → built artifact → clean install → supported provider configuration → initialized pod → first successful governed tool turn → public trace/run inspection.** Every boundary is exercised outside the checkout by deterministic CI. No new orchestration feature outranks a failure in this journey, and external publication remains approval-gated. |
+| D-27 | When may Docket claim that it governs an external runtime? | Wave 28 | **Only when every relevant mutation/exec action in the reference fixture is forced through a Docket-owned execution envelope and the same policy, approval, budget, trace, and audit semantics are observed.** Merely launching, importing, coordinating, or offering Docket tools beside an external runtime is not governance if native bypass tools remain. Prove one coding runtime and one general framework before making a neutrality claim; do not build a plugin framework before the second caller exists. |
+| D-28 | Does D-21's packaging-only ruling permit correcting the overlapping `docket-runtime` wheel and adding a facade? | W26-C5 | **Yes, narrowly.** Two independently installable distributions may not own the same files. A non-overlapping package topology, wheel+sdist support, and the smallest versioned facade needed by a real embedding example are correctness fixes to the package split, not speculative runtime features. Internal modules remain private unless the facade exports them; adapters and new extension APIs still need real callers under D-27. |
+| D-29 | How is Phase 23 delivered by simultaneous agents without duplicating context or corrupting central state? | Phase 23 execution | **One coordinator plus as many non-contending worker lanes as the environment supports.** Each card has one owner, isolated worktree, unique `DOCKET_HOME`/temp/ports, exact allowed paths/functions, and a delta-only evidence handoff. `ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`, release rollups, and mutable live endpoints are integrator-owned. Workers load the snapshot, one extracted card, one named decision, the owning spec section/tests, and the live callers—never the planning corpus or another worker's raw conversation. |
 
 ---
 
@@ -2466,6 +2584,30 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-30 (Wave 25 W25-C7 accepted) — the un-scripted memory-maintenance canary completed
+  without violating the private-context boundary.** The preserved world
+  `/tmp/docket-w25-c7-live-L8nkOm` distilled private decisions, repaired the isolated Git worktree,
+  passed public and hidden acceptance, persisted five typed hops with `approve`/`pass`, exercised
+  three in-turn approvals plus pipeline approval, and passed the durable trace/session privacy
+  oracle and audit verification. Post-canary full deterministic gates pass. Wave 25 now has only
+  dirty-tree integration and commit-level revalidation remaining before Phase 23 activation.
+
+- **2026-08-30 (Wave 25 W25-C11) — configured verdict markers are placement-tolerant but
+  ambiguity-intolerant.** The generic executor scans complete output line-by-line, accepts one
+  distinct normalized marker wherever it appears, collapses identical repeats, and fails closed on
+  absence, conflicts, or prose-only mentions. The normalized artifact verdict is reused on crash
+  resume instead of reinterpreting model prose. Pipeline Format 2.2.0, Pod Dispatch 6.5.0, the full
+  suite, and deterministic smoke pass; W25-C7 is ready for exactly one fresh serial live acceptance.
+
+- **2026-08-30 (planning, no product code) — the CTO/OSS audit became Phase 23 rather than a generic
+  feature backlog.** D-25 positions Docket as a governed single-host coding-agent runtime first and
+  requires two enforcement-equivalent adapters before any framework-neutral claim. D-26 makes
+  clean-install-to-first-governed-turn the release blocker; D-27 defines external-runtime
+  governance as removal of native bypasses; D-28 permits the narrow runtime-package correction
+  D-21 needs; D-29 records isolated multi-agent delivery and compact handoffs. W25-C11 owns the
+  measured Reviewer-marker defect blocking W25-C7. Wave 26 is fully scoped but blocked behind Wave
+  25/dirty-tree reconciliation; Waves 27–29 remain trigger-gated in the durable plan.
 
 - **2026-08-19 (wave 24) — a realistic memory-backed Git canary found and closed three product
   defects hidden by the one-line/flat-workspace smoke.** The live scenario starts from two

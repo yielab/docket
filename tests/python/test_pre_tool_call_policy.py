@@ -170,6 +170,7 @@ class TestBlockDestructiveShippedTemplate:
         assert ran["handler"] is False
         assert res.denied
         assert not res.executed
+        assert res.denial_kind == "approval_timeout"
 
     def test_policy_gates_a_write_call_the_command_classifier_never_inspects(
         self, ctx: ToolContext
@@ -441,6 +442,7 @@ class TestDispatchToolApprovalRouting:
 
         assert ran["handler"] is False
         assert res.denied and not res.executed
+        assert res.denial_kind == "approval_denied"
 
     def test_an_unanswered_approval_times_out_to_denied_and_does_not_execute(
         self, ctx: ToolContext
@@ -458,6 +460,7 @@ class TestDispatchToolApprovalRouting:
 
         assert ran["handler"] is False
         assert res.denied and not res.executed
+        assert res.denial_kind == "approval_timeout"
         assert "approval" in res.reason.lower()
 
 
@@ -490,6 +493,7 @@ class TestAuditTrail:
             builtin_registry(),
         )
         assert res.denied
+        assert res.denial_kind == "gate_denied"
         entries = [e for e in _audit.read_audit() if e["action"] == "tool.deny"]
         assert entries
         assert secret not in entries[-1]["detail"]

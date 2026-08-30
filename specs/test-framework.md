@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.7.0
+**Version**: 2.9.0
 **Status**: Active
-**Last Updated**: 2026-08-25
+**Last Updated**: 2026-08-26
 
 ## Overview
 
@@ -121,6 +121,45 @@ does not have to invent expected behavior and memory transfer remains necessary.
 the canary **MUST** run that suite and prove it is red for precisely those seeded defects, then
 commit the seed as a real Git repository before pod provisioning. Mechanical and hidden acceptance
 **MUST** inspect the Implementer's effective worktree rather than the untouched origin checkout.
+The delegated task **MUST** direct every downstream role to consume those durable decisions only
+through the Lead's typed handoff, explicitly forbid searching for or accessing Docket private
+control paths (`MEMORY.md`, `HEARTBEAT.md`, `memory/`, and `.docket`) with project tools, and
+**MUST NOT** restate the private fact values. That complete instruction **MUST** fit the public
+`docket pod <project> delegate` 500-character description ceiling and be exercised through that
+real CLI boundary before live inference. Because opaque shell execution fails closed, the same
+instruction **MUST** tell downstream roles to mutate source through structured `edit`/`write`
+tools, spell the fixture README's regression command byte-for-byte as the only allowed shell
+command, and prohibit alternative runners, wrappers, inline code, and redirections.
+The final oracle **MUST** reject every such
+project-tool attempt even when the target is absent, the read is denied, or later session
+compaction removes the call from retained messages; a failed probe is not evidence of respecting
+the private-context boundary. Durable `tool_call` trace arguments are the historical authority and
+retained session calls are a defense in depth. The smoke-only oracle **MUST** classify structured
+tool targets and selectors rather than searching raw argument or editable-content text: it checks
+the path field for `read`, `write`, and `edit`; path plus selector for `glob`; path plus file-glob
+for `grep` without treating the search expression as a target; and path-like shell tokens for
+`bash`, including nested `sh -c`/equivalent command text. It semantically normalizes each path
+against the role's actual runtime root before comparing exact case-insensitive path components;
+the Lead uses the origin checkout while Implementer, Reviewer, and Tester use the Implementer's
+effective worktree once it exists. A non-universal selector component capable of matching a private
+component is also private, while a root-contained universal selector such as `**/*` remains valid.
+The origin checkout and physical worktree are the only trusted roots, and must match the canary's
+expected layout plus Implementer metadata before either prefix is exempted. Opaque shell text,
+common command-wrapper indirection, and execution of project-controlled interpreter or shell
+scripts fail closed unless the effective command is the canary's known regression-suite entrypoint;
+a known project tool's undecodable arguments also fail closed. When granting a live `bash` approval, the
+monitor **MUST** classify the most recent durable trace call matching that approval's role, tool,
+and call id rather than wrapper prose or an older colliding id. Diagnostic failures **MUST NOT**
+include raw arguments or private fact values.
+The live monitor and final trace/session oracle **MUST** consume the same smoke-only typed verdict:
+`allowed`, `confirmed_private`, or `opaque`. Confirmed-private and opaque calls are distinct
+diagnostic outcomes, but both disqualify the canary and fail closed. A diagnostic contains only
+source, role, tool, call id, verdict, and a privacy-safe marker; it never includes raw arguments or
+private values. On the first disqualifying pending approval, the operator **MUST** cancel the active
+run and deny the approval through the public CLI, then terminate the blocking canary subprocess so
+no later model transport or tool grant can occur. This fail-fast cleanup is idempotent, preserves
+the already-durable approval/session/trace/audit evidence, never executes the denied handler, and
+cannot turn the cancelled run into success.
 Exact model prose is not contractual; retained fact values and the resulting behavior are. If the
 un-scripted agent requests a policy-gated `bash` validation, the
 canary **MUST** exercise a genuine operator grant through `docket approve` in its isolated home;
@@ -204,6 +243,25 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.9.0 (2026-08-26)
+
+- W25-C9 gives the live canary one typed `allowed`/`confirmed_private`/`opaque` tool verdict shared
+  by its approval monitor and final oracle, with privacy-safe diagnostics and immediate public
+  deny/cancel plus subprocess termination after the first disqualifying approval.
+- W25-C7 spells the sole permitted live validation command byte-for-byte in the delegated task and
+  forbids alternate runners, wrappers, inline code, and redirections within the public description
+  ceiling.
+
+### Version 2.8.0 (2026-08-25)
+
+- W25-C7 makes the live memory-maintenance task state the existing private-context boundary at the
+  delegated action: downstream roles use the Lead's typed handoff, mutate via structured tools,
+  validate through the published regression command, and never probe Docket control paths with
+  project tools. The complete value-free instruction fits and is tested through the public
+  delegation ceiling. Its structured final oracle checks durable trace history plus
+  retained sessions, rejects even unsuccessful or compacted-away access attempts, and reports no
+  raw arguments or private decision values.
 
 ### Version 2.7.0 (2026-08-25)
 

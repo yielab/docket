@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 0.15.0
+**Version**: 0.16.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
 Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-26
 
 ## Purpose
 
@@ -377,7 +377,14 @@ tool call to take.**
    (grant, explicit deny, or timeout-deny) continues to be recorded by `core/approval.py`'s
    existing `approval.grant`/`approval.deny` audit entries, so a fully gated call leaves **both**
    the gate's own decision and its resolution in `docket audit`.
-7. **Scope — stated precisely, matching the Status line (corrected for P19-5/P19-7a/P19-7b).**
+7. Every denied, non-executed `ToolResult` **MUST** carry exactly one closed, privacy-safe denial
+   kind: `invalid_call` for an unknown tool, undecodable arguments, or missing required arguments;
+   `gate_denied` for a direct command-classifier or policy denial; `approval_denied` for an explicit
+   operator denial; and `approval_timeout` for an unanswered approval that times out. A result that
+   executes, including an allowed handler failure, **MUST** carry no denial kind. `as_tool_output()`
+   **MUST** include the stable denial kind in the model-visible refusal without raw arguments,
+   approval tokens, or private values.
+8. **Scope — stated precisely, matching the Status line (corrected for P19-5/P19-7a/P19-7b).**
    This section governs `core/tools.py`'s `dispatch_tool` and nothing else. As of this version:
    - **Every** pod-dispatch hop now calls `core/tools.py`: `core/dispatch.py`'s hop-execution call
      sites resolve `core.runtime_driver.default_driver()` (`DocketDriver`,
@@ -1031,6 +1038,12 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.16.0 (2026-08-26)
+
+- W25-C10 adds the closed `invalid_call`/`gate_denied`/`approval_denied`/`approval_timeout`
+  taxonomy to denied, non-executed `ToolResult` values and their model-visible refusal while
+  keeping arguments, approval tokens, and private values out of the typed field.
 
 ### Version 0.15.0 (2026-08-19)
 

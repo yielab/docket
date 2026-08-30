@@ -59,6 +59,10 @@ RunTerminalState = Literal["succeeded", "failed", "cancelled"]
 
 _SOURCES: frozenset[str] = frozenset({"cli", "webhook", "schedule", "sweep", "mcp"})
 _TERMINAL_STATES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
+_RETURNED_FAILURE_ERROR_CHARS = 1_024
+_RETURNED_FAILURE_ID_CHARS = 80
+_RETURNED_FAILURE_REASON_CHARS = 200
+_RETURNED_FAILURE_DETAILS = 3
 
 # Which run id (if any) the *current thread* is executing under — set by
 # `execute()` for the duration of its `fn()` call. `None` outside any run
@@ -145,19 +149,60 @@ def create_run(
     return record
 
 
-def mark_running(run_id: str) -> None:
-    """Flip a run to ``running`` and stamp ``startedAt``. No-op if unknown."""
+def mark_running(run_id: str) -> bool:
+    """Atomically claim a queued run; return false if it is no longer startable."""
+    applied = False
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal applied
         runs = _runs_list(doc)
         for r in runs:
             if r.get("id") == run_id:
+                if str(r.get("state", "")) != "queued":
+                    return None
                 r["state"] = "running"
                 r["startedAt"] = _now()
+                applied = True
                 return {"runs": runs}
         return None
 
     _store.read_modify_write(runs_path(), _fn)
+    return applied
+
+
+def _finish_run_transition(
+    run_id: str,
+    *,
+    state: RunTerminalState,
+    task_ids: list[str] | None = None,
+    error: str = "",
+    preserve_cancelled: bool = False,
+) -> bool:
+    """Atomically apply one terminal transition and report whether it won."""
+    if state not in _TERMINAL_STATES:
+        raise RunError(f"finish_run: invalid terminal state {state!r}")
+
+    applied = False
+
+    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal applied
+        runs = _runs_list(doc)
+        for r in runs:
+            if r.get("id") != run_id:
+                continue
+            if preserve_cancelled and str(r.get("state", "")) == "cancelled":
+                return None
+            r["state"] = state
+            r["finishedAt"] = _now()
+            r["error"] = error
+            if task_ids is not None:
+                r["taskIds"] = list(task_ids)
+            applied = True
+            return {"runs": runs}
+        return None
+
+    _store.read_modify_write(runs_path(), _fn)
+    return applied
 
 
 def finish_run(
@@ -167,28 +212,13 @@ def finish_run(
     task_ids: list[str] | None = None,
     error: str = "",
 ) -> None:
-    """Mark a run terminal (``succeeded``/``failed``). No-op if unknown.
+    """Mark a run terminal (including ``cancelled``). No-op if unknown.
 
     *task_ids* — when given — replaces the record's task-id list (the tasks
     this dispatch invocation actually touched); *error* is the exception text
     for a ``failed`` run (empty for ``succeeded``).
     """
-    if state not in _TERMINAL_STATES:
-        raise RunError(f"finish_run: invalid terminal state {state!r}")
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        runs = _runs_list(doc)
-        for r in runs:
-            if r.get("id") == run_id:
-                r["state"] = state
-                r["finishedAt"] = _now()
-                r["error"] = error
-                if task_ids is not None:
-                    r["taskIds"] = list(task_ids)
-                return {"runs": runs}
-        return None
-
-    _store.read_modify_write(runs_path(), _fn)
+    _finish_run_transition(run_id, state=state, task_ids=task_ids, error=error)
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
@@ -349,17 +379,51 @@ def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -
         return None
 
 
+def _bounded_failure_field(value: object, *, limit: int, fallback: str) -> str:
+    """Normalize one operator-facing field without serializing its source object."""
+    normalized = " ".join(str(value).split()) or fallback
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1] + "…"
+
+
+def _returned_failure_summary(failures: list[Any]) -> str:
+    """Build a deterministic, content-bounded summary from task ids/reasons only."""
+    details: list[str] = []
+    for result in failures[:_RETURNED_FAILURE_DETAILS]:
+        task_id = _bounded_failure_field(
+            getattr(result, "task_id", ""),
+            limit=_RETURNED_FAILURE_ID_CHARS,
+            fallback="<unknown-task>",
+        )
+        reason = _bounded_failure_field(
+            getattr(result, "reason", ""),
+            limit=_RETURNED_FAILURE_REASON_CHARS,
+            fallback="no reason provided",
+        )
+        details.append(f"{task_id}: {reason}")
+
+    omitted = len(failures) - len(details)
+    omitted_text = f"; +{omitted} more" if omitted else ""
+    summary = f"{len(failures)} returned task(s) failed: {'; '.join(details)}{omitted_text}"
+    return summary[:_RETURNED_FAILURE_ERROR_CHARS]
+
+
 def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     """Run *fn* (a zero-arg dispatch call) under an already-created run record.
 
     Marks the record ``running``, invokes *fn*, and folds the outcome back in:
     ``succeeded`` plus the task ids *fn*'s results expose (a duck-typed
     ``task_id`` attribute — this is ``dispatch.TaskResult`` shaped, without
-    this module importing ``core/dispatch.py``), or ``failed`` plus the
-    exception text and a matching ``error`` trace event.
+    this module importing ``core/dispatch.py``), or ``failed`` plus a bounded
+    summary when any returned result exposes ``status="failed"``. Exceptions
+    retain their exception text. Both failure paths emit the same ``error``
+    trace event.
 
-    Returns *fn*'s result list on success, or ``None`` on failure — this
-    function itself never raises. That is what lets every dispatch call site
+    Returns *fn*'s result list whenever *fn* returns normally, including when
+    that list makes the run outcome ``failed``. It returns ``None`` when the
+    run cannot be claimed or *fn* raises; this function itself never raises.
+    That is what lets every dispatch call site
     (the webhook thread, the schedule thread, the sweep loop, the CLI) replace
     a bare ``contextlib.suppress(Exception)`` with a real, queryable outcome
     instead of one silently discarded.
@@ -371,7 +435,8 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     clobber a run a concurrent ``docket runs cancel`` already marked
     ``"cancelled"`` back to ``"succeeded"``/``"failed"``.
     """
-    mark_running(run_id)
+    if not mark_running(run_id):
+        return None
     rec = get_run(run_id)
     project = str(rec.get("project", "")) if rec else ""
     source = str(rec.get("source", "")) if rec else ""
@@ -380,21 +445,33 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
         results = fn()
     except Exception as exc:
         error_text = f"{type(exc).__name__}: {exc}"
-        if not _is_already_cancelled(run_id):
-            finish_run(run_id, state="failed", error=error_text)
+        applied = _finish_run_transition(
+            run_id,
+            state="failed",
+            error=error_text,
+            preserve_cancelled=True,
+        )
+        if applied:
             _emit_error_trace(project, run_id, source, error_text)
         return None
     finally:
         _CURRENT_RUN_ID.reset(token)
-    if _is_already_cancelled(run_id):
-        return results
-    task_ids = [str(getattr(r, "task_id", "")) for r in results]
-    finish_run(run_id, state="succeeded", task_ids=task_ids)
+
+    task_ids: list[str] = []
+    failures: list[Any] = []
+    for result in results:
+        task_ids.append(str(getattr(result, "task_id", "")))
+        if str(getattr(result, "status", "")) == "failed":
+            failures.append(result)
+
+    error_text = _returned_failure_summary(failures) if failures else ""
+    applied = _finish_run_transition(
+        run_id,
+        state="failed" if failures else "succeeded",
+        task_ids=task_ids,
+        error=error_text,
+        preserve_cancelled=True,
+    )
+    if failures and applied:
+        _emit_error_trace(project, run_id, source, error_text)
     return results
-
-
-def _is_already_cancelled(run_id: str) -> bool:
-    """Whether *run_id* was already marked ``cancelled`` by a concurrent
-    ``cancel_run`` while its own ``execute()`` call was still in flight."""
-    latest = get_run(run_id)
-    return latest is not None and str(latest.get("state", "")) == "cancelled"

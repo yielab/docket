@@ -20,6 +20,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_SCRIPT = ROOT / ".agents" / "skills" / "docket-roadmap" / "scripts" / "context_snapshot.py"
+CARD_PACKET_SCRIPT = ROOT / ".agents" / "skills" / "docket-roadmap" / "scripts" / "card_packet.py"
 
 
 def _load_snapshot_module() -> ModuleType:
@@ -380,6 +381,112 @@ def test_cli_discovers_repository_root_from_a_nested_working_directory(tmp_path:
     assert result.returncode == 0
     assert "board: ◉ WAVE ACTIVE" in result.stdout
     assert "TODO.md missing" not in result.stdout
+
+
+def test_card_packet_cli_extracts_only_the_selected_card_without_mutating_board(
+    tmp_path: Path,
+) -> None:
+    _write_board(
+        tmp_path,
+        """
+        ## ◉ WAVE 1 ACTIVE
+
+        ### W1-C1a — selected behavior
+
+        **Status:** TODO
+
+        **Goal:** Preserve this exact selected-card contract.
+
+        ### W1-C2 — unrelated current card
+
+        **Status:** TODO
+
+        Secretly expensive unrelated body.
+
+        ## ☑ OLD WAVE COMPLETE
+
+        ### OLD-C1 — historical card
+
+        **Status:** TODO
+        """,
+    )
+    before = (tmp_path / "TODO.md").read_bytes()
+
+    result = subprocess.run(
+        [sys.executable, str(CARD_PACKET_SCRIPT), "W1-C1a", "--root", str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "### W1-C1a — selected behavior" in result.stdout
+    assert "Preserve this exact selected-card contract" in result.stdout
+    assert "W1-C2" not in result.stdout
+    assert "OLD-C1" not in result.stdout
+    assert (tmp_path / "TODO.md").read_bytes() == before
+
+
+def test_card_packet_cli_fails_closed_on_duplicate_or_oversized_card(tmp_path: Path) -> None:
+    _write_board(
+        tmp_path,
+        """
+        ## ◉ WAVE ACTIVE
+
+        ### DUP-C1 — first duplicate
+
+        **Status:** TODO
+
+        ### DUP-C1 — second duplicate
+
+        **Status:** TODO
+        """,
+    )
+    duplicate = subprocess.run(
+        [sys.executable, str(CARD_PACKET_SCRIPT), "DUP-C1", "--root", str(tmp_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert duplicate.returncode == 2
+    assert duplicate.stdout == ""
+    assert "exactly one card" in duplicate.stderr
+
+    _write_board(
+        tmp_path,
+        f"""
+        ## ◉ WAVE ACTIVE
+
+        ### BIG-C1 — bounded failure
+
+        **Status:** TODO
+
+        {"large evidence " * 80}
+        """,
+    )
+    oversized = subprocess.run(
+        [
+            sys.executable,
+            str(CARD_PACKET_SCRIPT),
+            "BIG-C1",
+            "--root",
+            str(tmp_path),
+            "--max-bytes",
+            "256",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert oversized.returncode == 2
+    assert oversized.stdout == ""
+    assert "exceeds --max-bytes=256" in oversized.stderr
+    assert "not truncated" in oversized.stderr
 
 
 def test_claude_bridge_imports_the_canonical_contract_without_duplicate_skills() -> None:

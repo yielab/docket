@@ -3,9 +3,14 @@
 Read this only when the task changes planning state.
 
 - `TODO.md` is the only executable standing board. A clear board means no work is implicitly queued.
+- Once a card id is known, use `scripts/card_packet.py <CARD-ID>` to load exactly that H3 card. A
+  duplicate or over-limit card is a board defect to fix or inspect deliberately, not permission to
+  truncate its acceptance contract.
 - `ROADMAP.md` is the durable decision and historical record. A deferred item becomes schedulable
   only when its named trigger has fired with evidence from this system.
 - Preserve the existing status vocabulary and keep one owner per in-progress card.
+- In a multi-agent wave, keep one coordinator for central rollups and one isolated worktree/state
+  owner per card. A worker reports evidence; it does not update board/roadmap/README/spec indexes.
 - Schedule by file/function contention, not by thematic similarity or phase number.
 - Before a claim, require a known full Git status and compare the selected card with every active
   lane across owning spec, files/functions, persisted state, and mutable environment. If the status

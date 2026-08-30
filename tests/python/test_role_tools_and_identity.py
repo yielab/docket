@@ -8,9 +8,9 @@ Two gaps this closes rather than papering over:
    `registry_for_role` (the one composing function) close the gap;
    `core/agent_loop.py` calls it once per turn.
 2. **The loop's system prompt omitted private runtime state.** `core/identity.py`'s
-   `system_prompt_for_agent` reads SOUL.md, the live persona, WORKFLOW_AUTO.md,
-   and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state into one prompt, wired into
-   `run_agent_turn` without widening project-tool roots.
+   `system_prompt_for_agent` reads SOUL.md, the live persona, resolved project
+   roots, and bounded HEARTBEAT/AGENTS/TOOLS/MEMORY state into one runtime-safe
+   prompt without replaying manual private-file instructions or widening roots.
 
 The load-bearing test in this file is
 `TestReviewerCannotDispatchAWrite.test_reviewer_write_is_a_dispatch_level_denial`:
@@ -419,12 +419,43 @@ class TestSystemPromptForAgent:
     def test_composes_from_real_workspace_files(self) -> None:
         ws = _write_meta("id-agent")
         (ws / "SOUL.md").write_text("# SOUL.md\nYou are the Lead.\n")
-        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO.md\nResume before you greet.\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO.md\nLEGACY-PRIVATE-STARTUP\n")
 
         prompt = _identity.system_prompt_for_agent("id-agent")
 
         assert "You are the Lead" in prompt
-        assert "Resume before you greet" in prompt
+        assert "Docket live runtime contract" in prompt
+        assert "LEGACY-PRIVATE-STARTUP" not in prompt
+
+    def test_agents_projection_omits_only_generated_session_startup(self) -> None:
+        ws = _write_meta("runtime-rules-agent")
+        (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nlegacy startup\n")
+        (ws / "AGENTS.md").write_text(
+            "# AGENTS\n\n"
+            "## Session Startup\n"
+            "OPEN-PRIVATE-STATE\n\n"
+            "## Red Lines\n"
+            "KEEP-RED-LINE\n\n"
+            "## Custom Rules\n"
+            "KEEP-CUSTOM-RULE\n"
+        )
+
+        prompt = _identity.system_prompt_for_agent("runtime-rules-agent")
+
+        assert "OPEN-PRIVATE-STATE" not in prompt
+        assert "KEEP-RED-LINE" in prompt
+        assert "KEEP-CUSTOM-RULE" in prompt
+
+    def test_custom_agents_without_generated_heading_remains_intact(self) -> None:
+        ws = _write_meta("custom-rules-agent")
+        (ws / "SOUL.md").write_text("# SOUL\nidentity\n")
+        (ws / "WORKFLOW_AUTO.md").write_text("# WORKFLOW_AUTO\nlegacy startup\n")
+        (ws / "AGENTS.md").write_text("CUSTOM-AGENT-RULE-WITHOUT-HEADINGS\n")
+
+        prompt = _identity.system_prompt_for_agent("custom-rules-agent")
+
+        assert "CUSTOM-AGENT-RULE-WITHOUT-HEADINGS" in prompt
 
     def test_private_workspace_state_is_loaded_in_priority_order(self) -> None:
         ws = _write_meta("context-agent")
@@ -438,14 +469,11 @@ class TestSystemPromptForAgent:
         prompt = _identity.system_prompt_for_agent("context-agent")
 
         assert "already loaded" in prompt
-        assert "Do not search for, recreate, or modify them with project tools" in prompt
+        assert prompt.count("Never access Docket private control files") == 1
         assert "including bash" in prompt
-        assert "returning the completed task result is sufficient" in prompt
-        assert prompt.rstrip().endswith(
-            "Continue with the assigned task now. Do not access or update private control files "
-            "through any project tool, including bash. Return the completed task result when "
-            "the work is done; Docket owns task durability."
-        )
+        assert "Return the completed task result" in prompt
+        assert "Docket owns turn durability" in prompt
+        assert prompt.rstrip().endswith("# End runtime-loaded Docket workspace state")
         ordered = [
             prompt.index(name)
             for name in ("ACTIVE-CHECKPOINT", "AGENT-RULES", "TOOL-NOTES", "DURABLE-MEMORY")
@@ -527,7 +555,9 @@ class TestRunAgentTurnComposesTheSystemPrompt:
         sent = backend.calls[0]
         assert sent[0].role == "system"
         assert "You are the Implementer" in sent[0].content
-        assert "Resume rules live here" in sent[0].content
+        assert "Docket live runtime contract" in sent[0].content
+        assert "Resume rules live here" not in sent[0].content
+        assert str(roots) in sent[0].content
         assert sent[-1].role == "user"
 
     def test_no_identity_files_means_no_system_message(self, tmp_path: Path) -> None:

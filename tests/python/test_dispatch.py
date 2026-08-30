@@ -210,7 +210,9 @@ class TestPipeline:
                 f"Effective implementation checkout for this downstream hop: `{worktree}`"
                 in message
             )
-            assert "verdict marker on its first non-blank line, before all reasons" in message
+            assert (
+                "one distinct recognized verdict marker at the start of a complete line" in message
+            )
             assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
 
     def test_task_persisted_with_status_and_hops(

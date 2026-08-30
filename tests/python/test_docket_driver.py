@@ -22,6 +22,8 @@
 from __future__ import annotations
 
 import json
+import time as _time
+import types
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -30,11 +32,15 @@ import pytest
 
 import docket.config as _cfg
 from docket.cli import _gates, _keys
+from docket.core import approval as _approval
 from docket.core import fleet as _fleet
+from docket.core import memory as _memory
 from docket.core import secrets as _secrets
+from docket.core import session as _session
 from docket.core.audit import read_audit
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV
+from docket.core.session import load_session
 from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
 from docket.edges.adapters import llm as _llm_adapter
@@ -224,6 +230,227 @@ class TestRunTurn:
         assert result.ok
         assert backend.max_tokens_seen == [64]
 
+    def test_default_driver_reserves_a_tool_free_terminal_response_inside_budget(self) -> None:
+        ws = _write_meta("budget-agent")
+        (ws / "module.py").write_text("VALUE = 'broken'\n")
+
+        class BudgetBackend:
+            context_window_tokens = 16_384
+            max_output_tokens = 4_000
+
+            def __init__(self) -> None:
+                self.calls: list[list[ChatMessage]] = []
+                self.tools_seen: list[list[ToolSpec]] = []
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                return 7_000 if tools else 1_000
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                self.calls.append(list(messages))
+                self.tools_seen.append(list(tools))
+                call_number = len(self.calls)
+                if call_number == 1:
+                    call = ToolCall(
+                        id="edit-1",
+                        name="edit",
+                        arguments=json.dumps(
+                            {
+                                "path": "module.py",
+                                "old_string": "broken",
+                                "new_string": "fixed",
+                            }
+                        ),
+                    )
+                    return ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(44_000, 1_000),
+                    )
+                if call_number == 2:
+                    call = ToolCall(
+                        id="validate-1",
+                        name="read",
+                        arguments=json.dumps({"path": "module.py"}),
+                    )
+                    return ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(44_000, 1_000),
+                    )
+                if tools:
+                    call = ToolCall(
+                        id="optional-1",
+                        name="read",
+                        arguments=json.dumps({"path": "module.py"}),
+                    )
+                    return ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(9_500, 600),
+                    )
+                return _final_response(
+                    "fixed and validated without another optional tool round",
+                    TokenUsage(900, 100),
+                )
+
+        backend = BudgetBackend()
+        driver = DocketDriver(backend_factory=lambda model: backend)
+        session_key = "agent:budget-agent:default"
+
+        result = driver.run_turn(
+            "budget-agent", session_key, "repair module.py and validate it", 60
+        )
+
+        assert result.ok
+        assert result.output == "fixed and validated without another optional tool round"
+        assert (ws / "module.py").read_text() == "VALUE = 'fixed'\n"
+        assert len(backend.calls) == 3
+        assert backend.tools_seen[0] and backend.tools_seen[1]
+        assert backend.tools_seen[2] == []
+        assert any(
+            message.role == "system" and "terminal response" in message.content.lower()
+            for message in backend.calls[2]
+        )
+        record = load_session(session_key)
+        assert record.usage.input_tokens + record.usage.output_tokens == 91_000
+        assert [message.role for message in record.messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
+
+    def test_terminal_reservation_precedes_request_fit_compaction(self) -> None:
+        _write_meta("window-budget-agent")
+        registry = ToolRegistry()
+        raw_result = "CURRENT_TOOL_UNIT " * 1_000
+
+        def _lookup(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+            return ToolOutcome(True, content=raw_result)
+
+        registry.register(
+            Tool(
+                name="lookup",
+                description="Return the current diagnostic.",
+                parameters={"type": "object", "properties": {}},
+                handler=_lookup,
+                kind="read",
+            )
+        )
+
+        class WindowBudgetBackend:
+            context_window_tokens = 100_000
+            max_output_tokens = 10_000
+
+            def __init__(self) -> None:
+                self.calls: list[list[ChatMessage]] = []
+                self.tools_seen: list[list[ToolSpec]] = []
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    return 5_000
+                if any(
+                    message.role == "system" and "terminal response" in message.content.lower()
+                    for message in messages
+                ):
+                    return 5_000
+                if any(message.role == "tool" for message in messages) or any(
+                    message.content.startswith("[compacted summary of ") for message in messages
+                ):
+                    return 150_000
+                return 20_000
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                self.calls.append(list(messages))
+                self.tools_seen.append(list(tools))
+                if tools:
+                    call = ToolCall(id="lookup-1", name="lookup", arguments="{}")
+                    return ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(65_000, 5_000),
+                    )
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    return _final_response("bounded summary", TokenUsage(4_000, 1_000))
+                assert any(
+                    message.role == "system" and "terminal response" in message.content.lower()
+                    for message in messages
+                )
+                return _final_response("truthful terminal response", TokenUsage(4_000, 1_000))
+
+        backend = WindowBudgetBackend()
+        session_key = "agent:window-budget-agent:default"
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=lambda: registry,
+            mcp_loader=lambda registry, role: [],
+        )
+
+        result = driver.run_turn(
+            "window-budget-agent", session_key, "inspect and report truthfully", 60
+        )
+
+        assert result.ok
+        assert result.output == "truthful terminal response"
+        assert len(backend.calls) == 2
+        assert [bool(tools) for tools in backend.tools_seen] == [True, False]
+        assert not any(
+            len(call) == 1 and "compacting durable turn history" in call[0].content
+            for call in backend.calls
+        )
+        assert any(
+            message.role == "tool" and "CURRENT_TOOL_UNIT" in message.content
+            for message in backend.calls[1]
+        )
+        record = load_session(session_key)
+        assert record.usage.input_tokens + record.usage.output_tokens == 75_000
+        assert not any(
+            message.content.startswith("[compacted summary of ") for message in record.messages
+        )
+        assert any("CURRENT_TOOL_UNIT" in message.content for message in record.messages)
+        trace_path = _cfg.TRACES_DIR / "window-budget-agent" / f"{session_key}.jsonl"
+        records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+        warnings = [record for record in records if record["event_type"] == "budget_warning"]
+        assert len(warnings) == 1
+        assert warnings[0]["payload"]["action"] == "terminal_finalization"
+        assert warnings[0]["payload"]["status"] == "entered"
+
     def test_irreducible_registered_window_fails_before_transport(self) -> None:
         _write_meta("tiny-window-agent")
         backend = _ScriptedBackend([_final_response("must not be called")])
@@ -240,6 +467,474 @@ class TestRunTurn:
         assert "registered context window 1" in result.error
         assert backend.calls == []
 
+    def test_request_fit_does_not_recompact_the_same_current_turn_segment(self) -> None:
+        _write_meta("fit-agent")
+        sentinel = "ORIGINAL_SENTINEL " * 500
+        dispatches = 0
+        registry = ToolRegistry()
+
+        def _lookup(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+            nonlocal dispatches
+            dispatches += 1
+            return ToolOutcome(True, content=sentinel)
+
+        registry.register(
+            Tool(
+                name="lookup",
+                description="Return a large diagnostic result.",
+                parameters={"type": "object", "properties": {}},
+                handler=_lookup,
+                kind="read",
+            )
+        )
+
+        class RecompactionBackend:
+            context_window_tokens = 1_000
+            max_output_tokens = 200
+
+            def __init__(self) -> None:
+                self.calls: list[list[ChatMessage]] = []
+                self.tools_seen: list[list[ToolSpec]] = []
+                self.prospectives: list[tuple[str, int]] = []
+                self.summary_lengths = iter((1_500, 1_000, 600, 300))
+                self.task_transports = 0
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    prospective = ("compaction", 700)
+                elif any(message.role == "tool" for message in messages):
+                    prospective = ("task", 1_220)
+                elif any(
+                    message.content.startswith("[compacted summary of ") for message in messages
+                ):
+                    prospective = ("task", 890)
+                else:
+                    prospective = ("task", 200)
+                self.prospectives.append(prospective)
+                return prospective[1]
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                self.calls.append(list(messages))
+                self.tools_seen.append(list(tools))
+                if tools:
+                    self.task_transports += 1
+                    if self.task_transports > 1:
+                        raise AssertionError("oversized task request must not reach the backend")
+                    call = ToolCall(id="lookup-1", name="lookup", arguments="{}")
+                    return ChatResponse(
+                        ok=True,
+                        message=assistant("", tool_calls=[call]),
+                        finish_reason="tool_calls",
+                        usage=TokenUsage(10, 5),
+                    )
+                assert "compacting durable turn history" in messages[0].content
+                return _final_response("S" * next(self.summary_lengths), TokenUsage(10, 5))
+
+        backend = RecompactionBackend()
+        session_key = "agent:fit-agent:default"
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=lambda: registry,
+            mcp_loader=lambda registry, role: [],
+        )
+
+        result = driver.run_turn("fit-agent", session_key, "inspect the diagnostic", 60)
+
+        assert not result.ok
+        assert result.failure_kind == "invalid_output"
+        assert "estimated request 1090" in result.error
+        assert "input 890" in result.error
+        assert "output reserve 200" in result.error
+        assert "registered context window 1000" in result.error
+        assert "irreducible" in result.error
+        assert dispatches == 1
+        assert len(backend.calls) == 2
+        assert [bool(tools) for tools in backend.tools_seen] == [True, False]
+        assert backend.prospectives == [
+            ("task", 200),
+            ("task", 1_220),
+            ("compaction", 700),
+            ("task", 890),
+        ]
+
+        trace_path = _cfg.TRACES_DIR / "fit-agent" / f"{session_key}.jsonl"
+        records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+        fit_payloads = [
+            record["payload"] for record in records if record["event_type"] == "request_fit"
+        ]
+        assert [
+            (payload["purpose"], payload["status"], payload["estimatedInputTokens"])
+            for payload in fit_payloads
+        ] == [
+            ("task", "fits", 200),
+            ("task", "failed", 1_220),
+            ("compaction", "fits", 700),
+            ("task", "failed", 890),
+        ]
+        expected_fit_keys = {
+            "purpose",
+            "status",
+            "estimatedInputTokens",
+            "outputReserveTokens",
+            "contextWindowTokens",
+            "estimate",
+        }
+        assert all(set(payload) == expected_fit_keys for payload in fit_payloads)
+        assert all(payload["outputReserveTokens"] == 200 for payload in fit_payloads)
+        assert all(payload["contextWindowTokens"] == 1_000 for payload in fit_payloads)
+        assert all(payload["estimate"] is True for payload in fit_payloads)
+        succeeded = [
+            record
+            for record in records
+            if record["event_type"] == "session_compaction"
+            and record["payload"]["status"] == "succeeded"
+        ]
+        assert len(succeeded) == 1
+        assert "ORIGINAL_SENTINEL" not in trace_path.read_text()
+
+        stored = _session.load_messages(session_key)
+        assert any("S" * 100 in message.content for message in stored)
+        assert all("ORIGINAL_SENTINEL" not in message.content for message in stored)
+        assert any(message.content == "inspect the diagnostic" for message in stored)
+        assert not _session.find_orphaned_tool_messages(stored)
+        assert not _session.find_unanswered_tool_calls(stored)
+
+    def test_request_fit_rechecks_an_append_completed_during_the_fit_check(self) -> None:
+        _write_meta("fit-refresh-agent")
+        session_key = "agent:fit-refresh-agent:default"
+        task_message = "CONCURRENT_REVISION " * 600
+        original = "ORIGINAL_SUFFIX " * 600
+        dispatches = 0
+        registry = ToolRegistry()
+
+        def _lookup(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+            nonlocal dispatches
+            dispatches += 1
+            return ToolOutcome(True, content=original)
+
+        registry.register(
+            Tool(
+                name="lookup",
+                description="Return a large diagnostic result.",
+                parameters={"type": "object", "properties": {}},
+                handler=_lookup,
+                kind="read",
+            )
+        )
+
+        class PostReloadAppendBackend:
+            context_window_tokens = 1_000
+            max_output_tokens = 200
+
+            def __init__(self) -> None:
+                self.calls: list[list[ChatMessage]] = []
+                self.tools_seen: list[list[ToolSpec]] = []
+                self.prospectives: list[tuple[str, int]] = []
+                self.summary_prompts: list[str] = []
+                self.task_transports = 0
+                self.injected = False
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    prospective = ("compaction", 700)
+                elif any(message.role == "tool" for message in messages):
+                    prospective = ("task", 1_220)
+                elif (
+                    sum(
+                        message.role == "user" and message.content == task_message
+                        for message in messages
+                    )
+                    > 1
+                ):
+                    prospective = ("task", 1_100)
+                elif any("SECOND_SUMMARY" in message.content for message in messages):
+                    prospective = ("task", 700)
+                elif any("FIRST_SUMMARY" in message.content for message in messages):
+                    if not self.injected:
+                        self.injected = True
+                        _session.append_messages(
+                            session_key,
+                            [
+                                ChatMessage(
+                                    role="user",
+                                    content=task_message,
+                                    name="concurrent-copy",
+                                )
+                            ],
+                        )
+                    prospective = ("task", 700)
+                else:
+                    prospective = ("task", 200)
+                self.prospectives.append(prospective)
+                return prospective[1]
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                self.calls.append(list(messages))
+                self.tools_seen.append(list(tools))
+                if tools:
+                    self.task_transports += 1
+                    if self.task_transports == 1:
+                        call = ToolCall(id="lookup-1", name="lookup", arguments="{}")
+                        return ChatResponse(
+                            ok=True,
+                            message=assistant("", tool_calls=[call]),
+                            finish_reason="tool_calls",
+                            usage=TokenUsage(10, 5),
+                        )
+                    fresh = any("SECOND_SUMMARY" in message.content for message in messages)
+                    return _final_response(
+                        "fresh revision transported" if fresh else "stale revision transported",
+                        TokenUsage(10, 5),
+                    )
+                prompt = messages[0].content
+                self.summary_prompts.append(prompt)
+                assert "compacting durable turn history" in prompt
+                if "CONCURRENT_REVISION" in prompt:
+                    assert "FIRST_SUMMARY" not in prompt
+                    assert "ORIGINAL_SUFFIX" not in prompt
+                    return _final_response("SECOND_SUMMARY " + "N" * 400, TokenUsage(10, 5))
+                assert "ORIGINAL_SUFFIX" in prompt
+                return _final_response("FIRST_SUMMARY " + "S" * 1_000, TokenUsage(10, 5))
+
+        backend = PostReloadAppendBackend()
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=lambda: registry,
+            mcp_loader=lambda registry, role: [],
+        )
+
+        result = driver.run_turn("fit-refresh-agent", session_key, task_message, 60)
+
+        assert result.ok
+        assert result.output == "fresh revision transported"
+        assert backend.injected
+        assert dispatches == 1
+        assert [bool(tools) for tools in backend.tools_seen] == [True, False, False, True]
+        assert backend.prospectives == [
+            ("task", 200),
+            ("task", 1_220),
+            ("compaction", 700),
+            ("task", 700),
+            ("task", 1_100),
+            ("compaction", 700),
+            ("task", 700),
+        ]
+        assert len(backend.summary_prompts) == 2
+        assert "FIRST_SUMMARY" not in backend.summary_prompts[1]
+        assert "ORIGINAL_SUFFIX" not in backend.summary_prompts[1]
+
+        final_task = backend.calls[-1]
+        assert any("FIRST_SUMMARY" in message.content for message in final_task)
+        assert any("SECOND_SUMMARY" in message.content for message in final_task)
+        assert all("ORIGINAL_SUFFIX" not in message.content for message in final_task)
+        final_tasks = [
+            message
+            for message in final_task
+            if message.role == "user" and message.content == task_message
+        ]
+        assert len(final_tasks) == 1
+        assert final_tasks[0].name == ""
+
+        stored = load_session(session_key)
+        assert stored.usage.input_tokens == 40
+        assert stored.usage.output_tokens == 20
+        assert stored.usage.turns == 4
+        assert any("FIRST_SUMMARY" in message.content for message in stored.messages)
+        assert any("SECOND_SUMMARY" in message.content for message in stored.messages)
+        assert all("ORIGINAL_SUFFIX" not in message.content for message in stored.messages)
+        stored_tasks = [
+            message
+            for message in stored.messages
+            if message.role == "user" and message.content == task_message
+        ]
+        assert len(stored_tasks) == 1
+        assert stored_tasks[0].name == ""
+        assert not _session.find_orphaned_tool_messages(stored.messages)
+        assert not _session.find_unanswered_tool_calls(stored.messages)
+
+        trace_path = _cfg.TRACES_DIR / "fit-refresh-agent" / f"{session_key}.jsonl"
+        records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+        fit_payloads = [
+            record["payload"] for record in records if record["event_type"] == "request_fit"
+        ]
+        expected_fit_keys = {
+            "purpose",
+            "status",
+            "estimatedInputTokens",
+            "outputReserveTokens",
+            "contextWindowTokens",
+            "estimate",
+        }
+        assert all(set(payload) == expected_fit_keys for payload in fit_payloads)
+        assert "ORIGINAL_SUFFIX" not in trace_path.read_text()
+        assert "CONCURRENT_REVISION" not in trace_path.read_text()
+
+    def test_request_fit_may_compact_suffix_then_an_independent_prefix(self) -> None:
+        _write_meta("two-segment-agent")
+        session_key = "agent:two-segment-agent:default"
+        prefix_drop = "PREFIX_DROP_SENTINEL " * 250
+        prefix_anchor = "PREFIX_ANCHOR " * 250
+        suffix = "SUFFIX_SENTINEL " * 500
+        _session.append_messages(
+            session_key,
+            [
+                ChatMessage(role="user", content=prefix_drop),
+                ChatMessage(role="user", content=prefix_anchor),
+            ],
+        )
+        dispatches = 0
+        registry = ToolRegistry()
+
+        def _lookup(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+            nonlocal dispatches
+            dispatches += 1
+            return ToolOutcome(True, content=suffix)
+
+        registry.register(
+            Tool(
+                name="lookup",
+                description="Return another large diagnostic result.",
+                parameters={"type": "object", "properties": {}},
+                handler=_lookup,
+                kind="read",
+            )
+        )
+
+        class TwoSegmentBackend:
+            context_window_tokens = 1_000
+            max_output_tokens = 200
+
+            def __init__(self) -> None:
+                self.calls: list[list[ChatMessage]] = []
+                self.tools_seen: list[list[ToolSpec]] = []
+                self.prospectives: list[tuple[str, int]] = []
+                self.task_transports = 0
+
+            def estimate_input_tokens(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+            ) -> int:
+                if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
+                    prospective = ("compaction", 700)
+                elif any(message.role == "tool" for message in messages):
+                    prospective = ("task", 1_220)
+                elif any("SUFFIX_SUMMARY" in message.content for message in messages) and any(
+                    "PREFIX_DROP_SENTINEL" in message.content for message in messages
+                ):
+                    prospective = ("task", 1_100)
+                elif any("PREFIX_SUMMARY" in message.content for message in messages):
+                    prospective = ("task", 700)
+                else:
+                    prospective = ("task", 200)
+                self.prospectives.append(prospective)
+                return prospective[1]
+
+            def complete(
+                self,
+                messages: Sequence[ChatMessage],
+                *,
+                tools: Sequence[ToolSpec] = (),
+                max_tokens: int | None = None,
+                temperature: float | None = None,
+                timeout: int = 120,
+            ) -> ChatResponse:
+                self.calls.append(list(messages))
+                self.tools_seen.append(list(tools))
+                if tools:
+                    self.task_transports += 1
+                    if self.task_transports == 1:
+                        call = ToolCall(id="lookup-1", name="lookup", arguments="{}")
+                        return ChatResponse(
+                            ok=True,
+                            message=assistant("", tool_calls=[call]),
+                            finish_reason="tool_calls",
+                            usage=TokenUsage(10, 5),
+                        )
+                    return _final_response("done", TokenUsage(10, 5))
+                prompt = messages[0].content
+                assert "compacting durable turn history" in prompt
+                if "SUFFIX_SENTINEL" in prompt:
+                    return _final_response("SUFFIX_SUMMARY " + "S" * 1_500)
+                assert "PREFIX_DROP_SENTINEL" in prompt
+                return _final_response("PREFIX_SUMMARY " + "P" * 500)
+
+        backend = TwoSegmentBackend()
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=lambda: registry,
+            mcp_loader=lambda registry, role: [],
+        )
+
+        result = driver.run_turn("two-segment-agent", session_key, "inspect both segments", 60)
+
+        assert result.ok
+        assert result.output == "done"
+        assert dispatches == 1
+        assert [bool(tools) for tools in backend.tools_seen] == [True, False, False, True]
+        assert backend.prospectives == [
+            ("task", 200),
+            ("task", 1_220),
+            ("compaction", 700),
+            ("task", 1_100),
+            ("compaction", 700),
+            ("task", 700),
+        ]
+        records = [
+            json.loads(line)
+            for line in (_cfg.TRACES_DIR / "two-segment-agent" / f"{session_key}.jsonl")
+            .read_text()
+            .splitlines()
+        ]
+        succeeded = [
+            record
+            for record in records
+            if record["event_type"] == "session_compaction"
+            and record["payload"]["status"] == "succeeded"
+        ]
+        assert len(succeeded) == 2
+        stored = _session.load_messages(session_key)
+        assert all("PREFIX_DROP_SENTINEL" not in message.content for message in stored)
+        assert all("SUFFIX_SENTINEL" not in message.content for message in stored)
+        assert any("PREFIX_ANCHOR" in message.content for message in stored)
+        assert any("PREFIX_SUMMARY" in message.content for message in stored)
+        assert any("SUFFIX_SUMMARY" in message.content for message in stored)
+        assert not _session.find_orphaned_tool_messages(stored)
+        assert not _session.find_unanswered_tool_calls(stored)
+
     def test_happy_path_final_message_costs_nothing(self) -> None:
         _write_meta("solo-agent")
         backend = _ScriptedBackend([_final_response("hello there", TokenUsage(12, 4))])
@@ -252,6 +947,86 @@ class TestRunTurn:
         assert result.cost_usd == 0.0
         assert result.error == ""
         assert result.failure_kind is None
+
+    def test_runtime_prompt_projects_startup_state_without_private_file_commands(
+        self, tmp_path: Path
+    ) -> None:
+        codebase = tmp_path / "runtime-project"
+        codebase.mkdir()
+        ws = _write_meta(
+            "runtime-prompt-agent",
+            role="tester",
+            codebase=str(codebase),
+        )
+        (ws / "SOUL.md").write_text("# SOUL\nTESTER-ROLE-RULE\n", encoding="utf-8")
+        _memory.seed_contract(ws, project="runtime-project", codebase=str(codebase))
+        (ws / "AGENTS.md").write_text(
+            "# AGENTS\n\n"
+            "## Session Startup\n"
+            "LEGACY-OPEN-PRIVATE\n\n"
+            "## Red Lines\n"
+            "SAFE-RED-LINE\n\n"
+            "## Custom Operator Rules\n"
+            "CUSTOM-RUNTIME-RULE\n",
+            encoding="utf-8",
+        )
+        (ws / "HEARTBEAT.md").write_text(
+            _memory.heartbeat_seed("runtime-prompt-agent").replace(
+                "_none yet_", "CURRENT-ACTIVE-STATE"
+            ),
+            encoding="utf-8",
+        )
+        (ws / "TOOLS.md").write_text("README-VALIDATION-RULE\n", encoding="utf-8")
+        (ws / "MEMORY.md").write_text("CURRENT-DURABLE-DECISION\n", encoding="utf-8")
+        source_bytes = {
+            path.name: path.read_bytes()
+            for path in (
+                ws / "WORKFLOW_AUTO.md",
+                ws / "AGENTS.md",
+                ws / "HEARTBEAT.md",
+                ws / "TOOLS.md",
+                ws / "MEMORY.md",
+            )
+        }
+        backend = _ScriptedBackend([_final_response("PASS")])
+
+        result = DocketDriver(backend_factory=lambda model: backend).run_turn(
+            "runtime-prompt-agent",
+            "agent:runtime-prompt-agent:default",
+            "validate the repaired behavior",
+            60,
+        )
+
+        assert result.ok is True
+        system = backend.calls[0][0]
+        assert system.role == "system"
+        assert str(codebase) in system.content
+        assert "TESTER-ROLE-RULE" in system.content
+        assert "CURRENT-ACTIVE-STATE" in system.content
+        assert "SAFE-RED-LINE" in system.content
+        assert "CUSTOM-RUNTIME-RULE" in system.content
+        assert "README-VALIDATION-RULE" in system.content
+        assert "CURRENT-DURABLE-DECISION" in system.content
+        assert "LEGACY-OPEN-PRIVATE" not in system.content
+        assert "open `HEARTBEAT.md`" not in system.content
+        assert "write it to `HEARTBEAT.md`" not in system.content
+        assert "`MEMORY.md` — what this project" not in system.content
+        assert "Read it first every session" not in system.content
+        assert "record it here" not in system.content
+        assert system.content.count("Never access Docket private control files") == 1
+        assert {
+            path.name: path.read_bytes()
+            for path in (
+                ws / "WORKFLOW_AUTO.md",
+                ws / "AGENTS.md",
+                ws / "HEARTBEAT.md",
+                ws / "TOOLS.md",
+                ws / "MEMORY.md",
+            )
+        } == source_bytes
+        stored = load_session("agent:runtime-prompt-agent:default")
+        assert all(message.role != "system" for message in stored.messages)
+        assert not any("CURRENT-DURABLE-DECISION" in message.content for message in stored.messages)
 
     def test_missing_meta_fails_without_raising(self) -> None:
         driver = DocketDriver(backend_factory=_never_called)
@@ -287,6 +1062,106 @@ class TestRunTurn:
         assert result.cost_usd == 0.0
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "top secret" in tool_msg.content
+
+    def test_default_driver_stops_after_three_explicit_tool_approval_denials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_meta("denial-agent")
+        _store.write_json(
+            _cfg.POLICIES_DIR / "approve-validation.json",
+            {
+                "id": "approve-validation",
+                "description": "require an operator for validation",
+                "applies_to": ["*"],
+                "hook": "pre_tool_call",
+                "match": {"type": "regex", "pattern": "^validate\\b"},
+                "action": "require_approval",
+                "message": "operator validation required",
+            },
+        )
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 10, raising=True)
+
+        def deny_pending(_seconds: float) -> None:
+            pending = _approval.list_pending()
+            assert len(pending) == 1
+            _approval.approval_deny(str(pending[0]["token"]))
+
+        monkeypatch.setattr(
+            _approval,
+            "_time",
+            types.SimpleNamespace(sleep=deny_pending, monotonic=_time.monotonic),
+            raising=True,
+        )
+        handler_calls: list[str] = []
+        registry = ToolRegistry()
+        registry.register(
+            Tool(
+                name="validate",
+                description="operator-gated validation",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda args, ctx: (
+                    handler_calls.append("executed") or ToolOutcome(ok=True, content="ran")
+                ),
+                kind="read",
+            )
+        )
+        responses = [
+            ChatResponse(
+                ok=True,
+                message=assistant(
+                    "",
+                    tool_calls=[ToolCall(id=f"deny-{index}", name="validate", arguments="{}")],
+                ),
+                finish_reason="tool_calls",
+                usage=TokenUsage(10, 5),
+            )
+            for index in range(1, 4)
+        ]
+        responses.append(_final_response("must not be requested"))
+        backend = _ScriptedBackend(responses)
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=lambda: registry,
+        )
+        session_key = "agent:denial-agent:default"
+
+        result = driver.run_turn(
+            "denial-agent",
+            session_key,
+            "validate without bypassing approval",
+            60,
+            trace_project="denial-project",
+        )
+
+        assert result.ok is False
+        assert result.failure_kind == "invalid_output"
+        assert "count=3" in result.error
+        assert "approval_denied,approval_denied,approval_denied" in result.error
+        assert len(backend.calls) == 3
+        assert handler_calls == []
+        record = load_session(session_key)
+        assert [message.role for message in record.messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+            "tool",
+            "assistant",
+            "tool",
+        ]
+        assert record.usage.input_tokens + record.usage.output_tokens == 45
+        approval_states = [
+            json.loads(path.read_text(encoding="utf-8"))["state"]
+            for path in _cfg.APPROVALS_DIR.glob("*.json")
+        ]
+        assert approval_states == ["denied", "denied", "denied"]
+        trace_path = _cfg.TRACES_DIR / "denial-project" / f"{session_key}.jsonl"
+        denial_kinds = [
+            json.loads(line)["payload"].get("denialKind")
+            for line in trace_path.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event_type"] == "tool_result"
+        ]
+        assert denial_kinds == ["approval_denied", "approval_denied", "approval_denied"]
 
     def test_env_flows_into_the_tool_context(self) -> None:
         # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,

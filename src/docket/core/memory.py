@@ -70,13 +70,13 @@ captured somewhere durable first.
 ## The runtime contract
 
 ``core/agent_loop.py``'s own turn loop (via ``core.identity.system_prompt_for_agent``)
-composes ``SOUL.md``, the live persona, and ``WORKFLOW_AUTO.md`` into the
-system message on **every** turn, unconditionally — not a nag after the
-fact, an input the model cannot skip reading. docket is still the
-provisioner, so it must make these files *exist* and stay current;
-``WORKFLOW_AUTO.md`` remains where we anchor the codebase path and the read
-order so they survive compaction even when ``SOUL.md``/``MEMORY.md`` fall
-out of the message history proper.
+composes ``SOUL.md``, the live persona, and a runtime-safe projection of the
+generated startup contract into the system message on **every** turn. The raw
+``WORKFLOW_AUTO.md`` remains the manual/reset contract on disk; a live turn
+already performed its private reads, so it receives the driver's resolved
+project roots and bounded current state without the file's read/write
+imperatives. docket is still the provisioner, so these files must *exist* and
+stay current even though the live projection is the model-visible contract.
 
 One clock: all day math is **UTC**, matching ``.docket-meta.json`` ``created``
 and the trace/audit timestamps, so docket never disagrees with itself about

@@ -36,6 +36,7 @@ from docket.cli import _pod
 from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import handoff as _handoff
+from docket.core import pipeline as _pipeline
 
 from .fakes import FakeDriver
 
@@ -455,6 +456,15 @@ class TestDispatchBuildsTypedArtifacts:
         # crash-and-`--resume` would load them from TASK_LIST.json.
         records = [_dispatch._hop_record(h) for h in prior_hops]
         resumed_hops = [_dispatch._hop_from_record(r) for r in records]
+
+        real_parse_verdict = _dispatch._orch.parse_verdict
+
+        def _reject_reparse(gate: _pipeline.VerdictGate, output: str) -> str | None:
+            if output == "APPROVE - solid":
+                raise AssertionError("resume reparsed persisted reviewer prose")
+            return real_parse_verdict(gate, output)
+
+        monkeypatch.setattr(_dispatch._orch, "parse_verdict", _reject_reparse)
 
         calls: list[tuple[str, str]] = []
 

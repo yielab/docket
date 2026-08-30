@@ -141,6 +141,26 @@ class TestParseReviewerVerdict:
     def test_leading_blank_lines_skipped(self) -> None:
         assert _orch.parse_verdict(self._reviewer_gate(), "\n\nAPPROVE\nfine") == "approve"
 
+    def test_marker_may_follow_prose_on_a_later_line(self) -> None:
+        assert (
+            _orch.parse_verdict(
+                self._reviewer_gate(),
+                "I reviewed the implementation and found no blockers.\nAPPROVE",
+            )
+            == "approve"
+        )
+
+    def test_repeated_identical_markers_normalize_to_one_verdict(self) -> None:
+        assert (
+            _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nEvidence.\napprove") == "approve"
+        )
+
+    def test_conflicting_marker_lines_are_unparseable(self) -> None:
+        assert _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nREQUEST-CHANGES") is None
+
+    def test_marker_word_embedded_in_prose_does_not_count(self) -> None:
+        assert _orch.parse_verdict(self._reviewer_gate(), "I APPROVE this implementation") is None
+
     def test_unparseable_returns_none(self) -> None:
         assert _orch.parse_verdict(self._reviewer_gate(), "looks fine to me") is None
 
@@ -185,6 +205,35 @@ class TestReviewerGateBasic:
         task: dict[str, Any] = {"id": "t1b", "description": "work", "status": "pending"}
         res = _dispatch.dispatch_task("myapp", task, runner=self._runner("approve, ship it"))
         assert res.status == "done"
+
+    def test_reviewer_and_tester_markers_may_follow_evidence(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        task: dict[str, Any] = {"id": "t1c", "description": "work", "status": "pending"}
+        res = _dispatch.dispatch_task(
+            "myapp",
+            task,
+            runner=self._runner(
+                "Reviewed the complete diff; no blockers remain.\nAPPROVE",
+                "Ran the required behavior checks successfully.\nPASS",
+            ),
+        )
+
+        assert res.status == "done"
+        reviewer = next(hop for hop in res.hops if hop.role == "reviewer")
+        tester = next(hop for hop in res.hops if hop.role == "tester")
+        assert reviewer.artifact.verdict == "approve"
+        assert tester.artifact.verdict == "pass"
+
+    def test_conflicting_reviewer_markers_fail_as_unparseable(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        task: dict[str, Any] = {"id": "t1d", "description": "work", "status": "pending"}
+        res = _dispatch.dispatch_task(
+            "myapp", task, runner=self._runner("APPROVE\nREQUEST-CHANGES")
+        )
+
+        assert res.status == "failed"
+        assert "unparseable" in res.reason
+        assert "first line" not in res.reason
 
     def test_unparseable_reviewer_output_fails(self, tmp_path: Path) -> None:
         _seed_full_pod()

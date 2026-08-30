@@ -38,6 +38,7 @@ import docket.serve as _serve
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
+from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
 _TEST_TOKEN = "test-serve-token-r3-runs"
@@ -79,6 +80,233 @@ def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
             return rec
         time.sleep(0.02)
     raise AssertionError(f"run {run_id!r} never reached a terminal state")
+
+
+# ── shared returned-result fold ──────────────────────────────────────────────
+
+
+class TestReturnedResultFold:
+    def test_returned_failed_task_marks_run_failed_and_emits_error_trace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        trace_calls: list[tuple[object, ...]] = []
+
+        def _capture_trace(*args: object, **_kwargs: object) -> str:
+            trace_calls.append(args)
+            return "written"
+
+        monkeypatch.setattr("docket.core.trace.trace_event", _capture_trace)
+        record = _runs.create_run("cli", "demo")
+        task = _dispatch.TaskResult(
+            task_id="task-failed",
+            status="failed",
+            reason="turn budget exhausted",
+        )
+
+        returned = _runs.execute(record["id"], lambda: [task])
+
+        assert returned == [task]
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "failed"
+        assert persisted["taskIds"] == ["task-failed"]
+        assert "task-failed" in persisted["error"]
+        assert "turn budget exhausted" in persisted["error"]
+        assert len(trace_calls) == 1
+        assert trace_calls[0][3] == "error"
+        assert json.loads(str(trace_calls[0][4]))["error"] == persisted["error"]
+
+    def test_failed_wins_a_mixed_result_and_preserves_every_task_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("webhook", "demo")
+        results = [
+            _dispatch.TaskResult(task_id="task-done", status="done"),
+            _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
+            _dispatch.TaskResult(
+                task_id="task-failed", status="failed", reason="verify gate\nfailed"
+            ),
+            _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
+        ]
+
+        returned = _runs.execute(record["id"], lambda: results)
+
+        assert returned == results
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "failed"
+        assert persisted["taskIds"] == [result.task_id for result in results]
+        assert "task-failed: verify gate failed" in persisted["error"]
+
+    @pytest.mark.parametrize(
+        "results",
+        [
+            [],
+            [
+                _dispatch.TaskResult(task_id="task-done", status="done"),
+                _dispatch.TaskResult(task_id="task-wait", status="waiting_approval"),
+                _dispatch.TaskResult(task_id="task-blocked", status="blocked"),
+            ],
+        ],
+    )
+    def test_nonfailed_returned_statuses_keep_invocation_successful(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        results: list[_dispatch.TaskResult],
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("cli", "demo")
+
+        returned = _runs.execute(record["id"], lambda: results)
+
+        assert returned == results
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "succeeded"
+        assert persisted["taskIds"] == [result.task_id for result in results]
+        assert persisted["error"] == ""
+
+    def test_failure_summary_is_bounded_and_a_concurrent_cancel_still_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("cli", "demo")
+        results = [
+            _dispatch.TaskResult(
+                task_id=f"task-{index}",
+                status="failed",
+                reason=f"reason {index} " + ("x" * 2_000) + " RAW_TAIL_SENTINEL",
+            )
+            for index in range(20)
+        ]
+
+        def _cancel_then_return() -> list[_dispatch.TaskResult]:
+            _runs.cancel_run(record["id"])
+            return results
+
+        returned = _runs.execute(record["id"], _cancel_then_return)
+
+        assert returned == results
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        assert persisted["error"] == "cancelled by operator"
+
+        uncancelled = _runs.create_run("cli", "demo")
+        _runs.execute(uncancelled["id"], lambda: results)
+        failed = _runs.get_run(uncancelled["id"])
+        assert failed is not None
+        assert failed["state"] == "failed"
+        assert failed["taskIds"] == [result.task_id for result in results]
+        assert len(failed["error"]) <= 1_024
+        assert "RAW_TAIL_SENTINEL" not in failed["error"]
+        assert "more" in failed["error"]
+
+    def test_execute_folds_the_returned_list_exactly_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("cli", "demo")
+
+        class CountingResults(list[_dispatch.TaskResult]):
+            iterations = 0
+
+            def __iter__(self):  # type: ignore[no-untyped-def]
+                self.iterations += 1
+                return super().__iter__()
+
+        results = CountingResults(
+            [_dispatch.TaskResult(task_id="task-failed", status="failed", reason="broken")]
+        )
+
+        _runs.execute(record["id"], lambda: results)
+
+        assert results.iterations == 1
+
+    def test_cancel_between_fold_and_terminal_write_cannot_be_clobbered(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("cli", "demo")
+        real_read_modify_write = _store.read_modify_write
+        writes = 0
+
+        def _inject_cancel_before_second_write(path: Path, fn: Any) -> dict[str, Any]:
+            nonlocal writes
+            writes += 1
+            if writes == 2:  # mark_running is first; terminal transition is second
+
+                def _cancel(doc: dict[str, Any]) -> dict[str, Any]:
+                    for candidate in doc.get("runs", []):
+                        if candidate.get("id") == record["id"]:
+                            candidate["state"] = "cancelled"
+                            candidate["error"] = "cancelled by operator"
+                    return doc
+
+                real_read_modify_write(path, _cancel)
+            return real_read_modify_write(path, fn)
+
+        monkeypatch.setattr(_store, "read_modify_write", _inject_cancel_before_second_write)
+        trace_calls: list[tuple[object, ...]] = []
+        monkeypatch.setattr(
+            "docket.core.trace.trace_event",
+            lambda *args, **_kwargs: trace_calls.append(args) or "written",
+        )
+
+        returned = _runs.execute(
+            record["id"],
+            lambda: [
+                _dispatch.TaskResult(
+                    task_id="task-failed", status="failed", reason="must lose to cancel"
+                )
+            ],
+        )
+
+        assert returned is not None
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        assert persisted["error"] == "cancelled by operator"
+        assert trace_calls == []
+
+    def test_execute_never_revives_a_run_cancelled_while_queued(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / ".docket"
+        home.mkdir()
+        _point_at(home, monkeypatch)
+        record = _runs.create_run("webhook", "demo")
+        assert _runs.cancel_run(record["id"]).ok
+        invoked = False
+
+        def _must_not_run() -> list[_dispatch.TaskResult]:
+            nonlocal invoked
+            invoked = True
+            return [_dispatch.TaskResult(task_id="task-late", status="failed", reason="late")]
+
+        returned = _runs.execute(record["id"], _must_not_run)
+
+        assert returned is None
+        assert invoked is False
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        assert persisted["error"] == "cancelled by operator"
 
 
 # ── CLI dispatch path ─────────────────────────────────────────────────────────

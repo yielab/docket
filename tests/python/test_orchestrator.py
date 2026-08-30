@@ -203,9 +203,9 @@ class TestParseVerdict:
         assert _orch.parse_verdict(gate, "approve\nfine") is None  # wrong case -> unparseable
         assert _orch.parse_verdict(gate, "APPROVE\nfine") == "APPROVE"
 
-    def test_unparseable_first_line_returns_none_even_if_a_later_line_matches(self) -> None:
+    def test_prose_first_line_allows_a_later_marker_line(self) -> None:
         gate = _pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
-        assert _orch.parse_verdict(gate, "not a verdict\nAPPROVE") is None
+        assert _orch.parse_verdict(gate, "not a verdict\nAPPROVE") == "approve"
 
     def test_leading_blank_lines_are_skipped(self) -> None:
         gate = _pipeline.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])

@@ -269,7 +269,7 @@ class TestDispatchVerifyGate:
         ) -> _rd.TurnResult:
             role = _fleet.meta_get(member_id, "role", "") or member_id
             ran.append(role)
-            # The reviewer gate parses the Reviewer's first line — a real
+            # The reviewer gate requires one line-anchored marker — a real
             # pod-completing run needs a real APPROVE verdict, not just an
             # ok=True subprocess call.
             output = "APPROVE - looks good" if role == "reviewer" else "ok"
@@ -298,7 +298,7 @@ class TestDispatchVerifyGate:
 
 
 class TestDispatchTesterGate:
-    """The Tester hop's PASS/FAIL first line is parsed and gates the pipeline.
+    """The Tester hop's unambiguous PASS/FAIL marker gates the pipeline.
 
     A successful subprocess call (``run_res.ok``) only means the Tester agent ran —
     it says nothing about what the Tester found. These tests exercise the marker

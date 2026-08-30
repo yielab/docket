@@ -322,6 +322,12 @@ AGENT_LOOP_MAX_ITERATIONS = int(os.environ.get("AGENT_LOOP_MAX_ITERATIONS", "20"
 # iterations — a single response requesting many calls at once is a distinct
 # risk from many responses requesting one each, so both are capped.
 AGENT_LOOP_MAX_TOOL_CALLS = int(os.environ.get("AGENT_LOOP_MAX_TOOL_CALLS", "40"))
+# AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS: permit an isolated refusal so a
+# model can correct course, but stop a denial-only loop before it consumes the
+# broader iteration/tool/token limits.
+AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS = int(
+    os.environ.get("AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", "3")
+)
 # TOOL_MAX_OUTPUT_CHARS: ceiling on ONE tool result's text before
 # edges/adapters/toolbox.py truncates it (visibly — silently short output
 # would be read as "that is all there is"). This is a context bound, not a

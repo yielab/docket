@@ -336,10 +336,10 @@ _REVIEWER_BODY = (
     "## Role — Reviewer (veto power)\n"
     "- You review diffs for correctness, security, and requirement fit.\n"
     "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
-    "- **Marker convention:** the first non-blank line of your reply must be "
-    "exactly `APPROVE` or `REQUEST-CHANGES` (case-insensitive) — dispatch "
-    "parses this line to gate the pipeline. Reasons go on the lines after "
-    "it. Anything else on that first line is treated as unparseable and "
+    "- **Marker convention:** start exactly one output line with `APPROVE` or "
+    "`REQUEST-CHANGES` (case-insensitive) — dispatch scans all complete lines "
+    "and requires one unambiguous marker. Reasons may appear before or after "
+    "that marker line. No marker or both distinct markers is unparseable and "
     "blocks the pipeline the same as a rejection.\n"
     "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
     "for a bounded rework cycle (once, by default) before it becomes a "
@@ -352,10 +352,10 @@ _TESTER_BODY = (
     "- You run the test suite and reproduction steps and report a binary "
     "**PASS/FAIL** with evidence.\n"
     "- Observe behaviour only — do not read or critique the implementation.\n"
-    "- **Marker convention:** the first non-blank line of your reply must be "
-    "exactly `PASS` or `FAIL` (case-insensitive) — dispatch parses this line "
-    "to gate the pipeline. Evidence goes on the lines after it. Anything else "
-    "on that first line blocks the pipeline the same as a FAIL.\n"
+    "- **Marker convention:** start exactly one output line with `PASS` or `FAIL` "
+    "(case-insensitive) — dispatch scans all complete lines and requires one "
+    "unambiguous marker. Evidence may appear before or after that marker line. "
+    "No marker or both distinct markers blocks the pipeline the same as a FAIL.\n"
 )
 
 _LEGACY_AGENTS_TEMPLATE = (
@@ -526,10 +526,10 @@ _CRITIC_BODY = (
     "## Role — Critic (veto power)\n"
     "- You review the pod's draft output for correctness, clarity, and requirement fit.\n"
     "- **Read-only**: no write/edit/exec. Weak output does not proceed.\n"
-    "- **Marker convention:** the first non-blank line of your reply must be "
-    "exactly `APPROVE` or `REJECT` (case-insensitive). Reasons go on the lines "
-    "after it. Anything else on that first line is unparseable and blocks the "
-    "pipeline the same as a rejection.\n"
+    "- **Marker convention:** start exactly one output line with `APPROVE` or "
+    "`REJECT` (case-insensitive). Dispatch scans all complete lines and requires "
+    "one unambiguous marker; reasons may appear before or after it. No marker or "
+    "both distinct markers is unparseable and blocks the pipeline.\n"
 )
 
 _OPERATOR_BODY = (

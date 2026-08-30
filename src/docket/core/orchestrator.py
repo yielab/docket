@@ -247,27 +247,26 @@ def normalize_values(values: list[str], case_sensitive: bool) -> frozenset[str]:
 
 
 def parse_verdict(gate: _pipeline.VerdictGate, output: str) -> str | None:
-    """First non-blank line of *output* matched against *gate*.pattern.
+    """Return one unambiguous line-anchored marker from complete *output*.
 
-    Returns the normalized (lowercased unless ``case_sensitive``) marker
-    value on a match, or ``None`` if unparseable — a single generic parser
-    for any archetype's marker vocabulary, rather than separate hardcoded
-    regexes per role. Exactly one line is ever consulted (the first
-    non-blank one); a non-match there is unparseable, never a reason to
-    keep scanning.
+    The configured pattern is applied independently at the start of every
+    non-blank line. Repeated matches of one normalized value collapse to a
+    single verdict; zero matches or multiple distinct values are unparseable.
+    This stays generic across every archetype's marker vocabulary and never
+    falls back to substring search.
     """
     flags = 0 if gate.case_sensitive else re.IGNORECASE
     compiled = re.compile(gate.pattern, flags)
+    values: set[str] = set()
     for line in output.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         match = compiled.match(stripped)
-        if not match:
-            return None
-        value = match.group(1)
-        return value if gate.case_sensitive else value.lower()
-    return None
+        if match:
+            value = match.group(1)
+            values.add(value if gate.case_sensitive else value.lower())
+    return next(iter(values)) if len(values) == 1 else None
 
 
 # ── Parallel group execution: bounded pool, join semantics ──────────────────

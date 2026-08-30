@@ -11,8 +11,11 @@ Build a small task packet instead of loading the planning corpus.
    Treat `dirty: unknown`, an ambiguous board marker, or clipped dirty paths as a fail-closed
    precondition: obtain the full read-only Git status before claiming work or declaring lanes
    parallel-safe. Never interpret an unavailable Git probe as a clean worktree.
-2. Treat `TODO.md` as the active board. Read only its current active section and the selected
-   card. If the board is clear, do not mine historical sections for work.
+2. Treat `TODO.md` as the active board. Once a card id is known, run
+   `python3 .agents/skills/docket-roadmap/scripts/card_packet.py <CARD-ID>` and use that exact card
+   instead of loading the active section. The helper refuses duplicate or oversized cards rather
+   than silently truncating acceptance evidence. Read the active section only when selecting or
+   changing cards. If the board is clear, do not mine historical sections for work.
 3. Use `ROADMAP.md` only for a named decision, principle, phase, or trigger. Locate it with `rg -n`
    and read that bounded section.
 4. Locate the owning current-state spec through `specs/README.md`; do not read all specs.
@@ -42,10 +45,16 @@ real-case acceptance evidence; do not load it for ordinary board lookup. Skill m
 [references/forward-tests.md](references/forward-tests.md) only as an evaluator-side rubric after
 the evaluated agent finishes. An evaluated agent must not load that rubric.
 
+Read [references/multi-agent-delivery.md](references/multi-agent-delivery.md) when two or more agents
+may work concurrently. It defines coordinator ownership, isolated worktree/state requirements,
+conflict-graph scheduling, minimal worker packets, delta-only returns, and merge gates. Do not load
+it for ordinary single-card work.
+
 Return or record a task packet covering decision, evidence, scope, contract/spec, validation, risks,
 next action, pending work in the current card, and later follow-ups. Link to large sources rather
-than copying them. Keep this packet separate from, and append, `AGENTS.md`'s required end-of-work
-control summary; neither shape replaces the other.
+than copying them; never repeat the selected card, raw logs, full diffs, or prior conversation in a
+handoff. Keep this packet separate from, and append, `AGENTS.md`'s required end-of-work control
+summary; neither shape replaces the other.
 
 At close or resume, run the snapshot again and apply `AGENTS.md`'s end-of-work control. Choose the
 next ideal task only from a ready card, an unmet acceptance criterion, or a measured risk whose
@@ -55,3 +64,9 @@ Assess parallel work by dependency and contention, not by similar titles. Two la
 only when neither needs the other's result and they do not share owning specs, files/functions,
 persisted state, or a mutable live environment. If the board has no ready card, report that the next
 ideal action is bounded triage/measurement; do not revive historical work implicitly.
+
+For a coordinated wave, one integrator owns central rollups and compiles worker packets from the
+card plus locators. Workers receive one owner/worktree/base, unique `DOCKET_HOME`/temp/ports, exact
+allowed and forbidden ownership, RED/final gates, and merge order. Prefer minimal-history workers
+when that packet is self-contained; the integrator is the fan-in point and dependent workers never
+relay each other's raw handoffs.

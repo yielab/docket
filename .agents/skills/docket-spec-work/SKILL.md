@@ -7,10 +7,14 @@ description: Implement or change Docket behavior with its spec-first, test-first
 
 Start from the behavior boundary, not from a broad repository tour.
 
-1. Find the owning row in `specs/README.md`, then read only that spec and neighboring tests.
-2. Trace the real caller into the implementation. A writer, parser, flag, or helper without a live
-   caller is not evidence of a shipped capability. Do not expand explicitly requested internal
-   scaffolding into a public feature; describe it as unshipped until a caller consumes it.
+1. Find the owning row in `specs/README.md`. Start with the card-named requirements, invariants,
+   current changelog entry, and targeted test classes; expand to other sections only when those
+   sources cross-reference them. Do not read a large spec or test module end to end by default.
+2. Inventory callers with targeted `rg`, then inspect one representative public caller plus every
+   caller whose return, error, or side-effect semantics the change can alter. A writer, parser,
+   flag, or helper without a live caller is not evidence of a shipped capability. Do not expand
+   explicitly requested internal scaffolding into a public feature; describe it as unshipped until
+   a caller consumes it.
 3. Classify the contract change. New or changed behavior requires the current-state spec's
    requirement, version, status, last-updated date, and changelog first. A clarification of already
    contracted behavior needs live evidence but no invented version churn; purely editorial text
@@ -27,6 +31,16 @@ Start from the behavior boundary, not from a broad repository tour.
 6. Implement the smallest coherent change, keeping `cli -> core -> edges` inward-only boundaries.
 7. Run the focused test and static check while iterating. Before handoff, run the gates required by
    the affected surface.
+
+When executing one card in a coordinated wave, the card packet is the scope boundary. Work in its
+assigned worktree/state, edit only declared files/functions plus the owning behavior spec/tests,
+and leave central roadmap/README/spec-index/metric rollups to the integrator. Return compact delta
+evidence; record adjacent defects as follow-ups instead of fixing them without a claim. Roadmap
+ownership and merge scheduling remain governed by `docket-roadmap`.
+
+If acceptance requires a forbidden/shared file, or the selected card contradicts the owning spec,
+stop before writing the RED test. Return the exact ambiguity and locators to the integrator so scope
+and ownership can be reconciled once instead of letting workers implement competing contracts.
 
 Read [references/validation.md](references/validation.md) when selecting final gates or when CLI,
 packaging, specs, documentation claims, or dependency bounds are affected.

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.4.0
+**Version**: 6.5.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -41,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-08-20
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -571,10 +571,12 @@ parsing below to any role's verdict-gated step via `core.orchestrator.parse_verd
 a Reviewer-specific hardcoded parser. Every requirement below still holds byte-for-byte for the
 Reviewer specifically — this is what "byte-identical built-in behavior" means in practice.)*
 
-1. After a **successful** Reviewer hop, dispatch **MUST** parse the Reviewer's reply for a
-   verdict marker: the first non-blank line of the output, matched case-insensitively against
-   `^(APPROVE|REQUEST-CHANGES)\b` — the same structural convention (and same parsing helper
-   shape) as the Tester's PASS/FAIL gate.
+1. After a **successful** Reviewer hop, dispatch **MUST** apply
+   `^(APPROVE|REQUEST-CHANGES)\b` case-insensitively at the start of every non-blank output line.
+   Exactly one distinct normalized marker is the verdict wherever that line appears. Repeated
+   identical marker lines collapse to one; a marker embedded later in prose does not count; zero
+   matches or both distinct markers are unparseable. The same generic parser and structural
+   convention apply to the Tester's PASS/FAIL gate.
 2. An `APPROVE` verdict **MUST** allow the pipeline to advance past the Reviewer normally.
 3. A `REQUEST-CHANGES` verdict **MUST NOT** immediately fail the task. Instead, while the pod's
    rework budget (`maxReworkCycles`, a Lead-meta field, default `1`; `0` disables rework
@@ -589,11 +591,11 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    task transitions to `failed`, a `review_rejected` trace event is emitted naming the number of
    rework cycles consumed, and the reason states the rejection occurred "after N rework
    cycle(s)".
-5. Reviewer output whose first non-blank line does not match the marker at all (including empty
-   output) **MUST** be treated as unparseable — distinct from an explicit `REQUEST-CHANGES`
-   rejection, mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
-   `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output
-   is never given a rework cycle).
+5. Reviewer output with zero recognized marker lines, or with conflicting distinct marker lines,
+   **MUST** be treated as unparseable — distinct from an explicit `REQUEST-CHANGES` rejection,
+   mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
+   `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output is
+   never given a rework cycle).
 6. Every rework cycle's hops (the re-run Implementer, the re-run Reviewer) **MUST** persist into
    the task's `hops[]` through the same incremental per-hop persistence as any other hop, so the
    full rework history is visible afterward, and correctly replayable on resume (see
@@ -603,17 +605,18 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 
 ### Tester PASS/FAIL gate
 
-1. After a **successful** Tester hop (`agent_run` returned `ok`), dispatch **MUST** parse the
-   Tester's reply for a verdict marker: the first non-blank line of the output is matched,
-   case-insensitively, against `^(PASS|FAIL)\b`.
+1. After a **successful** Tester hop (`agent_run` returned `ok`), dispatch **MUST** apply
+   `^(PASS|FAIL)\b` case-insensitively at the start of every non-blank output line. Exactly one
+   distinct normalized marker is the verdict; repeated identical marker lines collapse to one,
+   while zero matches or both distinct markers are unparseable. Marker words embedded later in a
+   prose line do not count.
 2. A `PASS` verdict **MUST** allow the pipeline to advance normally.
-3. A `FAIL` verdict, or output whose first non-blank line does not match the marker at all
-   (unparseable — including empty output), **MUST** block pipeline advancement: the task
-   transitions to `failed` with a distinct reason (`"tester reported FAIL"` vs `"tester output
-   unparseable (expected a PASS/FAIL first line)"`), and a `tester_verdict_failed` trace event
-   **MUST** be emitted carrying the parsed verdict (`"fail"` or `"unparseable"`) and the redacted
-   output. FAIL and unparseable **MUST** remain distinguishable in the reason and are never
-   conflated.
+3. A `FAIL` verdict, or unparseable output (empty, no recognized marker line, or conflicting
+   distinct marker lines), **MUST** block pipeline advancement: the task transitions to `failed`
+   with a distinct reason (`"tester reported FAIL"` vs a reason requiring one unambiguous
+   recognized marker line), and a `tester_verdict_failed` trace event **MUST** be emitted carrying
+   the parsed verdict (`"fail"` or `"unparseable"`) and the redacted output. FAIL and unparseable
+   **MUST** remain distinguishable in the reason and are never conflated.
 4. This gate **MUST NOT** affect pods with no Tester member. Unlike the Reviewer gate, there is
    no rework loop on a Tester FAIL — it is a hard terminal gate.
 5. This gate is structural, not textual advice: a successful subprocess call alone (`ok=True`) is
@@ -782,6 +785,9 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    before this version (or any record whose `artifact` value fails to validate) **MUST** degrade
    via `HandoffArtifact.from_legacy_output` — the backward-compatibility requirement this card
    added; a pre-W-5 queue file **MUST** still resume correctly with no separate migration step.
+   Replay **MUST** use a persisted artifact's normalized `verdict` without reparsing its raw model
+   prose. A record with no usable persisted verdict may fall back to parsing the raw output to
+   preserve pre-artifact resume behavior.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
    (`notes`, `diff_ref`, `files_changed`, `verdict` — `summary` is deliberately never included, it
    is the artifact's minimum viable content) and a `dropped(field)` helper that returns a copy with
@@ -943,7 +949,7 @@ verification_failed         # a mechanical gate's command exited nonzero (any ro
 tester_verdict_failed       # the Tester's reply was FAIL or unparseable (legacy name, preserved)
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle (legacy name, preserved)
 review_rejected              # a second REQUEST-CHANGES exhausted the rework budget (legacy name, preserved)
-reviewer_verdict_unparseable # the Reviewer's reply had no APPROVE/REQUEST-CHANGES first line (legacy name, preserved)
+reviewer_verdict_unparseable # the Reviewer's reply had no single unambiguous marker (legacy name, preserved)
 verdict_rework_started       # W-8: a non-built-in verdict gate's rework-triggering marker fired
 verdict_rejected              # W-8: a non-built-in verdict gate's reply matched but wasn't pass/rework
 verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
@@ -1107,6 +1113,14 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.5.0 (2026-08-30)
+
+- **Wave 25 card W25-C11.** Reviewer, Tester, and custom verdict gates now accept one distinct
+  line-anchored configured marker anywhere in complete output. Repeated identical markers
+  normalize to one; absent or conflicting markers fail closed. The parsed normalized verdict is
+  persisted once in the hop artifact, and crash resume consumes that value without reinterpreting
+  model prose; legacy artifact-free records retain their parsing fallback.
 
 ### Version 6.4.0 (2026-08-20)
 

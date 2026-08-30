@@ -6,9 +6,10 @@ The hard requirement: "Today's four roles ship as built-in archetypes
 producing byte-identical workspace output." Rather than diffing the current
 `cli/_pod.py` output against itself (which would not catch a regression
 introduced by editing both sides together), this file embeds a FROZEN,
-independent copy of the original hand-written generators
-(`_legacy_member_soul`/`_legacy_member_agents`, copied verbatim from the
-pre-archetype `cli/_pod.py` implementation) and compares them against
+independent compatibility baseline for the hand-written generators. The
+baseline advances only for an intentional role-contract change such as
+W25-C11's verdict-marker placement; ordinary refactors must not edit it. It
+compares `_legacy_member_soul`/`_legacy_member_agents` against
 `cli/_pod.py`'s current archetype-driven `_member_soul`/`_member_agents`
 across a range of inputs, for every legacy role.
 """
@@ -67,10 +68,10 @@ def _legacy_member_soul(
             "## Role — Reviewer (veto power)\n"
             "- You review diffs for correctness, security, and requirement fit.\n"
             "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
-            "- **Marker convention:** the first non-blank line of your reply must be "
-            "exactly `APPROVE` or `REQUEST-CHANGES` (case-insensitive) — dispatch "
-            "parses this line to gate the pipeline. Reasons go on the lines after "
-            "it. Anything else on that first line is treated as unparseable and "
+            "- **Marker convention:** start exactly one output line with `APPROVE` or "
+            "`REQUEST-CHANGES` (case-insensitive) — dispatch scans all complete lines "
+            "and requires one unambiguous marker. Reasons may appear before or after "
+            "that marker line. No marker or both distinct markers is unparseable and "
             "blocks the pipeline the same as a rejection.\n"
             "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
             "for a bounded rework cycle (once, by default) before it becomes a "
@@ -83,10 +84,10 @@ def _legacy_member_soul(
             "- You run the test suite and reproduction steps and report a binary "
             "**PASS/FAIL** with evidence.\n"
             "- Observe behaviour only — do not read or critique the implementation.\n"
-            "- **Marker convention:** the first non-blank line of your reply must be "
-            "exactly `PASS` or `FAIL` (case-insensitive) — dispatch parses this line "
-            "to gate the pipeline. Evidence goes on the lines after it. Anything else "
-            "on that first line blocks the pipeline the same as a FAIL.\n"
+            "- **Marker convention:** start exactly one output line with `PASS` or `FAIL` "
+            "(case-insensitive) — dispatch scans all complete lines and requires one "
+            "unambiguous marker. Evidence may appear before or after that marker line. "
+            "No marker or both distinct markers blocks the pipeline the same as a FAIL.\n"
         )
     return head + body
 

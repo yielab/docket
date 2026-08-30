@@ -185,9 +185,9 @@ class TestHopMessageCap:
                 "",
                 "--- lead output ---\nshort plan\n",
                 "--- implementer output ---\nsmall diff\n",
-                "You are the Reviewer. Review the diff (read-only). Your reply's first "
-                "non-blank line must be exactly APPROVE or REQUEST-CHANGES "
-                "(case-insensitive), followed by your reasons.",
+                "You are the Reviewer. Review the diff (read-only). Start exactly one "
+                "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
+                "reasons may come before or after that marker line.",
             ]
         )
         assert message == expected

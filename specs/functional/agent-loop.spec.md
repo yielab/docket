@@ -1,11 +1,12 @@
 # Agent Loop Specification
 
-**Version**: 1.11.0
+**Version**: 1.15.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
 registry by role (`core.archetypes.registry_for_role`) and composes a system prompt from this
-agent's SOUL.md/persona/WORKFLOW_AUTO.md (`core.identity.system_prompt_for_agent`) — see the new
+agent's SOUL.md/persona and one runtime-safe projection of its startup contract
+(`core.identity.system_prompt_for_agent`) — see the
 "Per-role tool narrowing" and "System prompt composition" requirements below. **Wave 17** gave
 `DocketDriver` an `mcp_loader` seam, called before this loop's registry-narrowing step, so a
 configured MCP server's tools are reachable from a live turn and correctly narrowed by role — see
@@ -16,7 +17,10 @@ history coordinate from the trace coordinate so pod steps do not replay another 
 Every prospective task or compaction request is preflighted against the selected endpoint's
 registered context window when that endpoint advertises one; same-turn tool growth is compacted
 through the durable atomic path before transport rather than relying only on pre-turn history size.
-**Last Updated**: 2026-08-22
+When the endpoint also advertises a positive output limit, the loop reserves one bounded,
+tool-free terminal response before another ordinary round can exhaust the cumulative measured
+turn budget.
+**Last Updated**: 2026-08-26
 
 ## Purpose
 
@@ -46,6 +50,12 @@ This specification covers:
   measured usage accounting, failure behavior, and privacy-safe trace payloads (W20-C2)
 - The optional trace-session coordinate used when one task-wide audit stream spans multiple
   independently persisted step histories (W20-C4)
+- The cumulative measured-token preflight and one-shot, tool-free terminal-response reservation
+  that prevent an optional tool round from consuming the last usable turn budget (W25-C3)
+- Request-fit convergence that prevents a durable suffix or prefix from being summarized repeatedly
+  without any intervening task/tool growth (W25-C6)
+- Typed consecutive tool-denial recovery that stops a non-converging turn after three denied,
+  non-executed results by default while preserving the completed atomic units (W25-C10)
 
 This specification does NOT cover:
 
@@ -177,18 +187,27 @@ This specification does NOT cover:
     `system` message.
 30. The composed system prompt **MUST** fold together this agent's `SOUL.md` (if present), its
     live persona (read fresh from `.docket-meta.json`, not trusted from whatever `SOUL.md` has
-    on disk), and its `WORKFLOW_AUTO.md` (the resume/durability contract; `core/memory.py`,
-    `CONTRACT_VERSION`) — see `core/identity.py`'s `compose_system_prompt` for the exact
-    composition rule. The same fresh composition **MUST** append current private-workspace state
-    in this priority order: `HEARTBEAT.md`, `AGENTS.md`, optional `TOOLS.md`, then `MEMORY.md`.
-    It **MUST** state that these files are already loaded and are not project-tool paths, so a
-    model does not search for, recreate, read, or update them through any project tool, explicitly
-    including shell execution. It **MUST** tell the model that returning its completed task result
-    is sufficient because Docket owns task durability; private logging is not a prerequisite for
-    finishing the turn. SOUL/WORKFLOW remain mandatory;
-    the appended state **MUST** fit the remaining `CONTEXT_TOKEN_BUDGET` estimate, preserve higher
-    priorities first, and mark any truncation/omission visibly rather than silently growing an
-    endpoint's context or dropping state.
+    on disk), and one authoritative runtime projection of Docket's generated startup contract.
+    The live projection **MUST NOT** send raw `WORKFLOW_AUTO.md` startup prose that tells a model
+    to open or update `HEARTBEAT.md`, `MEMORY.md`, or `memory/`: those instructions are for a
+    manual/external reset path, while the live runtime has already read the state itself. Instead,
+    it **MUST** carry the exact project roots already resolved into `ToolContext.roots`, state once
+    that private control files are already loaded/read-only and are never project-tool targets
+    (explicitly including shell execution), and state that returning the completed result is
+    sufficient because Docket owns turn durability. The same fresh composition **MUST** append
+    current private-workspace state in this priority order: the runtime-safe projections of
+    `HEARTBEAT.md` and `AGENTS.md`, optional `TOOLS.md`, then `MEMORY.md`. The HEARTBEAT projection
+    **MUST** retain its H2 state sections while omitting the generated preamble and HTML authoring
+    template that tell the model to maintain that file. A custom HEARTBEAT without H2 state remains
+    intact. The AGENTS projection **MUST** structurally omit the generated `## Session Startup`
+    section, whose private-file reads duplicate the runtime, while preserving the title,
+    `## Red Lines`, and other custom sections byte-for-byte; a custom AGENTS file without that
+    heading remains intact. Prompt composition **MUST NOT** rewrite any source workspace file or
+    regex-filter arbitrary prose.
+    The projected contract plus appended state **MUST** fit the existing
+    `CONTEXT_TOKEN_BUDGET` estimate, preserve higher priorities first, and mark any
+    truncation/omission visibly rather than silently growing an endpoint's context or dropping
+    state. An agent with no identity/startup/private files still composes no system message.
 31. The composed system prompt **MUST NOT** be persisted to session history through
     `core.session.append_messages` — it is recomposed fresh on every call to `run_agent_turn`,
     so a persona change or a re-seeded `WORKFLOW_AUTO.md` is reflected on the very next turn
@@ -211,10 +230,12 @@ This specification does NOT cover:
     turn usage and the target session's measured usage. These measured values **MUST NOT** drive
     compaction; before/after window sizes remain named estimates from
     `core.context.estimate_tokens`.
-36. A failed or empty summarizer response **MUST** abort the turn with
-    `stop_reason="compaction_failed"`, preserve the prior message history byte-for-byte, and make
-    no task-completion backend call. Endpoint-reported usage, when non-zero, is still recorded as
-    usage metadata and does not alter the preserved messages.
+36. A not-ok/timeout, truncated, empty, or tool-requesting summarizer response **MUST** abort the
+    turn with `stop_reason="compaction_failed"`, preserve the prior message history byte-for-byte,
+    and make no task-completion backend call. This invalid-summary classification **MUST** take
+    precedence when that same response's measured usage also crosses the cumulative turn budget;
+    endpoint-reported usage, when non-zero, is still recorded as usage metadata and does not alter
+    the preserved messages. A truncated partial summary **MUST NEVER** become durable history.
 37. Every pre-turn compaction check **MUST** emit one `session_compaction` trace event with status
     `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
     and groups summarized. The payload **MUST NOT** contain raw history, prompts, summaries, or
@@ -233,9 +254,9 @@ This specification does NOT cover:
     and `trace_session_key` values **MUST** select only the trace directory/stream; when omitted
     they **MUST** default to `ctx.project`/`session_key` so every existing non-dispatch caller
     remains behaviorally unchanged.
-41. Every `session_compaction`, `request_fit`, `tool_call`, and `tool_result` event produced inside the loop
-    **MUST** use the resolved trace coordinate. No trace helper may cause messages or usage to be
-    loaded from or appended to that trace coordinate.
+41. Every `session_compaction`, `request_fit`, `budget_warning`, `tool_call`, and `tool_result`
+    event produced inside the loop **MUST** use the resolved trace coordinate. No trace helper may
+    cause messages or usage to be loaded from or appended to that trace coordinate.
 42. `DocketDriver.run_turn` **MUST** pass its `session_key` to `ToolContext` and the loop as the
     durable-history identity, and **MUST** forward optional keyword-only `trace_project` and
     `trace_session_key` values to the loop. The `RuntimeDriver` port and its canonical fake
@@ -268,15 +289,101 @@ This specification does NOT cover:
     fail-closed session compactor with a smaller target, preserve complete assistant-tool/result
     atomic units, reload the accepted messages, and retry the estimate before transport. Every
     compactor completion is subject to the same request preflight with tools disabled.
-48. If compaction fails, makes no further reduction, or the irreducible request plus output reserve
-    still exceeds the registered window, the loop **MUST** make no task HTTP call and return
-    `stop_reason="context_fit"`, `failure_kind="invalid_output"`, and an actionable error containing
-    the estimated request, registered window, and output reserve. Already-durable history remains
+48. If every eligible range is locally irreducible or the accepted summary plus output reserve
+    still exceeds the registered window, the loop **MUST**
+    make no task HTTP call and return `stop_reason="context_fit"`,
+    `failure_kind="invalid_output"`, and an actionable error containing the estimated request,
+    registered window, and output reserve. A failed, timed-out, truncated, empty, or tool-requesting
+    summarizer instead **MUST** retain requirement 36's `compaction_failed` outcome and original
+    failure kind, abort immediately, and never try another range. Already-durable history remains
     valid and no tool call/result unit is split.
 49. Every prospective completion **MUST** emit a privacy-safe `request_fit` trace containing its
     purpose (`task` or `compaction`), status (`fits`, `failed`, or `unknown_window`), estimated
     input, output reserve, registered window (or null), and an explicit estimate marker. It **MUST
     NOT** contain messages, prompts, tool arguments/results, or measured usage.
+
+### Terminal response reservation (Wave 25 W25-C3)
+
+50. When the selected endpoint supplies a positive maximum-output reserve, every task and
+    compaction completion **MUST** be preflighted against the cumulative turn budget before
+    transport. The comparison **MUST** add measured usage from prior completions to the prospective
+    request-input estimate and the same output reserve used by requirement 45. Estimates **MUST
+    NOT** be added to `TokenUsage`; an endpoint with no positive output reserve preserves the
+    existing measured post-response guard because Docket cannot truthfully promise an output bound.
+51. When a normal tool-enabled task request would exceed that prospective cumulative bound, the
+    loop **MUST** make at most one finalization attempt. That request **MUST** explicitly ask for a
+    truthful terminal response from work already completed, advertise no tools, preserve the
+    current durable representation of the complete task and whole assistant/tool-result atomic
+    units, and itself pass both the per-request context-window check and the cumulative turn-budget
+    check before transport. This cumulative decision **MUST** be made on the complete current
+    request before request-fit compaction; when it selects finalization, no raw current-turn unit may
+    first be replaced by a summary merely to fit an ordinary round that the remaining turn budget
+    cannot fund. If the complete request initially fits the cumulative budget and requirement 47
+    legitimately accepts a whole-unit durable summary to satisfy the endpoint window, later summary
+    usage may still select finalization; that request **MUST** use the exact reloaded durable summary,
+    never a stale pre-compaction snapshot. In both branches Docket preserves atomic units: raw units
+    when budget selects finalization first, or the accepted durable replacement when window-fit
+    compaction was selected first.
+52. If the tool-free finalization request fails the endpoint-window check, it **MUST** retain
+    W25-C2's `stop_reason="context_fit"`; this card does not reinterpret a context-window failure as
+    cumulative spend. If the request fits that window but cannot fit the cumulative turn budget,
+    the loop **MUST** return `stop_reason="token_budget"` and `failure_kind="invalid_output"`
+    without another backend call. Its error **MUST** report the configured budget, measured usage,
+    prospective input estimate, output reserve, and remaining measured budget without exposing
+    message content.
+53. A finalization response carrying any tool call **MUST NOT** dispatch or persist that call and
+    **MUST** terminate with `stop_reason="token_budget"` and `failure_kind="invalid_output"`.
+    A tool-free, non-truncated response is persisted normally and remains the sole successful
+    `final_message` outcome. Backend failure, truncation, and timeout retain their existing
+    fail-closed outcomes; none causes a second finalization attempt. A truncated ordinary or
+    finalization response persists only its non-zero endpoint-reported usage metadata—never its
+    assistant content or tool calls.
+54. Entering or refusing finalization **MUST** emit one privacy-safe `budget_warning` event on the
+    resolved trace coordinate. Its payload **MUST** distinguish the action/status and include the
+    configured budget, prior measured usage, remaining measured tokens, normal/finalization input
+    estimates, output reserve, and an explicit estimate marker. It **MUST NOT** contain messages,
+    prompts, tool arguments, tool results, or model output.
+55. After the existing backend-error and truncation checks retain their more specific outcomes, a
+    successful, non-truncated response whose measured usage crosses the hard cumulative limit
+    **MUST NOT** dispatch or persist tool calls from that response and **MUST** return the existing
+    `token_budget` failure. Previous complete durable units remain intact.
+56. Within one task request-fit evaluation, an accepted compaction of the current-turn suffix or
+    historical prefix **MUST** be followed by exactly one reload and task-fit recheck, and that same
+    logical segment revision **MUST NOT** be selected for compaction again. Segment revision identity
+    **MUST** be private and content-derived: if a concurrent durable append changes a suffix between
+    selection, locked compaction, reload, and the next fit check, the new revision remains eligible
+    rather than being falsely marked irreducible. Only the newly appended, unprotected tail may be
+    selected next; the already-accepted summary prefix **MUST NOT** re-enter its prompt. The other,
+    still-untried segment remains eligible, and `compact_session` retains its bounded internal
+    hierarchical rounds. The outer convergence-attempt cap **MUST** be fixed when the evaluation
+    starts so continuous appends cannot move it indefinitely. Before accepting either a fit result
+    or a prospective cumulative-budget decision, the loop **MUST** compare the durable revision
+    immediately after that preflight with the revision whose messages were estimated; a changed
+    revision **MUST** be reloaded and preflighted under the same fixed cap, never transported stale.
+    The current task anchor **MUST** retain its durable identity across those reloads rather than be
+    rediscovered by matching text, so an appended user message with identical content remains part
+    of the new suffix and cannot turn the original task or an accepted summary into historical prefix.
+    The guarantee ends at that post-preflight revision check: an append completed afterward remains
+    durable for a later turn but is not promised into the already-validated in-flight request. If no
+    untried segment can reduce an oversized request, the loop **MUST** return `context_fit` locally
+    without another summarizer or task transport. A later completed tool result starts a new
+    request-fit evaluation. A failed compaction is not accepted progress and **MUST** abort under
+    requirements 36 and 48 before another segment is attempted. This convergence guard **MUST NOT**
+    add public fields to `request_fit` or expose revision fingerprints in traces.
+57. A denied, non-executed tool result **MUST** increment one per-turn consecutive-denial counter;
+    an allowed, executed tool result (including an executed handler failure) **MUST** reset it.
+    Other results neither increment nor reset it.
+58. The default `max_consecutive_tool_denials` **MUST** be three, sourced from
+    `config.AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`, independently of `max_tool_calls`.
+59. A model response's tool-call batch **MUST** retain the existing all-dispatched-or-none preflight.
+    After dispatch, the complete assistant message and every answering tool result plus measured
+    usage **MUST** be appended atomically before evaluating the consecutive-denial stop.
+60. Once the configured consecutive-denial limit is reached, the loop **MUST** stop locally with
+    `stop_reason="tool_denials"`, `failure_kind="invalid_output"`, and no further backend call. Its
+    bounded actionable error **MUST** contain only the consecutive count and ordered denial kinds,
+    never tool arguments, approval tokens, refusal reasons, or private values.
+61. Each denied `tool_result` trace **MUST** include its stable `denialKind`; allowed/executed trace
+    payloads retain their existing fields and **MUST NOT** invent a denial kind.
 
 ## Interface Contracts
 
@@ -286,11 +393,13 @@ This specification does NOT cover:
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
+    "tool_denials",
 ]
 
 class LoopConfig:                              # frozen
     max_iterations: int         # default config.AGENT_LOOP_MAX_ITERATIONS
     max_tool_calls: int         # default config.AGENT_LOOP_MAX_TOOL_CALLS
+    max_consecutive_tool_denials: int # default config.AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
     wall_clock_timeout_s: float # default config.AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
     token_budget: int           # default config.AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int      # default config.AGENT_LOOP_REQUEST_TIMEOUT_S
@@ -351,12 +460,13 @@ class DocketDriver:                            # implements core.runtime_driver.
 ```text
 AGENT_LOOP_MAX_ITERATIONS        default 20
 AGENT_LOOP_MAX_TOOL_CALLS        default 40
+AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS default 3
 AGENT_LOOP_WALL_CLOCK_TIMEOUT_S  default 300
 AGENT_LOOP_TOKEN_BUDGET          default 100000
 AGENT_LOOP_REQUEST_TIMEOUT_S     default 120
 ```
 
-All five are environment-overridable, matching every other tunable in `config.py`.
+All six are environment-overridable, matching every other tunable in `config.py`.
 `DocketDriver.run_turn`'s own `timeout` argument overrides `wall_clock_timeout_s` directly —
 it is the same per-hop budget figure `core/dispatch.py` already resolves, not a second,
 independently-tuned number.
@@ -460,6 +570,44 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.15.0 (2026-08-26)
+
+- W25-C10 stops after three consecutive typed, non-executed tool denials by default, only after
+  persisting the complete atomic unit and usage. An allowed executed call resets the counter;
+  `tool_denials` exposes only the count and ordered denial kinds and makes no further model request.
+
+### Version 1.14.0 (2026-08-26)
+
+- W25-C8 replaces the contradictory raw live `WORKFLOW_AUTO.md`/AGENTS startup prose with one
+  runtime projection keyed to the already-resolved project roots. Private state remains freshly
+  injected under the same visible budget and priority, actual HEARTBEAT state and custom AGENTS
+  rules remain available, and the Docket-owned source files stay byte-identical; generated
+  HEARTBEAT authoring instructions and the AGENTS `Session Startup` block are omitted because the
+  live runtime has already performed those reads and owns turn durability.
+
+### Version 1.13.0 (2026-08-25)
+
+- W25-C6 marks accepted current-turn suffix and historical-prefix reductions within one request-fit
+  evaluation, gives each accepted summary one reload/recheck, and fails locally instead of
+  repeatedly summarizing the replacement. Distinct segments and bounded internal hierarchical
+  summary rounds remain available; a summarizer failure aborts with its original compact-failure
+  classification rather than falling through to another segment; a protected-span fingerprint keeps
+  an accepted summary out of a later appended-tail prompt, a post-preflight revision check prevents
+  stale transport, and a fixed outer cap bounds continuous revision growth without changing the
+  privacy-safe `request_fit` shape.
+
+### Version 1.12.0 (2026-08-25)
+
+- W25-C3 preflights prior measured usage plus the prospective request/output reserve, then makes at
+  most one explicit, tool-free terminal-response request when another ordinary round cannot fit.
+  Irreducible requests fail before transport, finalization tool calls and measured overruns are
+  never dispatched or persisted, successive compaction rounds see earlier summary usage, and one
+  content-free `budget_warning` records the decision. Invalid/truncated summary outcomes retain
+  `compaction_failed` precedence over simultaneous measured overrun or colliding backend-error
+  text, and truncated task responses retain only usage metadata. The budget-first branch precedes
+  request-fit compaction and retains raw current-turn units; when a window-first compaction was
+  already valid, finalization instead uses its exact reloaded durable whole-unit summary.
 
 ### Version 1.11.0 (2026-08-22)
 

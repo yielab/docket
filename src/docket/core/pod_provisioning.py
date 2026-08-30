@@ -299,11 +299,10 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
     """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`.
 
     Byte-identical to the legacy hand-written generator for the four built-in
-    roles. Section names matter: the turn loop re-injects the "Session
-    Startup" and "Red Lines" H2 blocks after every compaction
-    (readPostCompactionContext) — a custom archetype must keep those headings
-    verbatim or the injection silently stops firing (see
-    `core/archetypes.py`'s built-in/starter `agentsTemplate` strings).
+    roles. Section names matter to the live prompt projection: ``Session
+    Startup`` belongs only to the manual/reset file and is omitted after the
+    runtime has loaded private state, while ``Red Lines`` and custom H2 blocks
+    remain model-visible (see `core.identity.system_prompt_for_agent`).
     """
     arch = _arch.load_registry().get(member.role)
     if arch is None:

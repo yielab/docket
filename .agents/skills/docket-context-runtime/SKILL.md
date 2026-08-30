@@ -40,14 +40,20 @@ incident or designing its RED test. Skill maintainers use
 [references/forward-tests.md](references/forward-tests.md) only as an evaluator-side rubric after
 the evaluated agent finishes. An evaluated agent must not load that rubric.
 
+Read [references/handoff-economy.md](references/handoff-economy.md) when designing or reviewing a
+cross-agent/coordinator handoff. Send decisions, scope, unresolved work, validation state, and
+evidence locators—not prior conversation, duplicated task/spec prose, raw logs, or whole diffs.
+
 Prefer deterministic reduction in this order: omit irrelevant sources, select a bounded section,
 use typed artifacts, visibly truncate low-priority fields, then summarize. Never silently truncate a
 tool call, tool result, decision, or unresolved action.
 
 At handoff, apply `AGENTS.md`'s end-of-work control and describe the user-visible context improvement
-before the mechanism. Report token/byte reduction as measured only when before/after evidence exists;
-otherwise label it an inference. Name any remaining duplication, overflow path, atomicity risk, or
-live-path gap explicitly.
+before the mechanism. Return a delta that names changed paths/functions, acceptance oracles,
+compact command outcomes, missing evidence, contention, and one next action; link large artifacts.
+Report token/byte reduction as measured only when before/after evidence exists; otherwise label it
+an inference. Name any remaining duplication, overflow path, atomicity risk, or live-path gap
+explicitly.
 
 The next ideal context task should target the largest measured remaining waste or correctness risk.
 Parallel context work is safe only when the lanes have independent history/trace identities and do

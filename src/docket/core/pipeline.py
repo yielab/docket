@@ -33,8 +33,8 @@ A step's ``gate`` is one of three kinds:
   Implementer ``verifyCmd`` meta field — see docket-meta.spec.md) rather than
   a literal command in the pipeline file, which is what lets
   :func:`default_pipeline` express today's exact behavior.
-- ``verdict`` — match the first non-blank line of the step's output against a
-  regex; a matched value in ``passValues`` advances the pipeline. Generalizes
+- ``verdict`` — match a regex at the start of every non-blank output line and
+  require one distinct normalized marker; a value in ``passValues`` advances the pipeline. Generalizes
   ``dispatch.py``'s Reviewer (APPROVE/REQUEST-CHANGES) and Tester (PASS/FAIL)
   conventions to an arbitrary marker vocabulary. May carry a bounded
   ``rework`` edge (see :class:`ReworkEdge`), generalizing "always the
@@ -120,11 +120,12 @@ class MechanicalGate(BaseModel):
 
 
 class VerdictGate(BaseModel):
-    """Match the step output's first non-blank line against ``pattern``.
+    """Find one distinct line-anchored marker matching ``pattern``.
 
     ``pattern``'s first capturing group is the verdict marker, compared
     (case-insensitively unless ``case_sensitive``) against ``pass_values``. A
-    match in ``pass_values`` advances the pipeline; a match named in
+    Repeated identical matches collapse to one; zero or conflicting matches
+    are unparseable. A match in ``pass_values`` advances the pipeline; a match named in
     ``rework.when`` (if ``rework`` is set) triggers a bounded rework cycle;
     anything else — including no match at all (unparseable output) — fails
     the step. Unparseable output is never given a rework cycle, matching

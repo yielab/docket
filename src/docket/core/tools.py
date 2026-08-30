@@ -55,6 +55,12 @@ from docket.edges.adapters.toolbox import SandboxMode, ToolOutcome
 
 ToolKind = Literal["read", "write", "exec"]
 Decision = Literal["allow", "ask", "deny"]
+ToolDenialKind = Literal[
+    "invalid_call",
+    "gate_denied",
+    "approval_denied",
+    "approval_timeout",
+]
 
 
 @dataclass
@@ -113,6 +119,7 @@ class ToolResult:
     tool: str = ""
     call_id: str = ""
     executed: bool = False
+    denial_kind: ToolDenialKind | None = None
 
     @property
     def denied(self) -> bool:
@@ -126,7 +133,8 @@ class ToolResult:
         agent told "denied, because X" can choose a different approach.
         """
         if self.decision == "deny":
-            return f"REFUSED: {self.reason}"
+            kind = self.denial_kind or "invalid_call"
+            return f"REFUSED [{kind}]: {self.reason}"
         if self.decision == "ask":
             return f"AWAITING APPROVAL: {self.reason}"
         if not self.ok:
@@ -377,6 +385,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     tool = registry.get(call.name)
     if tool is None:
         result.decision = "deny"
+        result.denial_kind = "invalid_call"
         result.reason = f"unknown tool {call.name!r}; available: {', '.join(registry.names())}"
         result.error = result.reason
         return result
@@ -388,6 +397,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         # arguments cannot be read cannot be evaluated, and an unevaluated call
         # must not run.
         result.decision = "deny"
+        result.denial_kind = "invalid_call"
         result.reason = str(ex)
         result.error = result.reason
         return result
@@ -395,6 +405,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     missing = [name for name in tool.required_args if name not in args]
     if missing:
         result.decision = "deny"
+        result.denial_kind = "invalid_call"
         result.reason = f"missing required argument(s): {', '.join(missing)}"
         result.error = result.reason
         return result
@@ -416,6 +427,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         )
 
     if verdict.decision == "deny":
+        result.denial_kind = "gate_denied"
         _audit_tool_decision(
             "tool.deny",
             tool.name,
@@ -448,9 +460,9 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         wait_outcome = _approval.wait_for_approval(token)
         if wait_outcome.state != "granted":
             result.decision = "deny"
+            result.denial_kind = "approval_timeout" if wait_outcome.timed_out else "approval_denied"
             result.reason = (
-                f"approval {'timed out and was denied' if wait_outcome.timed_out else 'denied'} "
-                f"(token={token})"
+                "approval timed out and was denied" if wait_outcome.timed_out else "approval denied"
             )
             result.error = result.reason
             return result

@@ -101,6 +101,11 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ## ◉ WAVE 25 ACTIVE (2026-08-20) — live-model request and outcome truth
 
+**Integration state (2026-08-30):** all 11 behavior/acceptance cards are DONE. Wave 25 remains the
+active board only while the integrator attributes and lands the current 45-path working tree,
+reruns gates on that integrated commit, and changes the active marker once. Do not claim Wave 26
+from the uncommitted baseline.
+
 ### W25-C1 — preserve the complete delegated task text
 
 **Status:** DONE (2026-08-20) · **Size:** S · **Owner:** @codex
@@ -206,7 +211,7 @@ No parallel context/session/MCP-output lane may touch those functions or run the
 
 ### W25-C3 — reserve a truthful terminal response inside the turn budget
 
-**Status:** TODO · **Size:** M
+**Status:** DONE (2026-08-25) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the repeated real `memory-maintenance` canary reached the correct product
 result: the Implementer repaired the module and the four regressions plus hidden acceptance passed.
@@ -251,13 +256,33 @@ irreducible-budget failure, and a finalization reply that still attempts a tool 
 real `memory-maintenance` canary completes under the existing 100,000-token budget without weakening
 its public/hidden acceptance, followed by the full static/pytest/golden/spec/metrics gates.
 
-**Contention:** W25-C2 is complete, so this card is ready and owns only the cumulative-budget /
-finalization branch in `run_agent_turn`, its focused driver tests, and the mutable local endpoint.
-It may run alongside W25-C4, whose run-record fold does not overlap these seams.
+**Contention:** shipped. Its live evidence used the mutable local endpoint exclusively; no active
+lane shares the agent-loop seam or that preserved world.
+
+**Shipped:** the loop now combines measured prior usage with the
+prospective request estimate and output reserve before transport. When an ordinary round no longer
+fits, it offers exactly one explicit tool-free terminal response; irreducible requests, hallucinated
+finalization tool calls, and measured overruns fail without dispatching or persisting an incomplete
+unit. Successive summary calls see earlier summary usage without nesting the session-store lock.
+Invalid, truncated, timed-out, and over-budget responses retain their specific failure shape and
+persist only measured usage. Budget-first finalization preserves raw complete units; a later budget
+decision after legitimate window compaction uses the exact reloaded durable summary. The
+default-driver edit/validate fixture finishes at 91,000/100,000 tokens; 79 focused loop/driver
+tests, the 2,360-test collection (2,355 passed, five expected environment/opt-in skips), 18 goldens,
+24 specs, Ruff, format, mypy, metrics, and the deterministic whole-workflow smoke pass. The preserved
+un-scripted world `/tmp/docket-w25-c3-live-Ey3u1M` reached task `done`, completed all five hops, and
+passed public plus hidden checkout acceptance. Its largest measured turn was the Implementer's
+27,701 tokens; all 16 prospective requests fit the registered 16,384-token endpoint window and no
+role approached the 100,000-token turn budget. That run separately exposed private-file probes in
+the canary task wording, now owned by W25-C7 rather than conflated with this budget outcome. A
+separate preserved confirmation at `/tmp/docket-w25-c7-confirm-M073cp` drove the Reviewer to 90,358
+measured tokens: the loop emitted `budget_warning` and refused a terminal completion locally because
+5,919 estimated input plus the 8,192 output reserve could not fit the 9,642 remaining tokens. That
+run is supplementary C3 refusal evidence, not C7 privacy evidence.
 
 ### W25-C4 — make run records reflect returned task failures
 
-**Status:** TODO · **Size:** S
+**Status:** DONE (2026-08-25) · **Size:** S · **Owner:** @codex
 
 **Measured trigger:** the realistic canary returned a normal `TaskResult` with
 `status="failed"` and reason `exceeded token_budget=100000 (used 100724)`, while its persisted run
@@ -298,6 +323,14 @@ pytest/static/golden/spec/metrics gates pass.
 **Contention:** owns only `core/runs.py::execute`, its focused run-record tests, and run-semantics
 spec clauses. It is independent of C2/C3/C5 and may run in parallel if central board/spec-index
 rollups remain integrator-owned.
+
+**Shipped:** `runs.execute` folds returned outcomes once, preserves every task id, and records any
+returned `failed` task with a deterministic summary bounded to 1,024 characters and an `error`
+trace. `done`, `waiting_approval`, and `blocked` remain successful invocation outcomes. Atomic
+queued-to-running and terminal transitions ensure a cancellation before start, during dispatch, or
+between fold and write cannot be revived or overwritten. Thirteen direct outcome/cancellation
+cases, all owning run suites, the full pytest/static/golden/spec/metrics gates, and the deterministic
+whole-workflow smoke pass.
 
 ### W25-C5 — make the basic live gate enforce its byte-exact artifact contract
 
@@ -344,6 +377,874 @@ mechanical gate compares `read_bytes()` with `b"docket smoke ok\n"`. Focused tes
 extra, and exact newline behavior through the generated command; the independent final assertion
 remains intact. The opt-in real basic workflow completed all five hops, reached `done`, and passed
 the byte-exact final harness in `/tmp/docket-w25-c5-live-0w3Qtv`.
+
+### W25-C6 — stop request-fit from recompacting the same logical history
+
+**Status:** DONE (2026-08-25) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** a caller-level `DocketDriver.run_turn` reproduction transports one ordinary
+task request, then repeatedly summarizes the same already-compacted suffix when its first accepted
+summary still cannot fit the registered window. The current loop emits nine prospective fit checks,
+four successful compactions, and five transports (`task` plus four summaries). The truthful bounded
+sequence is four fit checks and two transports: initial task, oversized raw retry, one compaction,
+and one recheck that fails locally.
+
+**Goal:** treat accepted request-fit compaction as progress only once per logical source segment and
+revision. Within one `_fit_task_request` evaluation, compact the current-turn suffix and historical
+prefix at most once each, reload and recheck after every accepted summary, then fail `context_fit`
+locally if no untried segment can reduce the request. A later tool result starts a new evaluation
+and may legitimately make the suffix eligible again.
+
+**Non-goals:** no restriction on the compactor's bounded internal summary rounds, no loss of the
+valid suffix-then-prefix path, no larger context/token limits, no retry or model-specific behavior,
+and no new public trace ordinal/revision fields.
+
+**Live path / files:** `edges/adapters/docket_runtime.py::DocketDriver.run_turn` →
+`core/agent_loop.py::run_agent_turn::_fit_task_request` → the existing durable
+`core/session.py::compact_session` path. Own the request-fit convergence clause in
+`specs/functional/agent-loop.spec.md` and caller-level regressions in
+`tests/python/test_docket_driver.py`; do not change the `request_fit` payload shape.
+
+**RED test:** through `DocketDriver.run_turn`, make the first task request fit, return a real tool
+call/result, estimate the grown raw retry over-window, accept one tool-free compaction, and keep the
+reloaded summary irreducibly over-window. Assert exactly one task and one summary transport, one
+successful compaction trace, no second task transport, no orphaned tool unit, and a local
+`context_fit` result. The current loop repeatedly transports summaries. A second focused case proves
+an independent historical prefix may still compact after the suffix was accepted.
+
+**Acceptance:** each accepted suffix/prefix segment is marked before reload; every accepted summary
+gets exactly one task recheck; an already-marked segment is never selected again in that evaluation;
+distinct segments and internal hierarchical rounds remain available; the failed request retains the
+actionable window/estimate/reserve error and valid durable summary; `request_fit` keeps its exact
+privacy-safe key set. Caller-level RED, focused context suites, full pytest/static/golden/spec/metrics
+gates, and deterministic workflow smoke pass.
+
+**Contention:** shipped after C3's hermetic fixes because both cards own `_fit_task_request` and the
+agent-loop spec. It does not require the blocked live endpoint.
+
+**Shipped:** request-fit now protects each accepted suffix/prefix replacement by a private
+content-derived revision, reloads and rechecks it exactly once, and permits only a newly appended
+tail or the independent segment to compact next. A post-preflight durable check prevents transport
+of a stale revision; an atomic positional task anchor remains correct even when a concurrent append
+has identical text. A fixed convergence cap fails closed with privacy-safe input/reserve/window
+evidence, while summary failures retain their original stop classification. Caller-level tests
+cover irreducible rechecks, suffix-then-prefix, post-reload appends, identical task text, and
+continuous churn without changing the public `request_fit` payload. The 79 focused loop/driver
+tests and full pytest/static/golden/spec/metrics/smoke gates pass.
+
+### W25-C7 — make the live maintenance task enforce the private-context boundary
+
+**Status:** DONE (2026-08-30) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** the preserved real-model canary at
+`/tmp/docket-w25-c3-live-Ey3u1M` repaired the checkout, passed public and hidden acceptance, and
+finished all five hops, but the final harness rejected two direct project-tool probes for an
+inexistent `MEMORY.md`: one under the origin checkout and one under the Implementer's worktree.
+Both reads failed and leaked no data. The system prompt already forbids searching private control
+files, but the delegated maintenance task said only not to copy private logs into the repository.
+
+**Goal:** make the realistic delegated task explicitly require every downstream role to use the
+Lead's typed handoff for durable decisions and never search for or access Docket control files with
+project tools, while keeping the decision values private and the final oracle fail-closed.
+
+**Non-goals:** no filename/value leak from private memory, model-specific prompt branch, scripted
+reply, relaxed privacy oracle, allowance for failed reads, change to the identity prompt, reduced
+workflow gates, or retry-until-green policy.
+
+**Live path / files:** `scripts/smoke_workflow.py::_run` delegates the memory-maintenance task →
+public `docket pod smoke delegate` → the ordinary five-hop runtime → the final structured oracle
+over durable `tool_call` traces and retained session calls. Own focused delegation/oracle tests in
+`tests/python/test_workflow_smoke.py` and the live-canary clause in `specs/test-framework.md`; do
+not change the production tool policy or private-state detector.
+
+**RED test:** assert the actual delegate caller directs downstream roles to the Lead's typed
+handoff, explicitly forbids project-tool access to `MEMORY.md`, `HEARTBEAT.md`, `memory/`, and
+`.docket`, contains none of the seeded private values, stays within the public 500-character
+ceiling, and persists through the real delegation CLI. It also requires structured `edit`/`write`
+mutation and the README test command for validation. Keep the basic scenario byte-identical. Also
+simulate a compacted-away failed `read` retained only in the durable trace and require a privacy-safe
+rejection; cover relative selectors, malformed arguments, traversal/symlink escape, allowed
+worktree normalization, and real approval prose resolved back to raw trace arguments.
+
+**Acceptance:** the spec states that zero project-tool attempts at private control paths is part of
+the live oracle; the delegated task carries that boundary without the private facts; durable traces
+remain authoritative after compaction and retained sessions provide defense in depth without raw
+argument/value leakage. A fresh un-scripted `memory-maintenance` world passes distillation, typed
+handoff, repair, hidden acceptance, Reviewer/Tester/approval gates, session and trace checks, and
+the structured private-access oracle. Then run full pytest/static/spec/metrics and deterministic
+smoke gates.
+
+**Contention:** owns the `test-framework`/smoke task text and shares the one mutable live endpoint,
+so its remaining acceptance run must execute serially. It does not reopen C3's independently
+measured agent-loop budget outcome.
+
+**Implementation and acceptance history:** `memory-maintenance` now delegates a value-free boundary:
+every downstream role must use only the Lead's typed handoff and never search `MEMORY.md`,
+`HEARTBEAT.md`, `memory/`, or `.docket` with project tools. The 403-character instruction persists
+through the real CLI and tells roles to mutate only through `edit`/`write` and validate only with
+the README command. Test Framework 2.8.0 and 26 focused RED/green cases make durable traces the
+historical authority, retain session defense in depth, normalize exact path components and allowed
+roots, fail closed on opaque arguments, and resolve approval commands by traced `callId`.
+
+The fresh un-scripted world `/tmp/docket-w25-c7-live-sRvVwQ` completed Lead, Implementer and
+Reviewer; public plus hidden mechanical acceptance passed, the Reviewer approved, and the genuine
+pipeline approval resumed Tester. The instruction reduced Implementer from 16 transports/90,000
+tokens in `/tmp/docket-w25-c7-live-XesYwG` to five transports/21,315 tokens with one canonical
+validation and no violations. Tester nevertheless requested 12 denied tool calls: eleven opaque
+variants and one real, non-executed probe of an absent `<worktree>/.docket` child. It then reached
+86,139 measured tokens; terminal finalization needed 6,644 estimated input plus 8,192 reserve, 975
+more than the 13,861 remaining, so Docket refused transport locally. Only four hops completed and
+the final Tester verdict is missing. The bounded re-audit found that the exact downstream boundary
+did reach Tester, but its 6,302-byte effective system prompt simultaneously told it to write/read
+private startup files and, later, never access them with project tools. W25-C8 owns that runtime
+contradiction and W25-C9 owns truthful fail-fast canary evidence; no further live retry is authorized
+until both land. W25-C10 is separate product hardening and is not a prerequisite for C7 acceptance.
+W25-C8 and W25-C9 have now landed, so a fresh live acceptance run is authorized. The 2,371-test
+collection (2,366 passed, five expected skips), Ruff, format, mypy, 24 specs, 18 goldens, metrics,
+and deterministic smoke are green before that run.
+
+Two fresh worlds exercised those changes. `/tmp/docket-w25-c7-live-vsw1AZ` proved C9 fail-fast:
+the first opaque Implementer validation cancelled the active run, denied the approval and stopped
+before another transport. That call used an alternate test runner despite the indirect README
+instruction, so the delegated task now spells the only allowed shell command byte-for-byte and
+forbids alternatives, wrappers, inline code and redirects while remaining 481/500 characters.
+In `/tmp/docket-w25-c7-live-wN6msb`, the Implementer followed that exact command, received one real
+operator grant, repaired the checkout, and passed public plus hidden mechanical acceptance; the
+structured private-boundary oracle also passes. The Reviewer then put its approving marker on the
+last line instead of the required first non-blank line, so the real verdict gate correctly failed
+the task before approval/Tester. C7 remains blocked on live-model verdict conformance; another
+unchanged retry is not authorized. W25-C11 now owns the deterministic marker-placement contract;
+only after its gates land may C7 run one fresh serial acceptance.
+
+W25-C11 shipped and closed the measured marker-placement blocker. The one authorized fresh serial
+acceptance then passed in `/tmp/docket-w25-c7-live-L8nkOm`; no retry was used.
+
+**Shipped / live acceptance:** the preserved un-scripted world discovered the single local Qwen
+model and its 16,384-token window through the public endpoint, committed the intentionally red Git
+fixture, distilled three private logs, and delegated the exact 481-character value-free boundary
+through the public CLI. Task `task-e1b6620f-7dbb-4b5b-bb8e-9edb12c63363` reached `done` with five
+typed hops; the persisted Reviewer/Tester verdicts are `approve`/`pass`. The Implementer repair
+passes all four public regressions and the checkout-external hidden behavioral/AST acceptance.
+Three genuine in-turn tool approvals and the distinct pipeline approval are granted, both run
+records are `succeeded`, five isolated step histories retain measured usage, and 13 audit entries
+verify clean. The durable-trace plus retained-session private-boundary oracle passes with no
+confirmed-private or opaque call; diagnostics expose no raw arguments or private values. Measured
+step usage totals 36,432 input and 1,530 output tokens, with no cost claimed for the local model.
+After the canary, the full 2,382-test collection (2,377 passed, five contract-labelled skips), Ruff,
+format, strict mypy, 24 specs, 18 goldens, metrics, `git diff --check`, and deterministic smoke pass.
+
+### W25-C8 — compile one authoritative runtime startup contract
+
+**Status:** DONE (2026-08-26) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** in the preserved failing canary
+`/tmp/docket-w25-c7-live-sRvVwQ`, every downstream role, including Tester, received the value-free
+task boundary. Reconstructing Tester's real system prompt through
+`core.identity.system_prompt_for_agent` produced 6,302 bytes containing both the generated
+`WORKFLOW_AUTO.md` instructions to write `HEARTBEAT.md` and read `MEMORY.md` and the later runtime
+footer that says those same private files are already loaded and must never be accessed through a
+project tool. Tester then made one real `.docket` probe. This is a deterministic prompt-contract
+contradiction, not missing handoff propagation.
+
+**Goal:** give a live turn one non-contradictory runtime startup contract: preserve identity,
+role/project rules, codebase location, and bounded current private state, while making Docket's
+runtime ownership of private reads/durability the only actionable instruction the model receives.
+
+**Non-goals:** no deletion or migration of the durable workspace files, loss of private context,
+larger context/token budgets, model-specific prompt branch, task-description rewrite, relaxed C7
+oracle, change to project-tool roots, or another live retry before deterministic gates pass.
+
+**Live path / files:** `core/dispatch.py` resolves a hop →
+`edges/adapters/docket_runtime.py::DocketDriver.run_turn` →
+`core/agent_loop.py::run_agent_turn` → `core/identity.py::system_prompt_for_agent` currently folds
+raw `SOUL.md`/`WORKFLOW_AUTO.md` plus `_runtime_workspace_context`; the conflicting generated prose
+comes from `core/memory.py` and `core/archetypes.py::_LEGACY_AGENTS_TEMPLATE`. Own a runtime-safe
+projection at that composition seam, focused identity/driver tests, requirement 30 and the
+changelog in `specs/functional/agent-loop.spec.md`, and the matching README runtime-context claim.
+The files stored in each Docket workspace remain owned by their existing provisioning contracts.
+
+**RED test:** provision an ordinary Tester workspace with the real generated `WORKFLOW_AUTO.md`,
+`AGENTS.md`, `HEARTBEAT.md`, and `MEMORY.md`, then call the default `DocketDriver` with a recording
+backend. Assert its effective system message contains the role, effective project root, and private
+state sentinels, but contains no active instruction to open, create, or write any private control
+file and contains one authoritative project-tool prohibition. The current path carries both the
+legacy read/write imperatives and the later prohibition. Assert the source workspace files remain
+byte-identical and the system message is not persisted into the session.
+
+**Acceptance:** define the runtime projection in the owning spec before code; do not regex-filter
+arbitrary operator prose or silently discard role rules; preserve current priority, visible
+truncation, persona refresh, small-context degradation, and session non-persistence behavior.
+Tests cover full fit, truncated private state, absent optional files, a role with custom AGENTS
+rules, and the exact C7 Tester contradiction through the real driver call path. Focused
+identity/loop/driver tests, Ruff, format, mypy, spec validation, full pytest/goldens/metrics, and
+deterministic smoke pass before C7 may resume.
+
+**Contention:** shipped before W25-C10 because both own the agent-loop contract. W25-C9 remains
+independent at code/test level; only the final local-model evidence is serial.
+
+**Shipped:** every real turn now receives one runtime contract keyed to the exact roots already
+resolved by `DocketDriver`; raw `WORKFLOW_AUTO.md` prose never reaches the backend. HEARTBEAT keeps
+its actual H2 state but drops generated authoring scaffolding, AGENTS drops only `Session Startup`
+while retaining red lines/custom sections, and TOOLS/MEMORY keep their bounded priority. The source
+workspace stays byte-identical and no system context is persisted. Agent Loop 1.14.0, caller-level
+driver REDs, all owning identity/loop/driver suites, the 2,363-test collection (2,358 passed, five
+expected skips), Ruff, format, mypy, 24 specs, 18 goldens, metrics, and deterministic smoke pass.
+
+### W25-C9 — type canary policy verdicts and fail fast on disqualification
+
+**Status:** DONE (2026-08-26) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** the latest live Tester created seven safe approvals, eleven opaque commands,
+and one confirmed `.docket` target. `_private_tool_violation` returns `str | None`, so the monitor
+and final oracle report both a confirmed private target and an unauditable command as
+"private-state access." After the first irreversible canary violation, `_approve_live_tool_calls`
+only accumulates an error while the blocking `pipeline run --follow` continues; the invalid world
+therefore consumed 86,139 tokens before failure.
+
+**Goal:** make the smoke oracle return and consume one typed verdict that distinguishes allowed,
+confirmed-private, and opaque/malformed calls, while keeping both denial classes fail-closed and
+stopping a live canary immediately once it can no longer satisfy acceptance.
+
+**Non-goals:** no production policy-engine or `ToolResult` change, approval auto-grant, relaxed
+opaque-shell handling, raw argument/private-value diagnostics, model prompt edit, retry-until-green,
+or acceptance of a denied/absent private-file probe.
+
+**Live path / files:** `scripts/smoke_workflow.py::_private_tool_violation` →
+`_approval_private_tool_violation` → `_approve_live_tool_calls` for live decisions, and the same
+classifier through `_verify_private_tool_boundary` for durable trace/session evidence. Own a typed
+smoke-only verdict, the live subprocess/cancellation orchestration, focused cases in
+`tests/python/test_workflow_smoke.py`, and the live-canary/oracle clause plus changelog in
+`specs/test-framework.md`. Use the public approval and run-cancellation surfaces; do not mutate
+Docket-owned JSON directly.
+
+**RED test:** create a hermetic canary world with real-shaped durable traces and pending approvals.
+Feed one allowed README validation, one opaque command, and one exact private component. Assert the
+same classifier returns three distinct typed outcomes; the operator grants only the allowed call,
+denies the disqualifying call through the real CLI, cancels the active run once, and makes no later
+grant or model transport. The final trace/session oracle must reach the identical classification.
+Today the two denials are both strings and the pipeline keeps running. A nearby counterexample
+keeps a root-contained universal glob and the physical worktree prefix allowed.
+
+**Acceptance:** monitor and final oracle share one typed decision function; diagnostics contain
+only source/role/tool/call id/verdict/marker, never raw arguments or private values. Confirmed
+private and opaque outcomes remain distinct but both invalidate the canary. Cancellation is
+idempotent, preserves trace/session/audit evidence, never executes the denied handler, and does not
+turn a disqualified run into success. The deterministic basic scenario remains byte-identical.
+Focused workflow-smoke tests, deterministic full workflow, Ruff/format/mypy, spec validation, full
+pytest/goldens/metrics pass; live endpoint acceptance remains deferred to C7 after C8 also lands.
+
+**Contention:** owns the same smoke/Test Framework files as blocked C7, so C7 cannot resume while it
+is in progress. Its code/tests do not overlap W25-C8; only the final local-model endpoint is shared
+and must be used serially.
+
+**Shipped:** the smoke monitor and final trace/session oracle now share a typed
+`allowed`/`confirmed_private`/`opaque` verdict. Allowed README validation is granted; both denial
+classes remain distinct and fail closed. The first disqualifying approval cancels the active run
+and denies the token through the public CLI, signals the blocking `pipeline run --follow` to
+terminate, and prevents subsequent subprocess/model transport. Privacy-safe diagnostics expose
+only source, role, tool, call id, verdict, and marker. Test Framework 2.9.0, 34 focused workflow
+cases, the 2,371-test collection (2,366 passed, five expected skips), Ruff, format, mypy, 24 specs,
+18 goldens, metrics, and deterministic smoke pass; the real endpoint is intentionally delegated to
+the resumed W25-C7 acceptance run.
+
+### W25-C10 — make repeated in-turn policy denials typed and bounded
+
+**Status:** DONE (2026-08-26) · **Size:** M · **Owner:** @codex
+
+**Measured trigger:** in `/tmp/docket-w25-c7-live-sRvVwQ`, Tester received twelve consecutive
+operator denials and continued producing alternative tool calls until 86,139 measured tokens. The
+loop currently has only generic caps of 20 model iterations, 40 dispatched tool calls, and 100,000
+tokens. `ToolVerdict` knows policy id/action, but `ToolResult` drops that provenance and returns only
+free-text `REFUSED: <reason>`; `run_agent_turn` cannot distinguish invalid arguments, a guardrail
+block, explicit approval denial, or approval timeout, nor detect denial-only non-convergence.
+
+**Goal:** preserve the single `dispatch_tool` chokepoint while giving denied, non-executed calls a
+stable typed denial kind and a bounded recovery contract. Permit correction after an isolated
+refusal, but stop a turn predictably after three consecutive denied tool results instead of letting
+policy refusal consume the general tool/token limits.
+
+**Non-goals:** no change to allow/ask/deny precedence, auto-approval, weaker command classifier,
+different policy matching, partial dispatch of a tool-call batch, raw command content in traces,
+higher budgets, harness-specific branch, or treating an executed tool failure as a policy denial.
+
+**Live path / files:** backend response → `core/agent_loop.py::run_agent_turn` →
+`core/tools.py::dispatch_tool` → `evaluate_tool_call`/approval wait → `ToolResult.as_tool_output` →
+atomic assistant/tool-result persistence and the next loop preflight. Own a `ToolDenialKind`-style
+contract on `ToolResult`, propagation of policy/approval outcome without secrets, the consecutive
+denial counter/config and terminal behavior, `tool_result` trace evidence, focused tool/loop/driver
+tests, and coordinated version/changelog updates in
+`specs/functional/security-gates.spec.md` and `specs/functional/agent-loop.spec.md`.
+
+**RED test:** through the default `DocketDriver`, script three consecutive `bash` calls whose real
+approval records are explicitly denied. Assert no handler executes, all three assistant/result
+units and measured usage remain durable, denial kinds are stable despite different approval tokens,
+no fourth backend call occurs, and the turn fails locally with `stop_reason="tool_denials"` and
+`failure_kind="invalid_output"`. A counterexample
+with one denial followed by an allowed executed call resets the consecutive count and can finish
+normally. The current loop continues until a generic cap or token budget.
+
+**Acceptance:** define a closed privacy-safe denial taxonomy covering invalid call, gate denial,
+explicit approval denial, and approval timeout; propagate it through result, model-visible refusal,
+and trace without exposing raw arguments. Default `max_consecutive_tool_denials` is three and is
+independent of `max_tool_calls`; only denied/non-executed results increment it, an allowed executed
+result resets it, and an entire returned tool-call batch retains current all-dispatched-or-none
+preflight semantics. After the third denial, return one bounded actionable error containing only
+the count and denial kinds, make no further model request, and leave every completed atomic unit
+and measured usage durable. Focused security/tools/loop/driver tests, Ruff, format, mypy, both spec
+validators, full pytest/goldens/metrics, and deterministic smoke pass.
+
+**Contention:** W25-C8 is complete, so this card is ready. It is product hardening prompted by C7
+evidence, not a prerequisite for C7's zero-attempt live acceptance and not parallel-safe with
+another agent-loop/budget/session lane.
+
+**Shipped:** `ToolResult.denial_kind` now carries the closed `invalid_call`, `gate_denied`,
+`approval_denied`, or `approval_timeout` outcome for every denied, non-executed call; allowed or
+executed failures carry none. Refusals expose the stable kind without approval tokens, and denied
+`tool_result` traces add only `denialKind`. The live loop permits correction after an isolated
+refusal, resets after an allowed executed result, and after the default third consecutive denial
+persists the whole assistant/tool-result batch and measured usage before returning local
+`tool_denials`/`invalid_output` with no next model request. Security Gates 0.16.0, Agent Loop
+1.15.0, 194 owning tests, the 2,374-test collection (2,369 passed, five expected skips), Ruff,
+format, mypy, 24 specs, 18 goldens, metrics, and deterministic smoke pass.
+
+### W25-C11 — make terminal verdict placement unambiguous
+
+**Status:** DONE (2026-08-30) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** in `/tmp/docket-w25-c7-live-wN6msb`, the Reviewer approved the repair but put
+its configured `APPROVE` marker on the final line. `core/orchestrator.py::parse_verdict` inspects
+only the first non-blank line, so the live dispatch rejected that otherwise valid verdict and
+blocked W25-C7 before approval and Tester. This is the exact expected/actual reproduction; another
+unchanged paid-model retry is not authorized.
+
+**Goal:** accept exactly one unambiguous configured verdict marker on any complete output line,
+persist the normalized verdict once, and make live dispatch and resume derive the same result.
+
+**Non-goals:** no permissive substring search, model-specific prompt, retry-until-green behavior,
+provider structured-output API, changed rework limit, weakened zero/conflicting-marker failure, or
+change to mechanical and human-approval gates.
+
+**Live path / files:** `core/orchestrator.py::parse_verdict` parses a completed hop →
+`core/dispatch.py` advances/reworks/fails and persists the handoff → resume reuses that artifact.
+Own the configured verdict instruction in `core/archetypes.py`, focused parser/gate/resume tests,
+and the current-state clauses in `specs/functional/pipeline-format.spec.md` and
+`specs/functional/pod-dispatch.spec.md`. Do not edit the dirty agent-loop, run, smoke, identity,
+memory, tool, or Test Framework paths. `TODO.md` and spec/README rollups remain integrator-owned.
+
+**RED test:** exercise the public pipeline path with Reviewer prose followed by `APPROVE` on the
+last line and Tester evidence followed by `PASS`; both must advance. Put `APPROVE` and
+`REQUEST-CHANGES` on separate marker lines and require a local unparseable failure. Marker words
+embedded in prose do not count. Repeated identical marker lines normalize to one verdict. Persist
+an accepted verdict, simulate resume, and assert no second interpretation changes it. The current
+first-line parser fails the valid-last-line cases.
+
+**Acceptance:** scan complete output for line-anchored configured markers; accept exactly one
+distinct normalized verdict, fail closed on zero or conflicting verdicts, and never infer a marker
+from ordinary prose. Error text no longer claims a first-line contract. The handoff artifact stores
+the accepted normalized verdict and crash-resume uses it without reparsing model prose. Run focused
+orchestrator/reviewer/tester/rework/resume tests, Ruff and mypy while iterating, then full pytest,
+format, goldens, spec validation, metrics, and deterministic smoke. Only after those gates pass may
+W25-C7 own one fresh serial live canary.
+
+**Contention / dependency:** the named source/spec paths are currently outside W25's 22 dirty
+paths, but the card must still branch from the reconciled Wave 25 baseline and must not edit central
+rollups. Dependency is `W25-C11 deterministic gates → W25-C7 fresh live acceptance → Wave 25 close
+and dirty-tree integration → Wave 26 activation`.
+
+**Shipped:** `parse_verdict` now applies the configured regex independently at the start of every
+non-blank output line and accepts exactly one distinct normalized marker. A marker after prose and
+repeated identical markers pass; zero markers, conflicting distinct markers, and marker words
+embedded later in prose fail closed. Reviewer, Tester, Critic, downstream-checkout, and generic
+hop prompts describe the same placement contract, and unparseable errors no longer claim a
+first-line requirement. Dispatch persists the normalized value in the hop artifact; crash replay
+uses it without reparsing model prose, while legacy records with no usable value retain their raw
+output fallback. Pipeline Format 2.2.0 and Pod Dispatch 6.5.0 record the behavior. Public
+Reviewer/Tester, conflict, repetition, prose, generic-gate, artifact round-trip, and resume cases
+pass; the full 2,382-test collection (2,377 passed, five expected skips), Ruff, format, strict mypy,
+24 specs, 18 goldens, metrics, `git diff --check`, and deterministic smoke are green. No paid/live
+model call was made by this card.
+
+---
+
+## ⏭ WAVE 26 NEXT — first successful turn and release/governance truth
+
+**Activation state:** BLOCKED ON INTEGRATION. Wave 25 is still active. W25-C11 and W25-C7 are done;
+no W26 card may be claimed until the integrator attributes and lands the complete 45-path working
+tree, reruns the closure gates on that commit, closes Wave 25, and changes the active marker once.
+The Phase 23 decision and later-wave triggers live in
+[ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
+bounded coordinator packet is
+[`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md).
+
+**Why one wave can use many agents safely:** after activation, C1, C2, C6, C7, C8, C9, and C10
+have independent source/function ownership. C3 waits for C0+C2; C4 waits for C1–C3; C5 waits for
+C2; C11 integrates truth after the behavior cards. With four execution slots, use one coordinator
+plus three workers and refill from the ready, non-contending pool after every merge. In a larger
+pool, every dependency-free row may run concurrently in a separate worktree. Workers never edit
+`ROADMAP.md`, `TODO.md`, `README.md`, or `specs/README.md`, never share `DOCKET_HOME`, temp paths,
+ports, or a live model endpoint, and return evidence to the integrator instead of updating rollups.
+
+### W26-C0 — establish one public release source
+
+**Status:** BLOCKED (needs Wave 25 close + maintainer branch decision) · **Size:** S · **Owner:**
+integrator only
+
+**Explicit trigger:** the 2026-08-30 audit found `platform` at the current Docket-owned runtime while
+the public/default `main` lineage and mutable installer path still present older product truth. A
+release cannot be reproducible when the landing page, installer, workflow, package, and formula do
+not identify one source commit.
+
+**Goal:** record and apply one non-destructive release-source decision: promote `platform` to the
+default release lineage or explicitly version releases from it, so every public artifact resolves
+to the same commit. Remote branch/default-branch changes require maintainer authorization at
+execution time.
+
+**Non-goals:** no history rewrite, forced push, deletion of `main`, compatibility shim for the
+retired daemon, product rename, implementation feature, or automatic external publication.
+
+**Live path / files:** repository branch/default settings → `.github/workflows/release.yml` tag
+checkout → versioned source/package asset → `install.sh`/Homebrew metadata → README/quickstart.
+Own only the decision, release ref checks, and integrator rollups. C2 owns Python packaging and C3
+owns artifact immutability; do not absorb them here.
+
+**RED evidence:** from a fresh clone of the configured release source, compare the checked-out
+commit, package version, release workflow ref, installer asset ref, and documented architecture.
+The current paths do not form one immutable lineage. A nearby counterexample is a feature branch,
+which must never become a release merely because it is newer.
+
+**Acceptance:** ROADMAP records the chosen lineage; the release workflow and installers consume an
+explicit tag/commit from it; a read-only script or test fails when the repository/default docs and
+release source diverge; no remote state changes without approval. The decision leaves both branch
+histories recoverable. Run the focused release-source check and documentation/link validation; C3
+and C11 own the final artifact and claim gates.
+
+**Contention:** central/integration files only. It may coordinate with C1/C2/C6–C10 but no worker
+branch edits its files.
+
+### W26-C1 — guarantee a resolvable first provider
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** `config.py` defaults to `anthropic/claude-sonnet-4-6`, onboarding asks
+for `ANTHROPIC_API_KEY`, and `edges/adapters/llm.py::resolve_endpoint` has built-in URLs only for
+OpenRouter and Vercel; a direct Anthropic key therefore resolves no endpoint. The advertised first
+run can fail before one model request.
+
+**Goal:** make the recommended clean setup select or register a callable OpenAI-compatible
+endpoint, validate its credential/model/tool-call capability before initialization is declared
+ready, and fail early with one exact corrective action when it cannot.
+
+**Non-goals:** no vendor SDK, provider zoo, automatic paid network call in CI, dynamic model catalog,
+fallback that silently changes models, streaming, multimodality, or weakening the one-driver rule.
+
+**Live path / files:** `core/models_policy.py` presets and `config.py` default →
+`cli/_install.py`/`cli/_provider.py` onboarding → API-key resolution →
+`edges/adapters/llm.py::resolve_endpoint` and recording HTTP request → default `DocketDriver` turn.
+Own model/API-key/CLI contract clauses and provider tests. Follow the provider-compatibility
+reference in `docket-context-runtime`; do not edit packaging/release files.
+
+**RED test:** with a fresh temporary `DOCKET_HOME`, follow the recommended non-interactive setup
+using only an Anthropic key and assert initialization refuses to claim readiness because no native
+endpoint exists. Then configure the supported loopback OpenAI-compatible endpoint through the
+public surface and assert the selected model, credential, base URL, advertised context limits, tool
+schema, and measured usage reach the recording server. The current first case incorrectly appears
+configured.
+
+**Acceptance:** every offered preset either resolves a callable endpoint or is labeled as requiring
+an explicit compatible base URL before it can be selected; direct Anthropic/OpenAI/Google keys are
+never presented as sufficient without a shipped adapter. `docket doctor` or the setup validation
+reports the selected endpoint/model without exposing credentials. A fresh deterministic setup can
+perform one gated tool-call turn. Run focused provider/auth/driver tests, Ruff, format, mypy, full
+pytest, goldens, specs, metrics, and deterministic smoke.
+
+**Contention:** currently conflicts with dirty `config.py` and agent-loop/provider-adjacent tests,
+which is why activation waits. After reconciliation it is independent of C2 and C6–C9; coordinate
+with C10 if either changes the driver protocol.
+
+### W26-C2 — provide one canonical installable CLI
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** root `pyproject.toml` exposes only `docket-py` while all primary docs use
+`docket`; installed metadata lacks the expected license/project identity, and releases publish no
+wheel or sdist that CI installs as a user would.
+
+**Goal:** build a standards-compliant root wheel and sdist from the release source, install them in
+a clean environment, and expose the documented `docket` command with matching version, license,
+metadata, and import behavior.
+
+**Non-goals:** no live PyPI publication without maintainer authorization, runtime-wheel redesign
+(C5), dependency expansion, product rename, Homebrew update (C3), or source-checkout import in the
+installation oracle.
+
+**Live path / files:** root `pyproject.toml` metadata/scripts/build config → build artifacts → fresh
+venv install → `docket --version`, `docket --help`, and a minimal `docket init --help`. Own focused
+packaging tests and the CLI/package contract; do not edit docs/metrics rollups.
+
+**RED test:** build the current root package, install only its artifact into a temporary venv whose
+working directory is outside the repository, and invoke `docket --version`. The current artifact
+does not supply that executable. Also inspect installed metadata for Apache-2.0, project URLs,
+Python floor, and version agreement, and prove no source-tree module satisfies imports.
+
+**Acceptance:** wheel and sdist build reproducibly; both install cleanly at the dependency floor;
+`docket` is the canonical executable and any retained alias is explicitly documented; metadata and
+license agree with the repository; uninstall leaves no unexpected shared files. Run artifact-build
+and clean-venv tests, dependency-floor resolution, focused CLI tests, then full static/pytest,
+goldens, specs, and packaging gates.
+
+**Contention:** owns root packaging only. C3 consumes its artifact after merge; C5 may not edit root
+packaging until C2 lands. Independent of provider and governance paths.
+
+### W26-C3 — make release artifacts immutable and verifiable
+
+**Status:** BLOCKED (needs W26-C0 + W26-C2) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** `Formula/docket-cli.rb` contains an all-zero SHA and declares MIT instead
+of Apache-2.0; its comment says release automation updates it, but the workflow only archives source
+and creates a release. `install.sh` downloads mutable `main` and does not consume the generated
+checksum.
+
+**Goal:** make one tagged release produce immutable install artifacts, checksums, correct formula
+metadata, and verifiable installation inputs; CI must install the exact artifact before release is
+eligible for publication.
+
+**Non-goals:** no secret creation, external publication or default-branch mutation without approval,
+package-manager proliferation, unsigned mutable fallback, or release of a dirty tree.
+
+**Live path / files:** `.github/workflows/release.yml`, `Formula/docket-cli.rb`, `install.sh`, build
+scripts/tests, and release documentation. Consume C2's artifact and C0's source decision. Keep
+runtime distribution C5 separate.
+
+**RED test:** generate a release in a temporary fixture and assert the current zero checksum,
+license mismatch, mutable URL, and unused checksum fail. Tamper with one downloaded byte and require
+the installer to stop before execution. A correct versioned artifact installs and reports the tag
+version from outside the source tree.
+
+**Acceptance:** workflow builds/tests wheel+sdist, records SHA-256 checksums, correct Apache-2.0
+metadata, SBOM and provenance/attestation inputs, and creates formula/installer data from the exact
+tagged asset. Installer verifies before executing and has no mutable-`main` path. Publishing remains
+an explicit protected job. Run ShellCheck, workflow/config validation, clean artifact install,
+tamper rejection, dependency floor, and the full repository gates.
+
+**Contention:** release/install files only after C0/C2. It can run while governance cards execute;
+C11 alone updates README/quickstart claims from the final artifacts.
+
+### W26-C4 — enforce clean-install-to-first-turn in CI
+
+**Status:** BLOCKED (needs W26-C1 + W26-C2 + W26-C3) · **Size:** M · **Owner:** unassigned
+
+**Measured trigger:** focused suites are strong, but no release gate proves that a user can install
+the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,
+and inspect durable evidence without importing the checkout. The broken default provider and CLI
+entrypoint survived because these boundaries were tested separately.
+
+**Goal:** create the Wave 26 release oracle: one hermetic, deterministic journey from built artifact
+to a successful governed tool turn and observable session/trace/audit state.
+
+**Non-goals:** no paid/live provider, source-mode shortcut, broad workflow benchmark, UI, flaky
+network dependency, or replacement for focused tests.
+
+**Live path / files:** isolated release-journey script/workflow → fresh venv and home → public
+provider configuration → `docket init` → task delegation/dispatch through loopback Chat
+Completions → governed tool → terminal response → public trace/run inspection. Own a new bounded
+release acceptance fixture and Test Framework clause; do not make the existing live canary larger.
+
+**RED test:** install the pre-C1/C2 artifact outside the repository and follow the documented setup;
+require failure at the missing `docket` executable or unresolved default endpoint. The green fixture
+must reject a hidden `PYTHONPATH`/checkout import and prove the recording server observed the model,
+tools, tool result, final turn, and measured usage.
+
+**Acceptance:** a single CI command builds, installs, configures, initializes, dispatches, and
+asserts terminal run/task state plus session, trace, audit, and tool side effects. Failed endpoint
+validation leaves no half-ready installation. The fixture uses unique temp state/ports and prints
+only bounded failure evidence. Run it on Linux and the supported macOS lane, then full static,
+pytest, goldens, specs, metrics, deterministic smoke, and packaging-floor gates. This is Wave 26's
+release exit gate.
+
+**Contention:** depends on C1–C3 and consumes their public surfaces unchanged. It owns the new
+release journey, not their implementation files.
+
+### W26-C5 — publish a non-overlapping runtime distribution boundary
+
+**Status:** BLOCKED (needs W26-C2 + D-28) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** `packages/docket-runtime/pyproject.toml` force-includes the same
+`docket/*` paths as the full distribution, so installing/upgrading/uninstalling both wheels can
+overwrite or remove shared files. The package is unpublished, wheel-only, and has no small stable
+embedding facade or executable import tutorial.
+
+**Goal:** give the embedded runtime one non-colliding installation topology, minimal versioned
+public facade, clean wheel+sdist build, and end-to-end embedding example while preserving the owned
+loop and policy chokepoint.
+
+**Non-goals:** no generic plugin framework, moving every internal module, new runtime features,
+tenant/serving layer, second driver, or exposing every internal name as a stability promise.
+
+**Live path / files:** `packages/docket-runtime/pyproject.toml`, runtime namespace/facade, root
+package dependency/layout after C2, packaging tests, and `specs/api/runtime-library.spec.md`.
+Exercise installed artifacts from outside the monorepo.
+
+**RED test:** install current full and runtime wheels into one temporary venv, capture their owned
+files, uninstall either distribution, and assert imports from the other break or ownership
+overlaps. Then build the runtime sdist and require its current monorepo-relative failure. A minimal
+consumer program must import only the proposed public facade and execute one gated fake tool call.
+
+**Acceptance:** distributions have one intentional ownership graph with no independently
+uninstallable wheel deleting the other's files; wheel and sdist install at the declared dependency
+floor; public facade and SemVer/deprecation boundary are spec-pinned; consumer example exercises
+policy, approval stub, audit/trace and tool dispatch without CLI dependencies. Run clean dual-install,
+upgrade/uninstall, build, import, consumer, dependency-floor, full static/pytest/spec/golden gates.
+
+**Contention:** starts only after C2 freezes root packaging. It owns runtime packaging/spec; C11
+owns public prose. External adapters remain Wave 28, not this card.
+
+### W26-C6 — make audit append and rotation one atomic chain transition
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** direct inspection of `core/audit.py::audit_log` shows rotation, current
+head calculation, and append occur without one inter-process critical section. Parallel workers
+can derive the same sequence/predecessor and make the public `docket audit verify` oracle reject
+otherwise legitimate history. The current contract is best-effort and non-raising, so silent loss
+must be corrected without retroactively making every mutation command fail on audit I/O.
+
+**Goal:** serialize rotate → head → append as one durable chain transition, preserve sequence and
+predecessor hashes across rotation, give callers a bounded written/failed result, and make both
+programmatic readers and the public verify command observe a coherent snapshot.
+
+**Non-goals:** no database, event bus, remote audit sink, mutation-command failure policy, operator
+health/metric surface, rewrite of prior entries, secret-bearing diagnostics, approval-state change,
+or generic store lock.
+
+**Live path / files:** mutator → `core/audit.py::audit_log` → dedicated audit lock →
+`_rotate_if_needed` → `_chain_head` → append/flush/close/permission check of `audit.log[.1]` →
+`read_audit`/`verify_chain` → `cli/_audit.py` → public `docket audit verify [--json]`. Own
+`core/audit.py`, its audit tests, the audit behavior spec, and only the narrow `_audit.py` routing
+needed to stop raw unlocked reads. Do not edit `edges/store.py`, approval functions, unrelated
+mutators, or central CLI plumbing.
+
+**RED test:** use a process barrier and a delay after head calculation to make at least 32 unique
+writers overlap, first below and then across a forced-small rotation threshold. Add deterministic
+lock-timeout, append-failure-before-write, and append-failure-after-rotation injections. Prove the
+current implementation can duplicate/break lineage, and that the current API cannot distinguish a
+recorded event from a failed write. Include sequential, legacy-readable, and JSON CLI verify
+counterexamples.
+
+**Acceptance:**
+
+- `audit_log` returns a typed `written | failed` status, never raises audit I/O detail, and remains
+  source-compatible with existing callers that intentionally ignore the result. C6 adds no health
+  metric and does not change the success/failure of the mutation that called it.
+- One dedicated inter-process lock covers rotation decision, head read, append, flush, close, and
+  owner-only permission restoration. Every successful concurrent event appears exactly once with
+  contiguous sequence/predecessor hashes; `docket audit verify` and `--json` pass after rotation.
+- Lock timeout or write failure returns `failed` and leaves no partial JSON line or false event. If
+  append fails after rotation, the intact backup remains authoritative, the current log contains no
+  claimed event, and the next successful append continues from the backup head without a gap.
+- `read_audit`/`verify_chain` take a compatible snapshot under the audit lock, and `_audit.py` uses
+  that core reader rather than bypassing it. Ordinary sequential output and every legacy shape the
+  spec promises remain unchanged.
+- Focused evidence names the barrier tests, rotation case, two write-failure phases, lock timeout,
+  permissions, public CLI text/JSON verify, and compatibility cases. Then run audit/mutator tests,
+  repeated concurrency, Ruff/mypy, and full pytest/goldens/specs/metrics/smoke.
+
+**Contention:** owns audit module/spec/tests plus the narrow CLI audit reader call. C7 may consume
+the typed status without editing audit code; merge C6 first if C7 asserts it. Any request to make
+mutations fail, add health visibility, or change another caller becomes a separately measured card.
+
+### W26-C7 — make approval resolution compare-and-set atomic
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** `approval_grant`/`approval_deny` read `pending`, then `_set_state` rereads
+and separately writes. Concurrent CLI, HTTP, Telegram, timeout, or pipeline decisions can both
+report success, emit contradictory trace/audit events, and let the last write win.
+
+**Goal:** resolve `pending → granted|denied|expired` with one locked conditional transition and emit
+exactly one matching trace/audit outcome from the winning decision.
+
+**Non-goals:** no approval UX change, new channel, token format, policy precedence change, audit
+implementation edit, retry-until-success, or acceptance of stale state.
+
+**Live path / files:** CLI/HTTP/Telegram/pipeline waiter → `core/approval.py` grant/deny/timeout →
+existing `edges/store.py::read_modify_write` → trace/audit. Own approval functions and focused
+channel/concurrency tests plus approval clauses in security/audit specs; use store/audit unchanged.
+
+**RED test:** place a real pending record behind a process/thread barrier and race grant vs deny,
+grant vs grant, deny vs expiry, and two HTTP/Telegram-shaped callers. Assert the current path can
+let more than one caller observe pending. Include unknown/already-terminal counterexamples.
+
+**Acceptance:** exactly one caller changes state and emits the one trace/audit event; every loser
+gets the correct stable noop/error from the committed state; record remains valid and owner-only;
+approval wait observes the winning result and cannot execute a denied handler. Run focused
+approval/channel/serve/tool tests, concurrency repetition, Ruff/mypy, then full repository gates.
+
+**Contention:** owns `approval.py` and approval tests/spec clauses only. No `audit.py`, store helper,
+serve handler, Telegram adapter, or tool-policy implementation edits unless a failing live caller
+proves a separate card is required.
+
+### W26-C8 — allocate pod resources without collisions
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** S · **Owner:** unassigned
+
+**Deterministic trigger:** `allocate_pod_resources` loads the registry, computes the next range, and
+later writes under a separate lock. Concurrent CLI or threaded `POST /pods` provisioning can assign
+the same port range to two projects. Static inspection also exposes a same-project rollback race:
+two attempts can share the idempotent allocation; if one succeeds while the other fails, the
+loser's unconditional `free_pod_resources(project)` can remove the winner's range and runtime
+directory. The duplicate/cross-attempt outcomes remain expected reproductions until the RED barrier
+tests run; the unlocked transitions themselves are directly observed.
+
+**Goal:** serialize one project's exists-check → resource ownership → member creation → commit or
+rollback, allocate different projects through one locked registry transition, and ensure a failed
+attempt removes only resources and files it created.
+
+**Non-goals:** no dynamic port scan, daemon allocator, changed range size/base, generic scheduler,
+serve refactor, or worktree behavior change.
+
+**Live path / files:** `serve.py::_handle_post_pods` or
+`cli/_pod.py::build_pod_from_blueprint` → `pod_provisioning.provision_pod` →
+`provision_members` → `allocate_pod_resources`/`free_pod_resources` →
+`store.read_modify_write(PORT_ALLOC_FILE)` → member metadata/workspace and attempt-owned rollback.
+Own project-scoped serialization/resource-ownership functions in `pod_provisioning.py`,
+`tests/python/test_pod_resources.py::TestPortAllocation`, and
+`tests/python/test_serve_pods_endpoint.py::{TestIdempotence,TestRollback}`. Primary contract is
+`specs/data/serve-read-api.spec.md`'s `POST /pods` partial-failure paragraph and validation clause;
+the resource-field side effect is `specs/data/docket-meta.spec.md`'s
+`portRangeStart`/`portRangeCount`/`scratchDir` table. Do not edit generic store code or duplicate the
+CLI/HTTP provisioning path.
+
+**RED test:** add barrier-backed cases for (1) two different projects reading the same empty
+registry, and (2) two same-project `provision_pod` calls where one succeeds and the other fails
+after allocation. The first must currently be able to choose the same range; the second must expose
+whether the loser frees the winner's allocation/runtime. Green cases require unique different-project
+ranges, exactly one same-project winner with the loser returning already-exists or failure without
+touching the winner, idempotent allocation, free/reuse, and rollback after member creation fails.
+Focused RED command:
+`uv run pytest -q tests/python/test_pod_resources.py::TestPortAllocation
+tests/python/test_serve_pods_endpoint.py::TestIdempotence
+tests/python/test_serve_pods_endpoint.py::TestRollback`.
+
+**Acceptance:** concurrent successful pods have disjoint deterministic ranges; failed provisioning
+removes only state created by that attempt; a same-project successful winner retains its allocation,
+runtime directory, members, metadata, and scratch directory after the losing request exits. The
+project-scoped critical section covers the already-exists check through rollback/commit, and a
+different project is not forced through that project lock except at the short shared allocation
+registry transition. Registry and member metadata agree after every result. Run the named focused
+command repeatedly, the remaining provisioning/serve/store tests, Ruff/mypy, then full
+pytest/goldens/specs/metrics/smoke.
+
+**Contention:** currently overlaps dirty `pod_provisioning.py`, so activation gate is mandatory.
+After reconciliation it is independent of C7/C9/C10 and may only call store APIs unchanged.
+
+### W26-C9 — preserve concurrent conversation updates
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** S · **Owner:** unassigned
+
+**Deterministic trigger:** dispatch `_persist_hop` performs `_conv.load()` → pure
+`touch_for_hop()` → `_conv.save()` as separate operations. Parallel hops updating different
+conversations can each save a stale whole registry and erase the other's activity.
+
+**Goal:** expose one locked conversation mutation boundary and route hop touches plus public
+conversation mutators through it without changing the registry shape or fabricating conversations.
+
+**Non-goals:** no transcript storage, new messaging channel, schema expansion, automatic topic
+generation, raw hop output beyond the existing preview, or dispatch state-machine refactor.
+
+**Live path / files:** dispatch `_persist_hop` and conversation CLI/wire callers →
+`core/conversations.py` pure mutation → `CONVERSATIONS_FILE` through existing store RMW. Own
+conversation I/O/mutation helpers and focused concurrent tests; dispatch owns only the exact
+conversation call site.
+
+**RED test:** seed two wired agents, synchronize two hop touches after each has read the same
+registry, and assert current load/save loses one update. Green cases preserve both task refs and
+previews, keep unrelated/unknown fields promised by the contract, make unwired agents a byte-identical
+no-op, and fail atomically on a mutation exception.
+
+**Acceptance:** every public mutation is one locked read/validate/mutate/write; parallel different
+and same-conversation updates obey a documented deterministic winner/merge rule; no raw full hop is
+stored; malformed registry behavior remains explicitly fail-closed or recoverable. Run focused
+conversation/dispatch/Telegram/store tests, Ruff/mypy, then full repository gates.
+
+**Contention:** owns `conversations.py` and the narrow `_persist_hop` call only. Do not combine with
+pipeline dispatch changes; coordinate if another active card owns `dispatch.py`.
+
+### W26-C10 — make run cancellation cooperative and truthful
+
+**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** L (split before claim) ·
+**Owner:** unassigned
+
+**Deterministic trigger:** `DocketDriver` ignores `on_spawn` because the turn is in-process, while
+`cancel_run` kills only recorded child PIDs and marks state cancelled. The active model/tool loop
+can continue producing tool side effects after the operator sees a cancelled terminal run.
+
+**Goal:** propagate a run-scoped cooperative cancellation signal through dispatch, driver, loop,
+approval wait, model-request boundaries, and tool dispatch; stop before any new transport/tool side
+effect after cancellation and document the bounded behavior of an already-blocking HTTP request.
+
+**Non-goals:** no unsafe thread kill, false claim that Python can abort every socket instantly,
+subprocess-only workaround, new async framework, state-only cancellation, or loss of completed
+session/trace/audit evidence.
+
+**Required split before claim:** C10a owns the typed cancellation contract and run registry signal;
+C10b owns loop/driver checkpoints and approval/tool behavior after C10a lands; C10c owns truthful
+CLI/API/spec/docs wording plus deterministic whole-path acceptance. They are sequential because all
+share the contract, but other W26 cards may run beside them.
+
+**Live path / files:** `runs.cancel` CLI/HTTP → `core/runs.py` registry/signal →
+`core/dispatch.py` → `core/runtime_driver.py` → `DocketDriver.run_turn` →
+`agent_loop.run_agent_turn` before model transport, approval wait, and tool dispatch → final
+run/task/session/trace reconciliation. Own the agent-loop/pod-dispatch/serve cancellation clauses
+and recording backend tests.
+
+**RED test:** block a recording backend or approval wait, cancel through the public surface, then
+release the block. Current code proceeds. Green acceptance makes no subsequent backend request,
+approval grant, tool handler call, or success overwrite; repeated cancel is idempotent; completed
+atomic assistant/tool units remain durable. A separate blocking-transport case records that the
+current request may finish but its result is discarded and no next side effect occurs.
+
+**Acceptance:** one signal identity follows the run; checkpoints exist before every model request,
+before/after approval wait, and before tool execution; cancellation wins terminal-state races;
+run/task outcomes and public wording distinguish requested, observed, and fully stopped; no orphan
+tool-call/result pair is persisted. Run split-card focused REDs, concurrency/repetition tests,
+serve/CLI/golden contracts, Ruff/mypy, then full pytest/specs/metrics/smoke.
+
+**Contention:** overlaps current dirty `runs.py`, `agent_loop.py`, driver tests and specs. It starts
+only after Wave 25 integration and never in parallel with another loop/session/budget card.
+
+### W26-C11 — reconcile public claims and close the wave
+
+**Status:** BLOCKED (needs W26-C0–C10 acceptance) · **Size:** M · **Owner:** integrator only
+
+**Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,
+`docket add --from` examples, no-op `DEBUG=1` guidance, invalid Homebrew claims, overbroad runtime
+package language, and cancellation wording stronger than behavior.
+
+**Goal:** regenerate the public truth from merged behavior and make one ten-minute route from the
+release artifact to first governed turn, plus one minimal runtime embedding example, match the
+tested contracts byte-for-byte where applicable.
+
+**Non-goals:** no marketing superlatives, broad “framework-neutral” claim before Wave 28, test-count
+guess, feature implementation, dashboard, hosted/SaaS promise, or suppression of known limits.
+
+**Live path / files:** merged specs and CLI/package artifacts → README, quickstart, model-gateway,
+compatibility, security, examples, command reference, formula/install instructions,
+`specs/README.md`, ROADMAP/TODO status, and metrics. Central files are integrator-owned.
+
+**RED evidence:** run every documented command in an isolated fixture and check links/package names;
+the current quickstart/provider/install examples fail or disagree. Scan for old architecture,
+mutable install URLs, `docket add --from`, unsupported debug flags, “kills in-flight” wording, and
+framework-neutral claims without two adapters.
+
+**Acceptance:** clean artifact installation and first-turn docs are executable in CI; runtime
+embedding example imports the C5 facade from an artifact; every known limit is explicit; metrics are
+regenerated from the real suite; public/default release source matches C0; spec status/version/
+changelog rows match shipped behavior. Run documentation examples/link checks, metrics check,
+ShellCheck, full pytest/static/golden/spec/packaging/smoke gates, and one final clean status/diff
+ownership audit before closing Wave 26.
+
+**Contention:** integrator-only and last. Worker branches report evidence but never edit these
+rollups. External publication and branch/default changes still require separate maintainer approval.
 
 ---
 

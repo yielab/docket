@@ -273,18 +273,21 @@ class TestDispatchChokepoint:
     def test_unknown_tool_is_denied_with_a_readable_reason(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("teleport"), ctx, builtin_registry())
         assert res.denied and "unknown tool" in res.reason
+        assert res.denial_kind == "invalid_call"
         assert not res.executed
         assert "read" in res.reason  # lists what IS available
 
     def test_unparseable_arguments_fail_closed(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("read", "{not json"), ctx, builtin_registry())
         assert res.denied and not res.executed
+        assert res.denial_kind == "invalid_call"
 
     def test_missing_required_argument_is_denied_before_any_side_effect(
         self, ctx: ToolContext
     ) -> None:
         res = dispatch_tool(_call("write", '{"path": "x.txt"}'), ctx, builtin_registry())
         assert res.denied and "content" in res.reason
+        assert res.denial_kind == "invalid_call"
         assert not (ctx.roots[0] / "x.txt").exists()
 
     def test_allowed_call_executes(self, ctx: ToolContext) -> None:
@@ -335,8 +338,13 @@ class TestDispatchChokepoint:
 
 class TestResultReportedBackToTheModel:
     def test_denial_is_spoken_not_silent(self) -> None:
-        res = ToolResult(ok=False, decision="deny", reason="no such tool")
-        assert res.as_tool_output() == "REFUSED: no such tool"
+        res = ToolResult(
+            ok=False,
+            decision="deny",
+            reason="no such tool",
+            denial_kind="invalid_call",
+        )
+        assert res.as_tool_output() == "REFUSED [invalid_call]: no such tool"
 
     def test_pending_approval_is_spoken(self) -> None:
         res = ToolResult(ok=False, decision="ask", reason="needs a human")

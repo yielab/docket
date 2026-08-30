@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented — format, executor, and variable resolution. The executor
 (`core/orchestrator.py`, ROADMAP Phase 16 W-2) that runs a `PipelineSpec` over the pod-dispatch
 state machine, and the `docket pipeline validate|plan|run` CLI surface, now exist — see
@@ -10,7 +10,7 @@ caller-supplied `{name: value}` mapping (the serve webhook's JSON body, today) i
 against a spec's declared `variables` before dispatch. This spec still owns only the format
 itself plus that resolution function — interpolating a resolved value into a hop's prompt or
 environment remains unbuilt (see Requirement 4 below).
-**Last Updated**: 2026-07-30
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -177,7 +177,12 @@ This specification does NOT cover:
    advance; a marker matched by `rework`'s `when` list **MUST** trigger a bounded rework cycle
    (see below); any other outcome — including no match at all (unparseable output) — **MUST**
    fail the step. `passValues` and `rework.when` **MUST NOT** share any value (after the same
-   case-normalization) — a marker cannot mean both "pass" and "rework" at once.
+   case-normalization) — a marker cannot mean both "pass" and "rework" at once. The executor
+   **MUST** apply the pattern independently at the start of every non-blank output line, collect
+   and normalize every first capture, and accept exactly one distinct normalized value. Repeated
+   matches of that same value collapse to one. Zero matches or multiple distinct values are
+   unparseable. A marker mentioned later in prose is not a match, and scanning never falls back to
+   substring search.
 4. **`approval`** — an optional `message` (`str`, default `""`) shown to whoever grants the
    approval. This format defines only the gate's shape; wiring it to docket's approval store
    (tokens, grant/deny, timeout-resolves-to-denied) is Phase 15 G-1 / W-2's job, not this spec's.
@@ -402,6 +407,14 @@ steps:
   respectively (see "Does NOT cover").
 
 ## Changelog
+
+### Version 2.2.0 (2026-08-30)
+
+- **Wave 25 card W25-C11.** Verdict parsing now treats the configured pattern as a line-anchored
+  marker contract over the complete output rather than a first-non-blank-line contract. One
+  distinct normalized marker is accepted wherever its line appears; repeated identical markers
+  collapse, while zero or conflicting distinct markers fail closed. The format and persisted
+  pipeline shape are unchanged.
 
 ### Version 2.1.0 (2026-07-30)
 

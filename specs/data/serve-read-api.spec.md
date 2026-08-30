@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Stable
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-25
 
 ## Purpose
 
@@ -210,6 +210,19 @@ to one pod.
 `variables` (added Phase 16 W-4, additive) is the pipeline variable namespace this run was
 resolved against — `{}` for every source except `webhook` (see `POST /dispatch/<project>` below);
 `cancelled` (added Phase 16 W-2, additive) is a run `docket runs cancel <id>` killed in flight.
+
+The terminal state reflects the returned dispatch result, not merely whether the dispatcher
+raised. After one ordered fold over the returned result list, any item whose `status` is `failed`
+makes the run `failed`; an empty list or a list containing only `done`, `waiting_approval`, and/or
+`blocked` remains a successfully completed dispatch invocation. `taskIds` preserves every returned
+task id in result order in either case. A returned-task failure writes a deterministic, actionable
+`error` summary of at most 1024 characters, derived only from failing task ids and their `reason`
+fields; it MUST NOT serialize the raw result, hop artifacts, model output, or tool output. The
+summary names the total failure count, bounds individual ids/reasons, and reports how many failures
+were omitted from its details. An exception still produces the existing exception-class/message
+failure. The queued-to-running claim and returned-outcome terminal write are atomic: `execute`
+does not invoke dispatch for a run already cancelled while queued, and a concurrent cancellation
+that wins before the terminal write remains `cancelled` rather than being overwritten.
 
 ### GET /runs/&lt;id&gt;
 
@@ -465,9 +478,14 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   without either re-delivering an event already returned or skipping one written after the
   previous response — including when several events share one `ts` (see the cursor semantics
   paragraph above).
-- A run record's `state` MUST be one of `queued | running | succeeded | failed`; `source` MUST be
+- A run record's `state` MUST be one of `queued | running | succeeded | failed | cancelled`;
+  `source` MUST be
   one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
   `dispatch` tool).
+- A normally returned dispatch result MUST make the run `failed` if any returned task has
+  `status="failed"`, preserve every returned task id in order, and write the bounded safe summary
+  described under `GET /runs`; `done`, `waiting_approval`, and `blocked` MUST NOT independently fail
+  the run, and a concurrent `cancelled` state MUST win.
 - `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
   `GET /runs/<id>` immediately after the response is sent (the record exists before the HTTP
   response is written, even though the dispatch itself is still in flight).
@@ -537,6 +555,18 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.7.0 — 2026-08-25
+
+- W25-C4: run records now fold the returned task outcomes as well as Python exceptions. Any returned
+  `failed` task makes the invocation `failed`; all returned task ids remain ordered in `taskIds`,
+  and `error` carries a deterministic summary bounded to 1024 characters and sourced only from the
+  failed tasks' ids/reasons. `done`, `waiting_approval`, and `blocked` retain successful invocation
+  semantics. The result list is folded once, start/finish transitions preserve a concurrent
+  cancellation atomically, and a worker never revives a queued run already cancelled.
+- This is a truth correction within the existing run-record shape and state vocabulary: no new
+  endpoint, field, state, or `SERVE_API_VERSION` bump. The validation vocabulary now also lists the
+  already-shipped `cancelled` state that the schema and Phase 16 behavior have long exposed.
 
 ### 2.6.0 — 2026-08-19
 

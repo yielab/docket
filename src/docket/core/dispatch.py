@@ -717,15 +717,15 @@ def _hop_message(
         )
     elif role == "reviewer":
         instructions = (
-            "You are the Reviewer. Review the diff (read-only). Your reply's first "
-            "non-blank line must be exactly APPROVE or REQUEST-CHANGES "
-            "(case-insensitive), followed by your reasons."
+            "You are the Reviewer. Review the diff (read-only). Start exactly one "
+            "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
+            "reasons may come before or after that marker line."
         )
     elif role == "tester":
         instructions = (
-            "You are the Tester. Validate behaviour only. Your reply's first "
-            "non-blank line must be exactly PASS or FAIL (case-insensitive), "
-            "followed by evidence."
+            "You are the Tester. Validate behaviour only. Start exactly one output "
+            "line with PASS or FAIL (case-insensitive); evidence may come before or "
+            "after that marker line."
         )
     else:
         instructions = ""
@@ -997,7 +997,12 @@ def _replay_pipeline_position(
         node = runtime_steps[idx]
         gate = node.gate if isinstance(node, _orch.PlannedUnit) else None
         if isinstance(gate, _pipeline.VerdictGate) and gate.rework is not None:
-            verdict = _orch.parse_verdict(gate, hop.output)
+            verdict = hop.artifact.verdict if hop.artifact is not None else None
+            if verdict is None:
+                # New-format records persist the normalized verdict in the
+                # artifact. Legacy/malformed records have no usable value and
+                # retain their pre-artifact raw-output fallback.
+                verdict = _orch.parse_verdict(gate, hop.output)
             when_set = _orch.normalize_values(gate.rework.when, gate.case_sensitive)
             cycles_so_far = rework_counts.get(step_id, 0)
             target_index = id_to_index.get(gate.rework.to)
@@ -1373,8 +1378,9 @@ def dispatch_task(
                 )
                 if isinstance(node.gate, _pipeline.VerdictGate):
                     checkout_note += (
-                        " Your final reply must still put one recognized verdict marker "
-                        "on its first non-blank line, before all reasons."
+                        " Your final reply must still contain one distinct recognized "
+                        "verdict marker at the start of a complete line; reasons may "
+                        "come before or after it."
                     )
                 checkout_note += "\n"
                 message += checkout_note
@@ -1744,8 +1750,8 @@ def dispatch_task(
                 return _UnitOutcome(
                     kind="failed",
                     hops=[hop],
-                    reason=f"{role} output unparseable (expected a recognized verdict marker "
-                    "on the first line)",
+                    reason=f"{role} output unparseable (expected one unambiguous recognized "
+                    "verdict marker at the start of a line)",
                 )
             _trace_locked(
                 project,
