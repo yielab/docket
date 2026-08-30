@@ -823,7 +823,7 @@ branch edits its files.
 
 ### W26-C1 — guarantee a resolvable first provider
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** `config.py` defaults to `anthropic/claude-sonnet-4-6`, onboarding asks
 for `ANTHROPIC_API_KEY`, and `edges/adapters/llm.py::resolve_endpoint` has built-in URLs only for
@@ -857,9 +857,9 @@ reports the selected endpoint/model without exposing credentials. A fresh determ
 perform one gated tool-call turn. Run focused provider/auth/driver tests, Ruff, format, mypy, full
 pytest, goldens, specs, metrics, and deterministic smoke.
 
-**Contention:** currently conflicts with dirty `config.py` and agent-loop/provider-adjacent tests,
-which is why activation waits. After reconciliation it is independent of C2 and C6–C9; coordinate
-with C10 if either changes the driver protocol.
+**Contention:** the Wave 25 baseline is reconciled at `6b925f0`; this card is independent of C2 and
+C6–C9. It owns provider/onboarding code and tests plus the named model/API-key/CLI spec clauses;
+coordinate with C10 if either card changes the driver protocol.
 
 ### W26-C2 — provide one canonical installable CLI
 
