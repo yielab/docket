@@ -118,6 +118,36 @@ def test_active_banner_resolves_to_detailed_current_section_before_history(tmp_p
     assert closed == 0
 
 
+def test_active_banner_resolves_past_the_immediately_completed_prior_wave(tmp_path: Path) -> None:
+    module = _load_snapshot_module()
+    _write_board(
+        tmp_path,
+        """
+        ## ◉ ACTIVE BOARD — Wave 3
+
+        Current-wave summary without cards.
+
+        ## ☑ WAVE 2 COMPLETE
+
+        ### W2-C1 — completed card
+
+        **Status:** DONE
+
+        ## ◉ WAVE 3 ACTIVE
+
+        ### W3-C1 — current ready card
+
+        **Status:** TODO
+        """,
+    )
+
+    board, cards, closed = module._board_summary(tmp_path)
+
+    assert board == "◉ WAVE 3 ACTIVE"
+    assert cards["ready"] == ["W3-C1 — current ready card"]
+    assert closed == 0
+
+
 def test_active_banner_does_not_cross_an_unrelated_h2_into_historical_work(
     tmp_path: Path,
 ) -> None:

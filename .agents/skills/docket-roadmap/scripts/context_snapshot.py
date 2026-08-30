@@ -86,15 +86,31 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
     first_key = wave_key(first_heading)
     if "ACTIVE BOARD" in first_heading.group(0).upper() and first_key is not None:
         for heading in board_headings[1:]:
-            if marker_kind(heading) != "active" or wave_key(heading) != first_key:
+            kind = marker_kind(heading)
+            heading_key = wave_key(heading)
+            if kind == "historical" and heading_key != first_key:
+                normalized = heading.group(0).upper()
+                if "☑" in normalized and "COMPLETE" in normalized:
+                    continue
+                break
+            if kind != "active" or heading_key != first_key:
                 break
             between = text[active_group[-1].end() : heading.start()]
             interstitial_h2 = re.findall(r"^(?:>\s*)?## (.+)$", between, flags=re.MULTILINE)
             if any(
-                not title.upper().startswith("HOW TO USE THIS BOARD") for title in interstitial_h2
+                not (
+                    title.upper().startswith("HOW TO USE THIS BOARD")
+                    or (
+                        "☑" in title
+                        and "COMPLETE" in title.upper()
+                        and re.search(r"\bWAVE\s+", title, flags=re.IGNORECASE)
+                    )
+                )
+                for title in interstitial_h2
             ):
                 break
             active_group.append(heading)
+            break
 
     active = active_group[0]
     for candidate in active_group:

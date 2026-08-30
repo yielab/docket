@@ -7,17 +7,18 @@ specs own shipped behavior.
 ## Current control state
 
 - Branch: `platform`.
-- Active work: Wave 25 integration only. W25-C11 and W25-C7 are DONE; the authorized live
-  acceptance passed in `/tmp/docket-w25-c7-live-L8nkOm`.
-- Next current-wave action: attribute and land the complete 45-path working tree, rerun gates on the
-  integrated commit, and close Wave 25.
-- Phase 23 / Wave 26: recorded but blocked. Do not claim a W26 card before that integration closes
-  Wave 25 and the full dirty tree is attributed.
+- Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
+  W25-C7, and the authorized live acceptance are DONE.
+- Ready pool: W26-C1, C2, and C6–C10. Extract exactly one card before claim and apply the conflict
+  graph below; W26-C10 must be split before claim.
+- W26-C0 remains blocked on the maintainer's release-source decision. C3–C5 and C11 retain their
+  explicit dependency blockers.
 - Pre-plan dirty evidence: 22 modified paths across Wave 25 runtime, security, specs, smoke, and
   tests. Planning edits add central roadmap/board/skill/handoff paths; they do not make the runtime
   baseline clean.
-- Current post-canary validation: 2,377 passed and five expected skips; Ruff, format, strict
-  mypy, 24 spec validations, 18 goldens, metrics, and `git diff --check` passed.
+- Commit-level closure validation on `6b925f0`: 2,377 passed and five expected skips; Ruff, format,
+  strict mypy, 24 spec validations, 18 goldens, metrics, deterministic smoke, and `git diff
+  --check` passed.
 - No product code is changed by the Phase 23 planning packet.
 - At packet creation these planning files are working-tree changes, and new handoff/helper files may
   be untracked. A fresh worktree based on the current commit will not contain them until the
@@ -51,9 +52,9 @@ explicit user scope
 Record the discrepancy and make all affected sources agree in the same integration; do not choose
 the convenient source.
 
-## Activation gate
+## Activation gate — satisfied 2026-08-30
 
-The coordinator alone performs activation:
+The coordinator completed activation:
 
 1. Treat W25-C11 and W25-C7 as satisfied only from their recorded deterministic/live evidence; do
    not repeat the accepted canary.
@@ -64,8 +65,8 @@ The coordinator alone performs activation:
 4. Change the TODO active marker once, convert dependency-free W26 cards from `BLOCKED` to `TODO`,
    and assign one owner per claimed card.
 
-If any step is unresolved, Phase 23 remains queued. Isolated clean-file exploration may measure a
-card, but it may not claim or merge W26 behavior around the gate.
+All four steps are satisfied by `6b925f0`, its recorded closure gates, and the single active-marker
+change in the follow-up board commit. Phase 23 / Wave 26 is active.
 
 ## Parallel execution graph
 

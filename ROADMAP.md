@@ -12,10 +12,9 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-30.** **Every numbered phase 0–22 and Wave 24 are complete; all Wave 25
-behavior and live acceptance cards pass. Wave 25 remains open only for integration of the current
-45-path working tree, and Phase 23 remains queued behind that reconciliation.** Executable cards
-live in [TODO.md](TODO.md).
+**Last updated: 2026-08-30.** **Every numbered phase 0–22 and Waves 24–25 are complete. Phase 23 is
+active through Wave 26 after the complete 45-path Wave 25 tree landed at `6b925f0` and passed its
+commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -38,7 +37,7 @@ live in [TODO.md](TODO.md).
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◇ queued — Wave 26 is fully scoped in TODO but cannot activate until Wave 25 closes and the pre-plan 22-path product baseline plus planning changes are reconciled |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 26 ready pool: C1, C2, C6–C10; C0 awaits the maintainer's release-source decision |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -46,7 +45,7 @@ live in [TODO.md](TODO.md).
 | — | **Wave 22** (not a phase): observable whole-product workflow proof | ☑ done (2026-08-19) — one hermetic command crosses CLI subprocesses, loopback HTTP, the runtime/tool/gate path, approval resume, and durable observability state |
 | — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
 | — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
-| — | **Wave 25** (not a phase): live-model request and outcome truth | ◉ active (2026-08-20) — cards W25-C1–C6 and C8–C10 shipped; W25-C7 remains blocked on live Reviewer-verdict conformance |
+| — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -124,7 +123,7 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 
 ## Current planned program — PHASE 23: product truth and ecosystem proof
 
-**Status:** ◇ QUEUED (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 26 in
+**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 26 in
 [TODO.md](TODO.md) · **Resumable coordinator packet:**
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md)
 
@@ -169,16 +168,15 @@ Phase 23 is complete only when those claims have executable evidence. It does no
 axis, hosted scheduler, Docket-owned dashboard, no-code workflow builder, provider-SDK zoo, or a
 second orchestration graph language.
 
-### Activation gate — no Phase 23 card may bypass it
+### Activation gate — satisfied 2026-08-30
 
-Wave 25 remains the only active board. Before Wave 26 activation, the integrator must close or
-explicitly re-scope W25-C7, obtain a complete `git status`, reconcile the 22-path pre-plan product
-baseline and every planning change into owned commits or preserved user work, rerun the full
-required gates, and update the active-board marker once. Planning this phase does not authorize
-another unchanged paid-model retry. Central files (`ROADMAP.md`, `TODO.md`, `README.md`,
-`specs/README.md`) remain integrator-owned.
+Wave 25's 45 attributed paths landed in `6b925f0` after W25-C7's single authorized live acceptance.
+The integrated commit passed 2,377 tests with five contract-labelled skips, Ruff, format, strict
+mypy, 24 specs, 18 goldens, metrics, and deterministic smoke. The active-board marker changed once;
+Wave 26 is active. Central files (`ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`) remain
+integrator-owned.
 
-### Wave 26 — first-use and governance truth (fully scoped, queued)
+### Wave 26 — first-use and governance truth (active)
 
 Wave 26 contains independently shippable cards rather than one release-sized branch. Its initial
 ready pool after activation is W26-C1, C2, and C6–C10; C0 is an integrator/maintainer decision, C3
@@ -2584,6 +2582,14 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-30 (Wave 25 integrated and closed) — the complete attributed tree landed at `6b925f0`
+  and Phase 23 / Wave 26 activated.** The integration commit owns all 45 runtime, spec, test,
+  documentation, skill, and handoff paths. Its closure gates passed with 2,377 tests and five
+  contract-labelled skips, Ruff, format, strict mypy, 24 specs, 18 goldens, metrics, and the
+  deterministic five-hop smoke. The active marker changed once; W26-C1, C2, and C6–C10 are ready,
+  while C0 and dependency-bound cards remain blocked. The transition also added a focused snapshot
+  regression so a completed prior wave cannot hide the newly active ready pool.
 
 - **2026-08-30 (Wave 25 W25-C7 accepted) — the un-scripted memory-maintenance canary completed
   without violating the private-context boundary.** The preserved world

@@ -13,7 +13,7 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD (2026-08-20) — Wave 25 live-model truth pass
+> ## ◉ ACTIVE BOARD (2026-08-30) — Wave 26 first-use and governance truth
 >
 > A real unquoted `docket pod ... delegate create a file ...` stored only `"create"`. The resulting
 > underspecified turn then grew to 17,643 tokens against the selected endpoint's registered
@@ -99,12 +99,12 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 
 ---
 
-## ◉ WAVE 25 ACTIVE (2026-08-20) — live-model request and outcome truth
+## ☑ WAVE 25 COMPLETE (2026-08-30) — live-model request and outcome truth
 
-**Integration state (2026-08-30):** all 11 behavior/acceptance cards are DONE. Wave 25 remains the
-active board only while the integrator attributes and lands the current 45-path working tree,
-reruns gates on that integrated commit, and changes the active marker once. Do not claim Wave 26
-from the uncommitted baseline.
+**Integration state (2026-08-30):** all 11 behavior/acceptance cards are DONE. Commit `6b925f0`
+owns the complete 45-path Wave 25 tree. Its commit-level gates passed: 2,377 tests with five
+contract-labelled skips, Ruff, format, strict mypy, 24 specs, 18 goldens, metrics, and deterministic
+smoke. Wave 26 is now the sole active board.
 
 ### W25-C1 — preserve the complete delegated task text
 
@@ -766,12 +766,12 @@ model call was made by this card.
 
 ---
 
-## ⏭ WAVE 26 NEXT — first successful turn and release/governance truth
+## ◉ WAVE 26 ACTIVE (2026-08-30) — first successful turn and release/governance truth
 
-**Activation state:** BLOCKED ON INTEGRATION. Wave 25 is still active. W25-C11 and W25-C7 are done;
-no W26 card may be claimed until the integrator attributes and lands the complete 45-path working
-tree, reruns the closure gates on that commit, closes Wave 25, and changes the active marker once.
-The Phase 23 decision and later-wave triggers live in
+**Activation state:** ACTIVE. Wave 25 closed at integration commit `6b925f0` after its full closure
+gates passed. The dependency-free ready pool is W26-C1, C2, and C6–C10. W26-C0 still requires the
+maintainer's release-source decision; dependent cards retain their explicit blockers. The Phase 23
+decision and later-wave triggers live in
 [ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
 bounded coordinator packet is
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md).
@@ -786,7 +786,7 @@ ports, or a live model endpoint, and return evidence to the integrator instead o
 
 ### W26-C0 — establish one public release source
 
-**Status:** BLOCKED (needs Wave 25 close + maintainer branch decision) · **Size:** S · **Owner:**
+**Status:** BLOCKED (needs maintainer branch decision) · **Size:** S · **Owner:**
 integrator only
 
 **Explicit trigger:** the 2026-08-30 audit found `platform` at the current Docket-owned runtime while
@@ -823,7 +823,7 @@ branch edits its files.
 
 ### W26-C1 — guarantee a resolvable first provider
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+**Status:** TODO · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** `config.py` defaults to `anthropic/claude-sonnet-4-6`, onboarding asks
 for `ANTHROPIC_API_KEY`, and `edges/adapters/llm.py::resolve_endpoint` has built-in URLs only for
@@ -863,7 +863,7 @@ with C10 if either changes the driver protocol.
 
 ### W26-C2 — provide one canonical installable CLI
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+**Status:** TODO · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** root `pyproject.toml` exposes only `docket-py` while all primary docs use
 `docket`; installed metadata lacks the expected license/project identity, and releases publish no
@@ -1000,7 +1000,7 @@ owns public prose. External adapters remain Wave 28, not this card.
 
 ### W26-C6 — make audit append and rotation one atomic chain transition
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+**Status:** TODO · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** direct inspection of `core/audit.py::audit_log` shows rotation, current
 head calculation, and append occur without one inter-process critical section. Parallel workers
@@ -1054,7 +1054,7 @@ mutations fail, add health visibility, or change another caller becomes a separa
 
 ### W26-C7 — make approval resolution compare-and-set atomic
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** M · **Owner:** unassigned
+**Status:** TODO · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** `approval_grant`/`approval_deny` read `pending`, then `_set_state` rereads
 and separately writes. Concurrent CLI, HTTP, Telegram, timeout, or pipeline decisions can both
@@ -1085,7 +1085,7 @@ proves a separate card is required.
 
 ### W26-C8 — allocate pod resources without collisions
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** S · **Owner:** unassigned
+**Status:** TODO · **Size:** S · **Owner:** unassigned
 
 **Deterministic trigger:** `allocate_pod_resources` loads the registry, computes the next range, and
 later writes under a separate lock. Concurrent CLI or threaded `POST /pods` provisioning can assign
@@ -1139,7 +1139,7 @@ After reconciliation it is independent of C7/C9/C10 and may only call store APIs
 
 ### W26-C9 — preserve concurrent conversation updates
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** S · **Owner:** unassigned
+**Status:** TODO · **Size:** S · **Owner:** unassigned
 
 **Deterministic trigger:** dispatch `_persist_hop` performs `_conv.load()` → pure
 `touch_for_hop()` → `_conv.save()` as separate operations. Parallel hops updating different
@@ -1171,7 +1171,7 @@ pipeline dispatch changes; coordinate if another active card owns `dispatch.py`.
 
 ### W26-C10 — make run cancellation cooperative and truthful
 
-**Status:** BLOCKED (needs Wave 25 close + integrated baseline) · **Size:** L (split before claim) ·
+**Status:** TODO (split before claim) · **Size:** L (split before claim) ·
 **Owner:** unassigned
 
 **Deterministic trigger:** `DocketDriver` ignores `on_spawn` because the turn is in-process, while
