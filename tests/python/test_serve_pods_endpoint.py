@@ -64,6 +64,7 @@ def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "PODS_DIR", home / "workspaces" / "pods", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
     monkeypatch.setattr(_cfg, "ARCHETYPE_REGISTRY_FILE", home / "docket-roles.json", raising=True)
     monkeypatch.setattr(_cfg, "PORT_ALLOC_FILE", home / "port-allocations.json", raising=True)
@@ -268,11 +269,103 @@ class TestIdempotence:
         raw = json.loads((_ws("demo-lead") / ".docket-meta.json").read_text())
         assert raw["codebase"] == "/src/demo"
 
+    def test_concurrent_same_project_loser_cannot_rollback_winner(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A loser that would fail after allocation must not undo the winner.
+
+        The first attempt pauses immediately before creating its Lead. Without
+        a project critical section, the second attempt passes the empty-pod
+        check, allocates the same project resources, then fails on its
+        Implementer and rolls those shared resources back. With serialization,
+        the second attempt waits and receives ``PodAlreadyExistsError``.
+        """
+        winner_at_first_member = threading.Event()
+        loser_at_first_member = threading.Event()
+        winner_paused = False
+        real_write = _pp._write_member_workspace
+
+        def staged_write(*args: Any, **kwargs: Any) -> None:
+            nonlocal winner_paused
+            member = args[0]
+            name = threading.current_thread().name
+            if name == "winner" and not winner_paused:
+                winner_paused = True
+                winner_at_first_member.set()
+                loser_at_first_member.wait(timeout=0.5)
+            elif name == "loser":
+                loser_at_first_member.set()
+                if member.role == "implementer":
+                    raise OSError("loser failed after allocation")
+            return real_write(*args, **kwargs)
+
+        monkeypatch.setattr(_pp, "_write_member_workspace", staged_write)
+        outcomes: dict[str, object] = {}
+
+        def provision() -> None:
+            name = threading.current_thread().name
+            try:
+                outcomes[name] = _pp.provision_pod("race", "software", location="/src/race")
+            except Exception as exc:
+                outcomes[name] = exc
+
+        winner = threading.Thread(target=provision, name="winner")
+        loser = threading.Thread(target=provision, name="loser")
+        winner.start()
+        assert winner_at_first_member.wait(timeout=2)
+        loser.start()
+        winner.join(timeout=5)
+        loser.join(timeout=5)
+
+        assert not winner.is_alive()
+        assert not loser.is_alive()
+        assert isinstance(outcomes["winner"], _pp.PodProvisionResult)
+        assert isinstance(outcomes["loser"], _pp.PodAlreadyExistsError)
+        assert sorted(_ids()) == ["race-implementer", "race-lead"]
+        allocation = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        assert "race" in allocation["allocations"]
+        scratch = _cfg.pod_scratch_dir("race")
+        assert scratch.is_dir()
+        implementer = json.loads((_ws("race-implementer") / ".docket-meta.json").read_text())
+        assert implementer["scratchDir"] == str(scratch)
+        assert implementer["portRangeStart"] == allocation["allocations"]["race"]
+
 
 # ── rollback on a real induced partial failure ──────────────────────────────
 
 
 class TestRollback:
+    def test_rollback_preserves_preexisting_pod_runtime(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A new allocation must not make pre-existing runtime attempt-owned."""
+        runtime = _cfg.PODS_DIR / "flaky"
+        scratch_marker = runtime / ".scratch" / "keep.txt"
+        workdir_marker = runtime / "workdir" / "keep.txt"
+        scratch_marker.parent.mkdir(parents=True)
+        workdir_marker.parent.mkdir(parents=True)
+        scratch_marker.write_text("preserve scratch")
+        workdir_marker.write_text("preserve workdir")
+
+        calls = {"n": 0}
+        real_write = _pp._write_member_workspace
+
+        def flaky_write(*args: Any, **kwargs: Any) -> None:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError("disk full (induced failure)")
+            return real_write(*args, **kwargs)
+
+        monkeypatch.setattr(_pp, "_write_member_workspace", flaky_write)
+
+        with pytest.raises(_pp.PodProvisionError):
+            _pp.provision_pod("flaky", "software", location="/src/flaky")
+
+        assert calls["n"] == 2
+        assert scratch_marker.read_text() == "preserve scratch"
+        assert workdir_marker.read_text() == "preserve workdir"
+        assert "flaky" not in _store.read_json(_cfg.PORT_ALLOC_FILE).get("allocations", {})
+
     def test_core_level_rollback_leaves_nothing_behind(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

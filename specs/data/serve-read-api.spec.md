@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Stable
-**Last Updated**: 2026-08-25
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -439,11 +439,16 @@ Success response (`201`) — the created pod roster:
 - A missing or empty `project` is `400`.
 - `project` already having a registered pod member is rejected with `409` — matching `docket add`'s
   own idempotence contract (`_provision_pod_from_spec`'s "already exists — skipping"): the existing
-  pod is left completely untouched, not silently re-provisioned or clobbered.
+  pod is left completely untouched, not silently re-provisioned or clobbered. Concurrent requests for
+  one project are serialized from that check through commit or rollback, so a losing request cannot
+  remove the successful request's members, runtime directory, scratch directory, or port allocation.
 - **A partial failure leaves nothing behind.** If any member after the first fails to provision, every
   member `provision_pod` already created during that one call — its workspace directory and its
-  fleet registration — is torn down, and any pod-level resources (port range, scratch dir) allocated
-  for the attempt are freed, before the request fails. This is deliberate: the consumer (Tack) rolls
+  fleet registration — is torn down, and only pod-level resources (port range, scratch dir, and an
+  auto-provisioned workdir) created by that attempt are freed; pre-existing pod runtime contents are
+  preserved, before the request fails. Port allocation itself is one shared locked
+  registry transition, so concurrently successful *different* projects receive disjoint deterministic
+  ranges without taking each other's project lock. This is deliberate: the consumer (Tack) rolls
   back its own project record on a non-2xx response and has no way to roll back a half-created pod
   on docket's side. Such a failure is reported as `500` — the request itself was well-formed; the
   failure is an operational one (e.g. a filesystem error), not a validation error.
@@ -504,8 +509,11 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   `blueprint`, a `pod` value other than `"full"`, a non-numeric `budget`, or an invalid `verifyCmd`
   with `400` before `provision_pod` is ever called; MUST reject an already-provisioned `project`
   with `409` without touching the existing pod; and on a genuine mid-provisioning failure MUST leave
-  no member workspace, no fleet registration and no orphaned port/scratch allocation behind (full
-  rollback) before responding `500`. `docket add`'s pod-provisioning path (interactive and `--from`)
+  no member workspace, no fleet registration and no orphaned port/scratch allocation created by that
+  request behind (full rollback) before responding `500`; concurrent same-project attempts MUST leave
+  the successful attempt's members, metadata, allocation, and runtime directory untouched. Concurrent
+  successful different-project requests MUST retain distinct port ranges. `docket add`'s
+  pod-provisioning path (interactive and `--from`)
   and this route MUST call the same `core.pod_provisioning.provision_pod` function — there is no
   second, drift-prone provisioning implementation.
 - The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`),
@@ -555,6 +563,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.8.0 — 2026-08-30
+
+- W26-C8: `POST /pods` now states its concurrent provisioning contract: one project's
+  exists-check, allocation ownership, member creation, and rollback are serialized, while different
+  projects share only the short port-allocation registry transition. A failed attempt removes only
+  resources it created, preserves pre-existing runtime contents, and cannot roll back a successful
+  same-project request.
 
 ### 2.7.0 — 2026-08-25
 

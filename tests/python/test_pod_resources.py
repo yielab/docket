@@ -10,13 +10,16 @@ Two layers:
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
 
 import docket.config as _cfg
 from docket.cli import _pod
+from docket.core import pod_provisioning as _pp
 from docket.core import resources as _res
+from docket.edges import store as _store
 
 # ── hermetic helpers ─────────────────────────────────────────────────────────
 
@@ -31,6 +34,7 @@ def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
     monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
     monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    monkeypatch.setattr(_cfg, "PODS_DIR", home / "workspaces" / "pods", raising=True)
     monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
     monkeypatch.setattr(_cfg, "PORT_ALLOC_FILE", home / "port-allocations.json", raising=True)
 
@@ -103,6 +107,62 @@ class TestPortAllocation:
         t = _res.free_pod_ports("a", t)
         assert "a" not in t["allocations"]
         assert "b" in t["allocations"]
+
+    def test_concurrent_projects_allocate_distinct_ranges_and_keep_registry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two fresh projects begin together from one empty registry.
+
+        The write gate makes the former read/compute/write implementation
+        deterministically choose the same range. The real allocation path
+        must instead commit each project through one registry transition.
+        """
+        _seed(tmp_path, monkeypatch)
+        start = threading.Barrier(2)
+        old_write_gate = threading.Barrier(2)
+        write_count = 0
+        write_count_lock = threading.Lock()
+        real_write = _store.write_json
+
+        def staged_write(path: Path, data: dict[str, object]) -> None:
+            nonlocal write_count
+            if path == _cfg.PORT_ALLOC_FILE:
+                with write_count_lock:
+                    write_count += 1
+                    should_wait = write_count <= 2
+                if should_wait:
+                    old_write_gate.wait(timeout=2)
+            real_write(path, data)
+
+        monkeypatch.setattr(_pp._store, "write_json", staged_write)
+        results: dict[str, tuple[int, int, str]] = {}
+        failures: list[BaseException] = []
+
+        def allocate(project: str) -> None:
+            try:
+                start.wait(timeout=2)
+                results[project] = _pp.allocate_pod_resources(project)
+            except BaseException as exc:  # keep thread failures visible to pytest
+                failures.append(exc)
+
+        threads = [
+            threading.Thread(target=allocate, args=(project,)) for project in ("alpha", "beta")
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert not failures
+        assert all(not thread.is_alive() for thread in threads)
+        assert results["alpha"][0] != results["beta"][0]
+        allocation_table = _store.read_json(_cfg.PORT_ALLOC_FILE)
+        assert allocation_table["allocations"] == {
+            "alpha": results["alpha"][0],
+            "beta": results["beta"][0],
+        }
+        assert Path(results["alpha"][2]).is_dir()
+        assert Path(results["beta"][2]).is_dir()
 
 
 # ── integration ──────────────────────────────────────────────────────────────

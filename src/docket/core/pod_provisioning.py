@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -488,6 +489,41 @@ def provision_member(
     return (True, "", fallback_reason)
 
 
+@contextlib.contextmanager
+def _project_provision_lock(project: str) -> Iterator[None]:
+    """Serialize one project's provisioning lifecycle without coupling projects.
+
+    This lock deliberately lives outside ``PODS_DIR / project``: rollback
+    removes that runtime directory, and deleting a held lock file would allow
+    another process to create a new lock and enter concurrently.
+    """
+    lock_dir = _cfg.WORKSPACES_DIR / ".pod-provision-locks" / project.encode().hex()
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    with _store.with_lock(lock_dir / ".provision"):
+        yield
+
+
+def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
+    """Allocate resources and report ownership of its port and scratch state."""
+    start = 0
+    count = 0
+    created = False
+
+    def allocate(table: dict[str, object]) -> dict[str, object] | None:
+        nonlocal start, count, created
+        start, count, updated = _res.allocate_pod_ports(project, table)
+        created = updated is not table
+        return updated if created else None
+
+    _store.read_modify_write(_cfg.PORT_ALLOC_FILE, allocate)
+    scratch = _cfg.pod_scratch_dir(project)
+    scratch_created = not scratch.exists()
+    scratch.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        scratch.chmod(0o700)
+    return start, count, str(scratch), created, scratch_created
+
+
 def allocate_pod_resources(project: str) -> tuple[int, int, str]:
     """Allocate (or return existing) port range + scratch dir for *project*.
 
@@ -497,33 +533,53 @@ def allocate_pod_resources(project: str) -> tuple[int, int, str]:
 
     Idempotent: re-calling for the same project returns the same values.
     """
-    table = _store.read_json(_cfg.PORT_ALLOC_FILE)
-    start, count, updated = _res.allocate_pod_ports(project, table)
-    if updated is not table:
-        _store.write_json(_cfg.PORT_ALLOC_FILE, updated)
-    scratch = _cfg.pod_scratch_dir(project)
-    scratch.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        scratch.chmod(0o700)
+    start, count, scratch, _allocation_created, _scratch_created = _allocate_pod_resources(project)
     return start, count, str(scratch)
 
 
-def free_pod_resources(project: str) -> None:
-    """Release the port range and remove the scratch dir for *project*.
+def _free_pod_allocation(project: str) -> None:
+    """Release a port allocation while the caller holds any required lock."""
 
-    Called by pod teardown paths (docket delete / docket pod remove last-implementer
-    / a `provision_pod`/`provision_members` rollback). Idempotent: safe to call
-    even if no resources were allocated.
-    """
-    table = _store.read_json(_cfg.PORT_ALLOC_FILE)
-    if table:
-        updated = _res.free_pod_ports(project, table)
-        _store.write_json(_cfg.PORT_ALLOC_FILE, updated)
+    def free(table: dict[str, object]) -> dict[str, object] | None:
+        allocations = table.get("allocations", {})
+        if not isinstance(allocations, dict) or project not in allocations:
+            return None
+        return _res.free_pod_ports(project, table)
+
+    _store.read_modify_write(_cfg.PORT_ALLOC_FILE, free)
+
+
+def _remove_attempt_runtime(project: str, *, scratch_created: bool, work_dir_created: bool) -> None:
+    """Remove only Docket runtime paths this failed attempt created."""
+    if scratch_created:
+        shutil.rmtree(_cfg.pod_scratch_dir(project), ignore_errors=True)
+    if work_dir_created:
+        shutil.rmtree(_cfg.pod_work_dir(project), ignore_errors=True)
+    # Drop an otherwise empty directory created only as a parent above, but
+    # preserve any pre-existing or independently-created runtime content.
+    with contextlib.suppress(OSError):
+        (_cfg.PODS_DIR / project).rmdir()
+
+
+def _free_pod_resources(project: str) -> None:
+    """Release all resources during an explicit whole-pod teardown."""
+    _free_pod_allocation(project)
     # The whole directory is Docket-owned. Removing only ``.scratch`` left
     # empty pod ids behind forever and leaked an auto-provisioned ``workdir``.
     pod_runtime = _cfg.PODS_DIR / project
     if pod_runtime.is_dir():
         shutil.rmtree(pod_runtime, ignore_errors=True)
+
+
+def free_pod_resources(project: str) -> None:
+    """Release the port range and remove the scratch dir for *project*.
+
+    Called by explicit pod teardown paths (docket delete / docket pod remove
+    last-implementer). Idempotent: safe to call even if no resources were
+    allocated. Failed provisioning uses attempt-owned cleanup instead.
+    """
+    with _project_provision_lock(project):
+        _free_pod_resources(project)
 
 
 def purge_pod_history(project: str, member_ids: list[str]) -> None:
@@ -586,6 +642,7 @@ def provision_members(
     blueprint_name: str = "",
     budget_usd: float | None = None,
     verify_cmd: str = "",
+    work_dir_created: bool = False,
 ) -> list[ProvisionedMember]:
     """Provision a fresh pod's members from an already-resolved role list.
 
@@ -603,8 +660,12 @@ def provision_members(
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
 
     allocated_resources = "implementer" in roles
+    allocation_owned = False
+    scratch_owned = False
     if allocated_resources:
-        port_start, port_count, scratch = allocate_pod_resources(project)
+        port_start, port_count, scratch, allocation_owned, scratch_owned = _allocate_pod_resources(
+            project
+        )
     else:
         port_start, port_count, scratch = 0, 0, ""
 
@@ -644,9 +705,14 @@ def provision_members(
         for cm in created:
             with contextlib.suppress(Exception):
                 teardown_member(cm.member_id)
-        if allocated_resources:
-            with contextlib.suppress(Exception):
-                free_pod_resources(project)
+        with contextlib.suppress(Exception):
+            if allocation_owned:
+                _free_pod_allocation(project)
+            _remove_attempt_runtime(
+                project,
+                scratch_created=scratch_owned,
+                work_dir_created=work_dir_created,
+            )
         if isinstance(exc, PodProvisionError):
             raise
         raise PodProvisionError(f"{project}: provisioning failed: {exc}") from exc
@@ -698,43 +764,47 @@ def provision_pod(
       ``VerifyCmdError`` -- ``verify_cmd`` fails validation.
       ``PodProvisionError`` -- a member failed to provision after rollback.
     """
-    if pod_member_ids(project):
-        raise PodAlreadyExistsError(project)
+    with _project_provision_lock(project):
+        if pod_member_ids(project):
+            raise PodAlreadyExistsError(project)
 
-    blueprint = _bp.get_blueprint(blueprint_name)
-    roster = roles if roles is not None else blueprint.roles
+        blueprint = _bp.get_blueprint(blueprint_name)
+        roster = roles if roles is not None else blueprint.roles
 
-    if verify_cmd:
-        verify_cmd = validate_verify_cmd(verify_cmd)
+        if verify_cmd:
+            verify_cmd = validate_verify_cmd(verify_cmd)
 
-    codebase = ""
-    work_dir = ""
-    if blueprint.workspace_kind == "codebase":
-        codebase = location
-    else:
-        work_dir = location or str(_cfg.pod_work_dir(project))
-        Path(work_dir).mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            Path(work_dir).chmod(0o700)
+        codebase = ""
+        work_dir = ""
+        work_dir_created = False
+        if blueprint.workspace_kind == "codebase":
+            codebase = location
+        else:
+            work_dir = location or str(_cfg.pod_work_dir(project))
+            work_dir_created = not location and not Path(work_dir).exists()
+            Path(work_dir).mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                Path(work_dir).chmod(0o700)
 
-    effective_budget = budget_usd if budget_usd is not None else blueprint.default_budget_usd
+        effective_budget = budget_usd if budget_usd is not None else blueprint.default_budget_usd
 
-    created = provision_members(
-        project,
-        roster,
-        codebase=codebase,
-        stack=stack,
-        description=description,
-        project_key=project_key,
-        work_dir=work_dir,
-        blueprint_name=blueprint.name,
-        budget_usd=effective_budget,
-        verify_cmd=verify_cmd,
-    )
+        created = provision_members(
+            project,
+            roster,
+            codebase=codebase,
+            stack=stack,
+            description=description,
+            project_key=project_key,
+            work_dir=work_dir,
+            blueprint_name=blueprint.name,
+            budget_usd=effective_budget,
+            verify_cmd=verify_cmd,
+            work_dir_created=work_dir_created,
+        )
 
-    audit_log(
-        "agent.add",
-        f"{project} blueprint={blueprint.name} "
-        f"pod=({','.join(m.role for m in created)}) source={source}",
-    )
-    return PodProvisionResult(project=project, blueprint=blueprint.name, members=created)
+        audit_log(
+            "agent.add",
+            f"{project} blueprint={blueprint.name} "
+            f"pod=({','.join(m.role for m in created)}) source={source}",
+        )
+        return PodProvisionResult(project=project, blueprint=blueprint.name, members=created)
