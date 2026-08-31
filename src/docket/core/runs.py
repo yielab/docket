@@ -31,11 +31,12 @@ subprocess's pid against (``add_hop_pid``/``remove_hop_pid``), and
 parallel group's worker threads (``ThreadPoolExecutor.submit`` does not do
 this on its own). ``pids`` is a *list* on the run record, not a scalar,
 because a parallel step can have more than one hop genuinely in flight at
-once. ``cancel_run`` — the ``docket runs cancel`` CLI's real work — kills
-every recorded pid's process *group* (``edges.adapters.system.
-kill_process_group``; each hop subprocess starts its own session, so its pid
-doubles as its group id) and marks the run a new terminal state,
-``"cancelled"``, distinct from an ordinary ``"failed"`` invocation.
+once. ``cancel_run`` — the ``docket runs cancel`` CLI's real work — persists
+one request atomically before signalling every captured pid's process group.
+Queued work is stopped immediately; running in-process work remains visibly
+requested until its owning ``execute()`` call returns and records observation
+and full stop. A :class:`RunCancellationSignal` always rereads that persisted
+record, so a separate CLI process and the executor share one authority.
 """
 
 from __future__ import annotations
@@ -63,11 +64,91 @@ _RETURNED_FAILURE_ERROR_CHARS = 1_024
 _RETURNED_FAILURE_ID_CHARS = 80
 _RETURNED_FAILURE_REASON_CHARS = 200
 _RETURNED_FAILURE_DETAILS = 3
+_CANCELLATION_REASON = "operator request"
+_CANCELLATION_SOURCE = "cli"
+_CANCELLATION_REASON_CHARS = 200
+_CANCELLATION_SOURCE_CHARS = 32
 
 # Which run id (if any) the *current thread* is executing under — set by
 # `execute()` for the duration of its `fn()` call. `None` outside any run
 # (e.g. a test calling `dispatch_task` directly).
 _CURRENT_RUN_ID: ContextVar[str | None] = ContextVar("_CURRENT_RUN_ID", default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class CancellationLifecycle:
+    """Typed view of one run record's persisted cancellation lifecycle."""
+
+    requested_at: str | None = None
+    observed_at: str | None = None
+    stopped_at: str | None = None
+    reason: str = ""
+    source: str = ""
+
+    @property
+    def requested(self) -> bool:
+        return self.requested_at is not None
+
+    def to_record(self) -> dict[str, str | None]:
+        return {
+            "requestedAt": self.requested_at,
+            "observedAt": self.observed_at,
+            "stoppedAt": self.stopped_at,
+            "reason": self.reason,
+            "source": self.source,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RunCancellationSignal:
+    """Cross-process cancellation handle whose identity is the persisted run id.
+
+    Each call reads the authoritative run record; the object contains no local
+    event or cached cancellation state. Malformed lifecycle data fails closed:
+    readers stop, but no observation/stopped timestamp is fabricated.
+    """
+
+    run_id: str
+
+    def is_requested(self) -> bool:
+        rec = get_run(self.run_id)
+        if rec is None:
+            return False
+        lifecycle, valid = _cancellation_lifecycle(rec)
+        return not valid or lifecycle.requested
+
+    def observe(self) -> bool:
+        """Record first observation when requested; return whether work must stop."""
+        must_stop = False
+
+        def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
+            nonlocal must_stop
+            runs = _runs_list(doc)
+            for rec in runs:
+                if rec.get("id") != self.run_id:
+                    continue
+                lifecycle, valid = _cancellation_lifecycle(rec)
+                if not valid:
+                    must_stop = True
+                    return None
+                if not lifecycle.requested:
+                    return None
+                must_stop = True
+                if lifecycle.observed_at is not None:
+                    return None
+                observed = CancellationLifecycle(
+                    requested_at=lifecycle.requested_at,
+                    observed_at=_now(),
+                    stopped_at=lifecycle.stopped_at,
+                    reason=lifecycle.reason,
+                    source=lifecycle.source,
+                )
+                _set_cancellation_lifecycle(rec, observed)
+                return {"runs": runs}
+            return None
+
+        _store.read_modify_write(runs_path(), _fn)
+        return must_stop
 
 
 @dataclass
@@ -86,6 +167,72 @@ class RunError(Exception):
 
 def _now() -> str:
     return _dt.datetime.now(_dt.UTC).isoformat()
+
+
+def _valid_timestamp(value: object) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = _dt.datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
+
+
+def _cancellation_lifecycle(
+    rec: dict[str, Any],
+) -> tuple[CancellationLifecycle, bool]:
+    """Parse a lifecycle without mutating legacy records that omit it."""
+    if "cancellation" not in rec:
+        return CancellationLifecycle(), True
+    raw = rec.get("cancellation")
+    if not isinstance(raw, dict):
+        return CancellationLifecycle(), False
+    required = {"requestedAt", "observedAt", "stoppedAt", "reason", "source"}
+    if not required.issubset(raw):
+        return CancellationLifecycle(), False
+    requested_at = raw.get("requestedAt")
+    observed_at = raw.get("observedAt")
+    stopped_at = raw.get("stoppedAt")
+    reason = raw.get("reason")
+    source = raw.get("source")
+    if not all(_valid_timestamp(value) for value in (requested_at, observed_at, stopped_at)):
+        return CancellationLifecycle(), False
+    if not isinstance(reason, str) or len(reason) > _CANCELLATION_REASON_CHARS:
+        return CancellationLifecycle(), False
+    if not isinstance(source, str) or len(source) > _CANCELLATION_SOURCE_CHARS:
+        return CancellationLifecycle(), False
+    if requested_at is None and (observed_at is not None or stopped_at is not None):
+        return CancellationLifecycle(), False
+    if observed_at is None and stopped_at is not None:
+        return CancellationLifecycle(), False
+    timestamps = [
+        _dt.datetime.fromisoformat(value)
+        for value in (requested_at, observed_at, stopped_at)
+        if isinstance(value, str)
+    ]
+    if timestamps != sorted(timestamps):
+        return CancellationLifecycle(), False
+    return (
+        CancellationLifecycle(
+            requested_at=requested_at if isinstance(requested_at, str) else None,
+            observed_at=observed_at if isinstance(observed_at, str) else None,
+            stopped_at=stopped_at if isinstance(stopped_at, str) else None,
+            reason=reason,
+            source=source,
+        ),
+        True,
+    )
+
+
+def _set_cancellation_lifecycle(rec: dict[str, Any], lifecycle: CancellationLifecycle) -> None:
+    """Update known lifecycle fields while preserving forward-compatible keys."""
+    raw = rec.get("cancellation")
+    cancellation = dict(raw) if isinstance(raw, dict) else {}
+    cancellation.update(lifecycle.to_record())
+    rec["cancellation"] = cancellation
 
 
 def runs_path() -> Path:
@@ -138,6 +285,7 @@ def create_run(
         "pids": [],
         # The resolved variable namespace this run was dispatched with.
         "variables": dict(variables) if variables else {},
+        "cancellation": CancellationLifecycle().to_record(),
     }
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any]:
@@ -190,8 +338,29 @@ def _finish_run_transition(
         for r in runs:
             if r.get("id") != run_id:
                 continue
-            if preserve_cancelled and str(r.get("state", "")) == "cancelled":
+            current_state = str(r.get("state", ""))
+            if current_state in _TERMINAL_STATES:
                 return None
+            lifecycle, valid_lifecycle = _cancellation_lifecycle(r)
+            if valid_lifecycle and lifecycle.requested:
+                stopped_at = _now()
+                observed_at = lifecycle.observed_at or stopped_at
+                _set_cancellation_lifecycle(
+                    r,
+                    CancellationLifecycle(
+                        requested_at=lifecycle.requested_at,
+                        observed_at=observed_at,
+                        stopped_at=stopped_at,
+                        reason=lifecycle.reason,
+                        source=lifecycle.source,
+                    ),
+                )
+                r["state"] = "cancelled"
+                r["finishedAt"] = stopped_at
+                r["error"] = "cancelled by operator"
+                if task_ids is not None:
+                    r["taskIds"] = list(task_ids)
+                return {"runs": runs}
             r["state"] = state
             r["finishedAt"] = _now()
             r["error"] = error
@@ -250,6 +419,12 @@ def current_run_id() -> str | None:
     return _CURRENT_RUN_ID.get()
 
 
+def current_cancellation_signal() -> RunCancellationSignal | None:
+    """Return a typed persisted signal for the current ``execute`` call."""
+    run_id = current_run_id()
+    return RunCancellationSignal(run_id) if run_id is not None else None
+
+
 def add_hop_pid(run_id: str, pid: int) -> None:
     """Record a newly-spawned hop subprocess's pid as in-flight for *run_id*.
 
@@ -304,45 +479,77 @@ def remove_hop_pid(run_id: str, pid: int) -> None:
 def cancel_run(run_id: str) -> CancelOutcome:
     """Cancel an in-flight dispatch run (``docket runs cancel <id>``).
 
-    Kills every pid recorded as currently in flight for *run_id* — each
-    hop's whole process *group*, not just the immediate child (see
-    ``edges.adapters.system.kill_process_group``; every hop subprocess
-    starts its own session, so its pid doubles as its group id) — then
-    marks the run terminally ``"cancelled"``, distinct from an ordinary
-    ``"failed"`` invocation.
-
-    Idempotent: a run already in a terminal state
-    (``succeeded``/``failed``/``cancelled``) is left untouched and reported
-    as a no-op, never re-signalled or double-finished. A recorded pid that's
-    already gone by the time this runs (the hop finished on its own between
-    the read and the kill attempt — an inherent, harmless race) is silently
-    skipped by ``kill_process_group`` itself.
+    One locked registry transition chooses request-versus-terminal winner,
+    captures and clears every in-flight pid, and persists the request before
+    any signalling. Queued work is fully stopped in that transition. Running
+    in-process work stays nonterminal until :func:`execute` returns. Repeated,
+    terminal, unknown, and malformed requests are stable no-ops.
     """
-    rec = get_run(run_id)
-    if rec is None:
-        return CancelOutcome(ok=False, message=f"unknown run: {run_id}")
-    state = str(rec.get("state", ""))
-    if state in _TERMINAL_STATES:
-        return CancelOutcome(ok=False, message=f"run {run_id} is already {state}")
+    decision = "unknown"
+    prior_state = ""
+    project = ""
+    pids: list[int] = []
 
-    pids_raw = rec.get("pids")
-    pids = [int(p) for p in pids_raw] if isinstance(pids_raw, list) else []
-    killed = [pid for pid in pids if _sys.kill_process_group(pid)]
-
-    def _clear_pids(doc: dict[str, Any]) -> dict[str, Any] | None:
+    def _request(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal decision, prior_state, project, pids
         runs = _runs_list(doc)
-        for r in runs:
-            if r.get("id") == run_id:
-                r["pids"] = []
-                return {"runs": runs}
+        for rec in runs:
+            if rec.get("id") != run_id:
+                continue
+            prior_state = str(rec.get("state", ""))
+            project = str(rec.get("project", ""))
+            if prior_state in _TERMINAL_STATES:
+                decision = "terminal"
+                return None
+            if prior_state not in {"queued", "running"}:
+                decision = "malformed"
+                return None
+            lifecycle, valid = _cancellation_lifecycle(rec)
+            if not valid:
+                decision = "malformed"
+                return None
+            if lifecycle.requested:
+                decision = "requested"
+                return None
+            pids_raw = rec.get("pids")
+            if isinstance(pids_raw, list):
+                pids = [pid for pid in pids_raw if isinstance(pid, int) and pid > 0]
+            requested_at = _now()
+            stopped_at = requested_at if prior_state == "queued" else None
+            _set_cancellation_lifecycle(
+                rec,
+                CancellationLifecycle(
+                    requested_at=requested_at,
+                    observed_at=stopped_at,
+                    stopped_at=stopped_at,
+                    reason=_CANCELLATION_REASON,
+                    source=_CANCELLATION_SOURCE,
+                ),
+            )
+            rec["pids"] = []
+            if prior_state == "queued":
+                rec["state"] = "cancelled"
+                rec["finishedAt"] = stopped_at
+                rec["error"] = "cancelled by operator"
+            decision = "applied"
+            return {"runs": runs}
         return None
 
-    _store.read_modify_write(runs_path(), _clear_pids)
-    finish_run(run_id, state="cancelled", error="cancelled by operator")
+    _store.read_modify_write(runs_path(), _request)
+    if decision == "unknown":
+        return CancelOutcome(ok=False, message=f"unknown run: {run_id}")
+    if decision == "terminal":
+        return CancelOutcome(ok=False, message=f"run {run_id} is already {prior_state}")
+    if decision == "requested":
+        return CancelOutcome(ok=False, message=f"run {run_id} cancellation already requested")
+    if decision == "malformed":
+        return CancelOutcome(ok=False, message=f"run {run_id} has invalid cancellation state")
+
+    killed = [pid for pid in pids if _sys.kill_process_group(pid)]
     message = (
-        f"cancelled run {run_id} ({len(killed)} process group(s) killed)"
+        f"requested cancellation for run {run_id} ({len(killed)} process group(s) killed)"
         if killed
-        else f"cancelled run {run_id} (nothing in flight to kill)"
+        else f"requested cancellation for run {run_id} (nothing in flight to kill)"
     )
     # Every other privileged action writes an audit entry; `docket runs
     # cancel` matches that. Logged only on an actual cancellation
@@ -352,7 +559,7 @@ def cancel_run(run_id: str) -> CancelOutcome:
     # check above), so the entry records exactly what changed.
     audit_log(
         "runs.cancel",
-        f"run={run_id} project={rec.get('project', '')} was={state} killed={len(killed)}",
+        f"run={run_id} project={project} was={prior_state} killed={len(killed)}",
     )
     return CancelOutcome(ok=True, message=message, killed_pids=killed)
 

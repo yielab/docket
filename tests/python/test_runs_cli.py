@@ -101,13 +101,15 @@ class TestRunsCancelCli:
         assert run_runs("cancel", [rec["id"]]) == 1
         assert _runs.get_run(rec["id"])["state"] == "succeeded"
 
-    def test_cancel_a_running_run_with_no_pids_still_marks_it_cancelled(
-        self, runs_file: Path
-    ) -> None:
+    def test_cancel_a_running_run_with_no_pids_persists_the_request(self, runs_file: Path) -> None:
         rec = _runs.create_run("cli", "demo")
         _runs.mark_running(rec["id"])
         assert run_runs("cancel", [rec["id"]]) == 0
-        assert _runs.get_run(rec["id"])["state"] == "cancelled"
+        requested = _runs.get_run(rec["id"])
+        assert requested is not None
+        assert requested["state"] == "running"
+        assert requested["cancellation"]["requestedAt"] is not None
+        assert requested["cancellation"]["stoppedAt"] is None
 
 
 class TestRunsCancelAuditEntry:
@@ -190,7 +192,10 @@ class TestRunsCommandWiring:
         runner = CliRunner()
         result = runner.invoke(app, ["runs", "cancel", rec["id"]])
         assert result.exit_code == 0
-        assert _runs.get_run(rec["id"])["state"] == "cancelled"
+        requested = _runs.get_run(rec["id"])
+        assert requested is not None
+        assert requested["state"] == "running"
+        assert requested["cancellation"]["requestedAt"] is not None
 
     def test_runs_is_a_top_level_command(self) -> None:
         import typer.main
