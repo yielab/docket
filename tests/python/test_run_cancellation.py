@@ -27,8 +27,11 @@ no production code path currently connects a real pid to them.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -37,6 +40,7 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import runs as _runs
+from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 
 # ── edges.adapters.system.kill_process_group: raw OS mechanics ───────────────
@@ -130,22 +134,209 @@ class TestCancelRun:
         assert outcome.ok is False
         assert "unknown run" in outcome.message
 
-    def test_already_terminal_run_is_a_noop(self) -> None:
+    @pytest.mark.parametrize("terminal_state", ["succeeded", "failed", "cancelled"])
+    def test_already_terminal_run_is_a_noop(self, terminal_state: str) -> None:
         record = _runs.create_run("cli", "myapp")
-        _runs.finish_run(record["id"], state="succeeded", task_ids=[])
+        _runs.finish_run(
+            record["id"],
+            state=terminal_state,  # type: ignore[arg-type]
+            task_ids=[],
+        )
         outcome = _runs.cancel_run(record["id"])
         assert outcome.ok is False
-        assert "already succeeded" in outcome.message
+        assert f"already {terminal_state}" in outcome.message
         # Not double-finished into "cancelled".
-        assert _runs.get_run(record["id"])["state"] == "succeeded"
+        assert _runs.get_run(record["id"])["state"] == terminal_state
 
-    def test_cancel_with_no_pids_still_marks_the_run_cancelled(self) -> None:
+    def test_queued_cancel_is_fully_stopped_in_one_persisted_transition(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+
+        def _add_unknown_field(doc: dict[str, Any]) -> dict[str, Any]:
+            doc["runs"][0]["futureField"] = {"preserve": True}
+            return doc
+
+        _store.read_modify_write(_cfg.RUNS_FILE, _add_unknown_field)
+        outcome = _runs.cancel_run(record["id"])
+
+        assert outcome.ok is True
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        lifecycle = persisted["cancellation"]
+        assert lifecycle["requestedAt"] is not None
+        assert lifecycle["observedAt"] is not None
+        assert lifecycle["stoppedAt"] is not None
+        assert lifecycle["reason"] == "operator request"
+        assert lifecycle["source"] == "cli"
+        assert persisted["futureField"] == {"preserve": True}
+
+    def test_running_cancel_with_no_pids_remains_requested_not_stopped(self) -> None:
         record = _runs.create_run("cli", "myapp")
         _runs.mark_running(record["id"])
         outcome = _runs.cancel_run(record["id"])
         assert outcome.ok is True
         assert outcome.killed_pids == []
-        assert _runs.get_run(record["id"])["state"] == "cancelled"
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "running"
+        assert persisted["finishedAt"] is None
+        assert persisted["cancellation"]["requestedAt"] is not None
+        assert persisted["cancellation"]["observedAt"] is None
+        assert persisted["cancellation"]["stoppedAt"] is None
+
+    def test_repeated_running_request_does_not_resignal_or_reaudit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        _runs.add_hop_pid(record["id"], 4242)
+        killed: list[int] = []
+        audited: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            _sys,
+            "kill_process_group",
+            lambda pid: killed.append(pid) or True,
+        )
+        monkeypatch.setattr(
+            _runs,
+            "audit_log",
+            lambda action, detail: audited.append((action, detail)),
+        )
+
+        first = _runs.cancel_run(record["id"])
+        after_first = _runs.get_run(record["id"])
+        second = _runs.cancel_run(record["id"])
+        after_second = _runs.get_run(record["id"])
+
+        assert first.ok is True
+        assert second.ok is False
+        assert killed == [4242]
+        assert len(audited) == 1
+        assert after_first == after_second
+        assert after_second is not None
+        assert after_second["state"] == "running"
+        assert after_second["cancellation"]["requestedAt"] is not None
+        assert after_second["cancellation"]["observedAt"] is None
+        assert after_second["cancellation"]["stoppedAt"] is None
+
+    def test_terminal_finish_wins_when_it_commits_before_cancel_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        real_read_modify_write = _store.read_modify_write
+        cancel_reached_transition = threading.Event()
+        release_cancel = threading.Event()
+        staged = False
+
+        def _stage_cancel_transition(path: Path, fn: Any) -> dict[str, Any]:
+            nonlocal staged
+            if threading.current_thread().name == "cancel-worker" and not staged:
+                staged = True
+                cancel_reached_transition.set()
+                assert release_cancel.wait(timeout=5)
+            return real_read_modify_write(path, fn)
+
+        monkeypatch.setattr(_store, "read_modify_write", _stage_cancel_transition)
+        outcomes: list[_runs.CancelOutcome] = []
+        worker = threading.Thread(
+            target=lambda: outcomes.append(_runs.cancel_run(record["id"])),
+            name="cancel-worker",
+        )
+        worker.start()
+        try:
+            assert cancel_reached_transition.wait(timeout=5)
+            assert _runs._finish_run_transition(record["id"], state="succeeded") is True
+        finally:
+            release_cancel.set()
+            worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert len(outcomes) == 1
+        assert outcomes[0].ok is False
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "succeeded"
+        assert persisted.get("cancellation", {}).get("requestedAt") is None
+
+    def test_separate_process_request_stays_visible_until_execute_stops(
+        self, tmp_path: Path
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        body_started = threading.Event()
+        release_body = threading.Event()
+
+        def _blocked_body() -> list[Any]:
+            body_started.set()
+            assert release_body.wait(timeout=10)
+            return []
+
+        executor = threading.Thread(
+            target=lambda: _runs.execute(record["id"], _blocked_body),
+            name="run-executor",
+        )
+        executor.start()
+        try:
+            assert body_started.wait(timeout=5)
+            env = os.environ.copy()
+            env["DOCKET_HOME"] = str(tmp_path)
+            env["RUNS_FILE"] = str(_cfg.RUNS_FILE)
+            code = (
+                "import json; from dataclasses import asdict; "
+                "from docket.core.runs import cancel_run; "
+                f"print(json.dumps(asdict(cancel_run({record['id']!r}))))"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", code],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=10,
+            )
+            assert json.loads(completed.stdout)["ok"] is True
+
+            requested = _runs.get_run(record["id"])
+            assert requested is not None
+            assert requested["state"] == "running"
+            assert requested["cancellation"]["requestedAt"] is not None
+            assert requested["cancellation"]["observedAt"] is None
+            assert requested["cancellation"]["stoppedAt"] is None
+        finally:
+            release_body.set()
+            executor.join(timeout=10)
+
+        assert not executor.is_alive()
+        stopped = _runs.get_run(record["id"])
+        assert stopped is not None
+        assert stopped["state"] == "cancelled"
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None
+
+    def test_malformed_lifecycle_fails_closed_without_a_stopped_claim(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        malformed = {
+            "requestedAt": ["not", "a", "timestamp"],
+            "observedAt": None,
+            "stoppedAt": None,
+            "reason": "operator request",
+            "source": "cli",
+        }
+
+        def _corrupt(doc: dict[str, Any]) -> dict[str, Any]:
+            doc["runs"][0]["cancellation"] = malformed
+            return doc
+
+        _store.read_modify_write(_cfg.RUNS_FILE, _corrupt)
+        outcome = _runs.cancel_run(record["id"])
+
+        assert outcome.ok is False
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "running"
+        assert persisted["finishedAt"] is None
+        assert persisted["cancellation"] == malformed
 
     def test_cancel_kills_a_real_recorded_process_group(self, tmp_path: Path) -> None:
         record = _runs.create_run("cli", "myapp")

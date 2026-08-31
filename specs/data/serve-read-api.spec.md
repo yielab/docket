@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 2.8.0
+**Version**: 2.9.0
 **Status**: Stable
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -201,7 +201,14 @@ to one pod.
       "created":    "2026-07-30T02:10:00.123456+00:00",
       "startedAt":  "2026-07-30T02:10:00.200000+00:00",
       "finishedAt": "2026-07-30T02:10:04.500000+00:00",
-      "variables":  {"env": "staging"}
+      "variables":  {"env": "staging"},
+      "cancellation": {
+        "requestedAt": "2026-07-30T02:10:02.000000+00:00",
+        "observedAt":  "2026-07-30T02:10:04.400000+00:00",
+        "stoppedAt":   "2026-07-30T02:10:04.500000+00:00",
+        "reason":      "operator request",
+        "source":      "cli"
+      }
     }
   ]
 }
@@ -210,6 +217,15 @@ to one pod.
 `variables` (added Phase 16 W-4, additive) is the pipeline variable namespace this run was
 resolved against — `{}` for every source except `webhook` (see `POST /dispatch/<project>` below);
 `cancelled` (added Phase 16 W-2, additive) is a run `docket runs cancel <id>` killed in flight.
+
+`cancellation` (added W26-C10a, additive) is the persisted cross-process cancellation signal. Its
+nullable `requestedAt`, `observedAt`, and `stoppedAt` timestamps distinguish an operator request
+from execution observing that request and from execution fully stopping. `reason` and `source` are
+bounded, non-secret context; the lifecycle does not persist a redundant derived phase. Records
+without `cancellation` mean no request. A queued request writes all three timestamps and terminal
+`cancelled` in one atomic transition because no body started. A running request writes
+`requestedAt` once and remains nonterminal until its owning `execute` call observes and stops;
+observation and stop are monotonic and idempotent.
 
 The terminal state reflects the returned dispatch result, not merely whether the dispatcher
 raised. After one ordered fold over the returned result list, any item whose `status` is `failed`
@@ -487,6 +503,13 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   `source` MUST be
   one of `cli | webhook | schedule | sweep | mcp` (`mcp` added Phase 18 L-3 — `docket mcp serve`'s
   `dispatch` tool).
+- A cancellation request and a competing terminal transition MUST choose one winner in one
+  conditional registry read-modify-write. A queued winner is immediately `cancelled`; a running
+  winner remains `running` with only `cancellation.requestedAt` populated until `execute` records
+  observation and stop. Repeated requests MUST NOT re-signal or re-audit. Succeeded, failed, and
+  cancelled records are stable no-ops. Malformed cancellation lifecycle data MUST fail closed
+  without fabricating `observedAt`, `stoppedAt`, or a terminal state, and unrelated run fields MUST
+  survive every lifecycle transition.
 - A normally returned dispatch result MUST make the run `failed` if any returned task has
   `status="failed"`, preserve every returned task id in order, and write the bounded safe summary
   described under `GET /runs`; `done`, `waiting_approval`, and `blocked` MUST NOT independently fail
@@ -563,6 +586,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.9.0 — 2026-08-31
+
+- W26-C10a specifies one persisted cancellation identity per run. The additive `cancellation`
+  object records request, observation, and full-stop timestamps; queued work stops atomically,
+  running work remains visibly requested until its owning executor returns, and cancellation races
+  terminal completion through one conditional registry transition. Existing records without the
+  object remain valid and terminal/repeated requests are stable no-ops.
 
 ### 2.8.0 — 2026-08-30
 

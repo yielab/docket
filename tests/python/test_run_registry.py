@@ -49,6 +49,13 @@ class TestCreateRun:
         assert rec["error"] == ""
         assert rec["startedAt"] is None
         assert rec["finishedAt"] is None
+        assert rec["cancellation"] == {
+            "requestedAt": None,
+            "observedAt": None,
+            "stoppedAt": None,
+            "reason": "",
+            "source": "",
+        }
 
     def test_create_run_persists(self, runs_file: Path) -> None:
         rec = _runs.create_run("webhook", "demo")
