@@ -189,8 +189,8 @@ contention boundaries live once in `TODO.md`.
 | W26-C0 | One public release source/commit lineage | Integrator-only; external branch setting requires maintainer approval |
 | W26-C1 | Clean configuration reaches the first governed turn | Owns provider/onboarding path; independent of release and governance files |
 | W26-C2 | Canonical installable `docket` wheel/sdist | Owns root packaging; predecessor to C3/C5 |
-| W26-C3 | Immutable, checksummed release artifacts | Done (`0251972`, `5bb106a`); tagged package assets are verified before install/publish |
-| W26-C4 | Clean-install-to-first-turn CI release oracle | Ready after C1–C3; owns a new isolated acceptance fixture |
+| W26-C3 | Immutable, checksummed release artifacts | Implementation landed (`0251972`, `5bb106a`); closure blocked by deterministic smoke |
+| W26-C4 | Clean-install-to-first-turn CI release oracle | After C1–C3; blocked while C3 closure remains open |
 | W26-C5 | Non-overlapping, documented runtime distribution | After C2 and D-28; owns runtime package boundary |
 | W26-C6 | Atomic, durable audit append | Owns audit JSONL/rotation path; no approval-state edits |
 | W26-C7 | Compare-and-set approval resolution | Owns approval state/functions; consumes store/audit unchanged |
@@ -200,7 +200,7 @@ contention boundaries live once in `TODO.md`.
 | W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
 | W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
 | W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; owns whole-path oracle and cancellation wording |
-| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C4; integrator-only truth pass |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C3+C4; integrator-only truth pass |
 
 ### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
 
@@ -2588,15 +2588,16 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 
 ### Changelog
 
-- **2026-08-31 (Wave 26 C3 accepted) — tagged release artifacts are immutable and verified before
-  installation or publication.** The release workflow builds and clean-installs the exact wheel and
+- **2026-08-31 (Wave 26 C3 closure held) — tagged release artifacts are implemented and verified,
+  but the required deterministic smoke is failing.** The release workflow builds and clean-installs the exact wheel and
   sdist, emits SHA-256 verification data and an SPDX SBOM, requests build provenance, and separates
   protected publication from artifact construction (`0251972`, `5bb106a`). The remote installer
   rejects tampered bytes before extraction, while Homebrew uses the same versioned asset with a real
-  checksum and Apache-2.0 metadata. Commit-level closure passes 2,442 tests with five
+  checksum and Apache-2.0 metadata. The `af777ba` closure attempt passes 2,442 tests with five
   contract-labelled skips, Ruff/format, strict mypy over 74 source files, ShellCheck, workflow YAML,
-  24 specs, 18 goldens, metrics, clean dependency-floor artifact installs, tamper rejection, and
-  deterministic smoke. C4 is now ready; C11 waits only on C4.
+  24 specs, 18 goldens, metrics, clean dependency-floor artifact installs, and tamper rejection.
+  Deterministic smoke fails reproducibly at implementer verification before the approval pause, so
+  C3 remains open and C4/C11 remain blocked pending bounded diagnosis.
 
 - **2026-08-31 (Wave 26 C0 accepted) — `main` is now the single public/default release
   lineage.** The maintainer authorized promotion of the current `platform` history. GitHub already
