@@ -1259,7 +1259,7 @@ not implementation-complete.
 
 ### W26-C10a — persist one truthful run-cancellation signal
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Decision / deterministic trigger:** D-30 governs this card. `cancel_run` currently performs an
 unlocked read, kills captured PIDs, clears them in a second transition, and immediately writes the
