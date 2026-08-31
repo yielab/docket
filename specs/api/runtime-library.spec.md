@@ -46,9 +46,10 @@ Only these names from `docket_runtime` are public: `Runtime`, `Tool`,
 execution method and delegates to the preserved dispatcher chokepoint.
 
 `Runtime(approval_stub=...)` is an embedding/test seam. It receives the token
-created by the real approval store and returns whether to grant it; normal
-approval audit and trace records still occur. It is not a second driver, tool
-executor, or policy engine.
+created by the real approval store: a true return grants it and a false return
+denies it through that store without waiting. Normal approval audit and trace
+records still occur. It is not a second driver, tool executor, or policy
+engine.
 
 ### Example
 

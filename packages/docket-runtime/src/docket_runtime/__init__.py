@@ -61,6 +61,8 @@ class Runtime:
         def respond(token: str) -> object:
             if self.approval_stub is not None and self.approval_stub(token):
                 _approval.approval_grant(token, channel="runtime")
+            else:
+                _approval.approval_deny(token, channel="runtime")
             return original(token)
 
         _approval.wait_for_approval = respond

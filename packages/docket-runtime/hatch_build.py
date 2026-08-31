@@ -9,6 +9,7 @@ parent directory.
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -61,7 +62,11 @@ class CustomBuildHook(BuildHookInterface):
         if not source.is_dir():
             source = root.parents[1] / "src" / "docket"
 
-        staged = Path(tempfile.mkdtemp(prefix="docket-runtime-build-"))
+        staged = Path(
+            tempfile.mkdtemp(
+                prefix="docket-runtime-build-", dir=os.environ.get("DOCKET_RUNTIME_BUILD_TMPDIR")
+            )
+        )
         package = staged / "docket_runtime" / "_internal" / "docket"
         for relative in _RUNTIME_FILES:
             original = source / relative
@@ -88,6 +93,6 @@ class CustomBuildHook(BuildHookInterface):
         if not isinstance(force_include, dict):
             return
         for path in force_include:
-            staged = Path(path).parents[2]
+            staged = Path(path).parents[1]
             if staged.name.startswith("docket-runtime-build-"):
                 shutil.rmtree(staged, ignore_errors=True)

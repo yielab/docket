@@ -53,6 +53,14 @@ result = runtime.dispatch(ToolCall("call-1", "fake", "{}"), ToolContext(agent_id
 assert result.ok and result.content == "ran"
 assert (home / "audit.log").is_file()
 assert list((home / "traces").rglob("*.jsonl"))
+assert "approval.grant" in (home / "audit.log").read_text()
+
+denied_runtime = Runtime(approval_stub=lambda token: False)
+denied_runtime.register(Tool("deny-fake", "external fake", {"type": "object"}, lambda args, ctx: ToolOutcome(True, "ran")))
+denied = denied_runtime.dispatch(ToolCall("call-2", "deny-fake", "{}"), ToolContext(agent_id="embed", project="demo"))
+assert not denied.ok and denied.denial_kind == "approval_denied"
+assert "approval.deny" in (home / "audit.log").read_text()
+assert any("approval_denied" in path.read_text() for path in (home / "traces").rglob("*.jsonl"))
 """
 
 
@@ -61,16 +69,20 @@ def test_runtime_artifacts_are_disjoint_rebuildable_and_embed_without_cli(tmp_pa
     dist = tmp_path / "dist"
     root_dist = tmp_path / "root-dist"
     outside = tmp_path / "outside-source"
+    build_tmp = tmp_path / "runtime-build-tmp"
     outside.mkdir()
+    build_tmp.mkdir()
     env = {
         **os.environ,
         "DOCKET_HOME": str(tmp_path / "docket-home"),
         "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", str(tmp_path / "uv-cache")),
+        "DOCKET_RUNTIME_BUILD_TMPDIR": str(build_tmp),
         "PYTHONPATH": "",
     }
 
     # No --wheel: this verifies the sdist can rebuild its private runtime copy.
     _run("uv", "build", "--out-dir", str(dist), cwd=RUNTIME, env=env)
+    assert not list(build_tmp.glob("docket-runtime-build-*"))
     _run("uv", "build", "--wheel", "--out-dir", str(root_dist), cwd=ROOT, env=env)
     runtime_wheel = next(dist.glob("docket_runtime-*.whl"))
     runtime_sdist = next(dist.glob("docket_runtime-*.tar.gz"))
