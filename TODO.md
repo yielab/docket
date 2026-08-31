@@ -1323,7 +1323,7 @@ CLI/read compatibility, full pytest/smoke, static, spec, golden, and metrics gat
 
 ### W26-C10b — stop the owned loop at every side-effect boundary
 
-**Status:** TODO (W26-C10a satisfied) · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** after C10a, the persisted signal is truthful but the in-process
 `DocketDriver` still does not consume it. `run_agent_turn` can start later backend requests, wait on
