@@ -873,7 +873,7 @@ metrics, deterministic smoke, and `git diff --check` pass.
 
 ### W26-C2 — provide one canonical installable CLI
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @terra-c2
 
 **Deterministic trigger:** root `pyproject.toml` exposes only `docket-py` while all primary docs use
 `docket`; installed metadata lacks the expected license/project identity, and releases publish no
@@ -1010,7 +1010,7 @@ owns public prose. External adapters remain Wave 28, not this card.
 
 ### W26-C6 — make audit append and rotation one atomic chain transition
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @terra-c6
 
 **Deterministic trigger:** direct inspection of `core/audit.py::audit_log` shows rotation, current
 head calculation, and append occur without one inter-process critical section. Parallel workers
@@ -1095,7 +1095,7 @@ proves a separate card is required.
 
 ### W26-C8 — allocate pod resources without collisions
 
-**Status:** TODO · **Size:** S · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-30) · **Size:** S · **Owner:** @terra-c8
 
 **Deterministic trigger:** `allocate_pod_resources` loads the registry, computes the next range, and
 later writes under a separate lock. Concurrent CLI or threaded `POST /pods` provisioning can assign
