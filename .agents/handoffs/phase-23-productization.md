@@ -1,7 +1,7 @@
 # Phase 23 coordinator handoff — product truth and ecosystem proof
 
 This is the bounded resumption packet for Phase 23. It does not duplicate card bodies. `TODO.md`
-owns executable card detail; `ROADMAP.md` owns D-25–D-29 and later-wave triggers; current-state
+owns executable card detail; `ROADMAP.md` owns D-25–D-30 and later-wave triggers; current-state
 specs own shipped behavior.
 
 ## Current control state
@@ -9,8 +9,9 @@ specs own shipped behavior.
 - Branch: `platform`.
 - Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
   W25-C7, and the authorized live acceptance are DONE.
-- Ready pool: W26-C10 only. W26-C1, C2, C5-C9 are complete. Extract exactly one subcard after
-  splitting C10 and apply the conflict graph below.
+- Ready pool: W26-C10a only. The C10 parent is planning-complete; C10b waits on C10a and C10c waits
+  on C10b. W26-C1, C2, C5-C9 are complete. Extract C10a before any claim and apply D-30 plus the
+  conflict graph below.
 - W26-C0 remains blocked on the maintainer's release-source decision. C3, C4, and C11 retain their
   explicit dependency blockers.
 - Pre-plan dirty evidence: 22 modified paths across Wave 25 runtime, security, specs, smoke, and
@@ -87,7 +88,7 @@ W25-C11 -> W25-C7 -> Wave 25 integration/close
                          +-> W26-C9 atomic conversations
                          +-> W26-C10a -> C10b -> C10c cancellation
 
-W26-C0..C10 -> W26-C11 public truth/integration -> Wave 27 measurement
+W26-C0 + C3 + C4 + C10c -> W26-C11 public truth/integration -> Wave 27 measurement
 Wave 27 evidence -> Wave 28 two-runtime enforcement proof -> Wave 29 adoption evidence
 ```
 
@@ -147,7 +148,7 @@ those templates in prompts or handoffs. Phase 23 adds only these constraints:
 | Approval transition admits contradictory winners | reproduced live | `core/approval.py::approval_grant/deny`; grant/deny barrier dry run | W26-C7 |
 | Resource allocation and rollback cross attempts | barrier + rollback acceptance | `pod_provisioning.py`; `f9c9fd5` | closed by W26-C8 |
 | Conversation hop touch is load+save | direct static | `core/dispatch.py::_persist_hop`, `core/conversations.py` | W26-C9 |
-| In-process cancel does not stop the loop | direct static | `core/runs.py::cancel_run`, `DocketDriver.run_turn` | W26-C10 |
+| In-process cancel does not stop the loop | direct static | `core/runs.py::cancel_run`, `DocketDriver.run_turn` | W26-C10a → C10b → C10c |
 | Reviewer marker placement and private-boundary canary | accepted live evidence | `/tmp/docket-w25-c7-live-L8nkOm`; W25-C7/C11 shipped evidence | closed |
 
 This ledger is an index, not a substitute for reproducing the selected card's RED case.

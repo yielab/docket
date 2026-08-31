@@ -1215,8 +1215,8 @@ previews remain bounded.
 
 ### W26-C10 — make run cancellation cooperative and truthful
 
-**Status:** TODO (split before claim) · **Size:** L (split before claim) ·
-**Owner:** unassigned
+**Status:** DONE (scope split 2026-08-31; no product behavior claimed) · **Size:** L → M/M/M ·
+**Owner:** coordinator
 
 **Deterministic trigger:** `DocketDriver` ignores `on_spawn` because the turn is in-process, while
 `cancel_run` kills only recorded child PIDs and marks state cancelled. The active model/tool loop
@@ -1230,12 +1230,13 @@ effect after cancellation and document the bounded behavior of an already-blocki
 subprocess-only workaround, new async framework, state-only cancellation, or loss of completed
 session/trace/audit evidence.
 
-**Required split before claim:** C10a owns the typed cancellation contract and run registry signal;
-C10b owns loop/driver checkpoints and approval/tool behavior after C10a lands; C10c owns truthful
-CLI/API/spec/docs wording plus deterministic whole-path acceptance. They are sequential because all
-share the contract, but other W26 cards may run beside them.
+**Split result:** W26-C10a owns the persisted signal lifecycle and terminal CAS; W26-C10b consumes
+that exact contract through driver/loop/approval/tool checkpoints; W26-C10c reconciles task/run
+outcomes and public surfaces with a cross-process whole-path oracle. No child is claimed by this
+planning change. The three children are sequential because each consumes the prior contract.
 
-**Live path / files:** `runs.cancel` CLI/HTTP → `core/runs.py` registry/signal →
+**Live path / files:** `docket runs cancel` CLI plus existing GET run readers →
+`core/runs.py` registry/signal →
 `core/dispatch.py` → `core/runtime_driver.py` → `DocketDriver.run_turn` →
 `agent_loop.run_agent_turn` before model transport, approval wait, and tool dispatch → final
 run/task/session/trace reconciliation. Own the agent-loop/pod-dispatch/serve cancellation clauses
@@ -1253,12 +1254,184 @@ run/task outcomes and public wording distinguish requested, observed, and fully 
 tool-call/result pair is persisted. Run split-card focused REDs, concurrency/repetition tests,
 serve/CLI/golden contracts, Ruff/mypy, then full pytest/specs/metrics/smoke.
 
-**Contention:** overlaps current dirty `runs.py`, `agent_loop.py`, driver tests and specs. It starts
-only after Wave 25 integration and never in parallel with another loop/session/budget card.
+**Contention:** superseded by the exact child boundaries below. This parent is planning-complete,
+not implementation-complete.
+
+### W26-C10a — persist one truthful run-cancellation signal
+
+**Status:** TODO · **Size:** M · **Owner:** unassigned
+
+**Decision / deterministic trigger:** D-30 governs this card. `cancel_run` currently performs an
+unlocked read, kills captured PIDs, clears them in a second transition, and immediately writes the
+terminal state `cancelled`. For the shipped in-process driver that terminal label is false evidence:
+the backend/tool thread may still be running. A thread-only `Event` would also make a separate
+`docket runs cancel` process invisible to the running dispatcher.
+
+**Goal:** establish one typed, cross-process cancellation identity per run and one atomic registry
+lifecycle that distinguishes request, observation, and full stop while preserving queued-run and
+terminal-race behavior.
+
+**Non-goals:** no loop/driver checkpoints, approval/tool changes, task-status changes, CLI wording,
+new HTTP mutation endpoint, unsafe thread termination, new async framework, or generic signal bus.
+
+**Live path / ownership:** `core/runs.py` functions `create_run`, `execute`, `cancel_run`,
+`_finish_run_transition`, and `current_run_id`, plus a small typed signal handle in that module;
+`edges/store.py` remains the
+sole JSON writer and is consumed unchanged. Own focused registry/cancellation tests in
+`tests/python/test_run_registry.py`, `test_run_cancellation.py`, and
+`test_dispatch_run_records.py`; own only the run-record cancellation lifecycle/schema clauses in
+`specs/data/serve-read-api.spec.md`. Do not edit dispatch, driver, loop, approval, tools, CLI,
+serve handlers, public docs, central rollups, or runtime packaging.
+
+**Persisted contract:** the run id is the signal identity. A typed handle reads the authoritative
+run record at each checkpoint; no process-local event is sufficient. Add one forward-compatible
+`cancellation` object with nullable `requestedAt`, `observedAt`, and `stoppedAt` timestamps plus a
+bounded non-secret reason/source. Do not persist a redundant derived phase. A queued request sets
+all three timestamps and terminal `cancelled` in one RMW because no work started. A running request
+sets `requestedAt` once and leaves the run nonterminal until execution observes/stops. Observation
+and stop are monotonic/idempotent. Existing records without the object mean “not requested.”
+
+**RED tests:** (1) barrier `cancel_run` against `_finish_run_transition` and prove the current
+separate read/clear/finish path can report cancellation after success or lose the terminal winner;
+(2) start `runs.execute` in one process/thread and issue cancellation from a separate Python/CLI
+process sharing only `DOCKET_HOME`, proving a local event cannot be the authority; (3) cancel a
+running run with no PIDs and assert current state claims fully `cancelled` before the blocked body
+returns. Include unknown, queued, already-requested, and succeeded/failed/cancelled fixtures.
+
+**Acceptance / oracles:** one conditional store RMW chooses request-versus-terminal winner and
+captures the PIDs to signal; exactly one first request audits, repeated requests are idempotent and
+never re-kill/re-audit; queued cancellation prevents `execute` from invoking its body and is fully
+stopped immediately; running cancellation remains visibly requested until `execute` observes it;
+if request wins, later success/failure folding finalizes `cancelled` rather than overwriting it, and
+if success/failure wins, cancellation is a stable no-op. Malformed lifecycle data fails closed
+without fabricating a stopped claim. Permissions and unrelated/unknown run fields remain intact.
+
+**Validation:** focused repeated command:
+`uv run pytest -q tests/python/test_run_registry.py tests/python/test_run_cancellation.py
+tests/python/test_dispatch_run_records.py`; then affected CLI/read-API compatibility tests,
+Ruff/format, strict mypy, spec validation, and full pytest/goldens/metrics/smoke before handoff.
+
+**Dependency / contention:** ready now. This card exclusively owns `runs.py` and the run-record
+lifecycle spec/tests. C10b starts only after its commit lands and may consume but not redesign the
+signal. No parallel loop/session/budget card may touch the same run ContextVar or registry.
+
+### W26-C10b — stop the owned loop at every side-effect boundary
+
+**Status:** BLOCKED (needs W26-C10a) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** after C10a, the persisted signal is truthful but the in-process
+`DocketDriver` still does not consume it. `run_agent_turn` can start later backend requests, wait on
+an approval, or call a tool handler after cancellation was requested.
+
+**Goal:** carry C10a's one signal identity through dispatch → driver → agent loop and cooperatively
+stop before every not-yet-started model transport, approval wait continuation, and tool handler,
+while retaining already-completed atomic assistant/tool units.
+
+**Non-goals:** no public CLI/API/docs changes, new cancellation lifecycle fields, new task-status
+vocabulary, unsafe interruption of an already-blocking HTTP request or tool handler, subprocess-only
+fallback, second driver, async rewrite, or bypass around `core/tools.py::dispatch_tool`.
+
+**Live path / ownership:** exact production call in `core/dispatch.py::_execute_unit` →
+`core/runtime_driver.py::{RuntimeDriver,TurnResult,FailureKind}` →
+`edges/adapters/docket_runtime.py::DocketDriver.run_turn` →
+`core/agent_loop.py::run_agent_turn` → `core/tools.py::dispatch_tool` →
+`core/approval.py::wait_for_approval`. Own the narrowly required cancellation callback on
+`ToolContext`, the `run_cancelled` result/failure/stop vocabulary, and focused tests in
+`test_agent_loop.py`, `test_runtime_driver.py`, `test_approval_gated_dispatch.py`,
+`test_run_cancellation.py`, and exact neighboring dispatch tests. Own cancellation clauses in
+`specs/functional/agent-loop.spec.md` and `security-gates.spec.md`. Consume C10a `runs.py` APIs;
+do not redesign its persisted shape. Do not edit CLI/serve/public docs, central rollups, unrelated
+dispatch state-machine code, session storage primitives, audit implementation, or runtime facade.
+
+**RED tests:** use barrier recording backends at (a) compaction transport and (b) ordinary task
+transport, an approval wait, and a recording tool handler. Request cancellation, release the block,
+and show current code starts the next request, accepts a granted token, or invokes the handler.
+Add a model response containing multiple tool calls and cancel between calls to expose partial
+execution/history risk. Record backend-call ordinal, signal checkpoint, handler count, approval
+state, session bytes, and trace events.
+
+**Acceptance / oracles:** the same typed signal reaches parallel worker context and driver/loop;
+checkpoints run before every compaction/task/finalization backend call, immediately after each
+backend return, before and after approval wait, immediately before each handler, and after an
+already-running handler returns. A request already blocking may finish, but its post-cancel response
+is discarded, no tool call from it executes, and only measured usage explicitly promised by the
+owning session contract may persist. Cancellation during approval conditionally denies the pending
+token and cannot execute after a concurrent grant; cancellation during a multi-call batch produces
+a complete non-orphan assistant/tool-result unit for work already admitted and explicit cancelled
+results for the remainder. Cancellation during an already-running handler lets that handler finish,
+persists its complete unit, then stops before another handler/backend call. No retry treats
+`run_cancelled` as transient. Existing non-run embedding callers with no signal remain unchanged.
+
+**Validation:** repeat focused cancellation node ids at least 20 times, then run agent-loop,
+runtime-driver, approval/tool, dispatch/parallel, session atomicity, and runtime-package-boundary
+tests; Ruff/format, strict mypy, both owning specs, full pytest, goldens, metrics, and deterministic
+smoke. The artifact boundary must prove the optional signal did not add a CLI/control-plane import
+to `docket-runtime`.
+
+**Dependency / contention:** blocked on the accepted C10a contract. Owns the loop/driver/tool path
+serially and cannot overlap another agent-loop, session, approval, tool-dispatch, or runtime-package
+card. C10c starts only after these typed outcomes and checkpoints land.
+
+### W26-C10c — reconcile cancelled task/run truth through public surfaces
+
+**Status:** BLOCKED (needs W26-C10b) · **Size:** M · **Owner:** unassigned
+
+**Deterministic trigger:** C10b can stop the owned loop, but current dispatch maps every failed hop
+through ordinary failure semantics and current CLI/docs say `cancel` immediately kills/marks the
+run. Public run/task records cannot yet distinguish requested, observed, and stopped cancellation.
+
+**Goal:** fold C10b's typed cancellation outcome into durable task/run reconciliation, render the
+C10a lifecycle truthfully through existing CLI and read APIs, and prove the complete path with one
+cross-process public cancellation oracle.
+
+**Non-goals:** no new POST cancellation API, dashboard, websocket/streaming surface, signal redesign,
+new loop checkpoints, transport abortion claim, cancellation of arbitrary non-run library calls,
+or unrelated task-state refactor.
+
+**Live path / ownership:** C10b outcome at the narrow `core/dispatch.py` hop/task reconciliation →
+C10a `core/runs.py::execute` finalization → `cli/_runs.py` list/show/cancel and existing
+`serve.py` GET `/runs`/`/runs/<id>` readers. Own the additive task status `cancelled` from
+`TaskResult` through the existing task registry so a cooperatively stopped hop is not mislabeled
+`failed`; preserve every other task shape. Own
+`tests/python/test_cooperative_run_cancellation.py` as the whole-path oracle plus focused
+`test_runs_cli.py`, `test_dispatch_run_records.py`, `test_dispatch.py`, and serve read tests. Own
+the cancellation clauses/version/changelog in `pod-dispatch.spec.md`, `serve-read-api.spec.md`,
+`cli-interface.spec.md`, and `cli-json-shapes.spec.md`, plus `docs/commands.md`, `docs/DOCKET.md`,
+and `docs/WORKFLOW-GUIDE.md`. README/spec index/ROADMAP/TODO/metrics remain integrator-owned.
+
+**RED test:** run a real `runs.execute` + production `DocketDriver` path against a recording
+loopback backend blocked on its first response; from a separate subprocess invoke the installed
+`docket runs cancel <id>` against the same `DOCKET_HOME`, then release the backend. Current public
+command immediately claims terminal cancellation while the returned tool call still executes.
+Add approval-wait and already-running-handler variants, repeated cancel, queued cancel, and a
+finish-versus-request barrier. Capture only bounded counters/state/timestamps—never model/tool text.
+
+**Acceptance / oracles:** running cancel output says the request was recorded and whether process
+groups were signalled; it never says fully stopped until `stoppedAt` exists. `runs list/show` text
+and JSON plus existing authenticated GET readers expose the additive lifecycle consistently; no new
+mutation endpoint appears. The blocked-backend result is discarded, handler count remains zero,
+task/run become durably cancelled only after observation/stop, success cannot overwrite them, and
+audit contains one bounded request while trace contains observed/stopped evidence without secrets.
+The approval variant denies/no-ops atomically and never runs its handler. The already-running-handler variant
+finishes one complete assistant/tool unit, starts no subsequent side effect, and ends cancelled.
+Queued cancellation runs no dispatch body. Repeated cancel is byte-stable/idempotent. Public docs
+state that already-running HTTP/tool work cannot be forcibly interrupted and may finish before its
+result is discarded or the run is fully stopped.
+
+**Validation:** run the whole-path oracle repeatedly with unique `DOCKET_HOME`, temp root, and
+loopback port; focused run/dispatch/loop/approval/CLI/serve tests; CLI text/JSON and golden parity;
+documentation command/link scans; Ruff/format, strict mypy, all four owning specs, runtime artifact
+boundary, full pytest, metrics, and deterministic smoke. The integrator then updates central
+rollups and unblocks C11 only if C0-C10 acceptance is complete.
+
+**Dependency / contention:** blocked on C10b and serial with all run/dispatch/CLI cancellation work.
+It owns final public truth but not central rollups. It cannot run in parallel with C11; C11 consumes
+its accepted wording and remains last.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** BLOCKED (needs W26-C0–C10 acceptance) · **Size:** M · **Owner:** integrator only
+**Status:** BLOCKED (needs W26-C0, C3, C4, and C10c; C1/C2/C5-C9 done) · **Size:** M ·
+**Owner:** integrator only
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,
 `docket add --from` examples, no-op `DEBUG=1` guidance, invalid Homebrew claims, overbroad runtime

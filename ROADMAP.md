@@ -37,7 +37,7 @@ commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 26 ready pool: C1, C2, C6–C10; C0 awaits the maintainer's release-source decision |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — W26-C10a is ready after the required cancellation split; C0 awaits the maintainer's release-source decision |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -196,8 +196,11 @@ contention boundaries live once in `TODO.md`.
 | W26-C7 | Compare-and-set approval resolution | Owns approval state/functions; consumes store/audit unchanged |
 | W26-C8 | Collision-free pod resource allocation | Owns allocation functions, not generic store code |
 | W26-C9 | Lost-update-free conversation mutation | Owns conversation mutation and one narrow dispatch call site |
-| W26-C10 | Cooperative, truthful run cancellation | Owns run/driver cancellation seam; no status-only claim |
-| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C0–C10; integrator-only truth pass |
+| W26-C10 | Cancellation scope split only | Planning-complete; superseded by C10a → C10b → C10c |
+| W26-C10a | Persisted cancellation request/observe/stop lifecycle | Ready; owns `runs.py` and run-record schema only |
+| W26-C10b | Cooperative driver/loop/approval/tool checkpoints | After C10a; serial owner of loop/tool path |
+| W26-C10c | Durable task/run reconciliation and truthful public surfaces | After C10b; owns whole-path oracle and cancellation wording |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C0, C3, C4, and C10c; integrator-only truth pass |
 
 ### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
 
@@ -656,6 +659,7 @@ address exactly those.
 | D-27 | When may Docket claim that it governs an external runtime? | Wave 28 | **Only when every relevant mutation/exec action in the reference fixture is forced through a Docket-owned execution envelope and the same policy, approval, budget, trace, and audit semantics are observed.** Merely launching, importing, coordinating, or offering Docket tools beside an external runtime is not governance if native bypass tools remain. Prove one coding runtime and one general framework before making a neutrality claim; do not build a plugin framework before the second caller exists. |
 | D-28 | Does D-21's packaging-only ruling permit correcting the overlapping `docket-runtime` wheel and adding a facade? | W26-C5 | **Yes, narrowly.** Two independently installable distributions may not own the same files. A non-overlapping package topology, wheel+sdist support, and the smallest versioned facade needed by a real embedding example are correctness fixes to the package split, not speculative runtime features. Internal modules remain private unless the facade exports them; adapters and new extension APIs still need real callers under D-27. |
 | D-29 | How is Phase 23 delivered by simultaneous agents without duplicating context or corrupting central state? | Phase 23 execution | **One coordinator plus as many non-contending worker lanes as the environment supports.** Each card has one owner, isolated worktree, unique `DOCKET_HOME`/temp/ports, exact allowed paths/functions, and a delta-only evidence handoff. `ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`, release rollups, and mutable live endpoints are integrator-owned. Workers load the snapshot, one extracted card, one named decision, the owning spec section/tests, and the live callers—never the planning corpus or another worker's raw conversation. |
+| D-30 | What does `cancelled` mean for an in-process run that a separate CLI process can request but cannot forcibly interrupt? | W26-C10a–C10c | **Cancellation is a persisted lifecycle, not a process-local event or an immediate stop claim.** The run id is the signal identity and its additive record distinguishes `requestedAt`, `observedAt`, and `stoppedAt`. A queued request is fully stopped atomically because no body ran. A running request remains visibly in flight until the owned executor observes it and reaches a safe stop; if the request wins the registry CAS, later success/failure cannot overwrite cancellation. Checkpoints prevent every not-yet-started model request, approval continuation, and tool handler. A cooperatively stopped task uses the additive status `cancelled`, never ordinary `failed`. An HTTP request or tool handler already executing may finish because Python threads are not killed; its result is either discarded before any next side effect or retained only as a complete assistant/tool-result unit, then the run stops. The existing CLI is the mutation surface; Wave 26 adds no POST cancellation API, event bus, async runtime, or unsafe thread kill. |
 
 ---
 
