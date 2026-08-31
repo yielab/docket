@@ -251,6 +251,37 @@ class TestAtomicAuditTransition:
         assert result.status == "failed"
         assert _audit.read_audit() == []
 
+    def test_close_failure_after_the_stream_closed_rolls_back_the_claimed_event(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A close can report failure after its bytes already reached disk."""
+        assert _audit.audit_log("keys.add", "FIRST").status == "written"
+        real_open = Path.open
+
+        class CloseAfterClose:
+            def __init__(self, wrapped: object) -> None:
+                self._wrapped = wrapped
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self._wrapped, name)
+
+            def close(self) -> None:
+                self._wrapped.close()  # type: ignore[attr-defined]
+                raise OSError("injected close failure after close")
+
+        def fail_close(self: Path, mode: str = "r", *args: object, **kwargs: object) -> object:
+            opened = real_open(self, mode, *args, **kwargs)
+            if self == audit_home / "audit.log" and mode == "a+":
+                return CloseAfterClose(opened)
+            return opened
+
+        monkeypatch.setattr(Path, "open", fail_close, raising=True)
+        result = _audit.audit_log("keys.add", "FALSE_EVENT")
+
+        assert result.status == "failed"
+        assert [entry["detail"] for entry in _audit.read_audit()] == ["FIRST"]
+        assert _audit.verify_chain().break_at is None
+
     def test_append_failure_after_rotation_recovers_from_the_backup_head(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -239,22 +239,20 @@ def _append_entry(logf: Path, encoded: str) -> bool:
         os.chmod(logf, 0o600)
         _rotation_marker_path(logf).unlink(missing_ok=True)
         return True
-    except OSError:
+    except (OSError, ValueError):
         # Best effort applies to failure reporting too: preserve the exact
         # pre-transition bytes whenever the filesystem permits it.
         if stream is not None:
-            with suppress(OSError):
-                stream.seek(original_size)
-                stream.truncate(original_size)
-                stream.flush()
-                os.fsync(stream.fileno())
-            with suppress(OSError):
+            # A close may fail after closing the underlying descriptor. Do
+            # not use this possibly-closed object for rollback; close it best
+            # effort, then reopen the durable path below.
+            with suppress(OSError, ValueError):
                 stream.close()
-        elif existed:
-            # A close or permission-restoration failure happens after the
-            # stream was closed; reopen solely to remove the just-appended
-            # bytes before reporting this transition as failed.
-            with suppress(OSError), logf.open("r+", encoding="utf-8") as rollback:
+        if existed:
+            # Reopen even when ``stream`` is non-None: a failing close can
+            # have closed it already, and only this fresh handle can reliably
+            # restore the pre-transition length.
+            with suppress(OSError, ValueError), logf.open("r+", encoding="utf-8") as rollback:
                 rollback.truncate(original_size)
                 rollback.flush()
                 os.fsync(rollback.fileno())
