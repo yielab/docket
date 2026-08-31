@@ -1391,7 +1391,7 @@ nodes pass 50/50 repeated runs; production driver binding, approval/tool, runtim
 
 ### W26-C10c — reconcile cancelled task/run truth through public surfaces
 
-**Status:** READY (C10b accepted 2026-08-31) · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** C10b can stop the owned loop, but current dispatch maps every failed hop
 through ordinary failure semantics and current CLI/docs say `cancel` immediately kills/marks the
