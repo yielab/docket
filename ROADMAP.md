@@ -2583,6 +2583,16 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-30 (Wave 26 W26-C1 accepted) — clean setup now reaches a governed turn through a
+  resolvable provider.** Provider registration is fail-closed, unresolved presets cannot persist,
+  first-project bootstrap validates the selected endpoint/model without exposing credentials, and
+  coding-tool subscriptions are not treated as runtime API credentials. A provider-only fleet no
+  longer bypasses foundation setup. The preserved keyless `127.0.0.1:8081` canary at
+  `/tmp/docket-w26-c1-live-smoke-pa9AyI` completed the five-hop workflow, gated write, approval
+  pause/resume, verification, and clean 11-record audit chain at zero cost. The deterministic
+  closure gates pass with 2,391 tests and five contract-labelled skips, Ruff/format, strict mypy,
+  24 specs, 18 goldens, metrics, and smoke. W26-C4 now waits only on C2 and C3.
+
 - **2026-08-30 (Wave 25 integrated and closed) — the complete attributed tree landed at `6b925f0`
   and Phase 23 / Wave 26 activated.** The integration commit owns all 45 runtime, spec, test,
   documentation, skill, and handoff paths. Its closure gates passed with 2,377 tests and five

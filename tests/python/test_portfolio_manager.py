@@ -47,6 +47,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
     fleet_file.chmod(0o600)
     _point_at(home, monkeypatch)
+    monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
     _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
     return home
 

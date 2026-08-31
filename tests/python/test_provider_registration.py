@@ -41,8 +41,8 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.chmod(0o600)
     monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
     monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-    # Default: ping fails (offline) so tests never hit the network.
-    monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: False)
+    # Default: the hermetic endpoint edge is reachable; individual rejection tests override it.
+    monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: True)
     return home
 
 
@@ -89,7 +89,7 @@ def test_register_local_provider_returns_typed_result(
     assert reg.name == _prov.DEFAULT_PROVIDER
     assert reg.base_url == _prov.DEFAULT_BASE_URL
     assert reg.model_id == _prov.DEFAULT_MODEL_ID
-    assert reg.reachable is False  # ping stubbed to False
+    assert reg.reachable is True
     assert reg.changed is True  # first write
     # Pure orchestration — core/ prints nothing.
     assert capsys.readouterr().out == ""
@@ -151,10 +151,11 @@ def test_run_provider_add_writes_provider_block(
         _prov.DEFAULT_MAX_TOKENS,
     )
 
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
     # Role-split commands are printed as in the script.
-    assert "docket models set programmer local/qwen3-30b-a3b" in out
-    assert "docket models set manager    anthropic/claude-sonnet-4-6" in out
+    assert "docket models preset local" in out
+    assert "anthropic/" not in out
 
 
 def test_rerun_is_noop(
@@ -177,27 +178,32 @@ def test_rerun_is_noop(
     assert "no change" in out
 
 
-def test_ping_failure_is_non_fatal(
+def test_ping_failure_is_fail_closed_and_does_not_persist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    home = _seed(tmp_path, monkeypatch)  # ping already stubbed to False
+    home = _seed(tmp_path, monkeypatch)
+    monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: False)
+    before = (home / "fleet.json").read_bytes()
+
     rc = _cliprov.run_provider_add()
-    assert rc == 0
-    assert "local" in _providers(home)
-    out = capsys.readouterr().out
-    assert "Could not reach" in out  # warn() → stdout (mirrors Bash)
+    assert rc == 1
+    assert _providers(home) == {}
+    assert (home / "fleet.json").read_bytes() == before
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
+    assert "Could not reach" in out
+    assert "Provider was not registered" in out
 
 
 def test_run_provider_add_output_order_matches_pre_split_flow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Checking -> (ping) -> warn(unreachable) -> Registering -> success/no-change -> role split."""
+    """Checking -> ping -> registering -> success/no-change -> keyless local guidance."""
     _seed(tmp_path, monkeypatch)
     _cliprov.run_provider_add()
     out = capsys.readouterr().out
     checking_idx = out.index("Checking the endpoint is alive")
-    warn_idx = out.index("Could not reach")
     registering_idx = out.index("Registering provider")
     wired_idx = out.index("Local provider wired")
-    role_split_idx = out.index("Next — apply the smart-planner")
-    assert checking_idx < warn_idx < registering_idx < wired_idx < role_split_idx
+    role_split_idx = out.index("Next — select the reachable local provider")
+    assert checking_idx < registering_idx < wired_idx < role_split_idx

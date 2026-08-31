@@ -56,6 +56,24 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     return oc_dir
 
 
+def _register_openai(oc_dir: Path) -> None:
+    (oc_dir / "fleet.json").write_text(
+        json.dumps(
+            {
+                "agents": [],
+                "bindings": [],
+                "providers": {
+                    "openai": {
+                        "baseUrl": "http://127.0.0.1:9999/v1",
+                        "apiKey": "local",
+                        "models": [{"id": "gpt-4.1-mini"}],
+                    }
+                },
+            }
+        )
+    )
+
+
 def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[int, str, str]:
     import subprocess
 
@@ -151,6 +169,7 @@ class TestModelsSetAudit:
 class TestModelsPresetAudit:
     def test_preset_apply_writes_one_entry_naming_every_role(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
+        _register_openai(oc_dir)
         rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
         entries = _audit_entries(oc_dir, "models.preset")
@@ -232,6 +251,7 @@ class TestModelsAuditChainIntegrity:
 
     def test_models_entries_interleave_cleanly_with_other_families(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
+        _register_openai(oc_dir)
         _run(["models", "set", "programmer", "anthropic/claude-haiku-4-5"], oc_dir)
         _run(["profile", "myshop", "anthropic/claude-opus-4-6"], oc_dir)
         _run(["models", "preset", "openai"], oc_dir)

@@ -9,7 +9,7 @@ specs own shipped behavior.
 - Branch: `platform`.
 - Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
   W25-C7, and the authorized live acceptance are DONE.
-- Ready pool: W26-C1, C2, and C6–C10. Extract exactly one card before claim and apply the conflict
+- Ready pool: W26-C2 and C6–C10. W26-C1 is complete. Extract exactly one card before claim and apply the conflict
   graph below; W26-C10 must be split before claim.
 - W26-C0 remains blocked on the maintainer's release-source decision. C3–C5 and C11 retain their
   explicit dependency blockers.
@@ -138,7 +138,7 @@ those templates in prompts or handoffs. Phase 23 adds only these constraints:
 
 | Finding | Evidence kind | Locator | Planned owner |
 | --- | --- | --- | --- |
-| Default Anthropic model has no built-in direct endpoint | direct static | `config.py::DEFAULT_MODEL`, `llm.py::resolve_endpoint` | W26-C1 |
+| Default Anthropic model has no built-in direct endpoint | deterministic + accepted live | public provider/preset/init path; `/tmp/docket-w26-c1-live-smoke-pa9AyI` | closed by W26-C1 |
 | Canonical `docket` artifact is absent | inventory gap | root `pyproject.toml` scripts/build | W26-C2 |
 | Formula/installer are mutable or unverifiable | direct static | `Formula/docket-cli.rb`, `install.sh`, release workflow | W26-C3 |
 | No artifact-to-first-turn release gate | inventory gap | test/release workflow inventory | W26-C4 |

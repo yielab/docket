@@ -10,14 +10,16 @@ directly.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import docket.config as _cfg
-from docket.cli import _install
+from docket.cli import _agents, _install
 from docket.core import fleet as _fleet
+from docket.core import models_policy as _models_policy
 from docket.core import secrets as _secrets
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
@@ -31,7 +33,12 @@ _PROJECT_ROLES = ("programmer", "reviewer", "tester")
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+    monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
     # No registry file → built-in role→model defaults apply.
+    yield
+    os.environ.pop("DOCKET_LLM_BASE_URL", None)
+    os.environ.pop("DOCKET_LLM_API_KEY", None)
 
 
 def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,6 +61,7 @@ def _no_auth() -> None:
 
 def _ok_auth() -> None:
     _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
+    os.environ["DOCKET_LLM_BASE_URL"] = "http://127.0.0.1:9999/v1"
 
 
 def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -65,6 +73,37 @@ def _seed_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.chmod(0o600)
     _point_at(home, monkeypatch)
     return home
+
+
+def test_provider_only_fleet_still_runs_first_project_foundation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _fleet.add_local_provider(
+        "local",
+        "http://127.0.0.1:8081/v1",
+        "qwen-live-id",
+        "Qwen live",
+        16384,
+        8192,
+    )
+    bootstrap_calls: list[dict[str, object]] = []
+
+    def _stop_after_bootstrap(**kwargs: object) -> int:
+        bootstrap_calls.append(kwargs)
+        return 1
+
+    monkeypatch.setattr(_install, "bootstrap_workstation", _stop_after_bootstrap)
+
+    assert _agents.run_init([]) == 1
+    assert bootstrap_calls == [
+        {
+            "want_gates": True,
+            "assume_yes": True,
+            "want_portfolio": False,
+            "continuing_to_project": True,
+        }
+    ]
 
 
 # ── full install run ────────────────────────────────────────────────────────────
@@ -281,37 +320,77 @@ def test_step5_detects_existing_credential(
 
     _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Model credential(s) available" in out
+    assert "Model provider ready" in out
+    assert "ANTHROPIC_API_KEY configured (value hidden)" in out
     # auth_missing is False → next steps must NOT include the credential nudge.
     assert "Store a model-provider credential" not in out
 
 
-def test_step5_missing_credential_warns(
+def test_step5_unresolved_default_fails_before_ready_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
 
     rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True)
-    assert rc == 0
+    assert rc == 1
     out = capsys.readouterr().out
-    assert "No model-provider credential found yet" in out
-    assert "docket keys add ANTHROPIC_API_KEY" in out
-    assert "Store a model-provider credential" in out  # auth_missing → nudge present
+    assert "anthropic/claude-sonnet-4-6" in out
+    assert "no callable OpenAI-compatible endpoint" in out
+    assert "docket models provider add" in out
+    assert "docket models preset local" in out
+    assert "Foundation Ready" not in out
+    assert "Continuing with project initialization" not in out
 
 
-def test_step5_reads_env_var_credential(
+def test_step5_direct_anthropic_key_is_not_endpoint_readiness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _seed_fresh(tmp_path, monkeypatch)
     _no_auth()
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-var")
 
-    _install.bootstrap_workstation(want_gates=False, assume_yes=True)
+    rc = _install.bootstrap_workstation(want_gates=False, assume_yes=True)
     out = capsys.readouterr().out
-    assert "Model credential(s) available" in out
-    assert "ANTHROPIC_API_KEY" in out
-    assert "environment" in out
+    assert rc == 1
+    assert "ANTHROPIC_API_KEY is present but is not an endpoint" in out
+    assert "Foundation Ready" not in out
+
+
+def test_step5_registered_local_endpoint_needs_no_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _seed_fresh(tmp_path, monkeypatch)
+    _no_auth()
+    _fleet.add_local_provider(
+        "local",
+        "http://127.0.0.1:8081/v1",
+        "qwen-local",
+        "Qwen local",
+        16384,
+        8192,
+    )
+    _models_policy.write_registry(
+        {
+            "default": "local/qwen-local",
+            "rank.economy": "local/qwen-local",
+            "rank.standard": "local/qwen-local",
+            "rank.premium": "local/qwen-local",
+            **{f"role.{role}": "local/qwen-local" for role in _models_policy.ALL_ROLES},
+        }
+    )
+
+    rc = _install.bootstrap_workstation(
+        want_gates=False, assume_yes=True, continuing_to_project=True
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "Model provider ready" in out
+    assert "local/qwen-local" in out
+    assert "http://127.0.0.1:8081/v1" in out
+    assert "No API key required" in out
+    assert "Shared Workstation Foundation Ready" in out
 
 
 # ── Step 6 security: approval routing + perms hardening ─────────────────────────

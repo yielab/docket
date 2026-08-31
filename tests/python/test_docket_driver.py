@@ -35,6 +35,7 @@ from docket.cli import _gates, _keys
 from docket.core import approval as _approval
 from docket.core import fleet as _fleet
 from docket.core import memory as _memory
+from docket.core import provider as _provider_core
 from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.audit import read_audit
@@ -127,6 +128,117 @@ def _never_called(model: str):  # pragma: no cover - only exercised on a real bu
 
 
 class TestRunTurn:
+    def test_public_local_provider_setup_reaches_gated_tool_turn_without_api_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from typer.testing import CliRunner
+
+        from docket.cli import app
+
+        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
+        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
+        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
+        monkeypatch.setattr(_provider_core, "ping_endpoint", lambda *args, **kwargs: True)
+
+        runner = CliRunner()
+        registered = runner.invoke(
+            app,
+            [
+                "models",
+                "provider",
+                "add",
+                "local",
+                "http://127.0.0.1:8081/v1",
+                "--model",
+                "qwen-live-id",
+                "--ctx",
+                "16384",
+                "--max-tokens",
+                "8192",
+            ],
+        )
+        assert registered.exit_code == 0, registered.output
+        selected = runner.invoke(app, ["models", "preset", "local"])
+        assert selected.exit_code == 0, selected.output
+
+        ws = _write_meta("local-agent", model="local/qwen-live-id", modelSource="policy")
+        (ws / "marker.txt").write_text("LOCAL_PROVIDER_MARKER\n", encoding="utf-8")
+
+        responses = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "local-read-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "read",
+                                        "arguments": json.dumps({"path": "marker.txt"}),
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 3},
+            },
+            {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "local tool turn complete"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 17, "completion_tokens": 4},
+            },
+        ]
+        request_urls: list[str] = []
+        requests: list[dict[str, Any]] = []
+
+        class _Response:
+            def __init__(self, payload: dict[str, Any]) -> None:
+                self.payload = payload
+
+            def read(self) -> bytes:
+                return json.dumps(self.payload).encode()
+
+            def __enter__(self) -> _Response:
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                return None
+
+        def fake_urlopen(request: Any, timeout: int = 0) -> _Response:
+            request_urls.append(request.full_url)
+            requests.append(json.loads(request.data.decode()))
+            return _Response(responses.pop(0))
+
+        monkeypatch.setattr(_llm_adapter.urllib.request, "urlopen", fake_urlopen)
+
+        result = DocketDriver().run_turn(
+            "local-agent", "agent:local-agent:default", "Read marker.txt with the tool.", 60
+        )
+
+        assert result.ok is True
+        assert result.output == "local tool turn complete"
+        assert len(requests) == 2
+        assert request_urls == [
+            "http://127.0.0.1:8081/v1/chat/completions",
+            "http://127.0.0.1:8081/v1/chat/completions",
+        ]
+        assert requests[0]["model"] == "qwen-live-id"
+        assert requests[0]["tools"]
+        assert any(message["role"] == "tool" for message in requests[1]["messages"])
+        assert "LOCAL_PROVIDER_MARKER" in json.dumps(requests[1])
+        assert _secrets.secrets_keys() == set()
+
     @pytest.mark.parametrize(
         ("provider_key", "secret", "model", "expected_url", "wire_model"),
         [

@@ -823,7 +823,7 @@ branch edits its files.
 
 ### W26-C1 — guarantee a resolvable first provider
 
-**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-30) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** `config.py` defaults to `anthropic/claude-sonnet-4-6`, onboarding asks
 for `ANTHROPIC_API_KEY`, and `edges/adapters/llm.py::resolve_endpoint` has built-in URLs only for
@@ -860,6 +860,16 @@ pytest, goldens, specs, metrics, and deterministic smoke.
 **Contention:** the Wave 25 baseline is reconciled at `6b925f0`; this card is independent of C2 and
 C6–C9. It owns provider/onboarding code and tests plus the named model/API-key/CLI spec clauses;
 coordinate with C10 if either card changes the driver protocol.
+
+**Shipped evidence:** setup now treats a coding-tool subscription or direct vendor key as distinct
+from a callable runtime endpoint, refuses unresolved presets before persistence, verifies local
+registration before writing, selects the exact registered model, and blocks first-project
+continuation until provider readiness is structural. A provider-only `fleet.json` no longer skips
+the shared foundation. The deterministic public-path test reaches a gated tool turn with no stored
+key. The keyless live canary against `127.0.0.1:8081` completed all five governed hops at zero cost,
+verified 11 audit records, and is preserved at `/tmp/docket-w26-c1-live-smoke-pa9AyI`. Closure gates:
+2,391 tests with five contract-labelled skips, Ruff/format, strict mypy, 24 specs, 18 goldens,
+metrics, deterministic smoke, and `git diff --check` pass.
 
 ### W26-C2 — provide one canonical installable CLI
 
@@ -931,7 +941,7 @@ C11 alone updates README/quickstart claims from the final artifacts.
 
 ### W26-C4 — enforce clean-install-to-first-turn in CI
 
-**Status:** BLOCKED (needs W26-C1 + W26-C2 + W26-C3) · **Size:** M · **Owner:** unassigned
+**Status:** BLOCKED (needs W26-C2 + W26-C3; W26-C1 done) · **Size:** M · **Owner:** unassigned
 
 **Measured trigger:** focused suites are strong, but no release gate proves that a user can install
 the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,

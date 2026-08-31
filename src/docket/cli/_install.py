@@ -31,6 +31,7 @@ from docket.core import fleet as _fleet
 from docket.core import memory as _mem
 from docket.core import models_policy as _mp
 from docket.core import policy as _policy
+from docket.core import provider as _provider
 from docket.core import secrets as _secrets
 from docket.core.security import apply_approval_routing
 from docket.edges import store
@@ -71,40 +72,27 @@ def _check_dependencies() -> list[str]:
     return missing
 
 
-def _step_auth() -> int:
-    """Step 5 — model authentication. Returns 0 if a credential looks available.
-
-    There is no docket-native provider-login flow (no daemon to shell out to
-    for an OAuth-like token exchange). The real, working credential path is
-    `docket keys add <PROVIDER>_API_KEY` — `edges/adapters/llm.py`'s
-    `resolve_endpoint` falls back to that env var. This step only checks
-    whether one is already stored or exported, and says plainly what to do
-    if not.
-    """
-    stored = _secrets.secrets_keys()
-    known_env_vars = (
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "GOOGLE_AI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "AI_GATEWAY_API_KEY",
-        "VERCEL_OIDC_TOKEN",
-        "DOCKET_LLM_API_KEY",
-    )
-    present = sorted(stored) + [v for v in known_env_vars if v in os.environ and v not in stored]
-
-    if present:
-        ui.success("Model credential(s) available:")
-        for name in present:
-            source = "stored" if name in stored else "environment"
-            ui.console.print(f"  • {name}  ({source})")
+def _step_model_readiness(model: str) -> int:
+    """Step 5 — prove the selected runtime route is structurally callable."""
+    readiness = _provider.model_readiness(model)
+    if readiness.ready:
+        ui.success("Model provider ready")
+        ui.console.print(f"  Selected model: {readiness.model}")
+        ui.console.print(f"  Endpoint: {readiness.base_url}")
+        if readiness.credential_name:
+            ui.console.print(f"  Credential: {readiness.credential_name} configured (value hidden)")
+        else:
+            ui.console.print("  No API key required")
         return 0
 
-    ui.warn("No model-provider credential found yet — agents cannot reply without one.")
-    ui.console.print("  Store one: [green]docket keys add ANTHROPIC_API_KEY[/green]")
+    ui.error(f"Selected model {model} is not ready: {readiness.issue}.")
+    ui.console.print("  Coding-tool subscriptions are not Docket runtime API credentials.")
+    ui.console.print("  Configure a reachable local OpenAI-compatible endpoint, then select it:")
     ui.console.print(
-        "  (or export it directly: ANTHROPIC_API_KEY=sk-ant-... in your shell environment)"
+        "    docket models provider add local <base-url> --model <model-id> "
+        "--ctx <tokens> --max-tokens <tokens>"
     )
+    ui.console.print("    docket models preset local")
     return 1
 
 
@@ -457,6 +445,8 @@ def bootstrap_workstation(
     )
     ui.console.print()
 
+    _role_models, _rank_anchors, selected_model = _mp.load_registry()
+
     if _cfg.FLEET_FILE.is_file():
         ui.info("Existing Docket workstation foundation detected")
         ui.console.print()
@@ -467,6 +457,9 @@ def bootstrap_workstation(
         needs_update = (
             [f"specialist agents: {' '.join(missing_specialists)}"] if missing_specialists else []
         )
+        readiness = _provider.model_readiness(selected_model)
+        if not readiness.ready:
+            needs_update.append(f"model provider: {readiness.issue}")
 
         if not needs_update:
             ui.success("Docket is fully configured!")
@@ -508,9 +501,9 @@ def bootstrap_workstation(
     ui.console.print()
 
     ui.header("Step 3: Configuring the default model")
-    _fleet.set_default_model(_cfg.DEFAULT_MODEL)
+    _fleet.set_default_model(selected_model)
     ui.success("Default model configured")
-    ui.console.print(f"  Default model: {_cfg.DEFAULT_MODEL}")
+    ui.console.print(f"  Default model: {selected_model}")
     ui.console.print()
 
     ui.header("Step 4: Provisioning specialist agents")
@@ -521,8 +514,8 @@ def bootstrap_workstation(
         _provision_portfolio_manager()
     ui.console.print()
 
-    ui.header("Step 5: Model authentication")
-    auth_missing = _step_auth() != 0
+    ui.header("Step 5: Model provider readiness")
+    provider_missing = _step_model_readiness(selected_model) != 0
     ui.console.print()
 
     ui.header("Step 6: Configuring security best practices")
@@ -533,29 +526,27 @@ def bootstrap_workstation(
     _step_policies()
     ui.console.print()
 
+    if provider_missing:
+        ui.header("Workstation Foundation Incomplete")
+        ui.error("Project initialization stopped until the selected model provider is ready.")
+        return 1
+
     if continuing_to_project:
         ui.header("Shared Workstation Foundation Ready")
         ui.console.print()
         ui.info("Continuing with project initialization...")
     else:
-        _print_summary(auth_missing)
+        _print_summary()
     return 0
 
 
-def _print_summary(auth_missing: bool) -> None:
+def _print_summary() -> None:
     """Closing summary + next steps."""
     ui.header("Workstation Foundation Ready")
     ui.console.print()
     ui.console.print("[bold]Next Steps:[/bold]")
     ui.console.print()
     step = 1
-    if auth_missing:
-        ui.console.print(
-            f"  {step}. Store a model-provider credential (agents can't reply without it):"
-        )
-        ui.console.print("     [green]docket keys add ANTHROPIC_API_KEY[/green]")
-        ui.console.print()
-        step += 1
     ui.console.print(f"  {step}. Initialize a project pod (run inside its repository):")
     ui.console.print("     [green]docket init[/green]")
     ui.console.print()

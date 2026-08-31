@@ -58,6 +58,24 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     return oc_dir
 
 
+def _register_openai(oc_dir: Path) -> None:
+    (oc_dir / "fleet.json").write_text(
+        json.dumps(
+            {
+                "agents": [],
+                "bindings": [],
+                "providers": {
+                    "openai": {
+                        "baseUrl": "http://127.0.0.1:9999/v1",
+                        "apiKey": "local",
+                        "models": [{"id": "gpt-4.1-mini"}],
+                    }
+                },
+            }
+        )
+    )
+
+
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     import subprocess
 
@@ -141,6 +159,7 @@ class TestFallbackChainPreserved:
 
     def test_preset_apply_still_resolves_roles(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
+        _register_openai(oc_dir)
         rc, _out, err = _run(["models", "preset", "openai"], oc_dir)
         assert rc == 0, err
         reg = json.loads((oc_dir / "docket-models.json").read_text())

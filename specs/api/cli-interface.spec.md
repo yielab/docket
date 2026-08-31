@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.19.0
+**Version**: 1.20.0
 **Status**: Complete
-**Last Updated**: 2026-08-25
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -92,6 +92,12 @@ also bootstrap the workstation-wide Docket home, shared org specialists, baselin
 default security posture before provisioning the project. This global foundation is necessary;
 an extra user-facing setup command is not.
 **Syntax**: `docket init [project] [location] [--blueprint <name>] [options]`
+
+Before the first project is created, workstation bootstrap **MUST** validate that the selected
+model resolves to a callable OpenAI-compatible endpoint. An API key without a compatible endpoint
+is not ready. Failure returns 1, omits every ready/continuation claim, and prints the exact
+`docket models provider ...` plus `docket models preset ...` recovery sequence. A registered local
+endpoint may pass without a key.
 **Arguments**:
 - `project` (optional): Project name / pod identifier (slugified to `^[a-z0-9][a-z0-9-]*[a-z0-9]$`);
   omitted defaults to the current directory name
@@ -846,6 +852,13 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.20.0 (2026-08-30)
+
+- Made first initialization fail closed when the selected model has no callable endpoint, and
+  required provider registration to reject unreachable endpoints without persisting them.
+- Clarified that coding-tool subscriptions do not supply Docket runtime credentials; the supported
+  no-key acceptance path is a registered local OpenAI-compatible endpoint.
 
 ### Version 1.19.0 (2026-08-25)
 

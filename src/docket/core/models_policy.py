@@ -126,7 +126,7 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "premium": "anthropic/claude-opus-4-6",
         "key": "ANTHROPIC_API_KEY",
         "cost": "paid",
-        "note": "Default. Strongest tool-use support.",
+        "note": "Requires an explicitly registered OpenAI-compatible endpoint; key alone is insufficient.",
     },
     "openai": {
         "economy": "openai/gpt-4.1-nano",
@@ -134,7 +134,7 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "premium": "openai/gpt-4.1",
         "key": "OPENAI_API_KEY",
         "cost": "paid",
-        "note": "GPT-4.1 family.",
+        "note": "GPT-4.1 family; requires a registered compatible endpoint before use.",
     },
     "google": {
         "economy": "google/gemini-2.0-flash-lite",
@@ -142,7 +142,7 @@ PRESET_TABLE: dict[str, dict[str, str]] = {
         "premium": "google/gemini-2.5-flash",
         "key": "GOOGLE_AI_API_KEY",
         "cost": "paid",
-        "note": "No distinct premium Gemini model yet; standard=premium.",
+        "note": "Requires a registered compatible endpoint; key alone is insufficient.",
     },
     "openrouter-free": {
         "economy": "openrouter/openrouter/free",

@@ -128,7 +128,15 @@ def run_init(all_args: list[str]) -> int:
     want_portfolio = "--portfolio" in all_args
     project_args = [arg for arg in all_args if arg not in ("--gates", "--no-gates", "--portfolio")]
 
-    if not _cfg.FLEET_FILE.is_file():
+    foundation_missing = not _cfg.FLEET_FILE.is_file()
+    if not foundation_missing:
+        fleet = _fleet.load_fleet()
+        # Provider registration is a supported recovery step before the first
+        # project. Its fleet write must not masquerade as a completed shared
+        # foundation, while legacy/project-populated fleets keep their
+        # established `init` behavior.
+        foundation_missing = bool(fleet.providers) and not fleet.agents
+    if foundation_missing:
         from docket.cli import _install
 
         ui.info("First project: preparing Docket's shared workstation foundation...")

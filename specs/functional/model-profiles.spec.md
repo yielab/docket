@@ -1,8 +1,8 @@
 # Model Policy Specification
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Complete
-**Last Updated**: 2026-08-25
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -202,6 +202,24 @@ Provider endpoints are Docket-owned first-party configuration: `docket models pr
    **MUST** produce a non-OK response. A numeric embedded status **MUST** use the same retry
    classification as that HTTP status; it **MUST NOT** become an empty successful answer.
 
+### Provider readiness
+
+1. Coding-harness authentication and Docket's runtime model transport **MUST** remain separate:
+   Codex, Claude Code, or OpenCode subscriptions **MUST NOT** be treated as reusable provider API
+   credentials or as proof that Docket can resolve a model endpoint.
+2. A selected model is ready only when it resolves to an OpenAI-compatible base URL and any
+   credential required by that shipped route is present. A direct Anthropic, OpenAI, or Google key
+   without an explicitly registered compatible base URL **MUST NOT** satisfy readiness.
+3. Registered local providers **MAY** require no bearer credential. Registration **MUST** verify
+   `<base-url>/models` before writing provider state; an unreachable endpoint returns failure and
+   leaves the prior provider registry unchanged.
+4. Workstation bootstrap **MUST NOT** print a ready heading or continue into project initialization
+   when the selected model is unresolved. It **MUST** name the model, explain the missing endpoint
+   or credential without exposing a secret, and give the exact public configuration sequence.
+5. The successful local path **MUST** report the selected model and resolved base URL, retain exact
+   registered context/output limits, and reach the ordinary non-streaming Chat Completions tool
+   wire. Default tests remain hermetic; the local `127.0.0.1:8081` canary is opt-in and keyless.
+
 ### Pricing
 
 1. Each built-in direct-provider model whose price Docket claims **MUST** have a pricing entry in
@@ -328,8 +346,7 @@ $ docket profile mywebsite default
 ```bash
 $ docket models preset local
 ✓ Preset 'local' applied.
-  No API key needed. Verify your local runtime is up, then register the endpoint:
-  docket models provider [name] [base_url]   # ping + register
+✓ Registered local endpoint selected; no API key needed.
 
 $ docket models
   ROLE          MODEL                    PRICE        SOURCE    WHY
@@ -362,6 +379,14 @@ $ docket models
   marketplace routes may use the explicit unpriced label above.
 
 ## Changelog
+
+### Version 2.8.0 (2026-08-30)
+
+- Added fail-closed first-run provider readiness. Coding-tool subscriptions are not runtime API
+  credentials; direct vendor keys require a registered compatible endpoint, while a reachable
+  registered local endpoint may operate without a key.
+- Required provider registration to avoid persisting unreachable endpoints and made the keyless
+  local OpenAI-compatible tool path the bounded live acceptance route.
 
 ### Version 2.7.0 (2026-08-25)
 

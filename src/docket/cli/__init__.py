@@ -1101,8 +1101,28 @@ def _cmd_models_preset(preset: str | None) -> None:
         ui.error(f"Unknown preset '{preset}'. Valid: {valid}")
         raise typer.Exit(1)
 
+    registered: dict[str, object] = {}
+    if preset in ("anthropic", "openai", "google", "local"):
+        registered = _fleet.get_local_provider(preset) or {}
+        if not registered:
+            ui.error(
+                f"Preset '{preset}' has no registered OpenAI-compatible endpoint; "
+                "an API key or coding-tool subscription is not sufficient."
+            )
+            ui.console.print(
+                f"  Register one first: docket models provider add {preset} <base-url> "
+                "--model <model-id> --ctx <tokens> --max-tokens <tokens>"
+            )
+            raise typer.Exit(1)
+
     t = _mp.PRESET_TABLE[preset]
     econ, std, prem = t["economy"], t["standard"], t["premium"]
+    if preset == "local":
+        models = registered.get("models")
+        if isinstance(models, list) and models and isinstance(models[0], dict):
+            registered_id = str(models[0].get("id") or "").strip()
+            if registered_id:
+                econ = std = prem = f"local/{registered_id}"
     cost, note = t["cost"], t["note"]
 
     before_roles, _before_tiers, before_default = _mp.load_registry()
@@ -1175,8 +1195,7 @@ def _cmd_models_preset(preset: str | None) -> None:
                 ui.console.print("  Get one: https://openrouter.ai/keys (free account available)")
     elif preset == "local":
         ui.console.print()
-        ui.info("No API key needed. Verify your local runtime is up, then register the endpoint:")
-        ui.console.print("  docket models provider [name] [base_url]   # ping + register")
+        ui.success("Registered local endpoint selected; no API key needed.")
 
     ui.console.print()
     ui.info("Pinned agents kept their model. Pin or unpin one agent:")

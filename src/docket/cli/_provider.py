@@ -34,19 +34,19 @@ def run_provider_add(
         ctx=ctx,
         max_tokens=max_tokens,
     )
+    if not reg.reachable:
+        ui.error(
+            f"Could not reach {reg.base_url}/models. Provider was not registered; "
+            "start the OpenAI-compatible server and retry the same command."
+        )
+        return 1
     _render_registration(reg)
-    _print_role_split(reg.name, reg.model_id)
+    _print_local_selection(reg.name, reg.model_id)
     return 0
 
 
 def _render_registration(reg: _prov.ProviderRegistration) -> None:
     """Render the ping + register outcome in the same order as the pre-split flow."""
-    if not reg.reachable:
-        ui.warn(
-            f"Could not reach {reg.base_url}/models — make sure your llama.cpp/LM Studio "
-            "server is running first. Continuing to write config anyway."
-        )
-
     ui.info(f"Registering provider '{reg.name}'")
     if reg.changed:
         ui.success(f"Local provider wired: {reg.name}/{reg.model_id}  →  {reg.base_url}")
@@ -57,29 +57,25 @@ def _render_registration(reg: _prov.ProviderRegistration) -> None:
         )
 
 
-def _print_role_split(name: str, model_id: str) -> None:
-    """Print the role-split + smoke-test guidance."""
+def _print_local_selection(name: str, model_id: str) -> None:
+    """Print a keyless all-local selection path without implying a vendor subscription."""
     ui.console.print()
-    ui.console.print("Next — apply the smart-planner / local-executor role split:")
+    ui.console.print("Next — select the reachable local provider:")
     ui.console.print()
-    ui.console.print(
-        "  docket models set manager    anthropic/claude-sonnet-4-6"
-        "   # architecture & delegation (smart)"
-    )
-    ui.console.print(
-        "  docket models set reviewer   anthropic/claude-sonnet-4-6"
-        "   # catches local mistakes (recommended)"
-    )
-    ui.console.print(
-        f"  docket models set programmer {name}/{model_id}"
-        "            # implementation (local, free)"
-    )
-    ui.console.print(f"  docket models set tester     {name}/{model_id}")
-    ui.console.print(f"  docket models set knowledge  {name}/{model_id}")
-    ui.console.print(
-        f"  docket models set repo       {name}/{model_id}"
-        "            # project agents execute locally"
-    )
+    if name == "local":
+        ui.console.print("  docket models preset local")
+        ui.console.print(f"    # selects the registered model: {name}/{model_id}")
+    else:
+        for role in (
+            "manager",
+            "programmer",
+            "reviewer",
+            "tester",
+            "knowledge",
+            "security",
+            "repo",
+        ):
+            ui.console.print(f"  docket models set {role:<10} {name}/{model_id}")
     ui.console.print(
         "  docket models                                               "
         "# confirm the role→model table"
@@ -92,7 +88,7 @@ def _print_role_split(name: str, model_id: str) -> None:
     )
     ui.console.print(
         "  docket pod <project> dispatch                               "
-        "# lead(Claude) plan → implementer(local)"
+        "# all roles use the selected local endpoint"
     )
     ui.console.print(
         "  docket profile programmer                                   "

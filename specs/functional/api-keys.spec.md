@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Complete
-**Last Updated**: 2026-08-25
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -49,6 +49,10 @@ This specification does NOT cover provider key *format* rules (see input-validat
 2. Docket's model endpoint resolver **MUST** read the selected provider credential directly from
    this store when no explicit process or provider-block credential overrides it; users **MUST NOT**
    need to export the key after `docket keys add`.
+3. Credential presence **MUST NOT** be reported as provider readiness when the selected model has
+   no callable endpoint. In particular, Anthropic/OpenAI/Google keys are stored and masked normally
+   but require an explicitly registered OpenAI-compatible endpoint until Docket ships a native
+   adapter for that provider.
 
 ## Interface Contracts
 
@@ -104,6 +108,11 @@ $ docket keys list
   variable **MAY** override it for that process without mutating the store.
 
 ## Changelog
+
+### Version 1.3.0 (2026-08-30)
+
+- Separated credential presence from endpoint readiness so a stored direct-vendor key cannot make
+  an unresolvable first run appear configured.
 
 ### Version 1.2.0 (2026-08-25)
 

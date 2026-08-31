@@ -253,9 +253,20 @@ def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[i
     return result.returncode, result.stdout, result.stderr
 
 
+def _register_provider(home: Path, name: str, model_id: str) -> None:
+    fleet = json.loads((home / "fleet.json").read_text())
+    fleet.setdefault("providers", {})[name] = {
+        "baseUrl": "http://127.0.0.1:9999/v1",
+        "apiKey": "local",
+        "models": [{"id": model_id, "contextWindow": 16384, "maxTokens": 8192}],
+    }
+    (home / "fleet.json").write_text(json.dumps(fleet))
+
+
 class TestNonAnthropicPresetShowsNoResidue:
     def test_openai_preset_then_models_has_no_claude_residue(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
+        _register_provider(home, "openai", "gpt-4.1-mini")
         rc, _out, err = _run(["models", "preset", "openai"], home)
         assert rc == 0, err
 
@@ -277,6 +288,7 @@ class TestNonAnthropicPresetShowsNoResidue:
 
     def test_preset_persists_rank_anchors_to_registry(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
+        _register_provider(home, "google", "gemini-2.5-flash")
         rc, _out, err = _run(["models", "preset", "google"], home)
         assert rc == 0, err
         reg = json.loads((home / "docket-models.json").read_text())
@@ -292,6 +304,7 @@ class TestLocalPresetCli:
 
     def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
+        _register_provider(home, "local", "qwen3-30b-a3b")
         rc, _out, err = _run(["models", "preset", "local"], home)
         assert rc == 0, err
 
@@ -371,7 +384,7 @@ class TestProviderGuidanceStringsAreReal:
     def test_no_task_role_guidance_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
         from docket.cli import _provider as _prov_cli
 
-        _prov_cli._print_role_split("local", "qwen3-30b-a3b")
+        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
         out = capsys.readouterr().out
         assert "models set task" not in out
         # 'task' is not a role at all any more (ALL_ROLES has no such entry).
@@ -380,7 +393,7 @@ class TestProviderGuidanceStringsAreReal:
     def test_no_retired_runtime_command_emitted(self, capsys: pytest.CaptureFixture[str]) -> None:
         from docket.cli import _provider as _prov_cli
 
-        _prov_cli._print_role_split("local", "qwen3-30b-a3b")
+        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
         out = capsys.readouterr().out
         retired_brand = "open" + "claw"
         assert f"{retired_brand} models status" not in out
@@ -397,7 +410,7 @@ class TestProviderGuidanceStringsAreReal:
         from docket.cli import _provider as _prov_cli
         from docket.cli import app
 
-        _prov_cli._print_role_split("local", "qwen3-30b-a3b")
+        _prov_cli._print_local_selection("local", "qwen3-30b-a3b")
         out = capsys.readouterr().out
 
         click_command = typer.main.get_command(app)

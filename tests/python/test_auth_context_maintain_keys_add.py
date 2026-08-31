@@ -433,8 +433,11 @@ class TestCmdAdd:
         home = tmp_path / ".docket"
         repo = tmp_path / "fresh-project"
         repo.mkdir()
+        env = _make_env(home)
+        env["DOCKET_LLM_BASE_URL"] = "http://127.0.0.1:9999/v1"
+        env["DOCKET_LLM_API_KEY"] = "recording-test-key"
 
-        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["init"], env, cwd=repo)
 
         assert rc == 0, out + err
         fleet = json.loads((home / "fleet.json").read_text())
