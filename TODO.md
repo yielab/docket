@@ -981,7 +981,7 @@ release journey, not their implementation files.
 
 ### W26-C5 — publish a non-overlapping runtime distribution boundary
 
-**Status:** TODO (W26-C2 and D-28 satisfied) · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @terra-c5
 
 **Deterministic trigger:** `packages/docket-runtime/pyproject.toml` force-includes the same
 `docket/*` paths as the full distribution, so installing/upgrading/uninstalling both wheels can
@@ -1075,7 +1075,7 @@ continues the verified chain.
 
 ### W26-C7 — make approval resolution compare-and-set atomic
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @terra-c7
 
 **Deterministic trigger:** `approval_grant`/`approval_deny` read `pending`, then `_set_state` rereads
 and separately writes. Concurrent CLI, HTTP, Telegram, timeout, or pipeline decisions can both
@@ -1166,7 +1166,7 @@ runtime files.
 
 ### W26-C9 — preserve concurrent conversation updates
 
-**Status:** TODO · **Size:** S · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** S · **Owner:** @terra-c9
 
 **Deterministic trigger:** dispatch `_persist_hop` performs `_conv.load()` → pure
 `touch_for_hop()` → `_conv.save()` as separate operations. Parallel hops updating different
