@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import ast
 import json
+import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -34,7 +36,9 @@ import pytest
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
+from docket.core import approval as _approval
 from docket.core import session as _session
+from docket.core import tools as _tools
 from docket.core.llm import (
     ChatMessage,
     ChatResponse,
@@ -164,6 +168,89 @@ class InfiniteToolBackend:
         )
 
 
+class CancellationProbe:
+    """Thread-safe test callback matching C10b's ToolContext boundary."""
+
+    def __init__(self) -> None:
+        self._requested = threading.Event()
+        self.checkpoints = 0
+
+    def request(self) -> None:
+        self._requested.set()
+
+    def __call__(self) -> bool:
+        self.checkpoints += 1
+        return self._requested.is_set()
+
+
+class BarrierBackend(ScriptedBackend):
+    """Block one selected transport while recording its exact call ordinal."""
+
+    def __init__(self, responses: Sequence[ChatResponse], *, block_call: int = 0) -> None:
+        super().__init__(responses)
+        self.block_call = block_call
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: int = 120,
+    ) -> ChatResponse:
+        ordinal = len(self.calls)
+        self.calls.append(list(messages))
+        self.tool_specs.append(list(tools))
+        if ordinal == self.block_call:
+            self.entered.set()
+            assert self.release.wait(timeout=5)
+        if not self._responses:
+            raise AssertionError("BarrierBackend ran out of scripted responses")
+        return self._responses.pop(0)
+
+
+def _attach_cancellation(ctx: ToolContext, probe: CancellationProbe) -> None:
+    # ToolContext intentionally has no slots. This reaches the future public
+    # callback boundary while allowing the pre-C10b loop to run far enough to
+    # demonstrate the missing checkpoint instead of failing at construction.
+    ctx.cancellation_check = probe  # type: ignore[attr-defined]
+
+
+def _threaded_turn(
+    backend: ScriptedBackend,
+    registry: ToolRegistry,
+    ctx: ToolContext,
+    session_key: str,
+    message: str,
+    *,
+    config: _loop.LoopConfig | None = None,
+) -> tuple[threading.Thread, list[_loop.AgentLoopResult], list[BaseException]]:
+    results: list[_loop.AgentLoopResult] = []
+    errors: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            results.append(
+                _loop.run_agent_turn(
+                    backend,
+                    registry,
+                    ctx,
+                    session_key,
+                    message,
+                    config=config,
+                )
+            )
+        except BaseException as exc:  # surfaced in the owning test thread
+            errors.append(exc)
+
+    worker = threading.Thread(target=_run, name=f"turn:{session_key}")
+    worker.start()
+    return worker, results, errors
+
+
 def _final(content: str = "done", usage: TokenUsage | None = None) -> ChatResponse:
     return ChatResponse(
         ok=True,
@@ -196,6 +283,278 @@ def _truncated(
         finish_reason="length",
         usage=usage or TokenUsage(input_tokens=10, output_tokens=5),
     )
+
+
+# ── cooperative persisted-run cancellation (W26-C10b RED) ───────────────────
+
+
+class TestCooperativeRunCancellation:
+    def test_task_response_after_request_is_discarded_before_tool_execution(
+        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probe = CancellationProbe()
+        _attach_cancellation(ctx, probe)
+        handler_calls: list[str] = []
+        registry = ToolRegistry()
+        registry.register(
+            _Tool(
+                name="record",
+                description="record one value",
+                parameters={
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+                handler=lambda args, _ctx: (
+                    handler_calls.append(str(args["value"]))
+                    or ToolOutcome(ok=True, content="recorded")
+                ),
+            )
+        )
+        backend = BarrierBackend(
+            [
+                _tool_call_response("late-call", "record", '{"value":"must-not-run"}'),
+                _final("must not make a second transport"),
+            ]
+        )
+        events: list[tuple[str, dict[str, Any]]] = []
+
+        def _trace(
+            _project: str,
+            _session: str,
+            _role: str,
+            event_type: str,
+            payload: str,
+            *_args: object,
+            **_kwargs: object,
+        ) -> str:
+            events.append((event_type, json.loads(payload)))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        session_key = "agent:cancel-task:demo"
+        worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
+        try:
+            assert backend.entered.wait(timeout=5)
+            probe.request()
+        finally:
+            backend.release.set()
+            worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert errors == []
+        assert len(results) == 1
+        assert results[0].ok is False
+        assert results[0].stop_reason == "run_cancelled"
+        assert results[0].failure_kind == "run_cancelled"
+        assert len(backend.calls) == 1
+        assert handler_calls == []
+        stored = load_session(session_key)
+        assert [message.role for message in stored.messages] == ["user"]
+        assert stored.usage == TokenUsage(input_tokens=10, output_tokens=5, turns=1)
+        assert [kind for kind, _payload in events if kind in {"tool_call", "tool_result"}] == []
+
+    def test_compaction_response_after_request_cannot_rewrite_or_start_task_transport(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        probe = CancellationProbe()
+        _attach_cancellation(ctx, probe)
+        session_key = "agent:cancel-compaction:demo"
+        append_session_messages(
+            session_key,
+            [
+                ChatMessage(role="user", content="old context " * 100),
+                ChatMessage(role="assistant", content="old complete answer"),
+                ChatMessage(role="user", content="recent context"),
+            ],
+        )
+        before = load_session(session_key)
+        backend = BarrierBackend(
+            [
+                _final("cancelled summary must not replace history", TokenUsage(7, 3)),
+                _final("task transport must not start"),
+            ]
+        )
+        worker, results, errors = _threaded_turn(
+            backend,
+            registry,
+            ctx,
+            session_key,
+            "new request",
+            config=_loop.LoopConfig(history_budget_tokens=1),
+        )
+        try:
+            assert backend.entered.wait(timeout=5)
+            assert backend.tool_specs == [[]]
+            probe.request()
+        finally:
+            backend.release.set()
+            worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert errors == []
+        assert len(results) == 1
+        assert results[0].stop_reason == "run_cancelled"
+        assert results[0].failure_kind == "run_cancelled"
+        assert len(backend.calls) == 1
+        after = load_session(session_key)
+        assert after.messages == before.messages
+        assert not any("cancelled summary" in message.content for message in after.messages)
+
+    def test_cancellation_after_concurrent_approval_grant_never_runs_handler(
+        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probe = CancellationProbe()
+        _attach_cancellation(ctx, probe)
+        handler_calls: list[str] = []
+        registry = ToolRegistry()
+        registry.register(
+            _Tool(
+                name="guarded",
+                description="approval-gated action",
+                parameters={"type": "object", "properties": {}},
+                handler=lambda _args, _ctx: (
+                    handler_calls.append("ran") or ToolOutcome(ok=True, content="ran")
+                ),
+                kind="write",
+            )
+        )
+        monkeypatch.setattr(
+            _tools,
+            "evaluate_tool_call",
+            lambda _tool, _args, _ctx: _tools.ToolVerdict("ask", "operator approval required"),
+        )
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 5, raising=True)
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_POLL_INTERVAL_S", 0.005, raising=True)
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("guarded-call", "guarded", "{}"),
+                _final("must not continue after cancellation"),
+            ]
+        )
+        session_key = "agent:cancel-approval:demo"
+        worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
+        deadline = time.monotonic() + 5
+        approval_files: list[Path] = []
+        while time.monotonic() < deadline:
+            approval_files = list(_cfg.APPROVALS_DIR.glob("apr-*.json"))
+            if approval_files:
+                break
+            time.sleep(0.005)
+        assert len(approval_files) == 1
+        token = approval_files[0].stem
+        assert _approval.approval_get(token)["state"] == "pending"
+
+        probe.request()
+        _approval.approval_grant(token, channel="cli")
+        worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert errors == []
+        assert _approval.approval_get(token)["state"] == "granted"
+        assert handler_calls == []
+        assert len(results) == 1
+        assert results[0].stop_reason == "run_cancelled"
+        assert results[0].failure_kind == "run_cancelled"
+        assert len(backend.calls) == 1
+
+    def test_running_handler_finishes_then_remainder_is_cancelled_as_one_unit(
+        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        probe = CancellationProbe()
+        _attach_cancellation(ctx, probe)
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        handler_calls: list[str] = []
+
+        def _handler(args: dict[str, Any], _ctx: ToolContext) -> ToolOutcome:
+            value = str(args["value"])
+            handler_calls.append(value)
+            if value == "first":
+                first_entered.set()
+                assert release_first.wait(timeout=5)
+            return ToolOutcome(ok=True, content=f"{value} done")
+
+        registry = ToolRegistry()
+        registry.register(
+            _Tool(
+                name="record",
+                description="record ordered values",
+                parameters={
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
+                handler=_handler,
+            )
+        )
+        calls = [
+            ToolCall(id="first-call", name="record", arguments='{ "value": "first" }'),
+            ToolCall(id="second-call", name="record", arguments='{ "value": "second" }'),
+        ]
+        backend = ScriptedBackend(
+            [
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=calls),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(input_tokens=12, output_tokens=6),
+                ),
+                _final("must not start another backend request"),
+            ]
+        )
+        events: list[tuple[str, dict[str, Any]]] = []
+
+        def _trace(
+            _project: str,
+            _session: str,
+            _role: str,
+            event_type: str,
+            payload: str,
+            *_args: object,
+            **_kwargs: object,
+        ) -> str:
+            events.append((event_type, json.loads(payload)))
+            return "written"
+
+        monkeypatch.setattr(_loop, "trace_event", _trace, raising=True)
+        session_key = "agent:cancel-tool-batch:demo"
+        worker, results, errors = _threaded_turn(backend, registry, ctx, session_key, "go")
+        try:
+            assert first_entered.wait(timeout=5)
+            probe.request()
+        finally:
+            release_first.set()
+            worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert errors == []
+        assert handler_calls == ["first"]
+        assert len(results) == 1
+        assert results[0].stop_reason == "run_cancelled"
+        assert results[0].failure_kind == "run_cancelled"
+        assert results[0].tool_calls_executed == 1
+        assert len(backend.calls) == 1
+        stored = load_session(session_key)
+        assert [message.role for message in stored.messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "tool",
+        ]
+        assert stored.messages[2].tool_call_id == "first-call"
+        assert stored.messages[2].content == "first done"
+        assert stored.messages[3].tool_call_id == "second-call"
+        assert (
+            stored.messages[3].content
+            == "REFUSED [run_cancelled]: run cancellation requested before execution"
+        )
+        assert not _session.find_orphaned_tool_messages(stored.messages)
+        assert not _session.find_unanswered_tool_calls(stored.messages)
+        tool_results = [payload for kind, payload in events if kind == "tool_result"]
+        assert [payload["callId"] for payload in tool_results] == ["first-call", "second-call"]
+        assert tool_results[1]["executed"] is False
+        assert tool_results[1]["denialKind"] == "run_cancelled"
 
 
 # ── live session compaction ──────────────────────────────────────────────────

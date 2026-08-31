@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.16.1
+**Version**: 0.17.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
@@ -402,8 +402,19 @@ tool call to take.**
      prompt) are now a historical record of a question that no longer has a live subject, not a
      description of a gap in today's coverage.
    - `core/tools.py` is the thing a pod-dispatch hop actually runs through, full stop — this
-     section can now be cited as evidence that a pod-dispatch hop today is gated by
-     `pre_tool_call` and the command classifier; that was not true before P19-5/P19-7a landed.
+   section can now be cited as evidence that a pod-dispatch hop today is gated by
+   `pre_tool_call` and the command classifier; that was not true before P19-5/P19-7a landed.
+9. **Cooperative run cancellation (W26-C10b).** `ToolContext` carries one optional
+   `cancellation_check: Callable[[], bool]` supplied only by an owned run. `dispatch_tool` checks it
+   before approval continuation and immediately before the handler. Cancellation before execution
+   returns a denied, non-executed result with `denial_kind="run_cancelled"`; the model-visible form
+   is exactly `REFUSED [run_cancelled]: run cancellation requested before execution` and contains
+   no token, arguments, or private value. Callers without the callback are unchanged.
+10. A cancellation observed while an in-turn approval is pending **MUST** conditionally deny that
+    pending record through the existing locked transition. A concurrent grant/deny remains the
+    winner if it committed first, but cancellation after a granted wait still prevents the handler.
+    Cancellation is not an approval timeout and **MUST NOT** fabricate a second terminal decision,
+    audit event, or trace event.
 
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
@@ -1042,6 +1053,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.17.0 (2026-08-31)
+
+- W26-C10b adds the optional persisted-run cancellation check to `ToolContext` and the closed
+  `run_cancelled` denial. Pending approval is denied conditionally; a concurrent terminal approval
+  remains authoritative, but no post-cancel grant may start the handler. Non-run callers retain the
+  existing approval and tool behavior.
 
 ### Version 0.16.1 (2026-08-31)
 

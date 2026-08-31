@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.15.0
+**Version**: 1.16.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -20,7 +20,7 @@ through the durable atomic path before transport rather than relying only on pre
 When the endpoint also advertises a positive output limit, the loop reserves one bounded,
 tool-free terminal response before another ordinary round can exhaust the cumulative measured
 turn budget.
-**Last Updated**: 2026-08-26
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -384,6 +384,37 @@ This specification does NOT cover:
     never tool arguments, approval tokens, refusal reasons, or private values.
 61. Each denied `tool_result` trace **MUST** include its stable `denialKind`; allowed/executed trace
     payloads retain their existing fields and **MUST NOT** invent a denial kind.
+62. A pod-dispatch run's C10a `RunCancellationSignal` **MUST** reach the production driver and every
+    parallel worker as one optional `ToolContext.cancellation_check` callback. The callback reads
+    persisted state and records first observation; a non-run embedding caller that supplies no
+    callback **MUST** retain byte-for-byte-equivalent turn behavior.
+63. The loop **MUST** check cancellation before every compaction, ordinary task, and terminal
+    finalization transport and immediately after each transport returns. A request already blocking
+    may finish, but a post-request response **MUST NOT** be accepted, persisted, or allowed to start
+    a tool. Endpoint-reported measured usage may still be durably accounted through the existing
+    empty-message usage append; no raw response content may be retained.
+64. A cancelled compaction response **MUST** fail closed before its summary changes durable history.
+    The loop **MUST NOT** start the following task transport. Existing complete history units remain
+    unchanged; only measured usage allowed by requirement 63 may alter the session record.
+65. The loop **MUST** check immediately before each `dispatch_tool` call and immediately after an
+    already-running handler returns. Cancellation before a handler begins produces a non-executed
+    `ToolResult` with `denial_kind="run_cancelled"`; cancellation does not attempt to interrupt a
+    Python handler already running.
+66. Cancellation during a multi-call response **MUST** persist one complete assistant/tool-result
+    unit: every call already admitted retains its complete result and every remaining call receives
+    `REFUSED [run_cancelled]: run cancellation requested before execution`. No later handler or
+    backend request starts, no tool-call id is orphaned, and only actually admitted handlers count
+    in `tool_calls_executed`.
+67. Every cooperative stop **MUST** return `ok=False`, `stop_reason="run_cancelled"`, and
+    `failure_kind="run_cancelled"`. `DocketDriver` **MUST** preserve that typed outcome in
+    `TurnResult`, and dispatch retry logic **MUST NOT** classify it as transient.
+68. A cancellation check immediately after an approval wait **MUST** prevent the handler even when
+    a concurrent grant won. If the approval is still pending when cancellation wins, Docket
+    conditionally denies it through the existing single-winner approval transition; it never
+    overwrites a grant/deny that already committed.
+69. Cancellation checks **MUST NOT** split durable assistant/tool units or add raw cancellation
+    content to traces. Existing `tool_call`/`tool_result` events identify admitted and explicitly
+    cancelled call ids through their existing bounded fields.
 
 ## Interface Contracts
 
@@ -393,7 +424,7 @@ This specification does NOT cover:
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
-    "tool_denials",
+    "tool_denials", "run_cancelled",
 ]
 
 class LoopConfig:                              # frozen
@@ -570,6 +601,14 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.16.0 (2026-08-31)
+
+- W26-C10b specifies cooperative consumption of C10a's persisted signal at every compaction/task/
+  finalization transport, approval continuation, and tool-handler boundary. Blocking work may
+  return, but post-cancel model content is discarded; admitted tool work remains one complete
+  assistant/result unit, remaining calls receive typed `run_cancelled` refusals, and no retry or
+  later side effect starts. Existing embedding callers without a signal are unchanged.
 
 ### Version 1.15.0 (2026-08-26)
 
