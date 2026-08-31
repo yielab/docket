@@ -1259,7 +1259,7 @@ not implementation-complete.
 
 ### W26-C10a — persist one truthful run-cancellation signal
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Decision / deterministic trigger:** D-30 governs this card. `cancel_run` currently performs an
 unlocked read, kills captured PIDs, clears them in a second transition, and immediately writes the
@@ -1315,9 +1315,15 @@ Ruff/format, strict mypy, spec validation, and full pytest/goldens/metrics/smoke
 lifecycle spec/tests. C10b starts only after its commit lands and may consume but not redesign the
 signal. No parallel loop/session/budget card may touch the same run ContextVar or registry.
 
+**Shipped evidence:** RED contract commit `0d24f7a` and implementation commit `dc69142` add the
+versioned persisted lifecycle and typed run-id signal, resolve request-versus-terminal in one store
+transition, keep running work nonterminal until its executor stops, and preserve queued, malformed,
+legacy, repeated-request, permission, and unknown-field behavior. Cross-process, barrier-race,
+CLI/read compatibility, full pytest/smoke, static, spec, golden, and metrics gates pass.
+
 ### W26-C10b — stop the owned loop at every side-effect boundary
 
-**Status:** BLOCKED (needs W26-C10a) · **Size:** M · **Owner:** unassigned
+**Status:** TODO (W26-C10a satisfied) · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** after C10a, the persisted signal is truthful but the in-process
 `DocketDriver` still does not consume it. `run_agent_turn` can start later backend requests, wait on
@@ -1368,9 +1374,10 @@ tests; Ruff/format, strict mypy, both owning specs, full pytest, goldens, metric
 smoke. The artifact boundary must prove the optional signal did not add a CLI/control-plane import
 to `docket-runtime`.
 
-**Dependency / contention:** blocked on the accepted C10a contract. Owns the loop/driver/tool path
-serially and cannot overlap another agent-loop, session, approval, tool-dispatch, or runtime-package
-card. C10c starts only after these typed outcomes and checkpoints land.
+**Dependency / contention:** C10a is accepted at `dc69142`; consume that signal without redesigning
+it. This card owns the loop/driver/tool path serially and cannot overlap another agent-loop,
+session, approval, tool-dispatch, or runtime-package card. C10c starts only after these typed
+outcomes and checkpoints land.
 
 ### W26-C10c — reconcile cancelled task/run truth through public surfaces
 
