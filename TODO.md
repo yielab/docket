@@ -967,7 +967,7 @@ deterministic smoke.
 
 ### W26-C4 — enforce clean-install-to-first-turn in CI
 
-**Status:** READY (W26-C1-C3 done) · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** focused suites are strong, but no release gate proves that a user can install
 the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,
