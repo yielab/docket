@@ -146,3 +146,26 @@ jobs:
         run: |
           bash bin/docket --version
           bash tests/golden/run.sh verify-all
+
+  # Release exit gate: build and install the exact wheel outside the checkout,
+  # then reach one governed tool turn through the installed CLI on both supported OSes.
+  release-journey:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Run the artifact-installed release journey
+        run: uv run python scripts/release_journey.py
