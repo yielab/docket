@@ -769,8 +769,9 @@ model call was made by this card.
 ## ◉ WAVE 26 ACTIVE (2026-08-30) — first successful turn and release/governance truth
 
 **Activation state:** ACTIVE. Wave 25 closed at integration commit `6b925f0` after its full closure
-gates passed. The dependency-free ready pool is W26-C1, C2, and C6–C10. W26-C0 still requires the
-maintainer's release-source decision; dependent cards retain their explicit blockers. The Phase 23
+gates passed. W26-C0's maintainer decision is accepted: `main` is the canonical public/default
+release lineage and the completed `platform` history is synchronized into it without rewriting
+history. W26-C3 is now the sole ready release card; C4 and C11 retain their serial blockers. The Phase 23
 decision and later-wave triggers live in
 [ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
 bounded coordinator packet is
@@ -786,7 +787,7 @@ ports, or a live model endpoint, and return evidence to the integrator instead o
 
 ### W26-C0 — establish one public release source
 
-**Status:** BLOCKED (needs maintainer branch decision) · **Size:** S · **Owner:**
+**Status:** DONE (2026-08-31) · **Size:** S · **Owner:**
 integrator only
 
 **Explicit trigger:** the 2026-08-30 audit found `platform` at the current Docket-owned runtime while
@@ -820,6 +821,13 @@ and C11 own the final artifact and claim gates.
 
 **Contention:** central/integration files only. It may coordinate with C1/C2/C6–C10 but no worker
 branch edits its files.
+
+**Shipped evidence:** maintainer authorization selected `main` as the canonical release lineage.
+GitHub already reported `main` as the default branch; after refreshing origin, the preflight showed
+`platform` was exactly 300 commits ahead of `origin/main` and zero behind. The integration update
+fast-forwarded and synchronized both refs atomically without force push, deletion, or history
+rewrite. ROADMAP D-31 records that releases/tags originate from `main`; C3 owns converting the
+remaining mutable installer and formula inputs to immutable tagged assets.
 
 ### W26-C1 — guarantee a resolvable first provider
 
@@ -912,7 +920,7 @@ dependencies. The two artifact-only oracles pass; `uv.lock` matches the verified
 
 ### W26-C3 — make release artifacts immutable and verifiable
 
-**Status:** BLOCKED (needs W26-C0; W26-C2 done) · **Size:** M · **Owner:** unassigned
+**Status:** READY (W26-C0/C2 done) · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** `Formula/docket-cli.rb` contains an all-zero SHA and declares MIT instead
 of Apache-2.0; its comment says release automation updates it, but the workflow only archives source
@@ -1457,7 +1465,7 @@ boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** BLOCKED (needs W26-C0, C3, and C4; C1/C2/C5-C10 done) · **Size:** M ·
+**Status:** BLOCKED (needs W26-C3 and C4; C0-C2/C5-C10 done) · **Size:** M ·
 **Owner:** integrator only
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,

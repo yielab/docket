@@ -660,6 +660,7 @@ address exactly those.
 | D-28 | Does D-21's packaging-only ruling permit correcting the overlapping `docket-runtime` wheel and adding a facade? | W26-C5 | **Yes, narrowly.** Two independently installable distributions may not own the same files. A non-overlapping package topology, wheel+sdist support, and the smallest versioned facade needed by a real embedding example are correctness fixes to the package split, not speculative runtime features. Internal modules remain private unless the facade exports them; adapters and new extension APIs still need real callers under D-27. |
 | D-29 | How is Phase 23 delivered by simultaneous agents without duplicating context or corrupting central state? | Phase 23 execution | **One coordinator plus as many non-contending worker lanes as the environment supports.** Each card has one owner, isolated worktree, unique `DOCKET_HOME`/temp/ports, exact allowed paths/functions, and a delta-only evidence handoff. `ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`, release rollups, and mutable live endpoints are integrator-owned. Workers load the snapshot, one extracted card, one named decision, the owning spec section/tests, and the live callers—never the planning corpus or another worker's raw conversation. |
 | D-30 | What does `cancelled` mean for an in-process run that a separate CLI process can request but cannot forcibly interrupt? | W26-C10a–C10c | **Cancellation is a persisted lifecycle, not a process-local event or an immediate stop claim.** The run id is the signal identity and its additive record distinguishes `requestedAt`, `observedAt`, and `stoppedAt`. A queued request is fully stopped atomically because no body ran. A running request remains visibly in flight until the owned executor observes it and reaches a safe stop; if the request wins the registry CAS, later success/failure cannot overwrite cancellation. Checkpoints prevent every not-yet-started model request, approval continuation, and tool handler. A cooperatively stopped task uses the additive status `cancelled`, never ordinary `failed`. An HTTP request or tool handler already executing may finish because Python threads are not killed; its result is either discarded before any next side effect or retained only as a complete assistant/tool-result unit, then the run stops. The existing CLI is the mutation surface; Wave 26 adds no POST cancellation API, event bus, async runtime, or unsafe thread kill. |
+| D-31 | Which branch is Docket's public release lineage after Wave 26? | W26-C0 | **`main` is the canonical public/default release lineage.** The maintainer authorized the current `platform` lineage to fast-forward `main`; GitHub already names `main` as the default branch, and the preflight showed `platform` exactly 300 commits ahead with no `main`-only commits. The update is fast-forward-only and both branch names remain recoverable and synchronized. Tags and protected release jobs originate from `main`; feature/work branches are never release sources merely because they are newer. C3 owns replacing the remaining mutable installer/formula inputs with immutable tagged artifacts. |
 
 ---
 
@@ -2576,16 +2577,23 @@ command list — **cannot be merged by picking a side**, because no side holds e
 Regenerate it from ground truth (the spec headers, the real CLI, the actual suite) and verify the
 diff. This caught real regressions on three consecutive merges.
 
-**Branch model for this program:** all Platformization work happens on the long-running
-**`platform`** branch, a deliberate fork-candidate line — the operator may promote it to the next
-major version (or a fork) rather than merging phase-by-phase into `main`. `main` stays the stable
-0.2.x beta line. Per-card branches are `pc/r-<id>` → PR into `platform`. The 2026-07-30 spec
-restructure (statuses trued to code, legacy specs retired) is the branch's baseline commit —
-specs on `platform` describe the code, not aspirations, and R-8 keeps them that way.
+**Branch model for this program:** D-31 supersedes the earlier fork-candidate arrangement.
+**`main` is the canonical public/default and release lineage**; the completed `platform` history was
+fast-forwarded into it without rewriting either branch. `platform` may remain as a synchronized
+integration ref during Wave 26 cleanup, but it is not a second release source. Feature/card branches
+target `main` (or an explicitly named temporary integration branch that must land before release).
+Specs on the release lineage describe the code, not aspirations, and R-8 keeps them that way.
 
 ---
 
 ### Changelog
+
+- **2026-08-31 (Wave 26 C0 accepted) — `main` is now the single public/default release
+  lineage.** The maintainer authorized promotion of the current `platform` history. GitHub already
+  identified `main` as default; the preflight proved `platform` was a strict 300-commit
+  fast-forward with no `main`-only commits. Both refs were synchronized without force push or
+  history rewrite. D-31 records that tags/releases originate from `main`; C3 now owns immutable
+  tagged artifacts and the remaining mutable installer/formula inputs.
 
 - **2026-08-31 (Wave 26 C10b accepted) — owned runs now stop cooperatively at every unstarted
   model, approval-continuation, and tool-handler boundary.** The persisted C10a signal now reaches
