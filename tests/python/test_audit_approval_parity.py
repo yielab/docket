@@ -21,6 +21,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
+import stat
 import threading
 import urllib.error
 import urllib.request
@@ -98,6 +99,42 @@ def _last_audit_entry(action: str) -> dict[str, object]:
     entries = [e for e in _audit.read_audit() if e["action"] == action]
     assert entries, f"no audit entries found for action={action}"
     return entries[-1]
+
+
+def _race_pending_transitions(
+    monkeypatch: pytest.MonkeyPatch, *calls: object
+) -> list[BaseException | None]:
+    """Start two public decisions together at the old read/write seam.
+
+    The barrier is deliberately around ``_set_state``: before W26-C7 both
+    callers had already read ``pending`` when they reached it.  The repaired
+    implementation keeps that seam but re-checks the state under the store
+    lock, so exactly one caller may return normally.
+    """
+    original = _ap._set_state
+    barrier = threading.Barrier(2, timeout=2)
+
+    def synchronized_set_state(token: str, state: str) -> dict[str, object]:
+        barrier.wait()
+        return original(token, state)
+
+    monkeypatch.setattr(_ap, "_set_state", synchronized_set_state)
+    errors: list[BaseException | None] = [None, None]
+
+    def run(index: int, call: object) -> None:
+        assert callable(call)
+        try:
+            call()
+        except BaseException as exc:  # the public error/no-op is the oracle
+            errors[index] = exc
+
+    threads = [threading.Thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    return errors
 
 
 # ── CLI channel ────────────────────────────────────────────────────────────────
@@ -198,6 +235,105 @@ class TestExplicitChannelArgument:
 
         entry = _last_audit_entry("approval.grant")
         assert entry["detail"] == f"token={token} project=proj-default channel=unknown"
+
+
+# ── atomic terminal decisions ─────────────────────────────────────────────────
+
+
+class TestAtomicApprovalDecisions:
+    def test_grant_deny_race_has_one_winner_and_one_matching_audit_trace_pair(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for iteration in range(12):
+            token = _ap.approval_create(f"atomic-opposite-{iteration}", "implementer", "deploy")
+            errors = _race_pending_transitions(
+                monkeypatch,
+                lambda token=token: _ap.approval_grant(token, channel="cli"),
+                lambda token=token: _ap.approval_deny(token, channel="cli"),
+            )
+
+            assert errors.count(None) == 1
+            assert sum(isinstance(error, _ap.ApprovalError) for error in errors) == 1
+            assert _ap.approval_get(token)["state"] in {"granted", "denied"}
+
+            events = _trace_events(home, f"atomic-opposite-{iteration}")
+            terminal_events = [
+                event["event_type"]
+                for event in events
+                if event["event_type"] in {"approval_granted", "approval_denied"}
+            ]
+            assert len(terminal_events) == 1
+            entries = [
+                entry
+                for entry in _audit.read_audit()
+                if entry["action"] in {"approval.grant", "approval.deny"}
+                and f"token={token}" in entry["detail"]
+            ]
+            assert len(entries) == 1
+
+    def test_grant_grant_race_has_one_winner_and_one_audit_trace_pair(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for iteration in range(12):
+            token = _ap.approval_create(f"atomic-grant-{iteration}", "implementer", "deploy")
+            errors = _race_pending_transitions(
+                monkeypatch,
+                lambda token=token: _ap.approval_grant(token, channel="cli"),
+                lambda token=token: _ap.approval_grant(token, channel="cli"),
+            )
+
+            assert errors.count(None) == 1
+            assert sum(isinstance(error, _ap.ApprovalNoop) for error in errors) == 1
+            assert _ap.approval_get(token)["state"] == "granted"
+
+            events = _trace_events(home, f"atomic-grant-{iteration}")
+            assert [event["event_type"] for event in events].count("approval_granted") == 1
+            entries = [
+                entry
+                for entry in _audit.read_audit()
+                if entry["action"] == "approval.grant" and f"token={token}" in entry["detail"]
+            ]
+            assert len(entries) == 1
+
+    def test_deny_expiry_race_has_one_denial_and_a_stable_sweep_count(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token = _ap.approval_create("atomic-expiry", "implementer", "deploy")
+        record = _ap.approval_get(token)
+        record["created"] = "2000-01-01T00:00:00Z"
+        _ap._store.write_json(_ap._approval_path(token), record)
+        sweep_counts: list[int] = []
+        real_set_state = _ap._set_state
+
+        errors = _race_pending_transitions(
+            monkeypatch,
+            lambda: _ap.approval_deny(token, channel="cli"),
+            lambda: sweep_counts.append(_ap.approval_sweep_expired()),
+        )
+
+        assert errors[1] is None
+        assert errors[0] is None or isinstance(errors[0], _ap.ApprovalNoop)
+        assert sweep_counts in ([0], [1])
+        assert _ap.approval_get(token)["state"] == "denied"
+        events = _trace_events(home, "atomic-expiry")
+        assert [event["event_type"] for event in events].count("approval_denied") == 1
+        entries = [
+            entry
+            for entry in _audit.read_audit()
+            if entry["action"] == "approval.deny" and f"token={token}" in entry["detail"]
+        ]
+        assert len(entries) == 1
+        assert stat.S_IMODE(_ap._approval_path(token).stat().st_mode) == 0o600
+
+        # A terminal record is not swept a second time, and an unknown token
+        # remains an error with no trace/audit side effect.
+        monkeypatch.setattr(_ap, "_set_state", real_set_state)
+        assert _ap.approval_sweep_expired() == 0
+        with pytest.raises(_ap.ApprovalError):
+            _ap.approval_grant("apr-unknown-atomic", channel="cli")
+        assert [
+            entry for entry in _audit.read_audit() if "token=apr-unknown-atomic" in entry["detail"]
+        ] == []
 
 
 # ── audit never breaks the approval transition ──────────────────────────────────

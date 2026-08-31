@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import json
+import threading
 from pathlib import Path
 from typing import ClassVar
 
@@ -216,6 +217,44 @@ class TestApproveDeny:
         # exactly one grant audit entry, not two
         grants = [e for e in _read_audit() if e.get("action") == "approval.grant"]
         assert len(grants) == 1
+
+    def test_concurrent_telegram_grant_and_deny_have_one_winner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _bind("security", "-100200")
+        token = _approval.approval_create("security", "security", "delete prod bucket")
+        original = _approval._set_state
+        barrier = threading.Barrier(2, timeout=2)
+
+        def synchronized_set_state(record_token: str, state: str) -> dict[str, object]:
+            barrier.wait()
+            return original(record_token, state)
+
+        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        outcomes: list[_tg.TelegramActionResult] = []
+
+        def decide(command: str, update_id: int) -> None:
+            outcomes.append(_tg.handle_message(_msg("-100200", command, update_id=update_id)))
+
+        threads = [
+            threading.Thread(target=decide, args=(f"/approve {token}", 2)),
+            threading.Thread(target=decide, args=(f"/deny {token}", 3)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+
+        assert sum(outcome.ok for outcome in outcomes) == 1
+        assert _approval.approval_get(token)["state"] in {"granted", "denied"}
+        domain_entries = [
+            entry
+            for entry in _read_audit()
+            if entry.get("action") in {"approval.grant", "approval.deny"}
+            and f"token={token}" in str(entry.get("detail"))
+        ]
+        assert len(domain_entries) == 1
 
 
 # ── status ────────────────────────────────────────────────────────────────

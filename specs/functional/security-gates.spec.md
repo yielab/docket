@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 0.16.0
+**Version**: 0.16.1
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
 Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
-**Last Updated**: 2026-08-26
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -74,6 +74,10 @@ are owned here, not there.
    `resolve_waiting_approval`. Telegram's `core/telegram.py`'s `_handle_decision` calls the
    identical `approval_grant`/`approval_deny` + `resolve_waiting_approval` sequence
    `cli/_approve.py`/`cli/_deny.py` use — one approval implementation, four callers.
+   A pending record **MUST** make its one terminal transition (`granted` or fail-closed
+   `denied`) under the store's locked read-modify-write operation: concurrent decisions, including
+   the expiry sweep, have exactly one winner. Only that winner emits the matching trace and audit
+   event; a duplicate decision retains its existing no-op/error result and emits neither.
 3. A gate prompt with no approver **MUST** fail closed. With the daemon gone, this is entirely
    docket's own responsibility now: an in-turn `core/tools.py` gate fails closed via
    `TOOL_APPROVAL_TIMEOUT` (see "In-turn tool-call gate" below), and a stale **pending** record in
@@ -1038,6 +1042,13 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.16.1 (2026-08-31)
+
+- **W26-C7 — approval decisions are single-winner transitions.** Grant, deny, and fail-closed
+  expiry now conditionally transition a pending record while holding the approval-store lock.
+  Concurrent headless decisions cannot overwrite one another or create contradictory
+  trace/audit records; the terminal winner alone emits its ordinary event.
 
 ### Version 0.16.0 (2026-08-26)
 

@@ -129,10 +129,40 @@ def _read(token: str) -> dict[str, Any]:
 
 
 def _set_state(token: str, new_state: str) -> dict[str, Any]:
-    data = _read(token)
-    data["state"] = new_state
-    _store.write_json(_approval_path(token), data)
-    return data
+    """Conditionally make one pending record terminal under the store lock.
+
+    The caller must use the returned record for all follow-on side effects.
+    Reading first and then writing later lets two human decisions both observe
+    ``pending`` and both report success; keeping the state check inside
+    ``read_modify_write`` makes one decision the sole transition winner.
+    """
+    path = _approval_path(token)
+
+    def transition(data: dict[str, Any]) -> dict[str, Any]:
+        # ``read_modify_write`` represents a missing file as ``{}``; preserve
+        # approval_get's public missing-token error instead of treating it as
+        # an invalid, empty approval record.
+        if not path.is_file():
+            raise ApprovalError(f"Approval not found: {token}")
+
+        state = str(data.get("state", ""))
+        if new_state == "granted":
+            if state == "granted":
+                raise ApprovalNoop(f"Already granted: {token}")
+            if state != "pending":
+                raise ApprovalError(f"Cannot grant approval in state '{state}': {token}")
+        elif new_state == "denied":
+            if state in ("denied", "expired"):
+                raise ApprovalNoop(f"Already {state}: {token}")
+            if state != "pending":
+                raise ApprovalError(f"Cannot deny approval in state '{state}': {token}")
+        else:  # private callers only use the two terminal states above.
+            raise ApprovalError(f"Unknown approval state: {new_state}")
+
+        data["state"] = new_state
+        return data
+
+    return _store.read_modify_write(path, transition)
 
 
 def approval_create(
@@ -195,14 +225,7 @@ def approval_grant(token: str, channel: str = "unknown") -> None:
 
     Raises ApprovalNoop if already granted, ApprovalError on any other state.
     """
-    data = _read(token)
-    state = str(data.get("state", ""))
-    if state == "granted":
-        raise ApprovalNoop(f"Already granted: {token}")
-    if state != "pending":
-        raise ApprovalError(f"Cannot grant approval in state '{state}': {token}")
-
-    _set_state(token, "granted")
+    data = _set_state(token, "granted")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_granted", {"token": token})
@@ -218,14 +241,7 @@ def approval_deny(token: str, channel: str = "unknown") -> None:
 
     Raises ApprovalNoop if already denied/expired, ApprovalError on any other state.
     """
-    data = _read(token)
-    state = str(data.get("state", ""))
-    if state in ("denied", "expired"):
-        raise ApprovalNoop(f"Already {state}: {token}")
-    if state != "pending":
-        raise ApprovalError(f"Cannot deny approval in state '{state}': {token}")
-
-    _set_state(token, "denied")
+    data = _set_state(token, "denied")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
@@ -251,20 +267,19 @@ def list_pending() -> list[dict[str, Any]]:
     return out
 
 
-def _resolve_timeout_as_denied(data: dict[str, Any]) -> None:
+def _resolve_timeout_as_denied(token: str) -> bool:
     """Fail-closed timeout resolution shared by the sweep and the in-turn waiter.
 
-    *data* must be a record already known to be ``state == "pending"`` (the
-    caller just read it). Transitions it to **denied**, writes the same
-    ``approval.deny`` / ``channel=timeout`` audit entry an explicit ``docket
-    deny`` would, and best-effort notifies ``core/dispatch.py`` so a dispatch
-    task waiting on this exact token is actually failed rather than left
-    stranded — a local import, guarded, so a problem on the dispatch side can
-    never break either caller.
+    Conditionally transitions a pending record to **denied**. Returns ``True``
+    only for the transition winner, which alone writes the matching
+    ``approval.deny`` / ``channel=timeout`` audit entry and notifies
+    ``core/dispatch.py``. A grant, deny, expiry, or deletion that wins first is
+    a harmless ``False`` outcome rather than a stale timeout overwrite.
     """
-    token = str(data.get("token", ""))
-    data["state"] = "denied"
-    _store.write_json(_approval_path(token), data)
+    try:
+        data = _set_state(token, "denied")
+    except (ApprovalError, ApprovalNoop):
+        return False
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
@@ -273,6 +288,7 @@ def _resolve_timeout_as_denied(data: dict[str, Any]) -> None:
         from docket.core import dispatch as _dispatch
 
         _dispatch.resolve_waiting_approval(token, "denied")
+    return True
 
 
 def approval_sweep_expired() -> int:
@@ -306,8 +322,9 @@ def approval_sweep_expired() -> int:
         except ValueError:
             continue
         if (now - dt.timestamp()) > timeout:
-            _resolve_timeout_as_denied(data)
-            swept += 1
+            token = str(data.get("token", ""))
+            if token and _resolve_timeout_as_denied(token):
+                swept += 1
     return swept
 
 
@@ -376,6 +393,12 @@ def wait_for_approval(
         if state in ("denied", "expired"):
             return ApprovalWaitResult("denied", token)
         if do_clock() >= deadline:
-            _resolve_timeout_as_denied(data)
-            return ApprovalWaitResult("denied", token, timed_out=True)
+            if _resolve_timeout_as_denied(token):
+                return ApprovalWaitResult("denied", token, timed_out=True)
+            # A concurrent decision won after this polling read. Observe the
+            # persisted winner rather than returning a stale timeout denial.
+            final_state = str(_read(token).get("state", ""))
+            if final_state == "granted":
+                return ApprovalWaitResult("granted", token)
+            return ApprovalWaitResult("denied", token)
         do_sleep(effective_poll)

@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.9.0
+**Version**: 2.9.1
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -40,7 +40,9 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
 
 1. **Implemented action families:**
    - `gates.enable` / `gates.disable` / `gates.isolate` (`cli/_gates.py`)
-   - `approval.grant` / `approval.deny`, with a channel tag (`core/approval.py`)
+   - `approval.grant` / `approval.deny`, with a channel tag (`core/approval.py`). A winning
+     pending-to-terminal transition writes exactly one matching approval entry; a concurrent
+     losing or terminal no-op writes none.
    - `auth.setup` (`cli/_install.py`)
    - `keys.add` / `keys.rotate` / `keys.remove` (`cli/_keys.py`, including the
      `docket keys setup` wizard's per-key adds/rotations)
@@ -398,6 +400,14 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.9.1 (2026-08-31)
+
+- **W26-C7 — approval audit parity is atomic with the decision.** `core/approval.py` now
+  conditionally claims a pending record under the store lock before emitting `approval.grant` or
+  `approval.deny`. Concurrent grant, deny, and expiry attempts therefore leave one terminal state
+  and one matching domain audit record, while losing/terminal attempts retain their existing
+  no-op/error behavior without a second entry.
 
 ### Version 2.9.0 (2026-08-30)
 

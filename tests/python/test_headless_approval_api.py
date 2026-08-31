@@ -217,6 +217,37 @@ class TestGrantDenyViaEndpoint:
         status, _ = _post(f"{url}/unknown", {"action": "grant"}, token)
         assert status == 404
 
+    def test_concurrent_http_grant_and_deny_have_one_terminal_winner(
+        self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two real HTTP handlers meeting at a pending record cannot both win."""
+        url, token = live_server
+        apr_token = _approval.approval_create("proj-race", "implementer", "deploy")
+        original = _approval._set_state
+        barrier = threading.Barrier(2, timeout=2)
+
+        def synchronized_set_state(record_token: str, state: str) -> dict[str, object]:
+            barrier.wait()
+            return original(record_token, state)
+
+        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        replies: list[tuple[int, dict]] = []
+
+        def decide(action: str) -> None:
+            replies.append(_post(f"{url}/approvals/{apr_token}", {"action": action}, token))
+
+        threads = [threading.Thread(target=decide, args=(action,)) for action in ("grant", "deny")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+
+        # Opposite terminal state remains the endpoint's existing ApprovalError
+        # path (404); only a duplicate decision is a 409 no-op.
+        assert sorted(status for status, _body in replies) == [200, 404]
+        assert _approval.approval_get(apr_token)["state"] in {"granted", "denied"}
+
 
 # ── POST /approvals/<token>'s optional `channel` field ─────────────────────────
 
