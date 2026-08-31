@@ -887,7 +887,7 @@ def run_delete(agent_id: str | None) -> int:
 
     from docket.core import conversations as _conv
 
-    _conv.save(_conv.remove_agent(_conv.load(), aid))
+    _conv.remove_agent_durable(aid)
 
     if del_ws.lower() == "y":
         _shutil.rmtree(ws, ignore_errors=True)

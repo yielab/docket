@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.5.0
+**Version**: 6.5.1
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -41,7 +41,7 @@ before ever truncating `summary` itself.
 **Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
 receive prior work through the bounded typed artifact once, while all audit events remain on the
 task-wide trace coordinate.
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -304,6 +304,14 @@ was seeded once at binding time.)*
 3. A hop for one pod member (e.g. the Implementer) **MUST NOT** touch a different member's
    (e.g. the Lead's) conversation — each hop only ever refreshes the conversation(s) keyed to its
    own `member_id`.
+4. A hop touch, and every public durable conversation mutation, **MUST** read, transform, and
+   write the registry within one `edges.store.read_modify_write` boundary. Concurrent mutations
+   for different conversations **MUST** merge; concurrent mutations for the same conversation are
+   serialized by that boundary, so the later completed mutation is the durable value. An unwired
+   hop and an unknown conversation resume are true no-ops: they **MUST NOT** rewrite the registry.
+   Invalid registry data and a mutation exception **MUST** leave the existing file untouched.
+   The boundary preserves unknown registry and conversation fields and writes no raw full hop
+   output (only the existing bounded preview).
 
 ### blocked and terminal-failure re-entry
 
@@ -1136,6 +1144,14 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   DocketDriver validates same-pod ownership, uses it as the sole tool root for that turn, and
   strips the internal coordinate from tool environments. Role permissions and bounded typed
   handoff semantics are unchanged.
+
+### Version 6.5.1 (2026-08-31)
+
+- **Wave 26, card W26-C9.** Conversation mutations now share one locked registry
+  read-modify-write boundary. Dispatch hop touches and public registry writers cannot discard a
+  concurrent conversation update; unwired/unknown no-ops leave the file byte-identical, and
+  malformed input or a mutation failure fails closed without replacing it. The registry's wire
+  shape and bounded hop-preview contract are unchanged.
 
 ### Version 6.2.0 (2026-08-19)
 

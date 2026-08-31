@@ -366,18 +366,15 @@ def _delete_pod(project: str, members: list[str]) -> int:
 
     from docket.core import conversations as _conv
 
-    reg = _conv.load()
     for mid in members:
         if _fleet.get_binding(mid):
             _fleet.remove_binding(mid)
-        reg = _conv.remove_agent(reg, mid)
+        _conv.remove_agent_durable(mid)
         ok, msg = _pod.teardown_member(mid)
         if ok:
             ui.success(f"Removed {mid}")
         else:
             ui.warn(f"{mid}: fleet deregistration reported: {msg} (workspace cleaned)")
-    _conv.save(reg)
-
     # Free pod runtime resources (port range + scratch dir) after all members gone.
     _pod.free_pod_resources(project)
     _pod.purge_pod_history(project, members)
@@ -534,11 +531,9 @@ def cmd_wire(
 
     from docket.core import conversations as _conv
 
-    reg = _conv.load()
-    _, reg = _conv.record(
-        reg, agent_id=aid, peer_id=peer_id, channel=channel, now=datetime.now(UTC).isoformat()
+    _conv.record_durable(
+        agent_id=aid, peer_id=peer_id, channel=channel, now=datetime.now(UTC).isoformat()
     )
-    _conv.save(reg)
 
     ui.success(f"Done. '{aid}' is now wired to {channel} peer {peer_id}")
 

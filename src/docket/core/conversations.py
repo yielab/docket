@@ -17,10 +17,13 @@ ops stay testable; the ``cli`` layer stamps ``datetime.now(UTC)``.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
+from typing import Any, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import docket.config as _cfg
 from docket.edges import store as _store
@@ -54,7 +57,8 @@ class Conversation(BaseModel):
 
 
 class ConversationRegistry(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    # Preserve forward-compatible registry fields during a durable mutation.
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     conversations: list[Conversation] = Field(default_factory=list)
 
@@ -83,7 +87,7 @@ def ordered(reg: ConversationRegistry) -> list[Conversation]:
 def upsert(reg: ConversationRegistry, conv: Conversation) -> ConversationRegistry:
     """Insert *conv*, or replace the existing entry with the same id. Pure."""
     kept = [c for c in reg.conversations if c.id != conv.id]
-    return ConversationRegistry(conversations=[*kept, conv])
+    return reg.model_copy(update={"conversations": [*kept, conv]})
 
 
 def record(
@@ -107,23 +111,35 @@ def record(
     """
     cid = make_id(agent_id, peer_id, channel)
     existing = get(reg, cid)
-    conv = Conversation(
-        id=cid,
-        agent_id=agent_id,
-        channel=channel,
-        peer_id=peer_id,
-        peer_kind=peer_kind,
-        topic=topic if topic is not None else (existing.topic if existing else ""),
-        status=status
-        if status is not None
-        else (existing.status if existing else ConversationStatus.active),
-        created=existing.created if existing and existing.created else now,
-        updated=now,
-        last_message=last_message
-        if last_message is not None
-        else (existing.last_message if existing else ""),
-        task_ref=task_ref if task_ref is not None else (existing.task_ref if existing else ""),
-    )
+    if existing is not None:
+        conv = existing.model_copy(
+            update={
+                "agent_id": agent_id,
+                "channel": channel,
+                "peer_id": peer_id,
+                "peer_kind": peer_kind,
+                "topic": topic if topic is not None else existing.topic,
+                "status": status if status is not None else existing.status,
+                "created": existing.created or now,
+                "updated": now,
+                "last_message": last_message if last_message is not None else existing.last_message,
+                "task_ref": task_ref if task_ref is not None else existing.task_ref,
+            }
+        )
+    else:
+        conv = Conversation(
+            id=cid,
+            agent_id=agent_id,
+            channel=channel,
+            peer_id=peer_id,
+            peer_kind=peer_kind,
+            topic=topic or "",
+            status=status or ConversationStatus.active,
+            created=now,
+            updated=now,
+            last_message=last_message or "",
+            task_ref=task_ref or "",
+        )
     return conv, upsert(reg, conv)
 
 
@@ -146,9 +162,9 @@ def touch_for_hop(
     A pod dispatch hop is real, observable work — a human
     watching a wired channel thread should see the task it's actually on and a
     preview of what it last said, not just whatever ``docket wire`` seeded once
-    at binding time. Pure: the caller (``core/dispatch.py``'s ``_persist_hop``)
-    owns the load/save round-trip via ``load``/``save``, same convention as
-    every other registry mutator here.
+    at binding time. Pure: ``touch_for_hop_durable`` owns its locked
+    read-modify-write round-trip, while this helper remains usable in tests and
+    other in-memory transforms.
 
     A no-op — returns *reg* unchanged — when *agent_id* has no tracked
     conversation at all, so a hop for an unwired pod member never fabricates
@@ -180,8 +196,11 @@ def touch_for_hop(
 
 def remove_agent(reg: ConversationRegistry, agent_id: str) -> ConversationRegistry:
     """Drop all conversations for *agent_id* (used on agent/pod teardown)."""
-    return ConversationRegistry(
-        conversations=[c for c in reg.conversations if c.agent_id != agent_id]
+    kept = [c for c in reg.conversations if c.agent_id != agent_id]
+    return (
+        reg
+        if len(kept) == len(reg.conversations)
+        else reg.model_copy(update={"conversations": kept})
     )
 
 
@@ -203,3 +222,109 @@ def save(reg: ConversationRegistry, path: Path | None = None) -> None:
     """Persist the registry atomically via edges/store.py."""
     p = path or _cfg.CONVERSATIONS_FILE
     _store.write_json(p, reg.model_dump(by_alias=True))
+
+
+# --- durable mutations --------------------------------------------------------
+
+
+class ConversationRegistryError(RuntimeError):
+    """The existing registry cannot safely be transformed."""
+
+
+_MutationResult = TypeVar("_MutationResult")
+
+
+def mutate(
+    fn: Callable[[ConversationRegistry], tuple[_MutationResult, ConversationRegistry]],
+    path: Path | None = None,
+) -> _MutationResult:
+    """Run one conversation transformation under the registry's file lock.
+
+    ``fn`` receives the latest validated registry while the lock is held. Returning the
+    same registry object means no durable mutation, which deliberately leaves the input
+    byte-identical. Malformed data is not treated as an empty registry here: that forgiving
+    read behavior belongs to ``load`` for inspection, while a write must fail closed.
+    """
+    p = path or _cfg.CONVERSATIONS_FILE
+    result: _MutationResult
+
+    def _apply(doc: dict[str, Any]) -> dict[str, Any] | None:
+        nonlocal result
+        try:
+            current = ConversationRegistry.model_validate(doc)
+        except ValidationError as exc:
+            raise ConversationRegistryError(
+                f"Cannot mutate malformed conversation registry: {p}"
+            ) from exc
+        result, updated = fn(current)
+        if updated is current:
+            return None
+        return updated.model_dump(by_alias=True)
+
+    try:
+        _store.read_modify_write(p, _apply)
+    except json.JSONDecodeError as exc:
+        raise ConversationRegistryError(
+            f"Cannot mutate malformed conversation registry: {p}"
+        ) from exc
+    return result
+
+
+def record_durable(
+    *,
+    agent_id: str,
+    peer_id: str,
+    now: str,
+    channel: str = "telegram",
+    peer_kind: str = "group",
+    topic: str | None = None,
+    status: ConversationStatus | None = None,
+    last_message: str | None = None,
+    task_ref: str | None = None,
+    path: Path | None = None,
+) -> Conversation:
+    """Record a conversation in one locked read-modify-write operation."""
+    return mutate(
+        lambda reg: record(
+            reg,
+            agent_id=agent_id,
+            peer_id=peer_id,
+            now=now,
+            channel=channel,
+            peer_kind=peer_kind,
+            topic=topic,
+            status=status,
+            last_message=last_message,
+            task_ref=task_ref,
+        ),
+        path,
+    )
+
+
+def resume_durable(cid: str, now: str, path: Path | None = None) -> Conversation | None:
+    """Resume a known conversation atomically; unknown ids leave the file untouched."""
+    return mutate(lambda reg: resume(reg, cid, now), path)
+
+
+def remove_agent_durable(agent_id: str, path: Path | None = None) -> bool:
+    """Remove one agent's tracked conversations atomically."""
+
+    def _remove(reg: ConversationRegistry) -> tuple[bool, ConversationRegistry]:
+        updated = remove_agent(reg, agent_id)
+        return updated is not reg, updated
+
+    return mutate(_remove, path)
+
+
+def touch_for_hop_durable(
+    *, agent_id: str, task_ref: str, last_message: str, now: str, path: Path | None = None
+) -> bool:
+    """Persist one wired agent's bounded hop preview without a stale-registry race."""
+
+    def _touch(reg: ConversationRegistry) -> tuple[bool, ConversationRegistry]:
+        updated = touch_for_hop(
+            reg, agent_id=agent_id, task_ref=task_ref, last_message=last_message, now=now
+        )
+        return updated is not reg, updated
+
+    return mutate(_touch, path)

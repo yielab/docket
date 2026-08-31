@@ -7,7 +7,11 @@ and their resume state.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from threading import Barrier, Thread
+
+import pytest
 
 from docket.cli import _conversations as cli
 from docket.core import conversations as C
@@ -94,6 +98,118 @@ class TestLoadSave:
         C.save(r, p)
         text = p.read_text()
         assert "agentId" in text and "taskRef" in text  # camelCase aliases on disk
+
+
+class TestLockedMutations:
+    def test_hop_touch_preserves_unknown_fields(self, tmp_path: Path) -> None:
+        p = tmp_path / "conversations.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "registryExtension": {"keep": True},
+                    "conversations": [
+                        {
+                            "id": "telegram:a:-1",
+                            "agentId": "a",
+                            "peerId": "-1",
+                            "conversationExtension": ["keep"],
+                        }
+                    ],
+                }
+            )
+        )
+
+        assert C.touch_for_hop_durable(
+            agent_id="a", task_ref="task-1", last_message="short preview", now="t1", path=p
+        )
+
+        persisted = json.loads(p.read_text())
+        assert persisted["registryExtension"] == {"keep": True}
+        conv = persisted["conversations"][0]
+        assert conv["conversationExtension"] == ["keep"]
+        assert conv["lastMessage"] == "short preview"
+        assert conv["taskRef"] == "task-1"
+
+    def test_unwired_touch_and_unknown_resume_are_byte_identical(self, tmp_path: Path) -> None:
+        p = tmp_path / "conversations.json"
+        original = '{\n  "future": [1, 2],\n  "conversations": []\n}\n'
+        p.write_text(original)
+
+        assert not C.touch_for_hop_durable(
+            agent_id="unwired", task_ref="task-1", last_message="ignored", now="t1", path=p
+        )
+        assert C.resume_durable("telegram:missing:-1", "t1", p) is None
+        assert p.read_text() == original
+
+    def test_malformed_registry_and_mutation_exception_leave_file_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        malformed = tmp_path / "malformed.json"
+        malformed.write_text("{broken")
+        with pytest.raises(C.ConversationRegistryError):
+            C.record_durable(agent_id="a", peer_id="-1", now="t1", path=malformed)
+        assert malformed.read_text() == "{broken"
+
+        p = tmp_path / "conversations.json"
+        original = '{\n  "conversations": []\n}\n'
+        p.write_text(original)
+
+        def explode(_: C.ConversationRegistry) -> tuple[None, C.ConversationRegistry]:
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            C.mutate(explode, p)
+        assert p.read_text() == original
+
+    def test_hop_touch_keeps_only_a_bounded_preview(self, tmp_path: Path) -> None:
+        p = tmp_path / "conversations.json"
+        C.record_durable(agent_id="a", peer_id="-1", now="t0", path=p)
+        raw_output = "x" * 400
+
+        C.touch_for_hop_durable(
+            agent_id="a", task_ref="task-1", last_message=raw_output, now="t1", path=p
+        )
+
+        conv = C.get(C.load(p), C.make_id("a", "-1"))
+        assert conv is not None
+        assert conv.last_message == "x" * 299 + "…"
+
+    def test_parallel_mutations_merge_same_and_different_conversations(
+        self, tmp_path: Path
+    ) -> None:
+        p = tmp_path / "conversations.json"
+        start = Barrier(4)
+        errors: list[BaseException] = []
+
+        def record(**kwargs: str) -> None:
+            try:
+                start.wait(timeout=3)
+                C.record_durable(now="t1", path=p, **kwargs)
+            except BaseException as exc:  # pragma: no cover - asserted below
+                errors.append(exc)
+
+        threads = [
+            Thread(target=record, kwargs={"agent_id": "a", "peer_id": "-1", "topic": "topic"}),
+            Thread(
+                target=record,
+                kwargs={"agent_id": "a", "peer_id": "-1", "last_message": "preview"},
+            ),
+            Thread(target=record, kwargs={"agent_id": "b", "peer_id": "-2", "topic": "other"}),
+        ]
+        for thread in threads:
+            thread.start()
+        start.wait(timeout=3)
+        for thread in threads:
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+        assert errors == []
+
+        registry = C.load(p)
+        a = C.get(registry, C.make_id("a", "-1"))
+        b = C.get(registry, C.make_id("b", "-2"))
+        assert a is not None and b is not None
+        assert a.topic == "topic" and a.last_message == "preview"
+        assert b.topic == "other"
 
 
 class TestCliHelpers:

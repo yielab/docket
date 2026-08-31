@@ -2033,12 +2033,9 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
         _cfg.workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
     )
 
-    reg = _conv.load()
-    updated_reg = _conv.touch_for_hop(
-        reg, agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_now()
+    _conv.touch_for_hop_durable(
+        agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_now()
     )
-    if updated_reg is not reg:  # touch_for_hop is a no-op (same object) for an unwired agent
-        _conv.save(updated_reg)
 
 
 def _touch_claim(project: str, task_id: str) -> None:

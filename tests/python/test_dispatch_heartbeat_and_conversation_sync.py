@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import Barrier, Thread
 
 import pytest
 
@@ -250,6 +251,44 @@ class TestConversationAutoPopulation:
         assert impl_conv.task_ref == task["id"]
         assert "done by demo-lead" in lead_conv.last_message
         assert "done by demo-implementer" in impl_conv.last_message
+
+    def test_concurrent_hop_touches_keep_both_wired_agents(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two stale registry snapshots must not let one hop erase the other."""
+        _seed_pod(tmp_path, monkeypatch)
+        self._seed_conversation("demo-lead")
+        self._seed_conversation("demo-implementer", peer_id="-200")
+        task = _dispatch.enqueue_task("demo", "concurrent conversation updates")
+
+        original_load = _conv.load
+        both_stale = Barrier(2)
+
+        def synchronized_load() -> _conv.ConversationRegistry:
+            reg = original_load()
+            both_stale.wait(timeout=3)
+            return reg
+
+        monkeypatch.setattr(_conv, "load", synchronized_load)
+        hops = (
+            _dispatch.HopResult("lead", "demo-lead", True, output="lead preview"),
+            _dispatch.HopResult("implementer", "demo-implementer", True, output="impl preview"),
+        )
+        threads = [
+            Thread(target=_dispatch._persist_hop, args=("demo", task["id"], hop)) for hop in hops
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+
+        reg = original_load()
+        lead = _conv.get(reg, _conv.make_id("demo-lead", "-100"))
+        implementer = _conv.get(reg, _conv.make_id("demo-implementer", "-200"))
+        assert lead is not None and implementer is not None
+        assert lead.last_message == "lead preview"
+        assert implementer.last_message == "impl preview"
 
     def test_unwired_member_never_gets_a_fabricated_conversation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

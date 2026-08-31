@@ -125,8 +125,10 @@ def _resume(args: list[str]) -> int:
     if conv is None:
         ui.error(f"No conversation matching '{args[0]}'.")
         return 1
-    resumed, reg = _conv.resume(reg, conv.id, _now())
-    _conv.save(reg)
+    resumed = _conv.resume_durable(conv.id, _now())
+    if resumed is None:
+        ui.error(f"No conversation matching '{args[0]}'.")
+        return 1
     assert resumed is not None
     ui.success(f"Resuming conversation with '{resumed.agent_id}' (status → in_progress).")
     ui.console.print()
@@ -160,9 +162,7 @@ def _set(args: list[str]) -> int:
         except ValueError:
             ui.error(f"Invalid status '{status_raw}'. Use: active | in_progress | waiting | done.")
             return 1
-    reg = _conv.load()
-    conv, reg = _conv.record(
-        reg,
+    conv = _conv.record_durable(
         agent_id=agent_id,
         peer_id=peer_id,
         now=_now(),
@@ -171,6 +171,5 @@ def _set(args: list[str]) -> int:
         last_message=_flag(args, "--last"),
         task_ref=_flag(args, "--task"),
     )
-    _conv.save(reg)
     ui.success(f"Recorded conversation '{conv.id}' (status {conv.status.value}).")
     return 0
