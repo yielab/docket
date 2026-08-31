@@ -771,8 +771,7 @@ model call was made by this card.
 **Activation state:** ACTIVE. Wave 25 closed at integration commit `6b925f0` after its full closure
 gates passed. W26-C0's maintainer decision is accepted: `main` is the canonical public/default
 release lineage and the completed `platform` history is synchronized into it without rewriting
-history. W26-C3's implementation is complete, but its required deterministic smoke closure gate is
-reproducibly failing before the approval pause; C4 and C11 retain their serial blockers. The Phase 23
+history. W26-C3 is complete; C4 is now the sole ready release card and C11 retains its serial blocker. The Phase 23
 decision and later-wave triggers live in
 [ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
 bounded coordinator packet is
@@ -921,7 +920,7 @@ dependencies. The two artifact-only oracles pass; `uv.lock` matches the verified
 
 ### W26-C3 — make release artifacts immutable and verifiable
 
-**Status:** IN PROGRESS (2026-08-31; closure smoke failed) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** `Formula/docket-cli.rb` contains an all-zero SHA and declares MIT instead
 of Apache-2.0; its comment says release automation updates it, but the workflow only archives source
@@ -953,20 +952,22 @@ tamper rejection, dependency floor, and the full repository gates.
 **Contention:** release/install files only after C0/C2. It can run while governance cards execute;
 C11 alone updates README/quickstart claims from the final artifacts.
 
-**Implementation evidence:** RED commit `0251972` defines six release-boundary oracles; implementation
+**Shipped evidence:** RED commit `0251972` defines six release-boundary oracles; implementation
 commit `5bb106a` makes all six pass. Tagged releases build and clean-install the exact root wheel and
 sdist outside the checkout, checksum every downloadable install asset, produce an SPDX SBOM, request
 build provenance, and publish only through the protected `release` environment. The remote installer
 verifies the versioned asset before extraction; Homebrew consumes that same tagged asset with the
-real SHA-256 and Apache-2.0 metadata. The `af777ba` closure attempt passed ShellCheck, workflow/YAML
-validation, clean artifact installs at the dependency floor, tamper rejection, 2,442 tests with five
-contract-labelled skips, Ruff/format, strict mypy over 74 source files, 24 specs, 18 goldens, and
-metrics. The deterministic smoke failed twice at the implementer mechanical verification before the
-expected approval pause; closure remains pending until that failure is triaged and cleared.
+real SHA-256 and Apache-2.0 metadata. Preserved diagnosis proved the earlier smoke signal was a
+noncanonical invocation error: the exact 16 artifact bytes existed, while `.venv/bin/python` had not
+added the venv to child `PATH`; the documented `uv run python scripts/smoke_workflow.py` command
+completed the approval/resume workflow. Commit-level closure passes ShellCheck, workflow/YAML,
+clean dependency-floor artifact installs, tamper rejection, 2,442 tests with five contract-labelled
+skips, Ruff/format, strict mypy over 74 source files, 24 specs, 18 goldens, metrics, and canonical
+deterministic smoke.
 
 ### W26-C4 — enforce clean-install-to-first-turn in CI
 
-**Status:** BLOCKED (needs W26-C3; W26-C1/C2 done) · **Size:** M · **Owner:** unassigned
+**Status:** READY (W26-C1-C3 done) · **Size:** M · **Owner:** unassigned
 
 **Measured trigger:** focused suites are strong, but no release gate proves that a user can install
 the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,
@@ -1477,7 +1478,7 @@ boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** BLOCKED (needs W26-C3 and C4; C0-C2/C5-C10 done) · **Size:** M ·
+**Status:** BLOCKED (needs W26-C4; C0-C3/C5-C10 done) · **Size:** M ·
 **Owner:** integrator only
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,
