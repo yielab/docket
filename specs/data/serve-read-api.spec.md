@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Stable
 **Last Updated**: 2026-08-31
 
@@ -228,9 +228,10 @@ without `cancellation` mean no request. A queued request writes all three timest
 observation and stop are monotonic and idempotent.
 
 The terminal state reflects the returned dispatch result, not merely whether the dispatcher
-raised. After one ordered fold over the returned result list, any item whose `status` is `failed`
-makes the run `failed`; an empty list or a list containing only `done`, `waiting_approval`, and/or
-`blocked` remains a successfully completed dispatch invocation. `taskIds` preserves every returned
+raised. After one ordered fold over the returned result list, any item whose `status` is
+`cancelled` makes the run `cancelled`; otherwise any item whose `status` is `failed` makes the run
+`failed`. An empty list or a list containing only `done`, `waiting_approval`, and/or `blocked`
+remains a successfully completed dispatch invocation. `taskIds` preserves every returned
 task id in result order in either case. A returned-task failure writes a deterministic, actionable
 `error` summary of at most 1024 characters, derived only from failing task ids and their `reason`
 fields; it MUST NOT serialize the raw result, hop artifacts, model output, or tool output. The
@@ -511,7 +512,8 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   without fabricating `observedAt`, `stoppedAt`, or a terminal state, and unrelated run fields MUST
   survive every lifecycle transition.
 - A normally returned dispatch result MUST make the run `failed` if any returned task has
-  `status="failed"`, preserve every returned task id in order, and write the bounded safe summary
+  `status="failed"`, or `cancelled` if any returned task has `status="cancelled"`, preserve every
+  returned task id in order, and write the bounded safe summary
   described under `GET /runs`; `done`, `waiting_approval`, and `blocked` MUST NOT independently fail
   the run, and a concurrent `cancelled` state MUST win.
 - `POST /dispatch/<project>`'s response MUST carry a `run` id matching a record retrievable via
@@ -586,6 +588,12 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 ## Changelog
+
+### 2.10.0 — 2026-08-31
+
+- W26-C10c makes cancellation truthful end to end: returned `cancelled` tasks fold to a cancelled
+  run, while running requests remain nonterminal until observation and full stop. `GET /runs` and
+  `GET /runs/<id>` expose the same monotonic lifecycle timestamps throughout.
 
 ### 2.9.0 — 2026-08-31
 

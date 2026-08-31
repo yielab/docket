@@ -1986,8 +1986,11 @@ docket runs cancel <run-id>
 **Subcommands:**
 
 #### cancel
-Kills the in-flight hop's process group for a `running` run and marks it `cancelled` — writes an
-audit entry.
+Persists one cancellation request and signals every in-flight hop process group. Queued work is
+terminal immediately. A running record stays `running (cancel requested)` until the executor
+observes the request and fully stops; then the task and run become `cancelled`. The command writes
+one audit entry. In-process backend work already executing returns to a safe checkpoint, where its
+late response is discarded before any tool or later pipeline hop can start.
 
 ```bash
 docket runs cancel run-3f2a1c9e-...
@@ -2013,6 +2016,8 @@ docket runs show run-3f2a1c9e-...
   an exception any more (`docket serve`'s webhook, schedule check, and sweep loop all record their
   outcome here instead of a bare `contextlib.suppress(Exception)`).
 - Persisted to `~/.docket/docket-runs.json` (docket-owned JSON via `edges/store.py`).
+- `runs show` and both JSON read surfaces expose cancellation `requestedAt`, `observedAt`, and
+  `stoppedAt`; a missing stop timestamp means the executor has not fully returned yet.
 - `POST /dispatch/<project>` (see [serve](#serve)) returns `{"run": "<id>"}` immediately, before
   any dispatch work is attempted; `GET /runs/<id>` and `GET /runs?project=` mirror this command
   over HTTP (Bearer-authed, same as `/approvals`).

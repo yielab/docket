@@ -56,6 +56,17 @@ class TestRunsListCli:
         rc = run_runs("list", [])
         assert rc == 0
 
+    def test_list_marks_running_cancellation_as_requested(
+        self, runs_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        _runs.cancel_run(rec["id"])
+
+        assert run_runs("list", []) == 0
+
+        assert "cancel requested" in capsys.readouterr().out
+
     def test_list_defaults_when_no_sub_given(self, runs_file: Path) -> None:
         assert run_runs(None, []) == 0
 
@@ -84,6 +95,20 @@ class TestRunsShowCli:
         _runs.finish_run(rec["id"], state="failed", error="boom")
         rc = run_runs("show", [rec["id"]])
         assert rc == 0
+
+    def test_show_human_readable_includes_cancellation_lifecycle(
+        self, runs_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rec = _runs.create_run("cli", "demo")
+        _runs.mark_running(rec["id"])
+        _runs.cancel_run(rec["id"])
+
+        assert run_runs("show", [rec["id"]]) == 0
+
+        output = capsys.readouterr().out
+        assert "Cancel requested:" in output
+        assert "Cancel observed:" in output
+        assert "Cancel stopped:" in output
 
 
 class TestRunsCancelCli:

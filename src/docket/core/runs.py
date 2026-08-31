@@ -20,7 +20,8 @@ This module never imports ``core/dispatch.py`` — ``execute()`` takes an
 arbitrary zero-arg callable and duck-types a ``task_id`` attribute off
 whatever it returns (matching ``dispatch.TaskResult`` without a hard
 dependency), so the run registry stays agnostic of what it is recording and
-``core/dispatch.py`` needs no changes at all to be recorded here.
+``core/dispatch.py`` only needs to return its typed task outcomes; this module
+does not import or reinterpret dispatch internals.
 
 Cancellation: ``execute()`` publishes "which
 run id is currently executing" via a ``contextvars.ContextVar`` for the
@@ -120,9 +121,12 @@ class RunCancellationSignal:
     def observe(self) -> bool:
         """Record first observation when requested; return whether work must stop."""
         must_stop = False
+        observed_now = False
+        project = ""
+        source = ""
 
         def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-            nonlocal must_stop
+            nonlocal must_stop, observed_now, project, source
             runs = _runs_list(doc)
             for rec in runs:
                 if rec.get("id") != self.run_id:
@@ -134,6 +138,8 @@ class RunCancellationSignal:
                 if not lifecycle.requested:
                     return None
                 must_stop = True
+                project = str(rec.get("project", ""))
+                source = str(rec.get("source", ""))
                 if lifecycle.observed_at is not None:
                     return None
                 observed = CancellationLifecycle(
@@ -144,10 +150,13 @@ class RunCancellationSignal:
                     source=lifecycle.source,
                 )
                 _set_cancellation_lifecycle(rec, observed)
+                observed_now = True
                 return {"runs": runs}
             return None
 
         _store.read_modify_write(runs_path(), _fn)
+        if observed_now:
+            _emit_cancellation_trace(project, self.run_id, source, "run_cancellation_observed")
         return must_stop
 
 
@@ -331,9 +340,13 @@ def _finish_run_transition(
         raise RunError(f"finish_run: invalid terminal state {state!r}")
 
     applied = False
+    observed_now = False
+    stopped_now = False
+    project = ""
+    source = ""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        nonlocal applied
+        nonlocal applied, observed_now, stopped_now, project, source
         runs = _runs_list(doc)
         for r in runs:
             if r.get("id") != run_id:
@@ -341,10 +354,13 @@ def _finish_run_transition(
             current_state = str(r.get("state", ""))
             if current_state in _TERMINAL_STATES:
                 return None
+            project = str(r.get("project", ""))
+            source = str(r.get("source", ""))
             lifecycle, valid_lifecycle = _cancellation_lifecycle(r)
             if valid_lifecycle and lifecycle.requested:
                 stopped_at = _now()
                 observed_at = lifecycle.observed_at or stopped_at
+                observed_now = lifecycle.observed_at is None
                 _set_cancellation_lifecycle(
                     r,
                     CancellationLifecycle(
@@ -360,6 +376,7 @@ def _finish_run_transition(
                 r["error"] = "cancelled by operator"
                 if task_ids is not None:
                     r["taskIds"] = list(task_ids)
+                stopped_now = True
                 return {"runs": runs}
             r["state"] = state
             r["finishedAt"] = _now()
@@ -371,6 +388,10 @@ def _finish_run_transition(
         return None
 
     _store.read_modify_write(runs_path(), _fn)
+    if observed_now:
+        _emit_cancellation_trace(project, run_id, source, "run_cancellation_observed")
+    if stopped_now:
+        _emit_cancellation_trace(project, run_id, source, "run_cancelled")
     return applied
 
 
@@ -545,6 +566,10 @@ def cancel_run(run_id: str) -> CancelOutcome:
     if decision == "malformed":
         return CancelOutcome(ok=False, message=f"run {run_id} has invalid cancellation state")
 
+    if prior_state == "queued":
+        _emit_cancellation_trace(project, run_id, _CANCELLATION_SOURCE, "run_cancellation_observed")
+        _emit_cancellation_trace(project, run_id, _CANCELLATION_SOURCE, "run_cancelled")
+
     killed = [pid for pid in pids if _sys.kill_process_group(pid)]
     message = (
         f"requested cancellation for run {run_id} ({len(killed)} process group(s) killed)"
@@ -581,6 +606,24 @@ def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -
             "lead",
             "error",
             _json.dumps({"run": run_id, "source": source, "error": error_text}),
+        )
+    except Exception:
+        return None
+
+
+def _emit_cancellation_trace(project: str, run_id: str, source: str, event_type: str) -> None:
+    """Best-effort bounded trace for one monotonic cancellation lifecycle edge."""
+    try:
+        import json as _json
+
+        from docket.core import trace as _trace
+
+        _trace.trace_event(
+            project,
+            f"agent:{project}:dispatch",
+            "lead",
+            event_type,
+            _json.dumps({"run": run_id, "source": source}),
         )
     except Exception:
         return None
@@ -623,9 +666,10 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     ``succeeded`` plus the task ids *fn*'s results expose (a duck-typed
     ``task_id`` attribute — this is ``dispatch.TaskResult`` shaped, without
     this module importing ``core/dispatch.py``), or ``failed`` plus a bounded
-    summary when any returned result exposes ``status="failed"``. Exceptions
-    retain their exception text. Both failure paths emit the same ``error``
-    trace event.
+    summary when any returned result exposes ``status="failed"``. A returned
+    ``status="cancelled"`` has higher precedence and terminalizes the run as
+    cancelled. Exceptions retain their exception text. Both failure paths emit
+    the same ``error`` trace event.
 
     Returns *fn*'s result list whenever *fn* returns normally, including when
     that list makes the run outcome ``failed``. It returns ``None`` when the
@@ -639,8 +683,8 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     *fn* (a ``contextvars.ContextVar``, so it is thread-local and safely
     propagated into a parallel group's worker threads — see
     ``core.orchestrator.run_group``), and never lets a normal completion
-    clobber a run a concurrent ``docket runs cancel`` already marked
-    ``"cancelled"`` back to ``"succeeded"``/``"failed"``.
+    clobber a run with a concurrent persisted cancellation request back to
+    ``"succeeded"``/``"failed"``.
     """
     if not mark_running(run_id):
         return None
@@ -666,19 +710,28 @@ def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
 
     task_ids: list[str] = []
     failures: list[Any] = []
+    cancellations: list[Any] = []
     for result in results:
         task_ids.append(str(getattr(result, "task_id", "")))
-        if str(getattr(result, "status", "")) == "failed":
+        status = str(getattr(result, "status", ""))
+        if status == "cancelled":
+            cancellations.append(result)
+        elif status == "failed":
             failures.append(result)
 
     error_text = _returned_failure_summary(failures) if failures else ""
+    state: RunTerminalState = (
+        "cancelled" if cancellations else "failed" if failures else "succeeded"
+    )
+    if cancellations:
+        error_text = "cancelled by operator"
     applied = _finish_run_transition(
         run_id,
-        state="failed" if failures else "succeeded",
+        state=state,
         task_ids=task_ids,
         error=error_text,
         preserve_cancelled=True,
     )
-    if failures and applied:
+    if failures and not cancellations and applied:
         _emit_error_trace(project, run_id, source, error_text)
     return results

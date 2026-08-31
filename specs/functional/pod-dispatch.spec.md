@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.5.1
+**Version**: 6.6.0
 **Status**: Complete. The public CLI reconstructs the full delegated task from every task
 positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
 positional words. A pod-dispatch hop executes through
@@ -732,8 +732,10 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
 
 ### Cancellation
 
-1. `docket runs cancel <id>` **MUST** mark the run as the terminal state `"cancelled"` and kill
-   every tracked process group currently recorded as in-flight for that run — see
+1. `docket runs cancel <id>` **MUST** durably request cancellation and kill every tracked process
+   group currently recorded as in-flight for that run. Queued work becomes terminal immediately;
+   running work remains `running` with a visible request until its executor observes the signal and
+   finishes stopping — see
    `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
    fields; this spec covers only how a hop's pid gets into that list and what killing it does to
    the task it belongs to.
@@ -742,20 +744,21 @@ Reviewer specifically — this is what "byte-identical built-in behavior" means 
    **MUST** kill the whole group through `edges.adapters.system.kill_process_group` (SIGTERM, a
    bounded grace period, then SIGKILL), and completed work **MUST NOT** leave stale pids behind.
 3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
-   one. The current in-process model/tool call is not interrupted by cancellation because
-   `core/agent_loop.py` has no cooperative cancellation hook; the run still remains cancelled
-   and completion **MUST NOT** clobber that terminal state.
-4. Killing a hop's process group **MUST NOT** invent a new task-status vocabulary: the killed
-   subprocess surfaces as an ordinary hop failure (a nonzero/negative exit code) through the
-   existing state machine ("Hop-failure semantics"), transitioning the task to `failed` exactly as
-   any other hop failure would.
+   one. `core/agent_loop.py` cooperatively checks the run signal at turn boundaries, after backend
+   response, before each tool dispatch, and after each tool result. A response or tool result that
+   loses a cancellation race **MUST** be discarded and later handlers **MUST NOT** start.
+4. A hop stopped by that signal returns the typed, non-retryable `run_cancelled` failure kind.
+   Dispatch **MUST** persist the hop evidence and transition its owning task to the additive
+   terminal status `cancelled`, never `failed`; no later pipeline hop may start. Parallel children
+   fold cancellation atomically so a sibling success cannot overwrite it.
 5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`) **MUST** be a no-op,
    reported as such, never re-signalled or double-finished. A run's own normal completion
    (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
    wrote back to `"succeeded"`/`"failed"`.
-6. **Known gap:** an in-flight `DocketDriver` model/tool call continues in its worker thread after
-   the run is marked cancelled. Adding cooperative cancellation to `core/agent_loop.py` is new
-   capability work and is not scheduled by this specification.
+6. The cooperative boundary does not abort Python/backend computation already executing in the
+   current call. The run therefore remains visibly `running` with cancellation requested until
+   that call returns to a checkpoint; `stoppedAt` and terminal `cancelled` are written only after
+   the dispatch body has fully returned.
 
 ### Hop-failure semantics (general)
 
@@ -929,6 +932,9 @@ the archetype-side `tokenBudget` schema this section consumes.)*
    override), never automatically, never via a plain dispatch run, `retry_task`, or `unblock_pod`.
    A denied (or fail-closed-expired) approval instead moves the task straight to `failed` (see
    above) — it does not pass through `pending` at all.
+7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
+   during execution. Terminal. The task retains its completed and cancelled-hop evidence, records
+   `completedAt`, and cannot be reclaimed or overwritten by a late successful response.
 
 ## Interface Contracts
 
@@ -967,6 +973,8 @@ approval_required              # a require_approval gate fired (task -> waiting_
 approval_resumed                # a granted approval flipped the task back to pending (G-1)
 approval_task_denied             # a denied approval failed the task terminally (G-1)
 session_end                  # once, at the end of dispatch_task, carrying the final status
+run_cancellation_observed    # once when execution first observes the persisted run request
+run_cancelled                # once when execution has fully stopped and terminalizes the run
 ```
 
 ## Examples
@@ -1093,8 +1101,8 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   advancement past a mechanically- or verdict-gated hop, for any role/archetype, not only the
   four built-in ones.
 - A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or
-  `daemon_error` — including a hop killed by `docket runs cancel`, which always surfaces as a
-  non-retryable `nonzero_exit`/negative-signal exit, never masked as transient.
+  `daemon_error`. Cooperative run cancellation always surfaces as non-retryable `run_cancelled`;
+  a killed external subprocess may surface as a non-retryable `nonzero_exit`/negative-signal exit.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.
 - A `waiting_approval` task **MUST NOT** be claimable by any `dispatch_pod` call, with or without
   `--resume`, until its approval resolves (grant or deny).
@@ -1113,7 +1121,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
 - Every production pod-turn loop event **MUST** join that same task-wide trace even though its
   messages and measured usage are persisted under a step-scoped history key.
 - Cancelling a run (`docket runs cancel`) **MUST** kill a hop's entire process group, never leave
-  an orphaned child process running after the run is marked `"cancelled"`.
+  an orphaned child process running after the cancellation lifecycle reaches full stop.
 - The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region
   — an agent's own prose anywhere else in `HEARTBEAT.md` survives every dispatch-driven rewrite.
 - The ledger **MUST** always equal the pod's current `running` task ids — never a superset (a
@@ -1121,6 +1129,13 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
   run against current state.
 
 ## Changelog
+
+### Version 6.6.0 (2026-08-31)
+
+- **Wave 26 card W26-C10c.** Folded the typed cooperative run signal through dispatch: the owning
+  task now becomes terminal `cancelled`, successful race losers cannot advance the pipeline, and
+  observation/full-stop lifecycle edges emit one bounded trace event each. Running requests stay
+  publicly nonterminal until the dispatch body has actually stopped.
 
 ### Version 6.5.0 (2026-08-30)
 

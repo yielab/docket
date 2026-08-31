@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.20.0
+**Version**: 1.22.0
 **Status**: Complete
-**Last Updated**: 2026-08-30
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -416,11 +416,14 @@ pipeline, whatever triggered it (ROADMAP Phase 14 R-3); cancel one in flight (RO
   one pod
 - `show <run-id> [--json]`: Show one run record (source, project, state, task ids, error,
   timestamps, and — for a `webhook` source, ROADMAP Phase 16 W-4 — the resolved pipeline
-  `variables` its payload was dispatched with)
+  `variables` its payload was dispatched with). Human output also shows cancellation request,
+  observation, and full-stop timestamps when present.
 - `cancel <run-id>`: Kill every hop subprocess currently recorded as in-flight for that run — its
   whole process group, not just the immediate child (see pod-dispatch.spec.md's "Cancellation")
-  — and mark the run terminally `cancelled`. A no-op (reported, not an error-free success) against
-  a run that's already terminal. A genuine cancellation writes a `runs.cancel` audit entry
+  — and durably request cancellation. Queued work becomes terminal immediately; running work stays
+  visibly `running` with a cancel-requested marker until its executor observes the signal and fully
+  stops. A no-op (reported, not an error-free success) against a run that's already terminal. A
+  genuine cancellation writes exactly one `runs.cancel` audit entry
   (ROADMAP Phase 16 W-4; see audit.spec.md) naming the run, its project, its pre-cancel state,
   and how many process groups were killed — the no-op paths write nothing
 **Output**: A table (or, with `--json`, the bare record(s) — see `cli-json-shapes.spec.md`); a
@@ -864,6 +867,11 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.22.0 (2026-08-31)
+
+- W26-C10c makes the cancellation lifecycle explicit in human `runs list`/`runs show` output and
+  defines `runs cancel` as a durable request rather than premature terminal completion.
 
 ### Version 1.21.0 (2026-08-30)
 

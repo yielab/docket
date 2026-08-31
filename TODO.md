@@ -1391,7 +1391,7 @@ nodes pass 50/50 repeated runs; production driver binding, approval/tool, runtim
 
 ### W26-C10c — reconcile cancelled task/run truth through public surfaces
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
+**Status:** CLOSED (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** C10b can stop the owned loop, but current dispatch maps every failed hop
 through ordinary failure semantics and current CLI/docs say `cancel` immediately kills/marks the
@@ -1445,9 +1445,19 @@ rollups and unblocks C11 only if C0-C10 acceptance is complete.
 It owns final public truth but not central rollups. It cannot run in parallel with C11; C11 consumes
 its accepted wording and remains last.
 
+**Shipped evidence:** the cross-process production-driver oracle invokes `python -m docket runs
+cancel` against the executor's shared Docket home, proves the running request stays nonterminal,
+discards the late backend response before tool dispatch, persists the task/run as `cancelled`, and
+records one audit plus one observed/one stopped trace edge. Typed `run_cancelled` now wins dispatch
+and parallel reconciliation; returned cancelled tasks terminalize their run; CLI text, raw JSON,
+and authenticated GET readers expose the same lifecycle. The oracle passes three independent
+repetitions. Focused cancellation/dispatch/CLI/serve tests, the 2,436-test suite with five
+contract-labelled skips, Ruff/format, strict mypy over 74 source files, 24 specs, runtime artifact
+boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
+
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** BLOCKED (needs W26-C0, C3, C4, and C10c; C1/C2/C5-C9 done) · **Size:** M ·
+**Status:** BLOCKED (needs W26-C0, C3, and C4; C1/C2/C5-C10 done) · **Size:** M ·
 **Owner:** integrator only
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,

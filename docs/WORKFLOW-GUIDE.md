@@ -472,18 +472,22 @@ $ docket pipeline run myapp --follow
 Ctrl-C stops *watching only* — the dispatch keeps running and recording in the background,
 exactly like closing a `tail -f` window doesn't kill the process being tailed.
 
-A run stuck mid-hop can be killed outright:
+A run stuck mid-hop can be asked to stop:
 
 ```bash
 $ docket runs cancel run-3f2a1c9e-...
-✓ cancelled run run-3f2a1c9e-... (1 process group(s) killed)
+✓ requested cancellation for run run-3f2a1c9e-... (1 process group(s) killed)
 ```
 
-`cancel` kills the in-flight hop's **whole process group**, not just the immediate child (it may
-have shelled out further), and marks the run terminally `cancelled` — the killed hop surfaces as
-an ordinary hop failure through the same state machine, no new task-status vocabulary. A genuine
-cancellation writes a `runs.cancel` audit entry naming the run, its project, its pre-cancel state,
-and how many process groups were killed. Cancelling an already-terminal (or unknown) run changes
+`cancel` records one durable request before killing an in-flight hop's **whole process group**, not
+just the immediate child (it may have shelled out further). Queued work is cancelled immediately.
+Running work remains visibly `running (cancel requested)` until its executor observes the request
+and fully returns; only then are the task and run terminal `cancelled`. An in-process model/backend
+call already executing is not forcibly aborted, but its late response is discarded at the next
+safe checkpoint and no later tool or pipeline hop starts. `runs show` and its JSON form expose the
+request, observation, and stop timestamps. A genuine cancellation writes one `runs.cancel` audit
+entry naming the run, its project, its pre-cancel state, and how many process groups were killed.
+Cancelling an already-terminal (or unknown) run changes
 nothing and writes no audit entry — but it still exits `1`, printed as an error
 (`run <id> is already <state>`), not a silent success; "no-op" describes its side effects, not
 its exit code.

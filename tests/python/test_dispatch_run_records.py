@@ -76,7 +76,7 @@ def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
     deadline = time.time() + timeout
     while time.time() < deadline:
         rec = _runs.get_run(run_id)
-        if rec is not None and rec["state"] in ("succeeded", "failed"):
+        if rec is not None and rec["state"] in ("succeeded", "failed", "cancelled"):
             return rec
         time.sleep(0.02)
     raise AssertionError(f"run {run_id!r} never reached a terminal state")
@@ -471,6 +471,33 @@ class TestRunsReadEndpoints:
             body = json.loads(resp.read())
         assert body["id"] == rec["id"]
         assert body["project"] == "someproj"
+
+    def test_get_runs_exposes_requested_then_stopped_cancellation_lifecycle(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        rec = _runs.create_run("cli", "someproj")
+        _runs.mark_running(rec["id"])
+        _runs.cancel_run(rec["id"])
+
+        req = urllib.request.Request(f"{url}/runs/{rec['id']}")
+        req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            requested = json.loads(resp.read())
+        assert requested["state"] == "running"
+        assert requested["cancellation"]["requestedAt"] is not None
+        assert requested["cancellation"]["stoppedAt"] is None
+
+        assert (
+            _runs._finish_run_transition(rec["id"], state="succeeded", task_ids=["task-cancelled"])
+            is False
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            stopped = json.loads(resp.read())
+        assert stopped["state"] == "cancelled"
+        assert stopped["taskIds"] == ["task-cancelled"]
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None
 
     def test_get_runs_by_id_unknown_is_404(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

@@ -209,7 +209,7 @@ class TaskResult:
     """Outcome of driving one task through the whole pipeline."""
 
     task_id: str
-    status: str  # "done" | "failed" | "blocked" | "waiting_approval"
+    status: str  # "done" | "failed" | "blocked" | "waiting_approval" | "cancelled"
     reason: str = ""
     hops: list[HopResult] = field(default_factory=list)
     # Only meaningful when status == "waiting_approval" — the token the
@@ -1156,7 +1156,7 @@ class _UnitOutcome:
     """What happened running one ``PlannedUnit``'s hop.
 
     ``kind`` is one of ``"advance" | "rework" | "blocked" | "waiting_approval"
-    | "failed"``. ``hops`` holds the hop this call produced (empty for
+    | "failed" | "cancelled"``. ``hops`` holds the hop this call produced (empty for
     ``blocked``/``waiting_approval`` — the gate stopped the pipeline before
     any agent turn ran).
     """
@@ -1620,6 +1620,12 @@ def dispatch_task(
             )
 
         if not hop_ok:
+            if run_res.failure_kind == "run_cancelled":
+                return _UnitOutcome(
+                    kind="cancelled",
+                    hops=[hop],
+                    reason="run cancellation requested",
+                )
             return _UnitOutcome(
                 kind="failed",
                 hops=[hop],
@@ -1780,7 +1786,7 @@ def dispatch_task(
     def _run_group_node(node: _orch.PlannedGroup, index_for_context: int) -> _UnitOutcome:
         """Run a parallel group's children concurrently; join before advancing.
 
-        Priority when merging children's outcomes: blocked > failed > advance
+        Priority when merging children's outcomes: cancelled > blocked > failed > advance
         (a rework outcome is impossible here — the pipeline format's own
         validator forbids a rework edge on a step nested inside a group).
         """
@@ -1799,14 +1805,19 @@ def dispatch_task(
         for oc in child_outcomes:
             merged.hops.extend(oc.hops)
         for oc in child_outcomes:
-            if oc.kind == "blocked":
-                merged.kind, merged.reason = "blocked", oc.reason
+            if oc.kind == "cancelled":
+                merged.kind, merged.reason = "cancelled", oc.reason
                 break
         else:
             for oc in child_outcomes:
-                if oc.kind == "failed":
-                    merged.kind, merged.reason = "failed", oc.reason
+                if oc.kind == "blocked":
+                    merged.kind, merged.reason = "blocked", oc.reason
                     break
+            else:
+                for oc in child_outcomes:
+                    if oc.kind == "failed":
+                        merged.kind, merged.reason = "failed", oc.reason
+                        break
         return merged
 
     while pipeline_index < len(runtime_steps):
@@ -1840,6 +1851,10 @@ def dispatch_task(
             break
         if outcome.kind == "failed":
             result.status = "failed"
+            result.reason = outcome.reason
+            break
+        if outcome.kind == "cancelled":
+            result.status = "cancelled"
             result.reason = outcome.reason
             break
         if outcome.kind == "rework":

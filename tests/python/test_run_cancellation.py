@@ -12,14 +12,13 @@ Layers covered:
     kill), and that a concurrent cancel is never clobbered back to
     "succeeded" by the run's own normal completion.
 
-There is no driver that spawns an OS process per hop: the production
-``DocketDriver`` makes in-process HTTP calls and never fires ``on_spawn``
-(see its own docstring), so a dispatch hop cannot be forcibly interrupted by
-`docket runs cancel`. A running record therefore persists a request and stays
-nonterminal until its owning executor returns; PID signalling alone is not a
-truthful full-stop oracle. ``TestKillProcessGroup`` and ``TestCancelRun`` below
-still prove the OS-level primitive, atomic registry request, and executor fold
-independently. W26-C10b owns the safe in-process checkpoints.
+The production ``DocketDriver`` makes in-process HTTP calls and never fires
+``on_spawn`` (see its own docstring), so cooperative checkpoints stop its turn
+at safe boundaries while already-running backend computation returns. A
+running record therefore persists a request and stays nonterminal until its
+owning executor returns; PID signalling alone is not a truthful full-stop
+oracle. The whole driver/dispatch path is covered in
+``test_cooperative_run_cancellation.py``.
 """
 
 from __future__ import annotations
@@ -237,6 +236,27 @@ class TestCancelRun:
 
         assert signal.observe() is True
         assert _runs.get_run(record["id"]) == observed
+
+    def test_observation_and_stop_emit_each_lifecycle_trace_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        events: list[str] = []
+        monkeypatch.setattr(
+            "docket.core.trace.trace_event",
+            lambda _project, _session, _role, event, _payload: events.append(event) or "written",
+        )
+        assert _runs.cancel_run(record["id"]).ok is True
+        signal = _runs.RunCancellationSignal(record["id"])
+
+        assert signal.observe() is True
+        assert signal.observe() is True
+        assert _runs._finish_run_transition(record["id"], state="succeeded") is False
+        assert _runs._finish_run_transition(record["id"], state="succeeded") is False
+
+        assert events.count("run_cancellation_observed") == 1
+        assert events.count("run_cancelled") == 1
 
     def test_terminal_finish_wins_when_it_commits_before_cancel_request(
         self, monkeypatch: pytest.MonkeyPatch

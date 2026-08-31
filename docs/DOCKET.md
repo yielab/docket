@@ -890,10 +890,13 @@ when it finishes. `docket runs` queries it; this closed a real gap where backgro
 used to swallow every exception and return before anything ran, leaving no run id and no way to
 tell "done" from "failed" from "never ran."
 
-`docket runs cancel <id>` kills every pid recorded against that run's process *group* (each hop
-subprocess starts its own session, so its pid doubles as its group id) and marks the run
-`cancelled` — a state distinct from an ordinary failure. A run can have more than one pid recorded
-at once when a `parallel` step has more than one hop genuinely in flight.
+`docket runs cancel <id>` persists one cancellation request and kills every pid recorded against
+that run's process *group* (each hop subprocess starts its own session, so its pid doubles as its
+group id). Queued work becomes `cancelled` atomically. Running work remains nonterminal and visibly
+requested until the executor observes the signal and fully stops; then both the task and run become
+`cancelled`, distinct from ordinary failure. An already-running in-process backend call returns to
+the next safe checkpoint, where its response is discarded before any later tool or hop can start.
+A run can have more than one pid recorded at once when a `parallel` step has multiple hops in flight.
 
 ### The policy engine on the dispatch path
 

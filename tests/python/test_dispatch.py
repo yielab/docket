@@ -256,6 +256,34 @@ class TestPipeline:
         roles_called = [c[0].rsplit("-", 1)[-1] for c in runner.calls]
         assert roles_called == ["lead", "implementer"]
 
+    def test_typed_run_cancellation_cancels_task_and_stops_pipeline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seed_pod(tmp_path, monkeypatch)
+        task = _dispatch.enqueue_task("demo", "Stop cleanly")
+        calls = 0
+
+        def runner(*_args: object, **_kwargs: object) -> _rd.TurnResult:
+            nonlocal calls
+            calls += 1
+            return _rd.TurnResult(
+                False,
+                "",
+                0.0,
+                {},
+                "run cancellation requested",
+                failure_kind="run_cancelled",
+            )
+
+        result = _dispatch.dispatch_pod("demo", runner=runner)[0]
+
+        assert calls == 1
+        assert result.task_id == task["id"]
+        assert result.status == "cancelled"
+        persisted = _dispatch.read_tasks("demo")[0]
+        assert persisted["status"] == "cancelled"
+        assert persisted["completedAt"]
+
     def test_budget_blocks_before_first_hop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

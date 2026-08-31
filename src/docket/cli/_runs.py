@@ -79,7 +79,15 @@ def _list(args: list[str]) -> int:
     table.add_column("ERROR", style="dim")
     for r in records:
         state = str(r.get("state", "?"))
-        style = _STATE_STYLE.get(state, "")
+        cancellation = r.get("cancellation")
+        if (
+            state == "running"
+            and isinstance(cancellation, dict)
+            and cancellation.get("requestedAt")
+            and not cancellation.get("stoppedAt")
+        ):
+            state = "running (cancel requested)"
+        style = _STATE_STYLE.get(str(r.get("state", "?")), "")
         state_cell = f"[{style}]{state}[/{style}]" if style else state
         task_ids = r.get("taskIds") or []
         error = str(r.get("error", ""))
@@ -117,6 +125,8 @@ def _show(args: list[str]) -> int:
     ui.console.print()
     task_ids = rec.get("taskIds") or []
     variables = rec.get("variables") or {}
+    cancellation = rec.get("cancellation")
+    lifecycle = cancellation if isinstance(cancellation, dict) else {}
     for label, val in (
         ("Source", rec.get("source", "?")),
         ("Project", rec.get("project", "?")),
@@ -132,6 +142,9 @@ def _show(args: list[str]) -> int:
         ("Created", rec.get("created", "") or "—"),
         ("Started", rec.get("startedAt") or "—"),
         ("Finished", rec.get("finishedAt") or "—"),
+        ("Cancel requested", lifecycle.get("requestedAt") or "—"),
+        ("Cancel observed", lifecycle.get("observedAt") or "—"),
+        ("Cancel stopped", lifecycle.get("stoppedAt") or "—"),
     ):
         ui.console.print(f"  [bold]{label + ':':<10}[/bold] {val}")
     error = str(rec.get("error", ""))
@@ -143,8 +156,7 @@ def _show(args: list[str]) -> int:
 
 
 def _cancel(args: list[str]) -> int:
-    """``docket runs cancel <id>`` — kill the run's in-flight hop's process
-    group and mark it terminally ``cancelled``."""
+    """Request cancellation and signal any in-flight process groups."""
     if not args:
         ui.error("Usage: docket runs cancel <id>")
         return 1

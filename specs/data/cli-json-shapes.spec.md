@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: Complete
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-31
 
 ## Purpose
 
@@ -148,12 +148,14 @@ here in error; see `docket-meta.spec.md`'s v2.3.0 changelog for the field's remo
       "id":         "string (run-<uuid4>)",
       "source":     "cli | webhook | schedule | sweep | mcp",
       "project":    "string",
-      "state":      "queued | running | succeeded | failed",
+      "state":      "queued | running | succeeded | failed | cancelled",
       "taskIds":    "array of strings",
       "error":      "string (empty unless state is failed)",
       "created":    "string (ISO-8601, local offset)",
       "startedAt":  "string (ISO-8601) | null",
-      "finishedAt": "string (ISO-8601) | null"
+      "finishedAt": "string (ISO-8601) | null",
+      "variables":  "object",
+      "cancellation": "{ requestedAt, observedAt, stoppedAt, reason, source } | null"
     }
   ]
 }
@@ -168,14 +170,16 @@ Same shape as one element of `runs list`'s array, unwrapped (a bare object, not 
 ```json
 {
   "id":         "string (run-<uuid4>)",
-  "source":     "cli | webhook | schedule | sweep",
+  "source":     "cli | webhook | schedule | sweep | mcp",
   "project":    "string",
-  "state":      "queued | running | succeeded | failed",
+  "state":      "queued | running | succeeded | failed | cancelled",
   "taskIds":    "array of strings",
   "error":      "string",
   "created":    "string (ISO-8601)",
   "startedAt":  "string (ISO-8601) | null",
-  "finishedAt": "string (ISO-8601) | null"
+  "finishedAt": "string (ISO-8601) | null",
+  "variables":  "object",
+  "cancellation": "{ requestedAt, observedAt, stoppedAt, reason, source } | null"
 }
 ```
 
@@ -280,6 +284,11 @@ shape field-by-field, so a shape change here that isn't reflected in code fails 
 ```
 
 ## Changelog
+
+### Version 1.6.0 (2026-08-31)
+
+- W26-C10c records the already-additive cancelled run state and persisted cancellation lifecycle
+  in the stable `runs list`/`runs show` JSON shapes, including the `mcp` source and variables field.
 
 ### Version 1.5.0 (2026-08-19)
 
