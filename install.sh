@@ -14,6 +14,7 @@
 set -euo pipefail
 
 PREFIX="${DOCKET_PREFIX:-${HOME}/.local}"
+DOCKET_VERSION="${DOCKET_VERSION:-0.2.0-beta.1}"
 [[ "${1:-}" == "--prefix" ]] && { PREFIX="${2:?--prefix requires a path}"; shift 2; }
 
 BIN_DIR="${PREFIX}/bin"
@@ -39,9 +40,28 @@ fi
 if [[ ! -f "${SCRIPT_DIR}/bin/docket" ]]; then
   command -v curl >/dev/null 2>&1 || { echo "Error: curl is required for remote install."; exit 1; }
   tmpdir=$(mktemp -d); trap 'rm -rf "$tmpdir"' EXIT
-  echo "Downloading docket-cli..."
-  curl -fsSL "https://github.com/yielab/docket/archive/refs/heads/main.tar.gz" \
-    | tar -xz -C "$tmpdir" --strip-components=1
+  release="docket-v${DOCKET_VERSION}.tar.gz"
+  release_url="https://github.com/yielab/docket/releases/download/v${DOCKET_VERSION}/${release}"
+  archive="${tmpdir}/${release}"
+  checksum="${archive}.sha256"
+  echo "Downloading docket-cli v${DOCKET_VERSION}..."
+  curl -fsSL "$release_url" -o "$archive"
+  curl -fsSL "${release_url}.sha256" -o "$checksum"
+  expected_sha=$(awk 'NR == 1 {print $1}' "$checksum")
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha=$(sha256sum "$archive" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
+  else
+    echo "Error: sha256sum or shasum is required to verify the release checksum."
+    exit 1
+  fi
+  if [[ ! "$expected_sha" =~ ^[0-9a-fA-F]{64}$ || "$actual_sha" != "$expected_sha" ]]; then
+    echo "Error: release checksum verification failed; refusing to extract ${release}."
+    exit 1
+  fi
+  echo "✓ Release checksum verified."
+  tar -xzf "$archive" -C "$tmpdir" --strip-components=1
   SCRIPT_DIR="$tmpdir"
 fi
 

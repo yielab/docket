@@ -1,10 +1,10 @@
 class DocketCli < Formula
   desc "Governed runtime and control plane for autonomous coding-agent pods"
   homepage "https://github.com/yielab/docket"
-  url "https://github.com/yielab/docket/archive/refs/tags/v#{version}.tar.gz"
-  # sha256 is updated automatically by the release workflow (scripts/update-homebrew-sha.sh)
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
-  license "MIT"
+  url "https://github.com/yielab/docket/releases/download/v#{version}/docket-v#{version}.tar.gz"
+  # Exact digest reported by the immutable GitHub release asset.
+  sha256 "c25d9cf0b9ad970c16cb54d799d2dcdb8c8f2e7431580d3de3c129bdb0e4d346"
+  license "Apache-2.0"
   # NOTE (repo hygiene pass): the only tags that exist today are v0.1.0 and
   # v0.2.0-beta.1 -- pin here MUST be a real tag or `brew install` 404s on the
   # url above. Do not bump this past the newest real tag speculatively; run

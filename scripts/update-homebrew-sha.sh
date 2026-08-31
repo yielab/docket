@@ -7,7 +7,7 @@ version="${1:?Usage: $0 <version-tag>   e.g. v0.2.0}"
 version="${version#v}"  # strip leading 'v' if present
 
 repo="yielab/docket"
-tarball_url="https://github.com/${repo}/archive/refs/tags/v${version}.tar.gz"
+tarball_url="https://github.com/${repo}/releases/download/v${version}/docket-v${version}.tar.gz"
 formula="Formula/docket-cli.rb"
 
 [[ -f "$formula" ]] || { echo "Error: $formula not found (run from repo root)"; exit 1; }
