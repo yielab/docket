@@ -4,15 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docket-runtime"
-version = "0.1.0"
-description = "The gated agent-turn runtime docket embeds: chat port, tool registry, policy engine, approval store, hash-chained audit -- with no CLI attached."
+version = "0.2.0"
+description = "Embeddable, policy-gated Docket tool runtime."
 requires-python = ">=3.11"
-# Same two runtime dependencies the docket control plane needs for this exact
-# slice (verified by tests/python/test_runtime_package_boundary.py, which parses
-# this file's own force-include table so the two can never silently drift
-# apart). Do not add a third without re-measuring -- see specs/architecture/
-# runtime-library.spec.md for the versioning and boundary policy this
-# distribution ships under.
 dependencies = [
     "pydantic>=2.1",
     "filelock>=3.13",
@@ -21,95 +15,19 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/yielab/docket"
 
-# ── Packaging mechanism ──────────────────────────────────────────────────────
-#
-# This is P21-1 (ROADMAP Phase 21, decision D-21): "packaging only" -- a
-# boundary drawn around code that already exists, not a rewrite. No files move
-# and no files are duplicated in the repository. `force-include` maps the
-# runtime-slice source files that already live under ../../src/docket/ (the
-# single copy the `docket` control-plane distribution also builds from)
-# straight into this wheel at the same `docket/...` import path -- so
-# `import docket.core.llm` resolves identically whether a consumer installed
-# the full `docket` package or only `docket-runtime`. Renaming the top-level
-# package (e.g. to `docket_runtime.llm`) was considered and rejected: every
-# file below cross-imports the others via `docket.core.X` / `docket.edges.X`,
-# and several are also imported the same way by `core/dispatch.py` and `cli/`
-# in the control plane -- renaming the import path is a restructure, which
-# D-21 explicitly forbids for this card.
-#
-# The file list is exhaustive and was derived by walking the REAL import graph
-# (AST-based, module-level imports only -- a function-local, try/except-guarded
-# import such as core/archetypes.py's optional `import yaml` inside
-# `parse_yaml_file()` is correctly excluded, the same way Python itself never
-# touches it unless that function runs) starting from the modules named in
-# ROADMAP's P21-1 card text, until it closed under `docket.*` imports, then
-# proven by actually building this wheel and importing every module in a bare
-# venv with nothing but this distribution's own two dependencies installed.
-#
-# The card text named 14 files; the real closure needed 10 more it did not
-# name, none of them optional:
-#   - `config.py` -- path/constant resolution nearly every other module reads.
-#   - `core/fleet.py` -- `core/security.py` imports it unconditionally for the
-#     approval-routing/sandbox-isolation toggles `docket gates` flips.
-#   - `core/archetypes.py` + `core/identity.py` -- P19-12's role->toolset and
-#     system-prompt composition, imported by `core/agent_loop.py` itself.
-#   - `core/context.py` + `core/handoff.py` -- `core/session.py`'s compaction
-#     path (context.py) and context.py's own `HandoffArtifact` import.
-#   - `core/memory.py` -- `core/archetypes.py` imports it for the startup-file
-#     contract.
-#   - `core/models.py` -- `AgentMeta`/`Persona`, used by fleet.py/identity.py.
-#   - `edges/adapters/system.py` -- `toolbox.py`'s sandboxed-exec path calls
-#     into it for bwrap/docker argv construction.
-#   - `edges/adapters/fetch.py` -- `core/tools.py`'s `builtin_registry()` (the
-#     function that actually assembles the default read/write/edit/glob/grep/
-#     bash/fetch tool set) imports it unconditionally when called, even though
-#     the import itself is lazy (module-scope-clean by design, per that
-#     function's own docstring: "so core/tools.py stays importable without
-#     dragging in the filesystem/subprocess layer"). Proven by exercising
-#     `builtin_registry()` for real in a bare venv, not just importing modules.
-# All ten are already CLI-free (verified by the same boundary test this
-# distribution ships under).
-#
-# One known, deliberate gap: `core/fleet.py:add_local_provider` has its own
-# function-local import of `core/provider.py`, which is NOT shipped here --
-# nothing on the runtime slice's own call path (agent_loop/tools/session/
-# policy/approval/security/audit/trace + their edges) reaches it; it exists
-# only for the control-plane's `docket models provider add` command. Calling
-# that one function from an embedding product raises ModuleNotFoundError by
-# design, not oversight -- see runtime-library.spec.md.
-[tool.hatch.build.targets.wheel.force-include]
-"../../src/docket/__init__.py" = "docket/__init__.py"
-"../../src/docket/config.py" = "docket/config.py"
-"../../src/docket/core/__init__.py" = "docket/core/__init__.py"
-"../../src/docket/core/agent_loop.py" = "docket/core/agent_loop.py"
-"../../src/docket/core/approval.py" = "docket/core/approval.py"
-"../../src/docket/core/archetypes.py" = "docket/core/archetypes.py"
-"../../src/docket/core/audit.py" = "docket/core/audit.py"
-"../../src/docket/core/context.py" = "docket/core/context.py"
-"../../src/docket/core/fleet.py" = "docket/core/fleet.py"
-"../../src/docket/core/handoff.py" = "docket/core/handoff.py"
-"../../src/docket/core/identity.py" = "docket/core/identity.py"
-"../../src/docket/core/llm.py" = "docket/core/llm.py"
-"../../src/docket/core/memory.py" = "docket/core/memory.py"
-"../../src/docket/core/models.py" = "docket/core/models.py"
-"../../src/docket/core/policy.py" = "docket/core/policy.py"
-"../../src/docket/core/runtime_driver.py" = "docket/core/runtime_driver.py"
-"../../src/docket/core/security.py" = "docket/core/security.py"
-"../../src/docket/core/session.py" = "docket/core/session.py"
-"../../src/docket/core/tools.py" = "docket/core/tools.py"
-"../../src/docket/core/trace.py" = "docket/core/trace.py"
-"../../src/docket/edges/__init__.py" = "docket/edges/__init__.py"
-"../../src/docket/edges/store.py" = "docket/edges/store.py"
-"../../src/docket/edges/adapters/__init__.py" = "docket/edges/adapters/__init__.py"
-"../../src/docket/edges/adapters/docket_runtime.py" = "docket/edges/adapters/docket_runtime.py"
-"../../src/docket/edges/adapters/fetch.py" = "docket/edges/adapters/fetch.py"
-"../../src/docket/edges/adapters/llm.py" = "docket/edges/adapters/llm.py"
-"../../src/docket/edges/adapters/system.py" = "docket/edges/adapters/system.py"
-"../../src/docket/edges/adapters/toolbox.py" = "docket/edges/adapters/toolbox.py"
+# `docket` owns the control-plane namespace. This distribution owns only
+# `docket_runtime`: the versioned facade and a private, transformed copy of the
+# existing runtime implementation. The build hook deliberately includes only
+# the measured runtime closure; it never ships CLI modules.
+[tool.hatch.build.targets.wheel]
+packages = ["src/docket_runtime"]
 
-# hatchling's wheel builder still wants a `packages`/`include` declaration to
-# decide what counts as "the project" for sdist purposes even when every
-# wheel file comes from force-include; point it at an empty marker so the
-# sdist target does not try to slurp the whole monorepo root.
 [tool.hatch.build.targets.sdist]
-include = ["pyproject.toml"]
+include = ["pyproject.toml", "hatch_build.py", "src/docket_runtime"]
+
+# The sdist must carry the source material the hook transforms into the private
+# runtime implementation. It is build input, not an installed import path.
+[tool.hatch.build.targets.sdist.force-include]
+"../../src/docket" = "runtime-source/docket"
+
+[tool.hatch.build.hooks.custom]
