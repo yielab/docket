@@ -9,16 +9,16 @@ specs own shipped behavior.
 - Branch: `platform`.
 - Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
   W25-C7, and the authorized live acceptance are DONE.
-- Ready pool: W26-C5, C7, C9, and C10. W26-C1, C2, C6, and C8 are complete. Extract exactly one card before claim and apply the conflict
-  graph below; W26-C10 must be split before claim.
+- Ready pool: W26-C10 only. W26-C1, C2, C5-C9 are complete. Extract exactly one subcard after
+  splitting C10 and apply the conflict graph below.
 - W26-C0 remains blocked on the maintainer's release-source decision. C3, C4, and C11 retain their
-  explicit dependency blockers; C5 became ready when C2 landed under D-28.
+  explicit dependency blockers.
 - Pre-plan dirty evidence: 22 modified paths across Wave 25 runtime, security, specs, smoke, and
   tests. Planning edits add central roadmap/board/skill/handoff paths; they do not make the runtime
   baseline clean.
-- Commit-level closure validation on `6b925f0`: 2,377 passed and five expected skips; Ruff, format,
-  strict mypy, 24 spec validations, 18 goldens, metrics, deterministic smoke, and `git diff
-  --check` passed.
+- Current commit-level closure validation: 2,416 tests with five expected skips; Ruff, format,
+  strict mypy over 74 source files, 24 spec validations, 18 goldens, metrics, runtime artifact
+  ownership/floor checks, deterministic smoke, and `git diff --check` passed.
 - No product code is changed by the Phase 23 planning packet.
 - At packet creation these planning files are working-tree changes, and new handoff/helper files may
   be untracked. A fresh worktree based on the current commit will not contain them until the

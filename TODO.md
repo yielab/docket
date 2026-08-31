@@ -981,7 +981,7 @@ release journey, not their implementation files.
 
 ### W26-C5 — publish a non-overlapping runtime distribution boundary
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @terra-c5
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @terra-c5
 
 **Deterministic trigger:** `packages/docket-runtime/pyproject.toml` force-includes the same
 `docket/*` paths as the full distribution, so installing/upgrading/uninstalling both wheels can
@@ -1012,6 +1012,12 @@ upgrade/uninstall, build, import, consumer, dependency-floor, full static/pytest
 
 **Contention:** starts only after C2 freezes root packaging. It owns runtime packaging/spec; C11
 owns public prose. External adapters remain Wave 28, not this card.
+
+**Shipped evidence:** commits `cabad9e` and `55ef80b` give `docket-runtime` exclusive ownership of
+the `docket_runtime/` namespace, a versioned facade, and a private CLI-free runtime closure built
+from the canonical source. The artifact oracle rebuilds wheel and sdist outside the checkout at
+the direct dependency floor, proves disjoint RECORD paths and both uninstall directions, exercises
+granted and denied gated fake tools with audit/trace evidence, and verifies build staging cleanup.
 
 ### W26-C6 — make audit append and rotation one atomic chain transition
 
@@ -1075,7 +1081,7 @@ continues the verified chain.
 
 ### W26-C7 — make approval resolution compare-and-set atomic
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @terra-c7
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @terra-c7
 
 **Deterministic trigger:** `approval_grant`/`approval_deny` read `pending`, then `_set_state` rereads
 and separately writes. Concurrent CLI, HTTP, Telegram, timeout, or pipeline decisions can both
@@ -1103,6 +1109,11 @@ approval/channel/serve/tool tests, concurrency repetition, Ruff/mypy, then full 
 **Contention:** owns `approval.py` and approval tests/spec clauses only. No `audit.py`, store helper,
 serve handler, Telegram adapter, or tool-policy implementation edits unless a failing live caller
 proves a separate card is required.
+
+**Shipped evidence:** commit `7babf67` moves the pending-state check and terminal write into one
+existing store RMW. Repeated grant/deny, grant/grant, deny/expiry, HTTP, and Telegram races prove
+one winner and one matching trace/audit event; losers retain stable error/no-op behavior, timeout
+waiters observe the persisted winner, and approval records remain owner-only.
 
 ### W26-C8 — allocate pod resources without collisions
 
@@ -1166,7 +1177,7 @@ runtime files.
 
 ### W26-C9 — preserve concurrent conversation updates
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** S · **Owner:** @terra-c9
+**Status:** DONE (2026-08-31) · **Size:** S · **Owner:** @terra-c9
 
 **Deterministic trigger:** dispatch `_persist_hop` performs `_conv.load()` → pure
 `touch_for_hop()` → `_conv.save()` as separate operations. Parallel hops updating different
@@ -1195,6 +1206,12 @@ conversation/dispatch/Telegram/store tests, Ruff/mypy, then full repository gate
 
 **Contention:** owns `conversations.py` and the narrow `_persist_hop` call only. Do not combine with
 pipeline dispatch changes; coordinate if another active card owns `dispatch.py`.
+
+**Shipped evidence:** commit `790f578` routes every production conversation writer through one
+validated store RMW and changes `_persist_hop` only at its conversation touch. Concurrent same- and
+different-conversation cases preserve both updates and unknown fields; unwired/unknown mutations
+are byte-identical no-ops, malformed registries fail closed, callback errors are atomic, and hop
+previews remain bounded.
 
 ### W26-C10 — make run cancellation cooperative and truthful
 

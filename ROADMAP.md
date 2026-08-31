@@ -2583,6 +2583,16 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-31 (Wave 26 C5/C7/C9 accepted) — runtime distribution ownership and the remaining
+  approval/conversation transitions are atomic.** `docket-runtime` now owns only
+  `docket_runtime/`, rebuilds wheel and sdist outside the checkout, survives either coexistence
+  uninstall direction, and exposes one versioned gated-tool facade (`cabad9e`, `55ef80b`). Approval
+  resolution conditionally changes pending state once before the sole winner emits trace/audit
+  (`7babf67`). Conversation writers and hop touches share one validated locked mutation boundary
+  without schema growth or fabricated records (`790f578`). The committed-tree closure passes 2,416
+  tests with five contract-labelled skips, Ruff/format, strict mypy over 74 source files, 24 specs,
+  18 goldens, metrics, artifact ownership/floor checks, and deterministic smoke.
+
 - **2026-08-30 (Wave 26 C2/C6/C8 accepted) — three isolated Terra lanes landed canonical
   packaging and atomic audit/resource transitions.** The root wheel and sdist now install the
   canonical `docket` executable from outside the checkout with aligned metadata and clean uninstall
