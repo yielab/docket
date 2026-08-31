@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Active
 **Last Updated**: 2026-08-31
 
@@ -247,6 +247,39 @@ Apache-2.0, and carry a non-placeholder 64-hex SHA-256. The existing artifact-on
 tests remain the independent oracle that both package formats install outside the checkout, expose
 the canonical `docket` executable, and report the tagged package version.
 
+### Artifact-installed release journey
+
+The Wave 26 release exit gate MUST run as one command:
+
+```bash
+uv run python scripts/release_journey.py
+```
+
+The command MUST create a unique temporary world and loopback port, build the canonical root wheel,
+install that exact artifact into a fresh virtual environment, clear source-import overrides, and
+invoke only the installed `docket` executable from outside the checkout. Its deterministic
+OpenAI-compatible recorder is the only replaced edge; provider registration, initialization,
+delegation/dispatch, the agent loop, `dispatch_tool`, stores, trace, and audit MUST use production
+public paths. No real credential, paid provider, developer Docket home, or non-loopback network may
+be read.
+
+The successful journey MUST prove a model request advertised tools, a governed tool call produced
+the exact `docket release journey ok\n` side effect, the subsequent request carried its tool result,
+and a final assistant turn reported measured usage. The installed module and executable MUST resolve
+inside the fresh environment rather than the checkout. Terminal task/run state, a complete
+assistant-call/tool-result session unit, trace events, and a clean non-empty audit chain MUST remain
+inspectable after the command. A bounded `journey-evidence.json` recorder file MAY carry only
+artifact/interpreter paths and boolean/count wire metadata; it is not a substitute for inspecting
+the durable product state. Success MUST end with `RELEASE JOURNEY PASS`.
+
+An unreachable loopback endpoint MUST fail provider validation without registering that provider,
+initializing the release-journey project, dispatching a model request, writing the tool artifact, or
+creating trace/audit evidence. Failure output MUST be bounded and actionable without a traceback or
+credential value. `--workdir <new-or-empty-path>` MUST preserve either outcome for inspection.
+
+The same command MUST be a blocking CI matrix job on `ubuntu-latest` and `macos-latest`; the macOS
+release journey MUST NOT inherit the existing advisory lane's `continue-on-error` waiver.
+
 ## Full validation
 
 ```bash
@@ -263,6 +296,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.11.0 (2026-08-31)
+
+- W26-C4 defines the release exit oracle: a source-isolated install of the exact built wheel must
+  configure a loopback provider, initialize and complete one governed turn, retain inspectable
+  product evidence, fail cleanly on endpoint rejection, and run as a blocking Linux/macOS matrix.
 
 ### Version 2.10.0 (2026-08-31)
 
