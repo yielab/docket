@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Active
-**Last Updated**: 2026-08-26
+**Last Updated**: 2026-08-31
 
 ## Overview
 
@@ -227,6 +227,26 @@ uv run python scripts/metrics.py --check
 ShellCheck covers the launcher, installers, scripts, and golden harness in CI. The dependency-floor
 job resolves the minimum declared direct versions and runs pytest against them.
 
+### Immutable release-artifact oracle
+
+The Wave 26 release gate MUST exercise the tagged release boundary, not a checkout or mutable branch
+archive. The release workflow MUST build the canonical root wheel and sdist, publish SHA-256
+verification data for every downloadable install asset, produce an SBOM, and request build
+provenance/attestation. Publication MUST be a separate protected job that consumes only the verified
+build job's artifacts; ordinary branch pushes cannot publish merely because they are newer.
+
+The remote `install.sh` path MUST resolve an explicit versioned GitHub release asset, fetch its
+matching checksum, and verify bytes before invoking `tar`, Python, or any package installation.
+A one-byte mismatch MUST exit nonzero before extraction and leave the requested prefix untouched.
+The closest valid asset/checksum pair MUST pass verification and reach extraction. Tests MUST fake
+only the network/archive edge and run the real installer control flow; they MUST NOT contact GitHub
+or read the developer's Docket home.
+
+The Homebrew formula MUST use the same tagged release asset as the workflow/installer, declare
+Apache-2.0, and carry a non-placeholder 64-hex SHA-256. The existing artifact-only wheel/sdist
+tests remain the independent oracle that both package formats install outside the checkout, expose
+the canonical `docket` executable, and report the tagged package version.
+
 ## Full validation
 
 ```bash
@@ -243,6 +263,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.10.0 (2026-08-31)
+
+- W26-C3 defines the immutable release boundary: versioned wheel/sdist assets, checksums, SBOM and
+  provenance inputs, protected publication, exact formula metadata, and a hermetic real-installer
+  tamper oracle that refuses modified bytes before extraction.
 
 ### Version 2.9.0 (2026-08-26)
 
