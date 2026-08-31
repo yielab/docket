@@ -26,6 +26,18 @@ All docket commands follow a single top-level grammar:
 docket [global-options] <command> [command-options] [arguments]
 ```
 
+### Installed Distribution
+
+The root `docket` distribution MUST build both a wheel and an sdist that install
+without a source checkout.  Each artifact MUST expose `docket` as the canonical
+console command; `docket --version`, `docket --help`, and `docket init --help`
+MUST run from an artifact-only installation.  Installed project metadata MUST
+report a PEP 440-equivalent form of declared version `0.2.0-beta.1`, Python
+requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
+issues, and homepage URLs.  Uninstalling the
+distribution MUST remove its executable, package, and distribution metadata
+without deleting dependencies shared by other installed packages.
+
 - `global-options` MUST precede the command (see [Options](#options)).
 - `command` MUST be one of the entries in the Command Registry below.
 - `arguments` are positional and command-specific (see [Arguments](#arguments)).
@@ -852,6 +864,12 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.21.0 (2026-08-30)
+
+- Defined the root distribution contract: standards-compliant wheel and sdist,
+  artifact-only `docket` command checks, aligned version/license/project metadata,
+  and clean uninstall boundaries.
 
 ### Version 1.20.0 (2026-08-30)
 

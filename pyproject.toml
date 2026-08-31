@@ -7,28 +7,43 @@ name = "docket"
 version = "0.2.0-beta.1"
 description = "Agent fleet control plane: provisioning, cost guardrails, and gated tool execution"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Yielab" }]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+]
 # Floors are empirically verified, not aspirational. Every bound below was
 # resolved with `uv pip compile --resolution lowest-direct` and then run against
 # the full test suite in a clean venv (2026-07-31, suite green at exit 0). The
 # `floors` CI job repeats that check on every push so these cannot rot again.
 #
 # Two of the six previous bounds were false when first measured:
-#   * `typer>=0.12` — typer 0.12.x pairs with a modern click (8.4.x) to raise
+#   * `typer>=0.16` — typer 0.12.x pairs with a modern click (8.4.x) to raise
 #     `TypeError: Secondary flag is not valid for non-boolean flag` on this
-#     CLI's `--flag/--no-flag` options. 216 tests failed. 0.13.0 is the first
-#     release that works; bisected 0.12.0 (exit 2) / 0.12.5 (exit 1) / 0.13.0 (ok).
+#     CLI's `--flag/--no-flag` options, while 0.13.x crashes rendering help
+#     with Click 8.5's required ``ctx`` parameter. 0.16.0 is the first release
+#     verified against both constraints.
 #   * `pydantic>=2` — pydantic 2.0 raises `NameError` for the `model_source`
 #     field (protected `model_` namespace) and rejects `Field(discriminator=...)`
 #     on this union shape. 56 test modules failed to even import. 2.1 is clean.
 # The other four were already accurate and are left where they are.
 dependencies = [
-    "typer>=0.13",
+    "typer>=0.16",
     "rich>=13",
     "pydantic>=2.1",
     "pydantic-settings>=2",
     "filelock>=3.13",
     "pyyaml>=6",
 ]
+
+[project.urls]
+Homepage = "https://github.com/yielab/docket"
+Issues = "https://github.com/yielab/docket/issues"
+Source = "https://github.com/yielab/docket"
 
 # Optional extras: kept out of the base install so `pip install docket` stays
 # dependency-light. `docket mcp serve` (Phase 18 L-3/L-6) needs the official
@@ -49,7 +64,7 @@ dependencies = [
 mcp = ["mcp>=2.0.0"]
 
 [project.scripts]
-docket-py = "docket.cli:app"
+docket = "docket.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket"]
