@@ -2583,6 +2583,16 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 
 ### Changelog
 
+- **2026-08-30 (Wave 26 C2/C6/C8 accepted) — three isolated Terra lanes landed canonical
+  packaging and atomic audit/resource transitions.** The root wheel and sdist now install the
+  canonical `docket` executable from outside the checkout with aligned metadata and clean uninstall
+  behavior (`2d3e713`). Audit rotation, head lookup, append/flush/close/permissions, and readers are
+  one bounded inter-process transition with typed best-effort results and failure rollback
+  (`4493874`, `6e6cfd3`). Pod provisioning serializes same-project attempts, allocates different
+  projects atomically, and removes only attempt-owned rollback state (`f9c9fd5`). Integrated gates
+  pass with 2,404 tests and five contract-labelled skips, Ruff/format, strict mypy, 24 specs, and
+  18 goldens. C3 now waits only on C0, C4 waits only on C3, and C5 is ready under D-28.
+
 - **2026-08-30 (Wave 26 W26-C1 accepted) — clean setup now reaches a governed turn through a
   resolvable provider.** Provider registration is fail-closed, unresolved presets cannot persist,
   first-project bootstrap validates the selected endpoint/model without exposing credentials, and

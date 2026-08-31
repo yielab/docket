@@ -873,7 +873,7 @@ metrics, deterministic smoke, and `git diff --check` pass.
 
 ### W26-C2 — provide one canonical installable CLI
 
-**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @terra-c2
+**Status:** DONE (2026-08-30) · **Size:** M · **Owner:** @terra-c2
 
 **Deterministic trigger:** root `pyproject.toml` exposes only `docket-py` while all primary docs use
 `docket`; installed metadata lacks the expected license/project identity, and releases publish no
@@ -905,9 +905,14 @@ goldens, specs, and packaging gates.
 **Contention:** owns root packaging only. C3 consumes its artifact after merge; C5 may not edit root
 packaging until C2 lands. Independent of provider and governance paths.
 
+**Shipped evidence:** integrated commit `2d3e713` builds wheel and sdist artifacts that install from
+outside the checkout at the direct dependency floor, expose canonical `docket` version/help/init
+help, report aligned Apache-2.0/version/project metadata, and uninstall without deleting shared
+dependencies. The two artifact-only oracles pass; `uv.lock` matches the verified Typer floor.
+
 ### W26-C3 — make release artifacts immutable and verifiable
 
-**Status:** BLOCKED (needs W26-C0 + W26-C2) · **Size:** M · **Owner:** unassigned
+**Status:** BLOCKED (needs W26-C0; W26-C2 done) · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** `Formula/docket-cli.rb` contains an all-zero SHA and declares MIT instead
 of Apache-2.0; its comment says release automation updates it, but the workflow only archives source
@@ -941,7 +946,7 @@ C11 alone updates README/quickstart claims from the final artifacts.
 
 ### W26-C4 — enforce clean-install-to-first-turn in CI
 
-**Status:** BLOCKED (needs W26-C2 + W26-C3; W26-C1 done) · **Size:** M · **Owner:** unassigned
+**Status:** BLOCKED (needs W26-C3; W26-C1/C2 done) · **Size:** M · **Owner:** unassigned
 
 **Measured trigger:** focused suites are strong, but no release gate proves that a user can install
 the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,
@@ -976,7 +981,7 @@ release journey, not their implementation files.
 
 ### W26-C5 — publish a non-overlapping runtime distribution boundary
 
-**Status:** BLOCKED (needs W26-C2 + D-28) · **Size:** M · **Owner:** unassigned
+**Status:** TODO (W26-C2 and D-28 satisfied) · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** `packages/docket-runtime/pyproject.toml` force-includes the same
 `docket/*` paths as the full distribution, so installing/upgrading/uninstalling both wheels can
@@ -1010,7 +1015,7 @@ owns public prose. External adapters remain Wave 28, not this card.
 
 ### W26-C6 — make audit append and rotation one atomic chain transition
 
-**Status:** IN PROGRESS (2026-08-30) · **Size:** M · **Owner:** @terra-c6
+**Status:** DONE (2026-08-30) · **Size:** M · **Owner:** @terra-c6
 
 **Deterministic trigger:** direct inspection of `core/audit.py::audit_log` shows rotation, current
 head calculation, and append occur without one inter-process critical section. Parallel workers
@@ -1062,6 +1067,12 @@ counterexamples.
 the typed status without editing audit code; merge C6 first if C7 asserts it. Any request to make
 mutations fail, add health visibility, or change another caller becomes a separately measured card.
 
+**Shipped evidence:** commits `4493874` and `6e6cfd3` make rotate → head → append/flush/close/0600
+one bounded inter-process transition and route public readers through a coherent snapshot.
+Thirty-two-process cases pass below and across rotation; timeout, pre-write, post-rotation, and
+close-after-close failures return `failed` without a partial or false event, while the next write
+continues the verified chain.
+
 ### W26-C7 — make approval resolution compare-and-set atomic
 
 **Status:** TODO · **Size:** M · **Owner:** unassigned
@@ -1095,7 +1106,7 @@ proves a separate card is required.
 
 ### W26-C8 — allocate pod resources without collisions
 
-**Status:** IN PROGRESS (2026-08-30) · **Size:** S · **Owner:** @terra-c8
+**Status:** DONE (2026-08-30) · **Size:** S · **Owner:** @terra-c8
 
 **Deterministic trigger:** `allocate_pod_resources` loads the registry, computes the next range, and
 later writes under a separate lock. Concurrent CLI or threaded `POST /pods` provisioning can assign
@@ -1144,8 +1155,14 @@ registry transition. Registry and member metadata agree after every result. Run 
 command repeatedly, the remaining provisioning/serve/store tests, Ruff/mypy, then full
 pytest/goldens/specs/metrics/smoke.
 
-**Contention:** currently overlaps dirty `pod_provisioning.py`, so activation gate is mandatory.
-After reconciliation it is independent of C7/C9/C10 and may only call store APIs unchanged.
+**Contention:** activation reconciled the clean baseline before the isolated lane started. The
+shipped path is independent of C7/C9/C10 and calls generic store APIs unchanged.
+
+**Shipped evidence:** commit `f9c9fd5` serializes one project's full provisioning attempt and uses
+one short atomic allocation-registry transition across different projects. The 13-case focused
+oracle proves disjoint ranges, one same-project winner, allocation/member/metadata consistency,
+free/reuse, and rollback that removes only attempt-created state while preserving pre-existing
+runtime files.
 
 ### W26-C9 — preserve concurrent conversation updates
 

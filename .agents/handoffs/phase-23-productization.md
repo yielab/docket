@@ -9,10 +9,10 @@ specs own shipped behavior.
 - Branch: `platform`.
 - Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
   W25-C7, and the authorized live acceptance are DONE.
-- Ready pool: W26-C2 and C6–C10. W26-C1 is complete. Extract exactly one card before claim and apply the conflict
+- Ready pool: W26-C5, C7, C9, and C10. W26-C1, C2, C6, and C8 are complete. Extract exactly one card before claim and apply the conflict
   graph below; W26-C10 must be split before claim.
-- W26-C0 remains blocked on the maintainer's release-source decision. C3–C5 and C11 retain their
-  explicit dependency blockers.
+- W26-C0 remains blocked on the maintainer's release-source decision. C3, C4, and C11 retain their
+  explicit dependency blockers; C5 became ready when C2 landed under D-28.
 - Pre-plan dirty evidence: 22 modified paths across Wave 25 runtime, security, specs, smoke, and
   tests. Planning edits add central roadmap/board/skill/handoff paths; they do not make the runtime
   baseline clean.
@@ -139,13 +139,13 @@ those templates in prompts or handoffs. Phase 23 adds only these constraints:
 | Finding | Evidence kind | Locator | Planned owner |
 | --- | --- | --- | --- |
 | Default Anthropic model has no built-in direct endpoint | deterministic + accepted live | public provider/preset/init path; `/tmp/docket-w26-c1-live-smoke-pa9AyI` | closed by W26-C1 |
-| Canonical `docket` artifact is absent | inventory gap | root `pyproject.toml` scripts/build | W26-C2 |
+| Canonical `docket` artifact is absent | artifact-only wheel/sdist acceptance | `tests/python/test_distribution_package.py`; `2d3e713` | closed by W26-C2 |
 | Formula/installer are mutable or unverifiable | direct static | `Formula/docket-cli.rb`, `install.sh`, release workflow | W26-C3 |
 | No artifact-to-first-turn release gate | inventory gap | test/release workflow inventory | W26-C4 |
 | Runtime distributions overlap files | direct static | `packages/docket-runtime/pyproject.toml` force-include | W26-C5 |
-| Audit head+append is unlocked | direct static | `core/audit.py::audit_log` | W26-C6 |
+| Audit head+append is unlocked | 32-process + failure-injection acceptance | `core/audit.py`; `4493874` + `6e6cfd3` | closed by W26-C6 |
 | Approval transition admits contradictory winners | reproduced live | `core/approval.py::approval_grant/deny`; grant/deny barrier dry run | W26-C7 |
-| Resource allocation and rollback cross attempts | direct static; race outcome pending RED | `provision_pod` → `allocate_pod_resources`/`free_pod_resources` | W26-C8 |
+| Resource allocation and rollback cross attempts | barrier + rollback acceptance | `pod_provisioning.py`; `f9c9fd5` | closed by W26-C8 |
 | Conversation hop touch is load+save | direct static | `core/dispatch.py::_persist_hop`, `core/conversations.py` | W26-C9 |
 | In-process cancel does not stop the loop | direct static | `core/runs.py::cancel_run`, `DocketDriver.run_turn` | W26-C10 |
 | Reviewer marker placement and private-boundary canary | accepted live evidence | `/tmp/docket-w25-c7-live-L8nkOm`; W25-C7/C11 shipped evidence | closed |
