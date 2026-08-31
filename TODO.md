@@ -920,7 +920,7 @@ dependencies. The two artifact-only oracles pass; `uv.lock` matches the verified
 
 ### W26-C3 — make release artifacts immutable and verifiable
 
-**Status:** READY (W26-C0/C2 done) · **Size:** M · **Owner:** unassigned
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** `Formula/docket-cli.rb` contains an all-zero SHA and declares MIT instead
 of Apache-2.0; its comment says release automation updates it, but the workflow only archives source
