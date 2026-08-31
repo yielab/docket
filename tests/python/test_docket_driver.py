@@ -44,6 +44,7 @@ from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV
 from docket.core.session import load_session
 from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
+from docket.edges.adapters import docket_runtime as _docket_runtime
 from docket.edges.adapters import llm as _llm_adapter
 from docket.edges.adapters import system as _system
 from docket.edges.adapters.docket_runtime import DocketDriver
@@ -128,6 +129,38 @@ def _never_called(model: str):  # pragma: no cover - only exercised on a real bu
 
 
 class TestRunTurn:
+    def test_owned_run_binds_persisted_cancellation_signal_before_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class RequestedSignal:
+            observations = 0
+
+            def observe(self) -> bool:
+                self.observations += 1
+                return True
+
+        signal = RequestedSignal()
+        monkeypatch.setattr(
+            _docket_runtime._runs,
+            "current_cancellation_signal",
+            lambda: signal,
+            raising=True,
+        )
+        _write_meta("cancelled-agent")
+        backend = _ScriptedBackend([_final_response("must not be requested")])
+
+        result = DocketDriver(backend_factory=lambda _model: backend).run_turn(
+            "cancelled-agent",
+            "agent:cancelled-agent:default",
+            "go",
+            60,
+        )
+
+        assert result.ok is False
+        assert result.failure_kind == "run_cancelled"
+        assert backend.calls == []
+        assert signal.observations >= 1
+
     def test_public_local_provider_setup_reaches_gated_tool_turn_without_api_key(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

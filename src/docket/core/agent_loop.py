@@ -163,6 +163,7 @@ StopReason = Literal[
     "compaction_failed",
     "context_fit",
     "tool_denials",
+    "run_cancelled",
 ]
 
 _FINALIZATION_INSTRUCTION = (
@@ -497,6 +498,17 @@ def run_agent_turn(
             raw=last_raw,
         )
 
+    def _cancellation_requested() -> bool:
+        return ctx.cancellation_check is not None and ctx.cancellation_check()
+
+    def _cancelled() -> AgentLoopResult:
+        return _done(
+            ok=False,
+            stop_reason="run_cancelled",
+            error="run cancellation requested",
+            failure_kind="run_cancelled",
+        )
+
     # Resolved once per turn, not per iteration -- neither the role's
     # toolset nor this agent's identity files change mid-turn.
     registry = _archetypes.registry_for_role(registry, ctx.role)
@@ -644,6 +656,9 @@ def run_agent_turn(
         if budget_error:
             compaction_failure_stop_reason = "token_budget"
             return TurnResult(False, "", 0.0, {}, budget_error, "invalid_output")
+        if _cancellation_requested():
+            compaction_failure_stop_reason = "run_cancelled"
+            return TurnResult(False, "", 0.0, {}, "run cancellation requested", "run_cancelled")
         response = backend.complete(
             summary_messages,
             tools=(),
@@ -653,6 +668,16 @@ def run_agent_turn(
         )
         last_raw = response.raw
         summary_usage = _accumulate(summary_usage, response.usage)
+        if _cancellation_requested():
+            compaction_failure_stop_reason = "run_cancelled"
+            return TurnResult(
+                False,
+                "",
+                0.0,
+                response.raw,
+                "run cancellation requested",
+                "run_cancelled",
+            )
         if not response.ok:
             compaction_failure_stop_reason = "compaction_failed"
             return TurnResult(
@@ -741,6 +766,8 @@ def run_agent_turn(
         _trace_compaction(project, trace_key, ctx.role, result)
         return result, compaction_failure_stop_reason
 
+    if _cancellation_requested():
+        return _cancelled()
     compaction, compaction_stop_reason = _run_compaction(budget_tokens=cfg.history_budget_tokens)
     if not compaction.ok:
         return _done(
@@ -957,6 +984,8 @@ def run_agent_turn(
     finalization_attempted = False
     consecutive_denial_kinds: list[ToolDenialKind] = []
     while True:
+        if _cancellation_requested():
+            return _cancelled()
         iteration += 1
         if iteration > cfg.max_iterations:
             return _done(
@@ -1069,6 +1098,8 @@ def run_agent_turn(
             request_tools = []
             finalizing = True
 
+        if _cancellation_requested():
+            return _cancelled()
         response = backend.complete(
             messages,
             tools=request_tools,
@@ -1077,6 +1108,11 @@ def run_agent_turn(
             timeout=request_timeout,
         )
         last_raw = response.raw
+        total_usage = _accumulate(total_usage, response.usage)
+        if _cancellation_requested():
+            if response.usage.total_tokens or response.usage.cached_tokens:
+                append_messages(session_key, [], usage=response.usage)
+            return _cancelled()
         if not response.ok:
             return _done(
                 ok=False,
@@ -1084,8 +1120,6 @@ def run_agent_turn(
                 error=response.error,
                 failure_kind=response.failure_kind or "daemon_error",
             )
-
-        total_usage = _accumulate(total_usage, response.usage)
 
         if response.truncated:
             # A length-truncated reply can carry a partial tool call — never
@@ -1146,10 +1180,12 @@ def run_agent_turn(
             )
 
         tool_msgs: list[ChatMessage] = []
+        batch_cancelled = False
         for call in assistant_msg.tool_calls:
             _trace_tool_call(project, trace_key, ctx.role, call.name, call.id, call.arguments)
             result = dispatch_tool(call, ctx, registry)
-            tool_calls_executed += 1
+            if result.denial_kind != "run_cancelled":
+                tool_calls_executed += 1
             _trace_tool_result(
                 project,
                 trace_key,
@@ -1166,6 +1202,8 @@ def run_agent_turn(
             elif result.decision == "allow" and result.executed:
                 consecutive_denial_kinds.clear()
             tool_msgs.append(tool_result(call, result.as_tool_output()))
+            if result.denial_kind == "run_cancelled" or _cancellation_requested():
+                batch_cancelled = True
 
         messages.append(assistant_msg)
         messages.extend(tool_msgs)
@@ -1173,6 +1211,8 @@ def run_agent_turn(
         # assistant message and its tool results in separate calls, which
         # would let a crash between them persist an orphaned tool_calls entry.
         append_messages(session_key, [assistant_msg, *tool_msgs], usage=response.usage)
+        if batch_cancelled:
+            return _cancelled()
         denial_limit = cfg.max_consecutive_tool_denials
         if denial_limit > 0 and len(consecutive_denial_kinds) >= denial_limit:
             reported_kinds = consecutive_denial_kinds[-denial_limit:]

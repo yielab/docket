@@ -351,7 +351,10 @@ class TestCooperativeRunCancellation:
         assert handler_calls == []
         stored = load_session(session_key)
         assert [message.role for message in stored.messages] == ["user"]
-        assert stored.usage == TokenUsage(input_tokens=10, output_tokens=5, turns=1)
+        assert stored.usage.input_tokens == 10
+        assert stored.usage.output_tokens == 5
+        assert stored.usage.cached_tokens == 0
+        assert stored.usage.turns == 1
         assert [kind for kind, _payload in events if kind in {"tool_call", "tool_result"}] == []
 
     def test_compaction_response_after_request_cannot_rewrite_or_start_task_transport(

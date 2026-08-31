@@ -60,6 +60,7 @@ ToolDenialKind = Literal[
     "gate_denied",
     "approval_denied",
     "approval_timeout",
+    "run_cancelled",
 ]
 
 
@@ -99,6 +100,7 @@ class ToolContext:
     role: str = ""
     project: str = ""
     sandbox: SandboxMode = "off"
+    cancellation_check: Callable[[], bool] | None = None
 
 
 @dataclass
@@ -382,6 +384,18 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     """Run one tool call, or refuse it. The only path to tool execution."""
     result = ToolResult(ok=False, tool=call.name, call_id=call.id)
 
+    def cancel_before_execution() -> bool:
+        if ctx.cancellation_check is None or not ctx.cancellation_check():
+            return False
+        result.decision = "deny"
+        result.denial_kind = "run_cancelled"
+        result.reason = "run cancellation requested before execution"
+        result.error = result.reason
+        return True
+
+    if cancel_before_execution():
+        return result
+
     tool = registry.get(call.name)
     if tool is None:
         result.decision = "deny"
@@ -457,18 +471,39 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
             )[:1000],
             context={"tool": tool.name, "callId": call.id},
         )
-        wait_outcome = _approval.wait_for_approval(token)
+        if ctx.cancellation_check is None:
+            # Preserve the public embeddable runtime's one-argument approval
+            # stub when this call is not owned by a cancellable run.
+            wait_outcome = _approval.wait_for_approval(token)
+        else:
+            wait_outcome = _approval.wait_for_approval(
+                token,
+                cancellation_check=ctx.cancellation_check,
+            )
+        if cancel_before_execution():
+            return result
         if wait_outcome.state != "granted":
             result.decision = "deny"
-            result.denial_kind = "approval_timeout" if wait_outcome.timed_out else "approval_denied"
-            result.reason = (
-                "approval timed out and was denied" if wait_outcome.timed_out else "approval denied"
-            )
+            if wait_outcome.cancelled:
+                result.denial_kind = "run_cancelled"
+                result.reason = "run cancellation requested before execution"
+            else:
+                result.denial_kind = (
+                    "approval_timeout" if wait_outcome.timed_out else "approval_denied"
+                )
+                result.reason = (
+                    "approval timed out and was denied"
+                    if wait_outcome.timed_out
+                    else "approval denied"
+                )
             result.error = result.reason
             return result
         # Granted: the call is now allowed, and falls through to execute.
         result.decision = "allow"
         result.reason = f"approved (token={token})"
+
+    if cancel_before_execution():
+        return result
 
     try:
         outcome = tool.handler(args, ctx)

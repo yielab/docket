@@ -29,6 +29,7 @@ from docket.core import agent_loop as _loop
 from docket.core import fleet as _fleet
 from docket.core import mcp_tools as _mcp
 from docket.core import pod as _pod
+from docket.core import runs as _runs
 from docket.core import session as _session
 from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
@@ -261,6 +262,7 @@ class DocketDriver:
         pipeline_worktree = _validated_pipeline_worktree(agent_id, env)
         tool_env = dict(env or {})
         tool_env.pop(PIPELINE_WORKTREE_ENV, None)
+        cancellation_signal = _runs.current_cancellation_signal()
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
@@ -272,6 +274,9 @@ class DocketDriver:
             role=meta.role,
             project=agent_id,
             sandbox="auto" if want_sandbox else "off",
+            cancellation_check=(
+                cancellation_signal.observe if cancellation_signal is not None else None
+            ),
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside

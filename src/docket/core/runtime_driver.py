@@ -44,7 +44,13 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 # Only "timeout"/"daemon_error" are retryable (a transient hiccup talking to the
 # model backend, not a real answer) — see core/dispatch.py's _RETRYABLE_FAILURE_KINDS.
-FailureKind = Literal["timeout", "daemon_error", "nonzero_exit", "invalid_output"]
+FailureKind = Literal[
+    "timeout",
+    "daemon_error",
+    "nonzero_exit",
+    "invalid_output",
+    "run_cancelled",
+]
 
 # Internal dispatch→driver coordinate for a downstream hop that must inspect
 # the worktree which produced its handoff. The shipped driver validates it

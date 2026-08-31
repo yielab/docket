@@ -341,6 +341,7 @@ class ApprovalWaitResult:
     state: Literal["granted", "denied"]
     token: str
     timed_out: bool = False
+    cancelled: bool = False
 
 
 def wait_for_approval(
@@ -350,6 +351,7 @@ def wait_for_approval(
     poll_interval: float | None = None,
     sleep: Callable[[float], None] | None = None,
     clock: Callable[[], float] | None = None,
+    cancellation_check: Callable[[], bool] | None = None,
 ) -> ApprovalWaitResult:
     """Block the calling thread on *token* until it resolves, then fail closed.
 
@@ -392,6 +394,19 @@ def wait_for_approval(
             return ApprovalWaitResult("granted", token)
         if state in ("denied", "expired"):
             return ApprovalWaitResult("denied", token)
+        if cancellation_check is not None and cancellation_check():
+            try:
+                approval_deny(token, channel="cancellation")
+            except (ApprovalNoop, ApprovalError):
+                # A concurrent terminal decision won. Preserve and report it;
+                # the caller still performs its post-wait cancellation check
+                # before allowing a granted call to reach the handler.
+                final_state = str(_read(token).get("state", ""))
+                if final_state == "granted":
+                    return ApprovalWaitResult("granted", token, cancelled=True)
+                if final_state not in ("denied", "expired"):
+                    raise
+            return ApprovalWaitResult("denied", token, cancelled=True)
         if do_clock() >= deadline:
             if _resolve_timeout_as_denied(token):
                 return ApprovalWaitResult("denied", token, timed_out=True)
