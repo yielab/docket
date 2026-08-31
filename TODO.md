@@ -1323,7 +1323,7 @@ CLI/read compatibility, full pytest/smoke, static, spec, golden, and metrics gat
 
 ### W26-C10b — stop the owned loop at every side-effect boundary
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Deterministic trigger:** after C10a, the persisted signal is truthful but the in-process
 `DocketDriver` still does not consume it. `run_agent_turn` can start later backend requests, wait on
@@ -1379,9 +1379,19 @@ it. This card owns the loop/driver/tool path serially and cannot overlap another
 session, approval, tool-dispatch, or runtime-package card. C10c starts only after these typed
 outcomes and checkpoints land.
 
+**Shipped evidence:** RED contract commit `3244fb2` and implementation commit `d6eca09` propagate
+C10a's persisted signal through the production driver into the agent loop and sole tool
+chokepoint. Cancellation now discards post-cancel compaction/task responses while retaining measured
+usage, conditionally resolves pending approval without overwriting a concurrent winner, lets an
+already-running handler finish, writes explicit `run_cancelled` results for an unstarted batch
+remainder, persists the complete assistant/tool unit, and stops without retry. The four barrier
+nodes pass 50/50 repeated runs; production driver binding, approval/tool, runtime-package, full
+2,429-test suite with five contract-labelled skips, Ruff/format, strict mypy over 74 source files,
+24 specs, 18 goldens, metrics, and deterministic smoke all pass.
+
 ### W26-C10c — reconcile cancelled task/run truth through public surfaces
 
-**Status:** BLOCKED (needs W26-C10b) · **Size:** M · **Owner:** unassigned
+**Status:** READY (C10b accepted 2026-08-31) · **Size:** M · **Owner:** unassigned
 
 **Deterministic trigger:** C10b can stop the owned loop, but current dispatch maps every failed hop
 through ordinary failure semantics and current CLI/docs say `cancel` immediately kills/marks the

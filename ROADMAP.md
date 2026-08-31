@@ -37,7 +37,7 @@ commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — W26-C10a shipped the persisted cancellation lifecycle; C10b is ready and C0 awaits the maintainer's release-source decision |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — W26-C10b shipped cooperative cancellation checkpoints; C10c is ready and C0 awaits the maintainer's release-source decision |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -198,8 +198,8 @@ contention boundaries live once in `TODO.md`.
 | W26-C9 | Lost-update-free conversation mutation | Owns conversation mutation and one narrow dispatch call site |
 | W26-C10 | Cancellation scope split only | Planning-complete; superseded by C10a → C10b → C10c |
 | W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
-| W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Ready; serial owner of loop/tool path consuming C10a's signal |
-| W26-C10c | Durable task/run reconciliation and truthful public surfaces | After C10b; owns whole-path oracle and cancellation wording |
+| W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
+| W26-C10c | Durable task/run reconciliation and truthful public surfaces | Ready after C10b; owns whole-path oracle and cancellation wording |
 | W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C0, C3, C4, and C10c; integrator-only truth pass |
 
 ### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
@@ -2586,6 +2586,17 @@ specs on `platform` describe the code, not aspirations, and R-8 keeps them that 
 ---
 
 ### Changelog
+
+- **2026-08-31 (Wave 26 C10b accepted) — owned runs now stop cooperatively at every unstarted
+  model, approval-continuation, and tool-handler boundary.** The persisted C10a signal now reaches
+  `DocketDriver`, `run_agent_turn`, approval waits, and `dispatch_tool` (`3244fb2`, `d6eca09`). A
+  response already in flight may finish, but cancellation discards it before the next side effect;
+  an already-running handler completes its atomic unit while the unstarted batch remainder receives
+  explicit `run_cancelled` results. Concurrent approval winners are preserved and cancellation is
+  terminal/non-retryable. The four barrier races pass 50/50 repetitions; the committed closure
+  passes 2,429 tests with five contract-labelled skips, Ruff/format, strict mypy over 74 source
+  files, 24 specs, 18 goldens, metrics, the standalone runtime artifact boundary, and deterministic
+  smoke. C10c is now ready.
 
 - **2026-08-31 (Wave 26 C10a accepted) — cancellation requests are persisted truthfully across
   processes before an executor claims full stop.** The run id now identifies a typed signal whose
