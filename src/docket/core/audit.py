@@ -45,9 +45,13 @@ import getpass
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from filelock import FileLock, Timeout
 
 import docket.config as _cfg
 
@@ -56,6 +60,36 @@ import docket.config as _cfg
 # same length as a real SHA-256 hex digest so chain-start entries are
 # structurally uniform with every other entry.
 GENESIS_HASH = "0" * 64
+
+# Kept private and deliberately independent from edges/store.py's directory
+# lock: audit is JSONL, and this one lock protects only its rotate/head/append
+# transition. Tests lower it to make a timeout deterministic.
+_AUDIT_LOCK_TIMEOUT = 5
+
+
+@dataclass(frozen=True)
+class AuditWriteResult:
+    """Observable outcome of one best-effort audit write."""
+
+    status: Literal["written", "failed"]
+
+
+def _audit_lock_path(logf: Path) -> Path:
+    """Return the dedicated inter-process lock for one audit log."""
+    return logf.with_name(f".{logf.name}.lock")
+
+
+def _rotation_marker_path(logf: Path) -> Path:
+    """Return the short-lived marker that makes a failed rotation recoverable."""
+    return logf.with_name(f".{logf.name}.rotation")
+
+
+@contextmanager
+def _with_audit_lock(logf: Path) -> Iterator[None]:
+    """Hold the audit-only lock for a coherent current/backup snapshot."""
+    lock = FileLock(str(_audit_lock_path(logf)), timeout=_AUDIT_LOCK_TIMEOUT)
+    with lock:
+        yield
 
 
 def _utc_now() -> str:
@@ -147,23 +181,101 @@ def _rotate_if_needed(logf: Path) -> tuple[int, str] | None:
         if not (logf.exists() and logf.stat().st_size >= _cfg.AUDIT_LOG_MAX_BYTES):
             return None
         continuation = _chain_head(logf)
-        backup = logf.with_suffix(logf.suffix + ".1")
-        os.replace(logf, backup)
+        marker = _rotation_marker_path(logf)
+        # Persist intent before the rename. If the process dies after the
+        # rename and before append, only this marker authorizes recovery from
+        # the backup; an unrelated legacy backup must not affect a fresh log.
+        marker.write_text("pending\n", encoding="utf-8")
+        os.chmod(marker, 0o600)
     except OSError:
+        return None
+    try:
+        os.replace(logf, logf.with_suffix(logf.suffix + ".1"))
+    except OSError:
+        with suppress(OSError):
+            _rotation_marker_path(logf).unlink()
         return None
     return None if continuation == (1, GENESIS_HASH) else continuation
 
 
-def audit_log(action: str, detail: str = "") -> None:
+def _recovery_head(logf: Path, continuation: tuple[int, str] | None) -> tuple[int, str]:
+    """Return the append head, including the only safe post-rotation recovery.
+
+    If a rotation renamed the current file but its following append failed,
+    the current path is absent and the retained backup is the authoritative
+    tail. The next successful writer resumes from that tail instead of
+    inventing a genesis restart/gap.
+    """
+    if continuation is not None:
+        return continuation
+    if not logf.exists() and _rotation_marker_path(logf).is_file():
+        backup_head = _chain_head(logf.with_suffix(logf.suffix + ".1"))
+        if backup_head != (1, GENESIS_HASH):
+            return backup_head
+    return _chain_head(logf)
+
+
+def _append_entry(logf: Path, encoded: str) -> bool:
+    """Append, flush, close, and permission-restore one entry or roll it back.
+
+    The caller holds the audit lock. A failed append must not leave a partial
+    JSON line, and a newly-created post-rotation current file is removed so
+    its backup remains the recovery authority.
+    """
+    existed = logf.exists()
+    try:
+        original_size = logf.stat().st_size if existed else 0
+    except OSError:
+        return False
+
+    stream: Any | None = None
+    try:
+        stream = logf.open("a+", encoding="utf-8")
+        stream.write(encoded + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        stream.close()
+        stream = None
+        os.chmod(logf, 0o600)
+        _rotation_marker_path(logf).unlink(missing_ok=True)
+        return True
+    except OSError:
+        # Best effort applies to failure reporting too: preserve the exact
+        # pre-transition bytes whenever the filesystem permits it.
+        if stream is not None:
+            with suppress(OSError):
+                stream.seek(original_size)
+                stream.truncate(original_size)
+                stream.flush()
+                os.fsync(stream.fileno())
+            with suppress(OSError):
+                stream.close()
+        elif existed:
+            # A close or permission-restoration failure happens after the
+            # stream was closed; reopen solely to remove the just-appended
+            # bytes before reporting this transition as failed.
+            with suppress(OSError), logf.open("r+", encoding="utf-8") as rollback:
+                rollback.truncate(original_size)
+                rollback.flush()
+                os.fsync(rollback.fileno())
+        if not existed:
+            with suppress(OSError):
+                logf.unlink()
+        return False
+
+
+def audit_log(action: str, detail: str = "") -> AuditWriteResult:
     """Append one chained audit entry for a mutating operation.
 
     action: dotted verb, e.g. ``keys.add``, ``gates.enable``, ``agent.delete``.
     detail: human-readable target (an id, key name, model id — never a secret
     value).
 
-    Best-effort and never raises: a write failure silently no-ops. Recording
-    cannot be disabled by environment variable — there is no kill switch (see
-    module docstring).
+    Best-effort and never raises audit I/O detail: a failed transition returns
+    ``AuditWriteResult(status="failed")`` without changing the caller's own
+    command result. Existing callers may intentionally ignore the return.
+    Recording cannot be disabled by environment variable — there is no kill
+    switch (see module docstring).
 
     AUDIT_LOG lives under DOCKET_HOME, which is genuinely docket-owned but not
     bootstrapped by anything external, so this creates its parent directory
@@ -176,27 +288,47 @@ def audit_log(action: str, detail: str = "") -> None:
     try:
         logf.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
-        return
+        return AuditWriteResult("failed")
 
     try:
-        continuation = _rotate_if_needed(logf)
-        seq, prev_hash = continuation if continuation is not None else _chain_head(logf)
-        entry: dict[str, Any] = {
-            "seq": seq,
-            "ts": _utc_now(),
-            "user": _username(),
-            "pid": os.getpid(),
-            "action": action,
-            "detail": detail,
-            "prev_hash": prev_hash,
-        }
-        new = not logf.exists()
-        with logf.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-        if new:
-            os.chmod(logf, 0o600)
-    except OSError:
+        with _with_audit_lock(logf):
+            continuation = _rotate_if_needed(logf)
+            seq, prev_hash = _recovery_head(logf, continuation)
+            entry: dict[str, Any] = {
+                "seq": seq,
+                "ts": _utc_now(),
+                "user": _username(),
+                "pid": os.getpid(),
+                "action": action,
+                "detail": detail,
+                "prev_hash": prev_hash,
+            }
+            if _append_entry(logf, json.dumps(entry)):
+                return AuditWriteResult("written")
+    except (OSError, Timeout):
         pass
+    return AuditWriteResult("failed")
+
+
+def _read_audit_text_unlocked(logf: Path) -> str | None:
+    if not logf.is_file():
+        return None
+    try:
+        return logf.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def read_audit_text() -> str | None:
+    """Return a locked, exact current-log snapshot for the raw CLI view."""
+    logf = _cfg.AUDIT_LOG
+    if not logf.parent.is_dir():
+        return None
+    try:
+        with _with_audit_lock(logf):
+            return _read_audit_text_unlocked(logf)
+    except (OSError, Timeout):
+        return None
 
 
 def read_audit() -> list[dict[str, Any]]:
@@ -206,14 +338,10 @@ def read_audit() -> list[dict[str, Any]]:
     chain landed simply lack ``seq``/``prev_hash`` — callers must not assume
     those keys are present.
     """
-    logf = _cfg.AUDIT_LOG
-    if not logf.is_file():
+    text = read_audit_text()
+    if text is None:
         return []
     out: list[dict[str, Any]] = []
-    try:
-        text = logf.read_text(encoding="utf-8")
-    except OSError:
-        return []
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -299,7 +427,7 @@ def _verify_rotation_continuation(
     return None
 
 
-def verify_chain() -> VerifyResult:
+def _verify_chain_unlocked(logf: Path) -> VerifyResult:
     """Walk ``$DOCKET_HOME/audit.log`` and verify its tamper-evidence chain.
 
     Only the *current* file's entries are re-hashed — but its very first
@@ -316,7 +444,6 @@ def verify_chain() -> VerifyResult:
     reset expectations for the next chained line, same as before this card —
     they are never reported as breaks.
     """
-    logf = _cfg.AUDIT_LOG
     rotated = logf.with_suffix(logf.suffix + ".1").exists()
 
     if not logf.is_file():
@@ -435,3 +562,21 @@ def verify_chain() -> VerifyResult:
         expected_prev = _hash_entry(entry)
 
     return VerifyResult(True, len(lines), chained, legacy, None, rotated, continued_from_seq)
+
+
+def verify_chain() -> VerifyResult:
+    """Walk one locked current/backup audit snapshot and verify its chain.
+
+    Readers use the same dedicated lock as writers so a rotation cannot split
+    the current file from the backup used to prove its continuation claim.
+    A lock/read failure remains non-raising and is indistinguishable from an
+    unavailable log to this compatibility-preserving API.
+    """
+    logf = _cfg.AUDIT_LOG
+    if not logf.parent.is_dir():
+        return VerifyResult(False, 0, 0, 0, None, False)
+    try:
+        with _with_audit_lock(logf):
+            return _verify_chain_unlocked(logf)
+    except (OSError, Timeout):
+        return VerifyResult(False, 0, 0, 0, None, False)

@@ -20,6 +20,9 @@ tests that need to actually inspect what got written.
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +77,31 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
     return home
 
 
+def _concurrent_audit_writer(
+    start: multiprocessing.synchronize.Barrier,
+    results: multiprocessing.queues.Queue[tuple[str, str]],
+    action: str,
+) -> None:
+    """Write one distinct event after every forked worker is ready."""
+    start.wait(timeout=15)
+    result = _audit.audit_log(action, action)
+    # Pre-C6 returns None, which is deliberate RED evidence rather than a
+    # worker crash that would hide the concurrent-chain oracle.
+    results.put((action, getattr(result, "status", "legacy-none")))
+
+
+def _hold_audit_lock(
+    ready: multiprocessing.synchronize.Event,
+    release: multiprocessing.synchronize.Event,
+    lock_path: str,
+) -> None:
+    from filelock import FileLock
+
+    with FileLock(lock_path):
+        ready.set()
+        release.wait(timeout=15)
+
+
 @pytest.fixture()
 def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A bare DOCKET_HOME for exercising core/audit.py directly."""
@@ -110,6 +138,153 @@ class TestChainWriting:
         millis = ts.split(".")[1].rstrip("Z")
         assert len(millis) == 3
         assert millis.isdigit()
+
+
+class TestAtomicAuditTransition:
+    """W26-C6's process-level race and failure/recovery contract."""
+
+    _WRITERS = 32
+
+    def _write_concurrently(
+        self, monkeypatch: pytest.MonkeyPatch, prefix: str = "concurrent"
+    ) -> list[tuple[str, str]]:
+        # ``fork`` retains the monkeypatched config and delayed real head read.
+        # The start barrier makes all 32 processes contend; the post-head delay
+        # makes the pre-C6 unlocked implementation derive duplicate heads.
+        if "fork" not in multiprocessing.get_all_start_methods():
+            pytest.skip("audit inter-process lock test requires POSIX fork")
+        context = multiprocessing.get_context("fork")
+        original_head = _audit._chain_head
+
+        def delayed_head(logf: Path) -> tuple[int, str]:
+            head = original_head(logf)
+            time.sleep(0.025)
+            return head
+
+        monkeypatch.setattr(_audit, "_chain_head", delayed_head)
+        start = context.Barrier(self._WRITERS + 1)
+        results: multiprocessing.queues.Queue[tuple[str, str]] = context.Queue()
+        processes = [
+            context.Process(
+                target=_concurrent_audit_writer,
+                args=(start, results, f"{prefix}.{i:02d}"),
+            )
+            for i in range(self._WRITERS)
+        ]
+        for process in processes:
+            process.start()
+        start.wait(timeout=15)
+        received = [results.get(timeout=30) for _ in processes]
+        for process in processes:
+            process.join(timeout=30)
+            assert process.exitcode == 0
+        return received
+
+    def test_32_process_writers_below_rotation_are_one_contiguous_chain(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1_000_000, raising=True)
+
+        received = self._write_concurrently(monkeypatch)
+
+        assert {status for _, status in received} == {"written"}
+        entries = _audit.read_audit()
+        assert {entry["action"] for entry in entries} == {action for action, _ in received}
+        assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
+        assert _audit.verify_chain().break_at is None
+
+    def test_32_process_writers_across_one_rotation_remain_contiguous(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The seed forces the first contender to rotate, while the new current
+        # generation remains comfortably below the cap for every 32 events.
+        limit = 20_000
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", limit, raising=True)
+        (audit_home / "audit.log").write_text("x" * limit, encoding="utf-8")
+
+        received = self._write_concurrently(monkeypatch, "rotated")
+
+        assert {status for _, status in received} == {"written"}
+        entries = _audit.read_audit()
+        assert {entry["action"] for entry in entries} == {action for action, _ in received}
+        assert [entry["seq"] for entry in entries] == list(range(1, self._WRITERS + 1))
+        assert (audit_home / "audit.log.1").exists()
+        assert _audit.verify_chain().break_at is None
+
+    def test_lock_timeout_is_failed_without_recording_an_event(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        if "fork" not in multiprocessing.get_all_start_methods():
+            pytest.skip("audit inter-process lock test requires POSIX fork")
+        context = multiprocessing.get_context("fork")
+        ready = context.Event()
+        release = context.Event()
+        holder = context.Process(
+            target=_hold_audit_lock,
+            args=(ready, release, str(_audit._audit_lock_path(_cfg.AUDIT_LOG))),
+        )
+        holder.start()
+        assert ready.wait(timeout=15)
+        monkeypatch.setattr(_audit, "_AUDIT_LOCK_TIMEOUT", 0, raising=False)
+
+        result = _audit.audit_log("keys.add", "LOCKED")
+
+        release.set()
+        holder.join(timeout=15)
+        assert holder.exitcode == 0
+        assert result.status == "failed"
+        assert _audit.read_audit() == []
+
+    def test_append_failure_before_write_returns_failed_without_a_partial_line(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_open = Path.open
+
+        def fail_append(self: Path, mode: str = "r", *args: object, **kwargs: object) -> object:
+            if self == audit_home / "audit.log" and mode == "a+":
+                raise OSError("injected pre-write failure")
+            return real_open(self, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", fail_append, raising=True)
+        result = _audit.audit_log("keys.add", "NO_EVENT")
+
+        assert result.status == "failed"
+        assert _audit.read_audit() == []
+
+    def test_append_failure_after_rotation_recovers_from_the_backup_head(
+        self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
+        assert _audit.audit_log("keys.add", "FIRST").status == "written"
+        real_open = Path.open
+        failed_once = False
+
+        def fail_once(self: Path, mode: str = "r", *args: object, **kwargs: object) -> object:
+            nonlocal failed_once
+            if self == audit_home / "audit.log" and mode == "a+" and not failed_once:
+                failed_once = True
+                raise OSError("injected post-rotation append failure")
+            return real_open(self, mode, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", fail_once, raising=True)
+        assert _audit.audit_log("keys.add", "FAILED").status == "failed"
+        assert not (audit_home / "audit.log").exists()
+        backup_entries = [
+            json.loads(line) for line in (audit_home / "audit.log.1").read_text().splitlines()
+        ]
+        assert [entry["detail"] for entry in backup_entries] == ["FIRST"]
+
+        assert _audit.audit_log("keys.add", "RECOVERED").status == "written"
+        entries = _audit.read_audit()
+        assert [(entry["seq"], entry["detail"]) for entry in entries] == [(2, "RECOVERED")]
+        assert entries[0]["prev_hash"] == _audit._hash_entry(backup_entries[0])
+        assert _audit.verify_chain().break_at is None
+
+    def test_success_restores_owner_only_permissions(self, audit_home: Path) -> None:
+        result = _audit.audit_log("keys.add", "PERMISSIONS")
+
+        assert result.status == "written"
+        assert os.stat(audit_home / "audit.log").st_mode & 0o777 == 0o600
 
 
 class TestAuditLogNeverRaises:
@@ -428,6 +603,19 @@ class TestAuditVerifyCommand:
         out = capsys.readouterr().out
         assert rc == 0
         assert "verified clean" in out
+
+    def test_json_view_uses_the_locked_core_raw_snapshot(
+        self, audit_home: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Raw JSONL is a scripting contract, so route it through the core
+        # reader without normalising whitespace or opening the file in CLI.
+        raw = '{ "action": "legacy", "detail": "A" }\n'
+        (audit_home / "audit.log").write_text(raw, encoding="utf-8")
+
+        rc = audit_cli.run_audit(json_out=True)
+
+        assert rc == 0
+        assert capsys.readouterr().out == raw
 
     def test_verify_tampered_log_fails_with_line_number(
         self, audit_home: Path, capsys: pytest.CaptureFixture[str]

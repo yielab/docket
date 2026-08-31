@@ -6,8 +6,6 @@ coordinator wraps each in a Typer command.
 
 from __future__ import annotations
 
-import contextlib
-
 import docket.config as _cfg
 from docket import ui
 from docket.core import audit as _audit
@@ -17,15 +15,15 @@ def run_audit(limit: int | None = None, json_out: bool = False) -> int:
     """Show the last *limit* audit entries (default 20), or raw JSONL with json_out."""
     logf = _cfg.AUDIT_LOG
 
-    if not logf.is_file():
+    raw = _audit.read_audit_text()
+    if raw is None:
         ui.info("No audit log yet.")
         ui.dim("  Mutations (keys, gates, profile, scope, add/delete) are recorded to")
         ui.dim(f"  {logf} once you make a change.")
         return 0
 
     if json_out:
-        with contextlib.suppress(OSError):
-            print(logf.read_text(encoding="utf-8"), end="")
+        print(raw, end="")
         return 0
 
     n = limit if limit is not None and limit > 0 else 20

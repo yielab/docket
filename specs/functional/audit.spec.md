@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 2.8.0
+**Version**: 2.9.0
 **Status**: Implemented (recording coverage, tamper evidence, rotation-continuation, and the
 kill-switch removal below are all shipped, now including `models.*`, `runs.cancel`,
 `mcp_servers.*`, and `telegram.*` — see Requirement 2 for what audit still does NOT see).
@@ -10,7 +10,7 @@ see Requirement 1's `telegram.*` family. **ROADMAP Phase 18/19 wave, card W18-1*
 where two rotations in a row could erase security-relevant history while `docket audit verify`
 kept reporting a clean chain — see Requirement 9c and the Rotation section below for what is, and
 plainly is NOT, detected now.
-**Last Updated**: 2026-08-19
+**Last Updated**: 2026-08-30
 
 ## Purpose
 
@@ -122,10 +122,23 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
    fields `seq` and `prev_hash` (Requirement 9).
 5. The log file **MUST** live at `$DOCKET_HOME/audit.log` and **MUST** be created with mode
    `0600`.
-6. Recording **MUST** be best-effort: a write failure **MUST NOT** fail the calling command. A
-   missing parent directory **MUST** be created (`mkdir(parents=True, exist_ok=True)`), not
-   treated as a reason to skip recording. `$DOCKET_HOME` is Docket-owned, so a missing parent
-   means only "first-ever Docket write"; self-creation prevents losing the first audit entry.
+6. Recording **MUST** be best-effort: a write failure **MUST NOT** fail the calling command.
+   `audit_log()` returns a typed result whose status is exactly `"written"` or `"failed"`, so a
+   caller that chooses to observe it can distinguish a durable event from a best-effort miss;
+   existing callers may intentionally ignore it. A missing parent directory **MUST** be created
+   (`mkdir(parents=True, exist_ok=True)`), not treated as a reason to skip recording.
+   `$DOCKET_HOME` is Docket-owned, so a missing parent means only "first-ever Docket write";
+   self-creation prevents losing the first audit entry.
+6a. One dedicated, bounded inter-process audit lock **MUST** cover the complete transition:
+   rotation decision, head calculation (including recovery from a rotated-but-unappended current
+   file), append, flush, close, and restoration of the current log's `0600` permissions. Thus
+   successful writers have one contiguous sequence/predecessor lineage even when they overlap.
+   On lock timeout or any write-phase failure `audit_log()` returns `"failed"`, exposes no audit
+   I/O detail, and leaves no partial JSON line or claimed event. If append fails after a rotation,
+   the intact `audit.log.1` remains authoritative and the next successful write continues from its
+   chained tail without a sequence gap. `read_audit()` and `verify_chain()` use the compatible lock
+   to take one coherent current/backup snapshot; the public `docket audit` reader routes through
+   those core snapshots rather than opening the log directly.
 7. **There is no environment kill switch.** A prior `DOCKET_NO_AUDIT=1` escape
    hatch has been removed entirely — it was an unauthenticated way to silently
    disable the only tamper record docket keeps, indistinguishable from the
@@ -369,6 +382,8 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
 - The log file is always `0600`.
 - No secret value ever appears in the log.
 - Audit failures never break the mutating command that triggered them.
+- Concurrent successful audit writes are serialized as one contiguous hash chain; a failed write
+  leaves neither a partial line nor a false successful result.
 - Recording cannot be disabled by an environment variable.
 - A legacy line, or a genuine genesis chain-restart, is never reported as
   tampering.
@@ -383,6 +398,14 @@ $ docket audit verify   # audit.log.1 was deleted after that same rotation
   that, and this spec does not claim otherwise.
 
 ## Changelog
+
+### Version 2.9.0 (2026-08-30)
+
+- **W26-C6 — audit append and rotation are one locked transition.** `audit_log()` now returns a
+  typed `written`/`failed` result while preserving its non-raising, ignorable-caller behavior.
+  A dedicated bounded inter-process lock serializes rotation, chain-head lookup, append/flush/
+  close, and `0600` restoration; locked readers and public audit display/verify observe coherent
+  snapshots. A failed append after rotation leaves the backup authoritative for the next write.
 
 ### Version 2.8.0 (2026-08-19)
 
