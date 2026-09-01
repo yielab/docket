@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import builtins
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
+from packaging.version import Version
 
 from docket.cli import _mcp
 
@@ -107,10 +109,30 @@ class TestUsage:
     def test_mcp_command_is_wired_on_the_typer_app(self) -> None:
         """Smoke-test only — never invokes `serve` (which would block on stdio
         or, if the SDK isn't installed, still just print+exit; either way this
-        test proves wiring only, mirroring test_runs_cli.py's pattern)."""
+        test proves wiring only, mirroring test_runs_cli.py's pattern).
+
+        The supported all-extras lock is part of this public optional surface.
+        Keep its transitive crypto package outside CVE-2026-69247 /
+        GHSA-g6cj-pr64-35w5's affected ``>=44,<50`` range.
+        """
         from typer.testing import CliRunner
 
         from docket.cli import app
+
+        root = Path(__file__).resolve().parents[2]
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        assert project["project"]["optional-dependencies"]["mcp"], "MCP extra was removed"
+        lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
+        crypto_versions = [
+            Version(package["version"])
+            for package in lock["package"]
+            if package["name"] == "cryptography"
+        ]
+        assert crypto_versions, "the supported MCP graph no longer resolves cryptography"
+        assert all(version >= Version("50.0.0") for version in crypto_versions), (
+            "CVE-2026-69247 affects cryptography >=44,<50; "
+            f"committed lock resolves {crypto_versions}"
+        )
 
         runner = CliRunner()
         result = runner.invoke(app, ["mcp"])

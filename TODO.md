@@ -13,13 +13,12 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-08-31) — Wave 26 complete
+> ## ◉ ACTIVE BOARD (2026-09-01) — Wave 27 security and public front door
 >
-> Wave 26 closed after C11 reconciled the public install, provider, first-turn, runtime-embedding,
-> cancellation, package, branch, spec, and metric claims with executable behavior. No roadmap card
-> is currently claimable. Phase 23 continues only after the bounded Wave 27 trigger triage turns
-> measured Wave 26 evidence into independently testable cards; do not invent work from the deferred
-> list.
+> Wave 26 closed after C11 reconciled the public product truth. Post-wave triage then found one live
+> high-severity dependency alert and an explicit maintainer request to rebuild the public repository
+> front door. Wave 27 activates only those two measured cards; the broader deferred list remains
+> unscheduled.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1529,6 +1528,82 @@ artifacts without checkout imports. The full 2,451-test collection has 2,446 pas
 contract-labelled skips; Ruff, format, strict mypy over 74 source files, ShellCheck, 24 specs, 18
 goldens, synchronized metrics, dependency-floor artifacts, deterministic smoke, and the exact-wheel
 release journey pass.
+
+---
+
+## ◉ WAVE 27 ACTIVE (2026-09-01) — dependency safety and public front door
+
+**Activation state:** ACTIVE. W27-C1 is the sole in-progress card. W27-C2 is ready but follows C1
+for single-owner sequencing; its docs/assets do not depend on the lockfile outcome. No other Phase
+23 deferred item was promoted by this triage.
+
+### W27-C1 — remediate the open high-severity optional-dependency alert
+
+**Status:** IN PROGRESS (2026-09-01) · **Size:** S · **Owner:** @codex
+
+**Measured trigger:** GitHub Dependabot alert 1 reports CVE-2026-69247 / GHSA-g6cj-pr64-35w5 in
+`cryptography` 49.0.0 from `uv.lock`; the patched release is 50.0.0. `uv tree` traces it through
+the optional `mcp` extra's `pyjwt[crypto]` dependency. Repository search finds no Docket-owned
+PKCS#7 EnvelopedData decryption caller, so direct exploitability is not claimed, but the vulnerable
+artifact remains in the supported all-extras development/install graph.
+
+**Goal:** resolve the supported dependency graph to `cryptography>=50.0.0`, retain the optional MCP
+surface, and make the alert's exact vulnerable range absent from the committed lock.
+
+**Non-goals:** no security marketing claim, MCP SDK upgrade unless resolution requires it, direct
+`cryptography` dependency, CVE reproduction, speculative PKCS#7 code, or dismissal of the alert
+without a patched artifact.
+
+**Live path / ownership:** `pyproject.toml` optional `mcp` extra → MCP SDK → `pyjwt[crypto]` →
+`cryptography`; own `uv.lock` and only change `pyproject.toml` if the resolver proves an explicit
+constraint is necessary. Existing MCP import/optional-dependency tests are the behavior oracle.
+
+**RED evidence:** assert the locked `cryptography` version is outside Dependabot's vulnerable
+`>=44,<50` range and that `uv tree` still resolves the MCP extra; the committed 49.0.0 lock fails.
+
+**Acceptance:** lock contains a patched version; the optional MCP import/absence contracts pass;
+`uv sync --all-extras --dev --locked` succeeds; focused MCP tests and the packaging/dependency
+gates pass; `git diff --check` is clean. Confirm the external alert closes after the exact commit
+reaches `main`, without weakening the alert or excluding the extra.
+
+**Contention:** lockfile-only card. It does not edit README, docs, assets, renderers, roadmap, or
+spec indexes outside the integrator rollup.
+
+### W27-C2 — rebuild the public README and reproducible visual evidence
+
+**Status:** TODO · **Size:** M · **Owner:** unclaimed
+
+**Explicit trigger:** the maintainer requested a public-repo README/content/visual rewrite on
+2026-09-01. The bounded audit measures 773 lines / 6,873 words in `README.md`, deep API/poller prose
+before contributor guidance, a stale Phase 22 “What's next”, a stale cost screenshot, two unused
+OpenClaw-era images, and six manually maintained screenshots with no reproducible capture path.
+
+**Goal:** make the repository front door answer, in order: what Docket is, why governance matters,
+what is shipped, how to install and reach the first governed turn, what evidence/limits exist, and
+where operators/integrators/contributors go next. Replace the visual set with a small, current,
+anonymized, reproducible set derived from real CLI contracts.
+
+**Non-goals:** no product capability, framework-neutral claim, hosted/SaaS promise, dashboard,
+competitive superlative, invented benchmark, hidden limitation, generated product UI, or duplicate
+command/API reference. Do not keep an image merely because it already exists.
+
+**Live path / ownership:** `README.md`, `docs/README.md`, `docs/assets/*`, the asset renderer, and
+only adjacent public-doc copy/link changes required by those surfaces. `docs/commands.md` keeps
+complete command detail; `ROADMAP.md` keeps future work; SECURITY/COMPATIBILITY keep deep limits.
+
+**RED evidence:** public-doc tests plus an asset-manifest check must reject stale brands/commands,
+unreferenced assets, non-reproducible screenshots, missing alt text, and README sections that repeat
+the command reference or historical roadmap instead of linking to their owners.
+
+**Acceptance:** README is materially shorter and has one primary install-to-first-turn route, a
+scannable shipped-feature map, explicit best-practice and known-limit sections, and clear operator/
+integrator/contributor links. Every retained PNG/GIF is regenerated by one documented script from
+current anonymized command contracts; every asset is referenced and has useful alt text; stale and
+unused assets are removed. Public links/claims, positioning, metrics, artifact journey, docs/assets
+generation, formatting, specs, goldens, and full pytest gates pass.
+
+**Contention:** owns the public front door and visual renderer after C1 closes. It does not change
+runtime behavior, CLI output, release workflows, specs, or dependency resolution.
 
 ---
 
