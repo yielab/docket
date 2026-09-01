@@ -23,10 +23,12 @@ uv run python scripts/render-doc-assets.py
 uv run python scripts/render-doc-assets.py --check
 ```
 
-`--check` renders into a temporary directory and compares decoded pixels, image format, animation
-frames, and frame timing with the committed PNG/GIF files. Comparing decoded content avoids false
-drift from platform-specific PNG compression. Public-doc tests also fail for unreferenced media,
-extra PNG/GIF files, a missing renderer, or retired-brand copy.
+Each output embeds a SHA-256 render-contract fingerprint covering the renderer, vendored font,
+owning CLI golden, and deterministic smoke source. `--check` verifies that fingerprint plus image
+format, dimensions, animation frames, loop, and frame timing. This detects stale generated assets
+without treating platform-specific PNG compression or font anti-aliasing as content drift. Public-
+doc tests also fail for unreferenced media, extra PNG/GIF files, a missing renderer, or retired-brand
+copy. A maintainer still visually inspects all three outputs when refreshing them.
 
 ## Visual rules
 

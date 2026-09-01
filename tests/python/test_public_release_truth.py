@@ -141,7 +141,8 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
         "the visual renderer must declare Pillow as a development-only dependency"
     )
     # The dependency-floor job deliberately installs runtime dependencies only. It still verifies
-    # the asset manifest and renderer declaration above; pixel reproduction belongs to dev CI.
+    # the asset manifest and renderer declaration above; render-contract verification belongs to
+    # dev CI.
     if importlib.util.find_spec("PIL") is None:
         return
     result = subprocess.run(

@@ -10,17 +10,21 @@ removes manual terminal captures from the public documentation workflow.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import tempfile
 import textwrap
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+from PIL.PngImagePlugin import PngInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "docs" / "assets"
 GOLDEN_DIR = ROOT / "tests" / "golden" / "cases"
 OUTPUTS = ("hero.gif", "isolation.png", "governance.png")
 FONT_PATH = ASSET_DIR / "DejaVuSansMono.ttf"
+SMOKE_PATH = ROOT / "scripts" / "smoke_workflow.py"
+CONTRACT_KEY = "docket-render-contract"
 
 WIDTH = 1200
 HEIGHT = 700
@@ -170,13 +174,28 @@ def _hero_scenes() -> list[list[str]]:
     ]
 
 
+def _render_contract() -> str:
+    """Fingerprint every source that can change the public visual story."""
+
+    sources = (
+        Path(__file__).read_bytes(),
+        FONT_PATH.read_bytes(),
+        (GOLDEN_DIR / "readonly/info_myshop.golden").read_bytes(),
+        SMOKE_PATH.read_bytes(),
+    )
+    return hashlib.sha256(b"\0".join(sources)).hexdigest()
+
+
 def _write_assets(target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
+    contract = _render_contract()
+    png_info = PngInfo()
+    png_info.add_text(CONTRACT_KEY, contract)
     _terminal("docket — project isolation", _isolation_lines()).save(
-        target / "isolation.png", optimize=True
+        target / "isolation.png", optimize=True, pnginfo=png_info
     )
     _terminal("docket — governed turn", _governance_lines()).save(
-        target / "governance.png", optimize=True
+        target / "governance.png", optimize=True, pnginfo=png_info
     )
 
     frames = [_terminal("docket — govern agent work", scene) for scene in _hero_scenes()]
@@ -188,14 +207,30 @@ def _write_assets(target: Path) -> None:
         loop=0,
         optimize=True,
         disposal=2,
+        comment=f"{CONTRACT_KEY}:{contract}".encode(),
     )
 
 
-def _same_visual(left_path: Path, right_path: Path) -> bool:
-    """Compare decoded pixels and animation timing, not host zlib output."""
+def _contract_value(image: Image.Image) -> str | None:
+    if image.format == "PNG":
+        value = image.info.get(CONTRACT_KEY)
+        return value if isinstance(value, str) else None
+    comment = image.info.get("comment")
+    prefix = f"{CONTRACT_KEY}:".encode()
+    if isinstance(comment, bytes) and comment.startswith(prefix):
+        return comment.removeprefix(prefix).decode("ascii", errors="strict")
+    return None
+
+
+def _same_render_contract(left_path: Path, right_path: Path) -> bool:
+    """Compare source fingerprint and structural output across host rasterizers."""
 
     with Image.open(left_path) as left, Image.open(right_path) as right:
         if left.format != right.format or left.n_frames != right.n_frames:
+            return False
+        if left.size != right.size or left.mode != right.mode:
+            return False
+        if _contract_value(left) != _contract_value(right):
             return False
         if left.info.get("loop") != right.info.get("loop"):
             return False
@@ -203,12 +238,6 @@ def _same_visual(left_path: Path, right_path: Path) -> bool:
             left.seek(frame_index)
             right.seek(frame_index)
             if left.info.get("duration") != right.info.get("duration"):
-                return False
-            left_frame = left.convert("RGBA")
-            right_frame = right.convert("RGBA")
-            if left_frame.size != right_frame.size:
-                return False
-            if left_frame.tobytes() != right_frame.tobytes():
                 return False
     return True
 
@@ -221,7 +250,7 @@ def _check() -> int:
             name
             for name in OUTPUTS
             if not (ASSET_DIR / name).is_file()
-            or not _same_visual(ASSET_DIR / name, generated / name)
+            or not _same_render_contract(ASSET_DIR / name, generated / name)
         ]
     if drift:
         print("documentation asset drift: " + ", ".join(drift))
