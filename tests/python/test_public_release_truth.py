@@ -90,6 +90,61 @@ def test_public_relative_markdown_links_resolve() -> None:
     assert broken == [], "broken repository-relative public link(s):\n" + "\n".join(broken)
 
 
+def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
+    """The repository landing page and every retained terminal asset have one current owner."""
+
+    readme = README.read_text(encoding="utf-8")
+    lines = readme.splitlines()
+    assert len(lines) <= 500, f"README is overcrowded at {len(lines)} lines"
+    assert len(readme.split()) <= 4_000, "README duplicates detail owned by the public guides"
+
+    required_headings = (
+        "## Features",
+        "## Quick start",
+        "## Best practices",
+        "## Known limits",
+        "## Documentation",
+        "## Contributing",
+    )
+    missing_headings = [heading for heading in required_headings if heading not in readme]
+    assert missing_headings == [], f"README is missing front-door section(s): {missing_headings}"
+    for duplicated_owner in (
+        "## Command reference",
+        "## Integrating with a control plane",
+        "## What's next",
+    ):
+        assert duplicated_owner not in readme, f"README duplicates {duplicated_owner!r}"
+
+    assets = ROOT / "docs" / "assets"
+    expected_media = {"hero.gif", "isolation.png", "governance.png"}
+    actual_media = {
+        path.name for path in assets.iterdir() if path.suffix.lower() in {".gif", ".png"}
+    }
+    assert actual_media == expected_media, (
+        f"public terminal assets must be minimal and fully owned: {actual_media}"
+    )
+
+    public_copy = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (README, ROOT / "docs" / "README.md", assets / "README.md")
+    )
+    for name in expected_media:
+        assert name in public_copy, f"retained asset is not referenced: {name}"
+    assert "openclaw" not in public_copy.lower(), "retired brand remains in public visual copy"
+
+    renderer = ROOT / "scripts" / "render-doc-assets.py"
+    assert renderer.is_file(), "all retained terminal visuals need one reproducible renderer"
+    result = subprocess.run(
+        [sys.executable, str(renderer), "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_public_commands_and_claims_match_shipped_boundaries() -> None:
     """Reject the exact stale command, installer, cancellation, and runtime claims from C11."""
     checks = (

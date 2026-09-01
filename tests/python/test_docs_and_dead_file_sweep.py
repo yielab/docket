@@ -4,7 +4,7 @@ Guards:
   - the 3 dead template files are gone and never referenced under src/ again
     (install/pod provisioning write SOUL/AGENTS/workflow templates inline)
   - README's test-count claims aren't left stale
-  - scripts/render-hero.py doesn't point at a file that doesn't exist
+  - scripts/render-doc-assets.py doesn't point at a file that doesn't exist
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 _REPO = Path(__file__).parent.parent.parent
 README = _REPO / "README.md"
 TEMPLATES_DIR = _REPO / "src" / "docket" / "templates"
-RENDER_HERO = _REPO / "scripts" / "render-hero.py"
+RENDER_DOC_ASSETS = _REPO / "scripts" / "render-doc-assets.py"
 
 _DEAD_TEMPLATES = [
     "SOUL-error-handling.md",
@@ -60,9 +60,9 @@ class TestTestCountNotStale:
         assert "694-test Python suite" not in text
 
 
-class TestRenderHeroNoDanglingReference:
-    """scripts/render-hero.py must not cite a doc that doesn't exist."""
+class TestRenderDocAssetsNoDanglingReference:
+    """scripts/render-doc-assets.py must not cite a doc that doesn't exist."""
 
     def test_no_dangling_cost_feature_audit_reference(self) -> None:
-        text = RENDER_HERO.read_text(encoding="utf-8")
+        text = RENDER_DOC_ASSETS.read_text(encoding="utf-8")
         assert "COST-FEATURE-AUDIT" not in text

@@ -12,7 +12,7 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 > then come back for the guides below.
 
 <p align="center">
-  <img src="assets/hero.gif" alt="docket in action: provision an isolated project agent, list the fleet, inspect its per-project isolation, run a fleet health check, and set a budget guardrail" width="720">
+  <img src="assets/hero.gif" alt="Animated Docket terminal journey: initialize an isolated project pod, inspect its dedicated state, pause a governed turn for approval, then inspect run and trace evidence" width="720">
 </p>
 
 ---
