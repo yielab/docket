@@ -1668,7 +1668,7 @@ canary only after the deterministic oracle passes; it cannot replace or block CI
 
 ### W28-C1 — define the shared governed-execution envelope
 
-**Status:** TODO (ready) · **Size:** M · **Owner:** unclaimed
+**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the published facade exposes `Runtime.register` and `Runtime.dispatch`; the
 private Docket loop, not that facade, currently owns cumulative reported-token/tool-call limits,
