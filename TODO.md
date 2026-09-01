@@ -13,12 +13,12 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD (2026-09-01) — Wave 27 security and public front door
+> ## ☑ BOARD CLEAR (2026-09-01) — Wave 27 complete
 >
-> Wave 26 closed after C11 reconciled the public product truth. Post-wave triage then found one live
-> high-severity dependency alert and an explicit maintainer request to rebuild the public repository
-> front door. Wave 27 activates only those two measured cards; the broader deferred list remains
-> unscheduled.
+> Bounded post-W26 triage closed the live high-severity dependency alert and rebuilt the public
+> repository front door. Both measured Wave 27 cards are complete; the broader deferred list remains
+> unscheduled, and no Wave 28 implementation card is active without a bounded adapter-selection and
+> fixture-design pass.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1531,10 +1531,10 @@ release journey pass.
 
 ---
 
-## ◉ WAVE 27 ACTIVE (2026-09-01) — dependency safety and public front door
+## ☑ WAVE 27 COMPLETE (2026-09-01) — dependency safety and public front door
 
-**Activation state:** ACTIVE. W27-C1 is complete and W27-C2 is now the sole in-progress card. No
-other Phase 23 deferred item was promoted by this triage.
+**Integration state:** COMPLETE. W27-C1 closes the only live dependency alert and W27-C2 closes the
+explicit public-front-door request. No other Phase 23 deferred item was promoted by this triage.
 
 ### W27-C1 — remediate the open high-severity optional-dependency alert
 
@@ -1577,7 +1577,7 @@ alert 1 fixed at 2026-09-01T04:20:01Z; it was not dismissed or excluded.
 
 ### W27-C2 — rebuild the public README and reproducible visual evidence
 
-**Status:** IN PROGRESS (2026-09-01) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-09-01) · **Size:** M · **Owner:** @codex
 
 **Explicit trigger:** the maintainer requested a public-repo README/content/visual rewrite on
 2026-09-01. The bounded audit measures 773 lines / 6,873 words in `README.md`, deep API/poller prose
@@ -1593,9 +1593,10 @@ anonymized, reproducible set derived from real CLI contracts.
 competitive superlative, invented benchmark, hidden limitation, generated product UI, or duplicate
 command/API reference. Do not keep an image merely because it already exists.
 
-**Live path / ownership:** `README.md`, `docs/README.md`, `docs/assets/*`, the asset renderer, and
-only adjacent public-doc copy/link changes required by those surfaces. `docs/commands.md` keeps
-complete command detail; `ROADMAP.md` keeps future work; SECURITY/COMPATIBILITY keep deep limits.
+**Live path / ownership:** `README.md`, `docs/README.md`, `docs/assets/*`, the asset renderer, its
+dev-only Pillow dependency/lock, and only adjacent public-doc copy/link changes required by those
+surfaces. `docs/commands.md` keeps complete command detail; `ROADMAP.md` keeps future work;
+SECURITY/COMPATIBILITY keep deep limits.
 
 **RED evidence:** public-doc tests plus an asset-manifest check must reject stale brands/commands,
 unreferenced assets, non-reproducible screenshots, missing alt text, and README sections that repeat
@@ -1609,7 +1610,17 @@ unused assets are removed. Public links/claims, positioning, metrics, artifact j
 generation, formatting, specs, goldens, and full pytest gates pass.
 
 **Contention:** owns the public front door and visual renderer after C1 closes. It does not change
-runtime behavior, CLI output, release workflows, specs, or dependency resolution.
+runtime behavior, CLI output, release workflows, specs, or runtime dependencies. Pillow is an
+explicit development-only renderer dependency, recorded in `pyproject.toml` and `uv.lock`.
+
+**Shipped evidence:** commit `d9e914a` reduces the root README from 773 lines / 6,873 words to 280
+lines / 1,858 words, moves deep command and roadmap detail to its owning documents, and presents one
+install-to-governed-turn route, a feature map, best practices, honest limits, and contributor paths.
+Seven stale/manual PNGs and the one-off hero renderer are replaced by three referenced, anonymized
+terminal assets generated and byte-checked by one script. The RED public-front-door contract and the
+migrated dead-file guard pass. Closure collects 2,452 tests (2,447 passed, five contract-labelled
+skips); Ruff/format, strict mypy over 74 source files, ShellCheck, 24 specs, 18 goldens, synchronized
+metrics, locked all-extras sync, deterministic smoke, and the exact-wheel release journey pass.
 
 ---
 

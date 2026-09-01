@@ -12,9 +12,9 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-01.** **Every numbered phase 0–22 and Waves 24–26 are complete. Phase 23
-continues through active Wave 27 with two bounded, measured cards: one high-severity transitive
-dependency remediation and one explicit public-front-door refresh.** Executable cards live in
+**Last updated: 2026-09-01.** **Every numbered phase 0–22 and Waves 24–27 are complete. Phase 23
+remains active, but its executable board is clear: Wave 28 needs a bounded adapter-selection and
+fixture-design pass before implementation cards are activated.** Executable cards live in
 [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -38,7 +38,7 @@ dependency remediation and one explicit public-front-door refresh.** Executable 
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 27 C1 dependency alert fixed; C2 public-front-door refresh in progress |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active, board clear — Wave 27 complete; Wave 28 awaits bounded adapter/fixture triage |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -204,13 +204,16 @@ contention boundaries live once in `TODO.md`.
 | W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; whole-path oracle and cancellation wording agree |
 | W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Done (`dcce5b2`, `f9a4086`); Wave 26 closure truth and gates pass |
 
-### Wave 27 — bounded post-W26 hardening and public front door (active 2026-09-01)
+### Wave 27 — bounded post-W26 hardening and public front door (complete 2026-09-01)
 
 Post-W26 triage activated exactly two independent cards. W27-C1 follows GitHub's high-severity
 CVE-2026-69247 alert from the supported optional MCP graph to `cryptography` 49.0.0 and requires a
 patched lock plus MCP compatibility evidence. W27-C2 follows the maintainer's explicit 2026-09-01
 request and the measured 773-line README/stale-asset audit to a smaller public front door and one
 reproducible current visual set. Detailed acceptance and ownership live in `TODO.md`.
+
+Both cards closed on 2026-09-01. The lock now excludes the reported advisory range, and the public
+front door is a compact, tested README backed by one reproducible three-asset terminal visual set.
 
 The remaining Wave 27 candidate measurements are still unscheduled: an isolated coding profile and
 scoped egress/secrets without silently changing D-23; recovery from corrupt or old persisted state;
@@ -219,7 +222,7 @@ capability metadata; and a supported local service/TLS-proxy/backup profile. Eac
 representative fixture and a measured failure or explicit request. A built-in dashboard and tenant
 model remain out of scope.
 
-### Wave 28 — portable governance proof (blocked on Wave 27 evidence)
+### Wave 28 — portable governance proof (not active; bounded selection pass required)
 
 Define the smallest stable execution envelope only after the local governance contract is reliable.
 Prove it with exactly two adapters: one coding-agent runtime (prefer OpenHands/ACP) and one general
@@ -2595,6 +2598,16 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-01 (Wave 27 C2 accepted / Wave 27 closed) — the public repository now has a compact,
+  reproducible front door.** Commit `d9e914a` reduces the README from 773 lines / 6,873 words to 280
+  lines / 1,858 words, leads with the product boundary and shipped features, and routes deep command,
+  security, compatibility, embedding, and roadmap detail to their owners. Seven stale/manual PNGs
+  and the old one-off renderer are replaced by three referenced, anonymized terminal assets rendered
+  and byte-verified by one script. Closure passes the 2,452-test collection (2,447 passed, five
+  contract-labelled skips), Ruff/format, strict mypy, ShellCheck, 24 specs, 18 goldens, synchronized
+  metrics, locked all-extras sync, deterministic smoke, and the exact-wheel release journey. The
+  active board is clear; Wave 28 requires bounded adapter/fixture triage before activation.
 
 - **2026-09-01 (Wave 27 C1 accepted) — the supported optional MCP graph no longer ships the open
   high-severity cryptography advisory.** Commit `a78d342` upgrades the locked transitive package
