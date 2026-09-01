@@ -1488,8 +1488,8 @@ boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** READY (W26-C0-C10 done) · **Size:** M ·
-**Owner:** integrator only
+**Status:** IN PROGRESS (2026-08-31) · **Size:** M ·
+**Owner:** @codex (integrator)
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,
 `docket add --from` examples, no-op `DEBUG=1` guidance, invalid Homebrew claims, overbroad runtime
