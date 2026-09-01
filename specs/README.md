@@ -160,7 +160,7 @@ Each specification document must include:
 | docket-meta schema | 3.0.0 | Complete | Pod resource metadata is backed by collision-free allocation and attempt-owned rollback that preserves pre-existing runtime state |
 | Serve Read API | 2.8.0 | Stable | Concurrent pod provisioning serializes one project while different projects share only the short atomic allocation transition |
 | Input Validation | 1.4.0 | Complete | Docket-owned store and protocol-boundary validation |
-| Test Framework | 2.9.0 | Active | Hermetic `DOCKET_HOME`, portable Codex/Claude/OpenCode development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, and byte-exact artifact gates |
+| Test Framework | 2.12.0 | Active | Hermetic `DOCKET_HOME`, portable Codex/Claude/OpenCode development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, byte-exact artifact gates, and public release-truth checks |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links

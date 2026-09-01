@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Active
 **Last Updated**: 2026-08-31
 
@@ -280,6 +280,35 @@ credential value. `--workdir <new-or-empty-path>` MUST preserve either outcome f
 The same command MUST be a blocking CI matrix job on `ubuntu-latest` and `macos-latest`; the macOS
 release journey MUST NOT inherit the existing advisory lane's `continue-on-error` waiver.
 
+### Public release-truth oracle
+
+The Wave 26 public-truth gate MUST treat the root README, quickstart, model-gateway guide,
+compatibility/security guides, command reference, and checked-in examples as one release surface.
+Every repository-relative Markdown link in that surface MUST resolve. Runnable guidance MUST use
+the canonical `docket init --from` declarative entry point, MUST NOT advertise the inert `DEBUG=1`
+environment variable, and MUST NOT describe cooperative cancellation as synchronously killing an
+already-running in-process model or tool call. Installer guidance MUST originate from `main` but
+pin immutable tagged installer/archive bytes; mutable branch URLs MUST NOT be presented as a
+release install.
+
+The quickstart MUST contain one ordered route from the current tagged artifact through explicit
+local/compatible provider registration and model selection, project initialization, task
+delegation/dispatch, and public run/trace inspection. The artifact-installed release journey is the
+behavioral oracle for that documented route; documentation checks MUST bind its public commands to
+that already-live path instead of replacing it with a prose-only or source-mode assertion.
+
+The runtime section MUST describe only the versioned `docket_runtime` gated-tool facade and MUST
+state that `docket-runtime` is not published to a package index. A minimal checked-in embedding
+example MUST build and install the runtime wheel in a fresh environment outside the checkout,
+import only the public facade, dispatch one governed tool call, and leave inspectable trace/audit
+evidence without importing the root `docket` package.
+
+For every row in `specs/README.md`, the indexed version and canonical status category MUST match
+the owning spec header, and that current version MUST have a changelog entry. Package and formula
+names in public installation guidance MUST match their built artifact metadata. The gate MUST use
+temporary Docket/cache/build state and MUST NOT contact a model provider, package index, or the
+developer's real home.
+
 ## Full validation
 
 ```bash
@@ -296,6 +325,12 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.12.0 (2026-08-31)
+
+- W26-C11 defines one public release-truth gate over links, executable artifact-to-first-turn
+  guidance, stale command/installer/cancellation claims, spec-index parity, and a clean-artifact
+  runtime embedding example that proves the narrow facade plus durable governance evidence.
 
 ### Version 2.11.0 (2026-08-31)
 
