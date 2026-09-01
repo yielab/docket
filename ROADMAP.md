@@ -38,7 +38,7 @@ dependency remediation and one explicit public-front-door refresh.** Executable 
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 27 C1 dependency remediation in progress; C2 public-front-door refresh ready |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 27 C1 dependency alert fixed; C2 public-front-door refresh in progress |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -2595,6 +2595,14 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-01 (Wave 27 C1 accepted) — the supported optional MCP graph no longer ships the open
+  high-severity cryptography advisory.** Commit `a78d342` upgrades the locked transitive package
+  from 49.0.0 to 50.0.1, beyond CVE-2026-69247 / GHSA-g6cj-pr64-35w5's `>=44,<50` range, without
+  adding a direct dependency or changing the MCP SDK. The existing optional-surface smoke now guards
+  the advisory range. Exact-SHA CI passes Python, dependency floors, ShellCheck/specs, 18 goldens,
+  and both OS release journeys; GitHub marks Dependabot alert 1 fixed rather than dismissed. W27-C2
+  is now the sole in-progress public-front-door refresh.
 
 - **2026-08-31 (Wave 26 C11 accepted / Wave 26 closed) — the public release story now matches the
   executable product from immutable artifact to governed turn.** RED commit `dcce5b2` locks the

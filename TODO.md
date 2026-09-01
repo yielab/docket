@@ -1533,13 +1533,12 @@ release journey pass.
 
 ## ◉ WAVE 27 ACTIVE (2026-09-01) — dependency safety and public front door
 
-**Activation state:** ACTIVE. W27-C1 is the sole in-progress card. W27-C2 is ready but follows C1
-for single-owner sequencing; its docs/assets do not depend on the lockfile outcome. No other Phase
-23 deferred item was promoted by this triage.
+**Activation state:** ACTIVE. W27-C1 is complete and W27-C2 is now the sole in-progress card. No
+other Phase 23 deferred item was promoted by this triage.
 
 ### W27-C1 — remediate the open high-severity optional-dependency alert
 
-**Status:** IN PROGRESS (2026-09-01) · **Size:** S · **Owner:** @codex
+**Status:** DONE (2026-09-01) · **Size:** S · **Owner:** @codex
 
 **Measured trigger:** GitHub Dependabot alert 1 reports CVE-2026-69247 / GHSA-g6cj-pr64-35w5 in
 `cryptography` 49.0.0 from `uv.lock`; the patched release is 50.0.0. `uv tree` traces it through
@@ -1569,9 +1568,16 @@ reaches `main`, without weakening the alert or excluding the extra.
 **Contention:** lockfile-only card. It does not edit README, docs, assets, renderers, roadmap, or
 spec indexes outside the integrator rollup.
 
+**Shipped evidence:** commit `a78d342` upgrades the supported optional MCP graph from
+`cryptography` 49.0.0 to 50.0.1 and adds the advisory-range regression assertion to the existing MCP
+optional-surface smoke without changing the 2,451-test count. `uv sync --all-extras --dev --locked`
+and all focused MCP suites pass. Exact-SHA CI run 33469380331 passes blocking Python, dependency
+floors, ShellCheck/specs, 18 goldens, and both Ubuntu/macOS release journeys. GitHub marks Dependabot
+alert 1 fixed at 2026-09-01T04:20:01Z; it was not dismissed or excluded.
+
 ### W27-C2 — rebuild the public README and reproducible visual evidence
 
-**Status:** TODO · **Size:** M · **Owner:** unclaimed
+**Status:** IN PROGRESS (2026-09-01) · **Size:** M · **Owner:** @codex
 
 **Explicit trigger:** the maintainer requested a public-repo README/content/visual rewrite on
 2026-09-01. The bounded audit measures 773 lines / 6,873 words in `README.md`, deep API/poller prose
