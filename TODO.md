@@ -771,7 +771,7 @@ model call was made by this card.
 **Activation state:** ACTIVE. Wave 25 closed at integration commit `6b925f0` after its full closure
 gates passed. W26-C0's maintainer decision is accepted: `main` is the canonical public/default
 release lineage and the completed `platform` history is synchronized into it without rewriting
-history. W26-C3 is complete; C4 is now the sole ready release card and C11 retains its serial blocker. The Phase 23
+history. W26-C4 is complete; C11 is now the sole ready, integrator-only truth pass. The Phase 23
 decision and later-wave triggers live in
 [ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
 bounded coordinator packet is
@@ -967,7 +967,7 @@ deterministic smoke.
 
 ### W26-C4 — enforce clean-install-to-first-turn in CI
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-08-31) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** focused suites are strong, but no release gate proves that a user can install
 the built artifact, configure a supported endpoint, initialize a project, execute a governed turn,
@@ -999,6 +999,16 @@ release exit gate.
 
 **Contention:** depends on C1–C3 and consumes their public surfaces unchanged. It owns the new
 release journey, not their implementation files.
+
+**Shipped evidence:** RED commit `f8f897e` defines three artifact-installed journey contracts;
+implementation commit `6c52df7` adds the bounded `scripts/release_journey.py` oracle and a blocking
+Ubuntu/macOS CI matrix. The journey builds the exact wheel, installs it into a fresh venv outside
+the checkout with a poisoned `PYTHONPATH`, configures the public provider, initializes a project,
+executes one governed tool effect, and proves the request tools, tool result, final response,
+measured usage, task/run/session/trace/audit records, and clean failure without half-ready state.
+Commit-level closure passes the Linux and macOS journey jobs, 2,445 tests with five
+contract-labelled skips, Ruff/format, strict mypy over 74 source files, workflow YAML, clean
+dependency-floor artifact installs, 24 specs, 18 goldens, metrics, and deterministic smoke.
 
 ### W26-C5 — publish a non-overlapping runtime distribution boundary
 
@@ -1478,7 +1488,7 @@ boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** BLOCKED (needs W26-C4; C0-C3/C5-C10 done) · **Size:** M ·
+**Status:** READY (W26-C0-C10 done) · **Size:** M ·
 **Owner:** integrator only
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,

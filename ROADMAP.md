@@ -190,7 +190,7 @@ contention boundaries live once in `TODO.md`.
 | W26-C1 | Clean configuration reaches the first governed turn | Owns provider/onboarding path; independent of release and governance files |
 | W26-C2 | Canonical installable `docket` wheel/sdist | Owns root packaging; predecessor to C3/C5 |
 | W26-C3 | Immutable, checksummed release artifacts | Done (`0251972`, `5bb106a`); tagged package assets are verified before install/publish |
-| W26-C4 | Clean-install-to-first-turn CI release oracle | Ready after C1–C3; owns a new isolated acceptance fixture |
+| W26-C4 | Clean-install-to-first-turn CI release oracle | Done (`f8f897e`, `6c52df7`); exact wheel reaches a governed turn on Ubuntu/macOS |
 | W26-C5 | Non-overlapping, documented runtime distribution | After C2 and D-28; owns runtime package boundary |
 | W26-C6 | Atomic, durable audit append | Owns audit JSONL/rotation path; no approval-state edits |
 | W26-C7 | Compare-and-set approval resolution | Owns approval state/functions; consumes store/audit unchanged |
@@ -200,7 +200,7 @@ contention boundaries live once in `TODO.md`.
 | W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
 | W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
 | W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; owns whole-path oracle and cancellation wording |
-| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | After C4; integrator-only truth pass |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Ready; integrator-only truth pass after C0–C10 |
 
 ### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
 
@@ -2587,6 +2587,16 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-08-31 (Wave 26 C4 accepted) — the exact installable artifact now reaches a governed first
+  turn on Linux and macOS.** RED commit `f8f897e` defines three artifact-installed release-journey
+  contracts; implementation commit `6c52df7` builds and installs the exact wheel in an isolated
+  venv outside the checkout, rejects source leakage, configures the public provider, initializes a
+  project, executes one governed tool effect, and verifies measured usage plus durable
+  task/run/session/trace/audit evidence. The blocking GitHub Actions matrix passes on Ubuntu and
+  macOS, alongside 2,445 tests with five contract-labelled skips, Ruff/format, strict mypy over 74
+  source files, workflow YAML, dependency-floor artifacts, 24 specs, 18 goldens, metrics, and
+  deterministic smoke. C11 is now the sole ready, integrator-only Wave 26 truth pass.
 
 - **2026-08-31 (Wave 26 C3 accepted) — tagged release artifacts are immutable and verified before
   installation or publication.** The release workflow builds and clean-installs the exact wheel and
