@@ -1,4 +1,4 @@
-# Declarative agent fleet — provision with:  docket add --from examples/configs/agents.yaml
+# Declarative agent fleet — provision with:  docket init --from examples/configs/agents.yaml
 #
 # Re-applying is safe: an entry whose id already exists is skipped (a pod is
 # checked via its Lead's workspace, a flat agent via its own), so this file
@@ -18,7 +18,7 @@
 #                policy instead (docket models) unless pinned afterwards.
 #   description, telegram, budgetUsd, projectKey  all optional
 #
-# Verified against the real loader (`docket add --from`, core/cli/_agents.py
+# Verified against the real loader (`docket init --from`, core/cli/_agents.py
 # `_cmd_add_declarative`) — every entry below actually provisions.
 agents:
   - id: webapp

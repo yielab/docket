@@ -589,7 +589,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Changelog
 
-### 2.10.0 — 2026-08-31
+### Version 2.10.0 (2026-08-31)
 
 - W26-C10c makes cancellation truthful end to end: returned `cancelled` tasks fold to a cancelled
   run, while running requests remain nonterminal until observation and full stop. `GET /runs` and

@@ -306,8 +306,9 @@ evidence without importing the root `docket` package.
 For every row in `specs/README.md`, the indexed version and canonical status category MUST match
 the owning spec header, and that current version MUST have a changelog entry. Package and formula
 names in public installation guidance MUST match their built artifact metadata. The gate MUST use
-temporary Docket/cache/build state and MUST NOT contact a model provider, package index, or the
-developer's real home.
+temporary Docket/build state and only the runner's already-synced dependency environment; the
+runtime artifact install MUST run offline, and the gate MUST NOT contact a model provider, package
+index, or the developer's real home.
 
 ## Full validation
 

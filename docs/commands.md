@@ -46,9 +46,6 @@ docket list --json     # machine-readable listing
 **Example:**
 ```bash
 docket list
-
-# With DEBUG mode
-DEBUG=1 docket list
 ```
 
 **Aliases:** None
@@ -2074,23 +2071,9 @@ docket metrics [-r/--role <role>] [-p/--project <project>] [-w/--window <N>]
 
 ### --debug
 
-Enable verbose debug output.
-
-**Syntax:**
-```bash
-docket --debug <command>
-DEBUG=1 docket <command>
-```
-
-**Example:**
-```bash
-docket --debug list
-DEBUG=1 docket status
-```
-
-Sets the `DEBUG` environment variable for the process (`--debug` is sugar for `DEBUG=1`). As of
-this writing, no command in the tree reads it back — there is no `[dbg]`-line output to show.
-Treat this flag as reserved for future use rather than a working verbose mode today.
+Reserved compatibility flag. The parser accepts `--debug`, but no command currently reads the
+result or emits additional diagnostic output. Do not rely on it for troubleshooting; use the
+command's normal error output, `docket doctor`, traces, and audit records instead.
 
 ### --help / -h
 

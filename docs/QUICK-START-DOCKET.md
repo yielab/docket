@@ -12,6 +12,39 @@ Get started with DOCKET-optimized agents in under 5 minutes.
 
 ---
 
+## Ten-minute release artifact to first governed turn
+
+This no-paid-provider route assumes an OpenAI-compatible local model is already listening on
+`127.0.0.1:8081`. The immutable installer below downloads and verifies
+`https://github.com/yielab/docket/releases/download/v0.2.0-beta.1/docket-v0.2.0-beta.1.tar.gz`
+before extraction; it does not install from a moving branch archive.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.1/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.1 bash
+export PATH="$HOME/.local/bin:$PATH"
+
+cd ~/code/myapp
+docket models provider add local http://127.0.0.1:8081/v1 \
+  --model local-model --ctx 32768 --max-tokens 4096
+docket models set default local/local-model
+docket models set manager local/local-model
+docket models set programmer local/local-model
+docket init
+docket pod myapp delegate "Create FIRST_TURN.md containing exactly: governed first turn"
+docket pod myapp dispatch
+docket runs list
+docket trace
+```
+
+`provider add` validates the endpoint before project state is created. The final two commands are
+the public evidence: the run must be terminal and the trace must show the model/tool lifecycle.
+The local model still needs ordinary OpenAI function-tool compatibility; model availability alone
+does not prove reliable tool use. For hosted or mixed-provider setup, see
+[Models, gateways, and coding harnesses](MODEL-GATEWAYS.md).
+
+---
+
 ## What is DOCKET?
 
 DOCKET is an architecture for autonomous agent teams that:

@@ -242,7 +242,8 @@ brew tap yielab/docket-cli https://github.com/yielab/docket
 brew install docket-cli
 
 # Or the install script
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.1/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.1 bash
 
 # Or from source
 git clone https://github.com/yielab/docket.git
@@ -422,8 +423,10 @@ bindings, gate/isolation flags, provider endpoints, the org default model).
   verdict) instead of concatenating raw text, and a **context compiler** fits each hop's message
   to a per-role budget, shedding artifact fields in a documented priority order.
 - **Runs and cancellation** — `docket runs list/show` keeps one record per dispatch invocation;
-  `docket runs cancel` kills the in-flight hop's process group. Scheduled (cron) and webhook
-  triggers can drive pipelines, and `--follow` tails one live.
+  `docket runs cancel` persists a cancellation request and signals owned process groups. Running
+  in-process model/tool work remains `cancel requested` until it returns to a safe checkpoint; no
+  later tool or hop starts. Scheduled (cron) and webhook triggers can drive pipelines, and
+  `--follow` tails one live.
 
 ### Durable state docket owns
 
@@ -479,7 +482,7 @@ pytest suite, and an 18-case golden-parity suite — see
 
 By the numbers:
 
-- **2,445 tests** in the pytest suite (`tests/python/`)
+- **2,451 tests** in the pytest suite (`tests/python/`)
 - **~30,478 lines** of Python in the shipped `docket` package
 - **24 specifications** (RFC 2119), validated in CI
 - **37 commands**, each documented in [docs/commands.md](docs/commands.md)
@@ -487,7 +490,7 @@ By the numbers:
 ```bash
 uv run python scripts/smoke_workflow.py                # observable full workflow, no credentials
 uv run python scripts/smoke_workflow.py --live-model   # realistic memory-backed repair on :8081
-uv run pytest                                        # 2,445-test Python suite
+uv run pytest                                        # 2,451-test Python suite
 bash tests/golden/run.sh verify-all                  # 18-case byte-parity suite
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
@@ -695,11 +698,12 @@ starts growing flags the CLI does not have has stopped being this feature.
 
 ## Embedding the runtime
 
-The governed runtime ships as a second, standalone package: **`docket-runtime`** (under
-[`packages/docket-runtime/`](packages/docket-runtime/)). It is the turn loop, the gated tool
-registry, the policy engine, the approval store and the audit chain — without the CLI, so a
-product can embed the guardrails instead of reinventing them. Verified standalone: a clean
-install pulls only `pydantic` and `filelock`.
+The governed runtime is built as a second, standalone package: **`docket-runtime`** (under
+[`packages/docket-runtime/`](packages/docket-runtime/)), but it is **not published to any index**.
+Its supported surface is the versioned `docket_runtime` facade: one embedding-owned tool registry
+whose calls still pass through Docket's policy, approval, trace, and audit chokepoint. It does not
+expose Docket's turn loop or CLI as a second public framework. Build the artifact from this checkout
+and run [`examples/runtime_embed.py`](examples/runtime_embed.py) for the minimal embedding path.
 
 This is **packaging and a public API contract, not a rewrite** — the control plane and the runtime
 build from the same source tree, so they cannot drift apart. What it is deliberately *not* is a

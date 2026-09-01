@@ -265,6 +265,11 @@ docket add myproj --blueprint wizard-pod
 
 ## Changelog
 
+### Version 1.3.0 (2026-08-20)
+
+- Moved project and declarative blueprint provisioning to the canonical `docket init` surface;
+  `docket add` now extends an existing pod instead of creating one.
+
 ### Version 1.2.0 (2026-08-19)
 
 - Corrected the prospective user-overlay and provisioning paths to Docket-owned state.

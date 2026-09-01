@@ -5,9 +5,12 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from urllib.parse import unquote
+
+import filelock
 
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
@@ -243,17 +246,17 @@ def test_runtime_embedding_example_runs_from_clean_artifact(tmp_path: Path) -> N
         "DOCKET_HOME": str(home),
         "DOCKET_RUNTIME_BUILD_TMPDIR": str(build_tmp),
         "PYTHONPATH": "",
-        "UV_CACHE_DIR": str(tmp_path / "uv-cache"),
     }
     _run("uv", "build", "--wheel", "--out-dir", str(dist), cwd=RUNTIME_PACKAGE, env=env)
     wheel = next(dist.glob("docket_runtime-*.whl"))
     venv = tmp_path / "venv"
-    _run("uv", "venv", str(venv), "--system-site-packages", cwd=outside, env=env)
+    _run("uv", "venv", str(venv), "--python", sys.executable, cwd=outside, env=env)
     python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     _run(
         "uv",
         "pip",
         "install",
+        "--offline",
         "--python",
         str(python),
         "--no-deps",
@@ -261,7 +264,9 @@ def test_runtime_embedding_example_runs_from_clean_artifact(tmp_path: Path) -> N
         cwd=outside,
         env=env,
     )
-    result = _run(str(python), str(RUNTIME_EXAMPLE), cwd=outside, env=env)
+    dependency_site = Path(filelock.__file__).resolve().parent.parent
+    runtime_env = {**env, "PYTHONPATH": str(dependency_site)}
+    result = _run(str(python), str(RUNTIME_EXAMPLE), cwd=outside, env=runtime_env)
 
     assert result.stdout == "RUNTIME EMBED PASS\n"
     assert (home / "audit.log").read_text(encoding="utf-8").strip()
@@ -271,5 +276,5 @@ def test_runtime_embedding_example_runs_from_clean_artifact(tmp_path: Path) -> N
         "-c",
         "import importlib.util; assert importlib.util.find_spec('docket') is None",
         cwd=outside,
-        env=env,
+        env=runtime_env,
     )

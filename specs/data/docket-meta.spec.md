@@ -233,6 +233,11 @@ A `research`-blueprint pod member (`workdir`-kind — see pod-blueprints.spec.md
 
 ## Changelog
 
+### Version 3.0.0 (2026-08-30)
+
+- W26-C8 made port ranges and scratch/worktree paths attempt-owned resources: concurrent successful
+  pods receive distinct allocations and rollback removes only state created by the failed attempt.
+
 ### Version 2.9.0 (2026-08-19)
 
 - W21-C1 daemon-free truth pass: corrected workspace paths and metadata ownership to the live

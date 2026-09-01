@@ -2,7 +2,7 @@
 
 Two kinds of example live here:
 
-- **`agents.yaml` / `agents.json`** — declarative fleet specs for `docket add --from <file>`.
+- **`agents.yaml` / `agents.json`** — declarative fleet specs for `docket init --from <file>`.
   Verified against the real loader (`docket.cli._agents._cmd_add_declarative`): every entry
   actually provisions.
 - **`*-agent-meta.json`** — sample `.docket-meta.json` files, one per workspace directory. These
@@ -12,7 +12,7 @@ Two kinds of example live here:
 ## Declarative fleet specs
 
 ```bash
-docket add --from examples/configs/agents.yaml
+docket init --from examples/configs/agents.yaml
 ```
 
 Re-applying is safe: an entry whose `id` already exists is skipped. Each entry needs an explicit
