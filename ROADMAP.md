@@ -2608,7 +2608,11 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
   passed, five contract-labelled skips), Ruff/format, strict mypy, ShellCheck, 24 specs, 18 goldens,
   synchronized metrics, locked all-extras sync, deterministic smoke, and the exact-wheel release
   journey. The active board is clear; Wave 28 requires bounded adapter/fixture triage before
-  activation.
+  activation. Follow-up commits `fc07656` and `07e32c9` correct CI-discovered portability mistakes:
+  dependency floors do not install dev-only Pillow, and generated assets carry one SHA-256 source
+  fingerprint instead of comparing host-dependent compression/rasterization. Exact-SHA run
+  33471779283 passes every blocking job and both OS artifact journeys; the advisory macOS full suite
+  is back to its four pre-existing portability failures with no public-doc or asset failure.
 
 - **2026-09-01 (Wave 27 C1 accepted) — the supported optional MCP graph no longer ships the open
   high-severity cryptography advisory.** Commit `a78d342` upgrades the locked transitive package

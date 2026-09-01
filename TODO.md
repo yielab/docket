@@ -1623,6 +1623,15 @@ contract-labelled skips); Ruff/format, strict mypy over 74 source files, ShellCh
 goldens, synchronized metrics, locked all-extras sync, deterministic smoke, and the exact-wheel
 release journey pass.
 
+**Commit-level closure:** the first rollup run exposed two false portability assumptions in the new
+test: runtime dependency floors intentionally omit dev-only Pillow, and host PNG/font rasterization
+is not byte/pixel stable. Commits `fc07656` and `07e32c9` keep Pillow dev-only, vendor one licensed
+font, and embed a SHA-256 render contract covering renderer/font/golden/smoke sources plus structural
+animation checks. Exact-SHA CI run 33471779283 passes blocking Python, dependency floors,
+ShellCheck/specs, 18 goldens, and both Ubuntu/macOS artifact-installed release journeys. The
+advisory macOS full suite contains only its four pre-existing portability failures; no public-doc or
+asset check fails.
+
 ---
 
 ## ☑ WAVE 24 COMPLETE (2026-08-19) — realistic local-model evaluation
