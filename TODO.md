@@ -1879,7 +1879,7 @@ configuration-scoped proof.
 
 ### W28-C4 — reconcile cross-adapter parity and close Wave 28
 
-**Status:** TODO · **Size:** M · **Owner:** @codex (integrator)
+**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex (integrator)
 
 **Explicit trigger:** two focused adapters are not a portable-governance claim until their merged,
 artifact-installed behavior passes the same oracle and public wording names the exact supported
