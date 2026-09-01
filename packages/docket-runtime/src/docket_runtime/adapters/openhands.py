@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from docket_runtime import (
     ExecutionLimits,
@@ -18,6 +18,7 @@ from docket_runtime import (
     ToolSpec,
 )
 from openhands.sdk import LLM, Agent, AgentContext, Conversation
+from openhands.sdk.conversation import LocalConversation
 from openhands.sdk.llm import LLMResponse, Message, TextContent
 from openhands.sdk.tool import (
     Action,
@@ -89,7 +90,7 @@ class _GovernedLLM(LLM):
     def completion(
         self,
         messages: list[Message],
-        tools: Sequence[ToolDefinition] | None = None,
+        tools: Sequence[ToolDefinition[Any, Any]] | None = None,
         add_security_risk_prediction: bool = False,
         on_token: Any | None = None,
         call_context: Any | None = None,
@@ -148,7 +149,7 @@ class OpenHandsAdapter:
             execution=self._runtime.start_execution(self._context, self._limits),
             tool_names=frozenset(spec.name for spec in specs),
         )
-        governed_llm = llm.model_copy(deep=False)
+        governed_llm = cast(_GovernedLLM, llm.model_copy(deep=False))
         governed_llm.__class__ = _GovernedLLM
         governed_llm._docket_state = state
 
@@ -169,17 +170,22 @@ class OpenHandsAdapter:
             ),
             tool_concurrency_limit=1,
         )
-        conversation = Conversation(
-            agent=self.agent,
-            workspace=workspace,
-            plugins=[],
-            persistence_dir=persistence_dir,
-            max_iteration_per_run=self._limits.max_tool_calls + 1,
-            stuck_detection=False,
-            visualizer=None,
+        conversation = cast(
+            LocalConversation,
+            Conversation(
+                agent=self.agent,
+                workspace=workspace,
+                plugins=[],
+                persistence_dir=persistence_dir,
+                max_iteration_per_run=self._limits.max_tool_calls + 1,
+                stuck_detection=False,
+                visualizer=None,
+            ),
         )
         try:
-            conversation.send_message(prompt)
+            # OpenHands 1.44.1 exposes ``str | Message`` at runtime, but its
+            # installed mypy surface collapses that parameter to ``Never``.
+            conversation.send_message(prompt)  # type: ignore[arg-type]
             conversation.run()
         finally:
             conversation.close()
@@ -192,7 +198,9 @@ class OpenHandsAdapter:
 def _register_tool(spec: ToolSpec, state: _AdapterState, index: int) -> OpenHandsTool:
     action_type = Action.from_mcp_schema(f"DocketAction{index}", spec.parameters)
 
-    def create(cls: type[ToolDefinition], *args: Any, **kwargs: Any) -> list[ToolDefinition]:
+    def create(
+        cls: type[ToolDefinition[Any, Any]], *args: Any, **kwargs: Any
+    ) -> list[ToolDefinition[Any, Any]]:
         del cls, args, kwargs
         raise RuntimeError("fixed Docket tool definitions are registered as instances")
 
