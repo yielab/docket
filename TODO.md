@@ -13,12 +13,14 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-09-01) — Wave 27 complete
+> ## ◉ ACTIVE BOARD — WAVE 28 (2026-09-01) — portable governance proof
 >
-> Bounded post-W26 triage closed the live high-severity dependency alert and rebuilt the public
-> repository front door. Both measured Wave 27 cards are complete; the broader deferred list remains
-> unscheduled, and no Wave 28 implementation card is active without a bounded adapter-selection and
-> fixture-design pass.
+> The bounded adapter-selection and fixture-design pass selected the standard OpenHands SDK agent
+> with an explicit Docket-only tool list and PydanticAI with a custom Docket-owned toolset. OpenHands
+> ACP is explicitly rejected for this proof because its server owns its tools and execution. W28-C1
+> is the only initially ready card; C2 and C3 become parallel-ready after its shared execution
+> envelope lands, and C4 remains the integrator-only closure card. Decisions D-32 and D-33 in
+> ROADMAP.md own the selection and evidence contract.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1631,6 +1633,268 @@ animation checks. Exact-SHA CI run 33471779283 passes blocking Python, dependenc
 ShellCheck/specs, 18 goldens, and both Ubuntu/macOS artifact-installed release journeys. The
 advisory macOS full suite contains only its four pre-existing portability failures; no public-doc or
 asset check fails.
+
+---
+
+## ◉ WAVE 28 ACTIVE — portable governance proof
+
+**Activation evidence (2026-09-01):** the bounded selection pass inspected the artifact-installed
+`docket-runtime` facade, its owning spec/tests, D-25/D-27, and the current upstream extension and
+test seams. The facade currently gates one tool call but does not own external-run token/tool-call
+budgets, emit the loop's paired `tool_call`/`tool_result` trace records, or produce the typed handoff
+contract. Those are measured gaps, so the wave begins with one shared envelope rather than two
+adapter-specific imitations.
+
+| Candidate | Triage disposition | Decisive reason |
+| --- | --- | --- |
+| OpenHands standard SDK `Agent` | **selected coding runtime** | accepts an explicit tool list and custom Action/Observation/Executor definitions; the fixture can assert that no default, MCP, plugin, bash, or file-editor tool exists |
+| OpenHands `ACPAgent` | **rejected for Wave 28** | the ACP server owns its tools, context window, approvals, and execution; launching it would be delegation, not Docket enforcement |
+| PydanticAI | **selected general framework** | a custom `AbstractToolset` owns tool enumeration and `call_tool`, `RunContext` exposes provider-reported usage, and `FunctionModel` makes the proof deterministic without credentials |
+| LangGraph | not selected | `StateGraph`/`ToolNode` can run supplied tools, but adds a second graph language and no stronger enforcement evidence for this bounded fixture |
+| Agno | not selected | explicit tools and tool hooks are feasible, but hook middleware plus default concurrent async tool execution creates more interception/concurrency surface than the selected custom-toolset seam |
+
+**Shared fixture oracle:** both adapters consume the same immutable scenario table and a fresh
+workspace containing `state.txt`. Only a Docket-registered read tool and a Docket-registered
+mutation/exec tool may reach that path. The scripted model sequence proves: exact advertised tool
+names; unknown native bash/file-edit bypass refusal; allow; policy deny; approval deny with a
+byte-identical workspace; approval grant with exactly one mutation; provider-reported usage crossing
+the Docket budget before a requested mutation; paired trace records sharing the execution identity;
+the existing hash-chained audit semantics for non-allow decisions; and one typed handoff with the
+final summary. Run every scenario from a built `docket-runtime` artifact outside the checkout with a
+unique `DOCKET_HOME`, temp root, cache, and loopback port. No hosted API key, Anthropic credential,
+Codex/Claude subscription, network model, Docker container, A2A transport, or OTLP collector is a
+closure prerequisite. An operator's local OpenAI-compatible endpoint on port 8081 may be an opt-in
+canary only after the deterministic oracle passes; it cannot replace or block CI evidence.
+
+### W28-C1 — define the shared governed-execution envelope
+
+**Status:** TODO (ready) · **Size:** M · **Owner:** unclaimed
+
+**Measured trigger:** the published facade exposes `Runtime.register` and `Runtime.dispatch`; the
+private Docket loop, not that facade, currently owns cumulative reported-token/tool-call limits,
+paired action traces, atomic assistant/tool history, and terminal results. Two adapters built
+directly on `dispatch` would therefore share policy/approval but silently diverge on the other
+D-27 semantics. The facade's approval stub also patches one module-global function, so concurrent
+embedding calls with different stubs need a deterministic isolation oracle before adapters can call
+the seam safely.
+
+**Goal:** add the smallest synchronous, per-execution public envelope needed by both selected
+callers. It must accept framework-reported usage before any corresponding tool request is
+dispatched, enforce a finite cumulative token budget and tool-call budget, route the call through
+the existing `Runtime.dispatch`/private `dispatch_tool` path, emit the same redacted paired action
+trace shape under one caller-supplied identity, and terminalize once into a typed result/handoff.
+
+**Non-goals:** no public agent loop, model/provider client, conversation store, graph, scheduler,
+streaming API, async runtime, plugin discovery/registry, dynamic package loading, framework base
+class, remote task protocol, A2A, OTLP, new audit format, new policy language, persistence migration,
+or direct handler escape hatch. Do not expose the private copied `docket` namespace. Do not claim
+that arbitrary foreign native tools are governable.
+
+**Read first (bounded):** D-27, D-28, D-32, D-33; `specs/api/runtime-library.spec.md`; the public
+facade and build hook; `core/tools.py::dispatch_tool`; the loop's budget decision plus
+`_trace_tool_call`/`_trace_tool_result`; `TokenUsage`, `HandoffArtifact`, and the existing runtime
+artifact boundary test. Do not load other runtime/framework docs or the full agent-loop spec.
+
+**Live path / ownership:** own `packages/docket-runtime/src/docket_runtime/__init__.py`, additive
+public facade modules under that package, `packages/docket-runtime/pyproject.toml`, the runtime build
+hook only if a new facade module is not already included, `specs/api/runtime-library.spec.md`, and
+new focused envelope/artifact tests. Own two isolated fixture dependency projects/locks up front so
+C2 and C3 never contend on root `pyproject.toml`, root `uv.lock`, or runtime package metadata. The
+base `docket-runtime` install must remain only Pydantic + filelock; framework SDKs are optional,
+adapter-specific dependencies. Preserve Python 3.11 base support; the OpenHands fixture may require
+Python 3.12 and must say so explicitly.
+
+**RED tests (commit before production):** from a built wheel and rebuilt sdist outside the source
+tree, prove the current facade fails each missing contract:
+
+1. a model response reports usage over the configured Docket budget and requests a mutation; the
+   handler must not run and the envelope must terminalize with a typed budget stop;
+2. a second requested tool would exceed the tool-call budget; the entire not-yet-started call is
+   refused without incrementing executed count;
+3. one allowed, one policy-denied, one approval-denied, and one approval-granted call each produce
+   exactly one redacted `tool_call` and one `tool_result` sharing project/session/call identity;
+4. malformed/unknown calls remain fail-closed through `dispatch_tool`, not adapter validation;
+5. `finish` produces the public typed handoff/result once; dispatch, usage, or a second finish after
+   terminal state is rejected without another write;
+6. two concurrent runtimes with opposite approval stubs cannot answer each other's token or execute
+   the wrong handler; repeat behind a barrier to make the current global-patch race observable;
+7. wheel and sdist exports are identical, the CLI distribution stays disjoint, base floors remain
+   Pydantic + filelock, and no private namespace becomes public.
+
+**Smallest production contract:** choose names in the spec/RED commit, but keep the semantic surface
+to one immutable limits/usage shape, one execution object created by `Runtime`, one `dispatch`
+method, and one terminal result carrying usage, stop reason, tool count, and `HandoffArtifact`.
+Usage is provider-reported and must remain labelled as such; no byte/token estimate may be promoted
+to measured usage. Serialize or otherwise isolate the approval-stub seam without creating a second
+approval implementation. Reuse the existing trace/audit writers and `dispatch_tool`; do not copy
+their decisions into the facade.
+
+**Acceptance / gates:** planted bypasses prove direct handler invocation and unreported tool-bearing
+responses fail; all RED cases turn green; exact public exports and schema version/changelog are
+recorded; base and optional dependency resolution are reproducible; focused runtime, policy,
+approval, audit, trace, packaging, and concurrency tests pass; then Ruff/format, strict mypy,
+runtime artifact floors, full pytest, 18 goldens, 24 specs, metrics, deterministic smoke, and
+`git diff --check` pass. Report separate Python 3.11 base-artifact and Python 3.12 OpenHands-fixture
+environment evidence.
+
+**Dependency / contention / handoff:** this is the only ready card and blocks C2/C3. It owns every
+shared public type, fixture scenario schema, dependency lock, and package metadata edit. Handoff only
+the exported contract, scenario fixture API, exact focused commands, RED commit, GREEN commit, and
+unresolved risks—never raw framework docs/logs. After integration, C2 and C3 may run simultaneously
+in isolated worktrees because they own disjoint adapter modules and tests.
+
+### W28-C2 — prove the OpenHands SDK coding-runtime adapter
+
+**Status:** BLOCKED (needs W28-C1) · **Size:** M · **Owner:** unclaimed
+
+**Measured trigger:** the standard OpenHands SDK agent supports an explicit tool list and custom
+typed tool definitions, while `ACPAgent` explicitly delegates tools/execution to its subprocess.
+The coding proof is therefore feasible only with the standard SDK and only if its resolved tool map
+contains Docket adapter tools and nothing capable of native mutation/exec.
+
+**Goal:** ship a narrow OpenHands adapter that translates Docket tool specs to OpenHands
+Action/Observation/Executor definitions, reports each completed model response's measured usage to
+the C1 envelope before executing its requested action, converts the action to Docket `ToolCall`, and
+returns the Docket result to the OpenHands conversation. Produce the shared typed terminal handoff
+from the conversation result.
+
+**Non-goals:** no ACP support, OpenHands CLI/UI/Cloud/agent-server integration, OpenHands default
+tools, `openhands-tools`, Docker/remote workspace, MCP, plugins, public skill loading, OpenHands
+security-policy substitution, provider credential, browser, shell/file executor outside Docket,
+adapter auto-discovery, or changes to C1's public types. Do not treat OpenHands confirmation or
+metrics as a replacement for Docket approval/budget/audit.
+
+**Read first (bounded):** the extracted C2 card and D-27/D-32/D-33; C1's facade spec and handoff;
+the pinned OpenHands SDK version's `Agent`, ToolDefinition/Action/Observation/Executor, conversation
+event, and LLM metrics APIs; only the shared fixture scenario and C2 test. Do not read ACP internals,
+OpenHands app/server code, other candidate frameworks, or central rollups.
+
+**Live path / ownership:** additive `docket_runtime.adapters.openhands` module/package, its focused
+tests, and its isolated Python 3.12 fixture project. Do not edit the common facade, shared scenario,
+runtime/root package metadata or locks, runtime-library spec, ROADMAP/TODO/README/spec index, or the
+PydanticAI adapter. If the pinned SDK cannot expose response usage before action execution, stop and
+return that exact incompatibility rather than weakening the budget oracle.
+
+**RED fixture:** run a loopback OpenAI-compatible scripted server on a unique ephemeral port. It
+returns fixed usage counts and deterministic tool calls; no real key/network is used. Instantiate
+the standard Agent with explicit Docket tools, `include_default_tools=[]`, empty MCP config, and no
+plugins/public skills. Assert its resolved tool map equals the adapter-provided names. Script the
+shared allow/deny/approval/budget/handoff cases, plus prompts that request known OpenHands bash and
+file-editor tool names; those names must be absent and the workspace must remain byte-identical.
+
+**Acceptance:** all mutations/execs observed by the fixture pass through the C1 envelope and sole
+`dispatch_tool` chokepoint; Docket's deliberately lower token limit wins before a tool on an
+over-budget OpenHands response; approval deny/grant and policy deny match the common oracle; trace,
+audit, call ids, usage, and handoff preserve one execution identity; exact tool registration is
+asserted behaviorally; repeated runs use fresh home/workspace/cache/port and leave no process; wheel
+and rebuilt-sdist installs work outside checkout. The local endpoint at 8081 is optional and
+non-blocking, and any result is labelled a canary rather than closure evidence.
+
+**Validation / handoff:** run focused adapter + common conformance + artifact tests on Python 3.12,
+then the card-scoped lint/type/spec checks. C4, not this worker, runs central/full closure. Handoff
+the exact upstream version, Python constraint, files changed, tests, process-cleanup proof, and any
+unsupported OpenHands shape. Never edit central board/docs/metrics. This card can run in parallel
+with C3 after C1 because their modules, test files, fixture environments, caches, and ports are
+disjoint.
+
+### W28-C3 — prove the PydanticAI general-framework adapter
+
+**Status:** BLOCKED (needs W28-C1) · **Size:** M · **Owner:** unclaimed
+
+**Measured trigger:** PydanticAI provides a custom `AbstractToolset` with direct ownership of
+`get_tools`/`call_tool`, per-run provider-reported usage in `RunContext`, sequential toolset mode,
+and procedural `FunctionModel`. That is a smaller deterministic enforcement seam than a second
+graph DSL or general hook middleware.
+
+**Goal:** ship a narrow PydanticAI toolset adapter that enumerates only Docket tools, reports the
+current response usage to C1 before its requested call, converts the call to Docket `ToolCall`, and
+maps the Docket result back through `call_tool`. Produce the same terminal result/handoff as C2.
+
+**Non-goals:** no provider SDK/key, MCP/native/provider-executed tools, LangGraph/Agno bridge,
+PydanticAI capability bundle, Logfire/OTLP, durable-execution backend, UI/streaming, parallel tool
+execution, retry-policy rewrite, framework usage limits as the governing boundary, or changes to
+C1/C2 files. PydanticAI may retain a looser safety limit, but the fixture must prove Docket's lower
+budget is the decision that prevents execution.
+
+**Read first (bounded):** the extracted C3 card and D-27/D-32/D-33; C1's facade spec and handoff;
+the pinned PydanticAI version's `AbstractToolset`, `FunctionToolset` schemas, `RunContext.usage`,
+`FunctionModel`, and `UsageLimits`; only the shared fixture and C3 test. Do not load graph/durable/UI
+documentation, other candidate frameworks, or central rollups.
+
+**Live path / ownership:** additive `docket_runtime.adapters.pydantic_ai` module/package, its
+focused tests, and its isolated Python 3.11 fixture project. Do not edit common facade/scenario,
+package metadata/locks, runtime-library spec, ROADMAP/TODO/README/spec index, or OpenHands files.
+
+**RED fixture:** use `FunctionModel` to emit deterministic responses, tool call ids/arguments, and
+reported usage without HTTP or credentials. Build one sequential custom toolset containing exactly
+the Docket adapter tools; provider-native and run-time-added toolsets are absent. Give PydanticAI a
+limit above the fixture response and C1 a lower limit, then prove the Docket boundary refuses the
+requested mutation before `call_tool` reaches its handler. Run every shared allow/deny/approval/
+trace/audit/handoff scenario and a native/unknown-tool bypass probe.
+
+**Acceptance:** exact tool enumeration and call mapping are typed and deterministic; the shared
+workspace outcomes, budget stop, paired traces, audit decisions, usage totals, and handoff are
+byte/field equivalent to the common oracle; no adapter path invokes a handler directly; sequential
+execution avoids hidden parallel dispatch; wheel and rebuilt-sdist installs work outside checkout;
+Python 3.11 base compatibility remains green; no PydanticAI dependency enters the base runtime
+install.
+
+**Validation / handoff:** run focused adapter + common conformance + artifact tests on Python 3.11,
+then card-scoped lint/type/spec checks. C4 owns full closure. Handoff exact upstream version, files,
+tests, and any limitation in the toolset/usage seam. Never edit central board/docs/metrics. This
+card is parallel-safe with C2 after C1; its environment must not share home/cache/ports even though
+its deterministic model needs no socket.
+
+### W28-C4 — reconcile cross-adapter parity and close Wave 28
+
+**Status:** BLOCKED (needs W28-C2 and W28-C3) · **Size:** M · **Owner:** @codex (integrator)
+
+**Explicit trigger:** two focused adapters are not a portable-governance claim until their merged,
+artifact-installed behavior passes the same oracle and public wording names the exact supported
+configurations and limits.
+
+**Goal:** integrate C2/C3, run the shared scenario as a single cross-adapter matrix, prove the
+execution-envelope contract is identical, and update public/spec/roadmap truth narrowly. Decide from
+captured trace evidence whether JSONL preserves identity and whether any remote task protocol was
+actually used; add neither OTLP nor A2A when the answer remains yes/no respectively.
+
+**Non-goals:** no third adapter, generic framework-neutral/plugin claim, benchmark ranking, live
+provider requirement, default tool enablement, package publication, hosted service, broad README
+rewrite, new metrics subsystem, or Wave 29 benchmark/adoption work.
+
+**Read first (bounded):** C1-C3 delta handoffs and commits; D-25/D-27/D-32/D-33; merged common
+conformance tests; runtime-library spec and only the public integration/compatibility/security
+sections that need truth updates. Do not reopen candidate research unless merged evidence
+contradicts the selection.
+
+**Integration / ownership:** central files only after adapter commits merge: common conformance
+matrix, `specs/api/runtime-library.spec.md` final status/version/changelog, `specs/README.md`, a
+compact adapter example/index, relevant README/compatibility/security links/limits, ROADMAP/TODO
+rollups, and metrics. Resolve no worker conflict by dropping either contract; rerun the losing
+scenario first. Remove fixture processes/caches/temp artifacts, but do not delete user state or
+global package caches.
+
+**Closure oracle:** build wheel + sdist once, install each with one adapter fixture outside checkout,
+and run the same scenario table repeatedly. Assert framework-specific events normalize to identical
+Docket outcomes for every action, byte-identical no-mutation cases, exactly-once approved mutation,
+provider-reported cumulative usage, tool-call count, stop reason, paired trace payload fields,
+hash-chain verification, and typed handoff. Assert OpenHands native tools and PydanticAI native/
+additional toolsets are absent. Scan public prose to reject bare “framework-neutral,” ACP-governed,
+all-OpenHands, all-PydanticAI, subscription-required, A2A, or OTLP claims.
+
+**Closure gates:** focused cross-adapter repetitions; Python 3.11 base/Pydantic and Python 3.12
+OpenHands artifact environments; optional-dependency absence/error tests; runtime floors and
+disjoint wheel ownership; Ruff/format, strict mypy, full pytest, 18 goldens, all specs, ShellCheck,
+metrics check, deterministic smoke, public-doc/link/example checks, `git diff --check`, privacy
+scan, clean worktree, and canonical commit-level rerun. External publication remains separately
+approval-gated.
+
+**Required closeout truth:** claim only that Docket governs the tested standard OpenHands SDK and
+PydanticAI configurations when their relevant tools are exclusively Docket-backed. State that ACP,
+native/provider tools, plugins/MCP added beside the adapter, and arbitrary framework configurations
+are outside the proof. Record why A2A/OTLP stayed absent. Close Wave 28 only after both adapters and
+the shared installed-artifact matrix pass; Wave 29 then becomes eligible for its own bounded
+activation pass, not automatically active.
 
 ---
 

@@ -13,9 +13,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-01.** **Every numbered phase 0–22 and Waves 24–27 are complete. Phase 23
-remains active, but its executable board is clear: Wave 28 needs a bounded adapter-selection and
-fixture-design pass before implementation cards are activated.** Executable cards live in
-[TODO.md](TODO.md).
+remains active; bounded triage selected the Wave 28 adapters and fixture, and W28-C1 is ready on the
+executable board.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -38,7 +37,7 @@ fixture-design pass before implementation cards are activated.** Executable card
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active, board clear — Wave 27 complete; Wave 28 awaits bounded adapter/fixture triage |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 activated; shared envelope C1 ready, adapter cards blocked on it |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -48,6 +47,8 @@ fixture-design pass before implementation cards are activated.** Executable card
 | — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
 | — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
+| — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
+| — | **Wave 28** (not a phase): portable governance proof | ◉ active (2026-09-01) — OpenHands SDK + PydanticAI selected; C1 shared envelope ready |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -125,7 +126,7 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 
 ## Current planned program — PHASE 23: product truth and ecosystem proof
 
-**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 26 in
+**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 28 in
 [TODO.md](TODO.md) · **Resumable coordinator packet:**
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md)
 
@@ -222,16 +223,36 @@ capability metadata; and a supported local service/TLS-proxy/backup profile. Eac
 representative fixture and a measured failure or explicit request. A built-in dashboard and tenant
 model remain out of scope.
 
-### Wave 28 — portable governance proof (not active; bounded selection pass required)
+### Wave 28 — portable governance proof (active 2026-09-01)
 
-Define the smallest stable execution envelope only after the local governance contract is reliable.
-Prove it with exactly two adapters: one coding-agent runtime (prefer OpenHands/ACP) and one general
-Python framework (choose PydanticAI, LangGraph, or Agno from a bounded spike). Both must traverse
-the same Docket policy/approval/budget/audit boundary; an adapter that only imports or launches a
-foreign runtime is not evidence. A2A is added only if the coding adapter needs remote task
-discovery/state/cancellation. OTLP export is added only if cross-runtime trace identity cannot be
-preserved through the existing trace contract. No plugin framework precedes the second real
-caller.
+The bounded pass selected the standard OpenHands SDK `Agent` as the coding runtime and PydanticAI as
+the general Python framework. OpenHands ACP is excluded from the proof because the ACP subprocess
+owns its tools, context, approvals, and execution; Docket could delegate to it but could not prove
+that every relevant action crossed Docket's chokepoint. PydanticAI's custom toolset seam is selected
+over LangGraph's second graph language and Agno's broader hook/concurrency surface. Decisions D-32
+and D-33 record the selection and evidence contract; detailed executable cards live once in
+`TODO.md`.
+
+Both adapters consume one artifact-installed governed-execution envelope and one scenario table.
+The proof uses deterministic, credential-free models: a loopback OpenAI-compatible fake for
+OpenHands and PydanticAI `FunctionModel`. It covers exclusive tool registration, native-bypass
+absence, policy deny, approval deny/grant, Docket-owned reported-token/tool-call budgeting before
+mutation, paired trace identity, existing audit semantics, and a typed terminal handoff. The base
+runtime stays Python 3.11 compatible and dependency-light; the isolated OpenHands fixture uses
+Python 3.12 because that SDK requires it. Port 8081 remains an optional local-model canary, never a
+closure gate.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W28-C1 | Shared public execution envelope + common fixture contract | Ready; owns all public facade/types, package metadata, shared tests, and fixture locks |
+| W28-C2 | Standard OpenHands SDK adapter and coding fixture | Blocked on C1; then parallel with C3, owns only OpenHands module/test/environment |
+| W28-C3 | PydanticAI custom-toolset adapter and general fixture | Blocked on C1; then parallel with C2, owns only PydanticAI module/test/environment |
+| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Blocked on C2+C3; integrator-only central rollup |
+
+No A2A card is activated because the selected coding proof is in-process and needs no remote task
+discovery/state/cancellation. No OTLP card is activated because the fixture is explicitly required
+to first prove whether the existing JSONL trace identity is sufficient. No plugin framework
+precedes the two concrete callers.
 
 ### Wave 29 — adoption and comparative evidence (blocked on Wave 28)
 
@@ -672,6 +693,8 @@ address exactly those.
 | D-29 | How is Phase 23 delivered by simultaneous agents without duplicating context or corrupting central state? | Phase 23 execution | **One coordinator plus as many non-contending worker lanes as the environment supports.** Each card has one owner, isolated worktree, unique `DOCKET_HOME`/temp/ports, exact allowed paths/functions, and a delta-only evidence handoff. `ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`, release rollups, and mutable live endpoints are integrator-owned. Workers load the snapshot, one extracted card, one named decision, the owning spec section/tests, and the live callers—never the planning corpus or another worker's raw conversation. |
 | D-30 | What does `cancelled` mean for an in-process run that a separate CLI process can request but cannot forcibly interrupt? | W26-C10a–C10c | **Cancellation is a persisted lifecycle, not a process-local event or an immediate stop claim.** The run id is the signal identity and its additive record distinguishes `requestedAt`, `observedAt`, and `stoppedAt`. A queued request is fully stopped atomically because no body ran. A running request remains visibly in flight until the owned executor observes it and reaches a safe stop; if the request wins the registry CAS, later success/failure cannot overwrite cancellation. Checkpoints prevent every not-yet-started model request, approval continuation, and tool handler. A cooperatively stopped task uses the additive status `cancelled`, never ordinary `failed`. An HTTP request or tool handler already executing may finish because Python threads are not killed; its result is either discarded before any next side effect or retained only as a complete assistant/tool-result unit, then the run stops. The existing CLI is the mutation surface; Wave 26 adds no POST cancellation API, event bus, async runtime, or unsafe thread kill. |
 | D-31 | Which branch is Docket's public release lineage after Wave 26? | W26-C0 | **`main` is the canonical public/default release lineage.** The maintainer authorized the current `platform` lineage to fast-forward `main`; GitHub already names `main` as the default branch, and the preflight showed `platform` exactly 300 commits ahead with no `main`-only commits. The update is fast-forward-only and both branch names remain recoverable and synchronized. Tags and protected release jobs originate from `main`; feature/work branches are never release sources merely because they are newer. C3 owns replacing the remaining mutable installer/formula inputs with immutable tagged artifacts. |
+| D-32 | Which two external runtimes are the bounded Wave 28 proof, and which advertised OpenHands path actually qualifies? | Wave 28 triage | **Select the standard OpenHands SDK `Agent` with an explicit Docket-only tool list, and PydanticAI with a custom Docket-owned toolset. Reject OpenHands `ACPAgent` for this proof:** its subprocess owns tools, context, approvals, and execution, so Docket can delegate to it but cannot force its native actions through `dispatch_tool`. The standard SDK exposes explicit ToolDefinitions and custom Action/Observation/Executor code; its resolved tool map must contain no default/MCP/plugin/bash/file-editor bypass. PydanticAI exposes custom `AbstractToolset.get_tools/call_tool`, run usage, sequential execution, and a procedural `FunctionModel`, giving the smallest credential-free general-framework fixture. LangGraph is feasible but adds the second graph language D-25 excludes; Agno is feasible but its general hook and default concurrent async surface is broader than needed. Pin the exact tested upstream versions in isolated fixture locks. Keep `docket-runtime` base dependencies unchanged; preserve Python 3.11 base/Pydantic support and run the OpenHands proof on its required Python 3.12+. |
+| D-33 | What execution envelope and fixture evidence are sufficient for the D-27 portable-governance claim? | Wave 28 triage | **One Docket-owned, per-execution envelope must be shared by both adapters.** It receives provider-reported usage before the corresponding foreign tool request can execute, enforces finite cumulative token and tool-call budgets, routes every relevant action through the existing `Runtime.dispatch`/private `dispatch_tool` chokepoint, emits one redacted `tool_call`/`tool_result` pair under the caller's stable identity, preserves the existing hash-chained audit behavior for non-allow decisions, and terminalizes once with a typed result plus `HandoffArtifact`. The common artifact-installed fixture uses a fresh home/workspace and the same scripted scenario table for exclusive tool registration, unknown/native bypass, allow, policy deny, approval deny/grant, over-budget no-mutation, trace/audit identity, and handoff parity. OpenHands uses an ephemeral loopback protocol fake and PydanticAI uses `FunctionModel`; neither hosted credentials nor subscriptions are evidence. Port 8081 is optional canary-only. A2A is not scheduled because the selected coding adapter is in-process; OTLP is not scheduled unless the merged fixture proves JSONL cannot preserve identity. Passing these exact configurations permits only a configuration-scoped claim, never that arbitrary native tools or all framework deployments are governed. |
 
 ---
 
@@ -2598,6 +2621,16 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-01 (Wave 28 bounded triage / activation) — adapter choice and evidence are now
+  executable, without adding product code.** D-32 selects the standard OpenHands SDK Agent with an
+  explicit Docket-only tool map and PydanticAI with a custom toolset; OpenHands ACP is rejected
+  because its subprocess owns tools and execution. D-33 freezes one credential-free,
+  artifact-installed scenario table and the missing shared execution envelope: reported-token and
+  tool-call budgets before mutation, sole-chokepoint dispatch, paired trace identity, existing audit
+  semantics, and typed handoff. W28-C1 is ready; C2/C3 are disjoint parallel lanes after C1; C4 is
+  the central parity/claim closure. No A2A or OTLP card was activated, and local port 8081 remains an
+  optional canary rather than a CI or subscription requirement.
 
 - **2026-09-01 (Wave 27 C2 accepted / Wave 27 closed) — the public repository now has a compact,
   reproducible front door.** Commit `d9e914a` reduces the README from 773 lines / 6,873 words to 280
