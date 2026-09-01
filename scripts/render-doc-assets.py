@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "docs" / "assets"
 GOLDEN_DIR = ROOT / "tests" / "golden" / "cases"
 OUTPUTS = ("hero.gif", "isolation.png", "governance.png")
+FONT_PATH = ASSET_DIR / "DejaVuSansMono.ttf"
 
 WIDTH = 1200
 HEIGHT = 700
@@ -38,21 +39,9 @@ YELLOW = "#fde68a"
 RED = "#fda4af"
 
 
-def _font(*, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    names = (
-        "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf",
-        "FiraCodeNerdFont-Bold.ttf" if bold else "FiraCodeNerdFont-Retina.ttf",
-    )
-    for name in names:
-        try:
-            return ImageFont.truetype(name, FONT_SIZE)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-REGULAR = _font()
-BOLD = _font(bold=True)
+# The vendored, licensed font keeps glyphs and layout identical on Linux and macOS.
+REGULAR = ImageFont.truetype(str(FONT_PATH), FONT_SIZE)
+BOLD = REGULAR
 
 
 def _golden_lines(relative: str) -> list[str]:
@@ -202,6 +191,28 @@ def _write_assets(target: Path) -> None:
     )
 
 
+def _same_visual(left_path: Path, right_path: Path) -> bool:
+    """Compare decoded pixels and animation timing, not host zlib output."""
+
+    with Image.open(left_path) as left, Image.open(right_path) as right:
+        if left.format != right.format or left.n_frames != right.n_frames:
+            return False
+        if left.info.get("loop") != right.info.get("loop"):
+            return False
+        for frame_index in range(left.n_frames):
+            left.seek(frame_index)
+            right.seek(frame_index)
+            if left.info.get("duration") != right.info.get("duration"):
+                return False
+            left_frame = left.convert("RGBA")
+            right_frame = right.convert("RGBA")
+            if left_frame.size != right_frame.size:
+                return False
+            if left_frame.tobytes() != right_frame.tobytes():
+                return False
+    return True
+
+
 def _check() -> int:
     with tempfile.TemporaryDirectory(prefix="docket-doc-assets-") as tmp:
         generated = Path(tmp)
@@ -210,7 +221,7 @@ def _check() -> int:
             name
             for name in OUTPUTS
             if not (ASSET_DIR / name).is_file()
-            or (ASSET_DIR / name).read_bytes() != (generated / name).read_bytes()
+            or not _same_visual(ASSET_DIR / name, generated / name)
         ]
     if drift:
         print("documentation asset drift: " + ", ".join(drift))

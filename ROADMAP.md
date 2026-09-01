@@ -2604,7 +2604,7 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
   lines / 1,858 words, leads with the product boundary and shipped features, and routes deep command,
   security, compatibility, embedding, and roadmap detail to their owners. Seven stale/manual PNGs
   and the old one-off renderer are replaced by three referenced, anonymized terminal assets rendered
-  and byte-verified by one script. Closure passes the 2,452-test collection (2,447 passed, five
+  and pixel/frame-verified by one script. Closure passes the 2,452-test collection (2,447 passed, five
   contract-labelled skips), Ruff/format, strict mypy, ShellCheck, 24 specs, 18 goldens, synchronized
   metrics, locked all-extras sync, deterministic smoke, and the exact-wheel release journey. The
   active board is clear; Wave 28 requires bounded adapter/fixture triage before activation.

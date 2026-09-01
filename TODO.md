@@ -1617,10 +1617,11 @@ explicit development-only renderer dependency, recorded in `pyproject.toml` and 
 lines / 1,858 words, moves deep command and roadmap detail to its owning documents, and presents one
 install-to-governed-turn route, a feature map, best practices, honest limits, and contributor paths.
 Seven stale/manual PNGs and the one-off hero renderer are replaced by three referenced, anonymized
-terminal assets generated and byte-checked by one script. The RED public-front-door contract and the
-migrated dead-file guard pass. Closure collects 2,452 tests (2,447 passed, five contract-labelled
-skips); Ruff/format, strict mypy over 74 source files, ShellCheck, 24 specs, 18 goldens, synchronized
-metrics, locked all-extras sync, deterministic smoke, and the exact-wheel release journey pass.
+terminal assets generated and pixel/frame-checked by one script. The RED public-front-door contract
+and the migrated dead-file guard pass. Closure collects 2,452 tests (2,447 passed, five
+contract-labelled skips); Ruff/format, strict mypy over 74 source files, ShellCheck, 24 specs, 18
+goldens, synchronized metrics, locked all-extras sync, deterministic smoke, and the exact-wheel
+release journey pass.
 
 ---
 

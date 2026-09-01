@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -134,6 +135,15 @@ def test_public_front_door_is_compact_and_visuals_are_reproducible() -> None:
 
     renderer = ROOT / "scripts" / "render-doc-assets.py"
     assert renderer.is_file(), "all retained terminal visuals need one reproducible renderer"
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dev_dependencies = pyproject["dependency-groups"]["dev"]
+    assert any(dependency.lower().startswith("pillow") for dependency in dev_dependencies), (
+        "the visual renderer must declare Pillow as a development-only dependency"
+    )
+    # The dependency-floor job deliberately installs runtime dependencies only. It still verifies
+    # the asset manifest and renderer declaration above; pixel reproduction belongs to dev CI.
+    if importlib.util.find_spec("PIL") is None:
+        return
     result = subprocess.run(
         [sys.executable, str(renderer), "--check"],
         cwd=ROOT,
