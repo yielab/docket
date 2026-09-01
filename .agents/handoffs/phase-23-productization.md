@@ -6,24 +6,15 @@ specs own shipped behavior.
 
 ## Current control state
 
-- Branch: `platform`.
-- Active work: Phase 23 / Wave 26. Wave 25's complete 45-path tree landed at `6b925f0`; W25-C11,
-  W25-C7, and the authorized live acceptance are DONE.
-- Ready pool: W26-C10a only. The C10 parent is planning-complete; C10b waits on C10a and C10c waits
-  on C10b. W26-C1, C2, C5-C9 are complete. Extract C10a before any claim and apply D-30 plus the
-  conflict graph below.
-- W26-C0 remains blocked on the maintainer's release-source decision. C3, C4, and C11 retain their
-  explicit dependency blockers.
-- Pre-plan dirty evidence: 22 modified paths across Wave 25 runtime, security, specs, smoke, and
-  tests. Planning edits add central roadmap/board/skill/handoff paths; they do not make the runtime
-  baseline clean.
-- Current commit-level closure validation: 2,416 tests with five expected skips; Ruff, format,
-  strict mypy over 74 source files, 24 spec validations, 18 goldens, metrics, runtime artifact
-  ownership/floor checks, deterministic smoke, and `git diff --check` passed.
-- No product code is changed by the Phase 23 planning packet.
-- At packet creation these planning files are working-tree changes, and new handoff/helper files may
-  be untracked. A fresh worktree based on the current commit will not contain them until the
-  integrator reviews and commits the packet; do not copy fragments manually between worktrees.
+- Branch: `main`, the canonical public/default and release lineage (D-31).
+- Active work: Phase 23 remains active, but Wave 26 is complete and the executable board is clear.
+- Ready pool: none. Run bounded Wave 27 trigger triage from measured Wave 26 evidence before adding
+  or claiming any card; the deferred list is not an executable queue.
+- Wave 26 closure validation: 2,451 tests with five contract-labelled skips; Ruff, format, strict
+  mypy over 74 source files, ShellCheck, 24 spec validations, 18 goldens, synchronized metrics,
+  runtime/release artifact checks, deterministic smoke, and the exact-wheel release journey pass.
+- Public release and default-branch claims are reconciled. External publication remains a separate
+  maintainer-approved action.
 
 ## Authority and loading order
 
@@ -67,7 +58,8 @@ The coordinator completed activation:
    and assign one owner per claimed card.
 
 All four steps are satisfied by `6b925f0`, its recorded closure gates, and the single active-marker
-change in the follow-up board commit. Phase 23 / Wave 26 is active.
+change in the follow-up board commit. Wave 26 later closed on 2026-08-31; Phase 23 remains active
+without an executable card pending bounded Wave 27 triage.
 
 ## Parallel execution graph
 
@@ -141,14 +133,14 @@ those templates in prompts or handoffs. Phase 23 adds only these constraints:
 | --- | --- | --- | --- |
 | Default Anthropic model has no built-in direct endpoint | deterministic + accepted live | public provider/preset/init path; `/tmp/docket-w26-c1-live-smoke-pa9AyI` | closed by W26-C1 |
 | Canonical `docket` artifact is absent | artifact-only wheel/sdist acceptance | `tests/python/test_distribution_package.py`; `2d3e713` | closed by W26-C2 |
-| Formula/installer are mutable or unverifiable | direct static | `Formula/docket-cli.rb`, `install.sh`, release workflow | W26-C3 |
-| No artifact-to-first-turn release gate | inventory gap | test/release workflow inventory | W26-C4 |
-| Runtime distributions overlap files | direct static | `packages/docket-runtime/pyproject.toml` force-include | W26-C5 |
+| Formula/installer are mutable or unverifiable | direct static | `Formula/docket-cli.rb`, `install.sh`, release workflow | closed by W26-C3 |
+| No artifact-to-first-turn release gate | inventory gap | test/release workflow inventory | closed by W26-C4 |
+| Runtime distributions overlap files | direct static | `packages/docket-runtime/pyproject.toml` force-include | closed by W26-C5 |
 | Audit head+append is unlocked | 32-process + failure-injection acceptance | `core/audit.py`; `4493874` + `6e6cfd3` | closed by W26-C6 |
-| Approval transition admits contradictory winners | reproduced live | `core/approval.py::approval_grant/deny`; grant/deny barrier dry run | W26-C7 |
+| Approval transition admits contradictory winners | reproduced live | `core/approval.py::approval_grant/deny`; grant/deny barrier dry run | closed by W26-C7 |
 | Resource allocation and rollback cross attempts | barrier + rollback acceptance | `pod_provisioning.py`; `f9c9fd5` | closed by W26-C8 |
-| Conversation hop touch is load+save | direct static | `core/dispatch.py::_persist_hop`, `core/conversations.py` | W26-C9 |
-| In-process cancel does not stop the loop | direct static | `core/runs.py::cancel_run`, `DocketDriver.run_turn` | W26-C10a → C10b → C10c |
+| Conversation hop touch is load+save | direct static | `core/dispatch.py::_persist_hop`, `core/conversations.py` | closed by W26-C9 |
+| In-process cancel does not stop the loop | direct static | `core/runs.py::cancel_run`, `DocketDriver.run_turn` | closed by W26-C10a–C10c |
 | Reviewer marker placement and private-boundary canary | accepted live evidence | `/tmp/docket-w25-c7-live-L8nkOm`; W25-C7/C11 shipped evidence | closed |
 
 This ledger is an index, not a substitute for reproducing the selected card's RED case.

@@ -13,15 +13,13 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD (2026-08-30) — Wave 26 first-use and governance truth
+> ## ☑ BOARD CLEAR (2026-08-31) — Wave 26 complete
 >
-> A real unquoted `docket pod ... delegate create a file ...` stored only `"create"`. The resulting
-> underspecified turn then grew to 17,643 tokens against the selected endpoint's registered
-> 16,384-token window. Re-running realistic work after the model recovered exposed three further
-> independent failures: a correct repair exhausted the cumulative turn budget before finalizing,
-> its failed task was recorded as a successful run, and the basic canary's mechanical gate accepted
-> an artifact that violated its own byte-exact final assertion. Wave 25 keeps each cause separately
-> testable and shippable.
+> Wave 26 closed after C11 reconciled the public install, provider, first-turn, runtime-embedding,
+> cancellation, package, branch, spec, and metric claims with executable behavior. No roadmap card
+> is currently claimable. Phase 23 continues only after the bounded Wave 27 trigger triage turns
+> measured Wave 26 evidence into independently testable cards; do not invent work from the deferred
+> list.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -93,9 +91,10 @@
 
 **Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `DONE`
 **Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model:** this program lives on the long-running **`platform`** branch (a deliberate
-fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch per task → merged into
-`platform`, never directly into `main`.
+**Branch model:** **`main`** is the canonical public/default and release lineage (D-31). Use one
+short-lived card branch or isolated worktree per task and integrate it into `main` without rewriting
+history. `platform` may remain as a synchronized historical/integration ref, but it is not a second
+release source.
 
 ---
 
@@ -104,7 +103,7 @@ fork-candidate line — see ROADMAP §8). One short-lived `pc/<card-id>` branch 
 **Integration state (2026-08-30):** all 11 behavior/acceptance cards are DONE. Commit `6b925f0`
 owns the complete 45-path Wave 25 tree. Its commit-level gates passed: 2,377 tests with five
 contract-labelled skips, Ruff, format, strict mypy, 24 specs, 18 goldens, metrics, and deterministic
-smoke. Wave 26 is now the sole active board.
+smoke. Wave 26 subsequently closed after its own release/governance and public-truth gates passed.
 
 ### W25-C1 — preserve the complete delegated task text
 
@@ -766,13 +765,13 @@ model call was made by this card.
 
 ---
 
-## ◉ WAVE 26 ACTIVE (2026-08-30) — first successful turn and release/governance truth
+## ☑ WAVE 26 COMPLETE (2026-08-31) — first successful turn and release/governance truth
 
-**Activation state:** ACTIVE. Wave 25 closed at integration commit `6b925f0` after its full closure
-gates passed. W26-C0's maintainer decision is accepted: `main` is the canonical public/default
-release lineage and the completed `platform` history is synchronized into it without rewriting
-history. W26-C4 is complete; C11 is now the sole ready, integrator-only truth pass. The Phase 23
-decision and later-wave triggers live in
+**Integration state (2026-08-31):** COMPLETE. All Wave 26 cards are DONE. W26-C0 established
+`main` as the canonical public/default release lineage without rewriting history; C1–C10c shipped
+the first-turn, artifact, runtime-boundary, atomic-governance, and cooperative-cancellation
+contracts; C11 reconciled every public claim with those behaviors. The Phase 23 decision and
+later-wave triggers live in
 [ROADMAP.md](ROADMAP.md#current-planned-program--phase-23-product-truth-and-ecosystem-proof). The
 bounded coordinator packet is
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md).
@@ -1488,7 +1487,7 @@ boundary, 18 goldens, synchronized metrics, and deterministic smoke all pass.
 
 ### W26-C11 — reconcile public claims and close the wave
 
-**Status:** IN PROGRESS (2026-08-31) · **Size:** M ·
+**Status:** DONE (2026-08-31) · **Size:** M ·
 **Owner:** @codex (integrator)
 
 **Explicit trigger:** the audit found stale/default-branch architecture, quickstart/provider drift,
@@ -1520,6 +1519,16 @@ ownership audit before closing Wave 26.
 
 **Contention:** integrator-only and last. Worker branches report evidence but never edit these
 rollups. External publication and branch/default changes still require separate maintainer approval.
+
+**Shipped evidence:** RED commit `dcce5b2` defines executable public-release truth for immutable
+installation, supported provider setup, the governed first turn, artifact-only runtime embedding,
+known limits, and stale-claim rejection. GREEN commit `f9a4086` makes the landing page, quickstart,
+provider, command, compatibility, security, installation, example, and spec-index surfaces agree
+with the shipped CLI and packages. The isolated ten-minute route and runtime example pass from built
+artifacts without checkout imports. The full 2,451-test collection has 2,446 passes and five
+contract-labelled skips; Ruff, format, strict mypy over 74 source files, ShellCheck, 24 specs, 18
+goldens, synchronized metrics, dependency-floor artifacts, deterministic smoke, and the exact-wheel
+release journey pass.
 
 ---
 

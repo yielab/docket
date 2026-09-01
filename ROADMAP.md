@@ -12,9 +12,9 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-08-31.** **Every numbered phase 0–22 and Waves 24–25 are complete. Phase 23 is
-active through Wave 26 after the complete 45-path Wave 25 tree landed at `6b925f0` and passed its
-commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
+**Last updated: 2026-08-31.** **Every numbered phase 0–22 and Waves 24–26 are complete. Phase 23
+remains active, but has no executable card until bounded Wave 27 trigger triage converts measured
+Wave 26 evidence into scoped work.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,7 +37,7 @@ commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — W26-C10b shipped cooperative cancellation checkpoints; C10c is ready and C0 awaits the maintainer's release-source decision |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 26 complete; Wave 27 requires bounded evidence/trigger triage before cards are executable |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -46,6 +46,7 @@ commit-level closure gates.** Executable cards live in [TODO.md](TODO.md).
 | — | **Wave 23** (not a phase): real local-model workflow + reachable startup state | ☑ done (2026-08-19) — an opt-in Qwen canary crosses the full workflow; bounded HEARTBEAT/AGENTS/TOOLS/MEMORY context now reaches every live turn without widening tool roots |
 | — | **Wave 24** (not a phase): realistic memory-backed Git maintenance | ☑ done (2026-08-19) — exact durable memory fails closed on corruption; real worktree code continuity reaches Reviewer/Tester; public plus hidden acceptance passes on the local model |
 | — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
+| — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -173,10 +174,10 @@ second orchestration graph language.
 Wave 25's 45 attributed paths landed in `6b925f0` after W25-C7's single authorized live acceptance.
 The integrated commit passed 2,377 tests with five contract-labelled skips, Ruff, format, strict
 mypy, 24 specs, 18 goldens, metrics, and deterministic smoke. The active-board marker changed once;
-Wave 26 is active. Central files (`ROADMAP.md`, `TODO.md`, `README.md`, `specs/README.md`) remain
-integrator-owned.
+Wave 26 then completed on 2026-08-31. Central files (`ROADMAP.md`, `TODO.md`, `README.md`,
+`specs/README.md`) remain integrator-owned.
 
-### Wave 26 — first-use and governance truth (active)
+### Wave 26 — first-use and governance truth (complete 2026-08-31)
 
 Wave 26 contains independently shippable cards rather than one release-sized branch. Its initial
 ready pool after activation is W26-C1, C2, and C6–C10; C0 is an integrator/maintainer decision, C3
@@ -186,21 +187,21 @@ contention boundaries live once in `TODO.md`.
 
 | Card | Outcome | Dependency / parallel boundary |
 | --- | --- | --- |
-| W26-C0 | One public release source/commit lineage | Integrator-only; external branch setting requires maintainer approval |
-| W26-C1 | Clean configuration reaches the first governed turn | Owns provider/onboarding path; independent of release and governance files |
-| W26-C2 | Canonical installable `docket` wheel/sdist | Owns root packaging; predecessor to C3/C5 |
+| W26-C0 | One public release source/commit lineage | Done; `main` is canonical and synchronized without history rewrite |
+| W26-C1 | Clean configuration reaches the first governed turn | Done; resolvable provider/onboarding path proven |
+| W26-C2 | Canonical installable `docket` wheel/sdist | Done; root artifact owns the documented CLI distribution |
 | W26-C3 | Immutable, checksummed release artifacts | Done (`0251972`, `5bb106a`); tagged package assets are verified before install/publish |
 | W26-C4 | Clean-install-to-first-turn CI release oracle | Done (`f8f897e`, `6c52df7`); exact wheel reaches a governed turn on Ubuntu/macOS |
-| W26-C5 | Non-overlapping, documented runtime distribution | After C2 and D-28; owns runtime package boundary |
-| W26-C6 | Atomic, durable audit append | Owns audit JSONL/rotation path; no approval-state edits |
-| W26-C7 | Compare-and-set approval resolution | Owns approval state/functions; consumes store/audit unchanged |
-| W26-C8 | Collision-free pod resource allocation | Owns allocation functions, not generic store code |
-| W26-C9 | Lost-update-free conversation mutation | Owns conversation mutation and one narrow dispatch call site |
+| W26-C5 | Non-overlapping, documented runtime distribution | Done; artifact boundary and ownership checks pass |
+| W26-C6 | Atomic, durable audit append | Done; concurrent append/rotation preserves the chain |
+| W26-C7 | Compare-and-set approval resolution | Done; contradictory concurrent winners are rejected |
+| W26-C8 | Collision-free pod resource allocation | Done; allocation and rollback remain isolated |
+| W26-C9 | Lost-update-free conversation mutation | Done; concurrent hop mutation preserves updates |
 | W26-C10 | Cancellation scope split only | Planning-complete; superseded by C10a → C10b → C10c |
 | W26-C10a | Persisted cancellation request/observe/stop lifecycle | Done (`0d24f7a`, `dc69142`); typed cross-process signal and atomic terminal winner |
 | W26-C10b | Cooperative driver/loop/approval/tool checkpoints | Done (`3244fb2`, `d6eca09`); typed safe-boundary stop with atomic tool history |
-| W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; owns whole-path oracle and cancellation wording |
-| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Ready; integrator-only truth pass after C0–C10 |
+| W26-C10c | Durable task/run reconciliation and truthful public surfaces | Done; whole-path oracle and cancellation wording agree |
+| W26-C11 | Public branch, quickstart, installer, and claims match shipped behavior | Done (`dcce5b2`, `f9a4086`); Wave 26 closure truth and gates pass |
 
 ### Wave 27 — hardened single-host coding pods (triggered planning, not executable yet)
 
@@ -2587,6 +2588,17 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-08-31 (Wave 26 C11 accepted / Wave 26 closed) — the public release story now matches the
+  executable product from immutable artifact to governed turn.** RED commit `dcce5b2` locks the
+  install, provider, first-turn, runtime-embedding, known-limit, and stale-claim contracts; GREEN
+  commit `f9a4086` reconciles the landing page, quickstart, provider, command, compatibility,
+  security, installation, example, and spec-index surfaces. The artifact-only route and runtime
+  example pass without checkout imports. Closure passes the 2,451-test collection (2,446 passed,
+  five contract-labelled skips), Ruff/format, strict mypy over 74 source files, ShellCheck, 24
+  specs, 18 goldens, synchronized metrics, dependency-floor artifact checks, deterministic smoke,
+  and the exact-wheel release journey. The active board is clear; Wave 27 remains trigger-driven
+  triage, not executable work.
 
 - **2026-08-31 (Wave 26 C4 accepted) — the exact installable artifact now reaches a governed first
   turn on Linux and macOS.** RED commit `f8f897e` defines three artifact-installed release-journey
