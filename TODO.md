@@ -1756,7 +1756,7 @@ claimed independently; C4 still waits on both adapters.
 
 ### W28-C2 — prove the OpenHands SDK coding-runtime adapter
 
-**Status:** TODO · **Size:** M · **Owner:** unclaimed
+**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the standard OpenHands SDK agent supports an explicit tool list and custom
 typed tool definitions, while `ACPAgent` explicitly delegates tools/execution to its subprocess.
