@@ -1668,7 +1668,7 @@ canary only after the deterministic oracle passes; it cannot replace or block CI
 
 ### W28-C1 — define the shared governed-execution envelope
 
-**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-09-01) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the published facade exposes `Runtime.register` and `Runtime.dispatch`; the
 private Docket loop, not that facade, currently owns cumulative reported-token/tool-call limits,
@@ -1743,9 +1743,20 @@ the exported contract, scenario fixture API, exact focused commands, RED commit,
 unresolved risks—never raw framework docs/logs. After integration, C2 and C3 may run simultaneously
 in isolated worktrees because they own disjoint adapter modules and tests.
 
+**Shipped evidence:** RED commit `9f6a79c` pins seven artifact-installed lifecycle, budget, trace,
+handoff, packaging, malformed-call, and concurrent approval-stub cases. GREEN commit `d2e1b33`
+ships the public `0.3.0` governed envelope while retaining `dispatch_tool` as the sole execution
+chokepoint; all seven cases pass from wheel and rebuilt sdist. Commit `2e37361` freezes the shared
+seven-scenario oracle and disjoint adapter environments: OpenHands SDK `1.44.1` on Python 3.12 and
+PydanticAI `2.37.0` on Python 3.11, with exact independent locks and unchanged runtime base
+dependencies. Closure passes 2,457 tests with five contract-labelled skips, 13 focused runtime and
+fixture cases, Ruff/format, strict mypy, 24 specs, 18 goldens, synchronized metrics, both frozen
+dependency resolutions, the deterministic smoke, and `git diff --check`. C2 and C3 may now be
+claimed independently; C4 still waits on both adapters.
+
 ### W28-C2 — prove the OpenHands SDK coding-runtime adapter
 
-**Status:** BLOCKED (needs W28-C1) · **Size:** M · **Owner:** unclaimed
+**Status:** TODO · **Size:** M · **Owner:** unclaimed
 
 **Measured trigger:** the standard OpenHands SDK agent supports an explicit tool list and custom
 typed tool definitions, while `ACPAgent` explicitly delegates tools/execution to its subprocess.
@@ -1799,7 +1810,7 @@ disjoint.
 
 ### W28-C3 — prove the PydanticAI general-framework adapter
 
-**Status:** BLOCKED (needs W28-C1) · **Size:** M · **Owner:** unclaimed
+**Status:** TODO · **Size:** M · **Owner:** unclaimed
 
 **Measured trigger:** PydanticAI provides a custom `AbstractToolset` with direct ownership of
 `get_tools`/`call_tool`, per-run provider-reported usage in `RunContext`, sequential toolset mode,

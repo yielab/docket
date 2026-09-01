@@ -2622,6 +2622,17 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 
 ### Changelog
 
+- **2026-09-01 (Wave 28 C1 accepted) — external adapters now share one bounded Docket execution
+  envelope instead of reimplementing governance.** RED commit `9f6a79c` and GREEN commit `d2e1b33`
+  prove artifact-installed reported-token/tool-call preflight, exact call lifecycle, sole-
+  chokepoint dispatch, paired trace identity, typed terminal handoff, and isolated concurrent
+  approval stubs. Commit `2e37361` freezes the common seven-scenario oracle plus disjoint exact
+  dependency graphs for OpenHands SDK `1.44.1` on Python 3.12 and PydanticAI `2.37.0` on Python
+  3.11, without adding either framework to `docket-runtime`. Closure passes 2,457 tests with five
+  contract-labelled skips, Ruff/format, strict mypy, 24 specs, 18 goldens, synchronized metrics,
+  frozen-lock resolution, the deterministic smoke, and `git diff --check`. W28-C2 and W28-C3 are
+  now independent ready lanes; W28-C4 still waits for both adapter proofs.
+
 - **2026-09-01 (Wave 28 bounded triage / activation) — adapter choice and evidence are now
   executable, without adding product code.** D-32 selects the standard OpenHands SDK Agent with an
   explicit Docket-only tool map and PydanticAI with a custom toolset; OpenHands ACP is rejected
