@@ -13,8 +13,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-01.** **Every numbered phase 0–22 and Waves 24–27 are complete. Phase 23
-remains active; bounded triage selected the Wave 28 adapters and fixture, and W28-C1 is ready on the
-executable board.** Executable cards live in [TODO.md](TODO.md).
+remains active; Wave 28's shared envelope and both adapter proofs are complete, and W28-C4 is ready
+for cross-adapter parity and public-truth closure.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,7 +37,7 @@ executable board.** Executable cards live in [TODO.md](TODO.md).
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 activated; shared envelope C1 ready, adapter cards blocked on it |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 C1–C3 complete; C4 parity/public-truth closure ready |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -48,7 +48,7 @@ executable board.** Executable cards live in [TODO.md](TODO.md).
 | — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
-| — | **Wave 28** (not a phase): portable governance proof | ◉ active (2026-09-01) — OpenHands SDK + PydanticAI selected; C1 shared envelope ready |
+| — | **Wave 28** (not a phase): portable governance proof | ◉ active (2026-09-01) — shared envelope plus OpenHands/PydanticAI adapters complete; C4 ready |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -244,10 +244,10 @@ closure gate.
 
 | Card | Outcome | Dependency / parallel boundary |
 | --- | --- | --- |
-| W28-C1 | Shared public execution envelope + common fixture contract | Ready; owns all public facade/types, package metadata, shared tests, and fixture locks |
-| W28-C2 | Standard OpenHands SDK adapter and coding fixture | Blocked on C1; then parallel with C3, owns only OpenHands module/test/environment |
-| W28-C3 | PydanticAI custom-toolset adapter and general fixture | Blocked on C1; then parallel with C2, owns only PydanticAI module/test/environment |
-| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Blocked on C2+C3; integrator-only central rollup |
+| W28-C1 | Shared public execution envelope + common fixture contract | Done (`9f6a79c`, `d2e1b33`, `2e37361`); bounded facade and shared oracle shipped |
+| W28-C2 | Standard OpenHands SDK adapter and coding fixture | Done (`071a744`, `c7d6a59`, `fbb4084`); nine Python 3.12 artifact cases pass |
+| W28-C3 | PydanticAI custom-toolset adapter and general fixture | Done (`648dec5`, `a6c9197`); seven Python 3.11 artifact cases pass |
+| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Ready; integrator-only shared matrix/spec/docs/full-gate closure |
 
 No A2A card is activated because the selected coding proof is in-process and needs no remote task
 discovery/state/cancellation. No OTLP card is activated because the fixture is explicitly required
@@ -2621,6 +2621,19 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-01 (Wave 28 C2+C3 accepted) — the same Docket execution envelope now governs two
+  concrete external-runtime configurations.** OpenHands RED `071a744`, GREEN `c7d6a59`, and typed
+  boundary follow-up `fbb4084` prove nine wheel/sdist cases against the standard SDK Agent `1.44.1`
+  on Python 3.12 with no default, ACP, MCP, plugin, bash, or file-editor bypass. PydanticAI RED
+  `648dec5` and GREEN `a6c9197` prove seven wheel/sdist cases against a sequential custom toolset on
+  PydanticAI `2.37.0` and Python 3.11 with no native or runtime-added toolset. Oracle correction
+  `be61ab1` preserves C1's broad `decision="deny"` plus specific `denialKind` trace contract. Both
+  adapters report provider usage before dispatch, enforce Docket's lower budget before mutation,
+  preserve approval/policy/audit/trace identity, and return the shared typed handoff; the 13-case
+  shared C1/fixture/package group, Ruff/format, adapter strict mypy, 24 specs, synchronized 2,478-
+  test metrics, and cleanup all pass. W28-C4 is now ready; it still owns the repeated merged parity
+  matrix, final spec/public claims, full suite/goldens/smoke/privacy gates, and Wave 28 closure.
 
 - **2026-09-01 (Wave 28 C1 accepted) — external adapters now share one bounded Docket execution
   envelope instead of reimplementing governance.** RED commit `9f6a79c` and GREEN commit `d2e1b33`

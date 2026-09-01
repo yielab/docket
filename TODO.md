@@ -17,10 +17,9 @@
 >
 > The bounded adapter-selection and fixture-design pass selected the standard OpenHands SDK agent
 > with an explicit Docket-only tool list and PydanticAI with a custom Docket-owned toolset. OpenHands
-> ACP is explicitly rejected for this proof because its server owns its tools and execution. W28-C1
-> is the only initially ready card; C2 and C3 become parallel-ready after its shared execution
-> envelope lands, and C4 remains the integrator-only closure card. Decisions D-32 and D-33 in
-> ROADMAP.md own the selection and evidence contract.
+> ACP is explicitly rejected for this proof because its server owns its tools and execution.
+> W28-C1 through C3 are closed; C4 is now the ready integrator-only parity and public-truth closure
+> card. Decisions D-32 and D-33 in ROADMAP.md own the selection and evidence contract.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1756,7 +1755,7 @@ claimed independently; C4 still waits on both adapters.
 
 ### W28-C2 — prove the OpenHands SDK coding-runtime adapter
 
-**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex
+**Status:** DONE (2026-09-01) · **Size:** M · **Owner:** @codex
 
 **Measured trigger:** the standard OpenHands SDK agent supports an explicit tool list and custom
 typed tool definitions, while `ACPAgent` explicitly delegates tools/execution to its subprocess.
@@ -1808,9 +1807,20 @@ unsupported OpenHands shape. Never edit central board/docs/metrics. This card ca
 with C3 after C1 because their modules, test files, fixture environments, caches, and ports are
 disjoint.
 
+**Shipped evidence:** RED commit `071a744` pins the credential-free loopback, exclusive tool map,
+seven shared governance scenarios, wheel, and rebuilt-sdist contract for OpenHands SDK `1.44.1` on
+Python 3.12. GREEN commits `c7d6a59` and `fbb4084` ship the standard synchronous Agent adapter:
+reported response usage reaches the C1 envelope before any admitted action, only Docket-backed
+tools resolve, over-budget calls terminalize before execution, and results return through a
+concrete Observation and typed handoff. All nine C2 artifact cases pass; shared C1/fixture/package
+checks pass as part of the 13-case cross-card group; Ruff/format, pinned-SDK strict mypy, and all 24
+spec validations pass. Commit `be61ab1` corrects the card-owned trace oracle to assert broad
+`decision="deny"` separately from typed `denialKind`. No hosted key, subscription, port-8081
+canary, ACP, default/MCP/plugin/native mutation tool, or new runtime dependency is closure evidence.
+
 ### W28-C3 — prove the PydanticAI general-framework adapter
 
-**Status:** IN-PROGRESS (@codex-c3) · **Size:** M · **Owner:** @codex-c3
+**Status:** DONE (2026-09-01) · **Size:** M · **Owner:** @codex-c3
 
 **Measured trigger:** PydanticAI provides a custom `AbstractToolset` with direct ownership of
 `get_tools`/`call_tool`, per-run provider-reported usage in `RunContext`, sequential toolset mode,
@@ -1856,9 +1866,20 @@ tests, and any limitation in the toolset/usage seam. Never edit central board/do
 card is parallel-safe with C2 after C1; its environment must not share home/cache/ports even though
 its deterministic model needs no socket.
 
+**Shipped evidence:** RED commit `648dec5` pins the credential-free `FunctionModel`, exact
+sequential tool enumeration, shared governance scenarios, native/unknown bypass probes, wheel, and
+rebuilt-sdist contract for PydanticAI `2.37.0` on Python 3.11. GREEN commit `a6c9197` ships one
+custom `DocketToolset`: cumulative `RunContext` usage is converted to per-response deltas before
+the corresponding call is admitted, exact ids/names/arguments dispatch only through C1, and
+`finish()` returns the shared typed terminal. All seven C3 artifact cases pass; the same 13 shared
+C1/fixture/package checks, Ruff/format, pinned-environment strict mypy, and all 24 specs pass. Base
+Python 3.11 compatibility and the runtime's two existing dependencies remain unchanged; provider
+SDKs/keys, native or runtime-added toolsets, parallel execution, and telemetry are outside this
+configuration-scoped proof.
+
 ### W28-C4 — reconcile cross-adapter parity and close Wave 28
 
-**Status:** BLOCKED (needs W28-C2 and W28-C3) · **Size:** M · **Owner:** @codex (integrator)
+**Status:** TODO · **Size:** M · **Owner:** @codex (integrator)
 
 **Explicit trigger:** two focused adapters are not a portable-governance claim until their merged,
 artifact-installed behavior passes the same oracle and public wording names the exact supported

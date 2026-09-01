@@ -229,7 +229,7 @@ checkout and start with [examples/runtime_embed.py](examples/runtime_embed.py).
 
 ### Engineering evidence
 
-- **2,462 tests** in `tests/python/`
+- **2,478 tests** in `tests/python/`
 - **~30,478 lines** of Python in the shipped package
 - **24 specifications** validated in CI
 - **37 commands** documented in the command reference
@@ -237,7 +237,7 @@ checkout and start with [examples/runtime_embed.py](examples/runtime_embed.py).
 - Exact-wheel first-turn journeys on Ubuntu and macOS
 
 ```bash
-uv run pytest                                      # 2,462-test Python suite
+uv run pytest                                      # 2,478-test Python suite
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
