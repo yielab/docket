@@ -38,7 +38,7 @@ from pathlib import Path
 
 from docket_runtime import Runtime, Tool, ToolCall, ToolContext, ToolOutcome, __version__
 
-assert __version__ == "0.2.0"
+assert __version__ == "0.3.0"
 assert not any(name == "docket" or name.startswith("docket.cli") for name in sys.modules)
 home = Path(os.environ["DOCKET_HOME"])
 (home / "policies").mkdir(parents=True, exist_ok=True)
@@ -208,8 +208,8 @@ def test_runtime_artifacts_are_disjoint_rebuildable_and_embed_without_cli(tmp_pa
 
 
 @pytest.mark.parametrize(
-    "artifact", ["docket_runtime-0.2.0-py3-none-any.whl", "docket_runtime-0.2.0.tar.gz"]
+    "artifact", ["docket_runtime-0.3.0-py3-none-any.whl", "docket_runtime-0.3.0.tar.gz"]
 )
 def test_runtime_artifact_names_are_versioned(artifact: str) -> None:
     """Pin the facade release identity separately from the control plane."""
-    assert "docket_runtime-0.2.0" in artifact
+    assert "docket_runtime-0.3.0" in artifact

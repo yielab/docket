@@ -107,11 +107,11 @@ def _consumer(body: str) -> str:
         def read_state(args, context):
             return ToolOutcome(True, state.read_text(encoding="utf-8"))
 
-        parameters = {{
+        parameters = {
             "type": "object",
-            "properties": {{"value": {{"type": "string"}}}},
+            "properties": {"value": {"type": "string"}},
             "required": ["value"],
-        }}
+        }
         context = ToolContext(
             agent_id="external",
             session_key="w28-execution",
@@ -221,7 +221,7 @@ def test_every_decision_emits_one_paired_trace_with_execution_identity(
             "applies_to": ["*"],
             "hook": "pre_tool_call",
             "match": {"type": "regex", "pattern": "deny_action"},
-            "action": "deny",
+            "action": "block",
             "message": "fixture denial",
         }), encoding="utf-8")
         (policies / "approval.json").write_text(json.dumps({

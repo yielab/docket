@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docket-runtime"
-version = "0.2.0"
+version = "0.3.0"
 description = "Embeddable, policy-gated Docket tool runtime."
 requires-python = ">=3.11"
 dependencies = [

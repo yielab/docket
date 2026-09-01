@@ -1,8 +1,7 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
 **Version**: 2.1.0
-**Status**: Implemented artifact facade; W28-C1 governed-execution envelope specified with RED
-tests and pending production implementation (not published to an index)
+**Status**: Implemented artifact facade and governed-execution envelope (not published to an index)
 **Last Updated**: 2026-09-01
 
 ## Purpose
@@ -163,7 +162,7 @@ dispatch never bypasses the existing `ToolResult` return contract.
 
 ## Versioning and deprecation
 
-`docket-runtime` is independently versioned, currently `0.2.0`; its version
+`docket-runtime` is independently versioned, currently `0.3.0`; its version
 does not imply a `docket` control-plane version. Before 1.0, patch releases do
 not remove or change a facade name; minor releases may add facade names. A
 breaking facade change requires a minor bump and a changelog entry naming the
@@ -195,7 +194,7 @@ and unchanged base dependencies.
   response/call admission, endpoint-reported token and tool-call budgets before
   mutation, the existing dispatch chokepoint and paired traces, isolated real-
   store approval stubs, and one typed terminal result/handoff. The artifact
-  RED suite pins the missing behavior before production implementation.
+  suite proves the behavior from both wheel and rebuilt-sdist installations.
 
 ### Version 2.0.0 (2026-08-31)
 
