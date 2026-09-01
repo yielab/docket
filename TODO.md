@@ -1810,7 +1810,7 @@ disjoint.
 
 ### W28-C3 — prove the PydanticAI general-framework adapter
 
-**Status:** TODO · **Size:** M · **Owner:** unclaimed
+**Status:** IN-PROGRESS (@codex-c3) · **Size:** M · **Owner:** @codex-c3
 
 **Measured trigger:** PydanticAI provides a custom `AbstractToolset` with direct ownership of
 `get_tools`/`call_tool`, per-run provider-reported usage in `RunContext`, sequential toolset mode,
