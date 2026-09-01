@@ -253,7 +253,12 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             assert all(record["session_id"] == "pydantic-{scenario.name}" for record in pair)
             assert all(record["agent_role"] == "implementer" for record in pair)
             assert all(record["payload"]["callId"] == "pydantic-{scenario.name}" for record in pair)
-            assert pair[-1]["payload"]["decision"] == {scenario.expected_decision!r}
+            expected_decision = {scenario.expected_decision!r}
+            if expected_decision in ("gate_denied", "approval_denied"):
+                assert pair[-1]["payload"]["decision"] == "deny"
+                assert pair[-1]["payload"]["denialKind"] == expected_decision
+            else:
+                assert pair[-1]["payload"]["decision"] == expected_decision
 
         audit = (home / "audit.log").read_text(encoding="utf-8") if (home / "audit.log").exists() else ""
         if {scenario.expected_decision!r} == "gate_denied":

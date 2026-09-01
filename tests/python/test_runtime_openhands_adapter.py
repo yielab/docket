@@ -302,7 +302,12 @@ try:
                 record["payload"]["callId"] == f"call-{scenario['name']}"
                 for record in tool_trace
             )
-            assert tool_trace[-1]["payload"]["decision"] == scenario["expected_decision"]
+            expected_decision = scenario["expected_decision"]
+            if expected_decision in ("gate_denied", "approval_denied"):
+                assert tool_trace[-1]["payload"]["decision"] == "deny"
+                assert tool_trace[-1]["payload"]["denialKind"] == expected_decision
+            else:
+                assert tool_trace[-1]["payload"]["decision"] == expected_decision
 
         assert terminal.stop_reason == scenario["expected_stop"]
         assert terminal.tool_calls_executed == (1 if dispatched else 0)
