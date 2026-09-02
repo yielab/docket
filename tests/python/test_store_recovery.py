@@ -44,6 +44,27 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
+@pytest.mark.parametrize("parent_exists", [True, False])
+def test_missing_primary_keeps_empty_default_without_restoring_backup(
+    tmp_path: Path, parent_exists: bool
+) -> None:
+    parent = tmp_path / "registry"
+    path = parent / "state.json"
+    backup = _backup(path)
+    if parent_exists:
+        parent.mkdir()
+        backup.write_bytes(b'{"generation":"orphaned-backup"}\n')
+        backup_before = backup.read_bytes()
+
+    assert store.read_json(path) == {}
+
+    assert not path.exists()
+    if parent_exists:
+        assert backup.read_bytes() == backup_before
+    else:
+        assert not parent.exists()
+
+
 @pytest.mark.parametrize(
     "backup_bytes",
     [b'{"generation":"stale"}\n', b"{malformed backup"],
@@ -86,6 +107,32 @@ def test_public_read_recovers_backup_and_quarantines_exact_primary_bytes(
     assert _mode(_quarantine(path)) == 0o600
     assert list(tmp_path.glob("state.json.corrupt*")) == [_quarantine(path)]
     assert not _tmp(path).exists()
+
+
+def test_restore_write_failure_keeps_recovery_inputs_and_cleans_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "state.json"
+    recovered = {"generation": "previous", "items": ["complete"]}
+    backup_before = _seed_two_generations(path, recovered, {"generation": "current"})
+    path.write_bytes(_CORRUPT_PRIMARY)
+    real_replace = store.os.replace
+
+    def _fail_primary_restore(src: Any, dst: Any) -> None:
+        if Path(dst) == path:
+            raise OSError("primary restore blocked")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(store.os, "replace", _fail_primary_restore)
+
+    with pytest.raises(OSError, match="primary restore blocked"):
+        store.read_json(path)
+
+    assert path.read_bytes() == _CORRUPT_PRIMARY
+    assert _backup(path).read_bytes() == backup_before
+    assert _quarantine(path).read_bytes() == _CORRUPT_PRIMARY
+    assert not _tmp(path).exists()
+    assert not _quarantine(path).with_suffix(".corrupt.tmp").exists()
 
 
 def test_runs_list_cli_recovers_the_prior_complete_registry(

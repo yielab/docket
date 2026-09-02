@@ -1,7 +1,7 @@
 # Docket JSON Store Specification
 
 **Version**: 1.0.0
-**Status**: In progress
+**Status**: Implemented
 **Last updated**: 2026-09-02
 
 ## Purpose
@@ -47,6 +47,11 @@ the object semantics of the backup. The quarantine is opaque diagnostic bytes ra
    identifies the primary and backup and describes why recovery cannot proceed. It changes no
    primary, backup, quarantine, or temporary-file bytes.
 
+Backup validation completes before recovery writes begin. If a later filesystem write fails, the
+operation raises that I/O error: the malformed primary and valid backup remain intact, the bounded
+quarantine may already contain the current malformed bytes, and no temporary file remains. A retry
+can therefore perform the same recovery without inventing empty state.
+
 Only one lock owner may inspect recovery inputs, quarantine bytes, restore the primary, or perform
 the following write. `read_modify_write` MUST use the same lock boundary without reacquiring the
 non-reentrant directory lock. Concurrent readers therefore observe one recovery winner, while a
@@ -87,4 +92,5 @@ state.json.bak     {"generation": 1}
 ### 1.0.0 — 2026-09-02
 
 - Define locked corrupt-primary recovery, bounded quarantine retention, typed failure atomicity,
-  real CLI consumption, and concurrent reader/writer oracles. Implementation is pending.
+  real CLI consumption, and concurrent reader/writer oracles. Implemented at the shared JSON-store
+  chokepoint.

@@ -19,12 +19,23 @@ import os
 import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from filelock import FileLock, Timeout
 from pydantic import BaseModel
 
 _LOCK_TIMEOUT = 10  # seconds
+
+
+class StoreRecoveryError(json.JSONDecodeError):
+    """A malformed JSON primary cannot be recovered from its owned backup."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, "", 0)
+
+
+class _NotJSONObject(ValueError):
+    """A parsed Docket JSON document has the wrong top-level type."""
 
 
 def _lock_path(target: Path) -> Path:
@@ -81,7 +92,7 @@ def read_modify_write(
     ``None``).
     """
     with with_lock(path):
-        current = read_json(path)
+        current = _read_json_unlocked(path)
         updated = fn(current)
         if updated is None:
             return current
@@ -90,11 +101,65 @@ def read_modify_write(
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    """Parse a JSON file; return {} when it does not exist."""
+    """Read one object, recovering a malformed primary from its valid backup."""
+    if not path.exists() and not path.parent.exists():
+        return {}
+    with with_lock(path):
+        return _read_json_unlocked(path)
+
+
+def _read_json_unlocked(path: Path) -> dict[str, Any]:
+    """Read or recover *path* while its per-directory lock is already held."""
     if not path.exists():
         return {}
-    with path.open(encoding="utf-8") as f:
-        return json.load(f)  # type: ignore[no-any-return]
+
+    primary_bytes = path.read_bytes()
+    try:
+        return _parse_json_object(primary_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError, _NotJSONObject):
+        return _recover_from_backup(path, primary_bytes)
+
+
+def _parse_json_object(raw: bytes) -> dict[str, Any]:
+    parsed: Any = json.loads(raw.decode("utf-8"))
+    if not isinstance(parsed, dict):
+        raise _NotJSONObject("Docket-owned JSON must contain an object")
+    return cast(dict[str, Any], parsed)
+
+
+def _recover_from_backup(path: Path, malformed_bytes: bytes) -> dict[str, Any]:
+    backup = path.with_suffix(path.suffix + ".bak")
+    try:
+        backup_bytes = backup.read_bytes()
+    except FileNotFoundError:
+        raise StoreRecoveryError(
+            f"Cannot recover malformed {path}: backup {backup} is missing; "
+            "restore a valid backup or replace the primary manually."
+        ) from None
+    except OSError as exc:
+        raise StoreRecoveryError(
+            f"Cannot recover malformed {path}: backup {backup} is unreadable "
+            f"({exc.strerror or type(exc).__name__}); restore a valid backup or replace "
+            "the primary manually."
+        ) from None
+
+    try:
+        recovered = _parse_json_object(backup_bytes)
+        backup_text = backup_bytes.decode("utf-8")
+    except (UnicodeDecodeError, json.JSONDecodeError, _NotJSONObject):
+        raise StoreRecoveryError(
+            f"Cannot recover malformed {path}: backup {backup} is malformed; "
+            "restore a valid backup or replace the primary manually."
+        ) from None
+
+    _write_quarantine(path, malformed_bytes)
+    _atomic_write(path, backup_text, rotate_backup=False)
+    return recovered
+
+
+def _write_quarantine(path: Path, malformed_bytes: bytes) -> None:
+    quarantine = path.with_suffix(path.suffix + ".corrupt")
+    _replace_bytes(quarantine, malformed_bytes)
 
 
 def write_json(path: Path, data: dict[str, Any] | BaseModel) -> None:
@@ -121,15 +186,32 @@ def write_json(path: Path, data: dict[str, Any] | BaseModel) -> None:
         raise _lock_timeout_error(path) from None
 
 
-def _atomic_write(path: Path, content: str) -> None:
+def _atomic_write(path: Path, content: str, *, rotate_backup: bool = True) -> None:
     """Write *content* to *path* atomically.  Caller must hold the lock."""
-    if path.exists():
-        with contextlib.suppress(OSError):
-            shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+    if rotate_backup and path.exists():
+        try:
+            current_bytes = path.read_bytes()
+        except OSError:
+            with contextlib.suppress(OSError):
+                shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+        else:
+            try:
+                _parse_json_object(current_bytes)
+            except (UnicodeDecodeError, json.JSONDecodeError, _NotJSONObject):
+                _write_quarantine(path, current_bytes)
+            else:
+                with contextlib.suppress(OSError):
+                    shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+
+    _replace_bytes(path, content.encode("utf-8"))
+
+
+def _replace_bytes(path: Path, content: bytes) -> None:
+    """Atomically replace one owned file with mode 0600."""
 
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
-        tmp.write_text(content, encoding="utf-8")
+        tmp.write_bytes(content)
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
     except Exception:
