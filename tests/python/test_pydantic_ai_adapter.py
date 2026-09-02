@@ -97,7 +97,7 @@ def _installed_python(artifact: Path, *, label: str, tmp_path: Path, env: dict[s
     return python
 
 
-def _scenario_source(scenario: GovernanceScenario) -> str:
+def _scenario_source(scenario: GovernanceScenario, *, parity: bool = False) -> str:
     approval_stub = (
         "None"
         if scenario.approval_response is None
@@ -118,6 +118,20 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             "message": "fixture {scenario.name}",
         }}), encoding="utf-8")
         """
+    call_id = f"call-{scenario.name}" if parity else f"pydantic-{scenario.name}"
+    session_key = f"w28-{scenario.name}" if parity else f"pydantic-{scenario.name}"
+    final_usage = "RequestUsage(input_tokens=2, output_tokens=1)" if parity else "RequestUsage()"
+    finish_call = (
+        "toolset.finish(result.output, usage=result.usage)"
+        if parity
+        else "toolset.finish(result.output)"
+    )
+    final_input_tokens = scenario.usage.input_tokens + (
+        2 if parity and scenario.expected_stop == "final_message" else 0
+    )
+    final_output_tokens = scenario.usage.output_tokens + (
+        1 if parity and scenario.expected_stop == "final_message" else 0
+    )
     return textwrap.dedent(
         f"""
         import importlib.metadata
@@ -135,6 +149,7 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             ToolOutcome,
         )
         from docket_runtime.adapters.pydantic_ai import DocketToolset
+        from docket_runtime._internal.docket.core.audit import verify_chain
         from pydantic_ai import Agent
         from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
         from pydantic_ai.models.function import FunctionModel
@@ -177,7 +192,7 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
         )
         context = ToolContext(
             agent_id="pydantic-ai",
-            session_key="pydantic-{scenario.name}",
+            session_key={session_key!r},
             roots=(workspace,),
             role="implementer",
             project="portable-proof",
@@ -194,7 +209,7 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
                 parts=[ToolCallPart(
                     {scenario.tool_name!r},
                     {scenario.arguments!r},
-                    tool_call_id="pydantic-{scenario.name}",
+                    tool_call_id={call_id!r},
                 )],
                 usage=RequestUsage(
                     input_tokens={scenario.usage.input_tokens},
@@ -204,7 +219,7 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             ),
             ModelResponse(
                 parts=[TextPart({FINAL_SUMMARY!r})],
-                usage=RequestUsage(),
+                usage={final_usage},
             ),
         ]
         advertised = []
@@ -225,11 +240,11 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
         assert tuple(tool.name for tool in advertised[0]) == {ADVERTISED_TOOLS!r}
         assert all(tool.kind == "function" and tool.sequential for tool in advertised[0])
 
-        terminal = toolset.finish(result.output)
+        terminal = {finish_call}
         assert terminal.stop_reason == {scenario.expected_stop!r}
         assert terminal.usage == TokenUsage(
-            input_tokens={scenario.usage.input_tokens},
-            output_tokens={scenario.usage.output_tokens},
+            input_tokens={final_input_tokens},
+            output_tokens={final_output_tokens},
             cached_tokens={scenario.usage.cached_tokens},
         )
         assert terminal.tool_calls_executed == {0 if scenario.expected_stop == "token_budget" else 1}
@@ -241,7 +256,8 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
         )
         assert len(handler_calls) == {scenario.expected_mutations or (1 if scenario.name == "allow_read" else 0)}
 
-        trace_path = home / "traces" / "portable-proof" / "pydantic-{scenario.name}.jsonl"
+        trace_path = home / "traces" / "portable-proof" / {f"{session_key}.jsonl"!r}
+        records = []
         if {scenario.expected_stop!r} == "token_budget":
             assert not trace_path.exists()
             assert handler_calls == []
@@ -250,9 +266,9 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             pair = [record for record in records if record["event_type"] in {{"tool_call", "tool_result"}}]
             assert [record["event_type"] for record in pair] == ["tool_call", "tool_result"]
             assert all(record["project"] == "portable-proof" for record in pair)
-            assert all(record["session_id"] == "pydantic-{scenario.name}" for record in pair)
+            assert all(record["session_id"] == {session_key!r} for record in pair)
             assert all(record["agent_role"] == "implementer" for record in pair)
-            assert all(record["payload"]["callId"] == "pydantic-{scenario.name}" for record in pair)
+            assert all(record["payload"]["callId"] == {call_id!r} for record in pair)
             expected_decision = {scenario.expected_decision!r}
             if expected_decision in ("gate_denied", "approval_denied"):
                 assert pair[-1]["payload"]["decision"] == "deny"
@@ -260,13 +276,64 @@ def _scenario_source(scenario: GovernanceScenario) -> str:
             else:
                 assert pair[-1]["payload"]["decision"] == expected_decision
 
-        audit = (home / "audit.log").read_text(encoding="utf-8") if (home / "audit.log").exists() else ""
+        audit_path = home / "audit.log"
+        audit = audit_path.read_text(encoding="utf-8") if audit_path.exists() else ""
         if {scenario.expected_decision!r} == "gate_denied":
             assert "tool.deny" in audit
         if {scenario.expected_decision!r} == "approval_denied":
             assert "approval.deny" in audit
         if {scenario.name!r} == "approval_granted_mutation":
             assert "approval.grant" in audit
+
+        audit_records = [json.loads(line) for line in audit.splitlines() if line.strip()]
+        verification = verify_chain()
+        normalized_trace = [
+            {{
+                "event_type": record["event_type"],
+                "project": record["project"],
+                "session_id": "<scenario>",
+                "agent_role": record["agent_role"],
+                "payload": record["payload"],
+            }}
+            for record in records
+            if record["event_type"] in {{"tool_call", "tool_result"}}
+        ]
+        print("W28_RESULT=" + json.dumps({{
+            "normalized": {{
+                "advertised_tools": sorted(tool.name for tool in advertised[0]),
+                "audit_actions": [record["action"] for record in audit_records],
+                "audit_chain": {{
+                    "exists": verification.exists,
+                    "lines": verification.total_lines,
+                    "chained": verification.chained,
+                    "legacy": verification.legacy,
+                    "break": (
+                        None
+                        if verification.break_at is None
+                        else {{
+                            "line": verification.break_at.line,
+                            "reason": verification.break_at.reason,
+                        }}
+                    ),
+                }},
+                "handler_calls": [call[0] for call in handler_calls],
+                "state_hex": state.read_bytes().hex(),
+                "terminal": {{
+                    "ok": terminal.ok,
+                    "output": terminal.output,
+                    "stop_reason": terminal.stop_reason,
+                    "usage": {{
+                        "input_tokens": terminal.usage.input_tokens,
+                        "output_tokens": terminal.usage.output_tokens,
+                        "cached_tokens": terminal.usage.cached_tokens,
+                    }},
+                    "tool_calls_executed": terminal.tool_calls_executed,
+                    "handoff": terminal.handoff.summary,
+                    "error": terminal.error,
+                }},
+                "trace": normalized_trace,
+            }},
+        }}, sort_keys=True))
         """
     ).replace("__POLICY_SETUP__", textwrap.dedent(policy_setup).strip())
 

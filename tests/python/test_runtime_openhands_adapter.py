@@ -200,6 +200,7 @@ try:
     else:
         from docket_runtime import ExecutionLimits, Runtime, Tool, ToolContext, ToolOutcome
         from docket_runtime.adapters.openhands import OpenHandsAdapter
+        from docket_runtime._internal.docket.core.audit import verify_chain
 
         home = Path(os.environ["DOCKET_HOME"])
         if scenario["policy"] != "none":
@@ -214,12 +215,15 @@ try:
                 "message": f"fixture {scenario['policy']}",
             }), encoding="utf-8")
 
+        handler_calls = []
         mutations = []
 
         def read_state(args, context):
+            handler_calls.append("read_state")
             return ToolOutcome(True, state.read_text(encoding="utf-8"))
 
         def mutate_state(args, context):
+            handler_calls.append("mutate_state")
             mutations.append(args["value"])
             state.write_text(args["value"], encoding="utf-8")
             return ToolOutcome(True, args["value"])
@@ -327,7 +331,8 @@ try:
             assert state.read_text(encoding="utf-8") == "approval granted"
         else:
             assert state.read_bytes() == b"initial"
-        audit = (home / "audit.log").read_text(encoding="utf-8") if (home / "audit.log").exists() else ""
+        audit_path = home / "audit.log"
+        audit = audit_path.read_text(encoding="utf-8") if audit_path.exists() else ""
         if scenario["expected_decision"] == "gate_denied":
             assert "tool.deny" in audit
         elif scenario["expected_decision"] == "approval_denied":
@@ -341,10 +346,56 @@ try:
             for requirement in requirements
         }
         assert dependency_names == {"filelock", "pydantic"}
+        audit_records = [json.loads(line) for line in audit.splitlines() if line.strip()]
+        verification = verify_chain()
+        normalized_trace = [
+            {
+                "event_type": record["event_type"],
+                "project": record["project"],
+                "session_id": "<scenario>",
+                "agent_role": record["agent_role"],
+                "payload": record["payload"],
+            }
+            for record in tool_trace
+        ]
         output = {
             "port": port,
             "requests": len(ScriptedHandler.requests),
             "stop_reason": terminal.stop_reason,
+            "normalized": {
+                "advertised_tools": sorted(requested_names),
+                "audit_actions": [record["action"] for record in audit_records],
+                "audit_chain": {
+                    "exists": verification.exists,
+                    "lines": verification.total_lines,
+                    "chained": verification.chained,
+                    "legacy": verification.legacy,
+                    "break": (
+                        None
+                        if verification.break_at is None
+                        else {
+                            "line": verification.break_at.line,
+                            "reason": verification.break_at.reason,
+                        }
+                    ),
+                },
+                "handler_calls": handler_calls,
+                "state_hex": state.read_bytes().hex(),
+                "terminal": {
+                    "ok": terminal.ok,
+                    "output": terminal.output,
+                    "stop_reason": terminal.stop_reason,
+                    "usage": {
+                        "input_tokens": terminal.usage.input_tokens,
+                        "output_tokens": terminal.usage.output_tokens,
+                        "cached_tokens": terminal.usage.cached_tokens,
+                    },
+                    "tool_calls_executed": terminal.tool_calls_executed,
+                    "handoff": terminal.handoff.summary,
+                    "error": terminal.error,
+                },
+                "trace": normalized_trace,
+            },
         }
 finally:
     server.shutdown()
