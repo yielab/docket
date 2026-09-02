@@ -13,8 +13,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-02.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
-remains active, but the board is clear: Wave 29 is eligible only for a bounded activation pass and
-has no active implementation card.** Executable cards live in [TODO.md](TODO.md).
+remains active; bounded measurement activated Wave 29 with four independent ready cards and three
+dependency/approval-gated fan-in cards.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,7 +37,7 @@ has no active implementation card.** Executable cards live in [TODO.md](TODO.md)
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 complete; board clear pending bounded Wave 29 activation |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 29 adoption evidence/public release activated |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -49,6 +49,7 @@ has no active implementation card.** Executable cards live in [TODO.md](TODO.md)
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1/C2/C3/C5 ready; C4/C6 dependency-gated; C7 publication-approval-gated |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -126,8 +127,8 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 
 ## Current planned program — PHASE 23: product truth and ecosystem proof
 
-**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** board clear;
-Wave 29 requires bounded activation in [TODO.md](TODO.md) · **Resumable coordinator packet:**
+**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 29 in
+[TODO.md](TODO.md) · **Resumable coordinator packet:**
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md)
 
 ### Why this phase is scheduled
@@ -254,14 +255,40 @@ discovery/state/cancellation. No OTLP card is activated because the fixture is e
 to first prove whether the existing JSONL trace identity is sufficient. No plugin framework
 precedes the two concrete callers.
 
-### Wave 29 — adoption and comparative evidence (eligible for bounded activation; not active)
+### Wave 29 — adoption evidence and public release (active 2026-09-02)
 
-Publish a ten-minute starter repository and a benchmark harness that records completion rate,
-measured tokens, estimated dollars labeled as estimates, policy violations prevented, approval
-latency, crash/restart recovery, and handoff failures. Add adversarial tool-policy and persisted
-state recovery cases, artifact signing/SBOM/provenance, supported-version/deprecation policy, and a
-small governance/succession document. Stars and feature counts are not exit criteria; executable
-outcomes are.
+The bounded activation at exact commit `de08206` found zero extractable starter directories and zero
+benchmark/baseline files. It reproduced a concrete recovery defect: `edges.store.write_json`
+created a valid `.bak`, but corrupting the primary still made `read_json` raise `JSONDecodeError`.
+Thirty-one existing policy-template, crash-resume, and release-contract tests passed, proving the
+underlying mechanics should be reused rather than rewritten. `SECURITY.md` has a main-only security
+support statement, but there is no deprecation, governance, or succession policy; CODEOWNERS and the
+90-day Git history resolve to one human owner. Finally, current workflow code already builds wheel,
+sdist, checksums, SPDX SBOM, and provenance, while the public `v0.2.0-beta.1` release predates it and
+contains only a tarball plus checksum. Decision D-34 freezes these measurements and the activation
+boundary.
+
+Wave 29 therefore ships: safe JSON backup recovery; one copied-outside-checkout, credential-free
+ten-minute starter; a deterministic and redacted benchmark schema/runner; adversarial plus
+crash/recovery journeys using existing governance; truthful support/deprecation/governance/
+succession policy; and one reproducible published baseline. The final current beta publication is
+separate and explicit-approval-gated. It verifies existing supply-chain machinery rather than
+building it again.
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W29-C1 | Corrupt-primary/valid-backup recovery at the JSON-store chokepoint | Ready; exclusive `edges/store.py` and new store spec/tests |
+| W29-C2 | Extractable artifact-installed ten-minute starter | Ready; exclusive `examples/starter/` and starter acceptance spec/tests |
+| W29-C3 | Adoption benchmark schema and deterministic runner | Ready; exclusive `benchmarks/` base harness/schema/spec/tests |
+| W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Blocked on C1+C3; fixture-only, split any new product defect |
+| W29-C5 | Support, deprecation, governance, and succession truth | Ready; exclusive new policy docs/tests |
+| W29-C6 | Reproducible baseline and scoped public interpretation | Blocked on C2+C4; integrator owns public/central fan-in |
+| W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked on C5+C6 plus explicit version/tag approval; only release-state owner |
+
+No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
+contracts, not model quality. Dollar values are estimates with versioned assumptions or remain
+`null`; failed attempts stay in the denominator. There is no leaderboard, competitor ranking,
+savings claim, telemetry/A2A work, new adapter, or feature-count exit criterion.
 
 ---
 
@@ -695,6 +722,7 @@ address exactly those.
 | D-31 | Which branch is Docket's public release lineage after Wave 26? | W26-C0 | **`main` is the canonical public/default release lineage.** The maintainer authorized the current `platform` lineage to fast-forward `main`; GitHub already names `main` as the default branch, and the preflight showed `platform` exactly 300 commits ahead with no `main`-only commits. The update is fast-forward-only and both branch names remain recoverable and synchronized. Tags and protected release jobs originate from `main`; feature/work branches are never release sources merely because they are newer. C3 owns replacing the remaining mutable installer/formula inputs with immutable tagged artifacts. |
 | D-32 | Which two external runtimes are the bounded Wave 28 proof, and which advertised OpenHands path actually qualifies? | Wave 28 triage | **Select the standard OpenHands SDK `Agent` with an explicit Docket-only tool list, and PydanticAI with a custom Docket-owned toolset. Reject OpenHands `ACPAgent` for this proof:** its subprocess owns tools, context, approvals, and execution, so Docket can delegate to it but cannot force its native actions through `dispatch_tool`. The standard SDK exposes explicit ToolDefinitions and custom Action/Observation/Executor code; its resolved tool map must contain no default/MCP/plugin/bash/file-editor bypass. PydanticAI exposes custom `AbstractToolset.get_tools/call_tool`, run usage, sequential execution, and a procedural `FunctionModel`, giving the smallest credential-free general-framework fixture. LangGraph is feasible but adds the second graph language D-25 excludes; Agno is feasible but its general hook and default concurrent async surface is broader than needed. Pin the exact tested upstream versions in isolated fixture locks. Keep `docket-runtime` base dependencies unchanged; preserve Python 3.11 base/Pydantic support and run the OpenHands proof on its required Python 3.12+. |
 | D-33 | What execution envelope and fixture evidence are sufficient for the D-27 portable-governance claim? | Wave 28 triage | **One Docket-owned, per-execution envelope must be shared by both adapters.** It receives provider-reported usage before the corresponding foreign tool request can execute, enforces finite cumulative token and tool-call budgets, routes every relevant action through the existing `Runtime.dispatch`/private `dispatch_tool` chokepoint, emits one redacted `tool_call`/`tool_result` pair under the caller's stable identity, preserves the existing hash-chained audit behavior for non-allow decisions, and terminalizes once with a typed result plus `HandoffArtifact`. The common artifact-installed fixture uses a fresh home/workspace and the same scripted scenario table for exclusive tool registration, unknown/native bypass, allow, policy deny, approval deny/grant, over-budget no-mutation, trace/audit identity, and handoff parity. OpenHands uses an ephemeral loopback protocol fake and PydanticAI uses `FunctionModel`; neither hosted credentials nor subscriptions are evidence. Port 8081 is optional canary-only. A2A is not scheduled because the selected coding adapter is in-process; OTLP is not scheduled unless the merged fixture proves JSONL cannot preserve identity. Passing these exact configurations permits only a configuration-scoped claim, never that arbitrary native tools or all framework deployments are governed. |
+| D-34 | What measured evidence activates Wave 29, and what counts as adoption proof rather than marketing? | Wave 29 triage | **Activate only the missing executable evidence, and reuse shipped mechanics.** Exact `main` commit `de08206` has no extractable starter and no benchmark/result schema; a corrupt owned JSON primary raises despite a valid `.bak`; no complete support/deprecation/governance/succession policy exists; and the latest public beta has only two legacy assets. Existing policy, crash-resume, release-workflow, SBOM, checksum, and provenance machinery is already test-backed, so Wave 29 does not rebuild it. One versioned, redacted schema records every attempt and its provenance: completion, provider-reported tokens, estimate-labelled or unavailable dollars, prevented violations, approval latency, crash/restart recovery, and handoff failures. Deterministic fake results prove contracts, never model quality; failures remain in the denominator; no rankings or savings claims. C1/C2/C3/C5 are disjoint ready lanes, C4 consumes C1+C3, C6 is the public-result fan-in, and C7 alone may version/tag/publish after explicit approval. A current public wheel/sdist/SBOM/checksum/provenance set is Phase 23's final release evidence, not permission to publish silently. |
 
 ---
 
@@ -2621,6 +2649,18 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-02 (Wave 29 bounded triage / activation) — adoption work is now tied to five measured
+  gaps rather than a feature wishlist.** At exact `main` commit `de08206`, repository measurement
+  found zero extractable starters and zero benchmark/baseline files; a deterministic store fixture
+  reproduced `JSONDecodeError` from a corrupt primary despite a valid `.bak`; project policy lacked
+  deprecation/governance/succession truth; and public beta `v0.2.0-beta.1` exposed only its legacy
+  tarball and checksum. Thirty-one existing policy, crash-resume, and release-contract tests pass,
+  and current release workflow code already owns wheel/sdist, checksums, SPDX SBOM, protected
+  publication, and provenance. D-34 therefore activates C1/C2/C3/C5 as disjoint lanes, gates C4 on
+  recovery+harness, gates C6 on starter+scenarios, and reserves C7 for an explicitly approved
+  version/tag publication and Phase 23 closure. No new telemetry, A2A, adapter, hosted provider,
+  leaderboard, or savings claim was scheduled.
 
 - **2026-09-02 (Wave 28 C4 accepted / Wave 28 closed) — portable governance is proven for two
   exact, Docket-only external-runtime configurations.** RED `3294f58`, typed terminal-usage bridge

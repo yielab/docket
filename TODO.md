@@ -13,15 +13,14 @@
 >
 > ---
 >
-> ## ☑ BOARD CLEAR (2026-09-02) — Wave 28 complete
+> ## ◉ ACTIVE BOARD — WAVE 29 (2026-09-02) — adoption evidence and public release
 >
-> The bounded adapter-selection and fixture-design pass selected the standard OpenHands SDK agent
-> with an explicit Docket-only tool list and PydanticAI with a custom Docket-owned toolset. OpenHands
-> ACP is explicitly rejected for this proof because its server owns its tools and execution.
-> All four Wave 28 cards are closed: the shared installed-artifact matrix, scoped public truth, and
-> canonical closure gates pass on the merged implementation. Decisions D-32 and D-33 in ROADMAP.md
-> own the selection and evidence contract. Wave 29 is eligible only for a new bounded activation
-> pass; no implementation card is active.
+> The bounded activation pass measured four implementation gaps and one publication gap on exact
+> `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
+> extractable starter or benchmark result exists; project policy names no deprecation or succession
+> process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, C3,
+> and C5 are ready independent lanes. C4 depends on C1+C3, C6 depends on C2+C4, and C7 remains
+> approval-gated after C5+C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1634,6 +1633,299 @@ animation checks. Exact-SHA CI run 33471779283 passes blocking Python, dependenc
 ShellCheck/specs, 18 goldens, and both Ubuntu/macOS artifact-installed release journeys. The
 advisory macOS full suite contains only its four pre-existing portability failures; no public-doc or
 asset check fails.
+
+---
+
+## ◉ WAVE 29 ACTIVE (2026-09-02) — adoption evidence and public release
+
+**Activation measurement:** bounded inspection used exact `main` commit `de08206`, the current
+public GitHub release/API state on 2026-09-02, the Phase 23 exit contract, and only the live
+starter/metrics/store/release/governance paths. The measurement did not infer demand from stars or
+feature counts and did not reopen telemetry, A2A, a dashboard, multi-tenancy, or more adapters.
+
+| Candidate | Source / threshold | Observed value | Disposition |
+| --- | --- | --- | --- |
+| Extractable ten-minute starter | `examples/`; at least one artifact-installed, copied-outside-checkout starter with a bounded end-to-end test | zero starter directories; `examples/runtime_embed.py` is a single consumer file and fails from the root environment when `docket-runtime` is not installed | **activate C2** |
+| Machine-readable adoption benchmark | repository paths and `docket metrics`; at least one versioned schema/result covering all Phase 23 measures | zero benchmark/baseline files; current metrics omit one comparative record for measured tokens, estimate provenance, approval latency, recovery, and handoff failure | **activate C3** |
+| Persisted-state recovery | `edges/store.py::{read_json,_atomic_write}`; a corrupt primary with a valid owned backup must have one safe recovery path | second write creates `.bak`, but corrupting the primary makes `read_json` raise `JSONDecodeError`; recovery paths: zero | **activate C1**, then prove it in C4 |
+| Adversarial/crash evidence | policy, dispatch, and release focused tests; at least one public-journey scenario/report, not helper-only coverage | 31 focused policy-template, crash-resume, and release-contract tests pass; whole-journey benchmark scenarios/results: zero | **activate C4 after C1+C3**; reuse behavior rather than rebuilding it |
+| Release supply chain | current workflow plus latest public beta; wheel, sdist, checksums, SPDX SBOM, and provenance must be publicly verifiable | workflow code and six release-contract tests already cover the machinery; public `v0.2.0-beta.1` has only tarball + checksum and predates it | **no duplicate implementation**; C7 performs approval-gated publication/verification |
+| Support and succession policy | `SECURITY.md`, `COMPATIBILITY.md`, `.github/CODEOWNERS`, 90-day Git history; one truthful support/deprecation policy and one governance/succession path | main-only security support exists; no deprecation policy or governance document; one CODEOWNER and one underlying human author identity | **activate C5** |
+
+**Execution graph / contention:** C1, C2, C3, and C5 are ready and disjoint. C1 exclusively owns
+the JSON-store recovery path; C2 owns the extractable starter; C3 owns the benchmark schema/runner;
+C5 owns new project-policy documents. C4 consumes C1+C3 and owns scenario fixtures only. C6 is the
+integrator-owned result/public-truth fan-in. C7 is the only release/version/tag owner and may not
+publish without a fresh explicit approval. `ROADMAP.md`, `TODO.md`, `README.md`, `CHANGELOG.md`,
+`COMPATIBILITY.md`, `SECURITY.md`, `specs/README.md`, metrics, tags, and release state remain
+coordinator-owned unless a card below explicitly assigns them.
+
+### W29-C1 — recover a corrupt Docket JSON primary from its valid backup
+
+**Status:** TODO · **Size:** M · **Owner:** unassigned
+
+**Measured trigger:** at `de08206`, two `edges.store.write_json` calls create a valid
+`state.json.bak`; replacing `state.json` with `{broken` leaves the backup present, but
+`edges.store.read_json` raises `JSONDecodeError`. Threshold: one deterministic, concurrency-safe
+recovery path for a representative Docket-owned registry. Observed: zero.
+
+**Goal:** make the store chokepoint recover a malformed primary from a parseable owned backup under
+the existing per-directory lock, quarantine the malformed bytes for diagnosis, and return the
+recovered document without allowing two readers/writers to perform competing restores.
+
+**Non-goals:** no generic filesystem backup service, JSONL audit/trace recovery, remote backup,
+schema migration, silent reset to `{}`, repair of a missing primary, or change to the persisted JSON
+shape. Do not route around `edges/store.py` or add a second writer.
+
+**Owns:** `src/docket/edges/store.py::{read_json,read_modify_write,_atomic_write}` plus the smallest
+private recovery helpers; new `tests/python/test_store_recovery.py`; new
+`specs/data/docket-store.spec.md`. `specs/README.md`, public docs, and central rollups are forbidden.
+
+**Acceptance / RED oracle:** start with a temporary registry produced by two real `write_json`
+calls. Corrupt only the primary, retain its valid `.bak`, then read through the public store API and
+through one real CLI consumer such as `docket runs list`. Both must recover the prior complete
+document; the restored primary must be valid JSON with mode `0600`; the malformed bytes must remain
+in one bounded quarantine file; and no invented empty state may appear. A valid primary must win
+without changing any byte even when its backup is stale or malformed. Missing/corrupt backup must
+raise one typed actionable error and preserve every input byte. A barrier race between recovery and
+a writer must serialize, retain one complete generation, leave no `.tmp`, and never replace a valid
+backup with malformed bytes. The pre-change test must fail specifically at the recovery assertion.
+
+**Focused validation:** new recovery tests repeated (`--count=20` when the plugin is available, or
+an explicit in-test barrier loop); neighboring `test_store_writer.py`, `test_run_registry.py`, and
+the selected CLI consumer tests; owning spec validation; Ruff/format and strict mypy. Final gates:
+full pytest, 18 goldens, ShellCheck, metrics, deterministic smoke, diff/privacy/clean checks.
+
+**Handoff:** report the corruption fixture, quarantine naming/retention rule, lock boundary, byte
+identity for no-op/error cases, focused results, and any registry whose caller bypasses the store.
+
+### W29-C2 — ship an extractable, artifact-installed ten-minute starter
+
+**Status:** TODO · **Size:** M · **Owner:** unassigned
+
+**Measured trigger:** `examples/` contains configurations, pipelines, and two single Python files,
+but no starter directory, dependency lock, self-contained instructions, or copied-outside-checkout
+journey. `examples/runtime_embed.py` cannot run in the root environment because `docket-runtime` is
+not installed. Threshold: one credential-free starter that a new user can copy, install from exact
+artifacts, run, and inspect within a 600-second test timeout. Observed: zero.
+
+**Goal:** create a small extractable starter showing one governed tool mutation, an approval pause
+and grant, a typed terminal handoff, paired trace identity, and audit verification using public
+interfaces and a deterministic loopback/fake model.
+
+**Non-goals:** no hosted provider, subscription, port 8081, framework template zoo, package-index
+publication, web UI, Docker requirement, or duplication of the full smoke harness. The starter must
+teach the narrow tested boundary, not claim arbitrary framework governance.
+
+**Owns:** `examples/starter/**`, new `tests/python/test_starter_journey.py`, and new
+`specs/acceptance/starter-journey.spec.md`. It may import existing fixture utilities only when they
+are part of an installed public package; it must not import `tests/` or the source checkout.
+README/docs indexes and central metrics are forbidden until C6.
+
+**Acceptance / RED oracle:** build exact wheel/sdist inputs once, copy only `examples/starter/` to a
+fresh directory outside the checkout, install into a fresh Python 3.11 environment, and invoke one
+documented command with a fresh `DOCKET_HOME`. Within 600 seconds it must mutate exactly one declared
+workspace file after one approval, emit a terminal result/handoff, and leave queryable run, trace,
+and valid audit-chain evidence. Pre-approval and denial runs must leave the target bytes unchanged.
+The journey must work with network disabled after artifact installation and with no API key. A
+missing optional adapter must print its install command rather than traceback. The pre-change test
+fails because the extractable starter path does not exist.
+
+**Focused validation:** starter contract and artifact journey on Python 3.11/Linux, plus the
+existing release journey and runtime package-boundary tests; public link/example test; owning spec;
+Ruff/format/mypy. Final gates match C1 and include the deterministic smoke.
+
+**Handoff:** report cold/warm elapsed time separately, exact artifacts and Python version, public
+command, resulting state/trace/audit locators, network/credential posture, and cleanup performed.
+
+### W29-C3 — define the adoption benchmark schema and deterministic runner
+
+**Status:** TODO · **Size:** M · **Owner:** unassigned
+
+**Measured trigger:** repository search finds zero benchmark/baseline files. `docket metrics` reports
+session success, duration, estimated cost, and guardrail trips independently, but there is no
+versioned scenario result tying completion, provider-reported tokens, estimate basis, prevented
+violations, approval latency, crash/restart recovery, and handoff failure to the same run. Threshold:
+one deterministic machine-readable schema plus runner and invalid-input oracle. Observed: zero.
+
+**Goal:** add a dependency-light benchmark runner that consumes fixed scenarios and durable Docket
+records, emits canonical per-attempt JSONL plus a deterministic aggregate JSON document, and keeps
+measurement provenance explicit enough for review or reproduction.
+
+**Non-goals:** no telemetry backend, hosted benchmark service, leaderboard, competitor ranking,
+price synchronization, model-quality claim, new product metrics subsystem, or claim that fake-model
+completion predicts real-model quality.
+
+**Owns:** `benchmarks/harness.py`, `benchmarks/schema.json`, `benchmarks/README.md`, base scenario
+fixtures under `benchmarks/fixtures/`, new `tests/python/test_adoption_benchmark.py`, and new
+`specs/validation/adoption-benchmark.spec.md`. Product runtime files and public/central docs are
+forbidden. C4 may extend the spec and scenario directory only after C3 merges.
+
+**Acceptance / RED oracle:** a fixed scenario/seed must emit stable identifiers and normalized
+fields for scenario version, source commit/artifact hash, runtime/configuration, deterministic vs
+live measurement class, attempts/completions, provider-reported input/output/total tokens,
+tool-call count, prevented policy violations, approval latency, crash/restart recovery, handoff
+failures, stop reason, and trace/audit locators. Every dollar value must carry `estimate=true` and a
+versioned pricing source/assumption; unknown pricing must be `null`, never fabricated zero. Raw
+prompts, secrets, home paths, approval tokens, and unredacted tool arguments must be absent. Invalid,
+partial, duplicate, or mismatched records fail closed without overwriting a prior result. The
+aggregate must be reproducible from JSONL alone. The pre-change test fails because no schema/runner
+exists.
+
+**Focused validation:** schema unit/property cases, two identical deterministic runs compared after
+normalizing measured elapsed time, malformed/redaction cases, and metrics/trace/run fixture parity;
+owning spec; Ruff/format/mypy. Final gates match C1.
+
+**Handoff:** report schema version, field provenance map, normalization boundary, estimate labeling,
+redaction scan, repeatability result, and exact command needed by C4.
+
+### W29-C4 — add adversarial governance and crash/recovery benchmark scenarios
+
+**Status:** BLOCKED (needs W29-C1 and W29-C3) · **Size:** M · **Owner:** unassigned
+
+**Measured trigger:** 31 focused release, crash-resume, and policy-template tests pass, but zero
+whole-journey scenario emits the Wave 29 benchmark record. Unit behavior exists; adoption evidence
+does not. C4 is deliberately fixture-first and must not reimplement policy, approval, audit, or
+resume logic.
+
+**Goal:** drive the C3 runner through representative allowed, policy-denied, approval-denied,
+approval-granted, malformed-handoff, hard-crash/resume, and corrupt-primary/backup-recovery journeys
+using public actions and durable state, then emit comparable records.
+
+**Non-goals:** no prompt-injection detector claim beyond the configured policy fixture, destructive
+real command, live provider, chaos platform, arbitrary fault injection, new retry semantics, or
+product fix hidden inside a benchmark scenario.
+
+**Owns after dependencies merge:** `benchmarks/scenarios/**`,
+`tests/python/test_adoption_adversarial_recovery.py`, and an additive C4 section/version bump in
+`specs/validation/adoption-benchmark.spec.md`. Product code is forbidden. If a scenario exposes a
+new product defect beyond C1, stop and split a named defect card with its own spec/RED evidence.
+
+**Acceptance / RED oracle:** each scenario starts from a fresh home/workspace and names its intended
+side effect. Policy/approval denial must record one prevented violation and preserve target bytes;
+grant must mutate exactly once; the crash case must persist completed hops, resume only unfinished
+hops, and reach one terminal run; corrupted primary with valid backup must recover through C1 and
+retain the quarantined evidence; malformed handoff must become a counted failure rather than a
+completion. Repeat the table at least three times with unique state/ports and no cross-run leakage.
+Every result must validate under C3 and reference verifiable trace/audit state.
+
+**Focused validation:** C3 harness tests plus all new scenarios, `TestCrashRecovery`, policy-template,
+approval, store-recovery, audit-chain, and handoff tests; owning spec; Ruff/format/mypy. Final gates
+match C1.
+
+**Handoff:** report the scenario table, public action, observable outcome, mutation/no-mutation
+hashes, restart boundary, record locators, repetitions, and any split defect card.
+
+### W29-C5 — publish truthful support, deprecation, governance, and succession policy
+
+**Status:** TODO · **Size:** S · **Owner:** unassigned
+
+**Measured trigger:** `SECURITY.md` supports only `main` and rejects older tags;
+`COMPATIBILITY.md` describes Python/platform support; neither defines a release-support or
+deprecation window. There is no governance document. `.github/CODEOWNERS` names one account and the
+90-day Git history resolves to one underlying human author identity. Threshold: one truthful policy
+for support/deprecation and one maintainership/succession path. Observed: zero complete policies.
+
+**Goal:** state who decides and releases, how contributors become maintainers, how breaking changes
+and deprecations are announced during beta, which versions receive security fixes, and what happens
+if the sole maintainer becomes unavailable—without inventing a committee or promised staffing.
+
+**Non-goals:** no legal entity claim, foundation, CLA, paid support SLA, fake maintainer roster,
+branch-protection mutation, release publication, or claim that beta has LTS support.
+
+**Owns:** new `GOVERNANCE.md`, new `SUPPORT.md`, and new
+`tests/python/test_project_policy_truth.py`. Existing `SECURITY.md`, `COMPATIBILITY.md`, README,
+CODEOWNERS, and central indexes are read-only inputs; C6 owns their links/summary alignment.
+
+**Acceptance / RED oracle:** public policy must explicitly name current single-maintainer reality,
+decision and release authority, contributor-to-maintainer criteria, conflict/security escalation,
+support matrix, pre-1.0 breaking-change/deprecation notice rule, succession/transfer-or-archive
+procedure, and inactivity trigger. It must link only real channels and files, never promise an
+unverified response time beyond `SECURITY.md`, and never name a successor who has not accepted.
+Repository-relative links must resolve. Counterexample fixtures reject claims of multiple active
+maintainers, LTS branches, guaranteed compatibility, or a governing foundation. Pre-change RED:
+both policy files are absent.
+
+**Focused validation:** new truth/link tests plus existing public-doc, security-boundary, and
+positioning tests; Ruff/format. Final gates match C1.
+
+**Handoff:** report the exact maintainer/support truth, deprecation window, succession trigger,
+rejected overclaims, link test, and any item requiring owner consent rather than code.
+
+### W29-C6 — generate and publish the reproducible adoption baseline
+
+**Status:** BLOCKED (needs W29-C2 and W29-C4) · **Size:** M · **Owner:** integrator
+
+**Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
+C4 produce the first reproducible inputs, while current public prose has no versioned result.
+
+**Goal:** run the starter and scenario matrix from exact artifacts, commit the canonical raw and
+aggregate result with provenance, and publish a compact interpretation that distinguishes measured
+facts, deterministic-fixture evidence, estimates, failures, and unsupported conclusions.
+
+**Non-goals:** no competitor ranking, dollar-savings promise, benchmark cherry-picking, live-model
+requirement, hidden failed trials, regenerated numbers by hand, telemetry/A2A, or feature expansion.
+
+**Owns after dependencies merge:** `benchmarks/results/**`, `docs/ADOPTION-EVIDENCE.md`, relevant
+public links/limits in `README.md`, `COMPATIBILITY.md`, `SECURITY.md`, `docs/README.md`, spec indexes,
+CHANGELOG entry, and metrics synchronization. It does not own VERSION, Formula, tags, or GitHub
+release state.
+
+**Acceptance / oracle:** one command on clean exact artifacts must regenerate byte-identical
+normalized records and aggregate for the native starter plus every C4 scenario; elapsed/approval
+latency may use a separately identified tolerance field and must never be represented as a stable
+byte. The report must include attempts and failures, completion rate, measured tokens, explicitly
+estimated or unavailable dollars, prevented violations, approval latency, crash/restart recovery,
+and handoff failures. Every claim links to raw data/schema/commit and states that deterministic fake
+results are contract evidence, not model-quality evidence. Public truth tests reject rankings,
+unlabeled estimates, savings claims, secrets/private paths, and missing failed attempts.
+
+**Focused validation:** complete C2–C4 matrix with two regenerations; schema/redaction/public-link
+tests; all specs; metrics; Ruff/format/mypy. Closure gates: full pytest, 18 goldens, ShellCheck,
+deterministic smoke, Linux/macOS artifact journeys, diff/privacy/clean checks.
+
+**Handoff:** report artifact/source hashes, scenario/result counts, all failed attempts, normalization
+and tolerance rules, published claims/non-claims, metrics delta, and whether C7 may request release
+approval.
+
+### W29-C7 — publish a current provenance-complete beta and close Phase 23
+
+**Status:** BLOCKED (needs W29-C5, W29-C6, and explicit version/tag publication approval) ·
+**Size:** M · **Owner:** integrator
+
+**Measured trigger:** public release `v0.2.0-beta.1` (published 2026-07-03) has two assets—the legacy
+tarball and checksum—and predates the current wheel/sdist/SBOM/provenance workflow. Static release
+machinery and its six focused tests already pass, so publication/verification is the remaining gap.
+
+**Goal:** choose an approved next beta version, align every version surface, run canonical release
+rehearsal and cross-platform artifact journeys, create one signed/immutable tag through the protected
+workflow, verify every public asset and attestation, then close Wave 29 and Phase 23 from evidence.
+
+**Non-goals:** no silent tag, force push, mutable release replacement, package-index publication
+unless separately approved, stable/LTS claim, Homebrew tap mutation beyond the repository formula,
+or release while any required C1–C6 gate is red.
+
+**Owns after approval:** `VERSION`, root/runtime package versions, `Formula/docket-cli.rb`, installer
+default, CHANGELOG release section, release-truth tests, final ROADMAP/TODO/spec/metrics rollups, the
+new Git tag, and GitHub release verification. `.github/workflows/release.yml` changes only if the
+rehearsal proves its current contract false.
+
+**Acceptance / oracle:** before any external mutation, print the proposed version, exact commit,
+asset manifest, and approval boundary. Version/tag/package/formula/installer must agree. Both wheel
+and sdist must install outside checkout and pass the release journey on Linux and macOS. The public
+release must contain wheel, canonical sdist/versioned installer asset, individual checksum,
+`SHA256SUMS`, SPDX JSON, and a GitHub-verifiable provenance attestation bound to exact digests.
+Tampered bytes must fail verification. Fresh Homebrew/versioned-installer paths must resolve to the
+new immutable assets. Only after public verification may Wave 29/Phase 23 become complete.
+
+**Focused validation:** version/release/public-truth tests, local artifact manifest and tamper check,
+release journey, and workflow syntax before approval. Post-publication: query GitHub release assets
+and attestation, install from public URLs on both OS jobs, then run full canonical closure gates and
+snapshot a clean synchronized `main`.
+
+**Handoff:** report approval text/time, tag/commit, release/run/attestation URLs, asset names/digests,
+cross-platform install evidence, failures, cleanup, and the final board/phase status. External
+publication is never implied by claiming the card.
 
 ---
 
