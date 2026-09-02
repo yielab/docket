@@ -1,0 +1,1 @@
+{"created":"2026-09-02T00:00:00Z","messages":[{"content":"fixture prompt is not copied","role":"user"}],"sessionKey":"agent:demo:task-starter","updated":"2026-09-02T00:00:02Z","usage":{"cachedTokens":0,"inputTokens":3,"outputTokens":2,"turns":1}}

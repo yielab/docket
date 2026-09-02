@@ -1,0 +1,4 @@
+{"agent_role":"lead","event_type":"session_start","payload":{"task":"task-starter"},"project":"demo","session_id":"agent:demo:task-starter","ts":"2026-09-02T00:00:00Z"}
+{"agent_role":"lead","event_type":"tool_call","payload":{"arguments":{"path":"fixture.txt"},"callId":"call-one","tool":"read"},"project":"demo","session_id":"agent:demo:task-starter","ts":"2026-09-02T00:00:01Z"}
+{"agent_role":"lead","event_type":"tool_result","payload":{"callId":"call-one","decision":"allow","executed":true,"ok":true,"tool":"read"},"project":"demo","session_id":"agent:demo:task-starter","ts":"2026-09-02T00:00:01Z"}
+{"agent_role":"lead","event_type":"session_end","payload":{"status":"done"},"project":"demo","session_id":"agent:demo:task-starter","ts":"2026-09-02T00:00:02Z"}

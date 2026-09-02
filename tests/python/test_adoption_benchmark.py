@@ -1,4 +1,4 @@
-"""Behavioral RED contract for W29-C3's adoption benchmark harness.
+"""Behavioral contract for W29-C3's adoption benchmark harness.
 
 The suite invokes the repository-local harness as a public subprocess and builds only
 documented, durable Docket artifacts under a temporary home.  It deliberately does not import a
@@ -587,6 +587,20 @@ def _unlabelled_cost(fixture: BenchmarkFixture) -> None:
     _write_json(fixture.scenario_path, scenario)
 
 
+def _secret_pricing(fixture: BenchmarkFixture) -> None:
+    scenario = copy.deepcopy(fixture.scenario)
+    scenario["attempts"][0]["cost"] = {
+        "usd": "0.001000",
+        "estimate": True,
+        "pricing": {
+            "source": "fixture-pricing",
+            "version": "2026-09-02",
+            "assumption": RAW_SECRET,
+        },
+    }
+    _write_json(fixture.scenario_path, scenario)
+
+
 def _escaping_snapshot(fixture: BenchmarkFixture) -> None:
     scenario = copy.deepcopy(fixture.scenario)
     scenario["attempts"][0]["recovery_snapshot"] = "../../private.json"
@@ -601,6 +615,7 @@ def _escaping_snapshot(fixture: BenchmarkFixture) -> None:
         _duplicate_ordinal,
         _reuse_session,
         _unlabelled_cost,
+        _secret_pricing,
         _escaping_snapshot,
     ],
     ids=[
@@ -609,6 +624,7 @@ def _escaping_snapshot(fixture: BenchmarkFixture) -> None:
         "duplicate-attempt",
         "reused-session",
         "unlabelled-dollar",
+        "secret-pricing",
         "path-escape",
     ],
 )

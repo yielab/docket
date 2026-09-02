@@ -1,7 +1,7 @@
 # Adoption Benchmark Validation Specification
 
 **Version**: 1.0.0
-**Status**: Draft (RED contract; implementation absent)
+**Status**: Implemented
 **Last Updated**: 2026-09-02
 
 ## Purpose
@@ -120,9 +120,9 @@ NOT become a measured zero-dollar claim. A non-null cost MUST have this complete
 }
 ```
 
-`usd` MUST be a non-negative canonical decimal string. `estimate` MUST be exactly `true`, and every
-pricing provenance field MUST be non-empty. A measured/billed dollar mode is not part of version
-1.0.0.
+`usd` MUST be a non-negative canonical decimal string with exactly six fractional places.
+`estimate` MUST be exactly `true`, and every pricing provenance field MUST be non-empty. A
+measured/billed dollar mode is not part of version 1.0.0.
 
 ### 5. Privacy and normalization boundary
 
@@ -195,6 +195,6 @@ Deterministic scenarios MUST use no network, hosted credentials, subscriptions, 
 
 ## Changelog
 
-- **1.0.0 — 2026-09-02:** Define the RED contract for a deterministic, versioned, privacy-preserving
-  adoption benchmark over public durable Docket records, including provenance, atomic failure, and
-  JSONL-only aggregate reconstruction. Implementation is intentionally absent in this commit.
+- **1.0.0 — 2026-09-02:** Ship the deterministic, versioned, privacy-preserving adoption benchmark
+  over public durable Docket records, including its closed JSON Schema, canonical runner, minimal
+  fixture, provenance map, atomic invalid-input behavior, and JSONL-only aggregate reconstruction.

@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yielab/docket/benchmarks/schema.json",
+  "title": "Docket adoption benchmark schema",
+  "description": "Closed version 1.0.0 contracts for scenarios, attempt JSONL records, and deterministic aggregates.",
+  "version": "1.0.0",
+  "oneOf": [
+    { "$ref": "#/$defs/scenario" },
+    { "$ref": "#/$defs/attempt" },
+    { "$ref": "#/$defs/aggregate" }
+  ],
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_sha256", "commit"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+        "artifact_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "max_tool_calls", "model", "token_budget"],
+      "properties": {
+        "adapter": { "$ref": "#/$defs/safe_id" },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.:/-]+$"
+        },
+        "token_budget": { "type": "integer", "minimum": 1 },
+        "max_tool_calls": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration", "name", "version"],
+      "properties": {
+        "name": { "$ref": "#/$defs/safe_id" },
+        "version": { "$ref": "#/$defs/safe_id" },
+        "configuration": { "$ref": "#/$defs/configuration" }
+      }
+    },
+    "public_provenance": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._:/+()%\\-]{0,199}$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(?:[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Bb][Ee][Aa][Rr][Ee][Rr]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]) *: *[A-Za-z0-9/_\\-+.]{12,}"
+          },
+          {
+            "pattern": "(?:[Ss][Kk]|[Pp][Kk])-(?:[Aa][Nn][Tt]|[Ll][Ii][Vv][Ee]|[Pp][Rr][Oo][Jj]|[Tt][Ee][Ss][Tt]|[Ff][Ii][Xx][Tt][Uu][Rr][Ee])-[A-Za-z0-9/_\\-+.]{12,}"
+          }
+        ]
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assumption", "source", "version"],
+      "properties": {
+        "source": { "$ref": "#/$defs/public_provenance" },
+        "version": { "$ref": "#/$defs/public_provenance" },
+        "assumption": { "$ref": "#/$defs/public_provenance" }
+      }
+    },
+    "estimated_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estimate", "pricing", "usd"],
+      "properties": {
+        "usd": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]{6}$"
+        },
+        "estimate": { "const": true },
+        "pricing": { "$ref": "#/$defs/pricing" }
+      }
+    },
+    "cost": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/estimated_cost" }
+      ]
+    },
+    "scenario_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cost",
+        "ordinal",
+        "project",
+        "recovery_snapshot",
+        "run_id",
+        "session_key",
+        "task_id"
+      ],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "run_id": { "$ref": "#/$defs/safe_id" },
+        "project": { "$ref": "#/$defs/safe_id" },
+        "task_id": { "$ref": "#/$defs/safe_id" },
+        "session_key": { "$ref": "#/$defs/safe_id" },
+        "recovery_snapshot": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+            }
+          ]
+        },
+        "cost": { "$ref": "#/$defs/cost" }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts",
+        "measurement_class",
+        "runtime",
+        "scenario_id",
+        "scenario_version",
+        "schema_version",
+        "seed",
+        "source"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "scenario_id": { "$ref": "#/$defs/safe_id" },
+        "scenario_version": { "$ref": "#/$defs/safe_id" },
+        "seed": { "type": "integer", "minimum": 0 },
+        "measurement_class": { "enum": ["deterministic", "live"] },
+        "source": { "$ref": "#/$defs/source" },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "attempts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scenario_attempt" }
+        }
+      }
+    },
+    "scenario_coordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "seed", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/safe_id" },
+        "version": { "$ref": "#/$defs/safe_id" },
+        "seed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "input_tokens", "output_tokens", "total_tokens"],
+      "properties": {
+        "basis": { "const": "provider_reported" },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "total_tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tool_calls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed", "total"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "executed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retained_hops", "resumed_to_terminal", "stale_claim_observed"],
+      "properties": {
+        "stale_claim_observed": { "type": "boolean" },
+        "retained_hops": { "type": "integer", "minimum": 0 },
+        "resumed_to_terminal": { "type": "boolean" }
+      }
+    },
+    "relative_locator": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "locators": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audit", "recovery_snapshot", "run", "session", "task", "trace"],
+      "properties": {
+        "run": { "$ref": "#/$defs/relative_locator" },
+        "task": { "$ref": "#/$defs/relative_locator" },
+        "session": { "$ref": "#/$defs/relative_locator" },
+        "trace": { "$ref": "#/$defs/relative_locator" },
+        "audit": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relative_locator" },
+          "uniqueItems": true
+        },
+        "recovery_snapshot": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/relative_locator" }
+          ]
+        }
+      }
+    },
+    "stop_reason": {
+      "enum": [
+        "backend_error",
+        "compaction_failed",
+        "context_fit",
+        "final_message",
+        "max_iterations",
+        "max_tool_calls",
+        "run_cancelled",
+        "timeout",
+        "token_budget",
+        "tool_denials",
+        "truncated"
+      ]
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_latency_ms",
+        "attempt_id",
+        "attempt_ordinal",
+        "attempts",
+        "completed",
+        "cost",
+        "handoff_failures",
+        "locators",
+        "measurement_class",
+        "prevented_policy_violations",
+        "record_type",
+        "recovery",
+        "runtime",
+        "scenario",
+        "schema_version",
+        "source",
+        "stop_reason",
+        "tool_calls",
+        "usage"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "record_type": { "const": "attempt" },
+        "attempt_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "scenario": { "$ref": "#/$defs/scenario_coordinate" },
+        "source": { "$ref": "#/$defs/source" },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "measurement_class": { "enum": ["deterministic", "live"] },
+        "attempt_ordinal": { "type": "integer", "minimum": 1 },
+        "attempts": { "type": "integer", "minimum": 1 },
+        "completed": { "type": "boolean" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "tool_calls": { "$ref": "#/$defs/tool_calls" },
+        "prevented_policy_violations": { "type": "integer", "minimum": 0 },
+        "approval_latency_ms": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "recovery": { "$ref": "#/$defs/recovery" },
+        "handoff_failures": { "type": "integer", "minimum": 0 },
+        "stop_reason": { "$ref": "#/$defs/stop_reason" },
+        "cost": { "$ref": "#/$defs/cost" },
+        "locators": { "$ref": "#/$defs/locators" }
+      }
+    },
+    "completion_rate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denominator", "numerator"],
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "approval_latency_aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed", "total"],
+      "properties": {
+        "observed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "recovery_aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempted", "resumed_to_terminal"],
+      "properties": {
+        "attempted": { "type": "integer", "minimum": 0 },
+        "resumed_to_terminal": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aggregate_id",
+        "approval_latency_ms",
+        "completion_rate",
+        "completions",
+        "cost",
+        "handoff_failures",
+        "jsonl_sha256",
+        "measurement_class",
+        "prevented_policy_violations",
+        "record_type",
+        "recovery",
+        "runtime",
+        "scenario",
+        "schema_version",
+        "source",
+        "stop_reasons",
+        "tool_calls",
+        "usage",
+        "attempts"
+      ],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "record_type": { "const": "aggregate" },
+        "aggregate_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "jsonl_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "scenario": { "$ref": "#/$defs/scenario_coordinate" },
+        "source": { "$ref": "#/$defs/source" },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "measurement_class": { "enum": ["deterministic", "live"] },
+        "attempts": { "type": "integer", "minimum": 1 },
+        "completions": { "type": "integer", "minimum": 0 },
+        "completion_rate": { "$ref": "#/$defs/completion_rate" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "tool_calls": { "$ref": "#/$defs/tool_calls" },
+        "prevented_policy_violations": { "type": "integer", "minimum": 0 },
+        "approval_latency_ms": { "$ref": "#/$defs/approval_latency_aggregate" },
+        "recovery": { "$ref": "#/$defs/recovery_aggregate" },
+        "handoff_failures": { "type": "integer", "minimum": 0 },
+        "stop_reasons": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/stop_reason" },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "cost": { "$ref": "#/$defs/cost" }
+      }
+    }
+  }
+}
