@@ -243,15 +243,15 @@ Inspect the boundary or copy the lazy constructors from
 
 ### Engineering evidence
 
-- **2,490 tests** in `tests/python/`
-- **~30,478 lines** of Python in the shipped package
-- **24 specifications** validated in CI
+- **2,513 tests** in `tests/python/`
+- **~30,560 lines** of Python in the shipped package
+- **27 specifications** validated in CI
 - **37 commands** documented in the command reference
 - 18 byte-for-byte CLI golden cases
 - Exact-wheel first-turn journeys on Ubuntu and macOS
 
 ```bash
-uv run pytest                                      # 2,490-test Python suite
+uv run pytest                                      # 2,513-test Python suite
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src

@@ -37,10 +37,13 @@ specs/
 ├── data/                                  # Data specifications
 │   ├── cli-json-shapes.spec.md           # --json output shapes per command
 │   ├── docket-meta.spec.md               # .docket-meta.json schema
+│   ├── docket-store.spec.md              # Atomic JSON writes and corrupt-primary recovery
 │   └── serve-read-api.spec.md            # docket serve read-only HTTP API (test-pinned)
 ├── acceptance/                            # Acceptance criteria
+│   ├── starter-journey.spec.md           # Extractable artifact-installed starter journey
 │   └── user-stories.md                   # User stories with Gherkin scenarios
 └── validation/                            # Validation rules
+    ├── adoption-benchmark.spec.md        # Deterministic benchmark artifact contract
     └── input-validation.spec.md          # Input validation rules
 ```
 
