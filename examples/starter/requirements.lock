@@ -1,0 +1,18 @@
+# Runtime dependencies for the root docket 0.2.0-beta.1 artifact.
+# Docket itself is intentionally absent: install the exact local wheel separately.
+annotated-doc==0.0.4
+annotated-types==0.7.0
+filelock==3.29.4
+markdown-it-py==4.2.0
+mdurl==0.1.2
+pydantic==2.13.4
+pydantic-core==2.46.4
+pydantic-settings==2.14.2
+pygments==2.20.0
+python-dotenv==1.2.2
+pyyaml==6.0.3
+rich==15.0.0
+shellingham==1.5.4
+typer==0.26.7
+typing-extensions==4.15.0
+typing-inspection==0.4.2

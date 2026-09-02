@@ -1,7 +1,7 @@
 # Extractable Starter Journey
 
-**Version**: 0.1.0
-**Status**: Specified — RED acceptance evidence; starter implementation pending
+**Version**: 1.0.0
+**Status**: Implemented — artifact-installed Python 3.11 journey tested outside the checkout
 **Last Updated**: 2026-09-02
 
 ## Overview
@@ -106,6 +106,15 @@ all use their production paths.
   artifact installation.
 
 ## Changelog
+
+### Version 1.0.0 (2026-09-02)
+
+- Shipped the extractable starter with a locked dependency set, deterministic ephemeral-loopback
+  model, and one installed-root-CLI command that proves denial rollback followed by approval and
+  exactly one governed workspace mutation.
+- Added artifact-installed acceptance evidence for the public run list/show, paired trace export,
+  persisted complete handoff shape, and clean audit-chain verifier, with no API key or
+  `docket-runtime` dependency.
 
 ### Version 0.1.0 (2026-09-02)
 
