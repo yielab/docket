@@ -1,0 +1,1 @@
+{"completed":false,"malformed_handoff":false,"mutates":false,"prevented":true,"public_actions":["pipeline.run","approval.deny"],"recovery":false,"scenario_id":"approval-denied","stop_reason":"tool_denials"}

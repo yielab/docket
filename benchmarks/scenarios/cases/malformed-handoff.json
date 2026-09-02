@@ -1,0 +1,1 @@
+{"completed":false,"malformed_handoff":true,"mutates":false,"prevented":false,"public_actions":["pipeline.run"],"recovery":false,"scenario_id":"malformed-handoff","stop_reason":"backend_error"}

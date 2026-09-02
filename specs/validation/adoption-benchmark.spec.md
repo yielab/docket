@@ -1,7 +1,7 @@
 # Adoption Benchmark Validation Specification
 
 **Version**: 1.1.0
-**Status**: In progress
+**Status**: Implemented
 **Last Updated**: 2026-09-02
 
 ## Purpose
@@ -250,9 +250,8 @@ Deterministic scenarios MUST use no network, hosted credentials, subscriptions, 
 
 ## Changelog
 
-- **1.1.0 — 2026-09-02 (pending W29-C4):** Specify the seven public adversarial governance and
-  crash/recovery journeys, three-repetition isolation boundary, retained byte/record evidence, and
-  the scenario-driver RED oracle. Implementation is pending.
+- **1.1.0 — 2026-09-02:** Ship the seven public adversarial governance and crash/recovery journeys,
+  three-repetition isolation boundary, retained byte/record evidence, and scenario driver.
 
 - **1.0.0 — 2026-09-02:** Ship the deterministic, versioned, privacy-preserving adoption benchmark
   over public durable Docket records, including its closed JSON Schema, canonical runner, minimal
