@@ -1,7 +1,7 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 1.0.0
-**Status**: Implemented
+**Version**: 1.1.0
+**Status**: In progress
 **Last Updated**: 2026-09-02
 
 ## Purpose
@@ -148,6 +148,55 @@ The `aggregate` command MUST validate all JSONL records, reject duplicate attemp
 mixed scenario/source/runtime provenance, and reproduce the same aggregate using JSONL alone. It
 MUST NOT read the scenario, Docket home, trace, audit, run, task, or session stores.
 
+### 7. Adversarial governance and recovery journeys
+
+`benchmarks/scenarios/run.py` MUST expose one credential-free repository-local command:
+
+```text
+python benchmarks/scenarios/run.py --output OUTPUT --repetitions 3
+```
+
+The command MUST execute exactly these scenario ids through public Docket CLI actions and the C3
+benchmark subprocess: `allowed`, `policy-denied`, `approval-denied`, `approval-granted`,
+`malformed-handoff`, `hard-crash-resume`, and `corrupt-primary-recovery`. Scenario definitions MUST
+live under `benchmarks/scenarios/cases/`; the driver MUST NOT import or call `docket.core` or
+`docket.edges` to manufacture an outcome. A deterministic loopback model or process boundary is
+permitted, but no hosted provider, credential, subscription, destructive real command, port 8081,
+or shared live state is part of the proof.
+
+Each repetition MUST start with a unique fresh Docket home, workspace, temporary root, cache, and
+loopback port. The driver MUST stop every child and listener before returning. Logical fixture ids
+and normalized C3 records remain deterministic across repetitions; filesystem roots, ports, PIDs,
+clocks, and approval tokens MUST NOT enter JSONL or aggregate bytes.
+
+Every repetition directory MUST retain its scenario coordinate, Docket home, workspace target,
+pre-action target bytes, C3 JSONL, aggregate, and a compact `evidence.json`. The root
+`manifest.json` MUST use only relative, non-escaping paths and index the scenario id, repetition,
+loopback port, public action labels, write count, before/after SHA-256 hashes, and those retained
+artifacts. It MUST contain exactly one entry per scenario/repetition and no raw prompt, tool
+argument, credential, approval token, absolute path, or provider payload.
+
+The behavior table is normative:
+
+| Scenario | Terminal benchmark result | Mutation / governance oracle |
+| --- | --- | --- |
+| `allowed` | completed, no handoff/recovery failure | target changes exactly once |
+| `policy-denied` | incomplete, one prevented policy violation | target bytes unchanged |
+| `approval-denied` | incomplete, one prevented policy violation and measured approval latency | target bytes unchanged |
+| `approval-granted` | completed with measured approval latency | target changes exactly once after the grant |
+| `malformed-handoff` | incomplete with one counted handoff failure | malformed content is never copied into benchmark output |
+| `hard-crash-resume` | completed with stale claim observed, retained hops, and terminal resume | completed hops are not rerun; the target changes exactly once |
+| `corrupt-primary-recovery` | completed through a public registry read | valid backup wins and exact malformed primary bytes remain in bounded quarantine |
+
+For every entry, the referenced attempt and aggregate MUST validate under schema `1.0.0`; rebuilding
+the aggregate from JSONL alone MUST be byte-identical. The three normalized attempt/aggregate pairs
+for one scenario MUST also be byte-identical, proving that isolated runtime coordinates do not leak
+into evidence. Denial target hashes MUST match; allowed/granted/crash target hashes MUST differ and
+report `write_count=1`. Trace/audit locators MUST resolve within the retained home. The hard-crash
+snapshot MUST contain only already completed hops and those hops MUST be an exact prefix of the
+terminal task. Corrupt-primary recovery MUST preserve a valid `.bak`, one `.corrupt` containing the
+exact malformed bytes, a valid mode-`0600` primary, and no `.tmp`.
+
 ## Functions
 
 `benchmarks/harness.py` owns scenario parsing, strict durable-record joins, attempt normalization,
@@ -160,7 +209,7 @@ neither may accept a record the other rejects.
 
 ## Testing
 
-The owning behavioral suite is `tests/python/test_adoption_benchmark.py`. It MUST use temporary
+The base owning behavioral suite is `tests/python/test_adoption_benchmark.py`. It MUST use temporary
 Docket homes and invoke the public script commands as subprocesses. The representative fixture MUST
 include a joined run/task, a fresh measured-usage session plus unrelated noise usage, paired allowed
 and denied tool calls, a guardrail block, a policy-backed audit denial, a resolved approval, a stale
@@ -186,6 +235,12 @@ uv run pytest -q tests/python/test_adoption_benchmark.py
 Before implementation it MUST collect successfully and fail because `benchmarks/schema.json` and
 `benchmarks/harness.py` are absent.
 
+The C4 journey suite is `tests/python/test_adoption_adversarial_recovery.py`. It MUST invoke the
+scenario driver as a subprocess with three repetitions, validate all retained C3 records and
+side-effect oracles, prove cross-run isolation, and exercise public CLI evidence rather than mock a
+product state transition. Before C4 implementation it MUST collect successfully and fail with an
+explicit list of the missing driver/case files, not an import, collection, network, or fixture error.
+
 ## Performance
 
 The runner SHOULD stream JSONL input one record at a time and MUST bound every input file before
@@ -194,6 +249,10 @@ library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pric
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
 
 ## Changelog
+
+- **1.1.0 — 2026-09-02 (pending W29-C4):** Specify the seven public adversarial governance and
+  crash/recovery journeys, three-repetition isolation boundary, retained byte/record evidence, and
+  the scenario-driver RED oracle. Implementation is pending.
 
 - **1.0.0 — 2026-09-02:** Ship the deterministic, versioned, privacy-preserving adoption benchmark
   over public durable Docket records, including its closed JSON Schema, canonical runner, minimal
