@@ -1839,7 +1839,7 @@ hashes, restart boundary, record locators, repetitions, and any split defect car
 
 ### W29-C5 — publish truthful support, deprecation, governance, and succession policy
 
-**Status:** TODO · **Size:** S · **Owner:** unassigned
+**Status:** IN-PROGRESS (@codex-w29-c5) · **Size:** S · **Owner:** @codex-w29-c5
 
 **Measured trigger:** `SECURITY.md` supports only `main` and rejects older tags;
 `COMPATIBILITY.md` describes Python/platform support; neither defines a release-support or

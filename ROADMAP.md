@@ -13,7 +13,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-02.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
-remains active; Wave 29 C1–C3 are done, C4 is claimed, C5 remains ready, and C6/C7 remain
+remains active; Wave 29 C1–C3 are done, C4/C5 are claimed, and C6/C7 remain
 dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -281,7 +281,7 @@ building it again.
 | W29-C2 | Extractable artifact-installed ten-minute starter | Done (`b138f25`, `16ef7bc`); copied artifact-installed public CLI journey passes |
 | W29-C3 | Adoption benchmark schema and deterministic runner | Done (`a556fdc`, `2bf46a5`); 11 deterministic schema/runner cases pass |
 | W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Claimed by `@codex-w29-c4`; fixture-only, split any new product defect |
-| W29-C5 | Support, deprecation, governance, and succession truth | Ready; exclusive new policy docs/tests |
+| W29-C5 | Support, deprecation, governance, and succession truth | Claimed by `@codex-w29-c5`; exclusive new policy docs/tests |
 | W29-C6 | Reproducible baseline and scoped public interpretation | Blocked on C4; integrator owns public/central fan-in |
 | W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked on C5+C6 plus explicit version/tag approval; only release-state owner |
 
