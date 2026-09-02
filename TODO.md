@@ -19,7 +19,8 @@
 > `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
 > extractable starter or benchmark result exists; project policy names no deprecation or succession
 > process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, C3,
-> and C5 are ready independent lanes. C4 depends on C1+C3, C6 depends on C2+C4, and C7 remains
+> C1, C2, and C3 are claimed as independent lanes; C5 remains ready. C4 depends on C1+C3, C6
+> depends on C2+C4, and C7 remains
 > approval-gated after C5+C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
@@ -1652,9 +1653,10 @@ feature counts and did not reopen telemetry, A2A, a dashboard, multi-tenancy, or
 | Release supply chain | current workflow plus latest public beta; wheel, sdist, checksums, SPDX SBOM, and provenance must be publicly verifiable | workflow code and six release-contract tests already cover the machinery; public `v0.2.0-beta.1` has only tarball + checksum and predates it | **no duplicate implementation**; C7 performs approval-gated publication/verification |
 | Support and succession policy | `SECURITY.md`, `COMPATIBILITY.md`, `.github/CODEOWNERS`, 90-day Git history; one truthful support/deprecation policy and one governance/succession path | main-only security support exists; no deprecation policy or governance document; one CODEOWNER and one underlying human author identity | **activate C5** |
 
-**Execution graph / contention:** C1, C2, C3, and C5 are ready and disjoint. C1 exclusively owns
-the JSON-store recovery path; C2 owns the extractable starter; C3 owns the benchmark schema/runner;
-C5 owns new project-policy documents. C4 consumes C1+C3 and owns scenario fixtures only. C6 is the
+**Execution graph / contention:** C1, C2, and C3 are claimed and remain disjoint; C5 is ready. C1
+exclusively owns the JSON-store recovery path; C2 owns the extractable starter; C3 owns the
+benchmark schema/runner; C5 owns new project-policy documents. C4 consumes C1+C3 and owns scenario
+fixtures only. C6 is the
 integrator-owned result/public-truth fan-in. C7 is the only release/version/tag owner and may not
 publish without a fresh explicit approval. `ROADMAP.md`, `TODO.md`, `README.md`, `CHANGELOG.md`,
 `COMPATIBILITY.md`, `SECURITY.md`, `specs/README.md`, metrics, tags, and release state remain
@@ -1662,7 +1664,7 @@ coordinator-owned unless a card below explicitly assigns them.
 
 ### W29-C1 — recover a corrupt Docket JSON primary from its valid backup
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN-PROGRESS (@codex-w29-c1) · **Size:** M · **Owner:** @codex-w29-c1
 
 **Measured trigger:** at `de08206`, two `edges.store.write_json` calls create a valid
 `state.json.bak`; replacing `state.json` with `{broken` leaves the backup present, but
@@ -1701,7 +1703,7 @@ identity for no-op/error cases, focused results, and any registry whose caller b
 
 ### W29-C2 — ship an extractable, artifact-installed ten-minute starter
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN-PROGRESS (@codex-w29-c2) · **Size:** M · **Owner:** @codex-w29-c2
 
 **Measured trigger:** `examples/` contains configurations, pipelines, and two single Python files,
 but no starter directory, dependency lock, self-contained instructions, or copied-outside-checkout
@@ -1709,38 +1711,41 @@ journey. `examples/runtime_embed.py` cannot run in the root environment because 
 not installed. Threshold: one credential-free starter that a new user can copy, install from exact
 artifacts, run, and inspect within a 600-second test timeout. Observed: zero.
 
-**Goal:** create a small extractable starter showing one governed tool mutation, an approval pause
-and grant, a typed terminal handoff, paired trace identity, and audit verification using public
-interfaces and a deterministic loopback/fake model.
+**Goal:** create a small extractable starter that uses the installed `docket` CLI to show one
+governed tool mutation, an approval pause and grant, a persisted typed terminal handoff, paired
+trace identity, run-registry inspection, and audit verification against a deterministic loopback
+model.
 
-**Non-goals:** no hosted provider, subscription, port 8081, framework template zoo, package-index
-publication, web UI, Docker requirement, or duplication of the full smoke harness. The starter must
-teach the narrow tested boundary, not claim arbitrary framework governance.
+**Non-goals:** no hosted provider, subscription, port 8081, runtime-adapter dependency, framework
+template zoo, package-index publication, web UI, Docker requirement, or duplication of the full
+smoke harness. The starter teaches the installed CLI journey; it does not claim that the narrower
+`docket-runtime` facade owns Docket's run registry or arbitrary framework governance.
 
 **Owns:** `examples/starter/**`, new `tests/python/test_starter_journey.py`, and new
 `specs/acceptance/starter-journey.spec.md`. It may import existing fixture utilities only when they
 are part of an installed public package; it must not import `tests/` or the source checkout.
 README/docs indexes and central metrics are forbidden until C6.
 
-**Acceptance / RED oracle:** build exact wheel/sdist inputs once, copy only `examples/starter/` to a
-fresh directory outside the checkout, install into a fresh Python 3.11 environment, and invoke one
-documented command with a fresh `DOCKET_HOME`. Within 600 seconds it must mutate exactly one declared
-workspace file after one approval, emit a terminal result/handoff, and leave queryable run, trace,
-and valid audit-chain evidence. Pre-approval and denial runs must leave the target bytes unchanged.
-The journey must work with network disabled after artifact installation and with no API key. A
-missing optional adapter must print its install command rather than traceback. The pre-change test
-fails because the extractable starter path does not exist.
+**Acceptance / RED oracle:** build the exact root wheel and sdist once, copy only
+`examples/starter/` to a fresh directory outside the checkout, install one exact root artifact into
+a fresh Python 3.11 environment, and invoke one documented starter command with a fresh
+`DOCKET_HOME`. Within 600 seconds it must mutate exactly one declared workspace file after one
+approval, persist a typed terminal handoff, and let the installed public CLI inspect the matching
+run (`docket runs list/show`), paired trace (`docket trace export`), and valid audit chain
+(`docket audit verify`). Pre-approval and denial runs must leave the target bytes unchanged. The
+journey must work with network disabled after artifact installation and with no API key. The
+pre-change test fails because the extractable starter path does not exist.
 
 **Focused validation:** starter contract and artifact journey on Python 3.11/Linux, plus the
-existing release journey and runtime package-boundary tests; public link/example test; owning spec;
-Ruff/format/mypy. Final gates match C1 and include the deterministic smoke.
+existing release journey, release-artifact, run-registry/CLI, trace, audit, and public link/example
+tests; owning spec; Ruff/format/mypy. Final gates match C1 and include the deterministic smoke.
 
 **Handoff:** report cold/warm elapsed time separately, exact artifacts and Python version, public
 command, resulting state/trace/audit locators, network/credential posture, and cleanup performed.
 
 ### W29-C3 — define the adoption benchmark schema and deterministic runner
 
-**Status:** TODO · **Size:** M · **Owner:** unassigned
+**Status:** IN-PROGRESS (@codex-w29-c3) · **Size:** M · **Owner:** @codex-w29-c3
 
 **Measured trigger:** repository search finds zero benchmark/baseline files. `docket metrics` reports
 session success, duration, estimated cost, and guardrail trips independently, but there is no

@@ -13,8 +13,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-02.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
-remains active; bounded measurement activated Wave 29 with four independent ready cards and three
-dependency/approval-gated fan-in cards.** Executable cards live in [TODO.md](TODO.md).
+remains active; Wave 29 C1–C3 are claimed as independent lanes, C5 remains ready, and three fan-in
+cards remain dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -49,7 +49,7 @@ dependency/approval-gated fan-in cards.** Executable cards live in [TODO.md](TOD
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
-| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1/C2/C3/C5 ready; C4/C6 dependency-gated; C7 publication-approval-gated |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1/C2/C3 claimed; C5 ready; C4/C6 dependency-gated; C7 publication-approval-gated |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -277,9 +277,9 @@ building it again.
 
 | Card | Outcome | Dependency / parallel boundary |
 | --- | --- | --- |
-| W29-C1 | Corrupt-primary/valid-backup recovery at the JSON-store chokepoint | Ready; exclusive `edges/store.py` and new store spec/tests |
-| W29-C2 | Extractable artifact-installed ten-minute starter | Ready; exclusive `examples/starter/` and starter acceptance spec/tests |
-| W29-C3 | Adoption benchmark schema and deterministic runner | Ready; exclusive `benchmarks/` base harness/schema/spec/tests |
+| W29-C1 | Corrupt-primary/valid-backup recovery at the JSON-store chokepoint | Claimed by `@codex-w29-c1`; exclusive `edges/store.py` and new store spec/tests |
+| W29-C2 | Extractable artifact-installed ten-minute starter | Claimed by `@codex-w29-c2`; installed CLI journey in exclusive `examples/starter/` and starter acceptance spec/tests |
+| W29-C3 | Adoption benchmark schema and deterministic runner | Claimed by `@codex-w29-c3`; exclusive `benchmarks/` base harness/schema/spec/tests |
 | W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Blocked on C1+C3; fixture-only, split any new product defect |
 | W29-C5 | Support, deprecation, governance, and succession truth | Ready; exclusive new policy docs/tests |
 | W29-C6 | Reproducible baseline and scoped public interpretation | Blocked on C2+C4; integrator owns public/central fan-in |
