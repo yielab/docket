@@ -13,13 +13,15 @@
 >
 > ---
 >
-> ## ◉ ACTIVE BOARD — WAVE 28 (2026-09-01) — portable governance proof
+> ## ☑ BOARD CLEAR (2026-09-02) — Wave 28 complete
 >
 > The bounded adapter-selection and fixture-design pass selected the standard OpenHands SDK agent
 > with an explicit Docket-only tool list and PydanticAI with a custom Docket-owned toolset. OpenHands
 > ACP is explicitly rejected for this proof because its server owns its tools and execution.
-> W28-C1 through C3 are closed; C4 is now the ready integrator-only parity and public-truth closure
-> card. Decisions D-32 and D-33 in ROADMAP.md own the selection and evidence contract.
+> All four Wave 28 cards are closed: the shared installed-artifact matrix, scoped public truth, and
+> canonical closure gates pass on the merged implementation. Decisions D-32 and D-33 in ROADMAP.md
+> own the selection and evidence contract. Wave 29 is eligible only for a new bounded activation
+> pass; no implementation card is active.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1635,7 +1637,7 @@ asset check fails.
 
 ---
 
-## ◉ WAVE 28 ACTIVE — portable governance proof
+## ☑ WAVE 28 COMPLETE (2026-09-02) — portable governance proof
 
 **Activation evidence (2026-09-01):** the bounded selection pass inspected the artifact-installed
 `docket-runtime` facade, its owning spec/tests, D-25/D-27, and the current upstream extension and
@@ -1879,7 +1881,7 @@ configuration-scoped proof.
 
 ### W28-C4 — reconcile cross-adapter parity and close Wave 28
 
-**Status:** IN-PROGRESS (@codex) · **Size:** M · **Owner:** @codex (integrator)
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex (integrator)
 
 **Explicit trigger:** two focused adapters are not a portable-governance claim until their merged,
 artifact-installed behavior passes the same oracle and public wording names the exact supported
@@ -1927,6 +1929,21 @@ native/provider tools, plugins/MCP added beside the adapter, and arbitrary frame
 are outside the proof. Record why A2A/OTLP stayed absent. Close Wave 28 only after both adapters and
 the shared installed-artifact matrix pass; Wave 29 then becomes eligible for its own bounded
 activation pass, not automatically active.
+
+**Shipped evidence:** RED `3294f58`, typed terminal-usage bridge `b1c9f44`, and scoped public truth
+`739b1ca` close the merged proof. The six-module installed-artifact group passes 37 tests, including
+the repeated eight-case cross-adapter matrix; the full suite passes 2,485 tests with five
+contract-labelled skips (2,490 collected). Ruff, format, root and pinned-adapter strict mypy, all 24
+specs, 18 goldens, ShellCheck, metrics, reproducible public assets, deterministic smoke, public
+documentation/example checks, diff hygiene, and the Wave 28 privacy scan pass. Exact implementation
+SHA `739b1ca70dc2` passes the blocking Python and dependency-floor jobs plus artifact-installed
+release journeys on both Ubuntu and macOS in GitHub Actions run `33652365412`. The evidence supports
+only standard OpenHands SDK Agent `1.44.1` and PydanticAI `2.37.0` configurations whose relevant
+tools are exclusively Docket-backed. ACP, native/provider tools, adjacent plugins/MCP, and arbitrary
+framework configurations remain outside the claim. A2A remains absent because both selected paths
+are in-process; OTLP remains absent because paired JSONL trace identity stayed sufficient. No hosted
+credential, subscription, port-8081 canary, or external publication was required. Wave 29 is merely
+eligible for bounded triage and is not active.
 
 ---
 

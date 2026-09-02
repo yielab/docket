@@ -12,9 +12,9 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-01.** **Every numbered phase 0–22 and Waves 24–27 are complete. Phase 23
-remains active; Wave 28's shared envelope and both adapter proofs are complete, and W28-C4 is ready
-for cross-adapter parity and public-truth closure.** Executable cards live in [TODO.md](TODO.md).
+**Last updated: 2026-09-02.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
+remains active, but the board is clear: Wave 29 is eligible only for a bounded activation pass and
+has no active implementation card.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -37,7 +37,7 @@ for cross-adapter parity and public-truth closure.** Executable cards live in [T
 | 20 | Fleet observability | ☑ done **at cut scope** — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card |
 | 21 | The product substrate (`packages/docket-runtime/`) | ☑ done **at cut scope** — P21-1, P21-5 shipped; rest cut by D-24 |
 | 22 | Control-plane write API for an external plan-of-record | ☑ done (6 cards, wave 16, 2026-08-04) |
-| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 C1–C3 complete; C4 parity/public-truth closure ready |
+| 23 | **Product truth and ecosystem proof (D-25)** — first successful turn, trustworthy release, atomic governance, then portable enforcement evidence | ◉ active — Wave 28 complete; board clear pending bounded Wave 29 activation |
 | — | **Waves 17–18** (not phases): MCP-tools-in-a-turn, config single-owner, audit chain across rotation, isolation actually wired | ☑ done (2026-08-05) |
 | — | **Wave 19** (not a phase): the defects a *real* dispatch on a *real* small-context endpoint found — worktree members told an unreachable root, tool-output ceiling unreachable from config | ☑ done (2026-08-05) — its remaining session-compaction finding was carried into and closed by Wave 20 |
 | — | **Wave 20** (not a phase): bounded contributor harness + live-turn context efficiency | ☑ done (2026-08-19) — repo skills/hooks, MCP output parity, live fail-closed and hierarchical compaction, measured cross-hop redundancy, and step-scoped durable history shipped |
@@ -48,7 +48,7 @@ for cross-adapter parity and public-truth closure.** Executable cards live in [T
 | — | **Wave 25** (not a phase): live-model request and outcome truth | ☑ done (2026-08-30) — all 11 cards and the live private-boundary canary passed; integrated at `6b925f0` with full commit-level gates green |
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
-| — | **Wave 28** (not a phase): portable governance proof | ◉ active (2026-09-01) — shared envelope plus OpenHands/PydanticAI adapters complete; C4 ready |
+| — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -126,8 +126,8 @@ planned · 🚧 in progress · 🗓️ planned / deferred
 
 ## Current planned program — PHASE 23: product truth and ecosystem proof
 
-**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** Wave 28 in
-[TODO.md](TODO.md) · **Resumable coordinator packet:**
+**Status:** ◉ ACTIVE (2026-08-30) · **Decision:** D-25 · **Executable detail:** board clear;
+Wave 29 requires bounded activation in [TODO.md](TODO.md) · **Resumable coordinator packet:**
 [`.agents/handoffs/phase-23-productization.md`](.agents/handoffs/phase-23-productization.md)
 
 ### Why this phase is scheduled
@@ -223,7 +223,7 @@ capability metadata; and a supported local service/TLS-proxy/backup profile. Eac
 representative fixture and a measured failure or explicit request. A built-in dashboard and tenant
 model remain out of scope.
 
-### Wave 28 — portable governance proof (active 2026-09-01)
+### Wave 28 — portable governance proof (complete 2026-09-02)
 
 The bounded pass selected the standard OpenHands SDK `Agent` as the coding runtime and PydanticAI as
 the general Python framework. OpenHands ACP is excluded from the proof because the ACP subprocess
@@ -247,14 +247,14 @@ closure gate.
 | W28-C1 | Shared public execution envelope + common fixture contract | Done (`9f6a79c`, `d2e1b33`, `2e37361`); bounded facade and shared oracle shipped |
 | W28-C2 | Standard OpenHands SDK adapter and coding fixture | Done (`071a744`, `c7d6a59`, `fbb4084`); nine Python 3.12 artifact cases pass |
 | W28-C3 | PydanticAI custom-toolset adapter and general fixture | Done (`648dec5`, `a6c9197`); seven Python 3.11 artifact cases pass |
-| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Ready; integrator-only shared matrix/spec/docs/full-gate closure |
+| W28-C4 | Cross-adapter installed-artifact parity, public truth, closure | Done (`3294f58`, `b1c9f44`, `739b1ca`); 37 focused tests, 2,490 collected tests, scoped claims, and Ubuntu/macOS artifact journeys pass |
 
 No A2A card is activated because the selected coding proof is in-process and needs no remote task
 discovery/state/cancellation. No OTLP card is activated because the fixture is explicitly required
 to first prove whether the existing JSONL trace identity is sufficient. No plugin framework
 precedes the two concrete callers.
 
-### Wave 29 — adoption and comparative evidence (blocked on Wave 28)
+### Wave 29 — adoption and comparative evidence (eligible for bounded activation; not active)
 
 Publish a ten-minute starter repository and a benchmark harness that records completion rate,
 measured tokens, estimated dollars labeled as estimates, policy violations prevented, approval
@@ -2621,6 +2621,21 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-02 (Wave 28 C4 accepted / Wave 28 closed) — portable governance is proven for two
+  exact, Docket-only external-runtime configurations.** RED `3294f58`, typed terminal-usage bridge
+  `b1c9f44`, and public/example truth `739b1ca` close the shared wheel/sdist matrix: 37 focused tests
+  pass, including the repeated eight-case parity oracle, and the full suite passes 2,485 tests with
+  five contract-labelled skips (2,490 collected). Ruff/format, root plus pinned-adapter strict mypy,
+  24 specs, 18 goldens, ShellCheck, metrics, reproducible assets, deterministic smoke, public-doc
+  checks, diff hygiene, and the scoped privacy scan pass. Exact implementation SHA `739b1ca70dc2`
+  passes blocking Python and dependency-floor jobs and artifact-installed release journeys on both
+  Ubuntu and macOS in Actions run `33652365412`. The public claim remains limited to OpenHands SDK
+  Agent `1.44.1` and PydanticAI `2.37.0` with exclusively Docket-backed relevant tools; ACP,
+  native/provider tools, adjacent plugins/MCP, and arbitrary configurations are unproven. A2A adds
+  no value to these in-process paths, and paired JSONL trace identity did not justify OTLP. No
+  credential, subscription, port-8081 canary, or external publication was required. The board is
+  clear; Wave 29 requires its own bounded activation pass.
 
 - **2026-09-01 (Wave 28 C2+C3 accepted) — the same Docket execution envelope now governs two
   concrete external-runtime configurations.** OpenHands RED `071a744`, GREEN `c7d6a59`, and typed
