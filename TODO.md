@@ -18,9 +18,8 @@
 > The bounded activation pass measured four implementation gaps and one publication gap on exact
 > `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
 > extractable starter or benchmark result exists; project policy names no deprecation or succession
-> process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, C3,
-> C1, C2, and C3 are claimed as independent lanes; C5 remains ready. C4 depends on C1+C3, C6
-> depends on C2+C4, and C7 remains
+> process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, and
+> C3 are merged and closed; C4 is claimed, and C5 remains ready. C6 depends on C4, and C7 remains
 > approval-gated after C5+C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
@@ -1664,7 +1663,7 @@ coordinator-owned unless a card below explicitly assigns them.
 
 ### W29-C1 — recover a corrupt Docket JSON primary from its valid backup
 
-**Status:** IN-PROGRESS (@codex-w29-c1) · **Size:** M · **Owner:** @codex-w29-c1
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c1
 
 **Measured trigger:** at `de08206`, two `edges.store.write_json` calls create a valid
 `state.json.bak`; replacing `state.json` with `{broken` leaves the backup present, but
@@ -1701,9 +1700,15 @@ full pytest, 18 goldens, ShellCheck, metrics, deterministic smoke, diff/privacy/
 **Handoff:** report the corruption fixture, quarantine naming/retention rule, lock boundary, byte
 identity for no-op/error cases, focused results, and any registry whose caller bypasses the store.
 
+**Shipped evidence:** RED `4b796de` and GREEN `b673645` recover a corrupt primary from a valid
+backup under the directory lock, preserve exact malformed bytes in one bounded `.corrupt`, restore
+mode `0600`, retain valid-primary and unusable-backup byte identity, and preserve existing
+`JSONDecodeError` caller compatibility through typed `StoreRecoveryError`. All 11 focused cases,
+including 20-repetition reader/writer barriers, pass on merged `main`.
+
 ### W29-C2 — ship an extractable, artifact-installed ten-minute starter
 
-**Status:** IN-PROGRESS (@codex-w29-c2) · **Size:** M · **Owner:** @codex-w29-c2
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c2
 
 **Measured trigger:** `examples/` contains configurations, pipelines, and two single Python files,
 but no starter directory, dependency lock, self-contained instructions, or copied-outside-checkout
@@ -1743,9 +1748,15 @@ tests; owning spec; Ruff/format/mypy. Final gates match C1 and include the deter
 **Handoff:** report cold/warm elapsed time separately, exact artifacts and Python version, public
 command, resulting state/trace/audit locators, network/credential posture, and cleanup performed.
 
+**Shipped evidence:** RED `b138f25` and GREEN `16ef7bc` add the extractable
+`examples/starter/` journey. Its Python 3.11 test copies outside the checkout, builds and installs
+the exact root artifact, runs without provider credentials or post-install network, proves denial
+and approval/grant mutation boundaries, persists a typed handoff and paired trace, and verifies the
+public run registry and audit chain. The merged artifact journey passes in 18.6 seconds.
+
 ### W29-C3 — define the adoption benchmark schema and deterministic runner
 
-**Status:** IN-PROGRESS (@codex-w29-c3) · **Size:** M · **Owner:** @codex-w29-c3
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c3
 
 **Measured trigger:** repository search finds zero benchmark/baseline files. `docket metrics` reports
 session success, duration, estimated cost, and guardrail trips independently, but there is no
@@ -1784,9 +1795,14 @@ owning spec; Ruff/format/mypy. Final gates match C1.
 **Handoff:** report schema version, field provenance map, normalization boundary, estimate labeling,
 redaction scan, repeatability result, and exact command needed by C4.
 
+**Shipped evidence:** RED `a556fdc` and GREEN `2bf46a5` add schema version `1.0.0`, a
+dependency-light runner, documentation, and a minimal public-artifact fixture. All 11 focused cases
+prove deterministic identifiers/serialization, strict task/session/trace/audit joins, explicit
+estimate provenance, redaction, failure atomicity, and byte-identical JSONL-only aggregation.
+
 ### W29-C4 — add adversarial governance and crash/recovery benchmark scenarios
 
-**Status:** BLOCKED (needs W29-C1 and W29-C3) · **Size:** M · **Owner:** unassigned
+**Status:** IN-PROGRESS (@codex-w29-c4) · **Size:** M · **Owner:** @codex-w29-c4
 
 **Measured trigger:** 31 focused release, crash-resume, and policy-template tests pass, but zero
 whole-journey scenario emits the Wave 29 benchmark record. Unit behavior exists; adoption evidence
@@ -1859,7 +1875,7 @@ rejected overclaims, link test, and any item requiring owner consent rather than
 
 ### W29-C6 — generate and publish the reproducible adoption baseline
 
-**Status:** BLOCKED (needs W29-C2 and W29-C4) · **Size:** M · **Owner:** integrator
+**Status:** BLOCKED (needs W29-C4) · **Size:** M · **Owner:** integrator
 
 **Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
 C4 produce the first reproducible inputs, while current public prose has no versioned result.
