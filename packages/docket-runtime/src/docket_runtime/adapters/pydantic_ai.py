@@ -22,6 +22,7 @@ from docket_runtime import (
 from pydantic_ai import RunContext
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset, ToolsetTool
+from pydantic_ai.usage import RunUsage
 from pydantic_core import SchemaValidator
 
 
@@ -87,20 +88,26 @@ class DocketToolset(AbstractToolset[None]):
             name=name,
             arguments=json.dumps(tool_args, separators=(",", ":")),
         )
-        terminal = self._execution.record_response(self._usage_since_last_report(ctx), (call,))
+        terminal = self._execution.record_response(
+            self._usage_since_last_report(ctx.usage), (call,)
+        )
         if terminal is not None:
             self._terminal = terminal
             return terminal.error
         return str(self._execution.dispatch(call).as_tool_output())
 
-    def finish(self, summary: str) -> ExecutionResult:
-        """Return the one terminal Docket result for the completed agent run."""
+    def finish(self, summary: str, *, usage: RunUsage | None = None) -> ExecutionResult:
+        """Record optional final usage and return the completed Docket result."""
         if self._terminal is None:
-            self._terminal = self._execution.finish(summary)
+            if usage is not None:
+                self._terminal = self._execution.record_response(
+                    self._usage_since_last_report(usage), ()
+                )
+            if self._terminal is None:
+                self._terminal = self._execution.finish(summary)
         return self._terminal
 
-    def _usage_since_last_report(self, ctx: RunContext[None]) -> TokenUsage:
-        usage = ctx.usage
+    def _usage_since_last_report(self, usage: RunUsage) -> TokenUsage:
         current = TokenUsage(
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,

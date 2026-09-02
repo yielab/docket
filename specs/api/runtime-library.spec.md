@@ -1,8 +1,8 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
-**Version**: 2.1.0
-**Status**: Implemented artifact facade and governed-execution envelope (not published to an index)
-**Last Updated**: 2026-09-01
+**Version**: 2.2.0
+**Status**: Implemented artifact facade, governed-execution envelope, and typed PydanticAI completion-usage seam (not published to an index)
+**Last Updated**: 2026-09-02
 
 ## Purpose
 
@@ -110,6 +110,15 @@ After any terminal result, `record_response`, `dispatch`, and a second
 `finish` raise `RuntimeError` without trace, audit, approval, or handler side
 effects.
 
+The optional PydanticAI adapter's `DocketToolset.finish(summary, *, usage=None)`
+accepts the completed run's cumulative `RunUsage`. When supplied for an active
+execution, the adapter converts only the usage since its last tool call into a
+final response with no tool calls before terminalizing. That final response can
+therefore stop on Docket's token budget. When a tool response already produced
+a terminal budget result, `finish` returns that same result without recording
+later framework activity. Omitting `usage` preserves the original embedding
+contract for callers that cannot report completion usage.
+
 ### Example
 
 ```python
@@ -187,6 +196,12 @@ terminal handoff, concurrent approval-stub isolation, exact public exports,
 and unchanged base dependencies.
 
 ## Changelog
+
+### Version 2.2.0 (2026-09-02)
+
+- Added a typed, backward-compatible PydanticAI completion-usage seam so the
+  final provider response participates in Docket's cumulative token budget and
+  terminal result without changing already-terminal executions.
 
 ### Version 2.1.0 (2026-09-01)
 
