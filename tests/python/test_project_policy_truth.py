@@ -22,7 +22,7 @@ def _claim_violations(text: str) -> set[str]:
     checks = {
         "multiple-maintainers": r"(?:we have|there are) multiple active maintainers",
         "lts": r"(?:offers?|provides?|includes?) (?:an? )?(?:lts|long-term support)",
-        "guaranteed-compatibility": r"guarantee(?:d|s)? (?:backward )?compatibility",
+        "guaranteed-compatibility": r"(?<!not )guarantee(?:d|s)? (?:backward )?compatibility",
         "foundation": r"governed by (?:a|the) foundation",
     }
     return {name for name, pattern in checks.items() if re.search(pattern, lowered)}
@@ -60,7 +60,7 @@ def test_governance_states_current_authority_and_maintainer_path() -> None:
 def test_support_states_actual_matrix_and_beta_deprecation_rule() -> None:
     text = _text(SUPPORT)
     lowered = text.lower()
-    assert re.search(r"\|\s*`main`\s*\|\s*supported\s*\|", text)
+    assert re.search(r"\|\s*`main`\s*\|\s*supported\s*\|", lowered)
     assert re.search(r"\|\s*older tags\s*\|\s*not supported\s*\|", lowered)
     assert "pre-1.0" in lowered
     assert "one published beta" in lowered
