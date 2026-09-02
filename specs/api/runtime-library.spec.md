@@ -1,7 +1,7 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
 **Version**: 2.2.0
-**Status**: Implemented artifact facade, governed-execution envelope, and typed PydanticAI completion-usage seam (not published to an index)
+**Status**: Implemented artifact facade, governed-execution envelope, and configuration-scoped OpenHands/PydanticAI adapters (not published to an index)
 **Last Updated**: 2026-09-02
 
 ## Purpose
@@ -119,6 +119,28 @@ a terminal budget result, `finish` returns that same result without recording
 later framework activity. Omitting `usage` preserves the original embedding
 contract for callers that cannot report completion usage.
 
+## Tested adapter configurations
+
+The installed-artifact proof covers exactly these standard configurations:
+
+| Adapter | Pinned package | Python | Governed integration |
+| --- | --- | --- | --- |
+| OpenHands SDK | `openhands-sdk==1.44.1` | 3.12 | `OpenHandsAdapter` with defaults, skills, plugins, MCP, and native tools disabled |
+| PydanticAI | `pydantic-ai==2.37.0` | 3.11 | One sequential `DocketToolset`, with no native or additional toolsets |
+
+The matrix builds the `docket-runtime` wheel and sdist once, installs each
+outside the checkout with both pinned fixtures, and compares normalized state,
+usage, tool-call count, terminal result, handoff, trace, and audit outcomes. The
+claim applies only when relevant tools are exclusively Docket-backed. ACP,
+native/provider tools, plugins/MCP added beside an adapter, and arbitrary
+framework configurations are outside the proof. This is not framework-neutral
+compatibility.
+
+A2A is not used because both tested adapters call the synchronous facade in
+process. OTLP is not used because the existing JSONL trace preserves project,
+session, role, call, and decision identity required by this proof. Neither
+absence is a claim that those protocols are unsupported future work.
+
 ### Example
 
 ```python
@@ -195,13 +217,23 @@ decisions, malformed and unknown calls through the real chokepoint, typed
 terminal handoff, concurrent approval-stub isolation, exact public exports,
 and unchanged base dependencies.
 
+`tests/python/test_runtime_adapter_parity.py` installs the same wheel and
+rebuilt sdist into the pinned OpenHands SDK and PydanticAI fixture environments
+and compares their normalized governed outcomes. It also proves that the base
+artifact imports without either optional framework dependency.
+`tests/python/test_runtime_adapter_public_truth.py` checks the support boundary,
+protocol non-claims, and the machine-readable compact example.
+
 ## Changelog
 
-### Version 2.2.0 (2026-09-02)
+### Version 2.2.0 (2026-09-01)
 
 - Added a typed, backward-compatible PydanticAI completion-usage seam so the
   final provider response participates in Docket's cumulative token budget and
   terminal result without changing already-terminal executions.
+- Added the artifact-installed parity contract for the pinned standard
+  OpenHands SDK and PydanticAI configurations, including their explicit tool
+  and protocol boundaries.
 
 ### Version 2.1.0 (2026-09-01)
 

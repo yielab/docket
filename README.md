@@ -227,9 +227,23 @@ The standalone **`docket-runtime`** package builds from `packages/docket-runtime
 policy, approval, trace, and audit chokepoint. It is not published to any index; build it from this
 checkout and start with [examples/runtime_embed.py](examples/runtime_embed.py).
 
+Two optional adapter configurations have installed-artifact coverage:
+
+| Adapter | Tested configuration | Boundary |
+| --- | --- | --- |
+| OpenHands SDK | `openhands-sdk==1.44.1`, Python 3.12 | Standard agent with defaults, native tools, plugins, skills, and MCP disabled |
+| PydanticAI | `pydantic-ai==2.37.0`, Python 3.11 | One sequential Docket toolset with no native or additional toolsets |
+
+These claims apply when relevant tools are exclusively Docket-backed. ACP, native/provider tools,
+plugins/MCP added beside an adapter, and arbitrary framework configurations are outside the proof;
+this is not framework-neutral compatibility. A2A and OTLP are not used: both adapters run in
+process, while Docket's JSONL trace already preserves the identity fields tested by the matrix.
+Inspect the boundary or copy the lazy constructors from
+[examples/runtime_adapters.py](examples/runtime_adapters.py).
+
 ### Engineering evidence
 
-- **2,478 tests** in `tests/python/`
+- **2,490 tests** in `tests/python/`
 - **~30,478 lines** of Python in the shipped package
 - **24 specifications** validated in CI
 - **37 commands** documented in the command reference
@@ -237,7 +251,7 @@ checkout and start with [examples/runtime_embed.py](examples/runtime_embed.py).
 - Exact-wheel first-turn journeys on Ubuntu and macOS
 
 ```bash
-uv run pytest                                      # 2,478-test Python suite
+uv run pytest                                      # 2,490-test Python suite
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src

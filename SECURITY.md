@@ -45,6 +45,16 @@ has added). docket:
 - enforces `700` on workspace dirs and `600` on files, and keeps secrets out of `argv`
   (values flow via stdin/env/inside-Python, never as process arguments — no `/proc` leakage).
 
+### External-runtime adapter boundary
+
+The separately built `docket-runtime` package has artifact-tested adapters for OpenHands SDK
+1.44.1 and PydanticAI 2.37.0. Their governance claim applies only when the model-visible tools are
+exclusively Docket-backed: each translated call then reaches the existing policy, approval, trace,
+audit, and dispatcher chokepoint. The adapter is not a sandbox around its host framework. Enabling
+native/provider tools, plugins/MCP, or an additional toolset beside Docket creates execution paths
+outside this proof and may bypass Docket policy entirely. See [Compatibility](COMPATIBILITY.md) for
+the exact configurations and exclusions.
+
 **The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,
 `docket install` **enforces tool-approval gates by default** (opt out with `--no-gates`): a

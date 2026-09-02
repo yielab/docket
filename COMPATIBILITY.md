@@ -1,9 +1,10 @@
 # Compatibility
 
 docket has no external daemon dependency. Its compatibility surface is the **model endpoint**
-docket's own turn loop talks to, plus the optional MCP servers it can gate like a built-in tool.
-This document records what docket is verified against and how breaks are tracked. See the
-README's [Compatibility](README.md#compatibility) section for the short version.
+docket's own turn loop talks to, the optional MCP servers it can gate like a built-in tool, and two
+configuration-scoped adapters for the separately built `docket-runtime` package. This document
+records what docket is verified against and how breaks are tracked. See the README's
+[Compatibility](README.md#compatibility) section for the short version.
 
 ## Support matrix
 
@@ -29,6 +30,24 @@ README's [Compatibility](README.md#compatibility) section for the short version.
   Requires the optional `[mcp]` extra (`pip install 'docket[mcp]'` or `uv sync --extra mcp`);
   without it, `docket mcp` commands print an actionable missing-SDK message instead of a bare
   import error.
+
+## Embeddable runtime adapters
+
+| Adapter | Installed fixture | Verified boundary |
+| --- | --- | --- |
+| OpenHands SDK | `openhands-sdk==1.44.1` on Python 3.12 | Standard `Agent` with only translated Docket tools |
+| PydanticAI | `pydantic-ai==2.37.0` on Python 3.11 | One sequential `DocketToolset` with only translated Docket tools |
+
+The test matrix builds one wheel and sdist, installs both outside the source checkout, and compares
+state bytes, provider-reported usage, tool-call count, stop reason, trace identity, audit-chain
+verification, and typed handoff. The compatibility claim applies only when relevant tools are
+exclusively Docket-backed. ACP, native/provider tools, plugins/MCP added beside an adapter, and
+arbitrary framework configurations are outside the proof. This is not framework-neutral support.
+
+A2A is not used because these configurations integrate with Docket in process. OTLP is not used
+because JSONL trace records preserve project, session, role, call, and decision identity. See the
+[compact adapter example](examples/runtime_adapters.py) for the machine-readable boundary and lazy
+constructors. Neither framework is a dependency of the base `docket-runtime` installation.
 
 ## Platform
 
