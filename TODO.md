@@ -1929,11 +1929,17 @@ nine attempts, five completions, and the four retained failures (`starter`, `pol
 `approval-denied`, `malformed-handoff`). Only approval-latency and wall-clock fields use the
 manifest's 5,000 ms comparison tolerance. Public prose labels this deterministic contract evidence,
 keeps dollars unavailable, and rejects model-quality, ranking, savings, or production-rate claims.
-The test metric moves 2,522 → 2,533. Local commit-level gates pass: 2,528 tests with five expected
+The test metric moves 2,522 → 2,534, including the CI-history regression. Local commit-level gates
+at `03693a3` pass: 2,528 tests with five expected
 skips, 18 goldens, 27 specs, Ruff/format, strict mypy, ShellCheck, metrics, reproducible documentation
-assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. The current commit has no
-macOS runner evidence because it is not published and the configured GitHub credential is invalid;
-C6 remains in progress and C7 remains blocked until that required job is green.
+assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. GitHub run `33764191509`
+passed both Linux and macOS release-journey jobs, while its
+three full-suite jobs exposed two distinct CI defects: depth-one checkout cannot resolve pinned
+source `82a3239`, and the floor environment cannot collect the benchmark tests because `jsonschema`
+is absent. Commit `c817955` makes the Python, floor, and macOS jobs fetch complete history and adds a
+passing regression test. The remaining floor dependency defect is reproduced in an isolated Python
+3.11 environment as `ModuleNotFoundError: jsonschema`; C6 and C7 remain blocked on its scoped fix and
+a green rerun.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
