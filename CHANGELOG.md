@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Reproducible adoption evidence (W29-C6).** An exact-commit generator builds and installs the
+  root wheel on Python 3.11, repeats the starter and seven governance/recovery fixtures three times,
+  and publishes canonical attempts, aggregates, provenance, privacy checks, and an explicitly
+  limited public report under `benchmarks/results/wave29/` and `docs/ADOPTION-EVIDENCE.md`.
 - **Provisioning startup contract** (`core/memory.py`): every agent workspace is now seeded with
   the files the OpenClaw runtime re-reads after each compaction — `WORKFLOW_AUTO.md` (anchors the
   codebase path, the read order, and a "answer about the product, not your scaffolding" directive)

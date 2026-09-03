@@ -32,6 +32,21 @@ cmp "$out/aggregate.json" "$out/rebuilt.json"
 The two aggregate files are byte-identical. Both commands reject malformed, duplicate, partial,
 path-escaping, or mismatched input before replacing an existing output.
 
+## Published Wave 29 baseline
+
+The [public adoption report](../docs/ADOPTION-EVIDENCE.md) links the canonical baseline and explains
+its limits. Regenerate it from an exact commit with:
+
+```sh
+python benchmarks/results/regenerate.py \
+  --source-commit COMMIT \
+  --output OUTPUT \
+  --repetitions 3
+```
+
+The command builds and installs that commit's wheel outside the checkout, runs the starter and all
+seven adversarial/recovery cases without provider credentials, and removes its temporary state.
+
 ## Scenario contract
 
 A scenario records its own version, stable id and seed, `deterministic` or `live` measurement class,

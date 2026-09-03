@@ -214,6 +214,7 @@ before relying on a model endpoint or MCP server.
 | Provider endpoints and coding harnesses | [Models and gateways](docs/MODEL-GATEWAYS.md) |
 | Security posture and deployment limits | [Security model](SECURITY.md) |
 | Runtime and protocol compatibility | [Compatibility](COMPATIBILITY.md) |
+| Deterministic adoption evidence and limits | [Adoption evidence](docs/ADOPTION-EVIDENCE.md) |
 | Architecture and state ownership | [Architecture](docs/DOCKET.md) |
 | Pipeline examples | [Workflow guide](docs/WORKFLOW-GUIDE.md) |
 | Troubleshooting | [Troubleshooting](docs/troubleshooting.md) |

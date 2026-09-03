@@ -1,7 +1,7 @@
 # Adoption Benchmark Validation Specification
 
 **Version**: 1.2.0
-**Status**: In progress
+**Status**: Implemented
 **Last Updated**: 2026-09-03
 
 ## Purpose
@@ -304,9 +304,9 @@ Deterministic scenarios MUST use no network, hosted credentials, subscriptions, 
 
 ## Changelog
 
-- **1.2.0 — 2026-09-03 (pending W29-C6):** Specify the exact-artifact Wave 29 baseline, complete
+- **1.2.0 — 2026-09-03:** Ship the exact-artifact Wave 29 baseline, complete
   starter-plus-adversarial attempt set, mechanically derived public summary, bounded timing-only
-  comparison rule, privacy boundary, and publication RED oracle. Implementation is pending.
+  comparison rule, privacy boundary, public report, and publication oracle.
 
 - **1.1.0 — 2026-09-02:** Ship the seven public adversarial governance and crash/recovery journeys,
   three-repetition isolation boundary, retained byte/record evidence, and scenario driver.

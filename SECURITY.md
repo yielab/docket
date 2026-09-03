@@ -53,7 +53,9 @@ exclusively Docket-backed: each translated call then reaches the existing policy
 audit, and dispatcher chokepoint. The adapter is not a sandbox around its host framework. Enabling
 native/provider tools, plugins/MCP, or an additional toolset beside Docket creates execution paths
 outside this proof and may bypass Docket policy entirely. See [Compatibility](COMPATIBILITY.md) for
-the exact configurations and exclusions.
+the exact configurations and exclusions. The [adoption evidence report](docs/ADOPTION-EVIDENCE.md)
+links the retained denial, malformed-handoff, and recovery records and states their measurement
+limits.
 
 **The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,

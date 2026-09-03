@@ -36,6 +36,7 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 | [Models, gateways, and harnesses](MODEL-GATEWAYS.md) | Codex/Claude Code/OpenCode portability; OpenRouter and Vercel AI Gateway setup and limits |
 | [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
+| [Adoption Evidence](ADOPTION-EVIDENCE.md) | Reproducible exact-artifact governance and recovery results, with limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 | [Development Harness](DEVELOPMENT-HARNESS.md) | Contributor/agent context routing, repository skills, hooks, and token-efficient validation |
 

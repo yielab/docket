@@ -44,6 +44,10 @@ verification, and typed handoff. The compatibility claim applies only when relev
 exclusively Docket-backed. ACP, native/provider tools, plugins/MCP added beside an adapter, and
 arbitrary framework configurations are outside the proof. This is not framework-neutral support.
 
+The separate [adoption evidence report](docs/ADOPTION-EVIDENCE.md) publishes the exact-artifact
+starter, governance, and recovery fixture results. It is deterministic contract evidence, not live
+provider or framework benchmarking.
+
 A2A is not used because these configurations integrate with Docket in process. OTLP is not used
 because JSONL trace records preserve project, session, role, call, and decision identity. See the
 [compact adapter example](examples/runtime_adapters.py) for the machine-readable boundary and lazy
