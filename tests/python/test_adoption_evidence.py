@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import unquote
 
 import pytest
+import yaml  # type: ignore[import-untyped]
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +90,7 @@ PUBLIC_SURFACES = (
     ROOT / "SECURITY.md",
     ROOT / "docs" / "README.md",
 )
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 PLACEHOLDER_SOURCES = {"2" * 40, "3" * 64}
 
 
@@ -454,6 +456,21 @@ def test_published_evidence_contains_no_private_runtime_material() -> None:
         rb"RAW_(?:PROMPT|TOOL_ARGUMENT|SECRET)",
     )
     assert [pattern for pattern in patterns if re.search(pattern, published, re.IGNORECASE)] == []
+
+
+def test_ci_jobs_that_validate_pinned_provenance_checkout_complete_history() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    shallow: list[str] = []
+    for job_name in ("python", "floors", "macos"):
+        checkout = next(
+            step for step in jobs[job_name]["steps"] if step.get("uses") == "actions/checkout@v4"
+        )
+        if checkout.get("with", {}).get("fetch-depth") != 0:
+            shallow.append(job_name)
+    assert shallow == [], (
+        "C6 provenance validation requires full Git history in CI jobs: " + ", ".join(shallow)
+    )
 
 
 @pytest.mark.parametrize(

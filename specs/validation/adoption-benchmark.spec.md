@@ -1,6 +1,6 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 1.2.0
+**Version**: 1.2.1
 **Status**: Implemented
 **Last Updated**: 2026-09-03
 
@@ -295,6 +295,10 @@ and marketing overclaims, resolve every public link, scan published bytes for pr
 two exact-artifact regenerations. Before C6 implementation it MUST collect successfully and fail
 with an explicit list of the missing regenerator, baseline manifest, and public report.
 
+Every CI job that runs this suite MUST check out complete Git history. The baseline intentionally
+pins an earlier exact source commit, so a depth-one checkout cannot validate or regenerate it and
+MUST NOT be treated as a product failure.
+
 ## Performance
 
 The runner SHOULD stream JSONL input one record at a time and MUST bound every input file before
@@ -303,6 +307,10 @@ library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pric
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
 
 ## Changelog
+
+- **1.2.1 — 2026-09-03:** Require complete Git history in CI jobs that validate
+  the pinned baseline source, preventing shallow checkout from making provenance tests vacuously
+  fail before regeneration.
 
 - **1.2.0 — 2026-09-03:** Ship the exact-artifact Wave 29 baseline, complete
   starter-plus-adversarial attempt set, mechanically derived public summary, bounded timing-only
