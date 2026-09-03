@@ -19,8 +19,8 @@
 > `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
 > extractable starter or benchmark result exists; project policy names no deprecation or succession
 > process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, and
-> C3 are merged and closed; C4 is claimed, and C5 remains ready. C6 depends on C4, and C7 remains
-> approval-gated after C5+C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
+> C3 are merged and closed; C4 and C5 are merged and closed. C6 is now ready, and C7 remains
+> approval-gated after C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1802,7 +1802,7 @@ estimate provenance, redaction, failure atomicity, and byte-identical JSONL-only
 
 ### W29-C4 — add adversarial governance and crash/recovery benchmark scenarios
 
-**Status:** IN-PROGRESS (@codex-w29-c4) · **Size:** M · **Owner:** @codex-w29-c4
+**Status:** DONE (2026-09-03) · **Size:** M · **Owner:** @codex-w29-c4
 
 **Measured trigger:** 31 focused release, crash-resume, and policy-template tests pass, but zero
 whole-journey scenario emits the Wave 29 benchmark record. Unit behavior exists; adoption evidence
@@ -1837,9 +1837,16 @@ match C1.
 **Handoff:** report the scenario table, public action, observable outcome, mutation/no-mutation
 hashes, restart boundary, record locators, repetitions, and any split defect card.
 
+**Shipped evidence:** RED `fcdff9a` and GREEN `0c8dac7` add seven versioned case definitions and a
+credential-free scenario driver. Twenty-one isolated journeys prove allowed/granted/crash
+single-write behavior; policy/approval denial byte identity; counted malformed handoff; retained-hop
+crash resume; public `runs list` recovery with exact quarantine bytes; C3 schema validity; and
+byte-identical normalized output across three repetitions. The merged 184-case C4/C5 focused suite,
+Ruff/format/strict mypy, and all 27 specifications pass; no product defect was split.
+
 ### W29-C5 — publish truthful support, deprecation, governance, and succession policy
 
-**Status:** IN-PROGRESS (@codex-w29-c5) · **Size:** S · **Owner:** @codex-w29-c5
+**Status:** DONE (2026-09-03) · **Size:** S · **Owner:** @codex-w29-c5
 
 **Measured trigger:** `SECURITY.md` supports only `main` and rejects older tags;
 `COMPATIBILITY.md` describes Python/platform support; neither defines a release-support or
@@ -1873,9 +1880,15 @@ positioning tests; Ruff/format. Final gates match C1.
 **Handoff:** report the exact maintainer/support truth, deprecation window, succession trigger,
 rejected overclaims, link test, and any item requiring owner consent rather than code.
 
+**Shipped evidence:** RED `ac05dc3` and GREEN `c480e97` publish the current one-maintainer authority,
+an evidence-based contributor-to-maintainer path, conflict/security escalation, main-only support,
+one-published-beta deprecation notice, and a 90-day transfer-or-archive succession trigger. Eight
+policy cases pass, every repository-relative link resolves, and counterexamples reject invented
+multiple maintainers, LTS, compatibility guarantees, or foundation governance.
+
 ### W29-C6 — generate and publish the reproducible adoption baseline
 
-**Status:** BLOCKED (needs W29-C4) · **Size:** M · **Owner:** integrator
+**Status:** TODO · **Size:** M · **Owner:** integrator
 
 **Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
 C4 produce the first reproducible inputs, while current public prose has no versioned result.
@@ -1911,7 +1924,7 @@ approval.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
-**Status:** BLOCKED (needs W29-C5, W29-C6, and explicit version/tag publication approval) ·
+**Status:** BLOCKED (needs W29-C6 and explicit version/tag publication approval) ·
 **Size:** M · **Owner:** integrator
 
 **Measured trigger:** public release `v0.2.0-beta.1` (published 2026-07-03) has two assets—the legacy
