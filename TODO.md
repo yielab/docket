@@ -19,7 +19,7 @@
 > `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
 > extractable starter or benchmark result exists; project policy names no deprecation or succession
 > process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, and
-> C3 are merged and closed; C4 and C5 are merged and closed. C6 is now ready, and C7 remains
+> C3 are merged and closed; C4 and C5 are merged and closed. C6 is claimed, and C7 remains
 > approval-gated after C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
@@ -1888,7 +1888,7 @@ multiple maintainers, LTS, compatibility guarantees, or foundation governance.
 
 ### W29-C6 — generate and publish the reproducible adoption baseline
 
-**Status:** TODO · **Size:** M · **Owner:** integrator
+**Status:** IN-PROGRESS (@codex-w29-c6) · **Size:** M · **Owner:** @codex-w29-c6
 
 **Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
 C4 produce the first reproducible inputs, while current public prose has no versioned result.

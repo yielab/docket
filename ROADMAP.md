@@ -13,7 +13,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-03.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
-remains active; Wave 29 C1–C5 are done, C6 is ready, and C7 remains
+remains active; Wave 29 C1–C5 are done, C6 is claimed, and C7 remains
 dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
@@ -49,7 +49,7 @@ dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
-| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1–C5 done; C6 ready; C7 publication-approval-gated |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1–C5 done; C6 claimed; C7 publication-approval-gated |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -282,7 +282,7 @@ building it again.
 | W29-C3 | Adoption benchmark schema and deterministic runner | Done (`a556fdc`, `2bf46a5`); 11 deterministic schema/runner cases pass |
 | W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Done (`fcdff9a`, `0c8dac7`); 21 isolated C3-valid journeys pass |
 | W29-C5 | Support, deprecation, governance, and succession truth | Done (`ac05dc3`, `c480e97`); 8 policy truth/counterexample cases pass |
-| W29-C6 | Reproducible baseline and scoped public interpretation | Ready; integrator owns public/central fan-in |
+| W29-C6 | Reproducible baseline and scoped public interpretation | Claimed by `@codex-w29-c6`; integrator owns public/central fan-in |
 | W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked on C6 plus explicit version/tag approval; only release-state owner |
 
 No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
