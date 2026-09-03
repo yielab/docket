@@ -13,8 +13,8 @@ portability → operability → product**. Earlier phases unblock later ones.
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
 **Last updated: 2026-09-03.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
-remains active; Wave 29 C1–C5 are done, C6 is claimed, and C7 remains
-dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
+remains active; Wave 29 C1–C6 are done, and C7 remains explicit-approval-gated.** Executable cards
+live in [TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Everything below §4.5 is a **historical record**, not a plan.
 > Phase sections are written in the present tense of when they were authored, and several still carry
@@ -49,7 +49,7 @@ dependency/approval-gated.** Executable cards live in [TODO.md](TODO.md).
 | — | **Wave 26** (not a phase): first-use, release, atomic-governance, cancellation, and public truth | ☑ done (2026-08-31) — all cards through C11 shipped; artifact journeys, public docs, and full closure gates pass |
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
-| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1–C5 done; C6 claimed; C7 publication-approval-gated |
+| — | **Wave 29** (not a phase): adoption evidence and public release | ◉ active (2026-09-02) — C1–C6 done; C7 publication-approval-gated |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -282,8 +282,8 @@ building it again.
 | W29-C3 | Adoption benchmark schema and deterministic runner | Done (`a556fdc`, `2bf46a5`); 11 deterministic schema/runner cases pass |
 | W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Done (`fcdff9a`, `0c8dac7`); 21 isolated C3-valid journeys pass |
 | W29-C5 | Support, deprecation, governance, and succession truth | Done (`ac05dc3`, `c480e97`); 8 policy truth/counterexample cases pass |
-| W29-C6 | Reproducible baseline and scoped public interpretation | Claimed by `@codex-w29-c6`; integrator owns public/central fan-in |
-| W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked on C6 plus explicit version/tag approval; only release-state owner |
+| W29-C6 | Reproducible baseline and scoped public interpretation | Done (`82a3239`, `033bb4b`, `f789bc6`); exact hash and hosted closure pass in run `33812881329` |
+| W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked only on explicit version/tag approval; only release-state owner |
 
 No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
 contracts, not model quality. Dollar values are estimates with versioned assumptions or remain
@@ -2649,6 +2649,17 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 ---
 
 ### Changelog
+
+- **2026-09-03 (W29-C6 accepted) — the reproducible adoption baseline is published and its clean
+  builder is verified without moving the baseline.** RED `82a3239`, GREEN `033bb4b`, and canonical
+  builder fix `f789bc6` bind source `82a3239` to wheel SHA-256 `0fe67120…67fce`, eight scenario
+  groups, nine attempts, five completions, and four retained failures. The public report keeps
+  dollars unavailable and labels deterministic fixtures as contract—not model-quality—evidence.
+  Hosted CI run `33812881329` at `37e91a8` passes every blocking job plus both Linux/macOS
+  artifact-installed release journeys; its clean Python and dependency-floor lanes reproduce the
+  unchanged artifact. The advisory macOS full suite retains eight unrelated portability failures,
+  with no C6 baseline or journey failure. C6 is closed; C7 is now blocked only on explicit
+  version/tag publication approval.
 
 - **2026-09-02 (Wave 29 bounded triage / activation) — adoption work is now tied to five measured
   gaps rather than a feature wishlist.** At exact `main` commit `de08206`, repository measurement

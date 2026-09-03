@@ -18,9 +18,9 @@
 > The bounded activation pass measured four implementation gaps and one publication gap on exact
 > `main` commit `de08206`: a corrupt Docket-owned JSON primary raises despite a valid `.bak`; no
 > extractable starter or benchmark result exists; project policy names no deprecation or succession
-> process; and the latest public beta exposes only its two legacy release assets. W29-C1, C2, and
-> C3 are merged and closed; C4 and C5 are merged and closed. C6 is claimed, and C7 remains
-> approval-gated after C6. Decision D-34 in ROADMAP.md owns the evidence and claim boundary.
+> process; and the latest public beta exposes only its two legacy release assets. W29-C1 through C6
+> are merged and closed. C7 is the only remaining card and stays explicit-approval-gated. Decision
+> D-34 in ROADMAP.md owns the evidence and claim boundary.
 >
 > **Wave 20 closed with W20-C4.** The live context ceiling now covers MCP output, session
 > compaction runs fail-closed on the production path, oversized histories compact hierarchically,
@@ -1652,14 +1652,11 @@ feature counts and did not reopen telemetry, A2A, a dashboard, multi-tenancy, or
 | Release supply chain | current workflow plus latest public beta; wheel, sdist, checksums, SPDX SBOM, and provenance must be publicly verifiable | workflow code and six release-contract tests already cover the machinery; public `v0.2.0-beta.1` has only tarball + checksum and predates it | **no duplicate implementation**; C7 performs approval-gated publication/verification |
 | Support and succession policy | `SECURITY.md`, `COMPATIBILITY.md`, `.github/CODEOWNERS`, 90-day Git history; one truthful support/deprecation policy and one governance/succession path | main-only security support exists; no deprecation policy or governance document; one CODEOWNER and one underlying human author identity | **activate C5** |
 
-**Execution graph / contention:** C1, C2, and C3 are claimed and remain disjoint; C5 is ready. C1
-exclusively owns the JSON-store recovery path; C2 owns the extractable starter; C3 owns the
-benchmark schema/runner; C5 owns new project-policy documents. C4 consumes C1+C3 and owns scenario
-fixtures only. C6 is the
-integrator-owned result/public-truth fan-in. C7 is the only release/version/tag owner and may not
-publish without a fresh explicit approval. `ROADMAP.md`, `TODO.md`, `README.md`, `CHANGELOG.md`,
-`COMPATIBILITY.md`, `SECURITY.md`, `specs/README.md`, metrics, tags, and release state remain
-coordinator-owned unless a card below explicitly assigns them.
+**Execution graph / contention:** C1 through C6 are closed. C7 is the only remaining card and the
+only release/version/tag owner; it may not publish without a fresh explicit approval. `ROADMAP.md`,
+`TODO.md`, `README.md`, `CHANGELOG.md`, `COMPATIBILITY.md`, `SECURITY.md`, `specs/README.md`,
+metrics, tags, and release state remain coordinator-owned unless a card below explicitly assigns
+them.
 
 ### W29-C1 — recover a corrupt Docket JSON primary from its valid backup
 
@@ -1888,7 +1885,7 @@ multiple maintainers, LTS, compatibility guarantees, or foundation governance.
 
 ### W29-C6 — generate and publish the reproducible adoption baseline
 
-**Status:** IN-PROGRESS (@codex-w29-c6) · **Size:** M · **Owner:** @codex-w29-c6
+**Status:** DONE (2026-09-03) · **Size:** M · **Owner:** @codex-w29-c6
 
 **Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
 C4 produce the first reproducible inputs, while current public prose has no versioned result.
@@ -1947,12 +1944,19 @@ ambient interpreter: it pins uv-managed CPython 3.14.3 and the complete Hatchlin
 recompresses with checksum-verified zlib-ng 2.3.3 at canonical Deflate level 6. Two isolated
 regenerations inheriting different `UV_PYTHON` values now reproduce `0fe67120…67fce`; the full suite
 passes 2,531 tests with five expected skips, and the complete Python 3.11 dependency-floor suite is
-green. C6 and C7 remain blocked only on the next hosted CI rerun; macOS portability failures exposed
-by `33788650508` remain separate follow-ups rather than changes to the C6 baseline.
+green. Hosted CI run [`33812881329`](https://github.com/yielab/docket/actions/runs/33812881329)
+at `37e91a8` closes the remaining gate: its overall conclusion is success; Python, dependency
+floors, ShellCheck/spec validation, 18 goldens, metrics, and both Ubuntu/macOS artifact-installed
+release journeys pass. The exact-artifact publication oracle therefore reproduces the unchanged
+`0fe67120…67fce` wheel in clean Python and floor environments without accepting drift. The advisory
+macOS full-suite lane completes with 2,514 passes, 14 skips, and eight separate portability failures
+(three Bash-3.2 assumptions, four OpenHands fixture timeouts, and one Linux-only `/proc` path); no
+C6 baseline or artifact-journey check fails there. C6 is closed, and C7 may now request the explicit
+version/tag publication approval required by its own boundary.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
-**Status:** BLOCKED (needs W29-C6 and explicit version/tag publication approval) ·
+**Status:** BLOCKED (needs explicit version/tag publication approval) ·
 **Size:** M · **Owner:** integrator
 
 **Measured trigger:** public release `v0.2.0-beta.1` (published 2026-07-03) has two assets—the legacy
