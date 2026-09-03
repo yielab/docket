@@ -1929,9 +1929,8 @@ nine attempts, five completions, and the four retained failures (`starter`, `pol
 `approval-denied`, `malformed-handoff`). Only approval-latency and wall-clock fields use the
 manifest's 5,000 ms comparison tolerance. Public prose labels this deterministic contract evidence,
 keeps dollars unavailable, and rejects model-quality, ranking, savings, or production-rate claims.
-The test metric moves 2,522 → 2,535, including the CI-history and floor-harness regressions. Local
-commit-level gates
-at `03693a3` pass: 2,528 tests with five expected
+The test metric moves 2,522 → 2,536, including the CI-history, floor-harness, and canonical-builder
+regressions. Local commit-level gates at `03693a3` pass: 2,528 tests with five expected
 skips, 18 goldens, 27 specs, Ruff/format, strict mypy, ShellCheck, metrics, reproducible documentation
 assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. GitHub run `33764191509`
 passed both Linux and macOS release-journey jobs, while its
@@ -1940,10 +1939,16 @@ source `82a3239`, and the floor environment cannot collect the benchmark tests b
 is absent. Commit `c817955` makes the Python, floor, and macOS jobs fetch complete history and adds a
 passing regression test. Commit `ca45e38` declares the schema oracle as a test-only dependency,
 installs it explicitly in the floor harness without changing runtime floors, and pins that boundary
-with a second regression. The isolated Python 3.11 floor environment now collects all 14 C4/C6
-tests and passes the new dependency contract. Its unrestricted full-suite rehearsal reached the two
-workflow-smoke tests before failing only because this local shell has no `python` command on `PATH`;
-the hosted runner remains the canonical proof. C6 and C7 remain blocked on a green GitHub rerun.
+with a second regression. GitHub run `33788650508` confirms that both defects are fixed, then exposes
+one shared exact-artifact defect: its Python 3.11 builder produces wheel SHA-256 `9283d326…256b4`
+instead of the published `0fe67120…67fce`, even though the extracted wheel trees are identical.
+Commit `f789bc6` preserves the published baseline and makes raw wheel identity independent of the
+ambient interpreter: it pins uv-managed CPython 3.14.3 and the complete Hatchling closure, then
+recompresses with checksum-verified zlib-ng 2.3.3 at canonical Deflate level 6. Two isolated
+regenerations inheriting different `UV_PYTHON` values now reproduce `0fe67120…67fce`; the full suite
+passes 2,531 tests with five expected skips, and the complete Python 3.11 dependency-floor suite is
+green. C6 and C7 remain blocked only on the next hosted CI rerun; macOS portability failures exposed
+by `33788650508` remain separate follow-ups rather than changes to the C6 baseline.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
