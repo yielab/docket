@@ -1929,7 +1929,8 @@ nine attempts, five completions, and the four retained failures (`starter`, `pol
 `approval-denied`, `malformed-handoff`). Only approval-latency and wall-clock fields use the
 manifest's 5,000 ms comparison tolerance. Public prose labels this deterministic contract evidence,
 keeps dollars unavailable, and rejects model-quality, ranking, savings, or production-rate claims.
-The test metric moves 2,522 → 2,534, including the CI-history regression. Local commit-level gates
+The test metric moves 2,522 → 2,535, including the CI-history and floor-harness regressions. Local
+commit-level gates
 at `03693a3` pass: 2,528 tests with five expected
 skips, 18 goldens, 27 specs, Ruff/format, strict mypy, ShellCheck, metrics, reproducible documentation
 assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. GitHub run `33764191509`
@@ -1937,9 +1938,12 @@ passed both Linux and macOS release-journey jobs, while its
 three full-suite jobs exposed two distinct CI defects: depth-one checkout cannot resolve pinned
 source `82a3239`, and the floor environment cannot collect the benchmark tests because `jsonschema`
 is absent. Commit `c817955` makes the Python, floor, and macOS jobs fetch complete history and adds a
-passing regression test. The remaining floor dependency defect is reproduced in an isolated Python
-3.11 environment as `ModuleNotFoundError: jsonschema`; C6 and C7 remain blocked on its scoped fix and
-a green rerun.
+passing regression test. Commit `ca45e38` declares the schema oracle as a test-only dependency,
+installs it explicitly in the floor harness without changing runtime floors, and pins that boundary
+with a second regression. The isolated Python 3.11 floor environment now collects all 14 C4/C6
+tests and passes the new dependency contract. Its unrestricted full-suite rehearsal reached the two
+workflow-smoke tests before failing only because this local shell has no `python` command on `PATH`;
+the hosted runner remains the canonical proof. C6 and C7 remain blocked on a green GitHub rerun.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
