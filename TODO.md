@@ -1922,6 +1922,19 @@ deterministic smoke, Linux/macOS artifact journeys, diff/privacy/clean checks.
 and tolerance rules, published claims/non-claims, metrics delta, and whether C7 may request release
 approval.
 
+**Integrated closure evidence (2026-09-03):** `main` contains RED `82a3239` and GREEN `033bb4b`.
+The baseline binds source `82a3239980bbda3673fdd8030751f1342bcab132` to wheel SHA-256
+`0fe67120737c4d09da3229c1182d8bf5474e96f7077476f997c98f7c67667fce`: eight scenario groups,
+nine attempts, five completions, and the four retained failures (`starter`, `policy-denied`,
+`approval-denied`, `malformed-handoff`). Only approval-latency and wall-clock fields use the
+manifest's 5,000 ms comparison tolerance. Public prose labels this deterministic contract evidence,
+keeps dollars unavailable, and rejects model-quality, ranking, savings, or production-rate claims.
+The test metric moves 2,522 → 2,533. Local commit-level gates pass: 2,528 tests with five expected
+skips, 18 goldens, 27 specs, Ruff/format, strict mypy, ShellCheck, metrics, reproducible documentation
+assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. The current commit has no
+macOS runner evidence because it is not published and the configured GitHub credential is invalid;
+C6 remains in progress and C7 remains blocked until that required job is green.
+
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
 **Status:** BLOCKED (needs W29-C6 and explicit version/tag publication approval) ·
