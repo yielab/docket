@@ -1,8 +1,8 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 1.1.0
-**Status**: Implemented
-**Last Updated**: 2026-09-02
+**Version**: 1.2.0
+**Status**: In progress
+**Last Updated**: 2026-09-03
 
 ## Purpose
 
@@ -197,6 +197,54 @@ snapshot MUST contain only already completed hops and those hops MUST be an exac
 terminal task. Corrupt-primary recovery MUST preserve a valid `.bak`, one `.corrupt` containing the
 exact malformed bytes, a valid mode-`0600` primary, and no `.tmp`.
 
+### 8. Reproducible published baseline
+
+`benchmarks/results/regenerate.py` MUST expose one credential-free command that regenerates the
+published Wave 29 evidence from an exact committed source tree:
+
+```text
+python benchmarks/results/regenerate.py \
+  --source-commit COMMIT \
+  --output OUTPUT \
+  --repetitions 3
+```
+
+The command MUST resolve `COMMIT` to a clean tracked Git commit, archive that exact tree into
+temporary state, build its root wheel and sdist, calculate the wheel SHA-256, install the wheel
+outside the checkout on Python 3.11, and run the C2 starter plus all seven C4 cases through that
+artifact environment. Hosted credentials, a live provider, shared Docket state, and port 8081 MUST
+not be used. Build, install, home, workspace, cache, temporary, and loopback state MUST be isolated
+and removed after the requested output is complete.
+
+The published baseline under `benchmarks/results/wave29/` MUST contain a canonical `manifest.json`
+and relative locators for exactly eight scenario groups: `starter`, `allowed`, `policy-denied`,
+`approval-denied`, `approval-granted`, `malformed-handoff`, `hard-crash-resume`, and
+`corrupt-primary-recovery`. The starter group MUST retain both its denied and granted attempts;
+therefore the complete baseline has nine attempts, five completions, and four failures. Each entry
+MUST retain its C3-valid JSONL, aggregate, and compact evidence. Every attempt's source commit and
+artifact SHA-256 MUST equal the manifest provenance; placeholder digests are invalid.
+
+The manifest summary MUST be mechanically recomputable from the retained attempt records and MUST
+include scenario, attempt, completion, failure, provider-reported token, tool-call, prevented-policy,
+approval-latency observation, recovery, handoff-failure, stop-reason, and cost totals. Failed
+attempts remain in every denominator. Unavailable dollars MUST remain `null`; deterministic fixture
+cost `0.0` is not measured price evidence.
+
+Two regenerations from the same commit MUST have the same relative file set and byte-identical
+canonical records after applying only the manifest's closed timing comparison rule. The only
+permitted exclusions are attempt `approval_latency_ms`, aggregate
+`approval_latency_ms.total`, and separately retained `measurements.elapsed_ms`; the manifest MUST
+name a bounded millisecond tolerance for them. No identity, outcome, count, token, tool, safety,
+recovery, handoff, stop reason, provenance, path, or cost field may be normalized away or described
+as byte-stable when it was measured from a clock.
+
+`docs/ADOPTION-EVIDENCE.md` MUST link the manifest, raw records, schema, and exact source commit. It
+MUST publish the complete attempt/failure table and distinguish deterministic contract evidence
+from live model-quality or price evidence. README, compatibility, security, and the documentation
+index MUST link that report without claiming a leaderboard, competitor rank, savings, production
+success rate, or unavailable dollar value. Published bytes MUST exclude secrets, approval tokens,
+raw prompts/tool arguments, absolute build/home paths, and provider payloads.
+
 ## Functions
 
 `benchmarks/harness.py` owns scenario parsing, strict durable-record joins, attempt normalization,
@@ -241,6 +289,12 @@ side-effect oracles, prove cross-run isolation, and exercise public CLI evidence
 product state transition. Before C4 implementation it MUST collect successfully and fail with an
 explicit list of the missing driver/case files, not an import, collection, network, or fixture error.
 
+The C6 publication suite is `tests/python/test_adoption_evidence.py`. It MUST validate the committed
+baseline, rebuild every aggregate from JSONL, recompute the summary, reject placeholder provenance
+and marketing overclaims, resolve every public link, scan published bytes for private data, and run
+two exact-artifact regenerations. Before C6 implementation it MUST collect successfully and fail
+with an explicit list of the missing regenerator, baseline manifest, and public report.
+
 ## Performance
 
 The runner SHOULD stream JSONL input one record at a time and MUST bound every input file before
@@ -249,6 +303,10 @@ library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pric
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
 
 ## Changelog
+
+- **1.2.0 — 2026-09-03 (pending W29-C6):** Specify the exact-artifact Wave 29 baseline, complete
+  starter-plus-adversarial attempt set, mechanically derived public summary, bounded timing-only
+  comparison rule, privacy boundary, and publication RED oracle. Implementation is pending.
 
 - **1.1.0 — 2026-09-02:** Ship the seven public adversarial governance and crash/recovery journeys,
   three-repetition isolation boundary, retained byte/record evidence, and scenario driver.
