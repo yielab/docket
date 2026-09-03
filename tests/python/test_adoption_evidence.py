@@ -20,6 +20,7 @@ from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[2]
 REGENERATOR = ROOT / "benchmarks" / "results" / "regenerate.py"
+BUILD_CONSTRAINTS = ROOT / "benchmarks" / "results" / "build-constraints.txt"
 BASELINE = ROOT / "benchmarks" / "results" / "wave29"
 MANIFEST = BASELINE / "manifest.json"
 REPORT = ROOT / "docs" / "ADOPTION-EVIDENCE.md"
@@ -244,7 +245,13 @@ def _normalized_tree(root: Path) -> dict[str, bytes]:
     }
 
 
-def _run_regenerator(output: Path, source_commit: str, state: Path) -> None:
+def _run_regenerator(
+    output: Path,
+    source_commit: str,
+    state: Path,
+    *,
+    ambient_build_python: str | None = None,
+) -> None:
     home = state / "home"
     temp = state / "tmp"
     cache = state / "cache"
@@ -262,6 +269,8 @@ def _run_regenerator(output: Path, source_commit: str, state: Path) -> None:
             "PYTHONPATH": "",
         }
     )
+    if ambient_build_python is not None:
+        env["UV_PYTHON"] = ambient_build_python
     Path(env["HOME"]).mkdir()
     result = subprocess.run(
         [
@@ -391,15 +400,41 @@ def test_every_attempt_is_c3_valid_rebuildable_and_present_in_summary(tmp_path: 
     assert {item["scenario_id"] for item in summary["failed_attempts"]} == FAILED_SCENARIOS
 
 
-def test_two_exact_artifact_regenerations_match_committed_baseline_except_timing(
+def test_canonical_build_toolchain_is_fully_pinned() -> None:
+    pins = {
+        line.strip()
+        for line in BUILD_CONSTRAINTS.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert pins == {
+        "hatchling==1.32.0",
+        "packaging==26.3",
+        "pathspec==1.1.1",
+        "pluggy==1.6.0",
+        "tomlkit==0.15.1",
+        "trove-classifiers==2026.6.1.19",
+    }
+
+
+def test_ambient_build_interpreters_produce_the_committed_baseline_except_timing(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest()
     source_commit = str(manifest["source"]["commit"])
     first = tmp_path / "first"
     second = tmp_path / "second"
-    _run_regenerator(first, source_commit, tmp_path / "state-one")
-    _run_regenerator(second, source_commit, tmp_path / "state-two")
+    _run_regenerator(
+        first,
+        source_commit,
+        tmp_path / "state-one",
+        ambient_build_python="3.11",
+    )
+    _run_regenerator(
+        second,
+        source_commit,
+        tmp_path / "state-two",
+        ambient_build_python="3.14.6",
+    )
 
     first_tree = _normalized_tree(first)
     second_tree = _normalized_tree(second)

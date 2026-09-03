@@ -12,8 +12,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
@@ -37,6 +40,12 @@ TIMING_EXCLUSIONS = (
     "aggregate.approval_latency_ms.total",
     "measurements.elapsed_ms",
 )
+BUILD_PYTHON = "3.14.3"
+BUILD_CONSTRAINTS = ROOT / "benchmarks" / "results" / "build-constraints.txt"
+WHEEL_CANONICALIZER = ROOT / "benchmarks" / "results" / "canonicalize_wheel.py"
+COMPRESSOR_URL = "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/2.3.3.tar.gz"
+COMPRESSOR_SHA256 = "f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1"
+MAX_COMPRESSOR_ARCHIVE_BYTES = 16 * 1024 * 1024
 CREDENTIAL_KEYS = (
     "ANTHROPIC_API_KEY",
     "DOCKET_LLM_API_KEY",
@@ -155,16 +164,132 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_compressor(work: Path, env: dict[str, str]) -> Path:
+    cmake = shutil.which("cmake", path=env.get("PATH"))
+    if cmake is None:
+        raise RegenerationError("cmake is required to build the canonical wheel compressor")
+
+    archive = work / "zlib-ng-2.3.3.tar.gz"
+    request = urllib.request.Request(COMPRESSOR_URL, headers={"User-Agent": "docket-benchmark/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, archive.open("wb") as stream:
+            total = 0
+            while chunk := response.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_COMPRESSOR_ARCHIVE_BYTES:
+                    raise RegenerationError("canonical compressor archive exceeds 16 MiB")
+                stream.write(chunk)
+    except (OSError, urllib.error.URLError) as exc:
+        raise RegenerationError(f"could not download canonical compressor: {exc}") from exc
+    if _sha256(archive) != COMPRESSOR_SHA256:
+        raise RegenerationError("canonical compressor archive checksum mismatch")
+
+    source = work / "zlib-ng-source"
+    source.mkdir()
+    with tarfile.open(archive, "r:gz") as package:
+        package.extractall(source, filter="data")
+    roots = [path for path in source.iterdir() if path.is_dir()]
+    if len(roots) != 1:
+        raise RegenerationError("canonical compressor archive must contain one source root")
+
+    build = work / "zlib-ng-build"
+    _run(
+        [
+            cmake,
+            "-S",
+            str(roots[0]),
+            "-B",
+            str(build),
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DZLIB_COMPAT=ON",
+            "-DWITH_NEW_STRATEGIES=OFF",
+            "-DWITH_NATIVE_INSTRUCTIONS=OFF",
+            "-DWITH_GTEST=OFF",
+            "-DBUILD_TESTING=ON",
+            "-DINSTALL_UTILS=ON",
+        ],
+        cwd=work,
+        env=env,
+        timeout=180,
+    )
+    _run(
+        [
+            cmake,
+            "--build",
+            str(build),
+            "--config",
+            "Release",
+            "--target",
+            "minideflate",
+            "--parallel",
+            "2",
+        ],
+        cwd=work,
+        env=env,
+        timeout=300,
+    )
+    candidates = (build / "minideflate", build / "Release" / "minideflate.exe")
+    executable = next((path for path in candidates if path.is_file()), None)
+    if executable is None:
+        raise RegenerationError("canonical compressor build did not produce minideflate")
+    return executable
+
+
 def _build_and_install(source: Path, work: Path, env: dict[str, str]) -> tuple[Path, Path, str]:
     uv = shutil.which("uv", path=env.get("PATH"))
     if uv is None:
         raise RegenerationError("uv is required to build the exact release artifact")
+    if not BUILD_CONSTRAINTS.is_file():
+        raise RegenerationError(f"build constraints are missing: {BUILD_CONSTRAINTS}")
+    if not WHEEL_CANONICALIZER.is_file():
+        raise RegenerationError(f"wheel canonicalizer is missing: {WHEEL_CANONICALIZER}")
+    _run(
+        [uv, "python", "install", BUILD_PYTHON],
+        cwd=work,
+        env=env,
+        timeout=600,
+    )
     artifacts = work / "artifacts"
-    _run([uv, "build", "--out-dir", str(artifacts)], cwd=source, env=env, timeout=600)
+    _run(
+        [
+            uv,
+            "build",
+            "--managed-python",
+            "--python",
+            BUILD_PYTHON,
+            "--build-constraints",
+            str(BUILD_CONSTRAINTS),
+            "--out-dir",
+            str(artifacts),
+        ],
+        cwd=source,
+        env=env,
+        timeout=600,
+    )
     wheels = sorted(artifacts.glob("docket-*.whl"))
     sdists = sorted(artifacts.glob("docket-*.tar.gz"))
     if len(wheels) != 1 or len(sdists) != 1:
         raise RegenerationError("root build must produce exactly one docket wheel and one sdist")
+    build_python = _run(
+        [uv, "python", "find", "--managed-python", BUILD_PYTHON],
+        cwd=work,
+        env=env,
+        timeout=30,
+    ).stdout.strip()
+    compressor = _canonical_compressor(work, env)
+    _run(
+        [
+            build_python,
+            str(WHEEL_CANONICALIZER),
+            "--wheel",
+            str(wheels[0]),
+            "--compressor",
+            str(compressor),
+        ],
+        cwd=work,
+        env=env,
+        timeout=300,
+    )
 
     venv = work / "artifact-venv"
     _run(

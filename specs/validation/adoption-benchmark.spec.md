@@ -1,6 +1,6 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 1.2.2
+**Version**: 1.2.3
 **Status**: Implemented
 **Last Updated**: 2026-09-03
 
@@ -216,6 +216,16 @@ artifact environment. Hosted credentials, a live provider, shared Docket state, 
 not be used. Build, install, home, workspace, cache, temporary, and loopback state MUST be isolated
 and removed after the requested output is complete.
 
+Raw wheel identity is part of the published provenance, so the builder MUST ignore ambient Python
+selection and build with uv-managed CPython 3.14.3. It MUST constrain Hatchling 1.32.0 and its full
+build dependency closure through `benchmarks/results/build-constraints.txt`. It MUST then repack
+the content-identical wheel at Deflate level 6 using checksum-pinned zlib-ng 2.3.3 with new
+strategies disabled; installing and running the resulting wheel MUST remain on Python 3.11. Clean
+regenerations started with different ambient `UV_PYTHON` values MUST produce the existing canonical
+wheel SHA-256
+`0fe67120737c4d09da3229c1182d8bf5474e96f7077476f997c98f7c67667fce`. Changing the published
+baseline to accept build-interpreter or backend drift is forbidden.
+
 The published baseline under `benchmarks/results/wave29/` MUST contain a canonical `manifest.json`
 and relative locators for exactly eight scenario groups: `starter`, `allowed`, `policy-denied`,
 `approval-denied`, `approval-granted`, `malformed-handoff`, `hard-crash-resume`, and
@@ -312,6 +322,10 @@ library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pric
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
 
 ## Changelog
+
+- **1.2.3 — 2026-09-03:** Pin the managed build interpreter, complete Hatchling closure, and
+  checksum-verified zlib-ng compressor so ambient Python selection cannot change the published raw
+  wheel identity.
 
 - **1.2.2 — 2026-09-03:** Require the JSON Schema oracle as a declared test-only
   dependency and install it in the runtime-floor harness without adding it to Docket's runtime.

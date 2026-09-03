@@ -45,11 +45,16 @@ python benchmarks/results/regenerate.py \
   --repetitions 3
 ```
 
-The generator archives that exact commit, builds its wheel and sdist, installs the wheel outside
-the checkout on Python 3.11, and runs three isolated repetitions. It drives the artifact-installed
-starter through both decisions and uses the same C3 normalization contract for its denied and
-granted records. It also runs every adversarial/recovery case through the installed artifact.
-Provider credentials and port 8081 are not used.
+The generator archives that exact commit and builds it with uv-managed CPython 3.14.3 plus the
+fully pinned Hatchling closure in
+[`build-constraints.txt`](../benchmarks/results/build-constraints.txt). It canonicalizes the wheel
+at Deflate level 6 with checksum-verified zlib-ng 2.3.3 before hashing it, then installs the wheel
+outside the checkout on Python 3.11 and runs three isolated repetitions. Reproduction therefore
+requires `uv`, CMake, a C compiler, and network access to the pinned Python/package sources and the
+checksum-verified zlib-ng source archive. It drives the artifact-installed starter through both
+decisions and uses the same C3 normalization contract for its denied and granted records. It also
+runs every adversarial/recovery case through the installed artifact. Provider credentials and port
+8081 are not used.
 
 Two regenerations have the same file set and canonical content after excluding only approval
 latency totals and wall-clock measurements. The [manifest](../benchmarks/results/wave29/manifest.json)

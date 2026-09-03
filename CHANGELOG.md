@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limited public report under `benchmarks/results/wave29/` and `docs/ADOPTION-EVIDENCE.md`. Its
   JSON Schema publication oracle is a declared test-only dependency installed by the floor harness,
   without expanding Docket's runtime dependency set. CI jobs
-  that validate the pinned source fetch complete Git history so provenance remains resolvable.
+  that validate the pinned source fetch complete Git history so provenance remains resolvable. The
+  exact-artifact builder pins its managed Python and Hatchling closure, then canonicalizes wheel
+  compression with checksum-verified zlib-ng so clean environments reproduce the published hash.
 - **Provisioning startup contract** (`core/memory.py`): every agent workspace is now seeded with
   the files the OpenClaw runtime re-reads after each compaction — `WORKFLOW_AUTO.md` (anchors the
   codebase path, the read order, and a "answer about the product, not your scaffolding" directive)
