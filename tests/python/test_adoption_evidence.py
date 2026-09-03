@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
@@ -91,6 +92,7 @@ PUBLIC_SURFACES = (
     ROOT / "docs" / "README.md",
 )
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+PYPROJECT = ROOT / "pyproject.toml"
 PLACEHOLDER_SOURCES = {"2" * 40, "3" * 64}
 
 
@@ -470,6 +472,26 @@ def test_ci_jobs_that_validate_pinned_provenance_checkout_complete_history() -> 
             shallow.append(job_name)
     assert shallow == [], (
         "C6 provenance validation requires full Git history in CI jobs: " + ", ".join(shallow)
+    )
+
+
+def test_jsonschema_oracle_is_declared_and_installed_in_floor_harness() -> None:
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    development = project["dependency-groups"]["dev"]
+    assert any(
+        str(requirement).split("[", 1)[0].startswith("jsonschema") for requirement in development
+    ), "benchmark schema validation must be an explicit development dependency"
+
+    workflow = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    floor_steps = workflow["jobs"]["floors"]["steps"]
+    install = next(
+        step
+        for step in floor_steps
+        if step["name"] == "Install the floor set, package, and test harness"
+    )
+    commands = str(install["run"])
+    assert re.search(r"uv pip install[^\n]+\bpytest\b[^\n]+\bjsonschema\b", commands), (
+        "dependency-floor test harness must install pytest and jsonschema explicitly"
     )
 
 

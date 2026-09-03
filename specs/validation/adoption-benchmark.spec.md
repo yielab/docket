@@ -1,6 +1,6 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 1.2.1
+**Version**: 1.2.2
 **Status**: Implemented
 **Last Updated**: 2026-09-03
 
@@ -299,6 +299,11 @@ Every CI job that runs this suite MUST check out complete Git history. The basel
 pins an earlier exact source commit, so a depth-one checkout cannot validate or regenerate it and
 MUST NOT be treated as a product failure.
 
+The JSON Schema validator used by the C4 and C6 publication oracles MUST be an explicit development
+dependency and MUST be installed in the dependency-floor test harness. The floor set itself remains
+limited to runtime dependency bounds; test-only validation packages MUST NOT become runtime
+dependencies merely to make CI collection succeed.
+
 ## Performance
 
 The runner SHOULD stream JSONL input one record at a time and MUST bound every input file before
@@ -307,6 +312,9 @@ library; it MUST NOT add a telemetry, database, HTTP, benchmark-service, or pric
 Deterministic scenarios MUST use no network, hosted credentials, subscriptions, or shared port.
 
 ## Changelog
+
+- **1.2.2 — 2026-09-03:** Require the JSON Schema oracle as a declared test-only
+  dependency and install it in the runtime-floor harness without adding it to Docket's runtime.
 
 - **1.2.1 — 2026-09-03:** Require complete Git history in CI jobs that validate
   the pinned baseline source, preventing shallow checkout from making provenance tests vacuously

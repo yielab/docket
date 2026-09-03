@@ -70,12 +70,12 @@ jobs:
           uv pip compile --resolution lowest-direct pyproject.toml -o floors.txt
           cat floors.txt
 
-      - name: Install the floor set, the package, and pytest
+      - name: Install the floor set, package, and test harness
         run: |
           uv venv .floorenv --python 3.11
           uv pip install --python .floorenv/bin/python -r floors.txt
           uv pip install --python .floorenv/bin/python -e . --no-deps
-          uv pip install --python .floorenv/bin/python pytest
+          uv pip install --python .floorenv/bin/python pytest jsonschema
 
       - name: Pytest at the dependency floor
         run: .floorenv/bin/python -m pytest -q
