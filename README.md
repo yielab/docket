@@ -16,7 +16,8 @@ single solo assistant, and it feeds external dashboards rather than shipping a d
 > [!WARNING]
 > Docket is beta software. The release journey is automated and the core contracts are heavily
 > tested, but the project has not been hardened against large fleets or adversarial public-host
-> workloads. Expect breaking changes between beta releases and verify important outcomes yourself.
+> workloads. `v0.2.0-beta.2` is provenance-complete, but Docket remains beta software. Expect
+> breaking changes between beta releases and verify important outcomes yourself.
 
 <p align="center">
   <img src="docs/assets/hero.gif" alt="Animated Docket terminal journey: initialize an isolated project pod, inspect its dedicated state, pause a governed turn for approval, then inspect run and trace evidence" width="820">
@@ -50,10 +51,12 @@ The result is deliberately narrower than a general agent framework: Docket rents
 | Model routing | Role policies, per-agent pins, compatible endpoint registration, OpenRouter/Vercel presets | `docket models`, `docket profile` |
 | Human approval | CLI, HTTP, MCP, Telegram, timeout, and board-labelled decisions share one atomic state transition | `docket approve`, `docket deny` |
 | Operations | Run registry, conversation state, traces, metrics, token-based cost estimates, health checks | `docket runs`, `docket trace`, `docket metrics`, `docket doctor` |
+| Recovery | A corrupt Docket JSON primary recovers from its validated backup without overwriting the good copy | `docket doctor` |
 | Automation | Explicit scheduled dispatch (`@every`) and authenticated `POST /dispatch/<project>`; no silent background spend | `docket serve --dispatch`, [command reference](docs/commands.md) |
 | Control-plane integration | Authenticated task/pod/approval writes plus `/status.json`, `/metrics`, runs and cursor-based trace reads | [integration guide](docs/commands.md#serve) |
 | Optional MCP | Expose Docket tools over stdio or register external stdio tool servers | `docket mcp serve`, `docket mcp servers` |
 | Mobile control | Telegram can carry conversation context and approval decisions from a phone | `docket wire`, `docket serve --telegram` |
+| Adoption evidence | A deterministic benchmark records starter, governance, and crash/recovery scenarios with provenance and a bounded public report | [adoption evidence](docs/ADOPTION-EVIDENCE.md) |
 
 <table>
 <tr>
@@ -75,7 +78,7 @@ The images are generated from current CLI contracts. See the
 
 ## Quick start
 
-### 1. Install an immutable beta release
+### 1. Install the immutable current beta
 
 ```bash
 # Homebrew on macOS/Linux
@@ -83,13 +86,13 @@ brew tap yielab/docket-cli https://github.com/yielab/docket
 brew install docket-cli
 
 # Or the version-pinned installer
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.1/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.1 bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.2/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.2 bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-From a checkout, `uv pip install .` (or `pip install .`) installs the same `docket` CLI. The
-installer uses `~/.local` by default and never requires `sudo`.
+The installer uses `~/.local` by default and never requires `sudo`. From a development checkout,
+`uv sync` followed by `uv run docket --help` runs the current source instead.
 
 Prerequisites: Python 3.11+, Git, Bash for the launcher/installer, and a non-streaming
 OpenAI-compatible chat-completions endpoint with function-tool support. MCP is optional through the

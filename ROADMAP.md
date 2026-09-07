@@ -69,8 +69,8 @@ and W20-C4 closed it with step-scoped durable histories while preserving typed h
 
 **Known-true limits live in [CLAUDE.md](CLAUDE.md)**, not here — they change faster than this file.
 
-**Release:** `0.2.0-beta.1`, cut and tagged. Every release carries a SemVer `-beta.N` suffix until
-the project is field-hardened enough to drop it (see README's beta warning).
+**Release:** `0.2.0-beta.2` is in approved publication preflight. Every release carries a SemVer
+`-beta.N` suffix until the project is field-hardened enough to drop it (see README's beta warning).
 
 Status legend used in the older sections below: ✅ / ☑ done · 🟡 planned-next · 🟠 audit-driven,
 planned · 🚧 in progress · 🗓️ planned / deferred
@@ -283,7 +283,7 @@ building it again.
 | W29-C4 | Adversarial governance and crash/recovery benchmark scenarios | Done (`fcdff9a`, `0c8dac7`); 21 isolated C3-valid journeys pass |
 | W29-C5 | Support, deprecation, governance, and succession truth | Done (`ac05dc3`, `c480e97`); 8 policy truth/counterexample cases pass |
 | W29-C6 | Reproducible baseline and scoped public interpretation | Done (`82a3239`, `033bb4b`, `f789bc6`); exact hash and hosted closure pass in run `33812881329` |
-| W29-C7 | Provenance-complete public beta and Phase 23 closure | Blocked only on explicit version/tag approval; only release-state owner |
+| W29-C7 | Provenance-complete public beta and Phase 23 closure | In progress after explicit `v0.2.0-beta.2` publication approval; only release-state owner |
 
 No live provider or subscription is a gate; port 8081 stays optional. Deterministic results prove
 contracts, not model quality. Dollar values are estimates with versioned assumptions or remain

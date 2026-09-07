@@ -26,7 +26,6 @@ MANIFEST = BASELINE / "manifest.json"
 REPORT = ROOT / "docs" / "ADOPTION-EVIDENCE.md"
 HARNESS = ROOT / "benchmarks" / "harness.py"
 SCHEMA = ROOT / "benchmarks" / "schema.json"
-VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 SCENARIOS = {
     "starter",
@@ -337,7 +336,14 @@ def test_committed_baseline_manifest_is_closed_complete_and_exactly_sourced() ->
     )
     assert resolved.returncode == 0, "baseline source commit is not present in repository history"
     assert isinstance(artifact, dict) and set(artifact) == ARTIFACT_KEYS
-    assert artifact["package"] == "docket" and artifact["version"] == VERSION
+    source_version = subprocess.run(
+        ["git", "show", f"{commit}:VERSION"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    assert artifact["package"] == "docket" and artifact["version"] == source_version
     assert isinstance(artifact["filename"], str) and artifact["filename"].endswith(".whl")
     assert re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"])
     assert artifact["sha256"] not in PLACEHOLDER_SOURCES

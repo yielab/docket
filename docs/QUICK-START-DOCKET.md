@@ -16,12 +16,12 @@ Get started with DOCKET-optimized agents in under 5 minutes.
 
 This no-paid-provider route assumes an OpenAI-compatible local model is already listening on
 `127.0.0.1:8081`. The immutable installer below downloads and verifies
-`https://github.com/yielab/docket/releases/download/v0.2.0-beta.1/docket-v0.2.0-beta.1.tar.gz`
+`https://github.com/yielab/docket/releases/download/v0.2.0-beta.2/docket-v0.2.0-beta.2.tar.gz`
 before extraction; it does not install from a moving branch archive.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.1/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.1 bash
+curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.2/install.sh \
+  | DOCKET_VERSION=0.2.0-beta.2 bash
 export PATH="$HOME/.local/bin:$PATH"
 
 cd ~/code/myapp

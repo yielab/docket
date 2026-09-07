@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-09-07
+
+This provenance-complete beta publishes the current root wheel, source distribution, versioned
+installer archive, checksums, SPDX SBOM, and GitHub build provenance attestation. It includes the
+Wave 29 recovery, starter, adoption-evidence, governance, and public-release work described below.
+
 ### Added
 - **Reproducible adoption evidence (W29-C6).** An exact-commit generator builds and installs the
   root wheel on Python 3.11, repeats the starter and seven governance/recovery fixtures three times,
@@ -440,6 +446,7 @@ First tagged release. Establishes the security and write-safety baseline
   complete. Exec-approval enforcement and Docker isolation ship **opt-in** by design; on-by-default
   is deferred pending per-agent headless approval routing (see `specs/functional/security-gates.spec.md`).
 
-[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.1...HEAD
+[Unreleased]: https://github.com/yielab/docket/compare/v0.2.0-beta.2...HEAD
+[0.2.0-beta.2]: https://github.com/yielab/docket/compare/v0.2.0-beta.1...v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/yielab/docket/compare/v0.1.0...v0.2.0-beta.1
 [0.1.0]: https://github.com/yielab/docket/releases/tag/v0.1.0

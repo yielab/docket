@@ -1,8 +1,8 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.22.0
+**Version**: 1.24.0
 **Status**: Complete
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-07
 
 ## Purpose
 
@@ -32,11 +32,15 @@ The root `docket` distribution MUST build both a wheel and an sdist that install
 without a source checkout.  Each artifact MUST expose `docket` as the canonical
 console command; `docket --version`, `docket --help`, and `docket init --help`
 MUST run from an artifact-only installation.  Installed project metadata MUST
-report a PEP 440-equivalent form of declared version `0.2.0-beta.1`, Python
+report a PEP 440-equivalent form of declared version `0.2.0-beta.2`, Python
 requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
 issues, and homepage URLs.  Uninstalling the
 distribution MUST remove its executable, package, and distribution metadata
 without deleting dependencies shared by other installed packages.
+
+The release sdist MUST exclude the repository-only `Formula/` directory. The
+Homebrew formula hashes that exact archive, so including the formula would make
+the published input depend on its own output digest.
 
 - `global-options` MUST precede the command (see [Options](#options)).
 - `command` MUST be one of the entries in the Command Registry below.
@@ -867,6 +871,16 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.24.0 (2026-09-07)
+
+- W29-C7 excludes the repository-only Homebrew formula from the release sdist, preserving one
+  reproducible source-archive digest for the formula to verify.
+
+### Version 1.23.0 (2026-09-07)
+
+- W29-C7 releases `0.2.0-beta.2`; artifact metadata and `docket --version` now report its PEP
+  440-equivalent version from both the wheel and sdist.
 
 ### Version 1.22.0 (2026-08-31)
 

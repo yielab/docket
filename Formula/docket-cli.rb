@@ -3,13 +3,11 @@ class DocketCli < Formula
   homepage "https://github.com/yielab/docket"
   url "https://github.com/yielab/docket/releases/download/v#{version}/docket-v#{version}.tar.gz"
   # Exact digest reported by the immutable GitHub release asset.
-  sha256 "c25d9cf0b9ad970c16cb54d799d2dcdb8c8f2e7431580d3de3c129bdb0e4d346"
+  sha256 "7ca506cf69d3fecf57a6fefa9b5ce299112855888a88018fa312ee393724766c"
   license "Apache-2.0"
-  # NOTE (repo hygiene pass): the only tags that exist today are v0.1.0 and
-  # v0.2.0-beta.1 -- pin here MUST be a real tag or `brew install` 404s on the
-  # url above. Do not bump this past the newest real tag speculatively; run
-  # scripts/update-homebrew-sha.sh <tag> after cutting a new release tag instead.
-  version "0.2.0-beta.1"
+  # This pin is updated only by the approved release cut after the immutable
+  # versioned asset has been built and its digest verified.
+  version "0.2.0-beta.2"
 
   # macOS ships with Bash 3.2 (GPL-3 license change); docket requires 4.0+
   depends_on "bash"

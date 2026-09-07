@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,9 @@ def test_root_artifacts_install_as_canonical_docket_without_source_tree(
 
     _run("uv", "build", "--out-dir", str(artifacts), cwd=ROOT, env=env)
     artifact = next(artifacts.glob(f"docket-*{suffix}"))
+    if suffix == ".tar.gz":
+        with tarfile.open(artifact, "r:gz") as archive:
+            assert not any("/Formula/" in name for name in archive.getnames())
     floors = tmp_path / "floors.txt"
     _run(
         "uv",
@@ -93,7 +97,7 @@ def test_root_artifacts_install_as_canonical_docket_without_source_tree(
 
     lines = metadata.stdout.splitlines()
     assert version.stdout.strip() == f"docket {lines[0]}"
-    assert lines[:4] == ["0.2.0b1", "0.2.0-beta.1", "Apache-2.0", ">=3.11"]
+    assert lines[:4] == ["0.2.0b2", "0.2.0-beta.2", "Apache-2.0", ">=3.11"]
     assert set(lines[4].split("|")) == PROJECT_URLS
     assert lines[5] == "LICENSE"
     assert Path(lines[6]).is_relative_to(environment)

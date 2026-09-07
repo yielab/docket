@@ -1956,7 +1956,7 @@ version/tag publication approval required by its own boundary.
 
 ### W29-C7 — publish a current provenance-complete beta and close Phase 23
 
-**Status:** BLOCKED (needs explicit version/tag publication approval) ·
+**Status:** IN-PROGRESS (@codex; publication approved 2026-09-07) ·
 **Size:** M · **Owner:** integrator
 
 **Measured trigger:** public release `v0.2.0-beta.1` (published 2026-07-03) has two assets—the legacy

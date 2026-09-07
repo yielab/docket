@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docket"
-version = "0.2.0-beta.1"
+version = "0.2.0-beta.2"
 description = "Agent fleet control plane: provisioning, cost guardrails, and gated tool execution"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -39,6 +39,12 @@ dependencies = [
     "filelock>=3.13",
     "pyyaml>=6",
 ]
+
+[tool.hatch.build]
+# Homebrew consumes the release sdist, but the formula's SHA-256 is derived from
+# that same archive. Keeping the formula out of the archive avoids a circular,
+# non-reproducible release input; it remains a repository release input.
+exclude = ["/Formula"]
 
 [project.urls]
 Homepage = "https://github.com/yielab/docket"
