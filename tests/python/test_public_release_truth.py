@@ -344,3 +344,61 @@ def test_runtime_embedding_example_runs_from_clean_artifact(tmp_path: Path) -> N
         cwd=outside,
         env=runtime_env,
     )
+
+
+# Every shell entry point docket ships or gates CI with. macOS still ships Bash
+# 3.2 and BSD userland, so a Bash 4 construct or a GNU-only grep flag here is
+# not a style nit: `scripts/validate-specs.sh` died on `declare -A` before
+# printing a line, `uninstall.sh` aborted on `${CONFIRM,,}` with `bad
+# substitution`, and `install.sh` refused the stock interpreter outright.
+SHELL_SURFACE = (
+    ROOT / "bin" / "docket",
+    ROOT / "install.sh",
+    ROOT / "uninstall.sh",
+    ROOT / "scripts" / "validate-specs.sh",
+    ROOT / "scripts" / "update-homebrew-sha.sh",
+    ROOT / "tests" / "golden" / "run.sh",
+    ROOT / "tests" / "golden" / "fixtures" / "seed.sh",
+    ROOT / "tests" / "run-all-tests.sh",
+)
+
+# Each entry is (regex, why it breaks on the floor).
+NON_PORTABLE_SHELL = (
+    (r"\b(declare|local|typeset)\s+-[A-Za-z]*A\b", "associative arrays are Bash 4+"),
+    (r"\b(mapfile|readarray)\b", "mapfile/readarray are Bash 4+"),
+    (r"\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?(:[^}]*)?[,^]{1,2}\}", "case conversion is Bash 4+"),
+    (r"\bcoproc\b", "coproc is Bash 4+"),
+    (r"&>>", "&>> append redirection is Bash 4+"),
+    (r"\bgrep\b[^|;\n]*\s-[A-Za-z]*P\b", "grep -P needs PCRE, which BSD grep lacks"),
+)
+
+
+def test_shipped_shell_surface_runs_on_the_bash_floor() -> None:
+    """No shell entry point may use a construct Bash 3.2 or BSD grep rejects."""
+    violations: list[str] = []
+    for script in SHELL_SURFACE:
+        assert script.is_file(), f"missing shell entry point {script}"
+        for number, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            for pattern, reason in NON_PORTABLE_SHELL:
+                if re.search(pattern, code):
+                    violations.append(f"{script.relative_to(ROOT)}:{number}: {reason}")
+
+    assert not violations, "non-portable shell constructs:\n" + "\n".join(violations)
+
+
+def test_installer_accepts_the_bash_version_macos_ships() -> None:
+    """The installer's own preflight must admit Bash 3.2, not demand Bash 4."""
+    preflight = (ROOT / "install.sh").read_text(encoding="utf-8")
+
+    assert "BASH_VERSINFO" in preflight, "the installer lost its interpreter preflight"
+    assert "Bash 3.2+ required" in preflight
+    assert "Bash 4" not in preflight
+
+
+def test_compatibility_states_the_bash_floor_the_scripts_actually_need() -> None:
+    """COMPATIBILITY.md is the published promise; it must match the preflight."""
+    document = (ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
+
+    assert "**Bash 3.2+**" in document
+    assert "Bash 4.0+" not in document

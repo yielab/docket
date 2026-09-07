@@ -35,7 +35,10 @@ fi
 echo ""
 
 read -rp "Continue? [y/N]: " CONFIRM
-if [[ "${CONFIRM,,}" != "y" ]]; then
+# A regex, not `${CONFIRM,,}`: case conversion is Bash 4 syntax, and on the
+# Bash 3.2 macOS ships it aborts the script with `bad substitution` at the
+# prompt — before anything is removed, but also before anything can be.
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
   echo "Aborted."
   exit 0
 fi

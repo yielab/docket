@@ -13,6 +13,16 @@ ADVERTISED_TOOLS = ("read_state", "mutate_state")
 PLANTED_BYPASSES = ("native_bash", "native_file_editor")
 FINAL_SUMMARY = "portable governance proof complete"
 
+# Wall-clock bound for one out-of-checkout adapter subprocess. It is a hang
+# detector, not a performance budget: the scripted endpoint is loopback with its
+# own 5s per-request timeout, so the only variable cost is importing the pinned
+# SDK out of a freshly created venv. Measured on Linux: 6.8s for the first call
+# into a cold venv, ~4.1s for every warm one after it. The same first calls
+# repeatedly blew a 45s bound on the macOS runner, whose cold file reads are far
+# slower, so the bound is set well above any plausible import rather than a
+# multiple of the Linux number.
+SUBPROCESS_TIMEOUT_S = 300
+
 
 @dataclass(frozen=True)
 class ReportedUsageFixture:

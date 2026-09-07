@@ -15,6 +15,7 @@ import pytest
 from tests.fixtures.runtime_adapters.scenarios import (
     FINAL_SUMMARY,
     SCENARIOS,
+    SUBPROCESS_TIMEOUT_S,
     GovernanceScenario,
 )
 
@@ -436,7 +437,7 @@ def _invoke(
         text=True,
         capture_output=True,
         check=False,
-        timeout=45,
+        timeout=SUBPROCESS_TIMEOUT_S,
     )
     assert result.returncode == 0, result.stderr or result.stdout
     line = next(line for line in result.stdout.splitlines() if line.startswith("W28_RESULT="))

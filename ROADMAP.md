@@ -2650,6 +2650,36 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 
 ### Changelog
 
+- **2026-09-07 (advisory macOS lane) - all eight macOS-only suite failures are fixed, and the
+  Bash floor the project actually needs is now 3.2 rather than 4.0.** Four distinct causes, none of
+  them a product defect on Linux. (1) `scripts/validate-specs.sh` opened with `declare -A`, which
+  Bash 3.2 rejects outright, so the CI-blocking validator printed nothing and
+  `test_metrics_script.py::TestCheckReadmeUnit::test_spec_count_matches_the_blocking_validator`
+  could not read a spec total; it now uses a `case` function, and `grep -P` became `grep -E`
+  because BSD grep has no PCRE mode and the trailing `|| true` had been turning that rejection
+  into a silently empty cross-reference check. (2) `install.sh` demanded Bash 4.0+ - a leftover
+  from the Bash `lib/` that M6 removed - while using no Bash 4 construct at all, so it refused the
+  stock macOS interpreter for the documented `curl ... | bash` install and failed both
+  `test_release_artifacts.py` installer cases; the floor is now 3.2. `uninstall.sh`'s
+  `${CONFIRM,,}` was the same class of defect, aborting with `bad substitution` at the prompt.
+  (3) `test_workflow_smoke.py`'s `/proc/self/cwd` case asserted that a Linux-only escape executes;
+  the classifier half now runs everywhere and the execution half only where `/proc/self/cwd`
+  exists. (4) The four adapter timeouts were a bound, not a hang: one out-of-checkout subprocess
+  measures 6.8s cold and 4.1s warm on Linux, and the cold cases alone exceeded 45s on the macOS
+  runner, so both files now share `SUBPROCESS_TIMEOUT_S = 300`.
+
+  Evidence, not inference: `scripts/validate-specs.sh`, `install.sh`, `uninstall.sh` and
+  `bin/docket` were run under a real `bash:3.2.57(1)-release` container. Before the change the
+  validator died at line 19 with empty stdout (exactly the CI message) and `install.sh` printed
+  the exact `Bash 4.0+ required (found 3.2.57(1)-release)` string CI reported; after it, the
+  validator reports the same 27 specs / 0 errors it does under GNU bash, and the installer's
+  fixture-driven verified and tampered-checksum paths reproduce their expected outcomes. Three new
+  guards in `test_public_release_truth.py` pin the shell surface against Bash 4 syntax and
+  `grep -P`, the installer preflight against a Bash 4 floor, and COMPATIBILITY.md against both;
+  each was seen red on planted drift before being restored. Full suite 2,539 passed / 5 skipped,
+  ruff, format, strict mypy, 18 goldens, spec validator and the README metrics guard all green.
+  The `macos` CI job remains `continue-on-error: true` - flipping it is a separate decision.
+
 - **2026-09-03 (W29-C6 accepted) — the reproducible adoption baseline is published and its clean
   builder is verified without moving the baseline.** RED `82a3239`, GREEN `033bb4b`, and canonical
   builder fix `f789bc6` bind source `82a3239` to wheel SHA-256 `0fe67120…67fce`, eight scenario

@@ -15,13 +15,19 @@ VALID_SPECS=0
 WARNINGS=0
 ERRORS=0
 
-# Required sections for each spec type
-declare -A REQUIRED_SECTIONS
-REQUIRED_SECTIONS["functional"]="Purpose Scope Requirements Interface Examples Validation Changelog"
-REQUIRED_SECTIONS["api"]="Purpose Scope Syntax Arguments Options Output Return Validation Changelog"
-REQUIRED_SECTIONS["data"]="Purpose Scope Structure Schema Validation Examples Changelog"
-REQUIRED_SECTIONS["acceptance"]="Overview Stories Criteria Scenarios Metrics Changelog"
-REQUIRED_SECTIONS["validation"]="Purpose Rules Functions Testing Performance Changelog"
+# Required sections for each spec type. A case statement, not an associative
+# array: `declare -A` is Bash 4 only and macOS ships Bash 3.2, where this
+# script died before printing a single line.
+required_sections() {
+    case "$1" in
+        functional) echo "Purpose Scope Requirements Interface Examples Validation Changelog" ;;
+        api) echo "Purpose Scope Syntax Arguments Options Output Return Validation Changelog" ;;
+        data) echo "Purpose Scope Structure Schema Validation Examples Changelog" ;;
+        acceptance) echo "Overview Stories Criteria Scenarios Metrics Changelog" ;;
+        validation) echo "Purpose Rules Functions Testing Performance Changelog" ;;
+        *) echo "" ;;
+    esac
+}
 
 # Validate a single spec file
 validate_spec() {
@@ -42,7 +48,7 @@ validate_spec() {
     fi
 
     # Check required sections
-    local required="${REQUIRED_SECTIONS[$spec_type]}"
+    local required; required="$(required_sections "$spec_type")"
     for section in $required; do
         if ! grep -q "^## $section" "$spec_file" 2>/dev/null; then
             errors+=("Missing section: ## $section")
@@ -93,10 +99,14 @@ validate_spec() {
             echo "    Error: $error"
             ERRORS=$((ERRORS + 1))
         done
-        for warning in "${warnings[@]}"; do
-            echo "    Warning: $warning"
-            WARNINGS=$((WARNINGS + 1))
-        done
+        # Guarded because Bash 3.2 under `set -u` rejects "${arr[@]}" when the
+        # array is empty, and a spec can have errors without warnings.
+        if [[ ${#warnings[@]} -gt 0 ]]; then
+            for warning in "${warnings[@]}"; do
+                echo "    Warning: $warning"
+                WARNINGS=$((WARNINGS + 1))
+            done
+        fi
     fi
 }
 
@@ -162,8 +172,10 @@ check_references() {
     # a line citing two specs produced a filename containing a newline, so
     # `find -name` could never match it and a valid reference was reported
     # broken. Extract first, iterate second.
-    local refs; refs=$(grep -rhoP 'see [a-z-]+\.spec\.md' specs/ 2>/dev/null \
-        | grep -oP '[a-z-]+\.spec\.md' | sort -u || true)
+    # -E, not -P: BSD grep (macOS) has no PCRE mode, and the trailing `|| true`
+    # turned the rejection into a silently empty reference set.
+    local refs; refs=$(grep -rhoE 'see [a-z-]+\.spec\.md' specs/ 2>/dev/null \
+        | grep -oE '[a-z-]+\.spec\.md' | sort -u || true)
 
     if [[ -n "$refs" ]]; then
         while IFS= read -r filename; do

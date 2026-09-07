@@ -15,6 +15,7 @@ from tests.fixtures.runtime_adapters.scenarios import (
     ADVERTISED_TOOLS,
     PLANTED_BYPASSES,
     SCENARIOS,
+    SUBPROCESS_TIMEOUT_S,
     GovernanceScenario,
 )
 from tests.python.test_pydantic_ai_adapter import _scenario_source
@@ -146,7 +147,7 @@ def _invoke_pydantic_ai(
         text=True,
         capture_output=True,
         check=False,
-        timeout=45,
+        timeout=SUBPROCESS_TIMEOUT_S,
     )
     assert result.returncode == 0, result.stderr or result.stdout
     line = next(line for line in result.stdout.splitlines() if line.startswith("W28_RESULT="))

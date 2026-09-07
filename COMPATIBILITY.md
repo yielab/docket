@@ -61,9 +61,11 @@ constructors. Neither framework is a dependency of the base `docket-runtime` ins
 - **macOS** — supported on a best-effort basis; the `macos` CI job runs the full pytest suite
   and a launcher smoke test, but is `continue-on-error: true` — a macOS-only failure does not
   block a merge today.
-- **Bash 4.0+** — required only for the `bin/docket` launcher shim (locates a Python
-  interpreter and execs `python -m docket "$@"`). Not required if you invoke `python -m docket`
-  directly. macOS ships Bash 3.2; install a newer one via Homebrew if you use the shim.
+- **Bash 3.2+** — the floor for every shell entry point docket ships: the `bin/docket`
+  launcher shim (locates a Python interpreter and execs `python -m docket "$@"`), `install.sh`
+  and `uninstall.sh`. 3.2 is what macOS still ships, so the stock interpreter is enough and no
+  Homebrew Bash is needed. None of these is required if you invoke `python -m docket` directly.
+  Pinned by `tests/python/test_public_release_truth.py::test_shipped_shell_surface_runs_on_the_bash_floor`.
 - No `systemd` (or any other service manager) dependency. Earlier versions restarted an
   external daemon's gateway service after config changes; that daemon no longer exists, and
   `edges/adapters/system.py`'s `restart_gateway`/`gateway_active` are honest no-op stubs kept

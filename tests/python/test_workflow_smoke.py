@@ -381,7 +381,17 @@ def test_private_classifier_fails_closed_for_inline_interpreter_code(tmp_path: P
     )
     eval_executed = toolbox.run_bash((worktree,), eval_command, sandbox="off")
     wrapped_eval_executed = toolbox.run_bash((worktree,), wrapped_eval_command, sandbox="off")
-    proc_cwd_executed = toolbox.run_bash((worktree,), proc_cwd_command, sandbox="off")
+    # /proc/self/cwd is Linux-only. Where it exists the escape genuinely
+    # executes and the demonstration below is worth making; where it does not,
+    # only the classifier half of this case is meaningful — and the classifier
+    # must still refuse the command on every platform, because a worktree can
+    # be reviewed on macOS and run on Linux.
+    proc_cwd_is_executable = Path("/proc/self/cwd").exists()
+    proc_cwd_executed = (
+        toolbox.run_bash((worktree,), proc_cwd_command, sandbox="off")
+        if proc_cwd_is_executable
+        else None
+    )
     script_executed = toolbox.run_bash((worktree,), script_command, sandbox="off")
     attached_separator_executed = toolbox.run_bash(
         (worktree,), attached_separator_command, sandbox="off"
@@ -475,7 +485,10 @@ def test_private_classifier_fails_closed_for_inline_interpreter_code(tmp_path: P
     assert wrapped_stdin_executed.ok and "PRIVATE_INLINE_SENTINEL" in wrapped_stdin_executed.content
     assert eval_executed.ok and "PRIVATE_INLINE_SENTINEL" in eval_executed.content
     assert wrapped_eval_executed.ok and "PRIVATE_INLINE_SENTINEL" in wrapped_eval_executed.content
-    assert proc_cwd_executed.ok and "PRIVATE_INLINE_SENTINEL" in proc_cwd_executed.content
+    if proc_cwd_is_executable:
+        assert proc_cwd_executed is not None
+        assert proc_cwd_executed.ok
+        assert "PRIVATE_INLINE_SENTINEL" in proc_cwd_executed.content
     assert script_executed.ok and "PRIVATE_INLINE_SENTINEL" in script_executed.content
     assert attached_separator_executed.ok
     assert "PRIVATE_INLINE_SENTINEL" in attached_separator_executed.content

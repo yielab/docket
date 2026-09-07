@@ -23,9 +23,13 @@ BIN_DIR="${PREFIX}/bin"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-./install.sh}")" && pwd 2>/dev/null)" || SCRIPT_DIR="$PWD"
 
 # ── Preflight ──
-if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
-  echo "Error: Bash 4.0+ required (found ${BASH_VERSION})."
-  echo "  macOS: brew install bash && exec bash"
+# Bash 3.2 is the floor because that is what macOS still ships, and nothing
+# below needs more: no associative arrays, no `mapfile`, no `${var,,}`. The
+# 4.0 floor this replaced was left over from the Bash lib/ that M6 removed,
+# and it refused the default macOS interpreter for the documented
+# `curl ... | bash` install.
+if [[ "${BASH_VERSINFO[0]}" -lt 3 || ( "${BASH_VERSINFO[0]}" -eq 3 && "${BASH_VERSINFO[1]}" -lt 2 ) ]]; then
+  echo "Error: Bash 3.2+ required (found ${BASH_VERSION})."
   exit 1
 fi
 command -v python3 >/dev/null 2>&1 || { echo "Error: python3 is required."; exit 1; }
