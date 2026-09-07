@@ -2,15 +2,21 @@ class DocketCli < Formula
   desc "Governed runtime and control plane for autonomous coding-agent pods"
   homepage "https://github.com/yielab/docket"
   url "https://github.com/yielab/docket/releases/download/v#{version}/docket-v#{version}.tar.gz"
-  # Exact digest reported by the immutable GitHub release asset.
+  # Digest of the published release asset, written by
+  # scripts/update-homebrew-sha.sh AFTER the release exists -- never before.
+  # It cannot be precomputed: the wheel builds byte-identically anywhere, but
+  # the sdist this tarball copies does not, so a locally built digest will not
+  # match the runner's bytes. Until the matching release is published this pin
+  # describes nothing, and the url above 404s anyway.
+  # Pinned by test_release_artifacts.py::test_formula_digest_matches_the_published_release_asset,
+  # which skips while the release is absent and fails the moment it is stale.
   sha256 "7ca506cf69d3fecf57a6fefa9b5ce299112855888a88018fa312ee393724766c"
   license "Apache-2.0"
-  # This pin is updated only by the approved release cut after the immutable
-  # versioned asset has been built and its digest verified.
   version "0.2.0-beta.2"
 
-  # macOS ships with Bash 3.2 (GPL-3 license change); docket requires 4.0+
-  depends_on "bash"
+  # Deliberately no Homebrew Bash dependency: bin/docket, the only shell this
+  # formula installs, runs on the Bash 3.2 macOS ships. The dependency existed
+  # for a 4.0 floor the shell surface never actually needed.
   depends_on "python@3.11"
 
   # fzf is optional — docket falls back to a numbered picker without it

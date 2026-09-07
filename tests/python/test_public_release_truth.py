@@ -362,6 +362,10 @@ SHELL_SURFACE = (
     ROOT / "tests" / "run-all-tests.sh",
 )
 
+# The Homebrew formula is not a shell script, but it is where the Bash-4 claim
+# turned into a dependency users had to install.
+FORMULA = ROOT / "Formula" / "docket-cli.rb"
+
 # Each entry is (regex, why it breaks on the floor).
 NON_PORTABLE_SHELL = (
     (r"\b(declare|local|typeset)\s+-[A-Za-z]*A\b", "associative arrays are Bash 4+"),
@@ -385,6 +389,14 @@ def test_shipped_shell_surface_runs_on_the_bash_floor() -> None:
                     violations.append(f"{script.relative_to(ROOT)}:{number}: {reason}")
 
     assert not violations, "non-portable shell constructs:\n" + "\n".join(violations)
+
+
+def test_formula_does_not_demand_a_newer_bash_than_the_launcher_needs() -> None:
+    """`bin/docket` is the only shell the formula installs, and it runs on 3.2."""
+    formula = FORMULA.read_text(encoding="utf-8")
+
+    assert 'depends_on "bash"' not in formula
+    assert "4.0+" not in formula
 
 
 def test_installer_accepts_the_bash_version_macos_ships() -> None:

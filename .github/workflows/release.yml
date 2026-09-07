@@ -102,6 +102,10 @@ jobs:
             dist/SHA256SUMS
             dist/*.spdx.json
 
+      # --repo is required, not optional: this job deliberately never checks out
+      # the source (it publishes bytes `build` produced and re-verified, and
+      # nothing else), so `gh` has no git remote to infer the repository from
+      # and exits with "failed to run git: fatal: not a git repository".
       - name: Create protected GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,6 +116,7 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" \
             dist/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --notes "Release $GITHUB_REF_NAME. See CHANGELOG.md for details." \
             "${prerelease_flag[@]}"

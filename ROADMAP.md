@@ -2650,6 +2650,35 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
 
 ### Changelog
 
+- **2026-09-07 (release pipeline) - the `v0.2.0-beta.2` publish failure is fixed, and a second,
+  quieter release blocker was found behind it.** Run `34144421202` built, verified and attested the
+  artifacts, then died on its last step with `failed to run git: fatal: not a git repository`. The
+  cause is the property the pipeline is designed around: `publish` never checks out source, so
+  `gh` had no remote to infer a repository from. `gh release create` now passes
+  `--repo "$GITHUB_REPOSITORY"`, and a new guard asserts both halves of that pairing - no checkout
+  step in `publish`, and an explicitly named repository in the release call.
+
+  The second blocker: `Formula/docket-cli.rb` pinned `7ca506cf...4766c` under the comment "exact
+  digest reported by the immutable GitHub release asset", but no such release ever existed and the
+  digest matches nothing. Measured at tag commit `892209f`: the wheel is byte-identical between a
+  developer machine and the release runner (`a5c0b60d...a44f` both times), but the sdist - which
+  `docket-v<version>.tar.gz` copies - is not; local builds give `1c6a284f...5774`, the runner gave
+  `00a4321e...a99d`, and the pin is a third value. A Homebrew pin therefore **cannot** be computed
+  before the release, which contradicted `scripts/update-homebrew-sha.sh`'s own closing instruction
+  to "commit the updated formula before cutting the release tag" - the script downloads the asset
+  *from* the release. Script and formula prose corrected;
+  `test_formula_digest_matches_the_published_release_asset` reads the published `.sha256` sidecar,
+  skips while the release is absent, and fails the moment the pin is stale (seen red against the
+  real `v0.2.0-beta.1` asset). `depends_on "bash"` was also dropped from the formula - it existed
+  only for the Bash 4.0 floor removed the same day.
+
+  **Still open, and the operator's call:** the fixed workflow lives at a commit the tag does not
+  point to, and `on: push: tags` runs the workflow from the tagged ref, so re-running the failed
+  job would re-run the broken script. Publishing requires either moving `v0.2.0-beta.2` (never
+  released, no assets, nothing consumed it) or cutting `v0.2.0-beta.3`. Either way the formula pin
+  is refreshed from the published asset afterwards. No tag was moved, no release published, and
+  nothing pushed - W29-C7 stays explicit-approval-gated.
+
 - **2026-09-07 (advisory macOS lane) - all eight macOS-only suite failures are fixed, and the
   Bash floor the project actually needs is now 3.2 rather than 4.0.** Four distinct causes, none of
   them a product defect on Linux. (1) `scripts/validate-specs.sh` opened with `declare -A`, which

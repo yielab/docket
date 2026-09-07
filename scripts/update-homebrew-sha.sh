@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# Update the SHA256 checksum in Formula/docket-cli.rb after a new release is pushed.
+# Update the SHA256 checksum in Formula/docket-cli.rb from a PUBLISHED release.
 # Usage: ./scripts/update-homebrew-sha.sh v0.2.0
+#
+# Run this AFTER the release workflow has published the tag's assets: it reads
+# the digest off the release itself, so there is nothing to read before then.
+# The digest is also not reproducible off the release runner -- the wheel is
+# byte-identical everywhere, the sdist this tarball copies is not -- so the pin
+# genuinely cannot be computed ahead of the release.
 set -euo pipefail
 
 version="${1:?Usage: $0 <version-tag>   e.g. v0.2.0}"
@@ -30,4 +36,4 @@ portable_sed_i() {
 portable_sed_i "s|sha256 \"[0-9a-f]*\"|sha256 \"${sha}\"|" "$formula"
 portable_sed_i "s|version \"[^\"]*\"|version \"${version}\"|" "$formula"
 
-echo "Done. Commit the updated formula before cutting the release tag."
+echo "Done. Commit the updated formula; it necessarily lands after the tag."
