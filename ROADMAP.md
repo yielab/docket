@@ -2672,12 +2672,20 @@ Specs on the release lineage describe the code, not aspirations, and R-8 keeps t
   real `v0.2.0-beta.1` asset). `depends_on "bash"` was also dropped from the formula - it existed
   only for the Bash 4.0 floor removed the same day.
 
-  **Still open, and the operator's call:** the fixed workflow lives at a commit the tag does not
-  point to, and `on: push: tags` runs the workflow from the tagged ref, so re-running the failed
-  job would re-run the broken script. Publishing requires either moving `v0.2.0-beta.2` (never
-  released, no assets, nothing consumed it) or cutting `v0.2.0-beta.3`. Either way the formula pin
-  is refreshed from the published asset afterwards. No tag was moved, no release published, and
-  nothing pushed - W29-C7 stays explicit-approval-gated.
+  **Published, on the operator's explicit approval.** `on: push: tags` runs the workflow from the
+  tagged ref, so the fix had to reach the tag: `v0.2.0-beta.2` was moved from `892209f` to
+  `40d86e3` (the old tag had produced no release and no assets, so nothing could have consumed
+  it). Run `34170325367` is green - build and publish both - and the release now carries all six
+  assets: wheel, sdist, versioned tarball, its `.sha256`, `SHA256SUMS`, and the SPDX SBOM, with
+  build provenance attested. The published sdist digest is `9f48ba44...6a955`, a **fourth**
+  distinct value for the one tagged commit, which is the reproducibility finding above stated as
+  a fact rather than a prediction. The formula pin was then refreshed from that published asset;
+  the guard was seen red against the stale pin first.
+
+  **Follow-up worth a card, not a patch:** the sdist is not byte-reproducible off the release
+  runner. Every consumer that must pin it - the Homebrew formula today, anything verifying a
+  rebuild tomorrow - inherits that. A `SOURCE_DATE_EPOCH`-style fix would make the pin computable
+  before the tag and close the ordering awkwardness the update script has to document.
 
 - **2026-09-07 (advisory macOS lane) - all eight macOS-only suite failures are fixed, and the
   Bash floor the project actually needs is now 3.2 rather than 4.0.** Four distinct causes, none of

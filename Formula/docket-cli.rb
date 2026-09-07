@@ -6,11 +6,11 @@ class DocketCli < Formula
   # scripts/update-homebrew-sha.sh AFTER the release exists -- never before.
   # It cannot be precomputed: the wheel builds byte-identically anywhere, but
   # the sdist this tarball copies does not, so a locally built digest will not
-  # match the runner's bytes. Until the matching release is published this pin
-  # describes nothing, and the url above 404s anyway.
+  # match the runner's bytes. Four distinct sdist digests were measured for the
+  # one tagged commit; only the published one counts.
   # Pinned by test_release_artifacts.py::test_formula_digest_matches_the_published_release_asset,
   # which skips while the release is absent and fails the moment it is stale.
-  sha256 "7ca506cf69d3fecf57a6fefa9b5ce299112855888a88018fa312ee393724766c"
+  sha256 "9f48ba443f4c5da6d79ad8071d0e236490bfc33dee725efd2ac3248091e6a955"
   license "Apache-2.0"
   version "0.2.0-beta.2"
 
