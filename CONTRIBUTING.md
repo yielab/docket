@@ -110,6 +110,11 @@ All contributions must include appropriate tests:
 - Unit and integration tests live under `tests/python/` (pytest)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
+For scale, so you know what you're getting into: **2,542 tests** in `tests/python/`,
+**~30,560 lines** of Python in the shipped package, **27 specifications** validated in CI, and
+**37 commands** in the [command reference](docs/commands.md). `scripts/metrics.py --check`
+computes these from the tree on every CI run, so this paragraph cannot silently go stale.
+
 Run the full aggregator before submitting:
 
 ```bash
@@ -127,7 +132,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only
-uv run pytest
+uv run pytest   # 2,542-test Python suite
 
 # Golden parity suite (byte-for-byte CLI output)
 bash tests/golden/run.sh verify-all
@@ -144,6 +149,9 @@ uv run mypy src              # strict type check
 uv run pytest                # unit/integration suite
 bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
+uv run python scripts/metrics.py --check            # this doc's metric-drift guard (see above)
+uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard
+uv run python scripts/release_journey.py            # exact-wheel first-turn release rehearsal
 ```
 
 ## Adding a New Command

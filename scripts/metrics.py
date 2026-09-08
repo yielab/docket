@@ -6,13 +6,18 @@ and `lib/core/router.sh` — both deleted at the Bash→Python cutover (M6) — 
 every number it produced silently resolved to (near) zero. This version counts
 the real Python tree.
 
-The README quotes line counts, command counts, test counts, and spec counts.
-Hand-maintained, these drift and contradict each other. This script computes
-them from the tree so there is exactly one authority.
+CONTRIBUTING.md quotes line counts, command counts, test counts, and spec
+counts for contributors sizing up the codebase before they dig in. Hand-
+maintained, these drift and contradict each other. This script computes them
+from the tree so there is exactly one authority.
+
+Deliberately not checked against the root README: a raw test/LOC count is a
+scale signal for someone about to work on the code, not a reason for someone
+deciding whether to use it, so it does not belong on the front door.
 
   ./scripts/metrics.py            # human-readable report
   ./scripts/metrics.py --json     # machine-readable (CI / badges)
-  ./scripts/metrics.py --check    # verify README numbers match (exit 1 on drift)
+  ./scripts/metrics.py --check    # verify CONTRIBUTING.md numbers match (exit 1 on drift)
 
 Add new metrics here, not in prose.
 """
@@ -30,7 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "docket"
 SPECS = ROOT / "specs"
-DEFAULT_README = ROOT / "README.md"
+DEFAULT_README = ROOT / "CONTRIBUTING.md"
 
 
 # --- compute -----------------------------------------------------------------
@@ -197,7 +202,7 @@ def check_readme(readme_path: Path, metrics: dict[str, int]) -> list[str]:
             drift = claimed != actual
         if drift:
             problems.append(
-                f"DRIFT: README claims {claimed} for '{claim.label}', tree has {actual}"
+                f"DRIFT: {readme_path.name} claims {claimed} for '{claim.label}', tree has {actual}"
             )
 
     if matched == 0:
@@ -216,12 +221,14 @@ def check_readme(readme_path: Path, metrics: dict[str, int]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", help="machine-readable output")
-    parser.add_argument("--check", action="store_true", help="verify README numbers match the tree")
+    parser.add_argument(
+        "--check", action="store_true", help="verify the target doc's numbers match the tree"
+    )
     parser.add_argument(
         "--readme",
         type=Path,
         default=DEFAULT_README,
-        help="README path to check against (default: repo README.md; tests point this at a fixture)",
+        help="doc path to check against (default: repo CONTRIBUTING.md; tests point this at a fixture)",
     )
     args = parser.parse_args(argv)
 
@@ -234,17 +241,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(p)
             return 1
         print(
-            "metrics: README in sync "
+            f"metrics: {args.readme.name} in sync "
             f"(tests={metrics['tests']}, loc={metrics['loc']}, "
             f"commands={metrics['commands']}, specs={metrics['specs']})"
         )
         # Name the live guards, and any claim the prose no longer states. Without
-        # this, a claim quietly dropped from the README looks identical to a
+        # this, a claim quietly dropped from the doc looks identical to a
         # claim that passed.
         stated, missing = claims_found(args.readme)
         print(f"  verified: {', '.join(stated)}")
         if missing:
-            print(f"  not stated in README (unverifiable): {', '.join(missing)}")
+            print(f"  not stated in {args.readme.name} (unverifiable): {', '.join(missing)}")
         return 0
 
     if args.json:

@@ -25,6 +25,7 @@ Complete technical guide to docket's DOCKET architecture implementation.
 8. [Security Model](#security-model)
 9. [Cost Optimization](#cost-optimization)
 10. [Implementation Status](#implementation-status)
+11. [Embedding docket-runtime](#embedding-docket-runtime)
 
 ---
 
@@ -954,6 +955,31 @@ provisions each project's pod with the right templates. Everything else works th
 [Cost reporting and its limits](../README.md#cost-reporting-and-its-limits) — the short version
 is: token reduction from isolation is real and measured, but docket reports **measured tokens
 plus a clearly labelled dollar estimate**, never a savings promise.
+
+---
+
+## Embedding docket-runtime
+
+The standalone **`docket-runtime`** package (`packages/docket-runtime/`) builds from the same
+source as the CLI and ships a narrow, versioned `docket_runtime` facade. An embedding application
+registers and dispatches tools through docket's policy, approval, trace, and audit chokepoint
+without adopting the CLI or the full agent loop. It is **not published to any index** — build it
+from a checkout of this repository and start from
+[examples/runtime_embed.py](../examples/runtime_embed.py).
+
+Two optional adapter configurations have installed-artifact coverage:
+
+| Adapter | Tested configuration | Boundary |
+| --- | --- | --- |
+| OpenHands SDK | `openhands-sdk==1.44.1`, Python 3.12 | Standard agent with defaults, native tools, plugins, skills, and MCP disabled |
+| PydanticAI | `pydantic-ai==2.37.0`, Python 3.11 | One sequential Docket toolset with no native or additional toolsets |
+
+These claims apply when relevant tools are exclusively Docket-backed. ACP, native/provider tools,
+plugins/MCP added beside an adapter, and arbitrary framework configurations are outside the proof;
+this is not framework-neutral compatibility. A2A and OTLP are not used: both adapters run in
+process, while Docket's JSONL trace already preserves the identity fields tested by the matrix.
+Inspect the boundary or copy the lazy constructors from
+[examples/runtime_adapters.py](../examples/runtime_adapters.py).
 
 ---
 
