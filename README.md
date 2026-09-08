@@ -1,26 +1,28 @@
-# docket — governance for autonomous coding agents
+# docket — governed teams of coding agents
 
 [![CI](https://github.com/yielab/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/yielab/docket/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green.svg)](https://www.python.org/)
 [![Specs: 100%](https://img.shields.io/badge/spec%20coverage-100%25-success.svg)](specs/)
 
-**docket is a governance layer for AI coding agents.** It sits between an agent's decision and its
-execution, and enforces policy, approval, and budget on every tool call — every file write, shell
-command, and API request — before that call runs.
+**docket assembles a small team of role-scoped AI agents — a Lead, an Implementer, and optionally a
+Reviewer and a Tester — and runs them against your codebase as one pipeline.** It owns both halves
+of that job: which agent does what, in what order (the team), and what every one of them is
+actually allowed to do (the gate).
 
-Orchestration — deciding who calls whom, in what order — is a different problem from control, and
-most agentic tooling is built to answer the first, not the second. Whatever owns an agent's turn
-loop is the only thing positioned to intercept a tool call before it executes, so if that owner
-isn't a dedicated policy layer, enforcement is left to the agent's own judgment. **docket owns the
-turn loop specifically so that doesn't happen:** every action an agent takes — every file edit,
-every shell command, every API call — passes through one policy-and-approval gate first, with no
-second path around it.
+The team half is intentionally fixed rather than a general-purpose graph you wire yourself: Lead
+plans and delegates but never edits code, Implementer makes the change, and an optional Reviewer
+and Tester gate whether it's actually done. The gate half is the part most agentic tooling leaves
+unfinished — whatever owns an agent's turn loop is the only thing positioned to intercept a tool
+call before it executes, so if that owner isn't a dedicated policy layer, enforcement is left to
+the agent's own judgment. **docket owns the turn loop for every role in the pipeline, specifically
+so that doesn't happen:** every action an agent takes — every file edit, every shell command, every
+API call — passes through one policy-and-approval gate first, with no second path around it.
 
-docket does not ship a dashboard, and it isn't a replacement for an orchestration framework — it's
-the control plane other things (a framework, a dashboard, your own scripts) sit on top of. It
-governs a supervised **team**, not a solo personal assistant, and keeps every action inspectable
-after the fact.
+docket does not ship a dashboard, and its pipeline isn't a general-purpose orchestration
+framework — it's an opinionated, governed team topology that other things (a framework, a
+dashboard, your own scripts) can sit on top of. It runs a supervised team, not a solo personal
+assistant, and keeps every action inspectable after the fact.
 
 > [!WARNING]
 > docket is beta software (`v0.2.0-beta.2`). Core contracts are spec-first and test-backed, but the
@@ -30,6 +32,31 @@ after the fact.
 <p align="center">
   <img src="docs/assets/hero.gif" alt="Animated Docket terminal journey: initialize an isolated project pod, inspect its dedicated state, pause a governed turn for approval, then inspect run and trace evidence" width="820">
 </p>
+
+## The pod: a governed team, not a lone agent
+
+`docket init` provisions a **pod** — a project-scoped team — and `docket pod <id> dispatch` runs one
+turn through it:
+
+```mermaid
+flowchart LR
+    Q["Task queue"] --> L["Lead\n(plans + delegates,\nnever edits code)"]
+    L -- "typed handoff" --> I["Implementer\n(writes the change)"]
+    I --> R{"Reviewer\n(optional, read-only)"}
+    R -- "changes requested" --> I
+    R -- "approved" --> T{"Tester\n(optional, verify gate)"}
+    T -- "reworkable failure" --> I
+    T -- "pass" --> V[("Run + trace + audit evidence")]
+```
+
+Lead + Implementer is the minimum viable pod; Reviewer and Tester are optional, but when present
+their verdict gates advancement instead of becoming advisory prose a model can talk its way past.
+`docket init --blueprint <name>` provisions the same pipeline shaped for different work — software
+(the default), research, content, ops, or agentic-product — not just one fixed team template.
+
+Every pod is isolated from every other: its own workspace, session history, scratch directory, a
+non-overlapping port range, and — for the Implementer — its own git worktree, so work on one
+project can't bleed into another.
 
 ## How a tool call is gated
 
@@ -59,7 +86,7 @@ external tool passes through it — there is no code path that reaches a handler
 
 ## Core guarantees
 
-What this buys a CTO or CISO evaluating whether to let agents touch a real codebase:
+The guarantees that matter before letting autonomous agents touch a production codebase:
 
 - **Fail-closed, not fail-open.** An unrouted approval denies itself after 120 seconds; an async
   pod-dispatch approval denies after 15 minutes. If isolation is enabled but no sandbox backend is
@@ -123,10 +150,9 @@ The full surface, grouped by the outcome it buys rather than by command name.
 
 ### As a CLI — for developers working a codebase directly
 
-Run a supervised team of agents (Lead, Implementer, and optionally Reviewer/Tester) against your
-own repository from the terminal. Every project gets an isolated workspace, its own git worktree,
-and its own session history, so work on one project can't bleed into another. This is the fastest
-path to a governed agent turn — see [Quick start](#quick-start) below.
+Provision and dispatch the pod described above from your own terminal, against your own
+repository. This is the fastest path to a governed agent turn — see
+[Quick start](#quick-start) below.
 
 ### As an embedded engine (**`docket-runtime`**) — for platforms and CI/CD
 
