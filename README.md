@@ -9,11 +9,18 @@
 execution, and enforces policy, approval, and budget on every tool call — every file write, shell
 command, and API request — before that call runs.
 
-Multi-agent frameworks (LangGraph, CrewAI, AutoGen) solve orchestration: who calls whom, in what
-order. They do not solve control. Each of them **owns the agent's turn loop**, which is the only
-place a guardrail can intercept a tool call before it executes — and none of them guarantee that
-interception happens. **docket owns the turn loop for that reason.** There is no second path
-underneath it that a tool call can take to reach a shell or an API unchecked.
+Orchestration — deciding who calls whom, in what order — is a different problem from control, and
+most agentic tooling is built to answer the first, not the second. Whatever owns an agent's turn
+loop is the only thing positioned to intercept a tool call before it executes, so if that owner
+isn't a dedicated policy layer, enforcement is left to the agent's own judgment. **docket owns the
+turn loop specifically so that doesn't happen:** every action an agent takes — every file edit,
+every shell command, every API call — passes through one policy-and-approval gate first, with no
+second path around it.
+
+docket does not ship a dashboard, and it isn't a replacement for an orchestration framework — it's
+the control plane other things (a framework, a dashboard, your own scripts) sit on top of. It
+governs a supervised **team**, not a solo personal assistant, and keeps every action inspectable
+after the fact.
 
 > [!WARNING]
 > docket is beta software (`v0.2.0-beta.2`). Core contracts are spec-first and test-backed, but the
@@ -67,7 +74,11 @@ What this buys a CTO or CISO evaluating whether to let agents touch a real codeb
   all — not a prompt telling it not to use them. A compromised diff has no tool call to make even if
   it convinced the model to try.
 
-## Cost control
+## Features
+
+The full surface, grouped by the outcome it buys rather than by command name.
+
+### Cost control
 
 - **Per-agent spend caps** that auto-pause a pod instead of degrading silently.
 - **Measured token counts**, not estimates — `core.llm.TokenUsage` records real usage; dollar
@@ -78,7 +89,7 @@ What this buys a CTO or CISO evaluating whether to let agents touch a real codeb
 - **Role-based model routing.** Cheap models for planning roles (Lead), stronger models only where
   code generation happens (Implementer) — configured once via `docket models`.
 
-## Code security
+### Code security
 
 - **One tool chokepoint, no exceptions.** `dispatch_tool` is AST-tested as the sole path a tool call
   can take; a second execution path is treated as a defect, not a feature.
@@ -93,7 +104,7 @@ What this buys a CTO or CISO evaluating whether to let agents touch a real codeb
 - **Opt-in sandboxing.** `docket gates isolate on` runs shell commands inside Docker or bwrap, and
   fails closed if the backend isn't actually available.
 
-## Audit & evidence
+### Audit & evidence
 
 - **Every decision is queryable afterward** — task, run, approval, and token count, not just the
   final answer.
@@ -104,6 +115,9 @@ What this buys a CTO or CISO evaluating whether to let agents touch a real codeb
 - **Crash and recovery evidence.** A corrupt docket-owned JSON file recovers from its validated
   backup without overwriting the good copy — see [Adoption evidence](docs/ADOPTION-EVIDENCE.md) for
   reproducible benchmark results.
+- **A read API to feed your own dashboard.** `/status.json` and `/metrics` expose pod and run health
+  to an external control plane over authenticated HTTP — docket feeds a dashboard, it does not ship
+  one.
 
 ## Two ways to use docket
 
@@ -114,14 +128,22 @@ own repository from the terminal. Every project gets an isolated workspace, its 
 and its own session history, so work on one project can't bleed into another. This is the fastest
 path to a governed agent turn — see [Quick start](#quick-start) below.
 
-### As an embedded engine (`docket-runtime`) — for platforms and CI/CD
+### As an embedded engine (**`docket-runtime`**) — for platforms and CI/CD
 
-The standalone `docket-runtime` package lets an application register and dispatch tools through
+The standalone **`docket-runtime`** package lets an application register and dispatch tools through
 docket's policy/approval/trace/audit chokepoint directly — without shelling out to the docket CLI.
 It's built for teams embedding governed tool execution inside their own agentic product or CI/CD
-pipeline, tested against the OpenHands SDK and PydanticAI. Dependencies are deliberately minimal
-(`pydantic` + `filelock`, nothing else). It is **source-built and not published to any package
-index** today — see [Architecture](docs/DOCKET.md#embedding-docket-runtime).
+pipeline. Dependencies are deliberately minimal (`pydantic` + `filelock`, nothing else). It is
+**source-built and not published to any package index** today — see
+[Architecture](docs/DOCKET.md#embedding-docket-runtime).
+
+Two adapter configurations have installed-artifact coverage: **OpenHands SDK**
+(`openhands-sdk==1.44.1`, Python 3.12) and **PydanticAI** (`pydantic-ai==2.37.0`, Python 3.11),
+each running a single, sequential Docket toolset with no other tools attached. The claim holds only
+when the relevant tools are **exclusively Docket-backed** — ACP, native/provider tools, plugins/MCP
+added beside an adapter, and arbitrary framework configurations are outside the proof. This is not framework-neutral compatibility.
+See [examples/runtime_adapters.py](examples/runtime_adapters.py) for the lazy constructors, and
+[Compatibility](COMPATIBILITY.md) for the full boundary.
 
 ## Quick start
 
@@ -190,6 +212,19 @@ Workspace files (`SOUL.md`, `AGENTS.md`, `TOOLS.md`) carry prose context the age
 are not mechanically enforced, and the policy/tool-allowlist layer above is what actually stops a
 turn from doing what they forbid. Full reference: [Agent teams](docs/AGENT-TEAMS.md).
 
+## Best practices
+
+1. **Start with the minimum pod.** Lead + Implementer is enough for exploration; add Reviewer,
+   Tester, or custom roles once a concrete quality gate justifies the extra turns.
+2. **Give the Implementer an objective check.** `docket pod <id> set-verify "<command>"` blocks
+   advancement on a nonzero exit code, independent of how confident the model's prose sounds.
+3. **Keep dispatch explicit.** Run `docket pod <id> dispatch` interactively before enabling
+   schedules or `docket serve --dispatch`, and confirm budgets and approval channels first.
+4. **Inspect evidence, not just the final answer.** Check the run, trace, token usage, and audit
+   chain before accepting a consequential change.
+5. **Keep docket behind your own boundary.** `docket serve` binds loopback by default and does not
+   terminate TLS — put a trusted client, SSH tunnel, or your own TLS proxy in front of it.
+
 ## Known limits
 
 Read these before trusting docket with anything consequential — they are the honest boundary of
@@ -214,8 +249,8 @@ the way the limits below describe.
   An operator able to delete all docket state can erase both the log and its backup.
 - **docket feeds a dashboard; it is not one:** use the authenticated API from an external
   plan-of-record such as Tack, or build your own consumer.
-- **The standalone runtime is source-built:** `docket-runtime` exposes a narrow gated-tool facade
-  and is **not published to any index**. It does not expose a second public turn loop.
+- **The standalone runtime is source-built:** **`docket-runtime`** exposes a narrow gated-tool
+  facade and is **not published to any index**. It does not expose a second public turn loop.
 
 Read [SECURITY.md](SECURITY.md) before exposing a service, and [COMPATIBILITY.md](COMPATIBILITY.md)
 before relying on a model endpoint or MCP server.
