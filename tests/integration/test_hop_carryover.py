@@ -9,7 +9,7 @@ Instead, every prior hop's rendered ``HandoffArtifact`` is fit to a per-role
 the artifact's own less-valuable fields (``HandoffArtifact.DROP_ORDER``)
 before ever truncating ``summary`` itself. There is no
 ``_hop_carryover_budget``/``_truncate_carryover`` byte-cap machinery and no
-``config.HOP_CARRYOVER_BYTES``. See ``tests/unit/core/test_archetypes__context_compiler.py``
+``config.HOP_CARRYOVER_BYTES``. See ``tests/unit/core/test_context.py``
 for the compiler's own unit tests; this file covers:
   * TestHopMessageCap      — ``_hop_message`` itself, against the new
     token-budget compiler: small tasks unchanged, the task description never

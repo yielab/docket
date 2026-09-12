@@ -261,7 +261,7 @@ docket add myproj --blueprint wizard-pod
 - A blueprint's roster always starts with exactly one `"lead"`.
 - Every gated step's gate kind in a built-in blueprint's `defaultPipeline` always matches the
   gated role's own archetype `gateContract.kind` (enforced by
-  `tests/unit/core/test_archetypes__pod_blueprints.py`'s `TestPipelineGateFidelity`).
+  `tests/unit/core/test_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
 

@@ -1236,7 +1236,7 @@ run is needed to observe this; a later `docket pod myapp dispatch` — with or w
     `estimate_tokens` (the bytes/`config.CONTEXT_BYTES_PER_TOKEN` approximation), `budget_for_role`
     (resolves a role against the live archetype registry), `hop_share` (R-7's recency-halving
     series, now in tokens), and `compile_artifact` (the field-shedding + marked-summary-truncation
-    compiler). See `tests/unit/core/test_archetypes__context_compiler.py` for its own unit coverage.
+    compiler). See `tests/unit/core/test_context.py` for its own unit coverage.
   - `core/archetypes.py`'s `RoleArchetype` gains `token_budget` (positive integer, default 6000;
     `tokenBudget` on the wire) — every built-in and starter-library archetype now declares one.
     See `role-archetypes.spec.md` v1.3.0.

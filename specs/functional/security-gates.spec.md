@@ -1038,7 +1038,7 @@ $ git clone https://anywhere.example/repo.git
   this card.
 - `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
   refusal happens before `urllib.request.build_opener` is ever called, not merely before the
-  content is returned. `tests/unit/core/test_tools__fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
+  content is returned. `tests/unit/edges/adapters/test_fetch.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
   proves this by making `build_opener` raise if invoked at all.
 - A redirect `fetch` follows **MUST NOT** land on a host absent from the same allowlist — the
   domain allowlist governs the whole request, including any redirect chain, not just the
@@ -1223,7 +1223,7 @@ $ git clone https://anywhere.example/repo.git
     the escape hatches named above; it exists so reaching the network doesn't have to mean
     reaching for one of them. **Read the Status line and "Network egress and the `fetch` tool"
     above before citing this card as closing docket's egress gap — it does not, on purpose.**
-  - Tests: `tests/unit/core/test_tools__fetch_tool.py` (16 cases) — a real local HTTP server
+  - Tests: `tests/unit/edges/adapters/test_fetch.py` (16 cases) — a real local HTTP server
     (stdlib `http.server`) backs the allowlist, size-cap, timeout, redirect, and HTTP-error
     behavior; a `pre_tool_call` policy test dispatches a real `fetch` call through the
     unmodified `dispatch_tool` to prove the gate applies. Four guards were planted as drift and

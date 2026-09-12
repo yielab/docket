@@ -454,12 +454,12 @@ dispatch_tool(
   `load_mcp_servers()` only.
 - With zero configured servers, `DocketDriver.run_turn`'s registry, the tool specs advertised to
   the model, and every downstream effect **MUST** be identical to a `DocketDriver` built before
-  this version — proven by `tests/unit/core/test_llm__mcp_tools_in_a_live_turn.py::
+  this version — proven by `tests/unit/core/test_mcp_tools.py::
   TestZeroServersIsUnchanged`, not merely asserted.
 - A role whose `denied_tools` implies kind `write` (every archetype that denies `write`/`edit`)
   **MUST NOT** be advertised, and **MUST NOT** be able to dispatch, any MCP-adapted tool — proven
   end-to-end through `DocketDriver.run_turn` (not only at `registry_for_role`'s own level) by
-  `tests/unit/core/test_llm__mcp_tools_in_a_live_turn.py::TestReviewerNeverGainsAWriteCapableMcpTool`.
+  `tests/unit/core/test_mcp_tools.py::TestReviewerNeverGainsAWriteCapableMcpTool`.
 
 ### Invariants
 
