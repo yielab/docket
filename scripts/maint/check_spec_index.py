@@ -178,6 +178,22 @@ def check(index_text: str) -> list[Disagreement]:
     return findings
 
 
+def indexed_specs() -> dict[str, str]:
+    """Every spec the public index must cover, keyed by its expected table label.
+
+    Lives here rather than in the test so that the agent lane, which is budgeted by a
+    shrink-only line ratchet, does not pay for a naming convention this script already owns.
+    """
+    discovered = {
+        stem_to_display(path.name.removesuffix(".spec.md")): path.relative_to(SPECS).as_posix()
+        for path in sorted(SPECS.rglob("*.spec.md"))
+    }
+    # Both carry real Version/Status headers but are plain .md, not .spec.md, by design.
+    discovered["Test Framework"] = "test-framework.md"
+    discovered["User Stories"] = "acceptance/user-stories.md"
+    return discovered
+
+
 def format_report(findings: list[Disagreement]) -> str:
     if not findings:
         return "specs/README.md agrees with every specs/**/*.spec.md header."

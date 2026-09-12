@@ -38,10 +38,10 @@ PUBLIC_MARKDOWN = (
 )
 
 
-def _load_check_spec_index() -> types.ModuleType:
-    """The maintenance script owns the filename<->table-label naming convention."""
+def _maint_module(name: str) -> types.ModuleType:
+    """Load a scripts/maint helper, which is outside any importable package."""
     spec = importlib.util.spec_from_file_location(
-        "_check_spec_index", ROOT / "scripts" / "maint" / "check_spec_index.py"
+        f"_maint_{name}", ROOT / "scripts" / "maint" / f"{name}.py"
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -50,22 +50,7 @@ def _load_check_spec_index() -> types.ModuleType:
     return module
 
 
-def _discover_indexed_specs() -> dict[str, str]:
-    """Every spec the public index must cover, so a new file cannot go unindexed unnoticed."""
-    check_spec_index = _load_check_spec_index()
-    discovered = {
-        check_spec_index.stem_to_display(path.name.removesuffix(".spec.md")): path.relative_to(
-            ROOT / "specs"
-        ).as_posix()
-        for path in sorted((ROOT / "specs").rglob("*.spec.md"))
-    }
-    # These two carry real Version/Status headers but are plain .md, not .spec.md, by design.
-    discovered["Test Framework"] = "test-framework.md"
-    discovered["User Stories"] = "acceptance/user-stories.md"
-    return discovered
-
-
-INDEXED_SPECS = _discover_indexed_specs()
+INDEXED_SPECS = _maint_module("check_spec_index").indexed_specs()
 
 
 def _markdown_destinations(text: str) -> list[str]:
