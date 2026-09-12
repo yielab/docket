@@ -484,8 +484,8 @@ they may run in parallel because they share no module.
 
 ### W31-C8a — split `run_agent_turn` into named phases
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C4 (done) · parallel with C8b
-(disjoint: different module, different unit file)
+**Status:** CLAIMED (2026-09-12) · **Size:** M · **Owner:** @sonnet-c8a · **Depends on:** C4 (done) ·
+parallel with C8b (disjoint: different module, different unit file)
 
 **Deterministic trigger:** `core/agent_loop.py::run_agent_turn` is 789 lines (440-1228 at
 `7f02c55`). Its unit file `tests/unit/core/test_agent_loop.py` is 2,462 lines, the largest in the
@@ -514,8 +514,8 @@ bound is evaluated before and after, and every retired test paired with the phas
 
 ### W31-C8b — split `dispatch_task` and its nested `_execute_unit` into named phases
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C4 (done) · parallel with C8a
-(disjoint: different module, different unit file)
+**Status:** CLAIMED (2026-09-12) · **Size:** M · **Owner:** @sonnet-c8b · **Depends on:** C4 (done) ·
+parallel with C8a (disjoint: different module, different unit file)
 
 **Deterministic trigger:** `core/dispatch.py::dispatch_task` is 703 lines (1172-1874 at `7f02c55`),
 of which the nested `_execute_unit` closure is 501 (1284-1784). Nesting is why the outer function
