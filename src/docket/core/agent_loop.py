@@ -39,6 +39,16 @@ reported as ``AgentLoopResult.stop_reason``:
   an isolated refusal, and an allowed executed result resets the count; the
   default third consecutive denial stops locally after its complete atomic
   assistant/tool-result unit and usage are persisted.
+- ``approval_unavailable`` — a tool call needed a human decision
+  (``core.tools.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
+  approval_mode == "refuse"``, so ``dispatch_tool`` denied it immediately
+  instead of creating an approval record and waiting. Unlike ``tool_denials``
+  this is not a count reaching a limit — one such result ends the turn right
+  after its batch is persisted, because there is nobody left to ask and no
+  amount of retrying changes that. ``gate_denied`` and ``invalid_call`` are
+  unaffected and remain recoverable, still bounded by
+  ``max_consecutive_tool_denials`` as before — only the specific "nobody could
+  answer" case is terminal on its own.
 - ``timeout`` — wall-clock budget exceeded, checked between iterations
   (``LoopConfig.wall_clock_timeout_s``). This does not interrupt an in-flight
   HTTP call already underway; ``ChatBackend.complete``'s own per-request
@@ -142,7 +152,7 @@ from docket.core.llm import (
 )
 from docket.core.runtime_driver import FailureKind, TurnResult
 from docket.core.session import CompactionResult, append_messages, compact_session, load_messages
-from docket.core.tools import ToolContext, ToolDenialKind, ToolRegistry, dispatch_tool
+from docket.core.tools import ToolContext, ToolDenialKind, ToolRegistry, ToolResult, dispatch_tool
 from docket.core.trace import trace_event
 
 __all__ = [
@@ -164,6 +174,7 @@ StopReason = Literal[
     "context_fit",
     "tool_denials",
     "run_cancelled",
+    "approval_unavailable",
 ]
 
 _FINALIZATION_INSTRUCTION = (
@@ -352,6 +363,8 @@ def _trace_tool_result(
     ok: bool,
     executed: bool,
     denial_kind: ToolDenialKind | None,
+    policy_id: str = "",
+    reason: str = "",
 ) -> None:
     payload: dict[str, Any] = {
         "tool": tool,
@@ -362,6 +375,10 @@ def _trace_tool_result(
     }
     if denial_kind is not None:
         payload["denialKind"] = denial_kind
+    if policy_id:
+        payload["policyId"] = policy_id
+    if reason:
+        payload["reason"] = reason
     trace_event(
         project,
         session_key,
@@ -1295,6 +1312,7 @@ def run_agent_turn(
 
         tool_msgs: list[ChatMessage] = []
         batch_cancelled = False
+        approval_unavailable: ToolResult | None = None
         for call in assistant_msg.tool_calls:
             _trace_tool_call(project, trace_key, ctx.role, call.name, call.id, call.arguments)
             result = dispatch_tool(call, ctx, registry)
@@ -1310,6 +1328,8 @@ def run_agent_turn(
                 result.ok,
                 result.executed,
                 result.denial_kind,
+                result.policy_id,
+                result.reason,
             )
             if result.denial_kind is not None and not result.executed:
                 consecutive_denial_kinds.append(result.denial_kind)
@@ -1318,6 +1338,8 @@ def run_agent_turn(
             tool_msgs.append(tool_result(call, result.as_tool_output()))
             if result.denial_kind == "run_cancelled" or _cancellation_requested():
                 batch_cancelled = True
+            if result.denial_kind == "approval_unavailable" and approval_unavailable is None:
+                approval_unavailable = result
 
         messages.append(assistant_msg)
         messages.extend(tool_msgs)
@@ -1327,6 +1349,21 @@ def run_agent_turn(
         append_messages(session_key, [assistant_msg, *tool_msgs], usage=response_usage)
         if batch_cancelled:
             return _cancelled()
+        if approval_unavailable is not None:
+            # Terminal on its own, unlike gate_denied/invalid_call: there is
+            # nobody left to ask, so no further retry of this batch or another
+            # can change the outcome. Named specifically so a caller does not
+            # have to grep a generic denial-limit error for which rule fired.
+            return _done(
+                ok=False,
+                stop_reason="approval_unavailable",
+                error=(
+                    f"tool {approval_unavailable.tool!r} call {approval_unavailable.call_id!r} "
+                    f"needed approval that was unavailable "
+                    f"(policy={approval_unavailable.policy_id!r}): {approval_unavailable.reason}"
+                ),
+                failure_kind="invalid_output",
+            )
         denial_limit = cfg.max_consecutive_tool_denials
         if denial_limit > 0 and len(consecutive_denial_kinds) >= denial_limit:
             reported_kinds = consecutive_denial_kinds[-denial_limit:]

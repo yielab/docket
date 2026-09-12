@@ -30,12 +30,17 @@ production callers:
     Implementer hop gates again, with a fresh token.
   * TestBudgetGateTakesPrecedence — affordability is still checked before
     permission: a budget-blocked hop blocks, it does not wait for approval.
+  * TestToolLevelApprovalMode     — the tool-call-level gate's own approval
+    routing (``core/tools.py``'s ``ToolContext.approval_mode``), one level
+    below the pod-dispatch gate the rest of this file covers: ``"wait"`` is
+    unchanged, ``"refuse"`` never touches the approval store at all.
 """
 
 from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -48,11 +53,15 @@ from tests.conftest import repoint_docket_home
 import docket.config as _cfg
 from docket.cli import _approve, _deny
 from docket.core import approval as _ap
+from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
+from docket.core.llm import ToolCall
+from docket.core.policy import install_policies
+from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core"
@@ -655,3 +664,62 @@ class TestApprovalCreateContext:
         token = _ap.approval_create("myapp", "implementer", "do the thing")
         rec = _ap.approval_get(token)
         assert rec["context"] == {}
+
+
+# ── tool-call-level approval routing (core/tools.py's ToolContext.approval_mode) ──
+
+
+class TestToolLevelApprovalMode:
+    """`dispatch_tool`'s own `ask` routing, gated by the real shipped
+    `block-destructive` template rather than a synthetic policy."""
+
+    def test_refuse_mode_denies_immediately_with_no_record_and_one_audit_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A short bound on the *wait* path so an unimplemented approval_mode
+        # (silently ignored, falling through to today's wait behavior) fails
+        # this test's assertions quickly instead of blocking for real -- the
+        # elapsed-time assertion below is the actual proof once implemented.
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+        install_policies()
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
+        ctx.approval_mode = "refuse"
+        registry = builtin_registry()
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+
+        started = time.monotonic()
+        result = dispatch_tool(call, ctx, registry)
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 0.1
+        assert result.decision == "deny"
+        assert result.denial_kind == "approval_unavailable"
+        assert result.policy_id == "block-destructive"
+        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []
+        ask_entries = [e for e in _audit.read_audit() if e["action"] == "tool.ask"]
+        assert len(ask_entries) == 1
+
+    def test_wait_mode_is_unchanged_still_creates_a_record_and_times_out(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`approval_mode` defaults to `"wait"` -- today's behavior, byte for
+        byte: a real record is created and an unanswered call times out to
+        denied, exactly as before this field existed."""
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
+        install_policies()
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        ctx = ToolContext(agent_id="demo", role="implementer", project="demo", roots=(ws,))
+        registry = builtin_registry()
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+
+        result = dispatch_tool(call, ctx, registry)
+
+        assert result.decision == "deny"
+        assert result.denial_kind == "approval_timeout"
+        records = list(_cfg.APPROVALS_DIR.glob("*.json"))
+        assert len(records) == 1
+        stored = json.loads(records[0].read_text())
+        assert stored["state"] == "denied"
