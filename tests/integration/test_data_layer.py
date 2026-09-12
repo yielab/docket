@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 SUBJECT = "docket.core.models"
@@ -319,17 +320,14 @@ def oc_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home.mkdir()
     workspace = home / "workspaces" / "projects" / "myshop"
     _make_meta(workspace)
-    fleet_file = _make_fleet(home)  # writes home/fleet.json
+    _make_fleet(home)  # writes home/fleet.json
 
-    monkeypatch.setenv("DOCKET_HOME", str(home))
-
-    import docket.config as _cfg
-
-    projects_dir = home / "workspaces" / "projects"
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects_dir)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json")
+    # The shared repointer, not a local subset: the commands under test now run
+    # in-process, so a DOCKET_HOME environment variable is inert (config binds
+    # its constants at import) and only the attributes patched here actually
+    # move. A partial list would leave every unlisted constant aimed at the
+    # autouse fixture's home -- one home split in two, with nothing to fail.
+    repoint_docket_home(monkeypatch, home)
     return home
 
 
