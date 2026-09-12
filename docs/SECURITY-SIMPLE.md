@@ -27,10 +27,12 @@
 > it cannot be turned off. What it skips is **approval routing**: without it, an "ask" verdict
 > still blocks the call, but there is no channel actively watching for it, so it simply times out
 > to denied unless a human happens to run `docket approve` in time. Turn routing on anytime with
-> `docket gates enable`. Docker **workspace isolation** (`docket gates isolate on`) is a separate,
-> still-**opt-in** layer on top — and, as of this writing, recorded but not yet consulted by the
-> turn loop (`docket gates isolate on` sets the flag; every tool call still runs unsandboxed until
-> that wiring lands — `docket gates status` says so plainly). See
+> `docket gates enable`. Docker/bwrap **workspace isolation** (`docket gates isolate on`) is a
+> separate, still-**opt-in** layer on top — but it is consulted by the turn loop: when it's on,
+> every real dispatch hop runs sandboxed if docker or bwrap is available, and if neither is, the
+> turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
+> entry — no LLM call, no tool executes). `docket gates status` reports which of the two states
+> applies. See
 > [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md)
 > (Status: Implemented, on by default).
 
@@ -255,7 +257,7 @@ docket gates status       # is exec-approval on, is isolation on, what's the rou
 docket gates classes      # the high-risk action classes, and exactly what's wired vs. not
 docket policies list      # installed guardrail policies
 docket approve            # list pending approvals in docket's own store
-docket audit verify       # confirm the audit log hasn't been tampered with
+docket audit verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
 ```
 
 ---
