@@ -14,9 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stdout carries newline-delimited events and one versioned result and nothing else; every log goes
   to stderr. The wire contract's JSON schema is published at `docs/contracts/harness-v1/schema.json`,
   generated from the models and pinned byte-for-byte by a test, with NDJSON fixtures for the ok,
-  blocked, cancelled and refused shapes at `tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,
-  refused}.ndjson`. Exit status is 0 for a completed turn, 1 for one that ran and ended badly,
-  and 2 for a refusal before any turn began — the one deliberate exception to docket's otherwise
+  blocked, cancelled and refused shapes at `tests/fixtures/harness-contract/v1/`. Exit status is 0
+  for a completed turn, 1 for one that ran and ended badly, and 2 for a refusal before any turn
+  began — the one deliberate exception to docket's otherwise
   flat return convention, because a program parsing stdout cannot read a printed message.
 - **A synchronous trace subscriber seam.** `core/trace.py::subscribe` hands each sink the exact
   record about to be appended, after redaction and before the write. With no subscribers the path
