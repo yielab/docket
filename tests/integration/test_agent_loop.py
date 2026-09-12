@@ -287,6 +287,23 @@ def _truncated(
     )
 
 
+def _write_gate_policy(policy_id: str, pattern: str, action: str) -> None:
+    """Install one minimal `pre_tool_call` policy for a single RED scenario --
+    a hand-written stand-in for the shipped templates, scoped to exactly the
+    tool name this test drives rather than a real destructive-command list."""
+    _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "id": policy_id,
+        "description": "test-only policy",
+        "applies_to": ["*"],
+        "hook": "pre_tool_call",
+        "match": {"type": "regex", "pattern": pattern},
+        "action": action,
+        "message": "test gate",
+    }
+    (_cfg.POLICIES_DIR / f"{policy_id}.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
 # ── cooperative persisted-run cancellation (W26-C10b RED) ───────────────────
 
 
@@ -1863,6 +1880,69 @@ class TestStopConditions:
         assert result.error == "endpoint unreachable"
 
 
+# ── non-interactive approval mode (docs/adr/0001-harness-mode.md decision 11) ──
+
+
+class TestApprovalUnavailable:
+    def test_refuse_mode_stops_the_turn_immediately_with_a_typed_result(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """A call gated to `ask` under `approval_mode="refuse"` ends the turn
+        on its own -- not folded into the consecutive-denial count -- with no
+        second backend request and a session unit carrying the refusal."""
+        _write_gate_policy("test-ask-echo", r"\becho\b", "require_approval")
+        ctx.approval_mode = "refuse"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("call-1", "echo", '{"text": "hello"}'),
+                _final("must not be requested"),
+            ]
+        )
+        session_key = "agent:demo:approval-unavailable"
+
+        result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert result.ok is False
+        assert result.stop_reason == "approval_unavailable"
+        assert result.failure_kind == "invalid_output"
+        assert len(backend.calls) == 1  # no second request was made
+        assert "echo" in result.error
+        assert "call-1" in result.error
+        assert "test-ask-echo" in result.error
+        record = load_session(session_key)
+        assert [message.role for message in record.messages] == ["user", "assistant", "tool"]
+        assert "REFUSED [approval_unavailable]" in record.messages[-1].content
+
+    # The specificity proof: only approval_unavailable is immediately terminal
+    # under refuse mode. gate_denied and invalid_call stay recoverable and
+    # bounded only by max_consecutive_tool_denials, exactly as under "wait" --
+    # lowering that limit instead would also make these terminal, which is
+    # the shortcut this test rules out.
+    def test_refuse_mode_still_bounds_gate_denied_and_invalid_call_by_the_existing_limit(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """gate_denied/invalid_call remain recoverable under refuse mode."""
+        _write_gate_policy("test-block-echo", r"blocked-arg", "block")
+        ctx.approval_mode = "refuse"
+        backend = ScriptedBackend(
+            [
+                _tool_call_response("bad-1", "missing-tool", "{}"),
+                _tool_call_response("deny-1", "echo", '{"text": "blocked-arg"}'),
+                _tool_call_response("bad-2", "missing-tool", "{}"),
+                _final("must not be requested"),
+            ]
+        )
+        session_key = "agent:demo:refuse-specificity"
+
+        result = _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        assert result.stop_reason == "tool_denials"
+        assert result.failure_kind == "invalid_output"
+        assert len(backend.calls) == 3  # stopped at the denial limit, the final() was never sent
+        assert "invalid_call" in result.error
+        assert "gate_denied" in result.error
+
+
 # ── cumulative-budget terminal response reservation ─────────────────────────
 
 
@@ -2397,6 +2477,26 @@ class TestTracing:
         assert tool_records[0]["payload"]["tool"] == "echo"
         assert tool_records[1]["payload"]["decision"] == "allow"
         assert tool_records[1]["payload"]["executed"] is True
+
+    def test_tool_result_trace_carries_policy_id_and_reason_for_a_gated_denial(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        """A denial that carries a policy id/reason -- here, a refuse-mode
+        `approval_unavailable` -- surfaces both on the `tool_result` trace
+        payload, not just on the returned `ToolResult`."""
+        _write_gate_policy("test-trace-echo", r"\becho\b", "require_approval")
+        ctx.approval_mode = "refuse"
+        session_key = "agent:demo:trace-policy"
+        backend = ScriptedBackend([_tool_call_response("c1", "echo", '{"text": "hi"}')])
+
+        _loop.run_agent_turn(backend, registry, ctx, session_key, "go")
+
+        tracefile = _cfg.TRACES_DIR / (ctx.project or ctx.agent_id) / f"{session_key}.jsonl"
+        records = [json.loads(line) for line in tracefile.read_text().splitlines()]
+        tool_result_record = next(r for r in records if r["event_type"] == "tool_result")
+        assert tool_result_record["payload"]["denialKind"] == "approval_unavailable"
+        assert tool_result_record["payload"]["policyId"] == "test-trace-echo"
+        assert tool_result_record["payload"]["reason"]
 
     def test_no_tool_calls_means_no_trace_events(
         self, ctx: ToolContext, registry: ToolRegistry

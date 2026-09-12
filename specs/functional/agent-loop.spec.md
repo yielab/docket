@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -19,8 +19,11 @@ registered context window when that endpoint advertises one; same-turn tool grow
 through the durable atomic path before transport rather than relying only on pre-turn history size.
 When the endpoint also advertises a positive output limit, the loop reserves one bounded,
 tool-free terminal response before another ordinary round can exhaust the cumulative measured
-turn budget.
-**Last Updated**: 2026-08-31
+turn budget. **Wave 30 card W30-C2** adds `ToolContext.approval_mode`: a call gated to `ask` under
+`"refuse"` is denied immediately, with no approval record and no wait, and the loop stops on that
+denial alone rather than folding it into the consecutive-denial count — see requirement 70 and
+`security-gates.spec.md`'s approval-mode clause for the `core/tools.py` half of this contract.
+**Last Updated**: 2026-09-12
 
 ## Purpose
 
@@ -383,7 +386,10 @@ This specification does NOT cover:
     bounded actionable error **MUST** contain only the consecutive count and ordered denial kinds,
     never tool arguments, approval tokens, refusal reasons, or private values.
 61. Each denied `tool_result` trace **MUST** include its stable `denialKind`; allowed/executed trace
-    payloads retain their existing fields and **MUST NOT** invent a denial kind.
+    payloads retain their existing fields and **MUST NOT** invent a denial kind. When the
+    dispatched `ToolResult` carries a non-empty `policy_id` or `reason`, the trace payload **MUST**
+    include the matching `policyId`/`reason` field; either is omitted, not emitted empty, when the
+    result carries none.
 62. A pod-dispatch run's C10a `RunCancellationSignal` **MUST** reach the production driver and every
     parallel worker as one optional `ToolContext.cancellation_check` callback. The callback reads
     persisted state and records first observation; a non-run embedding caller that supplies no
@@ -415,6 +421,18 @@ This specification does NOT cover:
 69. Cancellation checks **MUST NOT** split durable assistant/tool units or add raw cancellation
     content to traces. Existing `tool_call`/`tool_result` events identify admitted and explicitly
     cancelled call ids through their existing bounded fields.
+70. A dispatched result whose `denial_kind == "approval_unavailable"` (`ToolContext.
+    approval_mode == "refuse"` on an `ask` verdict; see `security-gates.spec.md`) **MUST** stop the
+    turn on its own, independently of `max_consecutive_tool_denials` — one such result is
+    sufficient, not a count reaching a limit. The stop **MUST** occur only after requirement 59's
+    existing complete-batch persistence (the assistant message, every answering tool result, and
+    measured usage), never before. The loop **MUST** return `stop_reason="approval_unavailable"`
+    and `failure_kind="invalid_output"`, make no further backend request, and its actionable error
+    **MUST** name the tool, the call id, the policy id, and the reason from the first such result in
+    the batch. A `gate_denied` or `invalid_call` result in the same or a later batch **MUST NOT** be
+    made terminal by this requirement — both remain recoverable and bounded only by the existing
+    `max_consecutive_tool_denials` limit (requirements 57-60), exactly as under `approval_mode ==
+    "wait"`.
 
 ## Interface Contracts
 
@@ -424,7 +442,7 @@ This specification does NOT cover:
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
-    "tool_denials", "run_cancelled",
+    "tool_denials", "run_cancelled", "approval_unavailable",
 ]
 
 class LoopConfig:                              # frozen
@@ -601,6 +619,15 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.17.0 (2026-09-12)
+
+- W30-C2 adds the `approval_unavailable` stop reason: a batch containing a `ToolContext.
+  approval_mode="refuse"` denial stops the turn on its own, after the same complete-batch
+  persistence every other stop condition already waits for, with `failure_kind="invalid_output"`
+  and an error naming the tool, call id, policy id, and reason. `gate_denied`/`invalid_call` stay
+  recoverable and bounded only by the existing consecutive-denial limit. `tool_result` traces gain
+  optional `policyId`/`reason` fields, present whenever the dispatched result carries them.
 
 ### Version 1.16.0 (2026-08-31)
 

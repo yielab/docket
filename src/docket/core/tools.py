@@ -27,7 +27,9 @@ Order of operations in ``dispatch_tool``, and why each step precedes the next:
 5. **Route ``ask``.** A gate verdict of ``ask`` blocks the call on the real
    approval store (``core/approval.py``'s ``wait_for_approval``) rather than
    just reporting the requirement — nothing else will ever resolve this call
-   if docket does not wait for it here.
+   if docket does not wait for it here. A caller with nobody to ask
+   (``ToolContext.approval_mode="refuse"``) skips the record and the wait and
+   is denied immediately, distinctly from a timeout or an explicit denial.
 6. **Execute**, catching everything, so a broken handler returns a result the
    loop can feed back rather than unwinding the turn.
 
@@ -61,6 +63,7 @@ ToolDenialKind = Literal[
     "approval_denied",
     "approval_timeout",
     "run_cancelled",
+    "approval_unavailable",
 ]
 
 
@@ -90,6 +93,17 @@ class ToolContext:
     bare ``ToolContext()`` should silently start relying on — see
     ``edges.adapters.toolbox.run_bash`` and `specs/functional/security-gates.spec.md`
     for the on-by-default-vs-opt-in rationale.
+
+    ``approval_mode`` picks what an ``ask`` verdict does when nothing can answer
+    it. ``"wait"`` (the default) is today's behaviour, byte for byte: create a
+    real approval record and block in ``wait_for_approval`` up to
+    ``TOOL_APPROVAL_TIMEOUT``. ``"refuse"`` is for a caller with no one to ask —
+    a synchronous, non-interactive harness invocation — and skips the record
+    and the wait entirely, denying immediately with a denial kind that says
+    *why* this call could not even be offered for approval, distinct from a
+    timed-out or explicitly denied one. See ``docs/adr/0001-harness-mode.md``
+    decision 11 for why this stays a fixed mode rather than growing into an
+    interactive pause: that is a different, larger feature.
     """
 
     agent_id: str = ""
@@ -101,6 +115,7 @@ class ToolContext:
     project: str = ""
     sandbox: SandboxMode = "off"
     cancellation_check: Callable[[], bool] | None = None
+    approval_mode: Literal["wait", "refuse"] = "wait"
 
 
 @dataclass
@@ -111,6 +126,14 @@ class ToolResult:
     that ran and failed are different events — the first is a guardrail doing
     its job, the second is a task problem — and collapsing them would make the
     audit log unable to tell them apart.
+
+    ``policy_id`` carries the ``pre_tool_call`` policy that (co-)decided a
+    non-``allow`` verdict, if any — the same identifier ``ToolVerdict.policy_id``
+    already carries, copied through so a caller does not have to re-run
+    ``evaluate_tool_call`` just to attribute a denial to the rule that fired.
+    Empty for an ``allow`` decision and for a structural refusal that never
+    reached a verdict at all (unknown tool, undecodable arguments, missing
+    required arguments).
     """
 
     ok: bool
@@ -122,6 +145,7 @@ class ToolResult:
     call_id: str = ""
     executed: bool = False
     denial_kind: ToolDenialKind | None = None
+    policy_id: str = ""
 
     @property
     def denied(self) -> bool:
@@ -427,6 +451,8 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     verdict = evaluate_tool_call(tool, args, ctx)
     result.decision = verdict.decision
     result.reason = verdict.reason
+    if verdict.decision != "allow":
+        result.policy_id = verdict.policy_id
 
     if verdict.policy_action in ("warn", "redact"):
         # Allowed to proceed, but a policy still flagged it -- silently
@@ -462,6 +488,17 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
             policy_id=verdict.policy_id,
             policy_action=verdict.policy_action,
         )
+        if ctx.approval_mode == "refuse":
+            # No approval record, no wait: there is nobody on the other end of
+            # this call who could ever answer it. Reported distinctly from a
+            # timeout or an explicit denial so a caller can tell "nobody was
+            # asked" apart from "someone was asked and said no" or "asked and
+            # nobody answered in time" -- see docs/adr/0001-harness-mode.md
+            # decision 11.
+            result.decision = "deny"
+            result.denial_kind = "approval_unavailable"
+            result.error = result.reason
+            return result
         token = _approval.approval_create(
             ctx.project or "operator",
             ctx.role or "tool",

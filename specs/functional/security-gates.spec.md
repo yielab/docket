@@ -1,11 +1,14 @@
 # Security Gates Specification
 
-**Version**: 0.17.0
+**Version**: 0.18.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
 Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
-**Last Updated**: 2026-08-31
+`ToolContext.approval_mode` (default `"wait"`) picks whether an `ask` verdict blocks on that
+routing or is refused immediately with no record and no wait — see the in-turn tool-call gate
+section below.
+**Last Updated**: 2026-09-12
 
 ## Purpose
 
@@ -384,10 +387,12 @@ tool call to take.**
 7. Every denied, non-executed `ToolResult` **MUST** carry exactly one closed, privacy-safe denial
    kind: `invalid_call` for an unknown tool, undecodable arguments, or missing required arguments;
    `gate_denied` for a direct command-classifier or policy denial; `approval_denied` for an explicit
-   operator denial; and `approval_timeout` for an unanswered approval that times out. A result that
-   executes, including an allowed handler failure, **MUST** carry no denial kind. `as_tool_output()`
-   **MUST** include the stable denial kind in the model-visible refusal without raw arguments,
-   approval tokens, or private values.
+   operator denial; `approval_timeout` for an unanswered approval that times out; and
+   `approval_unavailable` for an `ask` verdict refused under `approval_mode="refuse"` because no
+   approval wait was attempted at all (item 11 below). A result that executes, including an allowed
+   handler failure, **MUST** carry no denial kind. `as_tool_output()` **MUST** include the stable
+   denial kind in the model-visible refusal without raw arguments, approval tokens, or private
+   values.
 8. **Scope — stated precisely, matching the Status line (corrected for P19-5/P19-7a/P19-7b).**
    This section governs `core/tools.py`'s `dispatch_tool` and nothing else. As of this version:
    - **Every** pod-dispatch hop now calls `core/tools.py`: `core/dispatch.py`'s hop-execution call
@@ -415,6 +420,20 @@ tool call to take.**
     winner if it committed first, but cancellation after a granted wait still prevents the handler.
     Cancellation is not an approval timeout and **MUST NOT** fabricate a second terminal decision,
     audit event, or trace event.
+11. **Non-interactive approval mode (W30-C2, `docs/adr/0001-harness-mode.md` decision 11).**
+    `ToolContext` carries `approval_mode: Literal["wait", "refuse"] = "wait"`. Under `"wait"`,
+    behavior is byte-identical to every requirement above — record creation, the synchronous wait,
+    and timeout semantics are unchanged. Under `"refuse"`, an `ask` verdict **MUST** still be
+    audited via `tool.ask` exactly as `"wait"` audits it, and **MUST NOT** create an approval
+    record or call `wait_for_approval` at all — zero wait, not a zero-length one. It **MUST**
+    return immediately with `decision="deny"`, `denial_kind="approval_unavailable"`, and
+    `reason` equal to the verdict's own reason. `ToolResult` gains a `policy_id` field, copied from
+    `ToolVerdict.policy_id` whenever the verdict's decision is not `allow` (both `"wait"` and
+    `"refuse"`); it stays `""` for an `allow` decision and for a structural refusal that never
+    reached a verdict (`invalid_call` from an unknown tool, undecodable arguments, or missing
+    required arguments). This mode is fixed and non-interactive by design — it answers "can this
+    caller wait for a human," not "let a human answer from somewhere else" — see the ADR decision
+    for why that is deliberately a separate, unbuilt feature.
 
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
@@ -1053,6 +1072,14 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.18.0 (2026-09-12)
+
+- W30-C2 adds `ToolContext.approval_mode` (`"wait"` default, byte-identical; `"refuse"` for a
+  non-interactive caller). Under `"refuse"` an `ask` verdict is audited exactly as today, creates
+  no approval record, waits zero seconds, and denies immediately with the new
+  `approval_unavailable` denial kind. `ToolResult.policy_id` is new, copied from the verdict on
+  every non-`allow` decision under either mode.
 
 ### Version 0.17.0 (2026-08-31)
 
