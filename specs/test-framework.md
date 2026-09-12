@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.13.0
+**Version**: 2.14.0
 **Status**: Active
-**Last Updated**: 2026-09-11
+**Last Updated**: 2026-09-12
 
 ## Overview
 
@@ -68,8 +68,7 @@ tests/
 │   └── run.sh              verify/update harness
 ├── agent/                  NOT in testpaths; CI job `agent-lane`
 │   ├── truth/              assertions on prose (README, GOVERNANCE, spec index, positioning)
-│   ├── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
-│   └── harness/            tests of .agents/skills/*/scripts
+│   └── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
 └── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
 
@@ -77,10 +76,9 @@ tests/
 
 ## Lanes and placement
 
-**Contract adopted 2026-09-11 (D-36, Phase 25); directory move and CI job landed by W31-C1
-(2026-09-11).** The placement rules below bind every new or edited test file. The structural
-guards that enforce rules 2, 3, 6, 7 and 8 below are not yet wired (W31-C2, W31-C3) — see
-"Enforcement status" below for exactly what is and is not machine-checked today.
+**Contract adopted 2026-09-11 (D-36, Phase 25); Wave 31 closed 2026-09-12 and every structural
+guard it planned is wired.** The placement rules below bind every new or edited test file. See
+"Enforcement status" below for what each rule is machine-checked by.
 
 ```text
 tests/
@@ -91,15 +89,13 @@ tests/
 ├── golden/                 unchanged
 └── agent/                  NOT in testpaths; CI job `agent-lane`
     ├── truth/              assertions on prose (README, GOVERNANCE, spec index, positioning)
-    ├── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
-    └── harness/            tests of .agents/skills/*/scripts
+    └── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
 ```
 
 Requirements:
 
 1. **Default suite = product lanes.** `testpaths` lists `unit`, `integration` and `guards` only
-   (landed by W31-C1) and never collects `agent/`; the default run finishes in under 90 seconds
-   once W31-C5 lands (not yet — file counts per lane are still pre-C4/C5 shape).
+   and never collects `agent/`.
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"`; the module must exist and every `src/` module over 150
    lines must have such a file. A file over 800 lines splits as `test_<module>__<aspect>.py`.
@@ -125,16 +121,22 @@ Requirements:
 
 Enforcement status: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the `agent-lane`
 CI job runs `uv run pytest tests/agent`) and rule 5 already held before the W31-C1 move. W31-C2
-lands guards for rules 2, 3, 4, 6 and part of 8: `tests/guards/test_layout.py` checks the
+landed guards for rules 2, 3, 4, 6 and part of 8: `tests/guards/test_layout.py` checks the
 unit↔module mapping and `SUBJECT` match (a small named exemption covers files that predate the
 mirror-by-name convention), and separately checks every `src/` module over 150 lines against a
 committed, shrink-only baseline (`tests/guards/layout_baseline.txt`) rather than requiring
 one immediately; `tests/guards/test_lane_headers.py` checks `LANE`/`REASON`/`RETIRE_WHEN` on every
 `agent/` file and the no-`subprocess`-in-`unit/` rule; `tests/guards/test_agent_lane_budget.py`
-ratchets the lane's total against a committed baseline (5,157 lines today) that may only fall; `tests/conftest.py` fails a test's own report past its
+ratchets the lane's total against a committed baseline (5,151 lines today) that may only fall;
+`tests/conftest.py` fails a test's own report past its
 lane's duration ceiling; `tests/guards/test_removed_commands.py` replaces four per-removal files
-with one parametrized guard over `__main__._REMOVED`. Rule 7 and the rest of rule 8 (the
-comment-hygiene ratchet) remain contract only until W31-C3 lands. `uv run pytest tests/agent`
+with one parametrized guard over `__main__._REMOVED`. Rule 7 and the rest of rule 8 are enforced
+by `tests/guards/test_comment_hygiene.py`, which ratchets the docstring-length counts against
+`scripts/maint/comment-baseline.json` over `src` and `tests`; note that
+`scripts/maint/comment_lint.py --check` exits non-zero on archaeology only, so a green lint says
+nothing about the length budget. `tests/guards/test_partial_repointers.py` (W32-C4) additionally
+ratchets the number of test functions that hand-roll two or more `DOCKET_HOME`-derived constants
+without claiming a home. `uv run pytest tests/agent`
 becomes a required gate for changes under `README.md`, `docs/`, `specs/`, `examples/`,
 `benchmarks/`, `.agents/` and `tests/agent/` now that the job exists.
 
@@ -398,6 +400,22 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.14.0 (2026-09-12)
+
+- Removes the `agent/harness/` lane from both tree diagrams. It holds no tracked tests: commit
+  `97b8f35` retired its only one, and because git does not track empty directories the path does
+  not exist in a fresh clone. It survived here because the spec was not updated when the test was
+  removed, and survived a review because `ls` on a machine that has run the suite still showed the
+  directory, as a `__pycache__` artifact of the deleted test. The repository, not the filesystem,
+  is what a layout claim answers to.
+- Reconciles "Enforcement status" with what shipped. W31-C2 and W31-C3 closed on 2026-09-12, so
+  rules 2, 3, 4, 6, 7 and 8 are machine-checked rather than "contract only"; names
+  `tests/guards/test_comment_hygiene.py` as what enforces the docstring budget, and records that
+  `comment_lint.py --check` exits non-zero on archaeology alone, so a green lint is not evidence
+  about the budget.
+- Records `tests/guards/test_partial_repointers.py` (W32-C4) and moves the agent-lane baseline
+  figure to 5,151.
 
 ### Version 2.13.0 (2026-09-11)
 
