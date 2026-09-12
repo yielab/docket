@@ -16,8 +16,8 @@ from threading import Thread
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 import docket.serve as serve
 from docket.serve import _DocketHandler
 
@@ -54,12 +54,7 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (ws / "memory" / "2026-06-20.md").write_text("# log\n")
     (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
-    fleet_file = home / "fleet.json"
-    monkeypatch.setenv("DOCKET_HOME", str(home))
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects")
+    repoint_docket_home(monkeypatch, home)
     # Force gateway "down" for deterministic gateway fields.
     monkeypatch.setattr(serve.utils, "gateway_active", lambda: False)
     return home

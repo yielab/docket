@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
 import docket.config as _cfg
@@ -36,8 +37,7 @@ SUBJECT = "docket.config"
 
 def _make_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agent_id: str = "demo") -> Path:
     home = tmp_path / ".docket"
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    repoint_docket_home(monkeypatch, home)
     ws = _cfg.PROJECTS_DIR / agent_id
     (ws / "memory").mkdir(parents=True)
     meta = {
@@ -141,8 +141,7 @@ class TestMaintainDistillCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / ".docket"
-        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+        repoint_docket_home(monkeypatch, home)
 
         rc = _agents.run_maintain("nonexistent", "distill")
 

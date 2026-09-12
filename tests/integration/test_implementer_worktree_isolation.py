@@ -20,6 +20,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.edges.adapters.system as _sys
@@ -88,10 +89,7 @@ def pod_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     projects.mkdir(parents=True)
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(FLEET_CONFIG))
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects)
+    repoint_docket_home(monkeypatch, home)
     return home
 
 

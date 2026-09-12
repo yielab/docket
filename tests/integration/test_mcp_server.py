@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _mcp
@@ -41,17 +42,6 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", home / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", home / "docket-runs.json", raising=True)
-
-
 def _seed_pod(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -60,7 +50,8 @@ def _seed_pod(
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
+    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
     _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return home
 
@@ -117,7 +108,7 @@ class TestToolPods:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         assert _mcp.tool_pods() == {"pods": []}
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,7 +184,7 @@ class TestToolDelegate:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         with pytest.raises(_mcp.McpToolError, match="no pod"):
             _mcp.tool_delegate("ghost-project", "task")
 
@@ -358,7 +349,7 @@ class TestToolRuns:
     def test_lists_all_runs_newest_first(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         first = _runs.create_run("cli", "alpha")
         second = _runs.create_run("mcp", "beta")
@@ -366,7 +357,7 @@ class TestToolRuns:
         assert [r["id"] for r in result["runs"]] == [second["id"], first["id"]]
 
     def test_filters_by_project(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         _runs.create_run("cli", "alpha")
         _runs.create_run("cli", "beta")
@@ -377,7 +368,7 @@ class TestToolRuns:
     def test_fetch_by_id_returns_bare_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         rec = _runs.create_run("cli", "demo")
         result = _mcp.tool_runs(run_id=rec["id"])
@@ -385,13 +376,13 @@ class TestToolRuns:
         assert "runs" not in result
 
     def test_unknown_id_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         with pytest.raises(_mcp.McpToolError, match="Unknown run"):
             _mcp.tool_runs(run_id="run-nope")
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         _mcp.tool_runs()
         assert len(_audit_actions("mcp.runs")) == 1
@@ -402,14 +393,14 @@ class TestToolRuns:
 
 class TestToolApprovalsList:
     def test_lists_pending_approvals(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         token = _approval.approval_create("demo", "implementer", "deploy prod")
         result = _mcp.tool_approvals_list()
         assert [p["token"] for p in result["pending"]] == [token]
 
     def test_call_is_audited(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         _mcp.tool_approvals_list()
         assert len(_audit_actions("mcp.approvals_list")) == 1
@@ -417,7 +408,7 @@ class TestToolApprovalsList:
 
 class TestToolApprovalsGrantDeny:
     def _seed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         return _approval.approval_create("demo", "implementer", "deploy prod")
 
@@ -467,7 +458,7 @@ class TestToolApprovalsGrantDeny:
     def test_grant_unknown_token_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         with pytest.raises(_mcp.McpToolError, match="not found"):
             _mcp.tool_approvals_grant("apr-does-not-exist")

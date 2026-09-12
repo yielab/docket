@@ -28,6 +28,7 @@ from typing import Any
 
 import pytest
 import typer
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _pod
@@ -134,12 +135,7 @@ class TestDispatchVerifyCwd:
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
-        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-        monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
+        repoint_docket_home(monkeypatch, home)
 
     def test_verify_runs_in_worktree_when_present(self, tmp_path: Path) -> None:
         worktree = tmp_path / "worktree"
@@ -208,22 +204,13 @@ class TestDispatchVerifyCwd:
 # ── TestSetVerifyValidation: cli/_pod.py's set-verify / --verify ────────────
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-
-
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
     return home
 

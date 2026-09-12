@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _install
@@ -25,30 +26,15 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Repoint config modules at a temp DOCKET_HOME (mirrors test_install.py)."""
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "SITES_DIR", home / "Sites", raising=True)
-    monkeypatch.setattr(_cfg, "LOG_DIR", home / "logs", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    # install also seeds guardrail policies (Step 9) — repoint
-    # POLICIES_DIR too, or that step would touch the real ~/.docket/policies
-    # on whatever machine runs this test.
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", home / "policies", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
-
-
 def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / ".docket"
     home.mkdir(parents=True)
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
     fleet_file.chmod(0o600)
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
+    monkeypatch.setattr(_cfg, "SITES_DIR", home / "Sites", raising=True)
+    monkeypatch.setattr(_cfg, "LOG_DIR", home / "logs", raising=True)
     monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
     _secrets.save_secrets({"ANTHROPIC_API_KEY": "sk-ant-test-1234567890"})
     return home

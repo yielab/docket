@@ -12,10 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _doctor
-from docket.core import secrets as _secrets
 
 SUBJECT = "docket.cli._doctor"
 
@@ -45,14 +44,7 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 def _point_config_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Repoint the already-imported config module at a temp DOCKET_HOME."""
-    fleet_file = home / "fleet.json"
-    projects = home / "workspaces" / "projects"
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", projects, raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
+    repoint_docket_home(monkeypatch, home)
 
 
 def _seed(

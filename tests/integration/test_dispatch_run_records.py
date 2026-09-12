@@ -32,6 +32,7 @@ from typing import Any
 
 import pytest
 import typer
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.serve as _serve
@@ -54,22 +55,11 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", home / "docket-runs.json", raising=True)
-    monkeypatch.setattr(_cfg, "SCHEDULE_FILE", home / "docket-schedules.json", raising=True)
-
-
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return home
 
@@ -93,7 +83,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         trace_calls: list[tuple[object, ...]] = []
 
         def _capture_trace(*args: object, **_kwargs: object) -> str:
@@ -126,7 +116,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("webhook", "demo")
         results = [
             _dispatch.TaskResult(task_id="task-done", status="done"),
@@ -165,7 +155,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("cli", "demo")
 
         returned = _runs.execute(record["id"], lambda: results)
@@ -182,7 +172,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("cli", "demo")
         results = [
             _dispatch.TaskResult(
@@ -220,7 +210,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("cli", "demo")
 
         class CountingResults(list[_dispatch.TaskResult]):
@@ -243,7 +233,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("cli", "demo")
         real_read_modify_write = _store.read_modify_write
         writes = 0
@@ -291,7 +281,7 @@ class TestReturnedResultFold:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         record = _runs.create_run("webhook", "demo")
         assert _runs.cancel_run(record["id"]).ok
         invoked = False
@@ -379,7 +369,7 @@ def _post(
 
 @pytest.fixture()
 def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    _point_at(tmp_path / ".docket", monkeypatch)
+    repoint_docket_home(monkeypatch, tmp_path / ".docket")
     (tmp_path / ".docket").mkdir(exist_ok=True)
     d = tmp_path / "approvals"
     d.mkdir()
@@ -538,7 +528,7 @@ class TestScheduleDispatchPath:
     def test_due_schedule_creates_a_run_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projA": "@every 1s"}}))
 
@@ -564,7 +554,7 @@ class TestScheduleDispatchPath:
     def test_exception_in_scheduled_dispatch_is_recorded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         _cfg.SCHEDULE_FILE.write_text(json.dumps({"schedules": {"projB": "@every 1s"}}))
 

@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _provider as _cliprov
 from docket.core import fleet as _fleet
 from docket.core import provider as _prov
@@ -41,8 +41,7 @@ def _seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file = home / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
+    repoint_docket_home(monkeypatch, home)
     # Default: the hermetic endpoint edge is reachable; individual rejection tests override it.
     monkeypatch.setattr(_prov, "ping_endpoint", lambda *a, **k: True)
     return home

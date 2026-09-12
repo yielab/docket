@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _approve, _deny, _gates, _policies
@@ -50,15 +51,8 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
 
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", d / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
+    repoint_docket_home(monkeypatch, d)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    # audit_log() has no kill switch — repoint it explicitly rather than
-    # relying only on the conftest-wide safety net, matching this fixture's
-    # own pattern of repointing every config path it touches.
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
     # Never touch systemctl.
     # Stub `docker` off PATH so isolation reports "needs Docker". Real
     # binaries (git, python3, ...) pass.

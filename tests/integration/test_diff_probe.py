@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
@@ -136,15 +136,6 @@ def _init_git_repo(path: Path) -> None:
     )
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-
-
 def _seed_pod(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -156,7 +147,7 @@ def _seed_pod(
     home = tmp_path / f"{project}-oc"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
     return home
 

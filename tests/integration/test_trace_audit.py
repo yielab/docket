@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _audit as audit_cli
@@ -30,11 +31,8 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Temp DOCKET_HOME with config paths repointed for trace + audit."""
     d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, d)
     monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
-    monkeypatch.setattr(_cfg, "SESSIONS_DIR", d / "sessions", raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     return d
