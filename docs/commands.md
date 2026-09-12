@@ -88,10 +88,11 @@ Flags (parsed from the extra CLI args, not fixed Typer options):
                          under `~/.docket/workspaces/pods/<project>/` if
                          omitted) -- no stack is auto-detected. Unknown
                          name errors with "unknown blueprint 'X'; valid
-                         blueprints: software, research, content, ops" and
-                         exits 1 before any prompt. Only the five built-ins
-                         exist today -- there is no `docket blueprints add
-                         <file>` to register a custom one. See
+                         blueprints: software, research, content, ops,
+                         agentic-product" and exits 1 before any prompt.
+                         Only the five built-ins exist today -- there is
+                         no `docket blueprints add <file>` to register a
+                         custom one. See
                          specs/functional/pod-blueprints.spec.md.
   --codebase <path>,    the codebase path (or, for a workdir-kind
   --path <path>         blueprint, the pod's shared working directory) --
@@ -1419,11 +1420,10 @@ These command names are **not aliases** — typing them prints a migration notic
 | Code | Meaning |
 |------|---------|
 | 0 | Success (includes `approve`/`deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by all `_REMOVED` command notices, and `approve`/`deny` on an unknown token or one being flipped to the opposite verdict) |
-| 2 | Missing dependency |
-| 3 | Invalid argument |
-| 4 | Permission denied |
-| 5 | Service failure |
+| 1 | Error (generic; also used by all `_REMOVED` command notices, `approve`/`deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, `docket harness run`'s `--workspace`/`--task`/preflight refusal, or the internal `_json` bridge's bad or missing verb |
+
+No command emits any other exit code today.
 
 
 ---
@@ -1432,21 +1432,68 @@ These command names are **not aliases** — typing them prints a migration notic
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEBUG` | Set by `--debug`; currently read by no command (reserved) | `0` |
-| `EDITOR` | Text editor for `docket edit` | `vi` |
 | `DOCKET_HOME` | Root of everything docket owns — the only state root; no external daemon directory exists | `~/.docket` |
-| `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
+| `SITES_DIR` | Default parent directory for project codebases, created by `docket init`'s setup step | `~/Sites` |
+| `DOCKET_LOG_DIR` | Directory for docket-owned log files | `/tmp/docket` |
+| `TRACES_DIR` | Root of per-session trace JSONL files (`docket trace`) | `$DOCKET_HOME/traces` |
+| `POLICIES_DIR` | Root of installed/edited policy JSON (`docket policies`, `docket gates`) | `$DOCKET_HOME/policies` |
 | `APPROVALS_DIR` | Where `docket approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
+| `SCHEDULE_FILE` | The persisted `docket schedule` registry | `$DOCKET_HOME/docket-schedules.json` |
+| `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
+| `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
+| `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket mcp servers`) | `$DOCKET_HOME/docket-mcp-servers.json` |
+| `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, provider endpoints, org default model | `$DOCKET_HOME/fleet.json` |
+| `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket audit`) | `5242880` (5 MiB) |
+| `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
+| `APPROVAL_TIMEOUT` | The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |
+| `TOOL_APPROVAL_TIMEOUT` | The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT` | `120` |
+| `TOOL_APPROVAL_POLL_INTERVAL_S` | How often the in-turn approval wait re-checks the record while blocked | `2` |
+| `CLAIM_STALE_TIMEOUT` | A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep | `1800` |
+| `METRICS_WINDOW` | Rolling terminal-session count for `docket metrics` | `50` |
+| `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket doctor`/`docket cost` flag a session as runaway | `200` |
+| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket doctor`/`docket cost` flag a session as runaway | `20` |
+| `DOCKET_KEY_MAX_AGE_DAYS` | `docket doctor`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
+| `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket trace expire` deletes it | `30` |
+| `TEMPLATE_VERSION` | Workspace-prompt schema version; `docket doctor` flags older agents for rebuild past a bump | `4` |
+| `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards in `docket maintain check` | `4` |
+| `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); `docket maintain check` warns past this | `6000` |
+| `DISTILL_TIMEOUT_S` | Wall-clock bound on `docket maintain distill`'s one driver-backed turn | `120` |
+| `DISTILL_MAX_INPUT_BYTES` | How much daily-log content goes into a distillation turn's prompt | `49152` (48 KiB) |
+| `DISPATCH_RETRIES_DEFAULT` | Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override | `2` |
+| `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER`, `DISPATCH_RETRIES_TESTER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
+| `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
+| `DISPATCH_TURN_TIMEOUT_S` | `docket serve`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches | unset (no serve-wide override) |
+| `DISPATCH_VERIFY_TIMEOUT_S` | Same as `DISPATCH_TURN_TIMEOUT_S`, for the verify step | unset (no serve-wide override) |
+| `AGENT_LOOP_MAX_ITERATIONS` | Hard cap on model round-trips within one turn | `20` |
+| `AGENT_LOOP_MAX_TOOL_CALLS` | Hard cap on total tool calls dispatched across one turn | `40` |
+| `AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS` | Stops a denial-only loop before it consumes the iteration/tool/token limits | `3` |
+| `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before it is visibly truncated — tune down for a small-context endpoint | `30000` |
+| `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` | Default overall wall-clock budget for one turn with no explicit `LoopConfig` | `300` |
+| `AGENT_LOOP_TOKEN_BUDGET` | Hard cap on one turn's cumulative measured token usage | `100000` |
+| `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend | `120` |
+| `MCP_CLIENT_TIMEOUT_S` | Default per-call bound for an MCP server with no timeout of its own | `10` |
+| `MCP_CLIENT_MAX_TIMEOUT_S` | Hard ceiling every server-specified MCP timeout is clamped to | `60` |
 | `FETCH_ALLOWED_DOMAINS` | Comma-separated exact hostnames the `fetch` tool may reach | empty (nothing allowed until opted in) |
+| `FETCH_MAX_RESPONSE_BYTES` | Response-body cap for the `fetch` tool before truncation | `200000` |
+| `FETCH_TIMEOUT_S` | Default per-call wall-clock bound for the `fetch` tool | `15` |
+| `TELEGRAM_POLL_TIMEOUT_S` | The Telegram-side long-poll wait passed to `getUpdates` | `25` |
+| `TELEGRAM_REQUEST_TIMEOUT_S` | This process's own socket timeout for Telegram calls — must exceed `TELEGRAM_POLL_TIMEOUT_S` | `35` |
+| `DOCKET_SECRETS_BACKEND` | Stored-secret backend: `file` (default, `secrets.json`) or `keyring` (secret-tool/libsecret) | `file` |
+| `DOCKET_KEYRING_SERVICE` | The libsecret service name secrets are stored under when `DOCKET_SECRETS_BACKEND=keyring` | `docket-cli` |
 | `DOCKET_NO_TRACE` | Set to `1` to disable trace-store writes | unset (tracing on) |
+| `DOCKET_SANDBOX_IMAGE` | Image for the Docker exec-jail (`docket gates isolate on`) | `alpine:3.20` |
+| `DOCKET_SANDBOX_BACKEND` | Force or disable the sandbox backend (`docker`/`bwrap`/`none`) regardless of what is actually installed | auto-detected (docker > bwrap > none) |
+| `DEBUG` | Set by `--debug`; currently read by no command (reserved) | `0` |
+| `EDITOR` | Text editor for `docket edit`, checked before `VISUAL` | `nano` |
+| `VISUAL` | Fallback text editor for `docket edit` when `EDITOR` is unset | `nano` |
 | `DOCKET_SERVE_TOKEN` | Fix `docket serve`'s bearer token instead of generating one per run | unset (random) |
+| `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
+| `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN` | Per-provider API key, checked when neither `DOCKET_LLM_API_KEY` nor a stored fleet key is set; an unset one is also checked against docket's own secret store (`docket keys add`). An unlisted provider falls back to `<PROVIDER>_API_KEY` | unset |
 | `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher to select which project to `uv run` against | package/launcher location |
 | `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
 
-There is **no** environment kill switch for the audit log — a prior `DOCKET_NO_AUDIT` escape
-hatch was removed because it let anyone silently disable docket's only tamper record; audit
-writes are unconditional and best-effort (a write failure never raises, but it also can't be
-turned off).
+There is **no** environment kill switch for the audit log — a prior `DOCKET_NO_AUDIT` escape hatch was removed because it let anyone silently disable docket's only tamper record; audit writes are unconditional and best-effort (a write failure never raises, but it also can't be turned off).
 
 
 ---
