@@ -15,6 +15,8 @@ from typing import Any
 
 import pytest
 
+SUBJECT = "auth context maintain keys add"
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

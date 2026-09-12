@@ -17,6 +17,8 @@ from docket.cli._runs import run_runs
 from docket.core import audit as _audit
 from docket.core import runs as _runs
 
+SUBJECT = "docket.cli"
+
 
 @pytest.fixture()
 def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

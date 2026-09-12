@@ -21,6 +21,8 @@ import pytest
 import docket.config as _cfg
 import docket.serve as serve
 
+SUBJECT = "docket.serve"
+
 # ── test fixtures (mirrors test_serve.py fake_home) ───────────────────────
 
 META: dict[str, Any] = {

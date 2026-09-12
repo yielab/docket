@@ -28,6 +28,8 @@ from docket.cli._pipeline import run_pipeline
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 
+SUBJECT = "docket.core"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

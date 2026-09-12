@@ -25,6 +25,8 @@ from docket.core import archetypes as arch
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 
+SUBJECT = "docket.cli._roles"
+
 
 @pytest.fixture
 def registry_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

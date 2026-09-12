@@ -24,6 +24,8 @@ from docket.cli import _provider as _cliprov
 from docket.core import fleet as _fleet
 from docket.core import provider as _prov
 
+SUBJECT = "docket.core"
+
 # Minimal fleet.json seed (no providers yet).
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [],

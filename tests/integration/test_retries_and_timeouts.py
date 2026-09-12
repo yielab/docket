@@ -30,6 +30,8 @@ from docket.core import fleet as _fleet
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
 
 

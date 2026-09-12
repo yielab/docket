@@ -7,6 +7,8 @@ invariant: the CLI module must contain zero `_not_ported(` call sites.
 
 from pathlib import Path
 
+SUBJECT = "docket.cli"
+
 _CLI = Path(__file__).resolve().parents[2] / "src" / "docket" / "cli" / "__init__.py"
 
 

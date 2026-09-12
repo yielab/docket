@@ -55,6 +55,8 @@ from docket.core import approval as _approval
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 
+SUBJECT = "docket.core"
+
 _PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
 

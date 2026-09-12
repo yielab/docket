@@ -11,6 +11,10 @@ from pathlib import Path
 
 import yaml
 
+LANE = "release"
+REASON = "Prevents the installed artifact from losing its one-command path to an inspectable governed turn, or from leaving a half-provisioned project behind when the model endpoint is unreachable."
+RETIRE_WHEN = "the release-journey CI matrix proves this on every push, making the local artifact-installed rerun redundant."
+
 ROOT = Path(__file__).resolve().parents[3]
 JOURNEY = ROOT / "scripts" / "release_journey.py"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"

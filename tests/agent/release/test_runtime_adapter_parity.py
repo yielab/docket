@@ -20,6 +20,12 @@ from tests.fixtures.runtime_adapters.scenarios import (
     GovernanceScenario,
 )
 
+LANE = "release"
+REASON = "Prevents the OpenHands and PydanticAI adapters from drifting apart on the governed-execution outcomes they claim to share, once each is built and installed as its own wheel and sdist."
+RETIRE_WHEN = (
+    "only one framework adapter remains, so there is no cross-adapter parity left to prove."
+)
+
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
 FIXTURES = ROOT / "tests" / "fixtures" / "runtime_adapters"

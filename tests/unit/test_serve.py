@@ -21,6 +21,8 @@ import docket.config as _cfg
 import docket.serve as serve
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.serve"
+
 META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",

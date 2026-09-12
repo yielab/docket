@@ -31,6 +31,8 @@ from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
 from docket.core import runs as _runs
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_dispatch.py / test_pod_provisioning.py) ──
 
 

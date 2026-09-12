@@ -15,6 +15,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+LANE = "truth"
+REASON = "Prevents the public docs from drifting off the verified differentiators (coordinated context, isolation, governance) or reintroducing an unfalsifiable or dollar-savings claim."
+RETIRE_WHEN = "the positioning claims are generated from a single source of truth instead of hand-maintained prose."
+
 _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
 CLAUDE_MD = _REPO / "CLAUDE.md"

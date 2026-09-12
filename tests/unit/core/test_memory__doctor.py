@@ -22,6 +22,8 @@ import docket.config as _cfg
 from docket.cli import _doctor
 from docket.core import secrets as _secrets
 
+SUBJECT = "docket.core.memory"
+
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
 _FULL_META: dict[str, Any] = {

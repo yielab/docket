@@ -122,14 +122,21 @@ Requirements:
 8. **Structure is guarded, and each guard is seen to fail before it ships**: unit↔module mapping,
    lane headers, agent-lane budget, no-subprocess-in-unit, duration ceilings, comment hygiene.
 
-Enforcement status at 2.13.0: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the
-`agent-lane` CI job runs `uv run pytest tests/agent`) and rule 5 already held before this move.
-Rules 2, 3, 6, 7 and 8 — the unit↔module mapping guard, lane headers with `LANE`/`REASON`/
-`RETIRE_WHEN`, the agent-lane line budget, no-subprocess-in-unit, duration ceilings, and the
-comment-hygiene ratchet — are contract only until W31-C2 and W31-C3 land; nothing fails a build
-that violates them yet. `uv run pytest tests/agent` becomes a required gate for changes under
-`README.md`, `docs/`, `specs/`, `examples/`, `benchmarks/`, `.agents/` and `tests/agent/` now that
-the job exists.
+Enforcement status: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the `agent-lane`
+CI job runs `uv run pytest tests/agent`) and rule 5 already held before the W31-C1 move. W31-C2
+lands guards for rules 2, 3, 4, 6 and part of 8: `tests/guards/test_layout.py` checks the
+unit↔module mapping and `SUBJECT` match (a small named exemption covers files that predate the
+mirror-by-name convention), and separately checks every `src/` module over 150 lines against a
+committed, shrink-only baseline (`tests/guards/layout_baseline.txt`) rather than requiring
+one immediately; `tests/guards/test_lane_headers.py` checks `LANE`/`REASON`/`RETIRE_WHEN` on every
+`agent/` file and the no-`subprocess`-in-`unit/` rule; `tests/guards/test_agent_lane_budget.py`
+ratchets the lane's total against a committed baseline (5,730 lines today) that may only fall, not
+yet the 4,000-line cap rule 3 describes; `tests/conftest.py` fails a test's own report past its
+lane's duration ceiling; `tests/guards/test_removed_commands.py` replaces four per-removal files
+with one parametrized guard over `__main__._REMOVED`. Rule 7 and the rest of rule 8 (the
+comment-hygiene ratchet) remain contract only until W31-C3 lands. `uv run pytest tests/agent`
+becomes a required gate for changes under `README.md`, `docs/`, `specs/`, `examples/`,
+`benchmarks/`, `.agents/` and `tests/agent/` now that the job exists.
 
 ### Full-workflow smoke
 

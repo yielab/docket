@@ -13,6 +13,10 @@ from urllib.parse import unquote
 
 import filelock
 
+LANE = "release"
+REASON = "Prevents the public README, quickstart and spec index from drifting from the commands and boundaries the shipped artifact actually has."
+RETIRE_WHEN = "these prose claims are verified some other machine-checked way, such as folding them into the generated docs build."
+
 ROOT = Path(__file__).resolve().parents[3]
 README = ROOT / "README.md"
 QUICKSTART = ROOT / "docs" / "QUICK-START-DOCKET.md"

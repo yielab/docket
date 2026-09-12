@@ -31,6 +31,8 @@ import pytest
 
 from docket.edges.adapters import telegram as _tg
 
+SUBJECT = "docket.edges.adapters.telegram"
+
 _FAKE_TOKEN = "123456:AAFAKE-TEST-TOKEN-not-real-do-not-flag"
 
 

@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SUBJECT = "list info cost commands"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

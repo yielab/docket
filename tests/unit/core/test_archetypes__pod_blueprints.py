@@ -21,6 +21,8 @@ from docket.core import blueprints as bp
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
 
+SUBJECT = "docket.core.archetypes"
+
 
 class TestRegistry:
     def test_five_builtins_registered(self) -> None:

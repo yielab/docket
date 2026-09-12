@@ -25,6 +25,8 @@ from docket.core import blueprints as _bp
 from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
 
+SUBJECT = "docket.cli"
+
 # ── hermetic helpers (mirrors test_pod_roles_from_archetypes.py / test_pod_resources.py) ──
 
 

@@ -6,6 +6,8 @@ import pytest
 
 from docket.core import pod
 
+SUBJECT = "docket.core.pod"
+
 # A fixed role→model map so tests don't depend on the live registry.
 _MODELS = {
     "manager": "anthropic/claude-haiku-4-5",

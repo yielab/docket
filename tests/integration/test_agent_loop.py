@@ -53,6 +53,8 @@ from docket.core.tools import Tool as _Tool
 from docket.core.tools import ToolContext, ToolRegistry
 from docket.edges.adapters.toolbox import ToolOutcome
 
+SUBJECT = "docket.core.llm"
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
 

@@ -13,6 +13,10 @@ from typing import Any
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
+LANE = "release"
+REASON = "Prevents the adversarial and crash-recovery benchmark matrix from losing isolation between scenario runs or shipping a result that is not reproducible."
+RETIRE_WHEN = "the adversarial and recovery benchmark scenarios are retired or merged into the adoption benchmark's own suite."
+
 ROOT = Path(__file__).resolve().parents[3]
 DRIVER = ROOT / "benchmarks" / "scenarios" / "run.py"
 CASES = ROOT / "benchmarks" / "scenarios" / "cases"

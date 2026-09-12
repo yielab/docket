@@ -24,6 +24,8 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, Too
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 
+SUBJECT = "docket.core.llm"
+
 
 def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)

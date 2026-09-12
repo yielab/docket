@@ -33,9 +33,9 @@ Covers:
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import threading
-import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -47,6 +47,8 @@ import docket.config as _cfg
 import docket.serve as serve
 from docket.core import trace as _trace
 from docket.serve import _DocketHandler
+
+SUBJECT = "docket.serve"
 
 _TEST_TOKEN = "test-serve-token-traces-p22-3"
 
@@ -93,6 +95,26 @@ def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home.mkdir(exist_ok=True)
     _point_at(home, monkeypatch)
     return home
+
+
+class _FakeClock:
+    """Deterministic stand-in for trace._now_iso -- advances without sleeping real time."""
+
+    def __init__(self) -> None:
+        self._current = _dt.datetime.now(_dt.UTC)
+
+    def now_iso(self) -> str:
+        return self._current.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def tick(self, seconds: float = 1.05) -> None:
+        self._current += _dt.timedelta(seconds=seconds)
+
+
+@pytest.fixture()
+def fake_clock(monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
+    clock = _FakeClock()
+    monkeypatch.setattr(_trace, "_now_iso", clock.now_iso)
+    return clock
 
 
 # ── auth + missing project ───────────────────────────────────────────────────
@@ -318,12 +340,14 @@ class TestTracesPageDirect:
         assert events == []
         assert cursor == ""
 
-    def test_cursor_advances_past_a_second_boundary(self, traces_home: Path) -> None:
+    def test_cursor_advances_past_a_second_boundary(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
         _trace.trace_event("demo", "s1", "lead", "tool_call", json.dumps({"i": 0}))
         events1, cursor1 = serve._traces_page("demo", "")
         assert len(events1) == 1
 
-        time.sleep(1.05)
+        fake_clock.tick()
         _trace.trace_event("demo", "s1", "lead", "tool_call", json.dumps({"i": 1}))
         events2, cursor2 = serve._traces_page("demo", cursor1)
         assert len(events2) == 1
@@ -346,12 +370,12 @@ class TestMultipleSessionFiles:
         _trace.trace_event("demo", session, "lead", "tool_call", json.dumps({"i": i}))
 
     def test_cursor_does_not_replay_when_a_project_has_several_sessions(
-        self, traces_home: Path
+        self, traces_home: Path, fake_clock: _FakeClock
     ) -> None:
         # "zzz" sorts last by filename but is written first, so the newest
         # event does NOT land at the end of the concatenated stream.
         self._write("zzz-older-session", 0)
-        time.sleep(1.05)
+        fake_clock.tick()
         self._write("aaa-newer-session", 1)
 
         events1, cursor1 = serve._traces_page("demo", "")
@@ -363,23 +387,27 @@ class TestMultipleSessionFiles:
             f"yield nothing -- got {len(events2)} replayed event(s)"
         )
 
-    def test_new_events_still_arrive_after_a_multi_session_cursor(self, traces_home: Path) -> None:
+    def test_new_events_still_arrive_after_a_multi_session_cursor(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
         self._write("zzz-older-session", 0)
-        time.sleep(1.05)
+        fake_clock.tick()
         self._write("aaa-newer-session", 1)
         _events1, cursor1 = serve._traces_page("demo", "")
 
-        time.sleep(1.05)
+        fake_clock.tick()
         self._write("zzz-older-session", 2)
 
         events2, _cursor2 = serve._traces_page("demo", cursor1)
         assert [json.loads(e)["payload"]["i"] for e in events2] == [2]
 
-    def test_a_page_spanning_sessions_is_delivered_in_time_order(self, traces_home: Path) -> None:
+    def test_a_page_spanning_sessions_is_delivered_in_time_order(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
         self._write("zzz-older-session", 0)
-        time.sleep(1.05)
+        fake_clock.tick()
         self._write("aaa-newer-session", 1)
-        time.sleep(1.05)
+        fake_clock.tick()
         self._write("mmm-newest-session", 2)
 
         events, _cursor = serve._traces_page("demo", "")

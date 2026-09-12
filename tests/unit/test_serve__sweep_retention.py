@@ -22,6 +22,8 @@ import pytest
 import docket.config as _cfg
 from docket import serve
 
+SUBJECT = "docket.serve"
+
 
 @pytest.fixture()
 def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

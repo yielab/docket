@@ -34,6 +34,8 @@ from docket.core.tools import (
 from docket.edges.adapters import toolbox
 from docket.edges.adapters.toolbox import PathEscapeError, ToolOutcome, resolve_within
 
+SUBJECT = "docket.core.tools"
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 

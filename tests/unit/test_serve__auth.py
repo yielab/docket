@@ -27,6 +27,8 @@ import docket.config as _cfg
 import docket.serve as serve
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.serve"
+
 _TEST_TOKEN = "test-serve-token-g6-xyz789"
 
 

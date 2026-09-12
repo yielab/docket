@@ -30,6 +30,8 @@ from docket.core.llm import (
 )
 from docket.edges.adapters import llm as adapter
 
+SUBJECT = "docket.core"
+
 ENDPOINT = Endpoint(base_url="http://127.0.0.1:8081/v1", model_id="test-model")
 
 

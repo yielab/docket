@@ -14,6 +14,8 @@ from docket.core import fleet as _fleet
 from docket.core import pod as _pod
 from docket.core import secrets as _secrets
 
+SUBJECT = "docket.core"
+
 _ORG_SPECIALISTS = ("manager", "knowledge", "security")
 PM = "portfolio-manager"
 

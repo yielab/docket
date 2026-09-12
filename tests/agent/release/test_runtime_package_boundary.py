@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+LANE = "release"
+REASON = "Prevents the separately shipped docket-runtime package from pulling in a CLI dependency, or from losing its own independently rebuildable, versioned artifact."
+RETIRE_WHEN = "docket-runtime is folded back into the main package, or gains its own dedicated test suite in its own repository."
+
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
 

@@ -20,6 +20,8 @@ from docket.cli import _doctor, _pod
 from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 
+SUBJECT = "docket.cli"
+
 # ── hermetic pod fixture (mirrors test_dispatch.py's _seed_pod) ─────────────────
 
 

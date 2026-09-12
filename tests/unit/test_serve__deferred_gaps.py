@@ -28,6 +28,8 @@ from docket.core import approval as _ap
 from docket.core import secrets as _secrets
 from docket.core import trace as _trace
 
+SUBJECT = "docket.serve"
+
 
 @pytest.fixture()
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

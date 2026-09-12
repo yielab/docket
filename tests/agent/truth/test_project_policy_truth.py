@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+LANE = "truth"
+REASON = "Prevents the published support, deprecation and succession policy from drifting from the single-maintainer reality it claims."
+RETIRE_WHEN = "the project gains more than one maintainer, or the policy claims are removed."
+
 ROOT = Path(__file__).resolve().parents[3]
 GOVERNANCE = ROOT / "GOVERNANCE.md"
 SUPPORT = ROOT / "SUPPORT.md"

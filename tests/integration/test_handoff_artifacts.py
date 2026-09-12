@@ -39,6 +39,8 @@ from docket.core import dispatch as _dispatch
 from docket.core import handoff as _handoff
 from docket.core import pipeline as _pipeline
 
+SUBJECT = "docket.core"
+
 # ── HandoffArtifact: the pure model ──────────────────────────────────────────
 
 

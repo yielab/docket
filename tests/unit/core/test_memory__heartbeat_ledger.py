@@ -13,6 +13,8 @@ from pathlib import Path
 
 from docket.core import memory as _mem
 
+SUBJECT = "docket.core.memory"
+
 
 def _ws(tmp_path: Path) -> Path:
     ws = tmp_path / "demo-lead"

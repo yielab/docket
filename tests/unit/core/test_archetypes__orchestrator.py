@@ -27,6 +27,8 @@ from docket.core import archetypes as _archetypes
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 
+SUBJECT = "docket.core.archetypes"
+
 
 def _sample_spec() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(

@@ -21,6 +21,8 @@ from docket.core import pod_provisioning as _pp
 from docket.core import resources as _res
 from docket.edges import store as _store
 
+SUBJECT = "docket.core"
+
 # ── hermetic helpers ─────────────────────────────────────────────────────────
 
 

@@ -51,6 +51,8 @@ from docket.core import pod_provisioning as _pp
 from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core"
+
 _TEST_TOKEN = "test-serve-token-pods-p22-5"
 
 

@@ -14,6 +14,8 @@ from tests.fixtures.runtime_adapters.scenarios import (
     SCENARIOS,
 )
 
+SUBJECT = "tests.fixtures.runtime_adapters.scenarios"
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "runtime_adapters"
 

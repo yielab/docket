@@ -31,6 +31,8 @@ from docket.core import archetypes as _arch
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
 
+SUBJECT = "docket.core.archetypes"
+
 # ── estimate_tokens ──────────────────────────────────────────────────────────
 
 

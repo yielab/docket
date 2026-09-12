@@ -18,6 +18,8 @@ import docket.config as _cfg
 from docket.core import policy as _policy
 from docket.core import security as _sec
 
+SUBJECT = "docket.core.policy"
+
 # ── fixture ──────────────────────────────────────────────────────────────────
 
 

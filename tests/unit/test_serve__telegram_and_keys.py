@@ -28,6 +28,8 @@ from docket.cli import _keys
 from docket.core import secrets as _secrets
 from docket.core import telegram as _telegram
 
+SUBJECT = "docket.serve"
+
 # ── the poll loop's pacing/backoff discipline ───────────────────────────────
 
 

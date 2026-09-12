@@ -12,6 +12,8 @@ from pathlib import Path
 from docket.core import identity as I
 from docket.core.models import AgentMeta, Persona
 
+SUBJECT = "docket.core.identity"
+
 
 class TestPersonaModel:
     def test_label_name_and_emoji(self) -> None:

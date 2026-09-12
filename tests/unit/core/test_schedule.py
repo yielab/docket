@@ -20,6 +20,8 @@ import datetime as _dt
 
 from docket.core import schedule as _sched
 
+SUBJECT = "docket.core.schedule"
+
 
 class TestParseCronField:
     def test_every_minute(self) -> None:
