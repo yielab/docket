@@ -45,10 +45,12 @@ echo ""
 echo "========================================"
 echo ""
 
-# Note: command/lifecycle behaviour is covered by the pytest suite (tests/python/)
-# and the golden parity suite above — the old Bash integration test was retired in
-# the Python cutover. The specialist-role eval harness (tests/evals/) was removed
-# (CL-J): it was dead code wired to the retired runtime.
+# Note: command/lifecycle behaviour is covered by the pytest suite (tests/unit/,
+# tests/integration/, tests/guards/) and the golden parity suite above — the old
+# Bash integration test was retired in the Python cutover. The specialist-role
+# eval harness (tests/evals/) was removed (CL-J): it was dead code wired to the
+# retired runtime. The agent lane (tests/agent/) asserts on prose, release
+# artifacts and the agent's own hook scripts; it runs in its own CI job, not here.
 
 echo "========================================"
 echo "  Final Summary"

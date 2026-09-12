@@ -339,7 +339,7 @@ def _delete_pod(project: str, members: list[str]) -> int:
     """Tear down every member of a pod. One gateway restart at the end.
 
     Kept here (rather than in ``cli/_agents.py``, which owns the rest of the
-    delete flow) because ``tests/python/test_pod_provisioning.py`` calls it
+    delete flow) because ``tests/integration/test_pod_provisioning.py`` calls it
     directly as ``docket.cli._delete_pod`` — moving it would be a rename, not
     a mechanical extraction. ``_agents.run_delete`` reaches back for it with a
     deferred import, the same convention used for ``_pick_agent`` et al.

@@ -89,7 +89,7 @@ Copy the fixture layout under `benchmarks/fixtures/`, retain schema version `1.0
 run/task/session identities per attempt. Run the focused contract before publishing any result:
 
 ```sh
-uv run pytest -q tests/python/test_adoption_benchmark.py
+uv run pytest -q tests/agent/release/test_adoption_benchmark.py
 ```
 
 Scenario additions must not weaken schema closure, privacy scans, or the rule that failed attempts

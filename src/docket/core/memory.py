@@ -60,7 +60,7 @@ goes **through the driver** (``RuntimeDriver.run_turn``, the same
 port every pod dispatch hop already uses) — never a hand-rolled provider
 SDK/HTTP client. The driver is injected as a plain callable (mirroring
 ``core/dispatch.py``'s own ``Runner`` alias, for the same reason:
-``tests/python/fakes.py``'s ``FakeDriver`` is directly callable with that
+``tests/fakes.py``'s ``FakeDriver`` is directly callable with that
 signature, so this module is fully unit-testable with no real driver call).
 ``distill_memory`` fails **closed**: any driver failure or empty reply leaves
 every file on disk untouched, so a caller gating a delete on
@@ -479,7 +479,7 @@ EXACT_RECORD_PREFIX = "- [exact] "
 #: identical reason: there is no OS process here for a caller to track or
 #: cancel, so the Protocol's ``on_spawn`` keyword has nothing to attach to,
 #: and dropping it is what lets both ``DocketDriver.run_turn`` (a bound
-#: method) and ``tests/python/fakes.py``'s ``FakeDriver`` (directly, as a
+#: method) and ``tests/fakes.py``'s ``FakeDriver`` (directly, as a
 #: callable instance) satisfy this type with zero adapter code.
 DistillRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 

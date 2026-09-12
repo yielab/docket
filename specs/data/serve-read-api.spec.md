@@ -541,9 +541,9 @@ provenance is honest, so a Tack-granted approval must not be indistinguishable f
   pod-provisioning path (interactive and `--from`)
   and this route MUST call the same `core.pod_provisioning.provision_pod` function — there is no
   second, drift-prone provisioning implementation.
-- The contract is pinned by `tests/python/test_serve_read_api.py` (class `TestApiContract`),
-  `tests/python/test_task_enqueue_api.py`, `tests/python/test_headless_approval_api.py` (class
-  `TestApprovalChannel`), and `tests/python/test_serve_pods_endpoint.py`. Any change that breaks
+- The contract is pinned by `tests/unit/test_serve__read_api.py` (class `TestApiContract`),
+  `tests/unit/core/test_dispatch.py`, `tests/unit/core/test_approval.py` (class
+  `TestApprovalChannel`), and `tests/integration/test_serve_pods_endpoint.py`. Any change that breaks
   these is a breaking API change and MUST bump `apiVersion`.
 
 ## Examples

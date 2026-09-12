@@ -85,7 +85,7 @@ invariants matter most, both enforced by tests rather than convention alone:
    docket's governance stack — the policy engine, the approval store, the high-risk classifier,
    the audit log — only means anything if there is exactly one place a tool can execute from.
    An AST test enforces this:
-   `tests/python/test_tool_registry.py::test_only_the_chokepoint_imports_the_handler_module`.
+   `tests/unit/core/test_tools__tool_registry.py::test_only_the_chokepoint_imports_the_handler_module`.
 2. **docket-owned JSON goes through `edges/store.py`** (atomic write + filelock + `.bak`
    rotation + 0600 perms) — never write those files directly. The one documented exemption is
    append-only JSONL (`core/trace.py`, `core/audit.py`), which writes directly by design.
@@ -110,15 +110,19 @@ invariants matter most, both enforced by tests rather than convention alone:
 
 All contributions must include appropriate tests:
 
-- Tests live under `tests/python/` today; placement follows `specs/test-framework.md`
-  §"Lanes and placement": one unit file per module, named for it; checks on prose, release
-  artifacts or agent scripts go to the budgeted agent lane, never the default suite
+- Tests are placed by lane, named by module, per `specs/test-framework.md` §"Lanes and
+  placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/`
+  covers cross-module or real-process behaviour, `tests/guards/` holds AST/layout invariants,
+  and `tests/agent/` holds checks on prose, release artifacts or agent hook scripts — that lane
+  is budgeted, never the default suite, and runs in its own CI job
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **2,542 tests** in `tests/python/`,
-**~30,560 lines** of Python in the shipped package, **27 specifications** validated in CI, and
-**37 commands** in the [command reference](docs/commands.md). `scripts/metrics.py --check`
-computes these from the tree on every CI run, so this paragraph cannot silently go stale.
+For scale, so you know what you're getting into: **2,393 tests** in the default suite
+(`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
+runs separately), **~30,560 lines** of Python in the shipped package, **27 specifications**
+validated in CI, and **37 commands** in the [command reference](docs/commands.md).
+`scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
+cannot silently go stale.
 
 Run the full aggregator before submitting:
 
@@ -128,7 +132,7 @@ uv run python scripts/smoke_workflow.py
 
 # Opt-in realistic memory-backed repair with genuine inference on port 8081
 uv run python scripts/smoke_workflow.py --live-model
-DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/python/test_workflow_smoke.py
+DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/test_workflow_smoke.py
 
 # Smaller live infrastructure-only scenario retained for diagnosis
 uv run python scripts/smoke_workflow.py --live-model --scenario basic
@@ -136,8 +140,11 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 # All tests (pytest + golden parity)
 ./tests/run-all-tests.sh
 
-# pytest suite only
-uv run pytest   # 2,542-test Python suite
+# pytest suite only (default lanes: unit, integration, guards)
+uv run pytest   # 2,393-test Python suite
+
+# agent lane only (prose, release artifacts, agent hook scripts; own CI job)
+uv run pytest tests/agent
 
 # Golden parity suite (byte-for-byte CLI output)
 bash tests/golden/run.sh verify-all

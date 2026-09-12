@@ -203,13 +203,13 @@ compatibility promise and must never be offered as a migration path.
 
 ## Validation
 
-`tests/python/test_runtime_package_boundary.py` builds the wheel and sdist,
+`tests/agent/release/test_runtime_package_boundary.py` builds the wheel and sdist,
 installs the sdist at the direct dependency floor outside the repository,
 exercises the public facade with a policy-gated fake tool and approval stub,
 and proves RECORD disjointness plus both uninstall directions. The test is the
 artifact oracle; source-path inspection alone is insufficient.
 
-`tests/python/test_runtime_execution_envelope.py` installs a wheel and a wheel
+`tests/integration/test_runtime_execution_envelope.py` installs a wheel and a wheel
 rebuilt from the sdist into separate Python 3.11 environments outside the
 checkout. Its behavioral cases cover token and tool-call preflight, exact
 response/call lifecycle, paired trace identity across allow/deny/approval
@@ -217,11 +217,11 @@ decisions, malformed and unknown calls through the real chokepoint, typed
 terminal handoff, concurrent approval-stub isolation, exact public exports,
 and unchanged base dependencies.
 
-`tests/python/test_runtime_adapter_parity.py` installs the same wheel and
+`tests/agent/release/test_runtime_adapter_parity.py` installs the same wheel and
 rebuilt sdist into the pinned OpenHands SDK and PydanticAI fixture environments
 and compares their normalized governed outcomes. It also proves that the base
 artifact imports without either optional framework dependency.
-`tests/python/test_runtime_adapter_public_truth.py` checks the support boundary,
+`tests/agent/release/test_runtime_adapter_public_truth.py` checks the support boundary,
 protocol non-claims, and the machine-readable compact example.
 
 ## Changelog

@@ -52,28 +52,35 @@ contract before implementation, and the smallest coherent change makes it green.
 
 ## Test layout
 
-Layout on disk at this version (flat; W31-C1 moves it into the lanes below):
+Layout on disk at this version (moved into lanes by W31-C1; `fakes.py` sits beside `conftest.py`):
 
 ```text
 tests/
-├── python/                 pytest behavior and contract tests
-│   ├── conftest.py         shared hermetic Docket-home fixtures
-│   ├── fakes.py            ChatBackend/runtime fakes
-│   └── test_workflow_smoke.py  executable workflow acceptance
+├── conftest.py             the single DOCKET_HOME isolation fixture, shared fakes, duration guard
+├── fakes.py                ChatBackend/runtime fakes (FakeDriver, etc.)
+├── unit/                   mirrors src/docket/: unit/core/test_dispatch.py ↔ src/docket/core/dispatch.py
+├── integration/            several modules, or a real process where the process boundary is the subject
+├── guards/                 AST and layout invariants; ≤ 80 lines each
 ├── golden/
 │   ├── cases/              expected CLI output
 │   ├── fixtures/seed.sh    deterministic ~/.docket state
 │   ├── fakes/              external executable stubs when required
 │   └── run.sh              verify/update harness
-└── run-all-tests.sh        local aggregate gate
+├── agent/                  NOT in testpaths; CI job `agent-lane`
+│   ├── truth/              assertions on prose (README, GOVERNANCE, spec index, positioning)
+│   ├── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
+│   └── harness/            tests of .agents/skills/*/scripts
+└── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
+
+`test_workflow_smoke.py` lives in `tests/integration/` (it spawns a real CLI subprocess).
 
 ## Lanes and placement
 
-**Contract adopted 2026-09-11 (D-36, Phase 25).** The placement rules below bind every new or
-edited test file from this version on. The directory move, the guards that enforce the rules, and
-the CI job for the agent lane ship in W31-C1/C2; until then the tree is flat and nothing here is
-machine-enforced. This section says so rather than implying otherwise.
+**Contract adopted 2026-09-11 (D-36, Phase 25); directory move and CI job landed by W31-C1
+(2026-09-11).** The placement rules below bind every new or edited test file. The structural
+guards that enforce rules 2, 3, 6, 7 and 8 below are not yet wired (W31-C2, W31-C3) — see
+"Enforcement status" below for exactly what is and is not machine-checked today.
 
 ```text
 tests/
@@ -90,8 +97,9 @@ tests/
 
 Requirements:
 
-1. **Default suite = product lanes.** `testpaths` lists `unit`, `integration` and `guards` only;
-   the default run finishes in under 90 seconds once W31-C5 lands, and never collects `agent/`.
+1. **Default suite = product lanes.** `testpaths` lists `unit`, `integration` and `guards` only
+   (landed by W31-C1) and never collects `agent/`; the default run finishes in under 90 seconds
+   once W31-C5 lands (not yet — file counts per lane are still pre-C4/C5 shape).
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"`; the module must exist and every `src/` module over 150
    lines must have such a file. A file over 800 lines splits as `test_<module>__<aspect>.py`.
@@ -114,10 +122,14 @@ Requirements:
 8. **Structure is guarded, and each guard is seen to fail before it ships**: unit↔module mapping,
    lane headers, agent-lane budget, no-subprocess-in-unit, duration ceilings, comment hygiene.
 
-Enforcement status at 2.13.0: rules 1–8 are the contract; guards and the CI job do not exist
-yet (W31-C2, W31-C3). `uv run pytest tests/agent` becomes a required gate for changes under
-`README.md`, `docs/`, `specs/`, `examples/`, `benchmarks/`, `.agents/` and `tests/agent/` once the
-job exists.
+Enforcement status at 2.13.0: rule 1 is machine-enforced (`testpaths` excludes `agent/`; the
+`agent-lane` CI job runs `uv run pytest tests/agent`) and rule 5 already held before this move.
+Rules 2, 3, 6, 7 and 8 — the unit↔module mapping guard, lane headers with `LANE`/`REASON`/
+`RETIRE_WHEN`, the agent-lane line budget, no-subprocess-in-unit, duration ceilings, and the
+comment-hygiene ratchet — are contract only until W31-C2 and W31-C3 land; nothing fails a build
+that violates them yet. `uv run pytest tests/agent` becomes a required gate for changes under
+`README.md`, `docs/`, `specs/`, `examples/`, `benchmarks/`, `.agents/` and `tests/agent/` now that
+the job exists.
 
 ### Full-workflow smoke
 
@@ -243,7 +255,7 @@ def test_example(tmp_path, monkeypatch):
 ```
 
 For turn behavior, inject a deterministic `ChatBackend`; for driver-bound behavior, use
-`tests/python/fakes.py` or a purpose-built fake implementing `RuntimeDriver`. Patch an edge adapter
+`tests/fakes.py` or a purpose-built fake implementing `RuntimeDriver`. Patch an edge adapter
 only when the contract being tested ends at that external boundary.
 
 ### State safety
@@ -385,8 +397,12 @@ the skip reason names the missing capability.
 - D-36 / Phase 25 adds "Lanes and placement": a product suite (`unit`, `integration`, `guards`)
   as the only default run, a budgeted `tests/agent/` lane with declared reason and retirement
   condition for prose, release and harness checks, one unit file per module, no `subprocess` in
-  `unit/`, duration ceilings, and comment hygiene read by `scripts/maint/comment_lint.py`. States
-  explicitly that the tree is still flat and no guard enforces the rules until W31-C1/C2 ship.
+  `unit/`, duration ceilings, and comment hygiene read by `scripts/maint/comment_lint.py`.
+- W31-C1 lands the move: `tests/python/` is gone, `conftest.py` and `fakes.py` moved to `tests/`,
+  every file placed under `unit/`, `integration/`, `guards/` or `agent/{truth,release,harness}/`,
+  `testpaths` excludes `agent/`, `--import-mode=importlib` replaces the per-directory
+  `__init__.py`, and the `agent-lane` CI job runs `uv run pytest tests/agent`. Rules 2, 3, 6, 7
+  and 8's structural guards are not wired yet (W31-C2, W31-C3) — see "Enforcement status".
 
 ### Version 2.12.0 (2026-08-31)
 

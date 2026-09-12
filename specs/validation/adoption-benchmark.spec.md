@@ -267,7 +267,7 @@ neither may accept a record the other rejects.
 
 ## Testing
 
-The base owning behavioral suite is `tests/python/test_adoption_benchmark.py`. It MUST use temporary
+The base owning behavioral suite is `tests/agent/release/test_adoption_benchmark.py`. It MUST use temporary
 Docket homes and invoke the public script commands as subprocesses. The representative fixture MUST
 include a joined run/task, a fresh measured-usage session plus unrelated noise usage, paired allowed
 and denied tool calls, a guardrail block, a policy-backed audit denial, a resolved approval, a stale
@@ -287,19 +287,19 @@ Tests MUST prove:
 The RED command is:
 
 ```text
-uv run pytest -q tests/python/test_adoption_benchmark.py
+uv run pytest -q tests/agent/release/test_adoption_benchmark.py
 ```
 
 Before implementation it MUST collect successfully and fail because `benchmarks/schema.json` and
 `benchmarks/harness.py` are absent.
 
-The C4 journey suite is `tests/python/test_adoption_adversarial_recovery.py`. It MUST invoke the
+The C4 journey suite is `tests/agent/release/test_adoption_adversarial_recovery.py`. It MUST invoke the
 scenario driver as a subprocess with three repetitions, validate all retained C3 records and
 side-effect oracles, prove cross-run isolation, and exercise public CLI evidence rather than mock a
 product state transition. Before C4 implementation it MUST collect successfully and fail with an
 explicit list of the missing driver/case files, not an import, collection, network, or fixture error.
 
-The C6 publication suite is `tests/python/test_adoption_evidence.py`. It MUST validate the committed
+The C6 publication suite is `tests/agent/release/test_adoption_evidence.py`. It MUST validate the committed
 baseline, rebuild every aggregate from JSONL, recompute the summary, reject placeholder provenance
 and marketing overclaims, resolve every public link, scan published bytes for private data, and run
 two exact-artifact regenerations. Before C6 implementation it MUST collect successfully and fail

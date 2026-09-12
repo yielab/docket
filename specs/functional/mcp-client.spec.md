@@ -70,7 +70,7 @@ This specification does NOT cover:
   specification's entire premise is that none of that is touched or reimplemented; every adapted
   tool is gated by the unmodified `dispatch_tool`/`evaluate_tool_call` — see `security-gates.spec.md`
   and this module's own acceptance test (`TestGatedExactlyLikeABuiltin` in
-  `tests/python/test_mcp_client.py`)
+  `tests/integration/test_mcp_client.py`)
 - `docket mcp serve` (docket exposing its *own* control plane as MCP tools to an external host)
   — see `mcp-server.spec.md`; that document's prior scope note describing agent-side MCP
   consumption as "a deliberately separate, unbuilt card (ROADMAP Phase 18 L-4, daemon-gated)" is
@@ -362,7 +362,7 @@ tool drives a browser."
    `bash` — can make `mcp__playwright__bash` collide with or shadow the real, gated `bash` tool
    (Requirement 8; see "A malicious server cannot shadow a built-in" below and
    `TestCollisionRule.test_a_malicious_server_naming_itself_after_a_builtin_tool_does_not_shadow_it`
-   in `tests/python/test_mcp_client.py`). Every call — "click this button", "read this
+   in `tests/integration/test_mcp_client.py`). Every call — "click this button", "read this
    page" — still passes through the unmodified `dispatch_tool` chokepoint: the same
    `pre_tool_call` policy hooks, the same approval routing, the same audit trail a `bash` or `edit`
    call gets (Requirement 5; see "Gated exactly like a built-in" below).
@@ -454,12 +454,12 @@ dispatch_tool(
   `load_mcp_servers()` only.
 - With zero configured servers, `DocketDriver.run_turn`'s registry, the tool specs advertised to
   the model, and every downstream effect **MUST** be identical to a `DocketDriver` built before
-  this version — proven by `tests/python/test_mcp_tools_in_a_live_turn.py::
+  this version — proven by `tests/unit/core/test_llm__mcp_tools_in_a_live_turn.py::
   TestZeroServersIsUnchanged`, not merely asserted.
 - A role whose `denied_tools` implies kind `write` (every archetype that denies `write`/`edit`)
   **MUST NOT** be advertised, and **MUST NOT** be able to dispatch, any MCP-adapted tool — proven
   end-to-end through `DocketDriver.run_turn` (not only at `registry_for_role`'s own level) by
-  `tests/python/test_mcp_tools_in_a_live_turn.py::TestReviewerNeverGainsAWriteCapableMcpTool`.
+  `tests/unit/core/test_llm__mcp_tools_in_a_live_turn.py::TestReviewerNeverGainsAWriteCapableMcpTool`.
 
 ### Invariants
 
@@ -472,7 +472,7 @@ dispatch_tool(
 - `cli/_mcp.py`'s `docket mcp servers` commands **MUST NOT** import anything from `core/tools.py`
   or `edges/adapters/toolbox.py` beyond the inert `ToolOutcome` type already allowed for
   `core/mcp_tools.py` itself (see `TestOnlyTheInertResultTypeIsImported` in
-  `tests/python/test_mcp_client.py`) — the CLI is configuration only, never a second
+  `tests/integration/test_mcp_client.py`) — the CLI is configuration only, never a second
   execution path.
 - A failure isolated to `DocketDriver.mcp_loader` (an unreachable, hung, or malformed-listing
   server) **MUST NOT** cause `run_turn` to return `ok=False` on its own — only an otherwise-real

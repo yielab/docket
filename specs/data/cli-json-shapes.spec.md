@@ -255,8 +255,9 @@ All JSON output from docket uses **camelCase**:
 - `modelSource` (not `model_source`)
 - `lastActive` (not `last_active`)
 
-The Python suite (`tests/python/`, e.g. `test_list_info_cost_commands.py`, `test_serve.py`) asserts each
-shape field-by-field, so a shape change here that isn't reflected in code fails CI.
+The Python suite (e.g. `tests/integration/test_list_info_cost_commands.py`,
+`tests/unit/test_serve.py`) asserts each shape field-by-field, so a shape change here that isn't
+reflected in code fails CI.
 
 ## Examples
 
