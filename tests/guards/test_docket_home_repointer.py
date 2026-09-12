@@ -32,6 +32,19 @@ file, which is the guard's job; it does not additionally prove that no
 caller of a legitimate helper was silently relying on a partial subset
 elsewhere. A reviewer reading a failure here should open the named function.
 
+**A second uncovered shape, measured rather than supposed.** The condition
+below keys on ``_cfg.DOCKET_HOME`` itself, so a function that repoints only
+*derived* constants -- traces, sessions, approvals -- and never claims a home
+at all does not trip it. Sixteen functions across thirteen modules do exactly
+that today. They are not the drift this guard was written for: each overrides
+a named constant deliberately, which ``conftest.py`` explicitly blesses, and
+the autouse fixture still isolates everything they leave alone, so none of
+them can reach the real ``~/.docket``. They stay unguarded because the honest
+rule for them is a threshold rather than a boolean -- one deliberate override
+is legitimate, several hand-rolled together is a private partial copy again --
+and a threshold needs its own baseline and its own card. Do not read this
+guard's silence as proof that those sixteen are uniform.
+
 **The allowlist below is for a different shape of test, and it is currently
 empty on purpose.** The card that wrote this guard asked for a class of test
 that sets a ``DOCKET_HOME`` *environment variable* for a child process it

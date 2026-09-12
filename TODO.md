@@ -619,72 +619,55 @@ that was backtracking.
 
 ### W31-C10 — one way to repoint DOCKET_HOME, not fifty-six
 
-**Status:** READY (unblocked 2026-09-12 when C8b merged) · **Size:** M · **Owner:** — ·
-**Depends on:** C5 (done), C8b (done)
+**Status:** DONE (2026-09-12, `aa34fdc`, merged) · **Size:** M
 
-**File contention, measured:** six of the repointing sites live in dispatch and driver test
-files (`test_dispatch.py` in both lanes, `test_docket_driver.py`, `test_approval_gated_dispatch.py`,
-`test_dispatch_run_records.py`, `test_dispatch_heartbeat_and_conversation_sync.py`), which C8b
-owned. **C8b has merged, so that contention is gone.** This card is also disjoint from C8a and
-may run beside it. Re-measure the 56 sites at HEAD before starting: C8b touched several of
-these files.
+**What shipped.** Every test that repoints to a home it chooses now calls
+`tests/conftest.py`'s `repoint_docket_home`. Fifty files converted, 297 lines added against 496
+deleted. The 21 private `_point_at` helpers are gone, and with them 21 tests that ran against a
+home split in two.
 
-**Deterministic trigger, re-measured at `60cad4d`:** 56 sites across 51 test files repoint
-`_cfg.DOCKET_HOME` by hand, and 10 files now call the shared `repoint_docket_home` helper in
-`tests/conftest.py`. One site, `test_serve.py:58`, sets a `DOCKET_HOME` environment variable, which
-config cannot read because it binds its constants at import.
+**The guard is the deliverable, not the conversion.** `tests/guards/test_docket_home_repointer.py`
+is AST-based and scoped **per function** rather than per module, so one correct test sitting beside
+one drifted test in the same file is still caught. A module-wide "calls the helper somewhere" check
+would have missed that, and was rejected for it.
 
-**The partial-copy count in the original card was wrong by an order of magnitude, and the
-correction is the point.** It named two files. There are **21**, each with its own private
-`_point_at` helper, and **not one of them covers all sixteen** constants in `_DOCKET_HOME_PATHS`:
+**Proved by failure, twice by the card and once more by the integrator.** Planting a partial
+repointer in `test_diff_probe.py` turned the guard red and named the exact function and line;
+removing it turned it green. The integrator repeated that independently rather than reading the
+transcript.
 
-| constants covered | files |
-|---|---|
-| 0 of 16 | `test_cooperative_run_cancellation.py` |
-| 1 of 16 | `test_serve__traces_cursor.py` |
-| 3 of 16 | `test_serve_tasks_endpoint.py` |
-| 4 of 16 | `test_diff_probe.py`, `test_dispatch.py`, `test_handoff_artifacts.py`, `test_hop_carryover.py`, `test_install.py`, `test_portfolio_manager.py`, `test_verify_gate_cwd_resolution.py` |
-| 5 of 16 | `test_pod_resources.py`, `test_dispatch_heartbeat_and_conversation_sync.py`, `test_doctor_ledger_drift.py`, `test_autopause.py`, `test_pod_roles_from_archetypes.py`, `test_mcp_server.py`, `test_mcp_transport_contract.py` |
-| 6 of 16 | `test_dispatch_run_records.py`, `test_pod_blueprint_provisioning.py` |
-| 7 of 16 | `test_pod_provisioning.py` |
-| 8 of 16 | `test_serve_pods_endpoint.py` |
+**The allowlist is empty, and that is a structural fact rather than an oversight.** The card
+expected a class of test that sets a `DOCKET_HOME` environment variable for a child process and
+must never be converted. That class exists here, but every real instance sets `os.environ` or a
+subprocess `env=` dict, never `_cfg.DOCKET_HOME`, because patching an already-imported module
+cannot reach a separate process's fresh import of `config.py`. None of them can trip the guard, so
+there is nothing legitimate for the allowlist to hold. It stays as a mechanism with a shrink-only
+self-check.
 
-Every one of these tests runs against a home split in two: the constants its `_point_at` forgot
-stay aimed at the autouse fixture's home. That is not a latent risk, it is the current state of
-the suite, and it is exactly why an inspection-time fix is worthless without the guard.
+**Two shapes the guard does not catch, both named in its own docstring.** A private helper that
+hand-rolls the raw setattr calls is flagged where it is defined, not at every call site, which is
+enough to fail the suite and name the file. And the condition keys on `_cfg.DOCKET_HOME` itself, so
+a function that repoints only derived constants and never claims a home does not trip it.
 
-**Why it matters:** the AST guard in `test_docket_home_isolation.py` proves that every new
-`DOCKET_HOME`-derived constant in `config.py` reaches `_DOCKET_HOME_PATHS`. It does not prove that
-every test repointing a home reads that tuple. A private partial list therefore stops tracking the
-canonical one the moment a constant is added, and the test keeps passing: the constants it forgot
-stay aimed at the autouse fixture's home, so the test runs against a home split in two and nothing
-fails. C5 shipped this exact shape once and was sent back for it, and the integrator then found a
-live instance in `test_data_layer.py` where a subprocess-to-in-process conversion had silently
-turned the environment-variable half of the split inert. This is the isolation failure that has
-already reached the developer's real `~/.docket` three times, one guard-shaped step earlier.
+**Follow-up observed, not scheduled.** The integrator measured **16 functions across 13 modules**
+that hand-roll two or more tracked constants without ever setting `DOCKET_HOME`. They are not this
+card's drift shape: each overrides a named constant deliberately, which `conftest.py` blesses, and
+the autouse fixture still isolates everything they leave alone, so none can reach the real
+`~/.docket`. The honest rule for them is a threshold rather than a boolean, which needs its own
+baseline and its own card. Do not schedule it without re-measuring first.
 
-**Goal:** every test that repoints to a home it chooses goes through `repoint_docket_home`, and a
-guard makes that true going forward rather than by inspection.
+**Process deviation, recorded rather than smoothed over.** A session rate limit killed the run
+mid-conversion, leaving `test_docket_driver.py` calling the helper without importing it and 36
+collection errors. The integrator preserved the in-flight diff before reviewing it. The card's
+classification artifact was required **before** any edit and was written afterwards instead; that
+ordering is unrecoverable and the artifact says so.
 
-**The 56 sites are not uniform -- classify before converting.** A test that sets only
-`_cfg.DOCKET_HOME` and relies on the autouse `_isolate_docket_home` fixture for everything else is
-not necessarily broken; it may never touch a derived path. A test that sets `DOCKET_HOME` plus a
-hand-picked subset is the drift shape. A test that sets `DOCKET_HOME` for a child process it then
-spawns is reading it through the environment legitimately, and must not be converted. The card's
-first output is that classification, with a count per class, before any file is edited.
-
-**Non-goals:** no assertion changes; no fixture redesign beyond the call site; no conversion of a
-site whose child process genuinely reads the environment.
-
-**Owns:** `tests/**` repointing sites and the new guard. **Forbidden:** `src/`.
-
-**RED tests / oracles:** a guard that fails on a test module setting `_cfg.DOCKET_HOME` without
-calling `repoint_docket_home` (with an explicit, justified allowlist for the child-process class),
-**proved by planting a partial repointer and watching it go red** before it is trusted. Pass count
-and collected count unchanged. The real `~/.docket` hashes identically either side of a full run.
-
-**Validation:** full gates. **Handoff:** the per-class counts, the allowlist with a reason per
-entry, and the guard's red-then-green transcript.
+**Gates, every exit code read directly rather than through a pipe.** pytest 0 with 2,410 passed and
+5 skipped, ruff check 0, ruff format 0, mypy 0 on 74 source files, golden 18/18, specs 27/27.
+Comment hygiene holds at exactly its 558 baseline within the guard's `src` and `tests` scope; the
+one archaeology hit tree-wide is `comment_lint.py`'s own self-describing docstring. The real
+`~/.docket` hashes identically either side of a full run. Test count 2,413 to 2,415;
+`CONTRIBUTING.md` reconciled by the integrator.
 ---
 
 ## ◇ WAVE 29 DEFERRED (2026-09-02, paused 2026-09-11) — adoption evidence and public release

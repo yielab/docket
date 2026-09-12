@@ -454,7 +454,7 @@ file per packet.
 | W31-C8a | **Done 2026-09-12.** `run_agent_turn`'s own body 328 to 75 lines over eight named phases; every bound evaluated at the same point, verified independently of the card's table. Three phases are pure and module-level with nine new unit tests; five stay nested closures over shared turn state and remain end-to-end covered only. `docket.core.agent_loop` leaves the layout ratchet | After C4; was parallel with C8b |
 | W31-C8b | **Done 2026-09-12.** `dispatch_task` 703 to ~125 lines; the nested `_execute_unit` closure lifted to module level and 501 to 52, over named phases. Captured state inventoried first; the two mutated captures pinned by a test. No behaviour change, goldens byte-identical | After C4; was parallel with C8a |
 | W31-C9 | `trace.redact` backtracking bounded; 40,000 characters from 10.68 s to 0.03 s, redacted set unchanged | Opened by a defect W31-C2 hit and worked around |
-| W31-C10 | One shared way to repoint `DOCKET_HOME`, guarded. 56 hand-written sites across 51 files, two carrying partial constant lists | After C5; classify the sites before converting any |
+| W31-C10 | **Done 2026-09-12.** Every test repoints through one shared helper; 50 files converted. The partial-copy count was wrong by an order of magnitude: 21 private helpers, not two, and not one covered all sixteen constants. Guarded per function, not per module, and proved by planting drift | After C5; classification was required before conversion and a rate limit forced it afterwards |
 
 ---
 
