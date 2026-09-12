@@ -437,6 +437,53 @@ def _trace_terminal_finalization(
     )
 
 
+def _resolve_context_bounds(
+    backend: ChatBackend, cfg: LoopConfig
+) -> tuple[int | None, int, int | None]:
+    """Resolve the request's context window, max output tokens, and reserve.
+
+    ``LoopConfig`` wins when set explicitly; a backend's own reported window or
+    output ceiling only fills in a value the config leaves unset, so an
+    endpoint can describe its own limits without every caller having to know
+    them ahead of time.
+    """
+    backend_window = getattr(backend, "context_window_tokens", None)
+    context_window = cfg.context_window_tokens
+    if context_window is None and isinstance(backend_window, int) and backend_window > 0:
+        context_window = backend_window
+    backend_output = getattr(backend, "max_output_tokens", None)
+    request_max_tokens = cfg.max_tokens
+    if request_max_tokens is None and isinstance(backend_output, int) and backend_output > 0:
+        request_max_tokens = backend_output
+    output_reserve = request_max_tokens if request_max_tokens is not None else 0
+    return context_window, output_reserve, request_max_tokens
+
+
+def _resolve_trace_coordinates(
+    ctx: ToolContext,
+    session_key: str,
+    trace_project: str | None,
+    trace_session_key: str | None,
+) -> tuple[str, str]:
+    """Pick where trace events are written; defaults keep old callers unchanged."""
+    project = trace_project or ctx.project or ctx.agent_id or "unknown"
+    trace_key = trace_session_key or session_key
+    return project, trace_key
+
+
+def _resolve_role_registry_and_prompt(
+    registry: ToolRegistry, ctx: ToolContext
+) -> tuple[ToolRegistry, str, list[ToolSpec]]:
+    """Narrow the tool registry to this role and compose today's system prompt.
+
+    Resolved once per turn, not per iteration -- neither the role's toolset
+    nor this agent's identity files change mid-turn.
+    """
+    registry = _archetypes.registry_for_role(registry, ctx.role)
+    system_prompt = _identity.system_prompt_for_agent(ctx.agent_id, project_roots=ctx.roots)
+    return registry, system_prompt, registry.specs()
+
+
 def run_agent_turn(
     backend: ChatBackend,
     registry: ToolRegistry,
@@ -461,18 +508,11 @@ def run_agent_turn(
     every backend failure, comes back as a populated ``AgentLoopResult``.
     """
     cfg = config or LoopConfig()
-    backend_window = getattr(backend, "context_window_tokens", None)
-    context_window = cfg.context_window_tokens
-    if context_window is None and isinstance(backend_window, int) and backend_window > 0:
-        context_window = backend_window
-    backend_output = getattr(backend, "max_output_tokens", None)
-    request_max_tokens = cfg.max_tokens
-    if request_max_tokens is None and isinstance(backend_output, int) and backend_output > 0:
-        request_max_tokens = backend_output
-    output_reserve = request_max_tokens if request_max_tokens is not None else 0
+    context_window, output_reserve, request_max_tokens = _resolve_context_bounds(backend, cfg)
     started = clock()
-    project = trace_project or ctx.project or ctx.agent_id or "unknown"
-    trace_key = trace_session_key or session_key
+    project, trace_key = _resolve_trace_coordinates(
+        ctx, session_key, trace_project, trace_session_key
+    )
     total_usage = TokenUsage()
     tool_calls_executed = 0
     iteration = 0
@@ -509,14 +549,7 @@ def run_agent_turn(
             failure_kind="run_cancelled",
         )
 
-    # Resolved once per turn, not per iteration -- neither the role's
-    # toolset nor this agent's identity files change mid-turn.
-    registry = _archetypes.registry_for_role(registry, ctx.role)
-    system_prompt = _identity.system_prompt_for_agent(
-        ctx.agent_id,
-        project_roots=ctx.roots,
-    )
-    tool_specs = registry.specs()
+    registry, system_prompt, tool_specs = _resolve_role_registry_and_prompt(registry, ctx)
 
     def _preflight_request(
         request_messages: list[ChatMessage],
@@ -766,16 +799,25 @@ def run_agent_turn(
         _trace_compaction(project, trace_key, ctx.role, result)
         return result, compaction_failure_stop_reason
 
-    if _cancellation_requested():
-        return _cancelled()
-    compaction, compaction_stop_reason = _run_compaction(budget_tokens=cfg.history_budget_tokens)
-    if not compaction.ok:
-        return _done(
-            ok=False,
-            stop_reason=compaction_stop_reason or "compaction_failed",
-            error=compaction.error,
-            failure_kind=compaction.failure_kind or "invalid_output",
+    def _apply_initial_history_compaction() -> AgentLoopResult | None:
+        """Compact durable history to the turn's budget before the incoming message is seeded."""
+        if _cancellation_requested():
+            return _cancelled()
+        compaction, compaction_stop_reason = _run_compaction(
+            budget_tokens=cfg.history_budget_tokens
         )
+        if not compaction.ok:
+            return _done(
+                ok=False,
+                stop_reason=compaction_stop_reason or "compaction_failed",
+                error=compaction.error,
+                failure_kind=compaction.failure_kind or "invalid_output",
+            )
+        return None
+
+    initial_compaction_stop = _apply_initial_history_compaction()
+    if initial_compaction_stop is not None:
+        return initial_compaction_stop
 
     incoming = user(message)
     appended = append_messages(session_key, [incoming])
@@ -983,12 +1025,19 @@ def run_agent_turn(
 
     finalization_attempted = False
     consecutive_denial_kinds: list[ToolDenialKind] = []
-    while True:
+
+    def _check_iteration_bounds() -> tuple[int, AgentLoopResult | None]:
+        """Cancellation plus the four per-iteration ceilings, in bound-check order.
+
+        A non-``None`` second element means stop now; otherwise the first
+        element is this iteration's request timeout.
+        """
+        nonlocal iteration
         if _cancellation_requested():
-            return _cancelled()
+            return 0, _cancelled()
         iteration += 1
         if iteration > cfg.max_iterations:
-            return _done(
+            return 0, _done(
                 ok=False,
                 stop_reason="max_iterations",
                 error=f"exceeded max_iterations={cfg.max_iterations}",
@@ -996,14 +1045,14 @@ def run_agent_turn(
             )
         elapsed = clock() - started
         if elapsed > cfg.wall_clock_timeout_s:
-            return _done(
+            return 0, _done(
                 ok=False,
                 stop_reason="timeout",
                 error=f"exceeded wall_clock_timeout_s={cfg.wall_clock_timeout_s}",
                 failure_kind="timeout",
             )
         if total_usage.total_tokens > cfg.token_budget:
-            return _done(
+            return 0, _done(
                 ok=False,
                 stop_reason="token_budget",
                 error=(
@@ -1012,15 +1061,24 @@ def run_agent_turn(
                 failure_kind="invalid_output",
             )
         if tool_calls_executed >= cfg.max_tool_calls:
-            return _done(
+            return 0, _done(
                 ok=False,
                 stop_reason="max_tool_calls",
                 error=f"exceeded max_tool_calls={cfg.max_tool_calls}",
                 failure_kind="invalid_output",
             )
-
         remaining = max(1, int(cfg.wall_clock_timeout_s - elapsed))
-        request_timeout = min(cfg.request_timeout_s, remaining)
+        return min(cfg.request_timeout_s, remaining), None
+
+    def _prepare_request_or_finalize() -> tuple[
+        list[ChatMessage], list[ToolSpec], bool, AgentLoopResult | None
+    ]:
+        """Fit the task request, falling back to one tool-free terminal attempt
+
+        when the ordinary tool-enabled round no longer fits the remaining
+        turn budget. A non-``None`` last element means stop now.
+        """
+        nonlocal finalization_attempted
         (
             messages,
             normal_estimated_input,
@@ -1029,77 +1087,110 @@ def run_agent_turn(
             fit_failure_kind,
         ) = _fit_task_request()
         if fit_error:
-            return _done(
-                ok=False,
-                stop_reason=fit_stop_reason or "context_fit",
-                error=fit_error,
-                failure_kind=fit_failure_kind or "invalid_output",
+            return (
+                [],
+                [],
+                False,
+                _done(
+                    ok=False,
+                    stop_reason=fit_stop_reason or "context_fit",
+                    error=fit_error,
+                    failure_kind=fit_failure_kind or "invalid_output",
+                ),
             )
 
-        finalizing = False
         request_tools = tool_specs
         normal_budget_error = _prospective_budget_error(
             normal_estimated_input, purpose="tool-enabled task"
         )
-        if normal_budget_error:
-            if finalization_attempted:
-                return _done(
+        if not normal_budget_error:
+            return messages, request_tools, False, None
+
+        if finalization_attempted:
+            return (
+                [],
+                [],
+                False,
+                _done(
                     ok=False,
                     stop_reason="token_budget",
                     error=normal_budget_error,
                     failure_kind="invalid_output",
-                )
-            finalization_attempted = True
-            terminal_messages = _finalization_messages(messages)
-            final_estimated_input, final_fit_error = _preflight_request(
-                terminal_messages,
+                ),
+            )
+        finalization_attempted = True
+        terminal_messages = _finalization_messages(messages)
+        final_estimated_input, final_fit_error = _preflight_request(
+            terminal_messages,
+            [],
+            purpose="task",
+        )
+        final_budget_error = _prospective_budget_error(
+            final_estimated_input, purpose="terminal finalization"
+        )
+        if final_fit_error:
+            final_status = "refused"
+            final_reason = "finalization_context_fit_failed"
+        elif final_budget_error:
+            final_status = "refused"
+            final_reason = "finalization_exceeds_remaining_turn_budget"
+        else:
+            final_status = "entered"
+            final_reason = "normal_request_exceeds_remaining_turn_budget"
+        _trace_terminal_finalization(
+            project,
+            trace_key,
+            ctx.role,
+            status=final_status,
+            reason=final_reason,
+            token_budget=cfg.token_budget,
+            measured_tokens_used=total_usage.total_tokens,
+            normal_estimated_input_tokens=normal_estimated_input,
+            finalization_estimated_input_tokens=final_estimated_input,
+            output_reserve_tokens=output_reserve,
+        )
+        if final_fit_error:
+            return (
                 [],
-                purpose="task",
-            )
-            final_budget_error = _prospective_budget_error(
-                final_estimated_input, purpose="terminal finalization"
-            )
-            if final_fit_error:
-                final_status = "refused"
-                final_reason = "finalization_context_fit_failed"
-            elif final_budget_error:
-                final_status = "refused"
-                final_reason = "finalization_exceeds_remaining_turn_budget"
-            else:
-                final_status = "entered"
-                final_reason = "normal_request_exceeds_remaining_turn_budget"
-            _trace_terminal_finalization(
-                project,
-                trace_key,
-                ctx.role,
-                status=final_status,
-                reason=final_reason,
-                token_budget=cfg.token_budget,
-                measured_tokens_used=total_usage.total_tokens,
-                normal_estimated_input_tokens=normal_estimated_input,
-                finalization_estimated_input_tokens=final_estimated_input,
-                output_reserve_tokens=output_reserve,
-            )
-            if final_fit_error:
-                return _done(
+                [],
+                False,
+                _done(
                     ok=False,
                     stop_reason="context_fit",
                     error=final_fit_error,
                     failure_kind="invalid_output",
-                )
-            if final_budget_error:
-                return _done(
+                ),
+            )
+        if final_budget_error:
+            return (
+                [],
+                [],
+                False,
+                _done(
                     ok=False,
                     stop_reason="token_budget",
                     error=final_budget_error,
                     failure_kind="invalid_output",
-                )
-            messages = terminal_messages
-            request_tools = []
-            finalizing = True
+                ),
+            )
+        return terminal_messages, [], True, None
 
+    def _call_backend_and_handle_response(
+        messages: list[ChatMessage],
+        request_tools: list[ToolSpec],
+        finalizing: bool,
+        request_timeout: int,
+    ) -> tuple[ChatMessage | None, TokenUsage, AgentLoopResult | None]:
+        """One backend exchange and every response-shaped stop condition.
+
+        Returns the assistant message to dispatch tools for, or ``None`` with
+        a populated ``AgentLoopResult`` when the turn must stop here —
+        including the ordinary ``final_message`` success exit, which is
+        itself a response shape (no tool calls requested).
+        """
+        nonlocal last_raw, total_usage
         if _cancellation_requested():
-            return _cancelled()
+            return None, TokenUsage(), _cancelled()
         response = backend.complete(
             messages,
             tools=request_tools,
@@ -1112,13 +1203,17 @@ def run_agent_turn(
         if _cancellation_requested():
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(session_key, [], usage=response.usage)
-            return _cancelled()
+            return None, response.usage, _cancelled()
         if not response.ok:
-            return _done(
-                ok=False,
-                stop_reason="backend_error",
-                error=response.error,
-                failure_kind=response.failure_kind or "daemon_error",
+            return (
+                None,
+                response.usage,
+                _done(
+                    ok=False,
+                    stop_reason="backend_error",
+                    error=response.error,
+                    failure_kind=response.failure_kind or "daemon_error",
+                ),
             )
 
         if response.truncated:
@@ -1128,45 +1223,76 @@ def run_agent_turn(
             # durable even though the response itself is rejected.
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(session_key, [], usage=response.usage)
-            return _done(
-                ok=False,
-                stop_reason="truncated",
-                output=response.message.content,
-                error="model response was truncated (finish_reason=length); no tool calls were executed",
-                failure_kind="invalid_output",
+            return (
+                None,
+                response.usage,
+                _done(
+                    ok=False,
+                    stop_reason="truncated",
+                    output=response.message.content,
+                    error=(
+                        "model response was truncated (finish_reason=length); no tool calls "
+                        "were executed"
+                    ),
+                    failure_kind="invalid_output",
+                ),
             )
 
         if total_usage.total_tokens > cfg.token_budget:
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(session_key, [], usage=response.usage)
-            return _done(
-                ok=False,
-                stop_reason="token_budget",
-                error=(
-                    f"exceeded token_budget={cfg.token_budget} "
-                    f"(used {total_usage.total_tokens}); response was not persisted and its "
-                    "tool calls were not dispatched"
+            return (
+                None,
+                response.usage,
+                _done(
+                    ok=False,
+                    stop_reason="token_budget",
+                    error=(
+                        f"exceeded token_budget={cfg.token_budget} "
+                        f"(used {total_usage.total_tokens}); response was not persisted and its "
+                        "tool calls were not dispatched"
+                    ),
+                    failure_kind="invalid_output",
                 ),
-                failure_kind="invalid_output",
             )
 
         assistant_msg = response.message
         if finalizing and assistant_msg.tool_calls:
             if response.usage.total_tokens or response.usage.cached_tokens:
                 append_messages(session_key, [], usage=response.usage)
-            return _done(
-                ok=False,
-                stop_reason="token_budget",
-                error=(
-                    "terminal finalization requested tool calls even though no tools were "
-                    "advertised; none were dispatched or persisted"
+            return (
+                None,
+                response.usage,
+                _done(
+                    ok=False,
+                    stop_reason="token_budget",
+                    error=(
+                        "terminal finalization requested tool calls even though no tools were "
+                        "advertised; none were dispatched or persisted"
+                    ),
+                    failure_kind="invalid_output",
                 ),
-                failure_kind="invalid_output",
             )
         if not assistant_msg.tool_calls:
             append_messages(session_key, [assistant_msg], usage=response.usage)
-            return _done(ok=True, stop_reason="final_message", output=assistant_msg.content)
+            return (
+                None,
+                response.usage,
+                _done(ok=True, stop_reason="final_message", output=assistant_msg.content),
+            )
+        return assistant_msg, response.usage, None
 
+    def _dispatch_tool_batch(
+        messages: list[ChatMessage],
+        assistant_msg: ChatMessage,
+        response_usage: TokenUsage,
+    ) -> AgentLoopResult | None:
+        """Gate the batch size, dispatch every call, then apply the denial ceiling.
+
+        Persists the assistant message and every tool result as one atomic
+        unit through ``dispatch_tool``. Returns ``None`` to keep looping.
+        """
+        nonlocal tool_calls_executed
         if tool_calls_executed + len(assistant_msg.tool_calls) > cfg.max_tool_calls:
             return _done(
                 ok=False,
@@ -1210,7 +1336,7 @@ def run_agent_turn(
         # One append per iteration, the whole atomic unit at once — never the
         # assistant message and its tool results in separate calls, which
         # would let a crash between them persist an orphaned tool_calls entry.
-        append_messages(session_key, [assistant_msg, *tool_msgs], usage=response.usage)
+        append_messages(session_key, [assistant_msg, *tool_msgs], usage=response_usage)
         if batch_cancelled:
             return _cancelled()
         denial_limit = cfg.max_consecutive_tool_denials
@@ -1226,3 +1352,28 @@ def run_agent_turn(
                 ),
                 failure_kind="invalid_output",
             )
+        return None
+
+    def _run_iteration() -> AgentLoopResult | None:
+        """One full round: bounds, fit-or-finalize, model call, tool dispatch.
+
+        ``None`` means keep looping.
+        """
+        request_timeout, stop = _check_iteration_bounds()
+        if stop is not None:
+            return stop
+        messages, request_tools, finalizing, stop = _prepare_request_or_finalize()
+        if stop is not None:
+            return stop
+        assistant_msg, response_usage, stop = _call_backend_and_handle_response(
+            messages, request_tools, finalizing, request_timeout
+        )
+        if stop is not None:
+            return stop
+        assert assistant_msg is not None  # only None alongside a non-None stop
+        return _dispatch_tool_batch(messages, assistant_msg, response_usage)
+
+    while True:
+        outcome = _run_iteration()
+        if outcome is not None:
+            return outcome
