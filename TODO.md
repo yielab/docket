@@ -11,7 +11,24 @@
 >
 > ---
 >
-> ## ◉ WAVE 32 ACTIVE (2026-09-12) — documentation truth pass
+> ## ◉ NO ACTIVE WAVE — one card remains claimable
+>
+> **Wave 32 closed on 2026-09-12.** Seven cards swept the documentation drift Phases 24 and 25
+> left behind. It removed a script, a CI workflow and a pre-commit hook that the contributor guide
+> documented and that have never existed; a Telegram "conversational dispatch" claim that was found
+> in README.md on 2026-08-05, corrected there, and never swept from the quick start one directory
+> away; and a paragraph telling readers a shipped isolation control was inert.
+>
+> **Its most useful finding was one anti-pattern in three places.** The spec index, the generated
+> command reference's environment table, and a pod-blueprint list were each checked against
+> reference data that was *retyped rather than derived*, so each reported green while being blind
+> to anything nobody had remembered to add. All three now derive their reference set, and each was
+> proved by planting something the old version could not have seen.
+>
+> **Two corrections to the record.** The agent lane is not part of `uv run pytest`; it has its own
+> CI job, so "all gates green" from the default suite said nothing about it, and it was red on
+> `main` from before this wave. And `DOCKET_APPROVAL_MODE` is not an environment variable despite
+> the name — it is a key of the dict `run_turn` receives as `env`, so exporting it does nothing.
 >
 > **Wave 30 closed on 2026-09-12**, completing Phase 24, and is archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). `docket harness run` and
@@ -84,55 +101,32 @@ release source.
 
 ---
 
-## ◇ WAVE 32 ACTIVE (2026-09-12) — documentation truth pass and two deferred follow-ups
+## ◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups
 
-**Why this wave exists.** Phases 24 and 25 both completed on 2026-09-12 and neither closed
-with a documentation sweep. A phase that changes the test layout and adds a user-facing
-command leaves drift by construction. Four parallel read-only audits over disjoint doc
-groups measured it before anything was scheduled; the full record with per-finding evidence
-is in the integrator's plan file.
+All seven cards merged. Four parallel read-only audits measured the drift before anything was
+scheduled; the full per-finding record is in the integrator's plan file.
 
-**What the audits found, in one line each.** `SSD-WORKFLOW.md` documents a script
-(`scripts/spec-coverage.sh`) that has never existed, plus a CI workflow and a pre-commit
-hook built around it. `specs/README.md`'s index is stale in three versions, is missing three
-whole specs, and `validate-specs.sh` passes anyway because it never compares the index to
-the specs. `docs/QUICK-START-DOCKET.md` still advertises Telegram "conversational dispatch"
-— the exact claim found in README.md on 2026-08-05 as W19-5, corrected there and never
-swept from this file. `docs/SECURITY-SIMPLE.md` says workspace isolation is unwired, which
-W18-3 closed. `scripts/gen_cli_docs.py`'s env-var table is hardcoded, so its `--check`
-proves only that the file matches a stale template.
-
-**Two surfaces carry the same wrong path**, telling an external consumer the harness NDJSON
-fixtures live under `docs/contracts/harness-v1/`; that directory holds only `schema.json`.
-That is what an unguarded index produces, and it is why C2 ships a guard rather than a fix.
-
-**The re-measured follow-up moved.** Wave 31 recorded 16 functions across 13 modules that
-hand-roll `DOCKET_HOME`-derived constants without claiming a home, and said to re-measure
-before scheduling. Re-measured: **20 across 15**. A gap list decays, and this one decayed
-upward.
-
-**Scheduling:** seven cards, seven isolated worktrees, split so no two cards write the same
-file. C2, C4 and C7 are guard work and each must plant the drift and watch the guard go red
-before its claim is believed — C7 especially, whose entire subject is a check that passed
-while being wrong.
-
-**Integrator keeps:** `README.md`, `ROADMAP.md`, `TODO.md`, `CLAUDE.md`, and every metric
-roll-up. `CLAUDE.md` is gitignored and was fixed directly: two invariant tests were cited at
-paths deleted in W31-C1, so an agent asked to confirm the tool chokepoint or the Telegram
-inbound-only guarantee would have hit a missing file and could reasonably have concluded the
-guard was gone.
-
-| Card | Owns (exclusive) | Status |
+| Card | Shipped | Proved by |
 | --- | --- | --- |
-| W32-C1 | `SSD-WORKFLOW.md` | IN-PROGRESS |
-| W32-C2 | `specs/README.md` + spec-index script and guard | IN-PROGRESS |
-| W32-C3 | `CHANGELOG.md`, `CONTRIBUTING.md` | IN-PROGRESS |
-| W32-C4 | partial-repointer guard + baseline, offending test modules, dead scaffolding | IN-PROGRESS |
-| W32-C5 | `docs/QUICK-START-DOCKET.md`, `docs/SECURITY-SIMPLE.md`, `docs/AGENT-TEAMS.md` | IN-PROGRESS |
-| W32-C6 | `docs/README.md`, `docs/DOCKET.md`, `docs/troubleshooting.md`, `docs/DEVELOPMENT-HARNESS.md` | IN-PROGRESS |
-| W32-C7 | `scripts/gen_cli_docs.py`, `docs/commands.md`, `src/docket/cli/_agents.py` | IN-PROGRESS |
+| W32-C1 | `SSD-WORKFLOW.md`: removed a script, a CI workflow and a hook that never existed | eight real `ci.yml` job names checked individually |
+| W32-C2 | the public spec index derives from disk; three versions, three missing rows corrected | a planted spec file failing the guard by name |
+| W32-C3 | the harness contract paths an external consumer reads first | `ls` on both directories |
+| W32-C4 | partial-repointer ratchet at 14; six worst converted; dead scaffolding deleted | a planted partial repointer going red |
+| W32-C5 | three false capability claims removed from the guides | `isolation.refused` traced to the live adapter |
+| W32-C6 | harness mode and the ADRs made discoverable; name collision cross-linked | anchors resolved; harness commands run |
+| W32-C7 | env-var table derived: 10 hardcoded rows replaced by 55 scanned; exit codes corrected | a planted env var failing `--check` |
 
-**Baseline at dispatch:** `cb3783c`, clean, all gates 0.
+**Three cards corrected their own briefs and were right every time** — on which agent lanes
+exist, on `DOCKET_APPROVAL_MODE` not being an environment variable, and on a guard already
+existing where the brief said none did. Each correction came from measuring rather than from
+reasoning about the instruction.
+
+**The re-measured follow-up had grown** from 16 functions across 13 modules to 20 across 15,
+which is why the board rule says a gap list decays and must be re-measured before scheduling.
+
+**Integrator note for the next wave:** a card's gates pass on the card's branch, which proves
+nothing about the merge. Merging C2 broke the agent-lane ratchet its own handoff reported green,
+and only re-running the gates on the merge result caught it.
 
 ---
 
