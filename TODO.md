@@ -13,7 +13,8 @@
 >
 > ## ◉ ACTIVE BOARD — WAVE 31 (2026-09-11) — human maintainability (Phase 25, D-36)
 >
-> Nine cards W31-C0…C8, scoped in the first section below. The measured triggers are an 8 min 12 s
+> Eleven cards W31-C0…C10, scoped in the first section below. C0–C8 were planned; C9 and
+> C10 were opened by defects the work itself surfaced. The measured triggers are an 8 min 12 s
 > default suite whose 15 slowest tests are all release/evidence checks, 35 test files that verify
 > prose or the agent's own hook scripts, `serve` tested across 19 files, 89 archaeology hits in
 > comments, and three functions over 500 lines. Decision D-36 in ROADMAP.md owns the ruling;
@@ -322,26 +323,57 @@ the function counts before/after and the duplicate list.
 
 ### W31-C5 — in-process CLI tests: `subprocess` only where the process boundary is the subject
 
-**Status:** TODO · **Size:** M (split per file) · **Owner:** — · **Depends on:** C1; parallel with C4 on disjoint files
+**Status:** DONE (2026-09-12, `5d2c5e9` + `ec0c319` merged as `dff06b4`; integrator follow-ups
+`c9d6436` and `6915baa`) · **Size:** M · **Owner:** @sonnet-c5 · **Depends on:** C1 (done)
 
-**Deterministic trigger:** at `0d3720a`, 91 `subprocess` call sites in 40 test files spawn
-`python -m docket` (≈ 0.5–1 s each) to assert output text the golden suite already pins.
+**Shipped:** the card's trigger was re-measured at HEAD first, and had already shrunk -- 38 sites
+in 18 files, not 91 in 40, because C1's lane move had taken most of them out of the default run.
+Nine files spawned `python -m docket` purely to read its output; all nine now invoke the same
+`docket.cli.app` the entry point uses through `typer.testing.CliRunner`. Assertions are untouched:
+same exit codes, same exact stdout and stderr text, same JSON shapes, confirmed by a byte-for-byte
+comparison of in-process against subprocess output for one command. Seven files keep `subprocess`
+because the process boundary is what they test: sandboxed exec, run cancellation and its
+cooperative variant, implementer worktree isolation, the diff probe, the runtime execution
+envelope (a fresh-venv wheel and sdist install) and the live workflow smoke. Two files that looked
+like candidates were neither: `test_high_risk_enforcement.py`'s references are inside monkeypatch
+and assertion strings, and `test_system_adapter.py` had already moved.
 
-**Goal:** convert every non-boundary file to `typer.testing.CliRunner` in-process; exact user
-text assertions become golden cases or JSON-shape assertions. Exclusion list (process boundary is
-the subject): `sandboxed_exec`, `run_cancellation`, `cooperative_run_cancellation`,
-`implementer_worktree_isolation`, `diff_probe`, `system_adapter`, and any file whose `SUBJECT`
-is `docket.edges.adapters.system`.
+**Sent back once, for shipping the drift the wave exists to remove.** The first pass gave each of
+the nine files its own tuple of DOCKET_HOME-derived constants and its own patch helper -- eight
+partial, independently drifting copies of `_DOCKET_HOME_PATHS`. The AST guard proves a new
+`config.py` constant reaches the canonical tuple; it cannot see eight local copies that were not
+updated, so the guard would have been defeated without ever going red. One exported
+`repoint_docket_home` helper in `tests/conftest.py` replaced all eight. It names `DOCKET_HOME`,
+`FLEET_FILE` and `core/secrets.py`'s `SECRETS_FILE`/`SECRETS_META_FILE` explicitly, each for a
+stated reason, then loops the tuple; the secrets pair binds from `DOCKET_HOME` at import rather
+than through config at call time, so a caller that does not know that detail would otherwise split
+its chosen home in two. The guard was proved, not assumed: a throwaway `DRIFT_PROBE_FILE` in
+`config.py` drove `test_the_guard_covers_every_docket_home_derived_constant` red naming exactly
+that constant, and removing it returned the guard suite to green.
 
-**Non-goals:** no change to what is asserted, only how; no golden regenerated to hide a diff.
+**The integrator found one more instance after merging** (`6915baa`): `test_data_layer.py`'s
+`oc_env` fixture repointed four constants by hand and set a `DOCKET_HOME` environment variable for
+the rest. That split worked only while the commands ran as a child process, which re-imported
+config from the environment. The conversion made the environment variable inert, so the conversion
+made this fixture worse rather than better. It now calls the shared helper, which is a strict
+superset of what it set by hand.
 
-**Owns:** the listed test files; new golden cases when text moves there. **Forbidden:** `src/`.
+**The wall-time oracle was not met, and the card is closed anyway.** Target was under 90 s. The
+suite falls from 152-162 s to 117-122 s, measured across four separate post-conversion runs plus
+one integrator run on the merged tree -- a real 25 to 30 percent cut, and short of the number.
+What remains is not `subprocess` overhead, so no further conversion buys it back; finding where the
+remaining two minutes actually go is a measurement task, not this card.
 
-**RED tests / oracles:** `test_lane_headers.py`'s no-subprocess-in-unit check passes; default
-suite wall time < 90 s on the CI runner and locally (record both); pass count unchanged.
+**Collected count unchanged at 2398** (2393 passed, 5 skipped, 0 failed) before conversion, after
+conversion, after the dedup and after the integrator's fixture fix. Full gates green on the merged
+tree: ruff check and format, mypy, the 18-case golden suite, `validate-specs.sh` 27/27, metrics in
+sync. The real `~/.docket` hashed identically either side of the whole card, and `docket doctor`
+and `docket list` agree on two pods with no fixture residue.
 
-**Validation:** full gates. **Handoff:** wall time before/after and the files left on the
-exclusion list with the reason each stays.
+**Follow-up opened:** W31-C10. The same hand-written repointing shape pre-exists across the tree;
+a census found 57 sites setting `DOCKET_HOME` directly, two of them carrying partial constant
+lists of exactly this kind. Not folded into this card, which had already been revised twice, and
+the sites are not uniform.
 
 ### W31-C6 — generated CLI reference and strict docs build
 
@@ -520,6 +552,50 @@ letter and the suite stays inside the duration guard.
 **Validation:** full gates. **Handoff:** the before/after timings at both sizes and the pattern
 that was backtracking.
 
+### W31-C10 — one way to repoint DOCKET_HOME, not fifty-six
+
+**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C5 (done)
+
+**Deterministic trigger:** on the merged tree, 56 sites across 51 test files repoint
+`_cfg.DOCKET_HOME` by hand. C5 converted eight of them to the shared `repoint_docket_home` helper
+in `tests/conftest.py`; the other 48 predate it. Two carry a partial copy of the canonical
+`_DOCKET_HOME_PATHS` tuple -- `test_install.py` and `test_portfolio_manager.py`, each with a
+`_point_at` helper listing seven of the sixteen constants plus the secrets pair. One site,
+`test_serve.py:58`, sets a `DOCKET_HOME` environment variable, which config cannot read because it
+binds its constants at import.
+
+**Why it matters:** the AST guard in `test_docket_home_isolation.py` proves that every new
+`DOCKET_HOME`-derived constant in `config.py` reaches `_DOCKET_HOME_PATHS`. It does not prove that
+every test repointing a home reads that tuple. A private partial list therefore stops tracking the
+canonical one the moment a constant is added, and the test keeps passing: the constants it forgot
+stay aimed at the autouse fixture's home, so the test runs against a home split in two and nothing
+fails. C5 shipped this exact shape once and was sent back for it, and the integrator then found a
+live instance in `test_data_layer.py` where a subprocess-to-in-process conversion had silently
+turned the environment-variable half of the split inert. This is the isolation failure that has
+already reached the developer's real `~/.docket` three times, one guard-shaped step earlier.
+
+**Goal:** every test that repoints to a home it chooses goes through `repoint_docket_home`, and a
+guard makes that true going forward rather than by inspection.
+
+**The 56 sites are not uniform -- classify before converting.** A test that sets only
+`_cfg.DOCKET_HOME` and relies on the autouse `_isolate_docket_home` fixture for everything else is
+not necessarily broken; it may never touch a derived path. A test that sets `DOCKET_HOME` plus a
+hand-picked subset is the drift shape. A test that sets `DOCKET_HOME` for a child process it then
+spawns is reading it through the environment legitimately, and must not be converted. The card's
+first output is that classification, with a count per class, before any file is edited.
+
+**Non-goals:** no assertion changes; no fixture redesign beyond the call site; no conversion of a
+site whose child process genuinely reads the environment.
+
+**Owns:** `tests/**` repointing sites and the new guard. **Forbidden:** `src/`.
+
+**RED tests / oracles:** a guard that fails on a test module setting `_cfg.DOCKET_HOME` without
+calling `repoint_docket_home` (with an explicit, justified allowlist for the child-process class),
+**proved by planting a partial repointer and watching it go red** before it is trusted. Pass count
+and collected count unchanged. The real `~/.docket` hashes identically either side of a full run.
+
+**Validation:** full gates. **Handoff:** the per-class counts, the allowlist with a reason per
+entry, and the guard's red-then-green transcript.
 ---
 
 ## ◇ WAVE 29 DEFERRED (2026-09-02, paused 2026-09-11) — adoption evidence and public release

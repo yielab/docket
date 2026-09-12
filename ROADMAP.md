@@ -15,7 +15,7 @@ portability → operability → product**. Earlier phases unblock later ones.
 **Last updated: 2026-09-11.** **Every numbered phase 0–22 and Waves 24–28 are complete. Phase 23
 remains active but paused: Wave 29 C1–C6 are done and its last card, W29-C7, was deferred on
 2026-09-11 so the repository is made maintainable before it is published further. **Phase 25 (human
-maintainability, D-36) is the active program** — Wave 31, cards W31-C0…C8, with C0–C3 sequential
+maintainability, D-36) is the active program** — Wave 31, cards W31-C0…C10, with C0–C3 sequential
 because they move every test file. Phase 24 (harness mode, D-35) and W29-C7 are both queued behind
 it.** Executable cards live in [TODO.md](TODO.md).
 
@@ -57,7 +57,7 @@ it.** Executable cards live in [TODO.md](TODO.md).
 | — | **Wave 29** (not a phase): adoption evidence and public release | ⏸ paused (2026-09-11) — C1–C6 done; C7 deferred behind Wave 31, its publication approval still standing |
 | 24 | **Harness mode (D-35)** — docket as a governed, non-interactive execution harness a plan-of-record (Tack) spawns as a subprocess | ◇ planned (2026-09-11) — Wave 30; queued behind Wave 31, since W31-C1 moves every test file it would own. Formerly gated on W29-C7 closes Phase 23 |
 | 25 | **Human maintainability (D-36)** — test lanes with a budgeted agent lane, one unit file per module, zero-archaeology comments ratcheted in CI, generated CLI/API docs, board and roadmap cut to size | ◉ **active (2026-09-11)** — Wave 31; C0–C3 sequential, then C4+ fan out; Wave 30 and W29-C7 queued behind it |
-| — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ◉ active (2026-09-11) — nine cards W31-C0…C8; the board archive half shipped the day it was scoped |
+| — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ◉ active (2026-09-11) — eleven cards W31-C0…C10; C9 and C10 opened by defects the work surfaced; the board archive half shipped the day it was scoped |
 | — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ◇ planned (2026-09-11) — five cards W30-C1…C5 on the board; C1–C3 are independent seams, C4 is the fan-in |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
@@ -448,10 +448,12 @@ file per packet.
 | W31-C2 | Five structural guards seen red then green; lane headers; one removed-commands guard; agent lane ≤ 4,000 lines | After C1; exclusive on `tests/**` headers |
 | W31-C3 | Zero archaeology, docstring budget, committed baseline + ratchet guard | After C2; comment/docstring lines only |
 | W31-C4 | One unit file per module (packets: serve, runs, memory, archetypes, tools, pipeline, history-named files) | After C3; per-module, parallel with C5/W30 on disjoint files |
-| W31-C5 | `CliRunner` in-process; `subprocess` only at process boundaries; default suite < 90 s | After C1; per-file |
+| W31-C5 | `CliRunner` in-process; `subprocess` only at process boundaries. Nine files converted, seven kept at the boundary, one shared `repoint_docket_home` helper replacing eight partial copies. **Suite 152-162 s to 117-122 s: the < 90 s target was not met and the card closed anyway**, since what remains is not `subprocess` overhead | After C1; per-file |
 | W31-C6 | `gen_cli_docs.py --check`, `mkdocs build --strict`, deep-dive docs folded, hand-written link tests retired | After C0; docs/scripts only |
 | W31-C7 | `split_board.py` and the `docs/cycles-ended/` archive (shipped); remaining: TODO ≤ 200 after W30/W31 close, ROADMAP ≤ 500, ADRs, README ≤ 150 | Integrator; when no other card is open |
 | W31-C8 | `run_agent_turn`, `dispatch_task`, `_execute_unit` split into named phases | After C4; one function per branch; split into three cards before claiming |
+| W31-C9 | `trace.redact` backtracking bounded; 40,000 characters from 10.68 s to 0.03 s, redacted set unchanged | Opened by a defect W31-C2 hit and worked around |
+| W31-C10 | One shared way to repoint `DOCKET_HOME`, guarded. 56 hand-written sites across 51 files, two carrying partial constant lists | After C5; classify the sites before converting any |
 
 ---
 
