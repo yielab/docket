@@ -144,8 +144,9 @@ This specification does NOT cover:
    built-in archetypes (`core/archetypes.py`'s `BUILTIN_ARCHETYPES`) whose rendered SOUL.md and
    AGENTS.md are **byte-identical** to the pre-W-6 hand-written generators, for any
    project/codebase/stack/description input. This is enforced by
-   `tests/integration/test_legacy_role_parity.py`, which embeds a frozen, independent copy of the
-   pre-W-6 generator functions and diffs them against the live archetype-driven renderer.
+   `tests/integration/test_pod_role_workspace_parity.py`, which embeds a frozen, independent
+   copy of the pre-W-6 generator functions and diffs them against the live archetype-driven
+   renderer.
 2. The four legacy archetypes **MUST** carry a `policyRole` override equal to their historical
    policy-table row (`lead`→`manager`, `implementer`→`programmer`, `reviewer`→`reviewer`,
    `tester`→`tester`) — see "Role→model policy integration" below. Their `modelClass` **MUST**
