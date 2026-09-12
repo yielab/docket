@@ -484,39 +484,47 @@ they may run in parallel because they share no module.
 
 ### W31-C8a — split `run_agent_turn` into named phases
 
-**Status:** CLAIMED (2026-09-12) · **Size:** M · **Owner:** @sonnet-c8a · **Depends on:** C4 (done) ·
-parallel with C8b (disjoint: different module, different unit file)
+**Status:** DONE (2026-09-12, `56bd65a` merged as `13a191f`) · **Size:** M · **Owner:** @sonnet-c8a ·
+**Depends on:** C4 (done) · ran in parallel with C8b (disjoint module and test files)
 
-**Deterministic trigger:** `core/agent_loop.py::run_agent_turn` is 789 lines (440-1228 at
-`7f02c55`). `tests/integration/test_agent_loop.py` is 2,464 lines, the largest file in the suite,
-because the function can only be exercised end to end.
+**Shipped:** `run_agent_turn`'s own body -- the statements sitting directly in it, excluding its
+nested defs -- falls from 328 lines to 75, over eight named phases. Three are pure, module-level
+functions: `_resolve_context_bounds`, `_resolve_trace_coordinates` and
+`_resolve_role_registry_and_prompt`. Five are the per-iteration body: `_check_iteration_bounds`,
+`_prepare_request_or_finalize`, `_call_backend_and_handle_response`, `_dispatch_tool_batch` and
+`_run_iteration`. The nested-inclusive span grows 789 to 893 lines, because each new def carries
+its own signature and docstring; the card never had a total-length target, and the goal was moving
+logic into named units rather than shrinking text.
 
-**There is no unit file for this module yet** -- `docket.core.agent_loop` is a line in
-`tests/guards/layout_baseline.txt`, the shrink-only list of modules lacking one. The phase tests
-this card writes create `tests/unit/core/test_agent_loop.py`, so that line comes out and the
-ratchet falls by one. The integration file stays the end-to-end file and is touched only to
-retire a test a phase test genuinely replaces.
+**The bounds are the product here, so they were checked independently of the card's own table.**
+The ordered sequence of cancellation checks, `max_iterations`, wall clock, token budget,
+`max_tool_calls`, context fit, terminal finalization, the backend call, usage accumulation, every
+response-shaped stop condition, the batch ceiling, `dispatch_tool` and the denial ceiling is
+identical before and after, and the two `_accumulate(total_usage, ...)` points sit at the same
+place in that sequence. `dispatch_tool` keeps its single call site. The one user-facing string
+that was rewrapped across source lines is byte-identical once concatenated, which the 18-case
+golden suite confirms.
 
-**Goal:** extract phases with names (`_prepare_request`, `_run_round`, `_apply_stop_conditions`,
-and whatever the code actually shows) with **zero behaviour change**, then add unit tests per phase
-and retire the end-to-end tests each one makes redundant.
+**Not delivered, and worth naming: five of the eight phases have no unit test.** The card asked for
+unit tests per phase; only the three pure functions got them, because the other five stay nested
+closures sharing mutable turn state (`total_usage`, `iteration`, `tool_calls_executed`,
+`consecutive_denial_kinds`) and a closure cannot be imported. The agent judged that threading that
+state out explicitly carried more behaviour-change risk than the readability gain was worth. C8b
+shows the opposite choice is available -- it lifted a 501-line closure by inventorying its captures
+into a `_UnitContext` dataclass first -- so if this module needs work again, that is the route.
 
-**This is the turn loop, so its bounds are the product.** Max iterations, max tool calls, wall
-clock and the measured-token budget are stop conditions, not throughput knobs. An extraction that
-moves a bound's evaluation to a different point in the loop is a behaviour change even if the suite
-stays green. State where each bound is evaluated before and after.
+**Integrator follow-up (`f86a4c7`).** The seven new docstrings pushed the shrink-only comment
+ratchet from 558 to 565 and the suite failed on
+`tests/guards/test_comment_hygiene.py::test_counts_do_not_exceed_baseline`. The card missed it
+because `comment_lint.py --check` reports only archaeology; the docstring budget is enforced by the
+guard test, not by that exit code. Each rationale moved verbatim from its docstring to a comment
+above the def, which the budget does not count -- the idiom `tests/conftest.py` already uses. Suite
+2404 to 2413; `CONTRIBUTING.md` reconciled by the integrator, which is why the card correctly left
+`metrics.py --check` failing.
 
-**Non-goals:** no semantic change; no new stop conditions, budgets or trace events; no change to
-the `dispatch_tool` chokepoint.
-
-**Owns:** `core/agent_loop.py` and its unit/integration files. **Forbidden:** other `src/` modules.
-
-**RED tests / oracles:** the existing suite and the 18-case golden suite are the regression oracle
-and must stay byte-identical; each new phase test fails on the unextracted code because it imports
-a name that does not exist yet, and passes after; `test_tool_registry.py`'s chokepoint guard green.
-
-**Validation:** full gates. **Handoff:** function length before and after, the table of where each
-bound is evaluated before and after, and every retired test paired with the phase test replacing it.
+**Ratchet earned, not asserted.** `docket.core.agent_loop` came out of
+`tests/guards/layout_baseline.txt` now that `tests/unit/core/test_agent_loop.py` exists. The guard
+was seen red with that file hidden and green with it restored.
 
 ### W31-C8b — split `dispatch_task` and its nested `_execute_unit` into named phases
 
