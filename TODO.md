@@ -629,13 +629,29 @@ owned. **C8b has merged, so that contention is gone.** This card is also disjoin
 may run beside it. Re-measure the 56 sites at HEAD before starting: C8b touched several of
 these files.
 
-**Deterministic trigger:** on the merged tree, 56 sites across 51 test files repoint
-`_cfg.DOCKET_HOME` by hand. C5 converted eight of them to the shared `repoint_docket_home` helper
-in `tests/conftest.py`; the other 48 predate it. Two carry a partial copy of the canonical
-`_DOCKET_HOME_PATHS` tuple -- `test_install.py` and `test_portfolio_manager.py`, each with a
-`_point_at` helper listing seven of the sixteen constants plus the secrets pair. One site,
-`test_serve.py:58`, sets a `DOCKET_HOME` environment variable, which config cannot read because it
-binds its constants at import.
+**Deterministic trigger, re-measured at `60cad4d`:** 56 sites across 51 test files repoint
+`_cfg.DOCKET_HOME` by hand, and 10 files now call the shared `repoint_docket_home` helper in
+`tests/conftest.py`. One site, `test_serve.py:58`, sets a `DOCKET_HOME` environment variable, which
+config cannot read because it binds its constants at import.
+
+**The partial-copy count in the original card was wrong by an order of magnitude, and the
+correction is the point.** It named two files. There are **21**, each with its own private
+`_point_at` helper, and **not one of them covers all sixteen** constants in `_DOCKET_HOME_PATHS`:
+
+| constants covered | files |
+|---|---|
+| 0 of 16 | `test_cooperative_run_cancellation.py` |
+| 1 of 16 | `test_serve__traces_cursor.py` |
+| 3 of 16 | `test_serve_tasks_endpoint.py` |
+| 4 of 16 | `test_diff_probe.py`, `test_dispatch.py`, `test_handoff_artifacts.py`, `test_hop_carryover.py`, `test_install.py`, `test_portfolio_manager.py`, `test_verify_gate_cwd_resolution.py` |
+| 5 of 16 | `test_pod_resources.py`, `test_dispatch_heartbeat_and_conversation_sync.py`, `test_doctor_ledger_drift.py`, `test_autopause.py`, `test_pod_roles_from_archetypes.py`, `test_mcp_server.py`, `test_mcp_transport_contract.py` |
+| 6 of 16 | `test_dispatch_run_records.py`, `test_pod_blueprint_provisioning.py` |
+| 7 of 16 | `test_pod_provisioning.py` |
+| 8 of 16 | `test_serve_pods_endpoint.py` |
+
+Every one of these tests runs against a home split in two: the constants its `_point_at` forgot
+stay aimed at the autouse fixture's home. That is not a latent risk, it is the current state of
+the suite, and it is exactly why an inspection-time fix is worthless without the guard.
 
 **Why it matters:** the AST guard in `test_docket_home_isolation.py` proves that every new
 `DOCKET_HOME`-derived constant in `config.py` reaches `_DOCKET_HOME_PATHS`. It does not prove that
