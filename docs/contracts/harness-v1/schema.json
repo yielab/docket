@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "definitions": {
+    "HarnessEvent": {
+      "description": "One streamed line: docket's trace vocabulary inside a versioned envelope.",
+      "properties": {
+        "event": {
+          "additionalProperties": true,
+          "title": "Event",
+          "type": "object"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "string"
+        },
+        "v": {
+          "default": "1.0.0",
+          "title": "V",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "seq",
+        "ts",
+        "event"
+      ],
+      "title": "HarnessEvent",
+      "type": "object"
+    },
+    "HarnessResult": {
+      "$defs": {
+        "BlockedInfo": {
+          "description": "Which policy rule stopped the run, when ``status`` is ``\"blocked\"``.",
+          "properties": {
+            "call_id": {
+              "default": "",
+              "title": "Call Id",
+              "type": "string"
+            },
+            "denial_kind": {
+              "default": "",
+              "title": "Denial Kind",
+              "type": "string"
+            },
+            "policy_id": {
+              "default": "",
+              "title": "Policy Id",
+              "type": "string"
+            },
+            "reason": {
+              "default": "",
+              "title": "Reason",
+              "type": "string"
+            },
+            "tool": {
+              "default": "",
+              "title": "Tool",
+              "type": "string"
+            }
+          },
+          "title": "BlockedInfo",
+          "type": "object"
+        },
+        "ModelInfo": {
+          "description": "What the caller asked for versus what actually answered the last request.",
+          "properties": {
+            "requested": {
+              "default": "",
+              "title": "Requested",
+              "type": "string"
+            },
+            "served": {
+              "default": "",
+              "title": "Served",
+              "type": "string"
+            }
+          },
+          "title": "ModelInfo",
+          "type": "object"
+        },
+        "UsageInfo": {
+          "description": "Measured token counts for the whole run -- never a dollar figure.",
+          "properties": {
+            "cached_tokens": {
+              "default": 0,
+              "title": "Cached Tokens",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "default": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "default": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            },
+            "turns": {
+              "default": 0,
+              "title": "Turns",
+              "type": "integer"
+            }
+          },
+          "title": "UsageInfo",
+          "type": "object"
+        }
+      },
+      "description": "The one terminal object a harness run ends with, on stdout, once.",
+      "properties": {
+        "blocked": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlockedInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cost_usd": {
+          "default": null,
+          "title": "Cost Usd",
+          "type": "null"
+        },
+        "error": {
+          "default": "",
+          "title": "Error",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelInfo"
+        },
+        "run_state": {
+          "default": "",
+          "title": "Run State",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "blocked",
+            "cancelled",
+            "refused"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stop_reason": {
+          "default": "",
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/UsageInfo"
+        },
+        "v": {
+          "default": "1.0.0",
+          "title": "V",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "status",
+        "model",
+        "usage"
+      ],
+      "title": "HarnessResult",
+      "type": "object"
+    }
+  },
+  "title": "docket harness contract",
+  "version": "1.0.0"
+}
