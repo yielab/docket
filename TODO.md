@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ◉ NO ACTIVE WAVE — one card remains claimable
+> ## ◉ WAVE 32 ACTIVE (2026-09-12) — documentation truth pass
 >
 > **Wave 30 closed on 2026-09-12**, completing Phase 24, and is archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). `docket harness run` and
@@ -81,6 +81,58 @@
 short-lived card branch or isolated worktree per task and integrate it into `main` without rewriting
 history. `platform` may remain as a synchronized historical/integration ref, but it is not a second
 release source.
+
+---
+
+## ◇ WAVE 32 ACTIVE (2026-09-12) — documentation truth pass and two deferred follow-ups
+
+**Why this wave exists.** Phases 24 and 25 both completed on 2026-09-12 and neither closed
+with a documentation sweep. A phase that changes the test layout and adds a user-facing
+command leaves drift by construction. Four parallel read-only audits over disjoint doc
+groups measured it before anything was scheduled; the full record with per-finding evidence
+is in the integrator's plan file.
+
+**What the audits found, in one line each.** `SSD-WORKFLOW.md` documents a script
+(`scripts/spec-coverage.sh`) that has never existed, plus a CI workflow and a pre-commit
+hook built around it. `specs/README.md`'s index is stale in three versions, is missing three
+whole specs, and `validate-specs.sh` passes anyway because it never compares the index to
+the specs. `docs/QUICK-START-DOCKET.md` still advertises Telegram "conversational dispatch"
+— the exact claim found in README.md on 2026-08-05 as W19-5, corrected there and never
+swept from this file. `docs/SECURITY-SIMPLE.md` says workspace isolation is unwired, which
+W18-3 closed. `scripts/gen_cli_docs.py`'s env-var table is hardcoded, so its `--check`
+proves only that the file matches a stale template.
+
+**Two surfaces carry the same wrong path**, telling an external consumer the harness NDJSON
+fixtures live under `docs/contracts/harness-v1/`; that directory holds only `schema.json`.
+That is what an unguarded index produces, and it is why C2 ships a guard rather than a fix.
+
+**The re-measured follow-up moved.** Wave 31 recorded 16 functions across 13 modules that
+hand-roll `DOCKET_HOME`-derived constants without claiming a home, and said to re-measure
+before scheduling. Re-measured: **20 across 15**. A gap list decays, and this one decayed
+upward.
+
+**Scheduling:** seven cards, seven isolated worktrees, split so no two cards write the same
+file. C2, C4 and C7 are guard work and each must plant the drift and watch the guard go red
+before its claim is believed — C7 especially, whose entire subject is a check that passed
+while being wrong.
+
+**Integrator keeps:** `README.md`, `ROADMAP.md`, `TODO.md`, `CLAUDE.md`, and every metric
+roll-up. `CLAUDE.md` is gitignored and was fixed directly: two invariant tests were cited at
+paths deleted in W31-C1, so an agent asked to confirm the tool chokepoint or the Telegram
+inbound-only guarantee would have hit a missing file and could reasonably have concluded the
+guard was gone.
+
+| Card | Owns (exclusive) | Status |
+| --- | --- | --- |
+| W32-C1 | `SSD-WORKFLOW.md` | IN-PROGRESS |
+| W32-C2 | `specs/README.md` + spec-index script and guard | IN-PROGRESS |
+| W32-C3 | `CHANGELOG.md`, `CONTRIBUTING.md` | IN-PROGRESS |
+| W32-C4 | partial-repointer guard + baseline, offending test modules, dead scaffolding | IN-PROGRESS |
+| W32-C5 | `docs/QUICK-START-DOCKET.md`, `docs/SECURITY-SIMPLE.md`, `docs/AGENT-TEAMS.md` | IN-PROGRESS |
+| W32-C6 | `docs/README.md`, `docs/DOCKET.md`, `docs/troubleshooting.md`, `docs/DEVELOPMENT-HARNESS.md` | IN-PROGRESS |
+| W32-C7 | `scripts/gen_cli_docs.py`, `docs/commands.md`, `src/docket/cli/_agents.py` | IN-PROGRESS |
+
+**Baseline at dispatch:** `cb3783c`, clean, all gates 0.
 
 ---
 
