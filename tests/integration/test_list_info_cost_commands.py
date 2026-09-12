@@ -1,18 +1,43 @@
 """list, info, cost — fully-ported read-only commands.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-to a temp directory so tests are hermetic and never touch the real ~/.docket.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory so tests are hermetic and never touch
+the real ~/.docket.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+from typer.testing import CliRunner
+
+import docket.config as _cfg
+from docket.cli import app as _app
+
 SUBJECT = "list info cost commands"
+
+_runner = CliRunner()
+
+# Every DOCKET_HOME-derived config constant this suite's commands can touch.
+_HOME_ATTRS: tuple[tuple[str, str], ...] = (
+    ("DOCKET_HOME", ""),
+    ("WORKSPACES_DIR", "workspaces"),
+    ("PROJECTS_DIR", "workspaces/projects"),
+    ("FLEET_FILE", "fleet.json"),
+    ("SESSIONS_DIR", "sessions"),
+    ("TRACES_DIR", "traces"),
+    ("AUDIT_LOG", "audit.log"),
+    ("MODEL_REGISTRY_FILE", "docket-models.json"),
+)
+
+
+def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
+    for attr, leaf in _HOME_ATTRS:
+        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,12 +62,6 @@ FLEET_CONFIG: dict[str, Any] = {
     "defaults": {"model": ""},
     "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
-
-
-def _make_env(oc_dir: Path) -> dict[str, str]:
-    """Build subprocess env with DOCKET_HOME overridden to a temp dir, or a
-    real subprocess would fall back to the real ~/.docket."""
-    return {**os.environ, "DOCKET_HOME": str(oc_dir)}
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
@@ -96,16 +115,11 @@ def _write_docket_session(
 
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    """Run `python -m docket <args>` with DOCKET_HOME overridden."""
-    import subprocess
-
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        capture_output=True,
-        text=True,
-        env=_make_env(oc_dir),
-    )
-    return result.returncode, result.stdout, result.stderr
+    """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
+    with pytest.MonkeyPatch.context() as mp:
+        _patch_home(mp, oc_dir)
+        result = _runner.invoke(_app, args)
+    return result.exit_code, result.stdout, result.stderr
 
 
 # ---------------------------------------------------------------------------

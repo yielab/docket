@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 SUBJECT = "docket.core.models"
+
+_runner = CliRunner()
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -462,23 +462,17 @@ class TestFleet:
 
 
 class TestJsonBridge:
-    """Test the _json CLI command end-to-end via subprocess."""
+    """Test the _json CLI command end-to-end, in-process via CliRunner."""
 
     @pytest.fixture(autouse=True)
-    def _patch_env(self, oc_env: Path, tmp_path: Path) -> None:
-        os.environ["DOCKET_HOME"] = str(oc_env)
+    def _use_oc_env(self, oc_env: Path) -> None:
+        """Every test below runs against the ``oc_env`` fixture's isolated home."""
 
     def _run(self, *args: str) -> tuple[int, str, str]:
-        result = subprocess.run(
-            [sys.executable, "-m", "docket", "_json", *args],
-            capture_output=True,
-            text=True,
-            env={
-                **os.environ,
-                "DOCKET_HOME": os.environ["DOCKET_HOME"],
-            },
-        )
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
+        from docket.cli import app
+
+        result = _runner.invoke(app, ["_json", *args])
+        return result.exit_code, result.stdout.strip(), result.stderr.strip()
 
     def test_meta_get(self) -> None:
         rc, out, _ = self._run("meta-get", "myshop", "name")

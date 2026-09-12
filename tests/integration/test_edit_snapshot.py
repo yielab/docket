@@ -1,20 +1,39 @@
 """edit, snapshot commands.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner
+
+import docket.config as _cfg
+from docket.cli import app as _app
 
 SUBJECT = "edit snapshot"
+
+_runner = CliRunner()
+
+# Every DOCKET_HOME-derived config constant this suite's commands can touch.
+_HOME_ATTRS: tuple[tuple[str, str], ...] = (
+    ("DOCKET_HOME", ""),
+    ("WORKSPACES_DIR", "workspaces"),
+    ("PROJECTS_DIR", "workspaces/projects"),
+    ("FLEET_FILE", "fleet.json"),
+    ("SESSIONS_DIR", "sessions"),
+)
+
+
+def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
+    for attr, leaf in _HOME_ATTRS:
+        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -43,13 +62,6 @@ FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _make_env(oc_dir: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(oc_dir),
-    }
-
-
 def _setup_agent(
     tmp_path: Path,
     agent_id: str = "myshop",
@@ -69,17 +81,19 @@ def _setup_agent(
 
 def _run(
     args: list[str],
-    env: dict[str, str],
+    home: Path,
     stdin_text: str = "",
+    env: dict[str, str] | None = None,
+    unset: list[str] | None = None,
 ) -> tuple[int, str, str]:
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        input=stdin_text,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        _patch_home(mp, home)
+        for key in unset or ():
+            mp.delenv(key, raising=False)
+        for key, value in (env or {}).items():
+            mp.setenv(key, value)
+        result = _runner.invoke(_app, args, input=stdin_text)
+    return result.exit_code, result.stdout, result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -90,30 +104,26 @@ def _run(
 class TestCmdEdit:
     def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        env = _make_env(oc_dir)
-        rc, _, err = _run(["edit", "ghost"], env)
+        rc, _, err = _run(["edit", "ghost"], oc_dir)
         assert rc == 1
         assert "ghost" in err
 
     def test_no_files_exits_0(self, tmp_path: Path) -> None:
         # Workspace exists but has no SOUL/AGENTS/etc.
         oc_dir = _setup_agent(tmp_path)
-        env = _make_env(oc_dir)
-        rc, out, err = _run(["edit", "myshop"], env)
+        rc, out, err = _run(["edit", "myshop"], oc_dir)
         assert rc == 0
         assert "no workspace files" in (out + err).lower()
 
     def test_opens_files_with_editor(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md", "AGENTS.md"])
-        env = {**_make_env(oc_dir), "EDITOR": "true"}
-        rc, out, _ = _run(["edit", "myshop"], env)
+        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"EDITOR": "true"})
         assert rc == 0
         assert "Edits saved" in out
 
     def test_lists_files_before_opening(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md", "HEARTBEAT.md"])
-        env = {**_make_env(oc_dir), "EDITOR": "true"}
-        rc, out, _ = _run(["edit", "myshop"], env)
+        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"EDITOR": "true"})
         assert rc == 0
         assert "SOUL.md" in out
         assert "HEARTBEAT.md" in out
@@ -121,24 +131,24 @@ class TestCmdEdit:
     def test_uses_visual_when_no_editor(self, tmp_path: Path) -> None:
         # VISUAL is the fallback when EDITOR is unset
         oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md"])
-        env = {**_make_env(oc_dir), "VISUAL": "true"}
-        env.pop("EDITOR", None)
-        rc, out, _ = _run(["edit", "myshop"], env)
+        rc, out, _ = _run(["edit", "myshop"], oc_dir, env={"VISUAL": "true"}, unset=["EDITOR"])
         assert rc == 0
         assert "Edits saved" in out
 
     def test_missing_editor_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path, workspace_files=["SOUL.md"])
-        env = {**_make_env(oc_dir), "EDITOR": "nonexistent_editor_xyz_99"}
-        env.pop("VISUAL", None)
-        rc, _, err = _run(["edit", "myshop"], env)
+        rc, _, err = _run(
+            ["edit", "myshop"],
+            oc_dir,
+            env={"EDITOR": "nonexistent_editor_xyz_99"},
+            unset=["VISUAL"],
+        )
         assert rc == 1
         assert "not found" in err.lower()
 
     def test_non_tty_without_agent_id_exits_1(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        env = _make_env(oc_dir)
-        rc, _, err = _run(["edit"], env)
+        rc, _, err = _run(["edit"], oc_dir)
         assert rc == 1
         assert "required" in err.lower()
 
@@ -151,8 +161,7 @@ class TestCmdEdit:
             json.dumps({"kind": "specialist", "name": "programmer"})
         )
         (spec_ws / "SOUL.md").write_text("# Programmer\nI write code.\n")
-        env = {**_make_env(oc_dir), "EDITOR": "true"}
-        rc, out, _ = _run(["edit", "programmer"], env)
+        rc, out, _ = _run(["edit", "programmer"], oc_dir, env={"EDITOR": "true"})
         assert rc == 0
         assert "Edits saved" in out
 
@@ -165,7 +174,7 @@ class TestCmdEdit:
 class TestCmdSnapshot:
     def test_json_output_has_required_keys(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         for key in ("timestamp", "gateway", "channels", "agents", "totalCostUsd"):
@@ -173,7 +182,7 @@ class TestCmdSnapshot:
 
     def test_includes_project_agent(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
@@ -181,7 +190,7 @@ class TestCmdSnapshot:
 
     def test_agent_entry_structure(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
@@ -201,7 +210,7 @@ class TestCmdSnapshot:
 
     def test_bindings_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         agent = next(a for a in data["agents"] if a["id"] == "myshop")
@@ -211,7 +220,7 @@ class TestCmdSnapshot:
 
     def test_channels_list(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert "telegram" in data["channels"]
@@ -219,7 +228,7 @@ class TestCmdSnapshot:
     def test_output_to_file(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         out_file = tmp_path / "snap.json"
-        rc, stdout, _ = _run(["snapshot", "--output", str(out_file)], _make_env(oc_dir))
+        rc, stdout, _ = _run(["snapshot", "--output", str(out_file)], oc_dir)
         assert rc == 0
         assert "Snapshot written" in stdout
         data = json.loads(out_file.read_text())
@@ -228,7 +237,7 @@ class TestCmdSnapshot:
     def test_output_file_shorthand(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         out_file = tmp_path / "snap2.json"
-        rc, _, _ = _run(["snapshot", "-o", str(out_file)], _make_env(oc_dir))
+        rc, _, _ = _run(["snapshot", "-o", str(out_file)], oc_dir)
         assert rc == 0
         assert out_file.exists()
 
@@ -239,7 +248,7 @@ class TestCmdSnapshot:
         (spec_ws / ".docket-meta.json").write_text(
             json.dumps({"kind": "specialist", "name": "Programmer"})
         )
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
@@ -247,7 +256,7 @@ class TestCmdSnapshot:
 
     def test_specialist_not_included_when_no_workspace(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         ids = [a["id"] for a in data["agents"]]
@@ -255,7 +264,7 @@ class TestCmdSnapshot:
 
     def test_total_cost_usd_is_float(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert isinstance(data["totalCostUsd"], float)
@@ -264,7 +273,7 @@ class TestCmdSnapshot:
         import re
 
         oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["snapshot"], _make_env(oc_dir))
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", data["timestamp"])
@@ -273,13 +282,7 @@ class TestCmdSnapshot:
         # No fleet.json at all -- channels, bindings, and agents must all default empty.
         oc_dir = tmp_path / ".docket"
         oc_dir.mkdir()
-        rc, out, _ = _run(
-            ["snapshot"],
-            {
-                **os.environ,
-                "DOCKET_HOME": str(oc_dir),
-            },
-        )
+        rc, out, _ = _run(["snapshot"], oc_dir)
         assert rc == 0
         data = json.loads(out)
         assert data["agents"] == []
@@ -295,6 +298,5 @@ class TestCmdSnapshot:
 def test_wave3a_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
     """edit and snapshot must NOT fall through to Bash (exit 127)."""
     oc_dir = _setup_agent(tmp_path)
-    env = {**_make_env(oc_dir), "EDITOR": "true"}
-    rc, _, _ = _run(cmd, env)
+    rc, _, _ = _run(cmd, oc_dir, env={"EDITOR": "true"})
     assert rc != 127

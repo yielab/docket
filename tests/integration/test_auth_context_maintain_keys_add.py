@@ -1,21 +1,48 @@
 """CLI tests: auth, context, maintain, keys, add.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
-Agent registration is seeded via fleet.json.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory. Agent registration is seeded via
+fleet.json.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner
+
+import docket.config as _cfg
+from docket.cli import app as _app
+from docket.core import secrets as _secrets_mod
 
 SUBJECT = "auth context maintain keys add"
+
+_runner = CliRunner()
+
+# Every DOCKET_HOME-derived config constant this suite's commands can touch.
+_HOME_ATTRS: tuple[tuple[str, str], ...] = (
+    ("DOCKET_HOME", ""),
+    ("WORKSPACES_DIR", "workspaces"),
+    ("PROJECTS_DIR", "workspaces/projects"),
+    ("FLEET_FILE", "fleet.json"),
+    ("TRACES_DIR", "traces"),
+    ("AUDIT_LOG", "audit.log"),
+    ("SESSIONS_DIR", "sessions"),
+    ("MODEL_REGISTRY_FILE", "docket-models.json"),
+)
+
+
+def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
+    for attr, leaf in _HOME_ATTRS:
+        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
+    # core/secrets.py binds SECRETS_FILE/SECRETS_META_FILE from DOCKET_HOME at
+    # import time, not through _cfg at call time, so they need their own patch.
+    mp.setattr(_secrets_mod, "SECRETS_FILE", home / "secrets.json", raising=True)
+    mp.setattr(_secrets_mod, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -38,28 +65,21 @@ META: dict[str, Any] = {
 }
 
 
-def _make_env(home: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(home),
-    }
-
-
 def _run(
     args: list[str],
-    env: dict[str, str],
+    home: Path,
     stdin_text: str = "",
     cwd: Path | None = None,
+    env: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        input=stdin_text,
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=cwd,
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        _patch_home(mp, home)
+        for key, value in (env or {}).items():
+            mp.setenv(key, value)
+        if cwd is not None:
+            mp.chdir(cwd)
+        result = _runner.invoke(_app, args, input=stdin_text)
+    return result.exit_code, result.stdout, result.stderr
 
 
 def _setup_agent(
@@ -120,14 +140,14 @@ def _setup_bare(tmp_path: Path) -> Path:
 class TestCmdAuth:
     def test_status_no_profiles_file(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["auth"], _make_env(home))
+        rc, out, err = _run(["auth"], home)
         assert rc == 0
         combined = out + err
         assert "no provider api keys stored" in combined.lower()
 
     def test_unknown_subcommand_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["auth", "foobar"], _make_env(home))
+        rc, out, err = _run(["auth", "foobar"], home)
         assert rc == 1
         combined = out + err
         assert "unknown" in combined.lower() or "usage" in combined.lower() or "foobar" in combined
@@ -138,8 +158,7 @@ class TestCmdAuth:
         # no docket-native replacement exists (see cli/_keys.py's run_auth /
         # _AUTH_GONE_MESSAGE).
         home = _setup_bare(tmp_path)
-        env = {**_make_env(home), "PATH": "/nonexistent"}
-        rc, out, err = _run(["auth", "login"], env)
+        rc, out, err = _run(["auth", "login"], home, env={"PATH": "/nonexistent"})
         assert rc == 1
         combined = out + err
         assert "no docket-native provider-auth flow exists" in combined.lower()
@@ -154,20 +173,20 @@ class TestCmdAuth:
 class TestCmdContext:
     def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["context", "nonexistent-agent"], _make_env(home))
+        rc, out, err = _run(["context", "nonexistent-agent"], home)
         assert rc == 1
         combined = out + err
         assert "not found" in combined.lower() or "nonexistent-agent" in combined
 
     def test_show_exits_0_and_shows_recent_activity(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, _err = _run(["context", "test-agent", "show"], _make_env(home))
+        rc, out, _err = _run(["context", "test-agent", "show"], home)
         assert rc == 0
         assert "Recent Activity" in out
 
     def test_project_shows_metadata(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["context", "test-agent", "project"], _make_env(home))
+        rc, out, err = _run(["context", "test-agent", "project"], home)
         assert rc == 0
         combined = out + err
         assert (
@@ -185,14 +204,14 @@ class TestCmdContext:
 class TestCmdMaintain:
     def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["maintain", "nonexistent-agent"], _make_env(home))
+        rc, out, err = _run(["maintain", "nonexistent-agent"], home)
         assert rc == 1
         combined = out + err
         assert "not found" in combined.lower() or "nonexistent-agent" in combined
 
     def test_check_on_healthy_workspace(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "check"], _make_env(home))
+        rc, out, err = _run(["maintain", "test-agent", "check"], home)
         assert rc == 0
         combined = out + err
         assert "healthy" in combined.lower() or "ok" in combined.lower()
@@ -204,35 +223,35 @@ class TestCmdMaintain:
         executable.write_text("#!/bin/sh\n")
         executable.chmod(0o755)
 
-        rc, _out, _err = _run(["maintain", "test-agent", "check"], _make_env(home))
+        rc, _out, _err = _run(["maintain", "test-agent", "check"], home)
 
         assert rc == 0
         assert executable.stat().st_mode & 0o777 == 0o755
 
     def test_clean_non_tty_cancelled(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["maintain", "test-agent", "clean"], _make_env(home))
+        rc, out, err = _run(["maintain", "test-agent", "clean"], home)
         assert rc == 0
         combined = out + err
         assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
 
     def test_reset_non_tty_cancelled(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path, with_memory=True)
-        rc, out, err = _run(["maintain", "test-agent", "reset"], _make_env(home))
+        rc, out, err = _run(["maintain", "test-agent", "reset"], home)
         assert rc == 0
         combined = out + err
         assert "cancelled" in combined.lower() or "non-interactive" in combined.lower()
 
     def test_sessions_no_sessions_dir(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "sessions"], _make_env(home))
+        rc, out, err = _run(["maintain", "test-agent", "sessions"], home)
         assert rc == 0
         combined = out + err
         assert "no session storage found" in combined.lower()
 
     def test_rebuild_non_tty_aborts(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        _rc, out, err = _run(["maintain", "test-agent", "rebuild"], _make_env(home))
+        _rc, out, err = _run(["maintain", "test-agent", "rebuild"], home)
         # Should either exit 0 (with cancel message) or 1
         combined = out + err
         assert "confirmation failed" in combined.lower() or "aborted" in combined.lower()
@@ -255,8 +274,9 @@ class TestCmdMaintain:
         log_path = ws / "memory" / f"{today}.md"
         assert log_path.is_file()
 
-        env = {**_make_env(home), "PATH": "/nonexistent"}
-        rc, out, err = _run(["maintain", "test-agent", "distill"], env)
+        rc, out, err = _run(
+            ["maintain", "test-agent", "distill"], home, env={"PATH": "/nonexistent"}
+        )
 
         assert rc == 1
         combined = (out + err).lower()
@@ -269,7 +289,7 @@ class TestCmdMaintain:
 
     def test_distill_subcommand_listed_in_unknown_mode_message(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, err = _run(["maintain", "test-agent", "bogus"], _make_env(home))
+        rc, out, err = _run(["maintain", "test-agent", "bogus"], home)
         assert rc == 1
         combined = out + err
         assert "distill" in combined.lower()
@@ -288,7 +308,7 @@ class TestCmdKeys:
 
     def test_list_with_no_secrets(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["keys", "list"], _make_env(home))
+        rc, out, err = _run(["keys", "list"], home)
         assert rc == 0
         combined = out + err
         assert (
@@ -302,7 +322,7 @@ class TestCmdKeys:
         self._write_secrets(
             home, {"ANTHROPIC_API_KEY": "sk-ant-api03-ABC123456789abcdefghijklmnopqrstuvwxyz"}
         )
-        rc, out, _err = _run(["keys", "list"], _make_env(home))
+        rc, out, _err = _run(["keys", "list"], home)
         assert rc == 0
         assert "ANTHROPIC_API_KEY" in out
         # Should show masked value (not the full key)
@@ -311,7 +331,7 @@ class TestCmdKeys:
 
     def test_add_requires_name(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["keys", "add"], _make_env(home))
+        rc, out, err = _run(["keys", "add"], home)
         assert rc == 1
         combined = out + err
         assert (
@@ -326,7 +346,7 @@ class TestCmdKeys:
         self._write_secrets(
             home, {"ANTHROPIC_API_KEY": "sk-ant-valid-key-abcdefghijklmnopqrstuvwxyz0123456"}
         )
-        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], _make_env(home))
+        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], home)
         assert rc == 0
         combined = out + err
         assert "✓" in combined or "valid" in combined.lower() or "ok" in combined.lower()
@@ -335,7 +355,7 @@ class TestCmdKeys:
         home = _setup_bare(tmp_path)
         # Write an invalid key (wrong prefix)
         self._write_secrets(home, {"ANTHROPIC_API_KEY": "wrong-prefix-key"})
-        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], _make_env(home))
+        rc, out, err = _run(["keys", "validate", "ANTHROPIC_API_KEY"], home)
         assert rc == 1
         combined = out + err
         assert (
@@ -348,7 +368,7 @@ class TestCmdKeys:
     def test_export_prints_export_statements(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
         self._write_secrets(home, {"MY_CUSTOM_KEY": "abc123"})
-        rc, out, _err = _run(["keys", "export"], _make_env(home))
+        rc, out, _err = _run(["keys", "export"], home)
         assert rc == 0
         assert "export MY_CUSTOM_KEY=" in out
         assert "abc123" in out
@@ -379,7 +399,7 @@ class TestCmdAdd:
                 }
             ),
         )
-        rc, _out, _err = _run(["init", "--from", str(spec)], _make_env(home))
+        rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
         # Check workspace created
         ws = home / "workspaces" / "projects" / "myshop"
@@ -396,14 +416,14 @@ class TestCmdAdd:
 
     def test_from_missing_file_exits_1(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], _make_env(home))
+        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], home)
         assert rc == 1
         combined = out + err
         assert "not found" in combined.lower() or "spec file" in combined.lower()
 
     def test_init_uses_project_provisioning_path(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
-        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], _make_env(home))
+        rc, out, err = _run(["init", "--from", "/nonexistent/spec.json"], home)
         assert rc == 1
         combined = out + err
         assert "spec file" in combined.lower()
@@ -415,7 +435,7 @@ class TestCmdAdd:
             tmp_path,
             json.dumps({"id": "test-agent", "name": "Test Agent"}),
         )
-        rc, out, err = _run(["init", "--from", str(spec)], _make_env(home))
+        rc, out, err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
         combined = out + err
         assert "already exists" in combined.lower() or "skipping" in combined.lower()
@@ -425,7 +445,7 @@ class TestCmdAdd:
         repo = tmp_path / "my-project"
         repo.mkdir()
 
-        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["init"], home, cwd=repo)
 
         assert rc == 0, out + err
         assert (home / "workspaces" / "projects" / "my-project-lead").is_dir()
@@ -435,11 +455,12 @@ class TestCmdAdd:
         home = tmp_path / ".docket"
         repo = tmp_path / "fresh-project"
         repo.mkdir()
-        env = _make_env(home)
-        env["DOCKET_LLM_BASE_URL"] = "http://127.0.0.1:9999/v1"
-        env["DOCKET_LLM_API_KEY"] = "recording-test-key"
+        env = {
+            "DOCKET_LLM_BASE_URL": "http://127.0.0.1:9999/v1",
+            "DOCKET_LLM_API_KEY": "recording-test-key",
+        }
 
-        rc, out, err = _run(["init"], env, cwd=repo)
+        rc, out, err = _run(["init"], home, cwd=repo, env=env)
 
         assert rc == 0, out + err
         fleet = json.loads((home / "fleet.json").read_text())
@@ -451,10 +472,10 @@ class TestCmdAdd:
         home = _setup_bare(tmp_path)
         repo = tmp_path / "current-project"
         repo.mkdir()
-        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["init"], home, cwd=repo)
         assert rc == 0, out + err
 
-        rc, out, err = _run(["add", "reviewer"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["add", "reviewer"], home, cwd=repo)
 
         assert rc == 0, out + err
         assert (home / "workspaces" / "projects" / "current-project-reviewer").is_dir()
@@ -463,7 +484,7 @@ class TestCmdAdd:
     def test_redundant_bootstrap_commands_do_not_exist(self, tmp_path: Path, command: str) -> None:
         home = tmp_path / ".docket"
 
-        rc, out, err = _run([command], _make_env(home))
+        rc, out, err = _run([command], home)
 
         assert rc == 2
         assert "No such command" in (out + err)
@@ -472,7 +493,7 @@ class TestCmdAdd:
     def test_bare_docket_prints_only_a_compact_command_guide(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
 
-        rc, out, err = _run([], _make_env(home))
+        rc, out, err = _run([], home)
 
         assert rc == 0, err
         assert "docket init" in out
@@ -485,10 +506,10 @@ class TestCmdAdd:
         home = _setup_bare(tmp_path)
         repo = tmp_path / "current-project"
         repo.mkdir()
-        rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["init"], home, cwd=repo)
         assert rc == 0, out + err
 
-        rc, out, err = _run(["status"], _make_env(home), cwd=repo)
+        rc, out, err = _run(["status"], home, cwd=repo)
 
         assert rc == 0, out + err
         assert "current-project" in out
@@ -502,10 +523,10 @@ class TestCmdAdd:
         for name in ("project-one", "project-two"):
             repo = tmp_path / name
             repo.mkdir()
-            rc, out, err = _run(["init"], _make_env(home), cwd=repo)
+            rc, out, err = _run(["init"], home, cwd=repo)
             assert rc == 0, out + err
 
-        rc, out, err = _run(["status", "--all", "--json"], _make_env(home))
+        rc, out, err = _run(["status", "--all", "--json"], home)
 
         assert rc == 0, out + err
         payload = json.loads(out)
@@ -518,7 +539,7 @@ class TestCmdAdd:
     def test_status_outside_a_project_is_actionable(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
 
-        rc, out, err = _run(["status"], _make_env(home), cwd=tmp_path)
+        rc, out, err = _run(["status"], home, cwd=tmp_path)
 
         assert rc == 1
         assert "docket init" in (out + err)
@@ -537,7 +558,7 @@ class TestCmdAdd:
         except ImportError:
             pass
 
-        rc, out, err = _run(["init", "--from", str(spec)], _make_env(home))
+        rc, out, err = _run(["init", "--from", str(spec)], home)
         assert rc == 1
         combined = out + err
         assert (
@@ -557,7 +578,7 @@ class TestCmdAdd:
                 ]
             ),
         )
-        rc, _out, _err = _run(["init", "--from", str(spec)], _make_env(home))
+        rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
         assert (home / "workspaces" / "projects" / "agent-a").is_dir()
         assert (home / "workspaces" / "projects" / "agent-b").is_dir()
@@ -571,7 +592,6 @@ class TestCmdAdd:
 def test_auth_context_maintain_keys_add_not_exit_127(tmp_path: Path) -> None:
     """These commands must not fall through to an unported stub (exit 127)."""
     home = _setup_bare(tmp_path)
-    env = _make_env(home)
     for cmd in [["auth"], ["keys", "list"]]:
-        rc, _, _ = _run(cmd, env)
+        rc, _, _ = _run(cmd, home)
         assert rc != 127, f"docket {' '.join(cmd)} still exits 127"

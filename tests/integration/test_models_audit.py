@@ -12,20 +12,42 @@ covers:
     other family, and `docket audit verify` still walks a log containing them
     without reporting a break.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden,
-matching the existing `models`/`profile` subprocess tests in
-test_profile_scope_models.py.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory, matching the equivalent `models`/
+`profile` tests in test_profile_scope_models.py.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+from typer.testing import CliRunner
+
+import docket.config as _cfg
+from docket.cli import app as _app
+
 SUBJECT = "models audit"
+
+_runner = CliRunner()
+
+# Every DOCKET_HOME-derived config constant this suite's commands can touch.
+_HOME_ATTRS: tuple[tuple[str, str], ...] = (
+    ("DOCKET_HOME", ""),
+    ("WORKSPACES_DIR", "workspaces"),
+    ("PROJECTS_DIR", "workspaces/projects"),
+    ("FLEET_FILE", "fleet.json"),
+    ("AUDIT_LOG", "audit.log"),
+    ("MODEL_REGISTRY_FILE", "docket-models.json"),
+)
+
+
+def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
+    for attr, leaf in _HOME_ATTRS:
+        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
+
 
 META: dict[str, Any] = {
     "schemaVersion": 1,
@@ -39,13 +61,6 @@ META: dict[str, Any] = {
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
 }
-
-
-def _make_env(oc_dir: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(oc_dir),
-    }
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
@@ -77,16 +92,10 @@ def _register_openai(oc_dir: Path) -> None:
 
 
 def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[int, str, str]:
-    import subprocess
-
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        capture_output=True,
-        text=True,
-        input=input_text,
-        env=_make_env(oc_dir),
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        _patch_home(mp, oc_dir)
+        result = _runner.invoke(_app, args, input=input_text)
+    return result.exit_code, result.stdout, result.stderr
 
 
 def _audit_entries(oc_dir: Path, action: str) -> list[dict[str, Any]]:
