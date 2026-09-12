@@ -84,9 +84,19 @@ EVENT_TYPES: frozenset[str] = frozenset(
 
 # Secret-shape patterns stripped from payloads before writing.
 # Stored secret values are also redacted after the regex pass (see _stored_secret_values).
+#
+# Every quantifier here either shares no characters with what follows it, or is capped at
+# a length no real identifier/local-part/domain-label exceeds. Payloads handed to redact()
+# are untrusted and can be one long unbroken run of alnum characters (base64, a hex dump, a
+# minified bundle); an uncapped quantifier immediately followed by a required literal drawn
+# from the same character class forces the engine to try every split point in the run
+# before it can rule out a match there, which is quadratic (or worse) in the run's length.
+# Capping the quantifier bounds that search to a constant per position without narrowing
+# which real secrets match -- an env-var name or an email local-part/domain never actually
+# runs to thousands of characters, so the cap only ever rejects noise, not a real value.
 _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)\s*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
+        r"(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
         re.IGNORECASE,
     ),
     re.compile(
@@ -94,8 +104,8 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"[_A-Z]*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
         re.IGNORECASE,
     ),
-    re.compile(r"[A-Z][A-Z0-9_]{5,}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+", re.IGNORECASE),
-    re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.IGNORECASE),
+    re.compile(r"[A-Z][A-Z0-9_]{5,40}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+", re.IGNORECASE),
+    re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
 )
 
 
