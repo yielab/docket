@@ -120,6 +120,29 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
 )
 
 
+# The single shared way for a test to isolate a *specific* home directory it
+# controls, instead of declaring its own partial copy of _DOCKET_HOME_PATHS --
+# a local subset silently stops tracking that tuple the moment a new constant
+# is added there, with nothing to fail. DOCKET_HOME and FLEET_FILE are set
+# explicitly because neither is in _DOCKET_HOME_PATHS (DOCKET_HOME is the
+# tuple's input, not a derived path, and FLEET_FILE has its own dedicated
+# _isolate_fleet_file fixture). core/secrets.py's SECRETS_FILE/SECRETS_META_FILE
+# are also named explicitly: they bind from DOCKET_HOME at import time, not
+# through config at call time, so patching DOCKET_HOME alone does not move
+# them. All four still need to move with the rest of the constants whenever a
+# test repoints to its own chosen home, or they would silently keep pointing
+# at the autouse fixtures' home instead -- a home split in two with nothing
+# to fail.
+def repoint_docket_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    """Point every DOCKET_HOME-derived config constant at *home*."""
+    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
+    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
+    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
+    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
+    for attr, leaf in _DOCKET_HOME_PATHS:
+        monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Safety net: default every ``DOCKET_HOME``-derived path to a tmp dir.
@@ -136,8 +159,8 @@ def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     real path even deliberately; that is what makes this an autouse default
     rather than each test's responsibility.
 
-    A test wanting a specific location still repoints the constant itself,
-    which simply overrides this default.
+    A test wanting a specific location still repoints the constant itself
+    (see ``repoint_docket_home`` above), which simply overrides this default.
     """
     home = tmp_path / "_autouse_docket_home"
     for attr, leaf in _DOCKET_HOME_PATHS:

@@ -15,26 +15,30 @@ Covers:
   - the two dead-end guidance strings in cli/_provider.py now name commands
     that actually exist
 
-Unit-level tests import `docket.core.models_policy` directly; CLI-surface
-tests run `python -m docket` as a subprocess, mirroring
-tests/guards/test_tier_shims_removed.py.
+Unit-level tests import `docket.core.models_policy` directly; CLI-surface tests
+invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived config
+constant patched to a temp directory.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
 
 import docket.config as _cfg
 from docket.cli import _keys as _keys_mod
+from docket.cli import app as _app
 from docket.core import models_policy as _mp
 
 SUBJECT = "docket.cli"
+
+_runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Direct unit tests: core/models_policy.py
@@ -222,16 +226,6 @@ FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _make_env(home: Path, extra_path: Path | None = None) -> dict[str, str]:
-    env = {
-        **os.environ,
-        "DOCKET_HOME": str(home),
-    }
-    if extra_path is not None:
-        env["PATH"] = f"{extra_path}{os.pathsep}{env['PATH']}"
-    return env
-
-
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     home = tmp_path / ".docket"
     home.mkdir()
@@ -244,15 +238,12 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], home: Path, extra_path: Path | None = None) -> tuple[int, str, str]:
-    import subprocess
-
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        capture_output=True,
-        text=True,
-        env=_make_env(home, extra_path),
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        repoint_docket_home(mp, home)
+        if extra_path is not None:
+            mp.setenv("PATH", f"{extra_path}{os.pathsep}{os.environ['PATH']}")
+        result = _runner.invoke(_app, args)
+    return result.exit_code, result.stdout, result.stderr
 
 
 def _register_provider(home: Path, name: str, model_id: str) -> None:

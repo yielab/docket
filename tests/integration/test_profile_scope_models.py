@@ -1,20 +1,25 @@
 """profile, scope, models — writer commands.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden
-so tests are hermetic and never touch the real ~/.docket.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory so tests are hermetic and never touch
+the real ~/.docket.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
+
+from docket.cli import app as _app
 
 SUBJECT = "profile scope models"
+
+_runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,13 +39,6 @@ META: dict[str, Any] = {
 }
 
 
-def _make_env(oc_dir: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(oc_dir),
-    }
-
-
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
@@ -52,15 +50,10 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
-    import subprocess
-
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        capture_output=True,
-        text=True,
-        env=_make_env(oc_dir),
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        repoint_docket_home(mp, oc_dir)
+        result = _runner.invoke(_app, args)
+    return result.exit_code, result.stdout, result.stderr
 
 
 # ---------------------------------------------------------------------------

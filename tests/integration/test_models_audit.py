@@ -12,20 +12,26 @@ covers:
     other family, and `docket audit verify` still walks a log containing them
     without reporting a break.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden,
-matching the existing `models`/`profile` subprocess tests in
-test_profile_scope_models.py.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a temp directory, matching the equivalent `models`/
+`profile` tests in test_profile_scope_models.py.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
+
+from docket.cli import app as _app
+
 SUBJECT = "models audit"
+
+_runner = CliRunner()
 
 META: dict[str, Any] = {
     "schemaVersion": 1,
@@ -39,13 +45,6 @@ META: dict[str, Any] = {
     "sessionKey": "agent:myshop:default",
     "projectKey": "default",
 }
-
-
-def _make_env(oc_dir: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(oc_dir),
-    }
 
 
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
@@ -77,16 +76,10 @@ def _register_openai(oc_dir: Path) -> None:
 
 
 def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[int, str, str]:
-    import subprocess
-
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        capture_output=True,
-        text=True,
-        input=input_text,
-        env=_make_env(oc_dir),
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        repoint_docket_home(mp, oc_dir)
+        result = _runner.invoke(_app, args, input=input_text)
+    return result.exit_code, result.stdout, result.stderr
 
 
 def _audit_entries(oc_dir: Path, action: str) -> list[dict[str, Any]]:

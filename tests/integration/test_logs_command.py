@@ -1,23 +1,26 @@
 """logs command.
 
-All tests run `python -m docket` as a subprocess with DOCKET_HOME overridden.
-fleet.json is docket's only agent/binding registry, so `docket logs` has no
-"Gateway log" section (there is no gateway log to scan) -- see cli/__init__.py's
-cmd_logs.
+All tests invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived
+config constant patched to a fresh temp home per call. fleet.json is docket's only
+agent/binding registry, so `docket logs` has no "Gateway log" section (there is no
+gateway log to scan) -- see cli/__init__.py's cmd_logs.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
+from typer.testing import CliRunner
+
+from docket.cli import app as _app
 
 SUBJECT = "logs command"
+
+_runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -46,13 +49,6 @@ FLEET_CONFIG: dict[str, Any] = {
 }
 
 
-def _make_env(home: Path) -> dict[str, str]:
-    return {
-        **os.environ,
-        "DOCKET_HOME": str(home),
-    }
-
-
 def _setup_agent(
     tmp_path: Path,
     agent_id: str = "myshop",
@@ -74,17 +70,13 @@ def _setup_agent(
 
 def _run(
     args: list[str],
-    env: dict[str, str],
+    home: Path,
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
-    result = subprocess.run(
-        [sys.executable, "-m", "docket", *args],
-        input=stdin_text,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    return result.returncode, result.stdout, result.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        repoint_docket_home(mp, home)
+        result = _runner.invoke(_app, args, input=stdin_text)
+    return result.exit_code, result.stdout, result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -95,20 +87,20 @@ def _run(
 class TestCmdLogs:
     def test_unknown_agent_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, _, err = _run(["logs", "ghost"], _make_env(home))
+        rc, _, err = _run(["logs", "ghost"], home)
         assert rc == 1
         assert "ghost" in err
 
     def test_shows_memory_log_header(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
+        rc, out, _ = _run(["logs", "myshop"], home)
         assert rc == 0
         assert "Latest memory log" in out
         assert "2026-06-20.md" in out
 
     def test_shows_first_40_lines(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
+        rc, out, _ = _run(["logs", "myshop"], home)
         assert rc == 0
         # File has 51 lines (# Day log + 50 "line\n")
         assert "more lines" in out
@@ -120,13 +112,13 @@ class TestCmdLogs:
         ws.mkdir(parents=True)
         (ws / ".docket-meta.json").write_text(json.dumps(META))
         (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
-        rc, out, _ = _run(["logs", "bare"], _make_env(home))
+        rc, out, _ = _run(["logs", "bare"], home)
         assert rc == 0
         assert "No memory logs" in out
 
     def test_non_tty_without_id_exits_1(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
-        rc, _, err = _run(["logs"], _make_env(home))
+        rc, _, err = _run(["logs"], home)
         assert rc == 1
         assert "required" in err.lower()
 
@@ -135,7 +127,7 @@ class TestCmdLogs:
         # activity, so the section is gone outright -- not conditional on a
         # binding. Deliberately verified absent regardless of binding state.
         home = _setup_agent(tmp_path)
-        rc, out, _ = _run(["logs", "myshop"], _make_env(home))
+        rc, out, _ = _run(["logs", "myshop"], home)
         assert rc == 0
         assert "Gateway log" not in out
         retired_brand = "open" + "claw"
@@ -151,5 +143,5 @@ class TestCmdLogs:
 def test_wave3b_not_exit_127(cmd: list[str], tmp_path: Path) -> None:
     """logs must NOT fall through to Bash (exit 127)."""
     home = _setup_agent(tmp_path)
-    rc, _, _ = _run(cmd, _make_env(home))
+    rc, _, _ = _run(cmd, home)
     assert rc != 127
