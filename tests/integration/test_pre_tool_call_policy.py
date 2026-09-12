@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import approval as _approval
@@ -61,9 +62,7 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     immediately (no real sleep) unless a test overrides it to exercise the
     waiting/granting path deliberately.
     """
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 

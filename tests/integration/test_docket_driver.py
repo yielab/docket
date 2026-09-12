@@ -162,9 +162,7 @@ class TestRunTurn:
 
         from docket.cli import app
 
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", tmp_path / "docket-models.json")
-        monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "secrets.json")
-        monkeypatch.setattr(_secrets, "SECRETS_META_FILE", tmp_path / "secrets.meta.json")
+        repoint_docket_home(monkeypatch, tmp_path)
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
         monkeypatch.setattr(_provider_core, "ping_endpoint", lambda *args, **kwargs: True)

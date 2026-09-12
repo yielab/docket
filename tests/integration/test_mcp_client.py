@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import approval as _approval
@@ -60,10 +61,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
-    monkeypatch.setattr(_cfg, "MCP_SERVERS_FILE", tmp_path / "mcp-servers.json", raising=True)
+    repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 

@@ -208,16 +208,11 @@ class TestCmdWire:
     ) -> None:
         from typer.testing import CliRunner
 
-        import docket.config as cfg
         from docket.cli import app
         from docket.core import telegram
 
         home = _setup_agent(tmp_path)
-        monkeypatch.setattr(cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-        monkeypatch.setattr(
-            cfg, "CONVERSATIONS_FILE", home / "docket-conversations.json", raising=True
-        )
+        repoint_docket_home(monkeypatch, home)
         monkeypatch.setattr(telegram, "wire_discovery_configured", lambda: True, raising=False)
         monkeypatch.setattr(
             telegram,
