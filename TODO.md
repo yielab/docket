@@ -11,7 +11,7 @@
 >
 > ---
 >
-> ## ◉ NO ACTIVE WAVE — two sections are unblocked and the next one is a maintainer's pick
+> ## ◉ ACTIVE BOARD — WAVE 30 (Phase 24, harness mode, D-35)
 >
 > **Wave 31 closed on 2026-09-12** and is archived in
 > [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). Thirteen cards shipped:
@@ -145,13 +145,13 @@ publication is never implied by claiming the card.
 
 ---
 
-## ◇ WAVE 30 CLAIMABLE (2026-09-11, unblocked 2026-09-12) — harness mode seams and contract (Phase 24, D-35)
+## ◉ WAVE 30 ACTIVE (2026-09-11, claimed 2026-09-12) — harness mode seams and contract (Phase 24, D-35)
 
-**Claimable since 2026-09-12, not yet active.** This section was deferred behind Wave 31 on
-2026-09-11 and scoped once so it would be ready. Wave 31 has closed, so both reasons for the hold
-are gone: W31-C1's move of every test file is merged, and no other wave holds the active marker.
-Claiming this wave means marking this section active. W29-C7 is claimable at the same time and
-nothing chooses between them automatically. Decision D-35 and its corrected reasoning live in
+**Active since 2026-09-12.** Deferred behind Wave 31 on 2026-09-11 and scoped once so it would be
+ready; Wave 31 closed, W31-C1's move of every test file is merged, and no other wave holds the
+marker. C1, C2 and C3 are claimed together per the contention analysis below. W29-C7 remains
+claimable in parallel and is held separately: it publishes a public release, which is an
+irreversible outward-facing act, so it waits on an explicit go-ahead rather than on this wave. Decision D-35 and its corrected reasoning live in
 [docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md); the audit that produced these cards
 is `internal-docs/harness-mode-audit.md` (read at `main` `4032133`). ROADMAP's "Planned program —
 PHASE 24" section holds the measured-gap table and the exit contract; this section holds the cards.
@@ -179,7 +179,7 @@ byte-identical before and after each focused run (snapshot it — this suite has
 
 ### W30-C1 — make cancellation reach an in-flight bash command
 
-**Status:** TODO · **Size:** S · **Owner:** —
+**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** S · **Owner:** —
 
 **Deterministic trigger:** at `4032133`, `edges/adapters/toolbox.py::run_bash` starts every command
 with `start_new_session=True` (each child is its own session, outside any caller's group) and blocks
@@ -242,7 +242,7 @@ D-30 sentence that changed and the one that did not, and the `docket runs cancel
 
 ### W30-C2 — give a non-interactive caller a typed, immediate, terminal approval outcome
 
-**Status:** TODO · **Size:** M · **Owner:** —
+**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** M · **Owner:** —
 
 **Deterministic trigger:** at `4032133`, `core/tools.py::dispatch_tool`'s `ask` branch creates an
 approval record and blocks in `wait_for_approval` (default `TOOL_APPROVAL_TIMEOUT`=120 s), resolves
@@ -304,7 +304,7 @@ times, and confirmation that the `"wait"` tests ran unmodified.
 
 ### W30-C3 — add the trace subscriber seam and publish the harness contract before the command
 
-**Status:** TODO · **Size:** M · **Owner:** —
+**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** M · **Owner:** —
 
 **Explicit request / trigger:** Tack ADR 0066 decision 4 (2026-09-08) builds no adapter until docket
 publishes a versioned non-interactive contract; `docs/contracts/` does not exist; `core/trace.py::
