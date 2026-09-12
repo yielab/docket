@@ -374,10 +374,11 @@ def cmd_init(ctx: typer.Context) -> None:
                              under `~/.docket/workspaces/pods/<project>/` if
                              omitted) -- no stack is auto-detected. Unknown
                              name errors with "unknown blueprint 'X'; valid
-                             blueprints: software, research, content, ops" and
-                             exits 1 before any prompt. Only the five built-ins
-                             exist today -- there is no `docket blueprints add
-                             <file>` to register a custom one. See
+                             blueprints: software, research, content, ops,
+                             agentic-product" and exits 1 before any prompt.
+                             Only the five built-ins exist today -- there is
+                             no `docket blueprints add <file>` to register a
+                             custom one. See
                              specs/functional/pod-blueprints.spec.md.
       --codebase <path>,    the codebase path (or, for a workdir-kind
       --path <path>         blueprint, the pod's shared working directory) --
