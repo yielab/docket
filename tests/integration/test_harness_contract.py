@@ -9,7 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from docket.core import agent_loop as _agent_loop
 from docket.core import harness
+from docket.core.runtime_driver import TurnResult, UsageReport, UsageTotals
+from docket.core.tools import ToolResult
 
 SUBJECT = "docket.core.harness"
 
@@ -53,3 +56,43 @@ def test_an_unknown_version_fixture_fails_closed() -> None:
     payload["v"] = "0.9.0"
     with pytest.raises(Exception, match="unsupported harness contract version"):
         harness.HarnessResult.model_validate(payload)
+
+
+# The one thing neither card that produced this seam could test on its own.
+# core/agent_loop.py renders the refusal as a string and core/harness.py parses
+# it back, with no shared type between them, so each half can pass its own
+# suite while the pair silently produces a blocked payload of empty fields --
+# which is exactly what the first merge of the two did. This drives the real
+# renderer rather than a copy of its output, so a format change fails here.
+class TestBlockedPayloadSurvivesTheDriverErrorRoundTrip:
+    def _blocked_result(self) -> object:
+        denial = ToolResult(
+            ok=False,
+            tool="bash",
+            call_id="call-1",
+            decision="deny",
+            denial_kind="approval_unavailable",
+            policy_id="block-destructive",
+            reason="policy 'block-destructive': needs a human",
+        )
+        turn = TurnResult(
+            False,
+            "",
+            0.0,
+            {},
+            _agent_loop.approval_unavailable_error(denial),
+            failure_kind="invalid_output",
+        )
+        return harness.result_from(turn, UsageReport(totals=UsageTotals()), {"id": "run-1"})
+
+    def test_every_field_arrives_populated(self) -> None:
+        blocked = self._blocked_result().blocked
+        assert blocked is not None
+        assert blocked.tool == "bash"
+        assert blocked.call_id == "call-1"
+        assert blocked.policy_id == "block-destructive"
+        assert blocked.denial_kind == "approval_unavailable"
+        assert "needs a human" in blocked.reason
+
+    def test_the_status_is_blocked_rather_than_a_generic_failure(self) -> None:
+        assert self._blocked_result().status == "blocked"
