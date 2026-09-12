@@ -13,30 +13,14 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
 
 SUBJECT = "docket.config"
 
 _runner = CliRunner()
-
-# Every DOCKET_HOME-derived config constant this suite's commands can touch.
-_HOME_ATTRS: tuple[tuple[str, str], ...] = (
-    ("DOCKET_HOME", ""),
-    ("WORKSPACES_DIR", "workspaces"),
-    ("PROJECTS_DIR", "workspaces/projects"),
-    ("FLEET_FILE", "fleet.json"),
-    ("AUDIT_LOG", "audit.log"),
-    ("CONVERSATIONS_FILE", "docket-conversations.json"),
-)
-
-
-def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
-    for attr, leaf in _HOME_ATTRS:
-        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -94,7 +78,7 @@ def _run(
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
-        _patch_home(mp, home)
+        repoint_docket_home(mp, home)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 

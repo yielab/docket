@@ -13,33 +13,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
 
 SUBJECT = "logs command"
 
 _runner = CliRunner()
-
-# Every DOCKET_HOME-derived config constant `docket logs` (or its neighbors in
-# this suite) can touch, paired with its path under a fresh home.
-_HOME_ATTRS: tuple[tuple[str, str], ...] = (
-    ("DOCKET_HOME", ""),
-    ("WORKSPACES_DIR", "workspaces"),
-    ("PROJECTS_DIR", "workspaces/projects"),
-    ("FLEET_FILE", "fleet.json"),
-    ("TRACES_DIR", "traces"),
-    ("AUDIT_LOG", "audit.log"),
-    ("SESSIONS_DIR", "sessions"),
-    ("MODEL_REGISTRY_FILE", "docket-models.json"),
-)
-
-
-def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
-    for attr, leaf in _HOME_ATTRS:
-        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -93,7 +74,7 @@ def _run(
     stdin_text: str = "",
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
-        _patch_home(mp, home)
+        repoint_docket_home(mp, home)
         result = _runner.invoke(_app, args, input=stdin_text)
     return result.exit_code, result.stdout, result.stderr
 

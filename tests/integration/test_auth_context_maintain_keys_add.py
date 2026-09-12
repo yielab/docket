@@ -12,37 +12,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
-from docket.core import secrets as _secrets_mod
 
 SUBJECT = "auth context maintain keys add"
 
 _runner = CliRunner()
-
-# Every DOCKET_HOME-derived config constant this suite's commands can touch.
-_HOME_ATTRS: tuple[tuple[str, str], ...] = (
-    ("DOCKET_HOME", ""),
-    ("WORKSPACES_DIR", "workspaces"),
-    ("PROJECTS_DIR", "workspaces/projects"),
-    ("FLEET_FILE", "fleet.json"),
-    ("TRACES_DIR", "traces"),
-    ("AUDIT_LOG", "audit.log"),
-    ("SESSIONS_DIR", "sessions"),
-    ("MODEL_REGISTRY_FILE", "docket-models.json"),
-)
-
-
-def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
-    for attr, leaf in _HOME_ATTRS:
-        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
-    # core/secrets.py binds SECRETS_FILE/SECRETS_META_FILE from DOCKET_HOME at
-    # import time, not through _cfg at call time, so they need their own patch.
-    mp.setattr(_secrets_mod, "SECRETS_FILE", home / "secrets.json", raising=True)
-    mp.setattr(_secrets_mod, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -73,7 +50,7 @@ def _run(
     env: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
     with pytest.MonkeyPatch.context() as mp:
-        _patch_home(mp, home)
+        repoint_docket_home(mp, home)
         for key, value in (env or {}).items():
             mp.setenv(key, value)
         if cwd is not None:

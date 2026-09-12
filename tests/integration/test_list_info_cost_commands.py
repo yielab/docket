@@ -12,32 +12,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
-import docket.config as _cfg
 from docket.cli import app as _app
 
 SUBJECT = "list info cost commands"
 
 _runner = CliRunner()
-
-# Every DOCKET_HOME-derived config constant this suite's commands can touch.
-_HOME_ATTRS: tuple[tuple[str, str], ...] = (
-    ("DOCKET_HOME", ""),
-    ("WORKSPACES_DIR", "workspaces"),
-    ("PROJECTS_DIR", "workspaces/projects"),
-    ("FLEET_FILE", "fleet.json"),
-    ("SESSIONS_DIR", "sessions"),
-    ("TRACES_DIR", "traces"),
-    ("AUDIT_LOG", "audit.log"),
-    ("MODEL_REGISTRY_FILE", "docket-models.json"),
-)
-
-
-def _patch_home(mp: pytest.MonkeyPatch, home: Path) -> None:
-    for attr, leaf in _HOME_ATTRS:
-        mp.setattr(_cfg, attr, home / leaf if leaf else home, raising=True)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -117,7 +99,7 @@ def _write_docket_session(
 def _run(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
     with pytest.MonkeyPatch.context() as mp:
-        _patch_home(mp, oc_dir)
+        repoint_docket_home(mp, oc_dir)
         result = _runner.invoke(_app, args)
     return result.exit_code, result.stdout, result.stderr
 
