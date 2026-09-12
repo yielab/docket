@@ -179,85 +179,40 @@ byte-identical before and after each focused run (snapshot it — this suite has
 
 ### W30-C1 — make cancellation reach an in-flight bash command
 
-**Status:** SENT BACK (2026-09-12) · **Size:** S · **Owner:** —
+**Status:** DONE (2026-09-12, `5c95d52` + `76332c6`, merged `61864e6`) · **Size:** S
 
-**Sent back for a regression the card itself surfaced and then shipped anyway.** The new
-cancellation-aware wait polls with `proc.wait()`, which does not drain the child's pipes. A command
-writing past the operating system's pipe buffer blocks on its next write, never exits, and the poll
-loop runs to the deadline. Measured at the card's own commit with one 200 KB command and an
-8 s timeout: the no-callback path returned in 0.01 s with `ok=True` and 30,037 characters; the
-cancellation-aware path returned after the full 8 s with `ok=False`, zero characters and "command
-timed out after 8s". The command had finished instantly in both cases.
+**What shipped.** `run_bash` takes an optional cancellation callback and waits in a bounded poll
+instead of blocking in `communicate()`, killing exactly the way the timeout path already does:
+`system.docker_kill` under the docker backend, then the process group. The `bash` handler passes
+`ctx.cancellation_check`, so `docket runs cancel` terminalizes a run whose hop sits inside a long
+command, under three seconds, through the public CLI with no new code. That whole-path result is
+the card's real oracle and it holds. A caller passing no callback is byte-identical, timeout message
+included. D-30's "may finish" rule is narrowed for this one handler and unchanged for every other.
 
-This is not narrow. The `bash` handler lambda passes `ctx.cancellation_check` unconditionally, so
-any dispatch that wires one takes the new path for every shell command it runs, and a build, a test
-run or a verbose git command now fails falsely and loses its output. The handoff called it out of
-scope on the grounds that the no-callback path was untouched, which does not follow.
+**Merged on the second pass, and the first pass is the lesson.** The original poll used
+`proc.wait()`, which never drains the child's pipes, so a command writing past the pipe buffer
+blocked on its own next write, never exited, and was reported as a timeout with its output thrown
+away. The card's own handoff described this accurately and then classified it as out of scope
+because the no-callback path was untouched. That does not follow: the handler passes the
+cancellation check unconditionally, so any dispatch wiring one took the new path for every shell
+command it ran. A build, a test run or a verbose git command would have failed falsely.
 
-**What is still owed:** drain both streams while polling, keep the cancelled and timed-out branches
-reaching `system.docker_kill` and `_kill_group` as they do now, keep the no-callback path
-byte-identical, and add the regression test that would have caught this — a command printing well
-past a pipe buffer, through the cancellation-aware path with a callback that never fires, returning
-promptly with its output intact and matching the no-callback result. Watch it fail first.
+**Measured, by the integrator, before and after.** One 200 KB command at an 8 s timeout. Before the
+fix: the no-callback path returned in 0.01 s with `ok=True` and 30,037 characters, the
+cancellation-aware path took the full 8 s, returned `ok=False` and zero characters. After: 0.11 s,
+`ok=True`, content byte-identical to the baseline. Fifteen cancellations under continuous heavy
+output produced no anomaly, and real cancellation latency is unchanged at about 0.2 s.
 
-**Deterministic trigger:** at `4032133`, `edges/adapters/toolbox.py::run_bash` starts every command
-with `start_new_session=True` (each child is its own session, outside any caller's group) and blocks
-in `proc.communicate(timeout=timeout)`; the `bash` registration in `core/tools.py` passes roots,
-timeout, env and sandbox but not `ctx.cancellation_check`. Reproduction: a `ToolContext` whose
-callback flips true 0.2 s into `bash sleep 30` still returns after 30 s (or after the tool timeout,
-which defaults to the whole turn's wall clock). Separately, `DocketDriver.run_turn` ignores
-`on_spawn`, so `pids` is always `[]` and `docket runs cancel` "kills nothing in flight" for every
-docket-native hop. D-30 deliberately let "an already-running handler finish" because a Python thread
-cannot be killed safely; a subprocess can, and D-35 decision 9 amends D-30 for this handler only.
+**The regression test was seen to fail.** Reintroducing an undrained wait fails
+`test_a_callback_that_never_fires_still_drains_output_over_a_full_pipe` on its wall-time assertion,
+"took 8.01s (baseline 0.01s), not promptly", and restoring the drain turns it green. It asserts
+content equality against the no-callback run of the same command, not the absence of an exception.
 
-**Goal:** `run_bash` accepts an optional `cancelled: Callable[[], bool] | None = None`, waits with a
-short bounded poll (`proc.wait(timeout=<poll>)` in a loop that also enforces the existing overall
-timeout), and on a true callback kills exactly the way the timeout path already does —
-`system.docker_kill` under the docker backend, then `_kill_group` — returning a complete
-`ToolOutcome(ok=False, error="cancelled before completion" + sandbox tag)`. The `bash` handler lambda
-passes `ctx.cancellation_check`. Nothing else changes.
-
-**Non-goals:** no interruption of HTTP requests or Python tool handlers (D-30 stands there); no
-change to `runs.py`'s pid registry or `DocketDriver.on_spawn`; no new `StopReason`,
-`ToolDenialKind` or trace event; no CLI/serve/docs change; no change in behaviour or timing when
-no callback is given (today's callers stay byte-identical, including the timeout message); no
-sandbox-mode change.
-
-**Owns:** `edges/adapters/toolbox.py::run_bash` plus one private poll constant; the `bash`
-`handler=` lambda in `core/tools.py::builtin_registry` and nothing else in that file; tests in
-`tests/integration/test_sandboxed_exec.py` and `tests/integration/test_cooperative_run_cancellation.py` (or a
-new `test_bash_cancellation.py`); the `bash`/exec clauses of `specs/functional/security-gates.spec.md`
-and requirement 66's "does not attempt to interrupt a running handler" clause in
-`specs/functional/agent-loop.spec.md`, narrowed to non-`bash` handlers, with version bump and
-changelog. **Forbidden:** `agent_loop.py`, `approval.py`, `runs.py`, `dispatch.py`,
-`docket_runtime.py`, `ToolContext`/`ToolResult`, central files.
-
-**RED tests:** (1) `run_bash(roots, "sleep 30", timeout=60, cancelled=flips_at_0_2s)` returns
-`ok=False` within 2 s, the error names cancellation and carries the sandbox tag, and
-`os.killpg(pgid, 0)` on the recorded child group raises `ProcessLookupError`; record wall time and
-the child pgid. (2) The same command through `run_agent_turn` with a recording backend that
-requests one `bash` call and a `ToolContext(cancellation_check=...)` that flips during the call:
-the session holds one complete assistant/tool unit whose tool output is the cancelled outcome, the
-loop returns `stop_reason="run_cancelled"`, and the backend was called exactly once. (3) With
-`cancelled=None`, `sleep 30` under `timeout=1` produces today's exact timeout message and kills the
-group (regression guard on the existing path). (4) A bwrap variant of (1), skip-labelled when the
-backend is absent. Before implementation, (1) and (2) must fail at the wall-time assertion, not at
-setup.
-
-**Acceptance / oracles:** wall time, child-group liveness, session unit atomicity, backend call
-count, and byte-identity of the no-callback outcomes are the oracles. `docket runs cancel` against
-a run whose hop is inside `bash sleep 30` (through the production driver, isolated home) must
-terminalize the run as `cancelled` within 3 s of the request with `observedAt`/`stoppedAt` set —
-this is the whole-path proof that the amendment reaches the public CLI without new code.
-
-**Validation:** focused nodes repeated 20× (barrier-timed tests are flaky by construction if
-under-bounded); then `test_agent_loop.py`, `test_tool_registry.py` (the only-the-chokepoint-imports-
-toolbox AST guard), `test_run_cancellation.py`, `test_runtime_adapter_fixture_contract.py` (runtime
-closure still CLI-free); Ruff/format, strict mypy, both owning specs; full pytest, 18 goldens,
-specs, metrics.
-
-**Handoff:** report measured wall times before/after, the poll constant and why its value, the
-D-30 sentence that changed and the one that did not, and the `docket runs cancel` whole-path result.
+**Merge conflict, resolved by keeping both sides.** C1 and C2 each added a requirement and a
+changelog entry to `security-gates.spec.md` and `agent-loop.spec.md`. The approval requirement stays
+11 and cancellation became 12; each spec took a new version section rather than two entries
+competing for one. Survival of both sides was checked by grepping key phrases from each, not by
+reading the diff.
 
 ### W30-C2 — give a non-interactive caller a typed, immediate, terminal approval outcome
 
