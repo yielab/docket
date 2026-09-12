@@ -70,7 +70,10 @@ DEBUG=1 docket <command>
 - Format and lint with `ruff` (`uv run ruff format .` / `uv run ruff check .`)
 - Use meaningful names (snake_case for functions/vars, PascalCase for classes/Pydantic models)
 - Keep functions focused; prefer pure functions in `core/`
-- Add docstrings/comments for non-obvious logic
+- Comments explain *why* something is shaped the way it is — never what it does or when it
+  arrived. No card ids, phase numbers, dates or "used to" narration; git history holds those.
+  A docstring is one line unless it states a contract (what is guaranteed, what fails closed).
+  `uv run python scripts/maint/comment_lint.py --check src tests` reads this rule
 
 ### Package layout (three layers: `cli/ → core/ → edges/`)
 
@@ -107,7 +110,9 @@ invariants matter most, both enforced by tests rather than convention alone:
 
 All contributions must include appropriate tests:
 
-- Unit and integration tests live under `tests/python/` (pytest)
+- Tests live under `tests/python/` today; placement follows `specs/test-framework.md`
+  §"Lanes and placement": one unit file per module, named for it; checks on prose, release
+  artifacts or agent scripts go to the budgeted agent lane, never the default suite
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
 For scale, so you know what you're getting into: **2,542 tests** in `tests/python/`,
@@ -164,7 +169,8 @@ command:
    `_<group>.py` module for a larger group) and wire its help into `cli/_help.py`.
 3. Put domain logic in `core/` and any I/O behind `edges/` (`store.py` for docket JSON,
    `system.py` for shell-outs to `docker`/`git`).
-4. Add pytest coverage under `tests/python/`, and golden cases if the output is frozen.
+4. Add pytest coverage in the unit file named for the module (see [Testing](#testing)), and
+   golden cases if the output is frozen.
 5. Run the CI gates (see [Testing](#testing)).
 
 ## Documentation
@@ -172,7 +178,8 @@ command:
 - Update relevant documentation in `docs/`
 - Add command documentation to `docs/commands.md`
 - Update README.md if adding major features
-- Include inline comments/docstrings for complex logic
+- Keep comments to rationale only (see [Python Conventions](#python-conventions)); the CLI
+  reference becomes generated from Typer help strings in Wave 31, so put command prose there
 
 ## Commit Messages
 

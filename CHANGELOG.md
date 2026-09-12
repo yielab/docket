@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The development history — every closed wave and phase section of `TODO.md` and `ROADMAP.md`,
+  the roadmap decision changelog, and superseded coordinator handoffs — is archived verbatim under
+  [docs/cycles-ended/](docs/cycles-ended/README.md) with a SHA-256 manifest
+  (`scripts/maint/split_board.py check`). This file remains the user-facing release changelog.
+
 ## [0.2.0-beta.2] - 2026-09-07
 
 This provenance-complete beta publishes the current root wheel, source distribution, versioned

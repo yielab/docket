@@ -66,3 +66,6 @@ __pycache__/
 .floorenv/
 floors.txt
 dist/
+
+# Local maintenance baselines (scripts/maint/*); reproducible, never committed
+.maint/

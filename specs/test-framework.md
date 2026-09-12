@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.12.0
+**Version**: 2.13.0
 **Status**: Active
-**Last Updated**: 2026-08-31
+**Last Updated**: 2026-09-11
 
 ## Overview
 
@@ -52,6 +52,8 @@ contract before implementation, and the smallest coherent change makes it green.
 
 ## Test layout
 
+Layout on disk at this version (flat; W31-C1 moves it into the lanes below):
+
 ```text
 tests/
 ├── python/                 pytest behavior and contract tests
@@ -65,6 +67,57 @@ tests/
 │   └── run.sh              verify/update harness
 └── run-all-tests.sh        local aggregate gate
 ```
+
+## Lanes and placement
+
+**Contract adopted 2026-09-11 (D-36, Phase 25).** The placement rules below bind every new or
+edited test file from this version on. The directory move, the guards that enforce the rules, and
+the CI job for the agent lane ship in W31-C1/C2; until then the tree is flat and nothing here is
+machine-enforced. This section says so rather than implying otherwise.
+
+```text
+tests/
+├── conftest.py             the single DOCKET_HOME isolation fixture, shared fakes, duration guard
+├── unit/                   mirrors src/docket/: unit/core/test_dispatch.py ↔ src/docket/core/dispatch.py
+├── integration/            several modules, or a real process where the process boundary is the subject
+├── guards/                 AST and layout invariants; ≤ 80 lines each
+├── golden/                 unchanged
+└── agent/                  NOT in testpaths; CI job `agent-lane`
+    ├── truth/              assertions on prose (README, GOVERNANCE, spec index, positioning)
+    ├── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
+    └── harness/            tests of .agents/skills/*/scripts
+```
+
+Requirements:
+
+1. **Default suite = product lanes.** `testpaths` lists `unit`, `integration` and `guards` only;
+   the default run finishes in under 90 seconds once W31-C5 lands, and never collects `agent/`.
+2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
+   `SUBJECT = "docket.<pkg>.<module>"`; the module must exist and every `src/` module over 150
+   lines must have such a file. A file over 800 lines splits as `test_<module>__<aspect>.py`.
+   File names never encode history (`_v2`, `_migration`, `_removed`, `_legacy`).
+3. **A test that reads prose or builds an artifact is agent-lane by definition.** Every file
+   under `agent/` declares `LANE`, `REASON` (the recorded defect it prevents) and `RETIRE_WHEN`
+   (the condition, not a date, under which it is deleted). The lane's total is capped at 4,000
+   lines by a guard; raising the cap edits the guard in the same commit with the reason in the
+   message. One test per public claim.
+4. **`subprocess` is forbidden in `unit/`.** CLI behaviour is tested in-process with
+   `typer.testing.CliRunner`; exact user-visible text belongs to the golden suite. `integration/`
+   spawns a process only when the process boundary (signals, sandbox, cancellation, `PATH` stubs)
+   is what the test proves.
+5. **Removed commands are one parametrized guard** over `__main__._REMOVED`, not one file each.
+6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
+   `integration/`; `agent/` tests that build artifacts carry the `slow` marker.
+7. **Docstrings and comments follow the repository comment policy**: module docstring ≤ 6 lines
+   in tests, test docstring ≤ 1 line, no card ids, phases, dates or provenance narration.
+   `scripts/maint/comment_lint.py --check` is the reader; its committed baseline only falls.
+8. **Structure is guarded, and each guard is seen to fail before it ships**: unit↔module mapping,
+   lane headers, agent-lane budget, no-subprocess-in-unit, duration ceilings, comment hygiene.
+
+Enforcement status at 2.13.0: rules 1–8 are the contract; guards and the CI job do not exist
+yet (W31-C2, W31-C3). `uv run pytest tests/agent` becomes a required gate for changes under
+`README.md`, `docs/`, `specs/`, `examples/`, `benchmarks/`, `.agents/` and `tests/agent/` once the
+job exists.
 
 ### Full-workflow smoke
 
@@ -326,6 +379,14 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.13.0 (2026-09-11)
+
+- D-36 / Phase 25 adds "Lanes and placement": a product suite (`unit`, `integration`, `guards`)
+  as the only default run, a budgeted `tests/agent/` lane with declared reason and retirement
+  condition for prose, release and harness checks, one unit file per module, no `subprocess` in
+  `unit/`, duration ceilings, and comment hygiene read by `scripts/maint/comment_lint.py`. States
+  explicitly that the tree is still flat and no guard enforces the rules until W31-C1/C2 ship.
 
 ### Version 2.12.0 (2026-08-31)
 

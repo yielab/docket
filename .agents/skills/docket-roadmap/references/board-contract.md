@@ -28,6 +28,13 @@ Read this only when the task changes planning state.
   capabilities complete when only machinery or an unused code path exists.
 - Central rollups should state the current truth once. Avoid duplicating detailed task prose between
   `TODO.md`, `ROADMAP.md`, specs, and implementation comments.
+- `TODO.md` holds only the usage rules, the active section and planned sections. A closed wave or
+  phase section is archived verbatim to `docs/cycles-ended/` by the integrator with
+  `scripts/maint/split_board.py archive` (hash manifest; `check` proves completeness). The archive
+  is history and is never mined for work. Long decision reasoning goes to `docs/adr/`, not into a
+  table row; roadmap changelog entries go to `docs/cycles-ended/roadmap-changelog.md`.
+- A card that adds a test names its lane per `specs/test-framework.md` §"Lanes and placement";
+  a card that adds an agent-lane file names the `REASON` and `RETIRE_WHEN` it will carry.
 
 When scoping, resuming, or closing work, use this semantic task-packet shape (wording may vary):
 

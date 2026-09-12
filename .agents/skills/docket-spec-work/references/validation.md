@@ -6,7 +6,9 @@ spec gates rather than selecting one row.
 
 | Surface | Focused evidence | Final evidence |
 | --- | --- | --- |
-| Python behavior | owning `tests/python/test_*.py` test | `uv run pytest` |
+| Python behavior | the unit file named for the module (`specs/test-framework.md` §Lanes; today still under `tests/python/`) | `uv run pytest` |
+| Comments / docstrings | policy in ROADMAP §3 and `CONTRIBUTING.md` | `uv run python scripts/maint/comment_lint.py --check <touched files>` |
+| Prose, artifacts, agent scripts | agent-lane file with `LANE`/`REASON`/`RETIRE_WHEN` | `uv run pytest tests/agent` (job `agent-lane` once W31-C1 lands) |
 | Types/lint | changed module | `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src` |
 | CLI text/shape | focused CLI pytest | `bash tests/golden/run.sh verify-all` |
 | Spec | owning spec requirement/changelog | `bash scripts/validate-specs.sh` |

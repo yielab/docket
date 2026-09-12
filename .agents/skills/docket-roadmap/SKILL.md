@@ -17,7 +17,8 @@ Build a small task packet instead of loading the planning corpus.
    than silently truncating acceptance evidence. Read the active section only when selecting or
    changing cards. If the board is clear, do not mine historical sections for work.
 3. Use `ROADMAP.md` only for a named decision, principle, phase, or trigger. Locate it with `rg -n`
-   and read that bounded section.
+   and read that bounded section. A decision whose reasoning outgrows a table row lives in
+   `docs/adr/`; §6 keeps the index row and the link.
 4. Locate the owning current-state spec through `specs/README.md`; do not read all specs.
 
 For a new card, record the measured trigger, goal, non-goals, exact live-path owner, files/functions,

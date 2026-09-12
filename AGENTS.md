@@ -14,6 +14,13 @@ task; load only the referenced section or spec.
   current-state contracts. Tests and the live code path are the implementation evidence.
 - If a spec, prose claim, and live behavior disagree, do not choose the convenient one: record the
   discrepancy and make the spec status, test, code, and user-facing claim agree in the same work.
+- Test placement, comment and docstring budget, or documentation generation: the contract is
+  `specs/test-framework.md` §"Lanes and placement" and ROADMAP D-36. A test that reads prose or
+  builds an artifact belongs to the agent lane with its `LANE`/`REASON`/`RETIRE_WHEN` header, never
+  to the default suite. Run `scripts/maint/comment_lint.py --check` on touched files before handoff.
+- Mechanical steps (moving files, rewriting paths, generating headers or reference docs, archiving
+  board sections) are done by a script under `scripts/maint/`, not by reading and rewriting files
+  in a model context. Model work is bounded to one module or one file per packet.
 
 ## Change contract
 

@@ -1,0 +1,394 @@
+[
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 25 COMPLETE (2026-08-30) — live-model request and outcome truth",
+    "bytes": 48706,
+    "sha256": "6a8a4bd198a5bc95b2e3750fa4867474f97d6b5322a76c613038274fcd993e0b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 26 COMPLETE (2026-08-31) — first successful turn and release/governance truth",
+    "bytes": 52820,
+    "sha256": "cc38f4aab46a9180b24db7b3f53d4189ae46fd34f93be278b91422c462cb306e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 27 COMPLETE (2026-09-01) — dependency safety and public front door",
+    "bytes": 6988,
+    "sha256": "9131f3b1d86b4d7b4057670c09f8209d78abc283863fc1ddcc8c954146530fff"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 28 COMPLETE (2026-09-02) — portable governance proof",
+    "bytes": 23624,
+    "sha256": "f6579ab662f25bd668dbbdbc63bbc4052bfee3b957bb3875fe446cf99e0bedc8"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 24 COMPLETE (2026-08-19) — realistic local-model evaluation",
+    "bytes": 8250,
+    "sha256": "4efb61635d58c84f65aa418802b61cddae32f34aac333687a84c958404f0f3ac"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 23 COMPLETE (2026-08-19) — real local-model workflow evidence",
+    "bytes": 6649,
+    "sha256": "79b407a98b412fa6892af918500a9d5ef156c07722e88d3ccd3f52d1e79b443c"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 22 COMPLETE (2026-08-19) — observable full-workflow proof",
+    "bytes": 3585,
+    "sha256": "aea6c6f2dad7d7a3f9a95e0dd7cc7bcd2d1a0fe2ca51821f4351f0cb703a7099"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 21 COMPLETE (2026-08-19) — daemon-free truth pass",
+    "bytes": 2016,
+    "sha256": "c9209fbe011edcf062c77e0f90ef2cf9806ca1f7d8c2a79ea637bb83ed6e8f0b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 20 COMPLETE (2026-08-19) — bounded development context and live-turn efficiency",
+    "bytes": 10750,
+    "sha256": "ebbcea4cdfb7748f002c5337881ee8b36a0c4b8fbfc35e9aa51527d919c61496"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ LOCAL ENVIRONMENT — rebuilt and verified against the real tree (2026-08-05)",
+    "bytes": 5534,
+    "sha256": "4d139648419e7d00755adb7d553f87aac8018656a98e1a0037a2409820a32d1e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 19 COMPLETE (2026-08-05) — what running a real pod found; board CLEAR",
+    "bytes": 7104,
+    "sha256": "28c49ddefb290e439d3b7d3c7e47be2c2d49d5b9438a9cfd8b99f9c92475391d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 18 COMPLETE (2026-08-05) — two false security claims, both now true; board CLEAR",
+    "bytes": 3745,
+    "sha256": "07d36648744cc9335624d9b6586ecde5b52abfdc66f50acc3aad82d30c068798"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 18 board (closed) — opened 2026-08-05",
+    "bytes": 3026,
+    "sha256": "c2d9c917419076fc4b32c5aef88f31fd4c857a4c0ad9ad674a6845cef62b7716"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 17 COMPLETE (2026-08-05) — the MCP wire landed",
+    "bytes": 3805,
+    "sha256": "10b9e4445935d167d37421f22dbbbb8ddd2722d1df8ee262fc181a3d032b307e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 17 board (closed) — opened 2026-08-05",
+    "bytes": 2839,
+    "sha256": "e98382a58441a182aa0e13e25b237fa6be92c2c2b78756c84cbb7097bab4a6bc"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 16 — Phase 22 COMPLETE (2026-08-04). All six cards shipped",
+    "bytes": 3095,
+    "sha256": "c1badfb83bf636f4a448664ec98fe736db460b1a25fb4ccd62b091b439322009"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 16 board (closed) — Phase 22, the control-plane write API (opened 2026-08-04)",
+    "bytes": 3193,
+    "sha256": "703343f6045eab3828e32ba7f3546917b9957b3895affaa04457c8e68c924aac"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ Wave 13 close (2026-08-04) — Phases 19, 20 and 21 all shipped",
+    "bytes": 1147,
+    "sha256": "fbd38ba283503bf2837671c37e96f0be008665c2f8f8a42e8768752dc5f13f25"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 14 — the cleanup wave (2026-08-04). Docs re-trued, dead code gone, archaeology stripped",
+    "bytes": 2709,
+    "sha256": "64fedffbf221e5376b711899aaa248eba75db8915ccff4ac3f0ef2130f2f1f66"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 15 — the last legacy sweep (2026-08-04)",
+    "bytes": 3550,
+    "sha256": "b7a4cf61951d15b159af952e0a8d9bc6adba0eebfebac6c4d52540aa46bd0259"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Historical — Phase 19 waves 8-9 shipped; the daemon is unused",
+    "bytes": 5308,
+    "sha256": "401ffdc8e7d4f5fb4404a66bcf17b4991316fbc410fc42c2c46b5b8ea4d865ff"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Wave 5 — ☑ COMPLETE (2026-07-30, all five merged; Phase 16 finished with it)",
+    "bytes": 1652,
+    "sha256": "6d4fe03ffbdbd53165a20a8a92bd263cfd82e691f637aed5f16383ce6be3bdaa"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Wave 6 — ☑ COMPLETE (2026-07-30, all five merged)",
+    "bytes": 1481,
+    "sha256": "85530af3c9eea3d3a69490d4c150f7b5f45d0994287a6ae6ba9cf9a30dbc125b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Wave 7 — ☑ COMPLETE (2026-07-31) — and with it, the whole Platformization program",
+    "bytes": 6947,
+    "sha256": "549f85a6f7e5ba87395fdfd61b796e7edb79a465f5e5e798ff3a113ccd7533c7"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Dead-code register (CL-1, 2026-07-30) — the standing \"no legacy code\" work list",
+    "bytes": 5812,
+    "sha256": "737df2259dcdbcf3e4c5f42d117d2efe6c2536bf53be85147a9dfdde494a242c"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Dead-code register — wave 3-6 sweep (CL-3, 2026-07-31)",
+    "bytes": 10940,
+    "sha256": "e49731c026b37b7a02ff93f545d687cc39ac9e93648ac00b010fbfd40547510f"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Phase 19 — docket owns the runtime (opened 2026-07-31)",
+    "bytes": 34566,
+    "sha256": "2c30f17f57f1c3eed11ff6142ceb8dd75d4fbc93f5ecdb789d9d98988cec94d2"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "Known-open gaps carried forward (do not let these get quietly re-claimed)",
+    "bytes": 4275,
+    "sha256": "b1f94c675b30ddacd60331ce88118ff66173ed6878b81411b6b2b376803c5f17"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "0. Completed initiatives (historical record)",
+    "bytes": 1526,
+    "sha256": "3f2452c2830a54f9292e9bff384848d1566be49c1f5e912d4e01424638d4b38b"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "5. Phase records (historical — every phase below is COMPLETE)",
+    "bytes": 15596,
+    "sha256": "4809f56a55c8efb2ee22e551fdc1f3125a078f1b84cb0e5cb9676cc5db5c23da"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "PHASE 19 — docket takes the runtime (D-19)  *(☑ COMPLETE — all 13 cards, waves 8–11, closed 2026-08-03)*",
+    "bytes": 3501,
+    "sha256": "3331d183464998854f94c2ffd5d5a51b53ec5ba10bf574c985d32d2ed48b1c0c"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "PHASE 20 — Fleet observability  *(☑ COMPLETE at cut scope — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card)*",
+    "bytes": 8962,
+    "sha256": "ef1711bcdb217cefa2171674a32079bae940919324836cd9ac61866aa552ff4b"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "PHASE 21 — The product substrate  *(☑ COMPLETE at cut scope — P21-1 + P21-5 shipped; the rest cut by D-24)*",
+    "bytes": 4639,
+    "sha256": "ca2e71f01856f1c05dd4eaacc69a40732538c380a9ca22e8fa89de9cf55963b7"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "PHASE 22 — Control-plane write API for an external plan-of-record  *(☑ COMPLETE — all 6 cards, wave 16, 2026-08-04)*",
+    "bytes": 9065,
+    "sha256": "1d8fde6584af25c139f3e1a6b137f2069ef8a4d396306c834e5605e8b88ed29f"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 5 — Channel portability + system snapshot  *(☑ COMPLETE)*",
+    "bytes": 3274,
+    "sha256": "4f59c0216c4b99bb08cf09866657ea7d13d51a4a5bf9f45840d4e77fa1851cc4"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 6 — Model & provider agnosticism  *(☑ COMPLETE)*",
+    "bytes": 18553,
+    "sha256": "7b987de35985ec40c16818fc00a732eb3a198f30b610fb218d8a344272837c90"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 6b — Tier-less role→model policy: unified agent/model architecture  *(✅ complete 2026-06-12)*",
+    "bytes": 11113,
+    "sha256": "fd34de24652b47ab81c67bdcc487a8368648cf3297f56f439f8470f097d3355e"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 8 — Agent observability, guardrails & drift (HITL)  *(☑ COMPLETE)*",
+    "bytes": 21002,
+    "sha256": "ba1c056296fb2c35a2aa383a63e8ff32f5964a1e471b312cd73faa0001661591"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 9 — Contract integrity: close the spec↔runtime gap (de-ceremony)  *(☑ COMPLETE)*",
+    "bytes": 11054,
+    "sha256": "7c132a64425007e2e21b6d6b37ecfc0ab4dba192fde6a6f6755bdbceec1bf7fe"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 10 — Agent architecture: project pods (scope ≠ role ≠ lifecycle)  *(☑ COMPLETE)*",
+    "bytes": 20441,
+    "sha256": "627d1fdf570cb9a0ee03de546e3962afe88d0de74803e2fdbb425c685dd69daa"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 11 — Competitive differentiation (OpenClaw fleet-management space)  *(☑ COMPLETE 2026-06-25)*",
+    "bytes": 5403,
+    "sha256": "732d47160a079d1e50ce5956c64b3594f9f0271d3da3861630cbf929f5e1a511"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 12 — Consolidation & hardening  *(☑ COMPLETE 2026-07-02)*",
+    "bytes": 4827,
+    "sha256": "ccb5fcbf31363a445a71e7c0c078c0d07567f2bab0dfe8ebc577549f32171309"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 13 — Close the differentiation gaps  *(☑ COMPLETE 2026-07-02)*",
+    "bytes": 6142,
+    "sha256": "b5aefa6690145d6a5ed4b061bd94c5690d06fcfaa1099a7dee53a40ffe47b24f"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 14 — Platformization I: runtime truth & dispatch hardening  *(☑ COMPLETE 2026-07-30)*",
+    "bytes": 8187,
+    "sha256": "6ebc8f57e94824bf0e8cea85a9b88fb04e27b2e49308426e984580a3aa70659b"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 15 — Platformization II: deterministic governance, wired  *(☑ COMPLETE — all 6 cards G-1…G-6 shipped; G-3 closed it 2026-07-31)*",
+    "bytes": 3868,
+    "sha256": "3b2168a875a27e1bf01ece52ae6dad38b20b851b7695b76a44550a270e5c71e7"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 16 — Platformization III: declarative orchestration & diverse role archetypes  *(☑ COMPLETE — all 8 cards W-1…W-8 shipped 2026-07-30)*",
+    "bytes": 22523,
+    "sha256": "2110775927ffd666d65cb2aacf67e747f7521436e44ccaddc10506c927fe811c"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 17 — Platformization IV: context engineering & memory management  *(☑ COMPLETE — all 5 cards C-1…C-5 shipped; C-3/C-5 closed it 2026-07-31)*",
+    "bytes": 2376,
+    "sha256": "688835ac03e8ab4ffa5981693d6c30d783aba808a38b6402a65697bd714f3a12"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 3,
+    "heading": "PHASE 18 — Platformization V: runtime-driver port, LLM agnosticism & MCP  *(☑ COMPLETE — L-1/L-2/L-3/L-6 shipped; L-4 and L-5 both answered as spikes, 2026-07-30)*",
+    "bytes": 3460,
+    "sha256": "1c75f7e8a07fb20cbfc7a50a498ca9a0bf8023033e0aab9c1d53b94acfa23b16"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-changelog.md",
+    "level": 3,
+    "heading": "Changelog",
+    "bytes": 74031,
+    "sha256": "ae6ffeb14ff8cce703bdad82cb914b83961f7da757ce11dc2528925fb6c86c17"
+  }
+]

@@ -27,7 +27,12 @@ Start from the behavior boundary, not from a broad repository tour.
    implementation. For a clarification or editorial change, confirm existing behavioral evidence;
    add a test only when the claim lacks coverage, without inventing a RED state. Prefer a property or
    live-path assertion over wording, source-line, or fixture-only checks. Mock true external edges,
-   not the caller or state transition being proved.
+   not the caller or state transition being proved. Place the test where `specs/test-framework.md`
+   §"Lanes and placement" says: the unit file named for the module (declare `SUBJECT`), or
+   `integration/` when several modules or a real process boundary are the subject. A check on
+   prose, artifacts or the agent's own scripts goes to the agent lane with its header and counts
+   against that lane's budget; it never enters the default suite. One-line test docstrings, no
+   card ids or dates anywhere in the file.
 6. Implement the smallest coherent change, keeping `cli -> core -> edges` inward-only boundaries.
 7. Run the focused test and static check while iterating. Before handoff, run the gates required by
    the affected surface.

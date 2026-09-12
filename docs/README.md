@@ -39,6 +39,7 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 | [Adoption Evidence](ADOPTION-EVIDENCE.md) | Reproducible exact-artifact governance and recovery results, with limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 | [Development Harness](DEVELOPMENT-HARNESS.md) | Contributor/agent context routing, repository skills, hooks, and token-efficient validation |
+| [Cycles ended](cycles-ended/README.md) | The archive: every closed wave and phase section from the board and roadmap, the roadmap changelog, and old coordinator handoffs — verbatim, hash-verified, never a source of work |
 
 For how features are specified before implementation, see the specs under
 [`../specs/`](../specs/) and the [SSD workflow guide](../SSD-WORKFLOW.md).
