@@ -436,8 +436,8 @@ is refused the same way, before `preflight` even runs.
 a non-null `blocked` object naming a `tool`, `call_id`, `denial_kind` (`approval_unavailable`),
 `policy_id`, and `reason`.
 
-**Cause:** harness mode always runs with approvals forced to non-interactive refusal
-(`DOCKET_APPROVAL_MODE=refuse`) — there is no human on the other end of a caller-owned subprocess
+**Cause:** harness mode always runs with approvals forced to non-interactive refusal — there is no
+human on the other end of a caller-owned subprocess
 to approve a gated tool call, so a verdict of `ask` ends the run immediately instead of waiting.
 This is expected behavior, not a bug: it is the one thing an interactive dispatch would instead
 block on for up to two minutes.

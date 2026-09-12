@@ -174,7 +174,9 @@ and the same `core/tools.py` chokepoint, policy hooks, audit and trace: no secon
 stdout carries the wire contract only: newline-delimited `HarnessEvent` lines (docket's existing
 `core/trace.py` vocabulary, inside a versioned envelope) followed by exactly one `HarnessResult`
 line; every log goes to stderr. Approvals are forced non-interactive
-(`ToolContext.approval_mode = "refuse"`, wired via `DOCKET_APPROVAL_MODE=refuse`): a verdict that
+(`ToolContext.approval_mode = "refuse"`, carried to the driver as the `DOCKET_APPROVAL_MODE` key
+of `run_turn`'s `env` dict -- an internal coordinate, not a variable an operator can export): a
+verdict that
 would otherwise block the calling thread in `wait_for_approval` for up to `TOOL_APPROVAL_TIMEOUT`
 instead ends the run immediately with `status: blocked` and a `denial_kind` of
 `approval_unavailable`, naming the tool, call id, policy id and reason. Exit codes are the one
