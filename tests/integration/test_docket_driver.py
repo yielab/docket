@@ -41,7 +41,7 @@ from docket.core import secrets as _secrets
 from docket.core import session as _session
 from docket.core.audit import read_audit
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
-from docket.core.runtime_driver import PIPELINE_WORKTREE_ENV
+from docket.core.runtime_driver import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
 from docket.core.session import load_session
 from docket.core.tools import Tool, ToolContext, ToolRegistry
 from docket.edges import store as _store
@@ -1544,6 +1544,27 @@ def _probe_registry() -> ToolRegistry:
     return registry
 
 
+def _approval_mode_probe_registry() -> ToolRegistry:
+    """A one-tool registry reporting back the exact `ctx.approval_mode`
+    `run_turn` built -- the DOCKET_APPROVAL_MODE wiring's own oracle, mirroring
+    `_probe_registry`'s `ctx.sandbox` pattern above."""
+    registry = ToolRegistry()
+
+    def _probe(args: dict[str, object], ctx: ToolContext) -> ToolOutcome:
+        return ToolOutcome(True, content=f"approval_mode={ctx.approval_mode}")
+
+    registry.register(
+        Tool(
+            name="probe",
+            description="reports ctx.approval_mode",
+            parameters={"type": "object", "properties": {}},
+            handler=_probe,
+            kind="read",
+        )
+    )
+    return registry
+
+
 def _probe_call_response() -> ChatResponse:
     call = ToolCall(id="c1", name="probe", arguments="{}")
     return ChatResponse(
@@ -1677,3 +1698,137 @@ class TestIsolationWiring:
         assert result.ok is True
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert tool_msg.content == "sandbox=auto"
+
+
+# DOCKET_APPROVAL_MODE travels the same internal env-coordinate route as
+# PIPELINE_WORKTREE_ENV: popped from env before the tool env is built, then
+# mapped onto ToolContext.approval_mode. Without this wire, a production
+# dispatch could never reach approval_unavailable -- only a hand-built
+# ToolContext in a unit test could set the field directly.
+class TestApprovalModeWiring:
+    """The DOCKET_APPROVAL_MODE env coordinate reaching a real driver call."""
+
+    def test_env_unset_keeps_the_wait_default(self) -> None:
+        _write_meta("mode-default-agent")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_approval_mode_probe_registry,
+        )
+
+        result = driver.run_turn("mode-default-agent", "agent:mode-default-agent:default", "go", 30)
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "approval_mode=wait"
+
+    def test_env_refuse_reaches_the_tool_context(self) -> None:
+        _write_meta("mode-refuse-agent")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_approval_mode_probe_registry,
+        )
+
+        result = driver.run_turn(
+            "mode-refuse-agent",
+            "agent:mode-refuse-agent:default",
+            "go",
+            30,
+            {DOCKET_APPROVAL_MODE: "refuse"},
+        )
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "approval_mode=refuse"
+
+    def test_an_unrecognized_value_falls_back_to_wait(self) -> None:
+        _write_meta("mode-garbage-agent")
+        backend = _ScriptedBackend([_probe_call_response(), _final_response("done")])
+        driver = DocketDriver(
+            backend_factory=lambda model: backend,
+            registry_factory=_approval_mode_probe_registry,
+        )
+
+        result = driver.run_turn(
+            "mode-garbage-agent",
+            "agent:mode-garbage-agent:default",
+            "go",
+            30,
+            {DOCKET_APPROVAL_MODE: "garbage"},
+        )
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert tool_msg.content == "approval_mode=wait"
+
+    def test_the_env_coordinate_never_leaks_into_the_tool_visible_environment(self) -> None:
+        # "env" (not "echo") is on core.security.SAFE_BINS' curated allowlist,
+        # mirroring test_env_flows_into_the_tool_context above.
+        _write_meta("mode-leak-agent")
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "env"}))
+        backend = _ScriptedBackend(
+            [
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+                _final_response("ran it"),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        result = driver.run_turn(
+            "mode-leak-agent",
+            "agent:mode-leak-agent:default",
+            "run it",
+            30,
+            {DOCKET_APPROVAL_MODE: "refuse"},
+        )
+
+        assert result.ok is True
+        tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
+        assert "DOCKET_APPROVAL_MODE" not in tool_msg.content
+
+    def test_refuse_mode_denies_a_real_gated_call_immediately_through_the_driver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole-path proof: a real policy-gated `bash` call, through the
+        real driver, denies in well under the 120s `TOOL_APPROVAL_TIMEOUT`
+        instead of waiting -- the defect this wire exists to close."""
+        monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 5, raising=True)
+        from docket.core.policy import install_policies
+
+        install_policies()
+        _write_meta("refuse-real-agent")
+        call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+        backend = _ScriptedBackend(
+            [
+                ChatResponse(
+                    ok=True,
+                    message=assistant("", tool_calls=[call]),
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(10, 5),
+                ),
+            ]
+        )
+        driver = DocketDriver(backend_factory=lambda model: backend)
+
+        started = _time.monotonic()
+        result = driver.run_turn(
+            "refuse-real-agent",
+            "agent:refuse-real-agent:default",
+            "delete the build dir",
+            30,
+            {DOCKET_APPROVAL_MODE: "refuse"},
+        )
+        elapsed = _time.monotonic() - started
+
+        assert elapsed < 1.0, f"took {elapsed:.2f}s -- did this actually skip the approval wait?"
+        assert result.ok is False
+        assert result.failure_kind == "invalid_output"
+        assert "approval_unavailable" in result.error
+        assert "block-destructive" in result.error
+        assert not _cfg.APPROVALS_DIR.exists() or list(_cfg.APPROVALS_DIR.glob("*.json")) == []

@@ -107,6 +107,20 @@ class Refusal:
     reason: str
 
 
+# No run token exists yet at refusal time -- preflight (and the command's
+# own pre-preflight argument checks) fire before create_run -- so every
+# field but status/error stays at its empty default.
+def refusal_result(reason: str) -> HarnessResult:
+    """The one ``HarnessResult`` a refused run ever prints (exit code 2)."""
+    return HarnessResult(
+        token="",
+        status="refused",
+        error=reason,
+        model=ModelInfo(),
+        usage=UsageInfo(),
+    )
+
+
 def preflight(environ: Mapping[str, str], home_default: Path, workspace: Path) -> Refusal | None:
     """Refuse to run, or clear the caller to proceed, without touching global state."""
     # Measured against the caller's own environ, never docket.config globals,
