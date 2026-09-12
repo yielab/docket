@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -14,10 +15,12 @@ from typing import Any
 import pytest
 from tests.conftest import repoint_docket_home
 
+import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
 from docket.core import dispatch as _dispatch
+from docket.core import fleet as _fleet
 from docket.core import runs as _runs
 from docket.core import trace as _trace
 from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -160,3 +163,118 @@ def test_returned_cancelled_task_terminalizes_the_run(
     assert persisted is not None
     assert persisted["state"] == "cancelled"
     assert persisted["taskIds"] == ["task-cancelled"]
+
+
+class _OneShotBashBackend:
+    """Requests one real, long-running `bash` call, then a response it must
+    never be asked for -- proves the run stops on the first hop, not on a
+    retried one."""
+
+    def __init__(self, command: str) -> None:
+        self._command = command
+        self.calls = 0
+
+    def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: int = 120,
+    ) -> ChatResponse:
+        del messages, tools, max_tokens, temperature, timeout
+        self.calls += 1
+        if self.calls > 1:
+            raise AssertionError("must not be asked for a second turn after cancellation")
+        call = ToolCall(id="bash-1", name="bash", arguments=json.dumps({"command": self._command}))
+        return ChatResponse(
+            ok=True,
+            message=assistant("", tool_calls=[call]),
+            finish_reason="tool_calls",
+            usage=TokenUsage(10, 5),
+        )
+
+
+def _write_agent_meta(agent_id: str, codebase: Path) -> None:
+    workspace = _cfg.PROJECTS_DIR / agent_id
+    workspace.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "schemaVersion": 1,
+        "kind": "project",
+        "scope": "project",
+        "role": "implementer",
+        "name": agent_id,
+        "codebase": str(codebase),
+        "model": "anthropic/claude-haiku-4-5",
+        "modelSource": "policy",
+        "sessionKey": f"agent:{agent_id}:demo",
+        "projectKey": "demo",
+        "created": "2026-09-12T00:00:00+00:00",
+    }
+    (workspace / ".docket-meta.json").write_text(json.dumps(meta))
+    _fleet.add_agent(agent_id, meta["model"], meta["sessionKey"], "demo")
+
+
+def test_docket_runs_cancel_reaches_a_real_bash_sleep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole-path proof: `docket runs cancel`, through the production
+    driver, terminalizes a run whose hop is sitting inside a real `bash
+    sleep`-shaped command."""
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    repoint_docket_home(monkeypatch, home)
+
+    codebase = tmp_path / "codebase"
+    codebase.mkdir()
+    agent_id = "demo-implementer"
+    _write_agent_meta(agent_id, codebase)
+
+    # `python3` is on the command classifier's curated allowlist, so this
+    # reaches `run_bash` on a bare "allow" verdict -- the subject here is
+    # cancellation reaching an in-flight process, not the gate itself.
+    backend = _OneShotBashBackend('python3 -c "import time; time.sleep(30)"')
+    driver = DocketDriver(backend_factory=lambda _model: backend)
+
+    run = _runs.create_run("cli", "demo")
+    results: list[object] = []
+
+    def _fn() -> list[Any]:
+        turn = driver.run_turn(agent_id, f"agent:{agent_id}:demo", "run the long command", 60)
+        status = "cancelled" if turn.failure_kind == "run_cancelled" else "failed"
+        return [_dispatch.TaskResult("task-1", status, turn.error)]
+
+    thread = threading.Thread(target=lambda: results.append(_runs.execute(run["id"], _fn)))
+    thread.start()
+    # No barrier to synchronize on here (the tool call itself is the long
+    # pole) -- a short, generous sleep lets the hop reach the running `bash`
+    # call before cancellation is requested.
+    time.sleep(1)
+
+    env = os.environ.copy()
+    env["DOCKET_HOME"] = str(home)
+    requested_at = time.monotonic()
+    cancelled = subprocess.run(
+        [sys.executable, "-m", "docket", "runs", "cancel", run["id"]],
+        cwd=Path(__file__).parents[2],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert cancelled.returncode == 0, cancelled.stderr
+    assert "requested cancellation" in cancelled.stdout
+
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    elapsed = time.monotonic() - requested_at
+    assert elapsed < 3, f"the run took {elapsed:.2f}s to terminalize, not within 3s"
+
+    stopped = _runs.get_run(run["id"])
+    assert stopped is not None
+    assert stopped["state"] == "cancelled"
+    assert stopped["cancellation"]["observedAt"] is not None
+    assert stopped["cancellation"]["stoppedAt"] is not None

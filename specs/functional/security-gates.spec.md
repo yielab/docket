@@ -1,13 +1,14 @@
 # Security Gates Specification
 
-**Version**: 0.18.0
+**Version**: 0.19.0
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. Approval routing has CLI, HTTP, MCP, and
 Telegram producers; isolation is opt-in and fails closed when enabled without a usable backend.
 `ToolContext.approval_mode` (default `"wait"`) picks whether an `ask` verdict blocks on that
 routing or is refused immediately with no record and no wait — see the in-turn tool-call gate
-section below.
+section below. Cancellation reaches an in-flight `bash` command, the one handler D-30's
+"may finish" rule no longer covers.
 **Last Updated**: 2026-09-12
 
 ## Purpose
@@ -434,6 +435,21 @@ tool call to take.**
     required arguments). This mode is fixed and non-interactive by design — it answers "can this
     caller wait for a human," not "let a human answer from somewhere else" — see the ADR decision
     for why that is deliberately a separate, unbuilt feature.
+
+12. **Cancellation reaches an in-flight `bash` command (W30-C1, D-35 decision 9 amends D-30 for
+    this handler only).** The `bash` tool's `handler=` registration in
+    `core/tools.py::builtin_registry` passes the same `ctx.cancellation_check` through to
+    `edges/adapters/toolbox.py::run_bash`'s optional `cancelled` parameter. Given one, `run_bash`
+    waits in a short bounded poll instead of blocking for the whole timeout in `communicate()`; a
+    true callback **MUST** kill the running command exactly the way a timeout already does
+    (`system.docker_kill` under the docker backend, then `_kill_group`) and **MUST** return a
+    complete `ToolOutcome(ok=False, error="cancelled before completion")`, carrying the same
+    sandbox tag every other `bash` failure does. D-30's "an already-running handler may finish"
+    rule is otherwise unchanged: it still governs every other handler (`read`, `write`, `edit`,
+    `glob`, `grep`, `fetch`, an MCP-adapted tool) and, for `bash` itself, an HTTP request or Python
+    call made from within the shell command rather than by docket's own dispatcher. A caller that
+    never passes `cancelled` (the default, `None`) **MUST** see today's exact behavior, including
+    the timeout message, byte for byte.
 
 ### Exec sandbox for the `bash` tool (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
@@ -1072,6 +1088,16 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.19.0 (2026-09-12)
+
+- W30-C1 amends D-30 for the `bash` handler alone: `run_bash` accepts the same
+  `cancellation_check` callback as an optional `cancelled` parameter and, given one, polls it
+  while the command runs instead of blocking for the whole timeout. A true callback kills the
+  process group the same way a timeout already does and returns a complete cancelled
+  `ToolOutcome`. The poll drains the command's output while it waits, so an ordinary command
+  writing past the pipe buffer still returns its output rather than a false timeout. Every other
+  handler, and a caller that never passes the callback, is unchanged.
 
 ### Version 0.18.0 (2026-09-12)
 
