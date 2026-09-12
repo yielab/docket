@@ -24,11 +24,19 @@ import json
 import os
 import re
 import threading
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 import docket.config as _cfg
+
+# A sink receives the exact record trace_event is about to append (after
+# redaction, before the write) -- see subscribe() below.
+TraceSink = Callable[[dict[str, Any]], None]
+
+_SUBSCRIBERS: list[TraceSink] = []
+_SUBSCRIBERS_LOCK = threading.Lock()
 
 # trace_event()'s return contract: "written" (recorded), "rejected" (invalid
 # event_type), or "suppressed" (DOCKET_NO_TRACE=1 no-ops the write) — three
@@ -164,6 +172,32 @@ def _append(tracefile: Path, records: list[dict[str, Any]]) -> None:
         os.chmod(tracefile, 0o600)
 
 
+@contextlib.contextmanager
+def subscribe(sink: TraceSink) -> Iterator[None]:
+    """Receive every record ``trace_event`` appends, for as long as this is open."""
+    # Called synchronously on the calling thread with the exact (redacted)
+    # record about to be written, before the write. A raising sink is
+    # suppressed (mirrors _emit_trace's best-effort rule in core/approval.py)
+    # and never changes trace_event's return value. Registration is a plain
+    # list, so concurrent subscribers all see every record, and unregistering
+    # removes exactly the one instance added even if subscribed twice.
+    with _SUBSCRIBERS_LOCK:
+        _SUBSCRIBERS.append(sink)
+    try:
+        yield
+    finally:
+        with _SUBSCRIBERS_LOCK:
+            _SUBSCRIBERS.remove(sink)
+
+
+def _notify_subscribers(record: dict[str, Any]) -> None:
+    with _SUBSCRIBERS_LOCK:
+        sinks = list(_SUBSCRIBERS)
+    for sink in sinks:
+        with contextlib.suppress(Exception):
+            sink(record)
+
+
 def trace_event(
     project: str,
     session_id: str,
@@ -206,6 +240,9 @@ def trace_event(
     if duration_ms not in (None, ""):
         with contextlib.suppress(TypeError, ValueError):
             record["duration_ms"] = int(duration_ms)  # type: ignore[arg-type]
+
+    if _SUBSCRIBERS:
+        _notify_subscribers(record)
 
     # Several step-scoped histories can intentionally emit into one task trace
     # (parallel pipeline children). Keep each in-process JSONL append whole.
