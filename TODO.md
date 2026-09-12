@@ -488,8 +488,14 @@ they may run in parallel because they share no module.
 parallel with C8b (disjoint: different module, different unit file)
 
 **Deterministic trigger:** `core/agent_loop.py::run_agent_turn` is 789 lines (440-1228 at
-`7f02c55`). Its unit file `tests/unit/core/test_agent_loop.py` is 2,462 lines, the largest in the
-suite, because the function can only be exercised end to end.
+`7f02c55`). `tests/integration/test_agent_loop.py` is 2,464 lines, the largest file in the suite,
+because the function can only be exercised end to end.
+
+**There is no unit file for this module yet** -- `docket.core.agent_loop` is a line in
+`tests/guards/layout_baseline.txt`, the shrink-only list of modules lacking one. The phase tests
+this card writes create `tests/unit/core/test_agent_loop.py`, so that line comes out and the
+ratchet falls by one. The integration file stays the end-to-end file and is touched only to
+retire a test a phase test genuinely replaces.
 
 **Goal:** extract phases with names (`_prepare_request`, `_run_round`, `_apply_stop_conditions`,
 and whatever the code actually shows) with **zero behaviour change**, then add unit tests per phase
@@ -514,31 +520,40 @@ bound is evaluated before and after, and every retired test paired with the phas
 
 ### W31-C8b — split `dispatch_task` and its nested `_execute_unit` into named phases
 
-**Status:** CLAIMED (2026-09-12) · **Size:** M · **Owner:** @sonnet-c8b · **Depends on:** C4 (done) ·
-parallel with C8a (disjoint: different module, different unit file)
+**Status:** DONE (2026-09-12, `5a521a5` merged as `1dd9456`) · **Size:** M · **Owner:** @sonnet-c8b ·
+**Depends on:** C4 (done) · ran in parallel with C8a (disjoint module and test files)
 
-**Deterministic trigger:** `core/dispatch.py::dispatch_task` is 703 lines (1172-1874 at `7f02c55`),
-of which the nested `_execute_unit` closure is 501 (1284-1784). Nesting is why the outer function
-is unreadable and why the inner one cannot be tested directly.
+**Shipped:** `_execute_unit` is a module-level function. `dispatch_task` falls from 703 lines to
+about 125 and the lifted function from 501 to 52, each a thin orchestrator over named phases:
+`_gate_budget`, `_gate_pre_hop_approval`, `_compose_hop`, `_run_hop_turn`,
+`_apply_output_guardrails`, `_build_hop_result`, `_persist_hop_and_trace`, `_evaluate_post_hop_gate`
+(delegating to `_evaluate_mechanical_gate` and `_evaluate_verdict_gate`), with `_run_group_node`
+lifted alongside, and `_resolve_pipeline_steps`, `_resolve_resume_state`, `_resolve_gate_override`
+and `_run_pipeline` carved out of `dispatch_task` itself.
 
-**Goal:** lift `_execute_unit` to a module-level function taking its captured state explicitly,
-then extract named phases from both. **Enumerate what the closure captures before lifting it** --
-each captured name becomes a parameter or an attribute of a small state object, and a name captured
-and then mutated is the one that can change behaviour silently.
+**The inventory came before the lift, which is why it is safe.** Every name the closure reached
+through lexical scope became either an explicit call argument (`node`, `prior_snapshot`,
+`rework_hop`, `check_approval`, `index_for_context` -- the ones that vary per call) or an attribute
+of a new `_UnitContext` dataclass. Two are mutated rather than read, and those are where a lift
+like this breaks silently: `rework_counts` is a dict mutated in place, so the same object must keep
+flowing through and never a copy; `override_index` was rebound through `nonlocal` to consume a
+granted approval's single-use gate override exactly once, and is now rebound as an attribute of a
+shared mutable context. Both risks are written into the code, and the second is pinned by a test
+asserting the override is consumed at the named pipeline index and survives at any other.
 
-**`dispatch.py` is the contention hotspot.** No other card may own it while this is open.
+**Six tests exist that could not exist before**, calling the lifted function and two of its gates
+directly. Seen red against the pre-lift file (the context class reported missing) and green after.
+No existing test was retired and the full prior suite passed unchanged throughout, which is the
+evidence a refactor claiming no behaviour change owes.
 
-**Non-goals:** no change to the hop sequence, the `verifyCmd` gate, the Tester PASS/FAIL parse or
-`maxReworkCycles`; no new trace events.
+**Unchanged, deliberately:** the hop sequence, the `verifyCmd` gate, the Tester first-line verdict
+parse, `maxReworkCycles`, the trace event set. The two user-facing strings that moved are
+byte-identical, confirmed by the 18-case golden suite.
 
-**Owns:** `core/dispatch.py` and its unit/integration files. **Forbidden:** other `src/` modules.
-
-**RED tests / oracles:** the existing suite and the golden suite stay byte-identical; the lifted
-`_execute_unit` gains direct unit tests that could not exist while it was a closure; each new phase
-test fails before extraction and passes after.
-
-**Validation:** full gates. **Handoff:** the captured-name inventory with what each became, function
-lengths before and after, and every retired test paired with its replacement.
+**Integrator note:** the agent's worktree had been checked out at a stale base predating the whole
+wave. It detected this itself and reset to `main` before working, so the branch that merged is one
+commit on top of `main` touching two files. Suite 2398 to 2404; `CONTRIBUTING.md` reconciled by the
+integrator, which is why the card correctly left `metrics.py --check` failing.
 
 ### W31-C9 — `trace.redact` degrades quadratically on a long alphanumeric run
 
@@ -596,12 +611,15 @@ that was backtracking.
 
 ### W31-C10 — one way to repoint DOCKET_HOME, not fifty-six
 
-**Status:** TODO, queued behind C8b · **Size:** M · **Owner:** — · **Depends on:** C5 (done)
+**Status:** READY (unblocked 2026-09-12 when C8b merged) · **Size:** M · **Owner:** — ·
+**Depends on:** C5 (done), C8b (done)
 
 **File contention, measured:** six of the repointing sites live in dispatch and driver test
 files (`test_dispatch.py` in both lanes, `test_docket_driver.py`, `test_approval_gated_dispatch.py`,
 `test_dispatch_run_records.py`, `test_dispatch_heartbeat_and_conversation_sync.py`), which C8b
-owns. This card is disjoint from C8a and may run beside it, but not beside C8b.
+owned. **C8b has merged, so that contention is gone.** This card is also disjoint from C8a and
+may run beside it. Re-measure the 56 sites at HEAD before starting: C8b touched several of
+these files.
 
 **Deterministic trigger:** on the merged tree, 56 sites across 51 test files repoint
 `_cfg.DOCKET_HOME` by hand. C5 converted eight of them to the shared `repoint_docket_home` helper
