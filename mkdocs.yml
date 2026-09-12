@@ -1,0 +1,70 @@
+site_name: docket
+site_description: A governed agent-fleet runtime and CLI.
+repo_url: https://github.com/yielab/docket
+docs_dir: docs
+site_dir: site
+
+# W31-C6 owns only this file and docs/commands.md, so the three references
+# the fixed nav below needs from outside docs/ (the spec index, the
+# changelog, and the docket-runtime API page) are surfaced read-only via
+# `scripts/mkdocs_hooks.py`'s `on_files` hook rather than by copying,
+# symlinking, or moving anything into docs/ or specs/. The same hook also
+# rewrites any other-wise-unresolvable relative link that points at a real
+# on-disk file into an absolute GitHub blob link at build time only -- see
+# the hook's docstring for why this repository's docs were never going to
+# resolve cleanly under a docs_dir that is (correctly) narrower than the
+# whole repository. A link to something that does not exist on disk is left
+# alone, so a genuinely dead link still fails `--strict`.
+hooks:
+  - scripts/mkdocs_hooks.py
+
+# `docs/cycles-ended/roadmap-phases.md`, `roadmap-changelog.md`,
+# `todo-waves.md` and `handoffs/` are a verbatim historical archive (not
+# owned by this card) whose own internal links point at pre-Phase-19 paths
+# that no longer exist at all (an already-deleted `CLAUDE.md`, `sync.py`,
+# `openclaw.py`, ...) -- unresolvable by definition, not a docs_dir
+# artifact, so the hook's on-disk-existence check correctly leaves them
+# broken. Excluded from the build entirely rather than left to fail it;
+# `docs/cycles-ended/README.md`'s own links to these three files still
+# resolve, via the same hook, to their real GitHub location.
+exclude_docs: |
+  cycles-ended/roadmap-changelog.md
+  cycles-ended/roadmap-phases.md
+  cycles-ended/todo-waves.md
+  cycles-ended/handoffs/
+
+# The rest of docs/ (the docs index, the other guides, adoption evidence,
+# assets) still builds -- so relative links between docs resolve under
+# --strict -- it just isn't forced into the *sidebar*, which this file
+# fixes per D-36.
+not_in_nav: |
+  *.md
+  assets/**
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - packages/docket-runtime/src
+
+nav:
+  - Home: README.md
+  - Guides:
+      - Agent Teams (Pods): AGENT-TEAMS.md
+      - Quick Start: QUICK-START-DOCKET.md
+      - Security (simple): SECURITY-SIMPLE.md
+      - Docket (deep dive): DOCKET.md
+  - CLI Reference: commands.md
+  - docket-runtime API: packages/docket-runtime/docs/api.md
+  - Specifications: specs/README.md
+  - Architecture Decisions: adr/0001-harness-mode.md
+  - Cycles Ended: cycles-ended/README.md
+  - Changelog: CHANGELOG.md

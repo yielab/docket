@@ -116,7 +116,7 @@ All contributions must include appropriate tests:
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
 For scale, so you know what you're getting into: **2,542 tests** in `tests/python/`,
-**~30,560 lines** of Python in the shipped package, **27 specifications** validated in CI, and
+**~31,357 lines** of Python in the shipped package, **27 specifications** validated in CI, and
 **37 commands** in the [command reference](docs/commands.md). `scripts/metrics.py --check`
 computes these from the tree on every CI run, so this paragraph cannot silently go stale.
 
