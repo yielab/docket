@@ -87,14 +87,14 @@ The contract every card here implements is `specs/test-framework.md` §"Lanes an
 
 | Metric | Locator | Observed | Threshold |
 | --- | --- | --- | --- |
-| Default suite wall time | `uv run pytest` | 8 min 12 s (2,377 passed, 5 skipped) | < 90 s after C5; < 5 min after C1 alone |
+| Default suite wall time | `uv run pytest` | 8 min 12 s (2,377 passed, 5 skipped); **3 min 23 s after C1** | < 90 s after C5; < 5 min after C1 alone |
 | Share of wall time in the 15 slowest tests | `--durations=15` | ~257 s, every one a release/evidence/adapter test | those tests out of the default suite |
 | Test files that assert on prose, release artifacts, or the agent's own hook scripts | `scripts/maint/test_inventory.py` | 35 files, 8,313 lines, 227 tests (18% of test lines) | in `tests/agent/`, ≤ 4,000 lines total, guarded |
 | Test files touching one subject | `rg -l` over `tests/python` | `serve` in 19 files, `runs` in 17, `tools` in 12 | one unit file per `src/` module, guarded |
 | Archaeology in comments/docstrings | `scripts/maint/comment_lint.py src tests` | 20 hits in `src/`, 69 in `tests/` | 0, ratcheted |
 | `subprocess` call sites in tests | `rg -c 'subprocess\.(run\|Popen\|check_output)'` | 91 sites in 40 files | 0 in `unit/`; only process-boundary tests elsewhere |
 | Board and roadmap volume | `wc -l TODO.md ROADMAP.md` | 4,628 + 3,541 lines; active wave began at line 1642 between closed waves (archive shipped 2026-09-11: ~1,100 + ~810 remain, all of it active or planned) | TODO ≤ 200 once W30/W31 close, ROADMAP ≤ 500, history in `docs/cycles-ended/` |
-| Hand-written CLI reference | `docs/commands.md` | 2,247 lines, no drift check | generated from Typer, `--check` in CI |
+| Hand-written CLI reference | `docs/commands.md` | 2,247 lines, no drift check; **generated since C6** | generated from Typer, `--check` in CI |
 | Functions over 500 lines | `src/docket/core/agent_loop.py::run_agent_turn` 789, `core/dispatch.py::dispatch_task` 703, `::_execute_unit` 501 | 3 | 0 (C8) |
 
 **Execution graph / contention:** C0 → C1 → C2 → C3 strictly sequential (each rewrites paths or
@@ -134,8 +134,16 @@ totals line matching the table; both scripts pass `ruff check`/`ruff format --ch
 
 ### W31-C1 — move the suite into lanes and take the agent lane out of the default run
 
-**Status:** IN-PROGRESS (@sonnet-c1, claimed 2026-09-11, isolated worktree off `e5868ef`) ·
-**Size:** M · **Owner:** — · **Depends on:** C0 (done)
+**Status:** DONE (2026-09-11, `351a5f5` merged as `16aa056`) ·
+**Size:** M · **Owner:** @sonnet-c1 · **Depends on:** C0 (done)
+
+**Shipped:** 135 test files moved by `scripts/maint/apply_moves.sh`; `tests/python/` deleted;
+`conftest.py` and `fakes.py` raised to `tests/`; `--import-mode=importlib` added and the
+per-directory `__init__.py` files dropped; default `testpaths` now `unit`, `integration`, `guards`
+with an `agent-lane` CI job for the rest. Default wall time 8 min 12 s -> 3 min 23 s (2,393 tests);
+agent lane 149 tests in its own job. Twenty destinations differed from the script's proposal, all
+recorded in the commit body. The integrator added the docs CI job, fixed ROADMAP's four stale
+`tests/python` references, and merged the two scale claims in CONTRIBUTING.
 
 **Deterministic trigger:** at `0d3720a`, `pyproject.toml` `testpaths = ["tests/python"]` collects
 every file, including the 18 the inventory classifies as `agent/*`; the 15 slowest tests (257 s of
