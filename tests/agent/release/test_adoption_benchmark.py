@@ -21,6 +21,10 @@ from urllib.parse import quote
 
 import pytest
 
+LANE = "release"
+REASON = "Prevents the adoption benchmark from drifting into a schema that isn't closed and versioned, an aggregate that isn't deterministic across reruns, or a cost figure presented as measured spend rather than a labelled estimate."
+RETIRE_WHEN = "the adoption benchmark and its published baseline are retired as a public claim."
+
 ROOT = Path(__file__).resolve().parents[3]
 HARNESS = ROOT / "benchmarks" / "harness.py"
 SCHEMA = ROOT / "benchmarks" / "schema.json"

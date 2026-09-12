@@ -39,6 +39,8 @@ from docket.cli import _mcp
 from docket.core import audit as _audit
 from docket.core import mcp_tools as _mt
 
+SUBJECT = "docket.core"
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

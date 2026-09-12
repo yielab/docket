@@ -39,6 +39,8 @@ from docket.core.llm import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.edges.adapters import docket_runtime as _dr
 from docket.edges.adapters.docket_runtime import DocketDriver
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_pod_provisioning) ─────────────────────────
 
 

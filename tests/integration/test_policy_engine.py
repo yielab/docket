@@ -43,6 +43,8 @@ from docket.core import policy as _policy
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_approval_gated_dispatch.py) ────────────
 
 

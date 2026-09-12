@@ -39,6 +39,8 @@ from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 
+SUBJECT = "docket.core"
+
 # ── hermetic helpers (mirror test_verify_gate.py) ─────────────────────────────
 
 

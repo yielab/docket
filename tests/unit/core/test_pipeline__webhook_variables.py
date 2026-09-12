@@ -33,6 +33,8 @@ from docket.core import pipeline as _pipeline
 from docket.core import runs as _runs
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core.pipeline"
+
 _TEST_TOKEN = "test-serve-token-w4-vars"
 
 

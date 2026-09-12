@@ -29,6 +29,8 @@ from docket.cli import _agents
 from docket.core import memory as _mem
 from docket.edges.adapters import docket_runtime as _dr
 
+SUBJECT = "docket.config"
+
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 

@@ -37,6 +37,8 @@ from docket.core import runtime_driver as _rd
 from docket.core import utils as _utils
 from docket.core.models import AgentMeta
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
 

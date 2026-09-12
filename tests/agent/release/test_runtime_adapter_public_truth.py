@@ -8,6 +8,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+LANE = "release"
+REASON = "Prevents the README and COMPATIBILITY docs from naming an adapter configuration that was never tested, or from claiming broader protocol support than the adapters prove."
+RETIRE_WHEN = "adapter support claims are generated directly from the tested configuration list instead of hand-written."
+
 ROOT = Path(__file__).resolve().parents[3]
 README = ROOT / "README.md"
 COMPATIBILITY = ROOT / "COMPATIBILITY.md"

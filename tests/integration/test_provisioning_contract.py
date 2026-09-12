@@ -16,6 +16,8 @@ from docket.cli._agents import _parse_add_args
 from docket.core import memory as _mem
 from docket.core import provisioning as _prov
 
+SUBJECT = "docket.core"
+
 
 class TestUxHelpers:
     def test_slugify(self) -> None:

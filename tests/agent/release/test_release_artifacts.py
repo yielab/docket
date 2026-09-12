@@ -14,6 +14,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+LANE = "release"
+REASON = "Prevents a release from publishing an unverifiable or mutable asset, or a Homebrew formula whose digest or metadata has drifted from the actually published artifact."
+RETIRE_WHEN = "release publication moves off GitHub Releases and Homebrew, and a different guard covers the new channel."
+
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 FORMULA = ROOT / "Formula" / "docket-cli.rb"

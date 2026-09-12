@@ -32,6 +32,8 @@ from docket.core.approval import _approval_path
 from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core.approval"
+
 _TEST_TOKEN = "test-serve-token-cd4-abc123"
 
 

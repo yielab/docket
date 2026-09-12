@@ -22,6 +22,8 @@ from docket.core import fleet as _fleet
 from docket.core import models_policy as _models_policy
 from docket.core import secrets as _secrets
 
+SUBJECT = "docket.core"
+
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
 # install provisions only the shared **org** roles. The project roles

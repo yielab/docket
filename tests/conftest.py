@@ -15,6 +15,33 @@ import pytest
 import docket.config as _cfg
 from docket.core import secrets as _secrets
 
+_LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
+
+
+def _lane_of(nodeid: str) -> str | None:
+    parts = Path(nodeid.split("::", 1)[0]).parts
+    if "tests" in parts:
+        idx = parts.index("tests")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    return None
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> object:
+    """Fail the report when a test exceeds its lane's duration ceiling."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or report.failed:
+        return
+    lane = _lane_of(item.nodeid)
+    ceiling = _LANE_DURATION_CEILING_S.get(lane) if lane else None
+    if ceiling is not None and call.duration > ceiling:
+        report.outcome = "failed"
+        report.longrepr = (
+            f"{item.nodeid} took {call.duration:.2f}s, over the {ceiling:.0f}s {lane}/ ceiling"
+        )
+
 
 @pytest.fixture(autouse=True)
 def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

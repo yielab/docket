@@ -20,6 +20,8 @@ import pytest
 from docket.core.pipeline import MechanicalGate, load_pipeline
 from docket.edges.adapters import toolbox
 
+SUBJECT = "docket.core.pipeline"
+
 _SMOKE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "smoke_workflow.py"
 _SMOKE_SPEC = importlib.util.spec_from_file_location("docket_smoke_workflow", _SMOKE_PATH)
 assert _SMOKE_SPEC is not None and _SMOKE_SPEC.loader is not None

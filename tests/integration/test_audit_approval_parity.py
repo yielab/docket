@@ -38,6 +38,8 @@ from docket.core import audit as _audit
 from docket.core import trace as _trace
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core"
+
 _TEST_TOKEN = "test-serve-token-fd4-xyz789"
 
 

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+SUBJECT = "docket.core.models"
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 

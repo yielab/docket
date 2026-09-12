@@ -11,6 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+LANE = "truth"
+REASON = "Prevents a deleted template file from being silently reintroduced under src/, and prevents README test-count claims or doc-asset script references from going stale."
+RETIRE_WHEN = (
+    "README stops stating a specific test count, or the doc-asset generation script is retired."
+)
+
 _REPO = Path(__file__).parent.parent.parent.parent
 README = _REPO / "README.md"
 TEMPLATES_DIR = _REPO / "src" / "docket" / "templates"

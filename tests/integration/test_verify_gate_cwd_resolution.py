@@ -37,6 +37,8 @@ from docket.core import fleet as _fleet
 from docket.core import pod as _pod_core
 from docket.core import runtime_driver as _rd
 
+SUBJECT = "docket.core"
+
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
 
 

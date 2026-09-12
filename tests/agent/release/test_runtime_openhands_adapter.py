@@ -18,6 +18,10 @@ from tests.fixtures.runtime_adapters.scenarios import (
     GovernanceScenario,
 )
 
+LANE = "release"
+REASON = "Prevents the OpenHands SDK adapter from losing governance-scenario parity, or from depending on network or credentials once installed from a built artifact."
+RETIRE_WHEN = "the OpenHands adapter is dropped, or its parity is proven instead by test_runtime_adapter_parity.py alone."
+
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
 FIXTURE = ROOT / "tests" / "fixtures" / "runtime_adapters" / "openhands"

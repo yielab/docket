@@ -22,6 +22,8 @@ from docket.cli import _pod
 from docket.core import memory as _mem
 from docket.core import pod
 
+SUBJECT = "docket.core"
+
 REQUIRED_STARTUP_FILE = _mem.REQUIRED_STARTUP_FILE
 
 

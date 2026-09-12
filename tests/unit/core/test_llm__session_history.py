@@ -32,6 +32,8 @@ from docket.core import session as _sess
 from docket.core.llm import ChatMessage, TokenUsage, ToolCall, assistant, system, tool_result, user
 from docket.core.runtime_driver import TurnResult
 
+SUBJECT = "docket.core.llm"
+
 # ── driver test doubles (matches SessionSummaryRunner's 5-arg shape) ──────────
 
 

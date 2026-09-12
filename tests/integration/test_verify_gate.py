@@ -23,6 +23,8 @@ from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.edges.adapters import system as _sys
 
+SUBJECT = "docket.core"
+
 # ── hermetic helpers (mirror test_pod_provisioning.py) ───────────────────────
 
 

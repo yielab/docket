@@ -48,6 +48,8 @@ from docket.core import secrets as _secrets
 from docket.core import telegram as _tg
 from docket.edges.adapters.telegram import TelegramUpdate
 
+SUBJECT = "docket.core"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:

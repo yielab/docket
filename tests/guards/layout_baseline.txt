@@ -1,0 +1,47 @@
+# src/ modules over 150 lines with no unit/ file yet -- covered today only by tests/integration/
+# or tests/golden/, or not covered at all. This list may only shrink: adding a unit file for one
+# of these removes its line here; a module gaining coverage some other way still needs its own
+# unit file before it can be dropped, since test_layout.py checks presence, not the golden/
+# integration suites. New entries require the module to already exist and already lack coverage.
+docket.cli._agents
+docket.cli._completions
+docket.cli._conversations
+docket.cli._cost
+docket.cli._doctor
+docket.cli._gates
+docket.cli._help
+docket.cli._install
+docket.cli._keys
+docket.cli._mcp
+docket.cli._metrics
+docket.cli._pipeline
+docket.cli._pod
+docket.cli._policies
+docket.cli._roles
+docket.cli._runs
+docket.cli._status
+docket.cli._trace
+docket.config
+docket.core.agent_loop
+docket.core.audit
+docket.core.blueprints
+docket.core.context
+docket.core.conversations
+docket.core.fleet
+docket.core.mcp_tools
+docket.core.models
+docket.core.models_policy
+docket.core.orchestrator
+docket.core.pod_provisioning
+docket.core.provider
+docket.core.runtime_driver
+docket.core.security
+docket.core.session
+docket.core.telegram
+docket.core.trace
+docket.core.utils
+docket.edges.adapters.docket_runtime
+docket.edges.adapters.llm
+docket.edges.adapters.mcp_client
+docket.edges.adapters.system
+docket.edges.adapters.toolbox

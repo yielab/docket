@@ -18,6 +18,10 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+LANE = "harness"
+REASON = "Guards against the roadmap snapshot silently surfacing stale or historical board sections, treating unavailable git state as clean, or truncating context past the hook's budget without signaling ambiguity."
+RETIRE_WHEN = "the context_snapshot.py / card_packet.py scripts are replaced by a harness with its own test suite, or removed."
+
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT_SCRIPT = ROOT / ".agents" / "skills" / "docket-roadmap" / "scripts" / "context_snapshot.py"
 CARD_PACKET_SCRIPT = ROOT / ".agents" / "skills" / "docket-roadmap" / "scripts" / "card_packet.py"

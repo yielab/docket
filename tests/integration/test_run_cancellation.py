@@ -39,6 +39,8 @@ from docket.core import runs as _runs
 from docket.edges import store as _store
 from docket.edges.adapters import system as _sys
 
+SUBJECT = "docket.config"
+
 # ── edges.adapters.system.kill_process_group: raw OS mechanics ───────────────
 
 

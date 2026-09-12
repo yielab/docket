@@ -35,6 +35,8 @@ from packaging.version import Version
 
 from docket.cli import _mcp
 
+SUBJECT = "docket.cli"
+
 
 class TestMissingSdkRealAbsence:
     def test_serve_stdio_gives_actionable_hint_when_sdk_genuinely_absent(

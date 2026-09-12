@@ -18,6 +18,8 @@ import pytest
 import docket.config as _cfg
 from docket.cli import _completions, _help, _metrics
 
+SUBJECT = "docket.cli"
+
 # ── completions ─────────────────────────────────────────────────────────────────
 
 

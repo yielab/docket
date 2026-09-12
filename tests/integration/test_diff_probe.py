@@ -33,6 +33,8 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.edges.adapters import system as _sys
 
+SUBJECT = "docket.core"
+
 # ── TestImplementerDiffProbeUnit: _implementer_diff_probe in isolation ──────
 
 

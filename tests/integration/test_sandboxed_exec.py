@@ -40,6 +40,8 @@ from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import system, toolbox
 
+SUBJECT = "docket.core.tools"
+
 DOCKER_UP = system.docker_daemon_reachable()
 BWRAP_UP = system.bwrap_available()
 

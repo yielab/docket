@@ -31,6 +31,8 @@ from docket.cli._pod import (
 )
 from docket.core.pod import PodMember
 
+SUBJECT = "docket.cli._pod"
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 _MODEL = "anthropic/claude-haiku-4-5-20251001"

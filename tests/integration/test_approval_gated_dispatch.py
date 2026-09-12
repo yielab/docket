@@ -54,6 +54,8 @@ from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_reviewer_gate.py) ──────────────────────
 
 

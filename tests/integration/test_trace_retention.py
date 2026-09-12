@@ -16,6 +16,8 @@ import docket.config as _cfg
 from docket.cli import _trace as trace_cli
 from docket.core import trace as trace_core
 
+SUBJECT = "docket.config"
+
 
 @pytest.fixture()
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

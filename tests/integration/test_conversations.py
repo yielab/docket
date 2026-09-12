@@ -16,6 +16,8 @@ import pytest
 from docket.cli import _conversations as cli
 from docket.core import conversations as C
 
+SUBJECT = "docket.cli"
+
 
 def _reg(*convs: C.Conversation) -> C.ConversationRegistry:
     return C.ConversationRegistry(conversations=list(convs))

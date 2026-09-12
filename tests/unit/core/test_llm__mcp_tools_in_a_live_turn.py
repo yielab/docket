@@ -42,6 +42,8 @@ from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
 from docket.edges.adapters.toolbox import ToolOutcome
 
+SUBJECT = "docket.core.llm"
+
 
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

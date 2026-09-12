@@ -34,6 +34,8 @@ import docket.config as _cfg
 from docket.cli import _keys as _keys_mod
 from docket.core import models_policy as _mp
 
+SUBJECT = "docket.cli"
+
 # ---------------------------------------------------------------------------
 # Direct unit tests: core/models_policy.py
 # ---------------------------------------------------------------------------

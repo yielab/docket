@@ -41,6 +41,8 @@ from docket.core import runs as _runs
 from docket.edges import store as _store
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.serve"
+
 _TEST_TOKEN = "test-serve-token-r3-runs"
 
 

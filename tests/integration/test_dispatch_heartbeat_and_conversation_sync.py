@@ -30,6 +30,8 @@ from docket.core import dispatch as _dispatch
 from docket.core import memory as _mem
 from docket.core import runtime_driver as _rd
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_dispatch.py's _seed_pod) ─────────────────
 
 

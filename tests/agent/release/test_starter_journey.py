@@ -12,6 +12,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+LANE = "release"
+REASON = "Prevents the extractable ten-minute starter from breaking once installed from a built artifact rather than run from the source checkout."
+RETIRE_WHEN = "the starter is retired as a public onboarding artifact."
+
 ROOT = Path(__file__).resolve().parents[3]
 STARTER = ROOT / "examples" / "starter"
 PROJECT = "docket-starter"

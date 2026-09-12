@@ -38,6 +38,8 @@ from docket.core import pipeline as _pipeline
 from docket.core import runtime_driver as _rd
 from docket.core import trace as _trace
 
+SUBJECT = "docket.core"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

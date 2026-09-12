@@ -13,6 +13,8 @@ from docket.cli import _pod
 from docket.core import audit as _audit
 from docket.core import fleet as _fleet
 
+SUBJECT = "docket"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:

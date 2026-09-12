@@ -43,6 +43,8 @@ from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
 
+SUBJECT = "docket.core.tools"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

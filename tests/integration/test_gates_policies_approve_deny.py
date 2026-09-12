@@ -26,6 +26,8 @@ from docket.core import approval as _ap
 from docket.core import policy as _policy
 from docket.core import security as _sec
 
+SUBJECT = "docket.cli"
+
 # Agent registration + channel bindings + gates/isolation flags live in
 # fleet.json.
 _FLEET_CONFIG: dict[str, Any] = {

@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SUBJECT = "models audit"
+
 META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",

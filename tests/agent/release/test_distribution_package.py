@@ -9,6 +9,10 @@ from pathlib import Path
 
 import pytest
 
+LANE = "release"
+REASON = "Prevents the published root docket artifact from reintroducing the source tree or losing its status as the one canonical install path."
+RETIRE_WHEN = "the distribution packaging strategy changes and a differently-scoped guard supersedes this contract."
+
 ROOT = Path(__file__).resolve().parents[3]
 PROJECT_URLS = {
     "Homepage, https://github.com/yielab/docket",

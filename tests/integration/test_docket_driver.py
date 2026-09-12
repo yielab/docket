@@ -51,6 +51,8 @@ from docket.edges.adapters.docket_runtime import DocketDriver
 from docket.edges.adapters.system import SandboxAvailability
 from docket.edges.adapters.toolbox import ToolOutcome
 
+SUBJECT = "docket.core"
+
 
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

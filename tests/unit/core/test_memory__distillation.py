@@ -32,6 +32,8 @@ import docket.config as _cfg
 from docket.core import memory as _mem
 from docket.core.runtime_driver import TurnResult
 
+SUBJECT = "docket.core.memory"
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 

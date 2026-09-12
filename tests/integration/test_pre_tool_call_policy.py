@@ -51,6 +51,8 @@ from docket.core.tools import (
 )
 from docket.edges.adapters.toolbox import ToolOutcome
 
+SUBJECT = "docket.core.tools"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

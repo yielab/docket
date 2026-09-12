@@ -35,6 +35,8 @@ from docket.core import context as _context
 from docket.core import dispatch as _dispatch
 from docket.core import runtime_driver as _rd
 
+SUBJECT = "docket.core"
+
 # ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
 
 
@@ -199,7 +201,9 @@ class TestHopMessageCap:
 
 
 class _BigOutputRunner:
-    """Always returns a large fixed output, to force carryover truncation."""
+    """Large fixed ``*`` output, to force carryover truncation without tripping
+    ``core.trace.redact``'s secret-shaped patterns, which backtrack badly on a
+    single repeated letter or digit run this long."""
 
     def __init__(self, size: int = 50_000) -> None:
         self.size = size
@@ -212,7 +216,7 @@ class _BigOutputRunner:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
-        return _rd.TurnResult(True, "Z" * self.size, 0.0, {"output": "x"})
+        return _rd.TurnResult(True, "*" * self.size, 0.0, {"output": "x"})
 
 
 class TestContextComposedTrace:

@@ -55,6 +55,8 @@ from docket.core.pipeline import (
     validate_pipeline,
 )
 
+SUBJECT = "docket.core.pipeline"
+
 FULL_YAML = """\
 name: release
 description: Ship a change through the pod.

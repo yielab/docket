@@ -24,6 +24,8 @@ from docket.core import fleet as _fleet
 from docket.core import models_policy as _mp
 from docket.core import pod
 
+SUBJECT = "docket.core"
+
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:

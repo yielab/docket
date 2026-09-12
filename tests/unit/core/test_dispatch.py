@@ -40,6 +40,8 @@ from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.core.dispatch"
+
 _TEST_TOKEN = "test-serve-token-tasks-post-9f2c"
 
 

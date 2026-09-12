@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+LANE = "truth"
+REASON = "Prevents scripts/metrics.py's README-drift check from silently going blind the way its Bash predecessor did once the counted path stopped existing."
+RETIRE_WHEN = "scripts/metrics.py is retired, or its --check gate is proven some other way."
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "metrics.py"
 

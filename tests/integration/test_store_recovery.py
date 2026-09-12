@@ -17,6 +17,8 @@ import docket.config as _cfg
 from docket.cli import app
 from docket.edges import store
 
+SUBJECT = "docket.config"
+
 _CORRUPT_PRIMARY = b"{broken"
 
 

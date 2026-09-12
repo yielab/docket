@@ -46,6 +46,8 @@ from docket.core.tools import Tool, ToolContext, ToolRegistry, builtin_registry,
 from docket.edges import store as _store
 from docket.edges.adapters.toolbox import ToolOutcome
 
+SUBJECT = "docket.core.llm"
+
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 

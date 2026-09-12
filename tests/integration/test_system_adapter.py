@@ -28,6 +28,8 @@ import pytest
 
 from docket.edges.adapters import system
 
+SUBJECT = "docket.edges.adapters"
+
 
 class _FakeCompleted:
     """Minimal stand-in for subprocess.CompletedProcess."""

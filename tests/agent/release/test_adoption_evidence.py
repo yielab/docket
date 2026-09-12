@@ -18,6 +18,10 @@ import pytest
 import yaml  # type: ignore[import-untyped]
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
+LANE = "release"
+REASON = "Prevents the published adoption baseline from drifting from its committed manifest, shipping an attempt that is not rebuildable, or leaking private runtime material into public evidence."
+RETIRE_WHEN = "the published adoption baseline is retired, or is regenerated and verified by a different, already-tested pipeline."
+
 ROOT = Path(__file__).resolve().parents[3]
 REGENERATOR = ROOT / "benchmarks" / "results" / "regenerate.py"
 BUILD_CONSTRAINTS = ROOT / "benchmarks" / "results" / "build-constraints.txt"

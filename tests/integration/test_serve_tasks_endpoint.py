@@ -29,6 +29,8 @@ from docket.cli import _pod
 from docket.core import dispatch as _dispatch
 from docket.serve import _DocketHandler
 
+SUBJECT = "docket.config"
+
 _TEST_TOKEN = "test-serve-token-tasks-p22-2"
 
 

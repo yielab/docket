@@ -35,6 +35,8 @@ from docket.cli import _keys as keys_cli
 from docket.cli._agents import run_delete, run_init
 from docket.core import audit as _audit
 
+SUBJECT = "docket.cli"
+
 # ── shared helpers ───────────────────────────────────────────────────────────
 
 

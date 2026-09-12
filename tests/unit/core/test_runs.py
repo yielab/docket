@@ -23,6 +23,8 @@ import pytest
 import docket.config as _cfg
 from docket.core import runs as _runs
 
+SUBJECT = "docket.core.runs"
+
 
 @pytest.fixture()
 def runs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

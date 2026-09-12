@@ -18,6 +18,10 @@ from tests.fixtures.runtime_adapters.scenarios import (
     GovernanceScenario,
 )
 
+LANE = "release"
+REASON = "Prevents the PydanticAI adapter from losing governance-scenario parity with the other supported frameworks once installed from a built artifact rather than the source tree."
+RETIRE_WHEN = "the PydanticAI adapter is dropped, or its parity is proven instead by test_runtime_adapter_parity.py alone."
+
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
 PYDANTIC_AI_FIXTURE = ROOT / "tests" / "fixtures" / "runtime_adapters" / "pydantic_ai"
