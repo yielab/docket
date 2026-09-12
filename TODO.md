@@ -106,7 +106,13 @@ and after its focused run.
 
 ### W31-C0 — commit the baseline and the two analysis scripts
 
-**Status:** TODO · **Size:** S · **Owner:** —
+**Status:** DONE (integrator, `4e6caa0`) · **Size:** S · **Owner:** integrator
+
+**Shipped:** `scripts/maint/test_inventory.py`, `comment_lint.py` and `split_board.py` committed;
+`.maint/` gitignored and seeded with `inv/inventory.json`, `inv/moves.tsv`, `comment-baseline.txt`
+and `durations-0.txt`. Baseline recorded in the commit body: suite 8 min 12 s (2,377 passed,
+5 skipped); 15 slowest ~257 s, all release/evidence/adapter; 35 prose/release/harness files at
+8,313 lines and 227 tests; 91 archaeology hits; 91 `subprocess` call sites in 40 files.
 
 **Trigger:** the activation table above is a working-tree measurement; the board contract requires
 a locator a later card can re-run. `scripts/maint/test_inventory.py` and
@@ -128,7 +134,8 @@ totals line matching the table; both scripts pass `ruff check`/`ruff format --ch
 
 ### W31-C1 — move the suite into lanes and take the agent lane out of the default run
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C0
+**Status:** IN-PROGRESS (@sonnet-c1, claimed 2026-09-11, isolated worktree off `e5868ef`) ·
+**Size:** M · **Owner:** — · **Depends on:** C0 (done)
 
 **Deterministic trigger:** at `0d3720a`, `pyproject.toml` `testpaths = ["tests/python"]` collects
 every file, including the 18 the inventory classifies as `agent/*`; the 15 slowest tests (257 s of
@@ -293,7 +300,8 @@ exclusion list with the reason each stays.
 
 ### W31-C6 — generated CLI reference and strict docs build
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C0; **runs in parallel with C1**
+**Status:** IN-PROGRESS (@sonnet-c6, claimed 2026-09-11, isolated worktree off `e5868ef`) ·
+**Size:** M · **Owner:** — · **Depends on:** C0 (done); **runs in parallel with C1**
 (disjoint: C1 owns `tests/**`, `pyproject.toml`, `.github/workflows/ci.yml` and the `tests/python`
 path strings in `src/`, `specs/`, `docs/DEVELOPMENT-HARNESS.md`; this card owns the CLI-reference
 generator and `docs/commands.md`, which carry no such path string)
