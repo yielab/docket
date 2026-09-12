@@ -73,7 +73,7 @@ python3 -m json.tool .claude/settings.json >/dev/null
 for skill in .agents/skills/docket-*; do
   python3 <skill-creator-dir>/scripts/quick_validate.py "$skill"
 done
-uv run pytest tests/python/test_development_harness.py
+uv run pytest tests/agent/harness/test_development_harness.py
 ```
 
 `quick_validate.py` checks skill structure, frontmatter, and unfinished scaffolding; it does not

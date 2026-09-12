@@ -124,7 +124,7 @@ This specification does NOT cover:
    `MEMORY.md`, today's daily log) **MUST** anchor the working directory, not imply a git-tracked
    codebase — no "cd into the codebase" language, no `## Your codebase` heading. A `codebase`-kind
    member's contract files **MUST** be byte-for-byte unaffected by this distinction (verified by
-   `tests/python/test_provisioning_contract.py`'s `TestSeedContractWorkdir`).
+   `tests/integration/test_provisioning_contract.py`'s `TestSeedContractWorkdir`).
 4. A pod member added later to an existing pod (`docket pod <project> add <role>`) **MUST**
    inherit the pod's `workspaceKind`/working-directory (or codebase) from an existing member,
    never defaulting to `codebase`-kind for a pod that was provisioned `workdir`-kind.
@@ -261,7 +261,7 @@ docket add myproj --blueprint wizard-pod
 - A blueprint's roster always starts with exactly one `"lead"`.
 - Every gated step's gate kind in a built-in blueprint's `defaultPipeline` always matches the
   gated role's own archetype `gateContract.kind` (enforced by
-  `tests/python/test_pod_blueprints.py`'s `TestPipelineGateFidelity`).
+  `tests/unit/core/test_archetypes__pod_blueprints.py`'s `TestPipelineGateFidelity`).
 
 ## Changelog
 

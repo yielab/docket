@@ -351,8 +351,8 @@ generated file, and no retired command does; (4) `uvx --with mkdocs-material --w
 Run (4) with `uvx` so no dependency is added to the tree.
 
 **Validation:** the four oracles above; `uv run ruff check . && uv run ruff format --check .`;
-`uv run mypy src`; `uv run pytest -q tests/python/test_public_release_truth.py
-tests/python/test_completions_eval_metrics_help.py`; `uv run python scripts/metrics.py --check`;
+`uv run mypy src`; `uv run pytest -q tests/agent/release/test_public_release_truth.py
+tests/integration/test_completions_eval_metrics_help.py`; `uv run python scripts/metrics.py --check`;
 `bash tests/golden/run.sh verify-all` (help strings are golden-pinned — if a `help` golden changes
 because content moved into a help string, regenerate it and explain the diff line by line).
 **Handoff:** the dropped-paragraph list with where each went, the nav, and the exact `docs` extra
@@ -467,7 +467,7 @@ schema migration, silent reset to `{}`, repair of a missing primary, or change t
 shape. Do not route around `edges/store.py` or add a second writer.
 
 **Owns:** `src/docket/edges/store.py::{read_json,read_modify_write,_atomic_write}` plus the smallest
-private recovery helpers; new `tests/python/test_store_recovery.py`; new
+private recovery helpers; new `tests/integration/test_store_recovery.py`; new
 `specs/data/docket-store.spec.md`. `specs/README.md`, public docs, and central rollups are forbidden.
 
 **Acceptance / RED oracle:** start with a temporary registry produced by two real `write_json`
@@ -514,7 +514,7 @@ template zoo, package-index publication, web UI, Docker requirement, or duplicat
 smoke harness. The starter teaches the installed CLI journey; it does not claim that the narrower
 `docket-runtime` facade owns Docket's run registry or arbitrary framework governance.
 
-**Owns:** `examples/starter/**`, new `tests/python/test_starter_journey.py`, and new
+**Owns:** `examples/starter/**`, new `tests/agent/release/test_starter_journey.py`, and new
 `specs/acceptance/starter-journey.spec.md`. It may import existing fixture utilities only when they
 are part of an installed public package; it must not import `tests/` or the source checkout.
 README/docs indexes and central metrics are forbidden until C6.
@@ -561,7 +561,7 @@ price synchronization, model-quality claim, new product metrics subsystem, or cl
 completion predicts real-model quality.
 
 **Owns:** `benchmarks/harness.py`, `benchmarks/schema.json`, `benchmarks/README.md`, base scenario
-fixtures under `benchmarks/fixtures/`, new `tests/python/test_adoption_benchmark.py`, and new
+fixtures under `benchmarks/fixtures/`, new `tests/agent/release/test_adoption_benchmark.py`, and new
 `specs/validation/adoption-benchmark.spec.md`. Product runtime files and public/central docs are
 forbidden. C4 may extend the spec and scenario directory only after C3 merges.
 
@@ -606,7 +606,7 @@ real command, live provider, chaos platform, arbitrary fault injection, new retr
 product fix hidden inside a benchmark scenario.
 
 **Owns after dependencies merge:** `benchmarks/scenarios/**`,
-`tests/python/test_adoption_adversarial_recovery.py`, and an additive C4 section/version bump in
+`tests/agent/release/test_adoption_adversarial_recovery.py`, and an additive C4 section/version bump in
 `specs/validation/adoption-benchmark.spec.md`. Product code is forbidden. If a scenario exposes a
 new product defect beyond C1, stop and split a named defect card with its own spec/RED evidence.
 
@@ -650,7 +650,7 @@ if the sole maintainer becomes unavailable—without inventing a committee or pr
 branch-protection mutation, release publication, or claim that beta has LTS support.
 
 **Owns:** new `GOVERNANCE.md`, new `SUPPORT.md`, and new
-`tests/python/test_project_policy_truth.py`. Existing `SECURITY.md`, `COMPATIBILITY.md`, README,
+`tests/agent/truth/test_project_policy_truth.py`. Existing `SECURITY.md`, `COMPATIBILITY.md`, README,
 CODEOWNERS, and central indexes are read-only inputs; C6 owns their links/summary alignment.
 
 **Acceptance / RED oracle:** public policy must explicitly name current single-maintainer reality,
@@ -845,7 +845,7 @@ sandbox-mode change.
 
 **Owns:** `edges/adapters/toolbox.py::run_bash` plus one private poll constant; the `bash`
 `handler=` lambda in `core/tools.py::builtin_registry` and nothing else in that file; tests in
-`tests/python/test_sandboxed_exec.py` and `tests/python/test_cooperative_run_cancellation.py` (or a
+`tests/integration/test_sandboxed_exec.py` and `tests/integration/test_cooperative_run_cancellation.py` (or a
 new `test_bash_cancellation.py`); the `bash`/exec clauses of `specs/functional/security-gates.spec.md`
 and requirement 66's "does not attempt to interrupt a running handler" clause in
 `specs/functional/agent-loop.spec.md`, narrowed to non-`bash` handlers, with version bump and
@@ -981,7 +981,7 @@ artifact), no `specs/README.md` row (integrator, C5), no `docket-runtime` packag
 
 **Owns:** `core/trace.py` (`subscribe` and the sink call inside `trace_event` only), new
 `core/harness.py`, new `scripts/harness_schema.py`, new `docs/contracts/harness-v1/`, new
-`tests/fixtures/harness-contract/`, new `tests/python/test_harness_contract.py`, new
+`tests/fixtures/harness-contract/`, new `tests/integration/test_harness_contract.py`, new
 `specs/api/harness-mode.spec.md`. **Forbidden:** `tools.py`, `agent_loop.py`, `toolbox.py`, `cli/`,
 `config.py` (no new home-derived constant is needed; if one appears, it goes into
 `_DOCKET_HOME_PATHS` in `conftest.py` in the same commit), central files.
@@ -1043,7 +1043,7 @@ worktrees or clones, no second driver, no `on_spawn`/pid registration of the har
 **Owns:** new `cli/_harness.py`; one command block in `cli/__init__.py`; the smallest addition in
 `core/harness.py` the sequence needs; the `DOCKET_APPROVAL_MODE` constant in `core/runtime_driver.py`
 and its pop in `edges/adapters/docket_runtime.py::run_turn`; `specs/api/harness-mode.spec.md` Status → "Implemented" with
-version bump; a `docket harness` section in `docs/commands.md`; new `tests/python/test_harness_cli.py`;
+version bump; a `docket harness` section in `docs/commands.md`; new `tests/integration/test_harness_cli.py`;
 `tests/golden/cases/help.golden` regenerated **because a new command appears in `docket help`** —
 diff explained line by line in the commit. **Forbidden:** `agent_loop.py`, `tools.py`, `toolbox.py`,
 `runs.py`, `approval.py`, `docket_runtime.py` beyond the one env-coordinate pop in `run_turn`,

@@ -405,21 +405,22 @@ There is no Bash-style `validation_error` formatter — the convention is a sing
 
 ## Testing
 
-Validation is covered by the **pytest** suite under `tests/python/` (the historical Bash
-harness `tests/unit/test-validation.sh` no longer exists). Run it with:
+Validation is covered by the **pytest** suite under `tests/unit/`, `tests/integration/` and
+`tests/guards/` (the historical Bash harness `tests/unit/test-validation.sh` no longer exists).
+Run it with:
 
 ```bash
 uv run pytest
 ```
 
 Data-layer and metadata validation (`AgentMeta`, store round-trips, scope backfill) is
-exercised in `tests/python/test_data_layer.py`; command-level argument and action
+exercised in `tests/integration/test_data_layer.py`; command-level argument and action
 validation is exercised across the `test_list_info_cost_commands.py`, `test_profile_scope_models.py` and their siblings, with
 model-id validation in the policy tests. Lint, format, and strict type checks gate CI
 alongside the suite:
 
 ```bash
-uv run pytest               # unit/integration suite (tests/python/)
+uv run pytest               # unit/integration/guards suite (tests/unit/, tests/integration/, tests/guards/)
 uv run ruff check .         # lint
 uv run ruff format --check .  # format
 uv run mypy src             # strict type check

@@ -118,9 +118,15 @@ module = "mcp.*"
 ignore_missing_imports = true
 
 # ── pytest ────────────────────────────────────────────────────────────────────
+# tests/agent is deliberately excluded: it holds prose/release/harness checks
+# (specs/test-framework.md "Lanes and placement", D-36) run by the separate
+# `agent-lane` CI job, never by the default suite.
 [tool.pytest.ini_options]
-testpaths = ["tests/python"]
-addopts = "-ra -q"
+testpaths = ["tests/unit", "tests/integration", "tests/guards"]
+addopts = "-ra -q --import-mode=importlib"
+markers = [
+    "slow: builds or installs an artifact; agent-lane only, never the default suite",
+]
 
 [dependency-groups]
 dev = [

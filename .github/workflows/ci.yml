@@ -42,6 +42,58 @@ jobs:
       - name: Metrics check (README drift guard)
         run: uv run python scripts/metrics.py --check
 
+  # Agent lane: prose, release-artifact and agent-hook-script checks that do not
+  # belong in the default suite (specs/test-framework.md "Lanes and placement",
+  # D-36). Adding a check here means removing an equivalent one from `python`.
+  agent-lane:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Agent-lane pytest
+        run: uv run pytest tests/agent
+
+  # Docs: the CLI reference is generated from the Typer registry, so a command
+  # added without regenerating it is drift this job catches. The site build runs
+  # with --strict, which turns a dead link into a failed build; mkdocs is pulled
+  # with uvx rather than added as an extra, so no job but this one installs it.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: CLI reference drift check
+        run: uv run python scripts/gen_cli_docs.py --check
+
+      - name: Docs site build (strict)
+        run: uvx --with mkdocs-material --with 'mkdocstrings[python]' mkdocs build --strict
+
   # Dependency floors: the bounds in pyproject.toml's `dependencies` are a
   # promise to anyone installing docket into an existing environment. The
   # `python` job above only ever resolves the locked, *current* versions, so a
@@ -116,7 +168,7 @@ jobs:
           shellcheck --version
           shellcheck -S warning -e SC1090,SC1091,SC2034 \
             bin/docket install.sh uninstall.sh \
-            scripts/*.sh \
+            scripts/*.sh scripts/maint/*.sh \
             tests/golden/run.sh tests/golden/fixtures/seed.sh \
             tests/run-all-tests.sh
 

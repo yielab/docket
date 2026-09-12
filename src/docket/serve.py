@@ -79,7 +79,7 @@ DEFAULT_INTERVAL = 30
 
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
 # authenticated write/read-registry endpoints (/dispatch, /runs).
-# Pinned by tests/python/test_serve_read_api.py (TestApiContract).
+# Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
 SERVE_API_VERSION = "2"
 
 _SPECIALISTS = tuple(cfg.ORG_DISPLAY_ORDER)

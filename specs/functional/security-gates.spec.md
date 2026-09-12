@@ -328,7 +328,7 @@ tool call to take.**
    renders one tool call as `"<name> <key>=<json-value> <key>=<json-value> ..."`, keys in the
    call's own argument order, each value `json.dumps`-encoded. This exact shape **MUST** be
    treated as a contract, not an implementation detail — every shipped `pre_tool_call` pattern is
-   matched against its output, and `tests/python/test_pre_tool_call_policy.py::TestRenderToolCallShape`
+   matched against its output, and `tests/integration/test_pre_tool_call_policy.py::TestRenderToolCallShape`
    pins it.
 
    > **Two `block-destructive.json` alternatives were verified, not assumed, against this
@@ -465,7 +465,7 @@ either.
    time as `resolve_within`'s own check on file-tool calls — a `ToolContext.sandbox="auto"` **MUST
    NOT** change what a `read`/`write`/`edit`/`glob`/`grep` call is allowed to touch, and a bash
    command's jail **MUST NOT** be treated as a substitute for gating that command in the first
-   place. Both are test-pinned (`tests/python/test_sandboxed_exec.py`).
+   place. Both are test-pinned (`tests/integration/test_sandboxed_exec.py`).
 4. **Honest capability reporting: two distinct questions, two distinct answers.**
    - *"Is sandboxing configured/available?"* — a pure, side-effect-free capability probe,
      `sandbox_availability()`, answerable with no command run at all (the future `docket doctor`
@@ -799,7 +799,7 @@ call at a time inside a turn — there is no separate `docket` CLI command that 
 isolation. Since Phase 19 P19-5/P19-7a wired `DocketDriver` onto every real pod-dispatch hop (see
 the scope note in "In-turn tool-call gate" above), this is exactly what happens on every real
 `bash`/`write`/etc. call a hop makes today, not merely a future contract. Each shape below is
-exactly what `tests/python/test_pre_tool_call_policy.py` asserts.
+exactly what `tests/integration/test_pre_tool_call_policy.py` asserts.
 
 A `block-destructive` policy gates an `rm -rf` call; the handler never runs:
 
@@ -842,10 +842,10 @@ $ docket audit
 ### Exec sandbox — examples (implemented, opt-in, ROADMAP Phase 19 P19-9)
 
 These are `toolbox.run_bash`/`dispatch_tool` call shapes, exactly what
-`tests/python/test_sandboxed_exec.py` asserts, not shell transcripts a user can run directly — but
+`tests/integration/test_sandboxed_exec.py` asserts, not shell transcripts a user can run directly — but
 unlike the P19-9 version of this section, they are no longer hypothetical: `DocketDriver.run_turn`
 is a real, live caller that picks `sandbox="auto"` for exactly these shapes whenever `docket gates
-isolate on` is set and a backend is usable (`tests/python/test_docket_driver.py`'s
+isolate on` is set and a backend is usable (`tests/integration/test_docket_driver.py`'s
 `TestIsolationWiring`).
 
 The default — `sandbox="off"` — is the same function that shipped in P19-2, byte for byte:
@@ -994,12 +994,12 @@ $ git clone https://anywhere.example/repo.git
   wired `DocketDriver` onto every real hop, and P19-7b removed the daemon that used to be the
   only alternative execution path — is now every tool call any pod-dispatch hop makes. A call
   that reaches that function and is not gated by `evaluate_tool_call` is the specific regression
-  `tests/python/test_pre_tool_call_policy.py` exists to catch.
+  `tests/integration/test_pre_tool_call_policy.py` exists to catch.
 - A `require_approval`/`ask`-gated tool call through `core/tools.py` **MUST NOT** execute before
   its approval resolves, and **MUST NOT** be left waiting indefinitely — `wait_for_approval`
   **MUST** eventually return `granted` or `denied`, the latter both for an explicit deny and for
   an unanswered `TOOL_APPROVAL_TIMEOUT`. A denied or timed-out call's handler **MUST NOT** run;
-  `tests/python/test_pre_tool_call_policy.py::TestDispatchToolApprovalRouting` proves this with the
+  `tests/integration/test_pre_tool_call_policy.py::TestDispatchToolApprovalRouting` proves this with the
   handler's own execution flag, not just the returned decision.
 - A `waiting_approval` dispatch task **MUST NOT** be resumable by anything other than a grant
   resolving that exact token (see `pod-dispatch.spec.md`'s claim-eligibility invariant) — this
@@ -1014,7 +1014,7 @@ $ git clone https://anywhere.example/repo.git
   decided, never on top of it.
 - `ToolContext.sandbox="off"` (the default) **MUST** produce byte-for-byte the same `run_bash`
   output as before ROADMAP Phase 19 P19-9 existed — no marker, no environment change, no argv
-  change. `tests/python/test_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
+  change. `tests/integration/test_sandboxed_exec.py::TestSandboxOffIsUnchanged` pins this.
 - `sandbox="auto"` resolving to a real backend that then fails to start (`OSError` on launch)
   **MUST NOT** cause the command to run unsandboxed instead — it **MUST** be reported as a failure
   naming the backend. `TestHonestReportingIsDeterministic::test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback`
@@ -1038,7 +1038,7 @@ $ git clone https://anywhere.example/repo.git
   this card.
 - `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS` — the
   refusal happens before `urllib.request.build_opener` is ever called, not merely before the
-  content is returned. `tests/python/test_fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
+  content is returned. `tests/unit/core/test_tools__fetch_tool.py::TestDomainAllowlist::test_disallowed_domain_is_never_connected_to`
   proves this by making `build_opener` raise if invoked at all.
 - A redirect `fetch` follows **MUST NOT** land on a host absent from the same allowlist — the
   domain allowlist governs the whole request, including any redirect chain, not just the
@@ -1097,7 +1097,7 @@ $ git clone https://anywhere.example/repo.git
   through, so this can never disagree with what `docket gates status` prints) fresh on every real
   turn, before building the tool registry.
   - Off (the default, unchanged): `sandbox="off"`, byte-identical to every prior version —
-    `tests/python/test_docket_driver.py::TestIsolationWiring::test_isolation_off_leaves_ctx_sandbox_off`.
+    `tests/integration/test_docket_driver.py::TestIsolationWiring::test_isolation_off_leaves_ctx_sandbox_off`.
   - On, with a usable backend: `sandbox="auto"`, using the existing backend selection
     (`system.sandbox_availability()`, `DOCKET_SANDBOX_BACKEND` override respected, no parallel
     mechanism added) — `test_isolation_on_with_backend_available_sets_sandbox_auto`,
@@ -1223,7 +1223,7 @@ $ git clone https://anywhere.example/repo.git
     the escape hatches named above; it exists so reaching the network doesn't have to mean
     reaching for one of them. **Read the Status line and "Network egress and the `fetch` tool"
     above before citing this card as closing docket's egress gap — it does not, on purpose.**
-  - Tests: `tests/python/test_fetch_tool.py` (16 cases) — a real local HTTP server
+  - Tests: `tests/unit/core/test_tools__fetch_tool.py` (16 cases) — a real local HTTP server
     (stdlib `http.server`) backs the allowlist, size-cap, timeout, redirect, and HTTP-error
     behavior; a `pre_tool_call` policy test dispatches a real `fetch` call through the
     unmodified `dispatch_tool` to prove the gate applies. Four guards were planted as drift and
@@ -1256,7 +1256,7 @@ $ git clone https://anywhere.example/repo.git
     `resolve_within` uses for file tools, extended to the exec surface; a docker jail is stronger
     still (nothing else exists inside the container's filesystem). Both hold at the same time as
     `resolve_within`'s own check on file-tool calls — proven, not assumed, by
-    `tests/python/test_sandboxed_exec.py`'s combined tests.
+    `tests/integration/test_sandboxed_exec.py`'s combined tests.
   - **Honest reporting keeps two questions distinct.** `sandbox_availability()` answers "is a jail
     configured/possible" with no command run; `run_bash`'s new `[sandbox: <backend>]` marker
     (emitted only when `sandbox="auto"` was actually asked for) answers "did *this* command run in
@@ -1287,7 +1287,7 @@ $ git clone https://anywhere.example/repo.git
     real-but-not-yet-live-path shape P19-2/P19-3 had before ROADMAP Phase 19 P19-5. No CLI surface
     (`docket doctor`, `docket gates classes`) was added or changed by this card; that wiring is left
     to whichever card next touches those command modules.
-  - Tests: `tests/python/test_sandboxed_exec.py` (30 cases) — pure unit tests for detection
+  - Tests: `tests/integration/test_sandboxed_exec.py` (30 cases) — pure unit tests for detection
     and argv shape that need no real docker/bwrap, deterministic honest-reporting tests that force
     backend choice via monkeypatch/env so they never depend on host capability, and real-backend
     tests (containment, env minimization, timeout/orphan checks) that are skipped, with an explicit

@@ -10,7 +10,7 @@ like on disk.
 ROADMAP §4.5 has a standing ban on an ``AbstractBackend`` — this module
 revises that ban, not repeals it: **one typed port, one shipped driver**
 (``edges.adapters.docket_runtime.DocketDriver``), plus a ``FakeDriver`` test
-double (``tests/python/fakes.py``). This is containment of coupling, not
+double (``tests/fakes.py``). This is containment of coupling, not
 speculative plugin-framework generality. A second real driver still needs a
 §4.5 trigger (upstream stall/breakage) or a paying user — adding driver
 discovery, entry points, or a config-selectable backend here would be scope
@@ -226,7 +226,7 @@ class RuntimeDriver(Protocol):
 
     ``core/`` and ``cli/`` depend on this Protocol, never on a concrete
     driver's on-disk format knowledge. ``edges.adapters.docket_runtime.DocketDriver``
-    is the one shipped implementation; ``tests/python/fakes.py``'s
+    is the one shipped implementation; ``tests/fakes.py``'s
     ``FakeDriver`` is the one test double — see the module docstring for why
     there is exactly one of each.
     """
