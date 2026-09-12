@@ -189,10 +189,12 @@ command:
 ## Documentation
 
 - Update relevant documentation in `docs/`
-- Add command documentation to `docs/commands.md`
+- `docs/commands.md` is generated from the Typer registry by `scripts/gen_cli_docs.py` and must
+  never be hand-edited; put command prose in the command's own help string (`cli/_help.py` or the
+  Typer function) and regenerate with `uv run python scripts/gen_cli_docs.py`
 - Update README.md if adding major features
-- Keep comments to rationale only (see [Python Conventions](#python-conventions)); the CLI
-  reference becomes generated from Typer help strings in Wave 31, so put command prose there
+- Keep comments to rationale only (see [Python Conventions](#python-conventions)) — command prose
+  belongs in the Typer help strings, not in code comments
 
 ## Rules that have cost this project time when ignored
 
