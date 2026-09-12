@@ -57,6 +57,12 @@ FailureKind = Literal[
 # against same-pod Implementer metadata before using it as a tool root.
 PIPELINE_WORKTREE_ENV = "DOCKET_PIPELINE_WORKTREE"
 
+# Internal caller→driver coordinate for a non-interactive invocation (e.g.
+# harness mode) that has nobody to ask for approval. Travels the same route
+# as PIPELINE_WORKTREE_ENV: set in run_turn's env, popped by DocketDriver
+# before the tool env is built, and mapped onto ToolContext.approval_mode.
+DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
+
 
 @dataclass
 class TurnResult:

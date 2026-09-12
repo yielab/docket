@@ -30,6 +30,7 @@ _docket() {
     'gates:Manage docket'\''s approval-routing and workspace-isolation posture'
     'conversations:Inspect and resume the conversation registry (list/show/resume/set)'
     'runs:Inspect the dispatch run registry (list/show) -- one record per dispatch invocation'
+    'harness:Run one agent, one turn, to completion, for a caller-owned workspace and home'
     'mcp:Expose the control plane as an MCP server (`mcp serve`), or configure external MCP tool servers (`mcp servers`)'
     'audit:Show the audit log, or verify its tamper-evidence chain'
     'snapshot:Export system state snapshot as JSON'

@@ -117,7 +117,7 @@ GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
     ("Security & Audit", ["gates", "audit", "policies", "approve", "deny"]),
-    ("Observability Commands", ["runs", "trace", "metrics"]),
+    ("Observability Commands", ["runs", "trace", "metrics", "harness"]),
 ]
 
 _TOC_SLUG_OVERRIDES = {

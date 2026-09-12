@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote as _url_unquote
 
 import docket.config as _cfg
@@ -35,6 +35,7 @@ from docket.core.audit import audit_log
 from docket.core.llm import ChatBackend
 from docket.core.models import AgentMeta
 from docket.core.runtime_driver import (
+    DOCKET_APPROVAL_MODE,
     PIPELINE_WORKTREE_ENV,
     DriverCapabilities,
     ProvisionResult,
@@ -262,6 +263,14 @@ class DocketDriver:
         pipeline_worktree = _validated_pipeline_worktree(agent_id, env)
         tool_env = dict(env or {})
         tool_env.pop(PIPELINE_WORKTREE_ENV, None)
+        # Same route as PIPELINE_WORKTREE_ENV: an internal env coordinate,
+        # never a real tool-visible variable, so it is popped before
+        # tool_env reaches ToolContext.env. An unset or unrecognized value
+        # keeps today's default ("wait") byte for byte.
+        approval_mode_raw = tool_env.pop(DOCKET_APPROVAL_MODE, None)
+        approval_mode: Literal["wait", "refuse"] = (
+            "refuse" if approval_mode_raw == "refuse" else "wait"
+        )
         cancellation_signal = _runs.current_cancellation_signal()
         ctx = ToolContext(
             agent_id=agent_id,
@@ -277,6 +286,7 @@ class DocketDriver:
             cancellation_check=(
                 cancellation_signal.observe if cancellation_signal is not None else None
             ),
+            approval_mode=approval_mode,
         )
         # Folded in before the turn loop narrows by role
         # (core.archetypes.registry_for_role, called once inside

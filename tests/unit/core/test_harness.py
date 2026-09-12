@@ -171,3 +171,19 @@ def test_agent_meta_for_round_trips_through_agent_meta_model_validate(tmp_path: 
 def test_agent_meta_for_rejects_a_write_denied_role(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="cannot write"):
         harness.agent_meta_for("harness-1", tmp_path, "local/qwen3-35b", role="reviewer")
+
+
+# ── refusal_result ────────────────────────────────────────────────────────────
+
+
+def test_refusal_result_carries_the_reason_with_no_token_and_empty_usage() -> None:
+    result = harness.refusal_result("DOCKET_HOME is not set")
+    assert result.status == "refused"
+    assert result.token == ""
+    assert result.error == "DOCKET_HOME is not set"
+    assert result.blocked is None
+    assert result.model == harness.ModelInfo()
+    assert result.usage == harness.UsageInfo()
+    assert result.cost_usd is None
+    assert result.run_state == ""
+    assert result.v == harness.HARNESS_CONTRACT_VERSION
