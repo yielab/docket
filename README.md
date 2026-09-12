@@ -124,6 +124,14 @@ without overwriting the good copy. Every command and flag is in the generated
 **As a CLI**, provision and dispatch the pod above from your own terminal against your own
 repository. That is the fastest path to a governed turn, and the quick start below walks it.
 
+**As a non-interactive harness**, `docket harness run` executes one agent for one turn, to
+completion, in a workspace and `DOCKET_HOME` the caller supplies, streaming newline-delimited
+events on stdout and finishing with a single versioned result. It is built for an external
+plan-of-record that spawns docket as a subprocess; the wire contract is published and test-pinned
+under [docs/contracts/harness-v1/](docs/contracts/harness-v1/). It runs one agent, not a pod, and
+it never waits for a human: a call that would need approval is refused immediately and names the
+rule that stopped it.
+
 **As an embedded engine**, the standalone `docket-runtime` package lets an application register and
 dispatch tools through docket's policy, approval, trace and audit chokepoint without shelling out
 to the CLI. Its dependencies are deliberately minimal (`pydantic` and `filelock`, nothing else),

@@ -32,6 +32,7 @@ specs/
 │   └── workspace-structure.spec.md       # Per-agent workspace layout
 ├── api/                                   # API contracts
 │   ├── cli-interface.spec.md             # CLI command contracts and return codes
+│   ├── harness-mode.spec.md              # docket harness — one agent, one turn, NDJSON wire (Phase 24 D-35)
 │   ├── mcp-server.spec.md                # docket mcp serve — MCP tool surface (Phase 18 L-3)
 │   └── runtime-library.spec.md           # docket-runtime: the embeddable substrate (Phase 21 P21-1)
 ├── data/                                  # Data specifications
@@ -158,6 +159,7 @@ Each specification document must include:
 | CLI Interface | 1.24.0 | Complete | The root wheel/sdist installs canonical `docket` with artifact-only version/help/init-help and metadata/uninstall contracts |
 | MCP Client | 1.3.0 | Implemented and wired to the live turn path | External tools are namespaced, description-screened, loaded before role narrowing, and dispatched through the same gated chokepoint. Remote results honor the live `DOCKET_TOOL_MAX_OUTPUT_CHARS` context ceiling per call. Remaining limits: stdio only, no listing cache, and fail-closed zero MCP tools for read-only roles without trusted capability metadata. |
 | Runtime Library | 2.2.0 | Implemented (artifact-tested; **not published to any index**) | `docket-runtime` `0.3.0` exclusively owns `docket_runtime/`; its bounded envelope and pinned standard OpenHands SDK/PydanticAI configurations preserve reported usage, sole-chokepoint dispatch, paired identity traces, hash-chained audit, and typed handoff when relevant tools are exclusively Docket-backed; wheel and sdist remain disjoint from `docket` |
+| Harness Mode | 1.1.0 | Implemented | `docket harness run`/`status` — one agent, one turn, to completion, in a caller-owned workspace and home; NDJSON events and one versioned result on stdout, with the published schema and fixtures under `docs/contracts/harness-v1/` |
 | MCP Server | 1.4.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra, using the `mcp` 2.x SDK |
 | CLI JSON Shapes | 1.6.0 | Complete | Docket-owned doctor/fleet contract and current snapshot channel provenance |
 | docket-meta schema | 3.0.0 | Complete | Pod resource metadata is backed by collision-free allocation and attempt-owned rollback that preserves pre-existing runtime state |

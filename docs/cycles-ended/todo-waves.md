@@ -4767,3 +4767,203 @@ one archaeology hit tree-wide is `comment_lint.py`'s own self-describing docstri
 `CONTRIBUTING.md` reconciled by the integrator.
 ---
 
+## ☑ WAVE 30 COMPLETE (2026-09-11 to 2026-09-12) — harness mode seams and contract (Phase 24, D-35)
+
+**Active since 2026-09-12.** Deferred behind Wave 31 on 2026-09-11 and scoped once so it would be
+ready; Wave 31 closed, W31-C1's move of every test file is merged, and no other wave holds the
+marker. C1, C2 and C3 are claimed together per the contention analysis below. W29-C7 remains
+claimable in parallel and is held separately: it publishes a public release, which is an
+irreversible outward-facing act, so it waits on an explicit go-ahead rather than on this wave. Decision D-35 and its corrected reasoning live in
+[docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md); the audit that produced these cards
+is `internal-docs/harness-mode-audit.md` (read at `main` `4032133`). ROADMAP's "Planned program —
+PHASE 24" section holds the measured-gap table and the exit contract; this section holds the cards.
+
+**Activation measurement (2026-09-11, `4032133`):** five deterministic gaps, each with a locator and
+an expected/actual reproduction — not a demand estimate.
+
+| Gap | Locator | Actual | Expected |
+| --- | --- | --- | --- |
+| In-flight `bash` ignores cancellation | `edges/adapters/toolbox.py::run_bash` (`communicate(timeout)`, `start_new_session=True`); `core/tools.py` `bash` handler lambda passes no callback; `DocketDriver` reports no pid so `runs.cancel_run` kills nothing | cancel at 0.2 s into `sleep 30` → returns at 30 s / tool timeout | returns < 2 s, child group gone |
+| Gated call waits, then loop continues | `core/tools.py::dispatch_tool` `ask` branch → `wait_for_approval` (`TOOL_APPROVAL_TIMEOUT`=120 s); `core/agent_loop.py` denial accounting (`max_consecutive_tool_denials`=3) | ≥120 s wait; terminal `tool_denials` only after 3; no `policyId` in `tool_result` trace | 0 s; terminal on first gated call; result names tool/callId/policyId/reason |
+| No trace subscriber | `core/trace.py::trace_event` | append-only | one synchronous seam; zero-subscriber path byte-identical |
+| No published contract | `docs/contracts/` absent; no versioned shapes/fixtures | zero | generated schema pinned by test; NDJSON fixtures |
+| No non-interactive entry point | `cli/`; `POST /dispatch/` returns before the work | zero | `docket harness run` / `status` |
+
+**Execution graph / contention:** C1, C2 and C3 are independent and start together. `core/tools.py`
+is the one hot file: C1 owns **only** the `bash` handler lambda; C2 owns `ToolContext`,
+`ToolResult`, `ToolDenialKind` and the `ask` branch of `dispatch_tool`; nobody else touches it.
+C4 starts after C1+C2+C3 land on `main`. C5 is integrator closure. **Nobody edits** `core/runs.py`,
+`core/approval.py`, `core/dispatch.py`, `serve.py`, or the runtime facade, and
+`edges/adapters/docket_runtime.py` changes only by C4's one env-coordinate pop: the design's whole
+point is that they are consumed unchanged. Central files stay
+integrator-owned. Every card runs with an isolated `DOCKET_HOME`; the real `~/.docket` must be
+byte-identical before and after each focused run (snapshot it — this suite has leaked three times).
+
+### W30-C1 — make cancellation reach an in-flight bash command
+
+**Status:** DONE (2026-09-12, `5c95d52` + `76332c6`, merged `61864e6`) · **Size:** S
+
+**What shipped.** `run_bash` takes an optional cancellation callback and waits in a bounded poll
+instead of blocking in `communicate()`, killing exactly the way the timeout path already does:
+`system.docker_kill` under the docker backend, then the process group. The `bash` handler passes
+`ctx.cancellation_check`, so `docket runs cancel` terminalizes a run whose hop sits inside a long
+command, under three seconds, through the public CLI with no new code. That whole-path result is
+the card's real oracle and it holds. A caller passing no callback is byte-identical, timeout message
+included. D-30's "may finish" rule is narrowed for this one handler and unchanged for every other.
+
+**Merged on the second pass, and the first pass is the lesson.** The original poll used
+`proc.wait()`, which never drains the child's pipes, so a command writing past the pipe buffer
+blocked on its own next write, never exited, and was reported as a timeout with its output thrown
+away. The card's own handoff described this accurately and then classified it as out of scope
+because the no-callback path was untouched. That does not follow: the handler passes the
+cancellation check unconditionally, so any dispatch wiring one took the new path for every shell
+command it ran. A build, a test run or a verbose git command would have failed falsely.
+
+**Measured, by the integrator, before and after.** One 200 KB command at an 8 s timeout. Before the
+fix: the no-callback path returned in 0.01 s with `ok=True` and 30,037 characters, the
+cancellation-aware path took the full 8 s, returned `ok=False` and zero characters. After: 0.11 s,
+`ok=True`, content byte-identical to the baseline. Fifteen cancellations under continuous heavy
+output produced no anomaly, and real cancellation latency is unchanged at about 0.2 s.
+
+**The regression test was seen to fail.** Reintroducing an undrained wait fails
+`test_a_callback_that_never_fires_still_drains_output_over_a_full_pipe` on its wall-time assertion,
+"took 8.01s (baseline 0.01s), not promptly", and restoring the drain turns it green. It asserts
+content equality against the no-callback run of the same command, not the absence of an exception.
+
+**Merge conflict, resolved by keeping both sides.** C1 and C2 each added a requirement and a
+changelog entry to `security-gates.spec.md` and `agent-loop.spec.md`. The approval requirement stays
+11 and cancellation became 12; each spec took a new version section rather than two entries
+competing for one. Survival of both sides was checked by grepping key phrases from each, not by
+reading the diff.
+
+### W30-C2 — give a non-interactive caller a typed, immediate, terminal approval outcome
+
+**Status:** DONE (2026-09-12, `988ed93`, merged `55faaa6`) · **Size:** M
+
+**What shipped.** `ToolContext.approval_mode` defaults to `"wait"`, so every existing caller is
+untouched. Under `"refuse"` the `ask` branch audits `tool.ask` exactly as before, creates no
+approval record, waits zero seconds, and denies with a new `approval_unavailable` kind carrying the
+policy id and reason. `ToolResult.policy_id` is populated on every non-allow verdict, the
+`tool_result` trace record carries `policyId` and `reason` when present, and the loop returns a
+matching `StopReason` terminally on the first such denial, after the batch's complete unit is
+persisted and independently of `max_consecutive_tool_denials`. Measured refuse-path latency about
+10 ms against the shipped `block-destructive` template, versus 120 s per call before.
+
+**Verified by falsification, by the integrator, not by reading the handoff.** Neutralising only the
+two behavioural branches while keeping the new dataclass fields made the three new tests fail at
+their assertions — `approval_timeout` where `approval_unavailable` was expected, `ok` true where
+false was expected, and a scripted backend running out of responses because the turn did not stop.
+None failed at setup. Restoring the branches made them pass.
+
+**The specificity proof is the point and it holds.** `gate_denied` and `invalid_call` still continue
+under `"refuse"` and are still bounded by the existing denial limit. Lowering that limit to 1 would
+have been the cheap version of this card and would have made a recoverable `invalid_call` terminal.
+
+**A defect this card could not see on its own, found at merge and fixed in `c91d596`.** The error
+string was prose, and W30-C3 parses it back into the published contract's blocked payload as quoted
+key=value pairs. Both cards passed their own suites and together produced a payload whose tool, call
+id and policy id were all empty — losing exactly the rule attribution this card exists to carry. The
+renderer is now `approval_unavailable_error`, a named function, and
+`tests/integration/test_harness_contract.py` pins the round trip end to end.
+
+**Known and deliberate:** `DocketDriver.run_turn` does not thread `approval_mode` into the
+`ToolContext` it builds, so a production dispatch cannot reach `approval_unavailable` yet. That is
+this card's non-goal and W30-C4's job. **The integrator must confirm C4 actually wires it** — this
+repository has three recorded instances of machinery built, tested and never reached by the live
+path, and this is precisely that shape until C4 closes it.
+
+### W30-C3 — add the trace subscriber seam and publish the harness contract before the command
+
+**Status:** DONE (2026-09-12, `0d7f4cc`, merged `deacfc5`) · **Size:** M
+
+**What shipped.** `core/trace.py::subscribe` is a context manager over a module-level sink list.
+Every sink is called synchronously on the calling thread with the exact record `trace_event` is
+about to append, after redaction and before the write; a raising sink is suppressed and never
+changes the return value; with zero sinks the function is byte-identical. `core/harness.py` is the
+contract itself, pure: the event envelope, the result and its blocked payload, the status enum, and
+`preflight`, `agent_meta_for` and `result_from`. `scripts/harness_schema.py` generates
+`docs/contracts/harness-v1/schema.json`, which a test regenerates in memory and compares byte for
+byte. Four NDJSON fixtures cover ok, blocked, cancelled and refused, validated line by line, and a
+fixture declaring version 0.9.0 fails closed.
+
+**The contract ships before the command, deliberately.** `specs/api/harness-mode.spec.md` carries
+the status that the contract is defined and test-pinned while `docket harness` arrives in W30-C4.
+An external consumer has committed to building nothing until these bytes exist, and this repository
+has shipped five doc claims that ran ahead of the code.
+
+**`core/harness.py` sits outside the runtime closure**, checked against the package-boundary test
+rather than assumed. Changing the closure was a non-goal.
+
+**The one thing this card got wrong, found at merge and fixed in `c91d596`.** `result_from` parsed
+the driver's error string for quoted key=value pairs while W30-C2 wrote the tool and call id as
+prose, so every structured field in the blocked payload arrived empty. The card flagged the coupling
+as a guess in its own handoff, which is why it was caught, but a guess about another card's wire
+format is not evidence and nothing tested the pair. `tests/integration/test_harness_contract.py`
+now drives the real renderer end to end; reintroducing prose turns it red.
+
+**Pending for the integrator at C5:** the `specs/README.md` row for the new spec, which this card
+correctly left alone.
+
+### W30-C4 — ship `docket harness run` and `docket harness status`
+
+**Status:** DONE (2026-09-12, `01d6c67`, merged `60dfc51`) · **Size:** M
+
+**What shipped.** `docket harness run` executes one agent, one turn, to completion, in a workspace
+and home the caller owns, streaming NDJSON events on stdout and finishing with one versioned
+result; `docket harness status TOKEN` reports `live`, `finished` or `unknown`. stdout carries the
+wire protocol and nothing else, line-buffered; every human-facing word goes to stderr.
+
+**This card closed the wave's own trigger, which is the point of it.** C1, C2 and C3 built seams
+that nothing called — the repository's recorded "machinery built, tested, never reached by the live
+path" shape, which has cost it three defects. W30-C2's refusal mode in particular could not be
+reached by any real dispatch until now. It travels to `ToolContext` through the same env coordinate
+`DOCKET_PIPELINE_WORKTREE` already uses: a `DOCKET_APPROVAL_MODE` constant in
+`core/runtime_driver.py`, passed in `run_turn`'s `env`, popped by `DocketDriver.run_turn` before
+the tool env is built. No Protocol change, no new keyword.
+
+**Verified by the integrator, independently of the handoff.** Severing the driver's pop fails
+`test_a_destructive_command_denies_immediately_as_blocked`, which drives a real subprocess rather
+than poking the seam; restoring it passes. A live run against the local llama.cpp endpoint exits 0
+with nine contiguous NDJSON events, every line carrying `v="1.0.0"`, a served model that differs
+from the requested id, `cost_usd` null rather than invented, and a workspace genuinely containing
+the file the agent was told to write. The refusal path emits exactly one valid JSON line on stdout,
+nothing on stderr, and exits 2. The developer's real `~/.docket` hashes identically either side of
+the harness suite — which had to be asserted by snapshot, because these tests spawn subprocesses
+that the in-process isolation fixtures cannot reach.
+
+**The card was wrong about its own golden and the card lost.** It required `help.golden` to be
+regenerated "because a new command appears in `docket help`". That file lists none of `runs`,
+`cost`, `doctor`, `trace` or `audit` either; it is a curated tour, not an enumeration. The real
+change is one word in the bash completion command list and one line in the zsh one, both derived
+from the live Typer registry. Measured rather than assumed, which is the correct outcome.
+
+**An honest gap, recorded in the spec rather than papered over:** a finished run's `status` cannot
+recover `model.served` or the blocked rule detail, because those existed only in the ephemeral
+turn result.
+
+**Also required by an existing gate and not in the card's file list:** `tests/unit/cli/test__harness.py`,
+because the layout guard requires a unit file for any `src/` module over 150 lines.
+
+### W30-C5 — close Phase 24 truthfully and hand the contract to the consumer
+
+**Status:** DONE (2026-09-12) · **Size:** S · **Owner:** integrator
+
+**What shipped.** D-35 dated and marked shipped in the decision index; Phase 24 and Wave 30 marked
+complete in the status table; the Phase 24 program record archived byte-for-byte; the harness-mode
+row added to the spec index; the three-exit-code exception recorded in the CLI interface spec with
+a version bump and changelog; one README sentence; a CHANGELOG entry; and a consumer handoff packet
+naming the schema path, the fixture directory, the contract version, the commit, the exit-code
+table and both amendments.
+
+**The exit-code exception is a real exception and is written as one.** docket's return convention
+is deliberately flat: the printed message distinguishes error kinds, not the code. `docket harness
+run` breaks that with three codes, because its stdout is a wire protocol and a program cannot read
+a printed message — it needs the status to separate a turn that ran and ended badly from one that
+never started. `docket harness status` stays flat.
+
+**The README sentence is scoped to what was measured.** One agent, one turn, non-interactive, in a
+workspace and home the caller owns. It claims no pod, no fleet, no supported consumer integration,
+and no guarantee beyond what W30-C1 actually timed.
+
+
+---

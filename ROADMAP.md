@@ -12,11 +12,12 @@ portability → operability → product**. Earlier phases unblock later ones.
 
 ## ⇢ STATUS AT A GLANCE — every phase, one line each
 
-**Last updated: 2026-09-12.** Every numbered phase 0–22 and Waves 24–28 are complete, and **Phase
-25 (human maintainability, D-36) completed on 2026-09-12** with all thirteen Wave 31 cards shipped.
-**No program is active.** Phase 23 remains paused with one card left, W29-C7, and Phase 24 (harness
-mode, D-35) is scoped as Wave 30; both were held behind Wave 31 and both are claimable now, with
-nothing choosing between them automatically. Executable cards live in [TODO.md](TODO.md).
+**Last updated: 2026-09-12.** Every numbered phase 0–22 and Waves 24–28 are complete. **Phase 25
+(human maintainability, D-36) and Phase 24 (harness mode, D-35) both completed on 2026-09-12**, the
+first as Wave 31's thirteen cards and the second as Wave 30's five. **No program is active.** Phase
+23 remains paused with one card left, W29-C7, which publishes the provenance-complete beta; its
+publication approval from 2026-09-07 still stands and it is claimable. Executable cards live in
+[TODO.md](TODO.md).
 
 > **How to read the rest of this file.** Nothing below is a task list. The planned programs
 > (Phases 23–25) hold their own wave tables; executable cards are in `TODO.md`. **The completed
@@ -54,10 +55,10 @@ nothing choosing between them automatically. Executable cards live in [TODO.md](
 | — | **Wave 27** (not a phase): dependency safety and public front door | ☑ done (2026-09-01) — advisory closed and reproducible public assets/README shipped |
 | — | **Wave 28** (not a phase): portable governance proof | ☑ done (2026-09-02) — installed-artifact parity, scoped public truth, and Linux/macOS closure evidence pass |
 | — | **Wave 29** (not a phase): adoption evidence and public release | ◇ unblocked (2026-09-12) — C1–C6 done and archived; C7 was deferred behind Wave 31 and is claimable now, its publication approval still standing |
-| 24 | **Harness mode (D-35)** — docket as a governed, non-interactive execution harness a plan-of-record (Tack) spawns as a subprocess | ◇ claimable (2026-09-12) — Wave 30; its gate was Wave 31 closing, which it has, and W31-C1's move of every test file is merged |
+| 24 | **Harness mode (D-35)** — docket as a governed, non-interactive execution harness a plan-of-record (Tack) spawns as a subprocess | ☑ **complete (2026-09-12)** — Wave 30, five cards. `docket harness run`/`status` ship with a published, versioned, test-pinned contract; the three seams it needed are wired and proved reached by a real subprocess |
 | 25 | **Human maintainability (D-36)** — test lanes with a budgeted agent lane, one unit file per module, zero-archaeology comments ratcheted in CI, generated CLI/API docs, board and roadmap cut to size | ☑ **complete (2026-09-12)** — Wave 31, thirteen cards. The board and roadmap reach their line targets only when Waves 29 and 30 close and their sections archive; their planned cards are what those waves are executed from |
 | — | **Wave 31** (not a phase): baseline → lane move → structural guards → comment hygiene → per-module merges → in-process CLI tests → generated docs → board archive → split the three 500-line functions | ☑ complete (2026-09-11 to 2026-09-12) — thirteen cards W31-C0…C10, C8 split in two; C9 and C10 opened by defects the work surfaced |
-| — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ◇ planned (2026-09-11) — five cards W30-C1…C5 on the board; C1–C3 are independent seams, C4 is the fan-in |
+| — | **Wave 30** (not a phase): in-flight bash cancellation, non-interactive approval outcome, trace subscriber, harness contract + command | ☑ complete (2026-09-12) — five cards W30-C1…C5. C1 merged on a second pass after a pipe-drain regression; C2 and C3 formed a seam that emptied the contract's blocked payload until a round-trip test was added |
 
 **Deliberately NOT scheduled**, and not a queue to work down — each is cut or deferred behind a named
 trigger (see §4.5's prioritization rule, D-24, and §7):
@@ -298,85 +299,6 @@ savings claim, telemetry/A2A work, new adapter, or feature-count exit criterion.
 
 ---
 
-## Planned program — PHASE 24: harness mode (D-35)
-
-**Status:** ◇ PLANNED (2026-09-11) · **Decision:** D-35, reasoned in
-[docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md) · **Executable detail:** Wave 30 in
-[TODO.md](TODO.md) · **Activation gate:** Wave 31 closes. Nothing here touches release state, so
-the gate is about one integrator owning one board marker at a time — and about files: W31-C1 moves
-every test file each Wave 30 card would own, so starting Wave 30 first would merge against a moved
-tree.
-
-### Why this phase is scheduled
-
-The 2026-09-08 request paired two ADRs across two repositories: docket's D-35 and Tack's ADR 0066,
-which adds `docket` as a third runner harness beside two closed vendor CLIs and **builds nothing
-until docket publishes a versioned non-interactive contract**. The 2026-09-11 audit
-(`internal-docs/harness-mode-audit.md`, read at `4032133`) verified every "true today" row of the
-ADR and found five places where the ADR described as existing something the code does not do.
-Those are the measured triggers; each names its locator:
-
-| Measured gap | Locator | Observed | Threshold |
-| --- | --- | --- | --- |
-| A cancellation request does not reach an in-flight `bash` command | `edges/adapters/toolbox.py::run_bash` blocks in `communicate(timeout)`; children start with `start_new_session=True`; the `bash` registration in `core/tools.py` does not pass `ctx.cancellation_check`; `DocketDriver` never reports a pid, so `runs.cancel_run` has nothing to kill | cancel at 0.2 s into `bash sleep 30` → handler returns at 30 s or at the tool timeout (default: the whole turn's wall clock) | handler returns within 2 s and the child process group is gone |
-| A gated tool call waits, then the loop continues | `core/tools.py::dispatch_tool` `ask` branch → `wait_for_approval` (`TOOL_APPROVAL_TIMEOUT`=120 s) → `approval_timeout` denial → loop continues up to `max_consecutive_tool_denials`=3 | ≥120 s per gated call, terminal `tool_denials`/`invalid_output` with no policy id; `tool_result` trace has no `policyId` | zero wait, terminal on the first gated call, result names tool/call/policy/reason |
-| No event stream seam | `core/trace.py::trace_event` validates, redacts and appends; no subscriber | zero | one synchronous subscriber seam; zero-subscriber path byte-identical |
-| No published contract | `docs/contracts/` does not exist; no versioned event/result shape; no fixtures | zero | generated JSON Schema pinned by test + NDJSON fixtures for ok/blocked/cancelled/refused |
-| No non-interactive entry point | `cli/` has no command that runs one agent in a caller-owned home and exits; `POST /dispatch/` returns before the work | zero | `docket harness run` / `status` |
-
-This is the fourth recorded instance of the repository's named failure shape — machinery built,
-tested and never wired to a caller — arriving *before* it ships rather than after: three of the
-five gaps are seams whose absence would have been discovered by the first real Tack run.
-
-### Product boundary and exit contract
-
-Phase 24 ships, in this order:
-
-1. **Truthful cancellation inside a turn:** a persisted cancellation request stops an in-flight
-   `bash` command by killing its process group, and `docket runs cancel` gains the same reach.
-   D-30 is amended for the `bash` handler only; HTTP requests and Python handlers keep D-30's
-   "may finish" rule.
-2. **Non-interactive approval outcome:** a caller that cannot answer an approval gets a typed,
-   immediate, terminal `approval_unavailable` result that names the rule, instead of a two-minute
-   wait and a retry loop.
-3. **The contract before the command:** the trace gains a subscriber seam; the harness
-   event/result shapes exist as Pydantic models, a generated schema and fixtures; the spec says
-   "defined, command not yet shipped" until it is.
-4. **The command:** `docket harness run` composes `core/runs.py`, `DocketDriver`, the trace
-   subscriber and a `SIGTERM` handler into one synchronous process with NDJSON on stdout, a
-   single versioned `result`, three exit codes and a refusal to touch the default `DOCKET_HOME`.
-5. **Closure and consumer handoff:** D-35 dated, D-14 corrected, public claims scoped to what
-   shipped, and the schema/fixture paths plus exact commit handed to Tack so ADR 0066's
-   decision 4 can proceed.
-
-Phase 24 does **not** add a second driver, driver discovery, a pod-shaped harness, a server or
-background thread, an interactive approval protocol over stdin/stdout, a remote docket, a new
-event vocabulary, a new persisted store, or any change to `docket-runtime`'s public facade beyond
-the optional `approval_mode` field the runtime closure already carries.
-
-### Wave 30 — harness mode seams and contract (planned 2026-09-11)
-
-| Card | Outcome | Dependency / parallel boundary |
-| --- | --- | --- |
-| W30-C1 | `run_bash` observes cancellation and kills the child group; `docket runs cancel` reaches an in-flight command | Ready. Owns `toolbox.py::run_bash` and only the `bash` handler lambda in `core/tools.py`; parallel-safe with C2 at function level (Phase 19 precedent); merge before C2 |
-| W30-C2 | `ToolContext.approval_mode="refuse"` → immediate `approval_unavailable`, terminal `stop_reason`, `policyId` in the `tool_result` trace | Ready. Owns `ToolContext`/`ToolResult`/`ToolDenialKind`, the `ask` branch of `dispatch_tool`, and `agent_loop.py`'s denial accounting/`StopReason`; no `toolbox.py` |
-| W30-C3 | `trace.subscribe()` seam; `core/harness.py` models + preflight + result mapping; generated `docs/contracts/harness-v1/schema.json`; NDJSON fixtures; new `specs/api/harness-mode.spec.md` | Ready. New files plus `core/trace.py` only; disjoint from C1/C2 |
-| W30-C4 | `docket harness run \| status` over C1–C3, with the stub-endpoint oracle (ok / blocked / cancelled / refused / status) and one live local-model run | After C1+C2+C3. Owns `cli/_harness.py`, one command block in `cli/__init__.py`, `docs/commands.md`, the `help` golden (new surface, diff explained) |
-| W30-C5 | Closure: D-35 dated, ROADMAP/TODO/README/`specs/README.md`/metrics rollups, `cli-interface.spec.md` exit-code exception, consumer handoff packet | Integrator only, after C4 |
-
-Execution graph: C1, C2 and C3 start together; C4 is the fan-in; C5 is integrator closure. The
-only shared hot file is `core/tools.py`, split at function level between C1 (one lambda) and C2
-(the dataclasses and the `ask` branch). No card owns `core/runs.py`, `core/approval.py` or
-`core/dispatch.py`, and `edges/adapters/docket_runtime.py` changes only by one env-coordinate read
-in C4 (the `DOCKET_PIPELINE_WORKTREE` precedent): the whole point of the design is that those are
-consumed unchanged.
-
-No live provider or subscription is a gate: every oracle runs against the loopback
-OpenAI-compatible stub the approval tests already use, and the one real llama.cpp run is handoff
-evidence, not a fixture. Cost stays `null`; token counts are the session's measured totals.
-
----
-
 ## 1. Mission (do not lose this)
 
 > **Rewritten 2026-08-04.** The original mission ("docket is a thin opinionated wrapper around the
@@ -600,7 +522,7 @@ address exactly those.
 | D-32 | Which two external runtimes are the bounded Wave 28 proof, and which advertised OpenHands path actually qualifies? | Wave 28 triage | **Select the standard OpenHands SDK `Agent` with an explicit Docket-only tool list, and PydanticAI with a custom Docket-owned toolset. Reject OpenHands `ACPAgent` for this proof:** its subprocess owns tools, context, approvals, and execution, so Docket can delegate to it but cannot force its native actions through `dispatch_tool`. The standard SDK exposes explicit ToolDefinitions and custom Action/Observation/Executor code; its resolved tool map must contain no default/MCP/plugin/bash/file-editor bypass. PydanticAI exposes custom `AbstractToolset.get_tools/call_tool`, run usage, sequential execution, and a procedural `FunctionModel`, giving the smallest credential-free general-framework fixture. LangGraph is feasible but adds the second graph language D-25 excludes; Agno is feasible but its general hook and default concurrent async surface is broader than needed. Pin the exact tested upstream versions in isolated fixture locks. Keep `docket-runtime` base dependencies unchanged; preserve Python 3.11 base/Pydantic support and run the OpenHands proof on its required Python 3.12+. |
 | D-33 | What execution envelope and fixture evidence are sufficient for the D-27 portable-governance claim? | Wave 28 triage | **One Docket-owned per-execution envelope shared by both adapters**, proven by a common artifact-installed fixture, and permitting only a configuration-scoped claim. Full reasoning in [docs/adr/0006-portable-governance-execution-envelope.md](docs/adr/0006-portable-governance-execution-envelope.md). |
 | D-34 | What measured evidence activates Wave 29, and what counts as adoption proof rather than marketing? | Wave 29 triage | **Activate only the missing executable evidence, and reuse shipped mechanics.** Exact `main` commit `de08206` has no extractable starter and no benchmark/result schema; a corrupt owned JSON primary raises despite a valid `.bak`; no complete support/deprecation/governance/succession policy exists; and the latest public beta has only two legacy assets. Existing policy, crash-resume, release-workflow, SBOM, checksum, and provenance machinery is already test-backed, so Wave 29 does not rebuild it. One versioned, redacted schema records every attempt and its provenance: completion, provider-reported tokens, estimate-labelled or unavailable dollars, prevented violations, approval latency, crash/restart recovery, and handoff failures. Deterministic fake results prove contracts, never model quality; failures remain in the denominator; no rankings or savings claims. C1/C2/C3/C5 are disjoint ready lanes, C4 consumes C1+C3, C6 is the public-result fan-in, and C7 alone may version/tag/publish after explicit approval. A current public wheel/sdist/SBOM/checksum/provenance set is Phase 23's final release evidence, not permission to publish silently. |
-| D-35 | Should docket expose a non-interactive, single-agent execution entry point that an external plan-of-record (Tack) can spawn as a subprocess, and what may that contract promise? | Phase 24 / Wave 30 | **Yes -- `docket harness run`, a CLI subcommand over existing `core/` behaviour, with a published, versioned, test-pinned contract.** Full reasoning in [docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md). |
+| D-35 | Should docket expose a non-interactive, single-agent execution entry point that an external plan-of-record (Tack) can spawn as a subprocess, and what may that contract promise? | Phase 24 / Wave 30 — **decided and shipped 2026-09-12** | **Yes -- `docket harness run`, a CLI subcommand over existing `core/` behaviour, with a published, versioned, test-pinned contract.** Full reasoning in [docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md). |
 | D-36 | How should the test suite, comments and documentation be shaped so that a person who did not write docket can maintain it in ordinary time, and where do the checks that exist only for the agent's benefit live? | Phase 25 / Wave 31 | **Lanes with a budgeted agent lane, one unit file per module, a ratcheted comment linter and generated reference docs**, with nothing that reads prose left in the default suite. Full reasoning in [docs/adr/0007-human-maintainability-lanes-comments-docs.md](docs/adr/0007-human-maintainability-lanes-comments-docs.md). |
 | D-37 | Does a sentence in `README.md` get a vote in which tests exist? | Wave 31 / W31-C2 | **No. The README is descriptive, not a requirements document.** It exists to tell a reader which features are there. Requirements live in `specs/`, which is what a test answers to; a README sentence is downstream of the tree and is rewritten to match it, never the other way round. So the shape of the suite is decided on its own terms -- structured, maintainable, correct, inside the agent-lane budget -- and the README is then updated to describe what is true. Applied at 2026-09-11: the harness-script file and the two third-party adapter parity files were retired to bring the lane under 4,000 lines, and the sentence claiming installed-artifact coverage for those adapter configurations left with them, in the same commit. That sentence was describing test coverage rather than a feature, which is not what the README is for. **What this does not license:** deleting a test to dodge a failure, or dropping a requirement from `specs/` because a test was inconvenient. A spec requirement is changed by amending the spec, deliberately, never by deleting its test. |
 | D-38 | The agent lane came in at 5,730 lines against D-36's 4,000-line cap. Cut to the number, or change the number? | Wave 31 / W31-C2 | **Change the number: the cap becomes a shrink-only ratchet.** The 4,000 came from the plan before the classification settled and had no measurement behind it. Checked file by file, 17 of the lane's 18 files back a requirement in `specs/` or cover shipped code -- the third-party adapter configurations in `specs/api/runtime-library.spec.md` and the adoption evidence schema among them -- so reaching 4,000 meant amending specs to make the arithmetic work, which is the back door D-37 closes. Only `test_development_harness.py` answered to nothing but the agent's own hook scripts; it was retired, leaving 5,157. That number is now the baseline and may only fall. **The lane shrinks by its own mechanism:** every file declares `RETIRE_WHEN`, and it is deleted when that condition fires. If a smaller lane is wanted sooner, the question to answer is which requirements docket stops making -- a product decision, taken in the spec, not a line-count exercise. |

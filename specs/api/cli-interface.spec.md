@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 1.24.0
+**Version**: 1.25.0
 **Status**: Complete
 **Last Updated**: 2026-09-07
 
@@ -779,6 +779,19 @@ distinguishes error kinds:
 Code `2` (SKIP, role not installed / live mode off) was the one surviving exception to this flat
 convention, used only by the now-removed `docket eval` (CL-J). No command produces it anymore.
 
+`docket harness run` is the one live exception, and it is deliberate. Its stdout is a wire protocol
+that a caller outside this repository parses, so the exit code has to separate "the run happened and
+ended badly" from "the run never started", which a printed message cannot do for a program:
+
+| Code | `docket harness run` meaning |
+|------|------------------------------|
+| 0 | The turn completed; the final `result` line carries `status: "ok"` |
+| 1 | The turn ran and ended `failed`, `blocked` or `cancelled` |
+| 2 | Refused before any turn began: preflight rejected the environment, or the arguments were unusable. Exactly one `result` line with `status: "refused"`, no run record, no meta written |
+
+`docket harness status` keeps the flat convention: 0 for any successful lookup, including `unknown`,
+and 1 only for a missing token.
+
 No other exit codes are produced. (Earlier revisions of this spec described codes 2–9 and
 127 per failure kind; those were never implemented — removed in v1.5.0.)
 
@@ -871,6 +884,13 @@ Format: `"Action description. Continue? (y/N): "`
 - Direct JSON editing → Use docket commands
 
 ## Changelog
+
+### Version 1.25.0 (2026-09-12)
+
+- W30-C5 records `docket harness run`'s three-code exception to the flat return convention. The
+  command's stdout is a wire protocol, so a consumer needs the exit status to distinguish a turn
+  that ran and ended badly from one that never started; a printed message cannot carry that.
+  `docket harness status` stays flat.
 
 ### Version 1.24.0 (2026-09-07)
 

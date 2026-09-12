@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`docket harness run` and `docket harness status`** — a non-interactive entry point that runs
+  one agent for one turn, to completion, in a workspace and `DOCKET_HOME` the caller supplies.
+  stdout carries newline-delimited events and one versioned result and nothing else; every log goes
+  to stderr. The wire contract is published under `docs/contracts/harness-v1/`, generated from the
+  models and pinned byte-for-byte by a test, with NDJSON fixtures for the ok, blocked, cancelled
+  and refused shapes. Exit status is 0 for a completed turn, 1 for one that ran and ended badly,
+  and 2 for a refusal before any turn began — the one deliberate exception to docket's otherwise
+  flat return convention, because a program parsing stdout cannot read a printed message.
+- **A synchronous trace subscriber seam.** `core/trace.py::subscribe` hands each sink the exact
+  record about to be appended, after redaction and before the write. With no subscribers the path
+  is byte-identical.
+
+### Changed
+
+- **A tool call that needs approval can now be refused immediately instead of waited on.** A
+  caller with nobody to ask gets a typed, terminal `approval_unavailable` result naming the tool,
+  the call and the policy that stopped it, in milliseconds rather than after a two-minute timeout
+  repeated up to three times. The default remains unchanged: an ordinary caller still waits.
+- **Cancellation now reaches an in-flight `bash` command.** `docket runs cancel` terminalizes a run
+  whose hop is sitting inside a long-running shell command, killing the process group the way a
+  timeout already did. Every other tool handler keeps the previous rule that an already-running
+  handler may finish.
+
+### Notes
+
+- `docket harness status` on a finished run reports the outcome but cannot recover the served model
+  or the blocked rule detail, which existed only in the turn's in-memory result.
+
 - The development history — every closed wave and phase section of `TODO.md` and `ROADMAP.md`,
   the roadmap decision changelog, and superseded coordinator handoffs — is archived verbatim under
   [docs/cycles-ended/](docs/cycles-ended/README.md) with a SHA-256 manifest

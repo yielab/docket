@@ -454,5 +454,21 @@
     "heading": "☑ WAVE 31 COMPLETE (2026-09-11 to 2026-09-12) — human maintainability: test lanes, comment budget, generated docs (Phase 25, D-36)",
     "bytes": 43947,
     "sha256": "88139f1b6a52edb405fc0e44d6d3b6fca86cc249a66248d4a50135dd4c79eb28"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "Planned program — PHASE 24: harness mode (D-35)",
+    "bytes": 7010,
+    "sha256": "6cd4948ffb94e910a78bc69a5764ce8e1736f80e15ac0dc03265ae5bca0152e4"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 30 COMPLETE (2026-09-11 to 2026-09-12) — harness mode seams and contract (Phase 24, D-35)",
+    "bytes": 14956,
+    "sha256": "4cae5914789561828e5912a6bd9ff2b0dc10cd3bedf3c5e65c93af1ae2cf4f24"
   }
 ]

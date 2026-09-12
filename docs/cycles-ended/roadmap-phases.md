@@ -2094,3 +2094,82 @@ file per packet.
 
 ---
 
+## Planned program — PHASE 24: harness mode (D-35)
+
+**Status:** ◇ PLANNED (2026-09-11) · **Decision:** D-35, reasoned in
+[docs/adr/0001-harness-mode.md](docs/adr/0001-harness-mode.md) · **Executable detail:** Wave 30 in
+[TODO.md](TODO.md) · **Activation gate:** Wave 31 closes. Nothing here touches release state, so
+the gate is about one integrator owning one board marker at a time — and about files: W31-C1 moves
+every test file each Wave 30 card would own, so starting Wave 30 first would merge against a moved
+tree.
+
+### Why this phase is scheduled
+
+The 2026-09-08 request paired two ADRs across two repositories: docket's D-35 and Tack's ADR 0066,
+which adds `docket` as a third runner harness beside two closed vendor CLIs and **builds nothing
+until docket publishes a versioned non-interactive contract**. The 2026-09-11 audit
+(`internal-docs/harness-mode-audit.md`, read at `4032133`) verified every "true today" row of the
+ADR and found five places where the ADR described as existing something the code does not do.
+Those are the measured triggers; each names its locator:
+
+| Measured gap | Locator | Observed | Threshold |
+| --- | --- | --- | --- |
+| A cancellation request does not reach an in-flight `bash` command | `edges/adapters/toolbox.py::run_bash` blocks in `communicate(timeout)`; children start with `start_new_session=True`; the `bash` registration in `core/tools.py` does not pass `ctx.cancellation_check`; `DocketDriver` never reports a pid, so `runs.cancel_run` has nothing to kill | cancel at 0.2 s into `bash sleep 30` → handler returns at 30 s or at the tool timeout (default: the whole turn's wall clock) | handler returns within 2 s and the child process group is gone |
+| A gated tool call waits, then the loop continues | `core/tools.py::dispatch_tool` `ask` branch → `wait_for_approval` (`TOOL_APPROVAL_TIMEOUT`=120 s) → `approval_timeout` denial → loop continues up to `max_consecutive_tool_denials`=3 | ≥120 s per gated call, terminal `tool_denials`/`invalid_output` with no policy id; `tool_result` trace has no `policyId` | zero wait, terminal on the first gated call, result names tool/call/policy/reason |
+| No event stream seam | `core/trace.py::trace_event` validates, redacts and appends; no subscriber | zero | one synchronous subscriber seam; zero-subscriber path byte-identical |
+| No published contract | `docs/contracts/` does not exist; no versioned event/result shape; no fixtures | zero | generated JSON Schema pinned by test + NDJSON fixtures for ok/blocked/cancelled/refused |
+| No non-interactive entry point | `cli/` has no command that runs one agent in a caller-owned home and exits; `POST /dispatch/` returns before the work | zero | `docket harness run` / `status` |
+
+This is the fourth recorded instance of the repository's named failure shape — machinery built,
+tested and never wired to a caller — arriving *before* it ships rather than after: three of the
+five gaps are seams whose absence would have been discovered by the first real Tack run.
+
+### Product boundary and exit contract
+
+Phase 24 ships, in this order:
+
+1. **Truthful cancellation inside a turn:** a persisted cancellation request stops an in-flight
+   `bash` command by killing its process group, and `docket runs cancel` gains the same reach.
+   D-30 is amended for the `bash` handler only; HTTP requests and Python handlers keep D-30's
+   "may finish" rule.
+2. **Non-interactive approval outcome:** a caller that cannot answer an approval gets a typed,
+   immediate, terminal `approval_unavailable` result that names the rule, instead of a two-minute
+   wait and a retry loop.
+3. **The contract before the command:** the trace gains a subscriber seam; the harness
+   event/result shapes exist as Pydantic models, a generated schema and fixtures; the spec says
+   "defined, command not yet shipped" until it is.
+4. **The command:** `docket harness run` composes `core/runs.py`, `DocketDriver`, the trace
+   subscriber and a `SIGTERM` handler into one synchronous process with NDJSON on stdout, a
+   single versioned `result`, three exit codes and a refusal to touch the default `DOCKET_HOME`.
+5. **Closure and consumer handoff:** D-35 dated, D-14 corrected, public claims scoped to what
+   shipped, and the schema/fixture paths plus exact commit handed to Tack so ADR 0066's
+   decision 4 can proceed.
+
+Phase 24 does **not** add a second driver, driver discovery, a pod-shaped harness, a server or
+background thread, an interactive approval protocol over stdin/stdout, a remote docket, a new
+event vocabulary, a new persisted store, or any change to `docket-runtime`'s public facade beyond
+the optional `approval_mode` field the runtime closure already carries.
+
+### Wave 30 — harness mode seams and contract (planned 2026-09-11)
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W30-C1 | `run_bash` observes cancellation and kills the child group; `docket runs cancel` reaches an in-flight command | Ready. Owns `toolbox.py::run_bash` and only the `bash` handler lambda in `core/tools.py`; parallel-safe with C2 at function level (Phase 19 precedent); merge before C2 |
+| W30-C2 | `ToolContext.approval_mode="refuse"` → immediate `approval_unavailable`, terminal `stop_reason`, `policyId` in the `tool_result` trace | Ready. Owns `ToolContext`/`ToolResult`/`ToolDenialKind`, the `ask` branch of `dispatch_tool`, and `agent_loop.py`'s denial accounting/`StopReason`; no `toolbox.py` |
+| W30-C3 | `trace.subscribe()` seam; `core/harness.py` models + preflight + result mapping; generated `docs/contracts/harness-v1/schema.json`; NDJSON fixtures; new `specs/api/harness-mode.spec.md` | Ready. New files plus `core/trace.py` only; disjoint from C1/C2 |
+| W30-C4 | `docket harness run \| status` over C1–C3, with the stub-endpoint oracle (ok / blocked / cancelled / refused / status) and one live local-model run | After C1+C2+C3. Owns `cli/_harness.py`, one command block in `cli/__init__.py`, `docs/commands.md`, the `help` golden (new surface, diff explained) |
+| W30-C5 | Closure: D-35 dated, ROADMAP/TODO/README/`specs/README.md`/metrics rollups, `cli-interface.spec.md` exit-code exception, consumer handoff packet | Integrator only, after C4 |
+
+Execution graph: C1, C2 and C3 start together; C4 is the fan-in; C5 is integrator closure. The
+only shared hot file is `core/tools.py`, split at function level between C1 (one lambda) and C2
+(the dataclasses and the `ask` branch). No card owns `core/runs.py`, `core/approval.py` or
+`core/dispatch.py`, and `edges/adapters/docket_runtime.py` changes only by one env-coordinate read
+in C4 (the `DOCKET_PIPELINE_WORKTREE` precedent): the whole point of the design is that those are
+consumed unchanged.
+
+No live provider or subscription is a gate: every oracle runs against the loopback
+OpenAI-compatible stub the approval tests already use, and the one real llama.cpp run is handoff
+evidence, not a fixture. Cost stays `null`; token counts are the session's measured totals.
+
+---
+
