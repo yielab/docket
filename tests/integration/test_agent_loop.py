@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import agent_loop as _loop
@@ -64,11 +65,7 @@ AGENT_LOOP_SRC = REPO_ROOT / "src" / "docket" / "core" / "agent_loop.py"
 
 @pytest.fixture(autouse=True)
 def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "SESSIONS_DIR", tmp_path / "sessions", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", tmp_path / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
 

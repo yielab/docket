@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core.llm import ToolCall
@@ -31,9 +32,7 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     convention `test_pre_tool_call_policy.py` set for gate tests, and default
     the fetch allowlist closed so each test opts a host in explicitly.
     """
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "policies", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
     monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", (), raising=True)
 
