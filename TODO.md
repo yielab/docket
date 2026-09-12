@@ -13,8 +13,8 @@
 >
 > ## ◉ ACTIVE BOARD — WAVE 31 (2026-09-11) — human maintainability (Phase 25, D-36)
 >
-> Eleven cards W31-C0…C10, scoped in the first section below. C0–C8 were planned; C9 and
-> C10 were opened by defects the work itself surfaced. The measured triggers are an 8 min 12 s
+> Twelve cards W31-C0…C10, scoped in the first section below, C8 split in two. C0–C8 were
+> planned; C9 and C10 were opened by defects the work itself surfaced. The measured triggers are an 8 min 12 s
 > default suite whose 15 slowest tests are all release/evidence checks, 35 test files that verify
 > prose or the agent's own hook scripts, `serve` tested across 19 files, 89 archaeology hits in
 > comments, and three functions over 500 lines. Decision D-36 in ROADMAP.md owns the ruling;
@@ -473,30 +473,72 @@ after and the list of new ADRs.
 
 ### W31-C8 — split the three functions over 500 lines into named phases
 
-**Status:** TODO · **Size:** L — split into three cards (one per function) before claiming ·
-**Owner:** — · **Depends on:** C4 (each function has one unit file)
+**Status:** SPLIT (2026-09-12) into C8a and C8b below · **Size:** L · **Depends on:** C4 (done)
 
-**Deterministic trigger:** at `0d3720a`, `core/agent_loop.py::run_agent_turn` is 789 lines,
-`core/dispatch.py::dispatch_task` 703 and `::_execute_unit` 501; 42 functions exceed 80 lines.
-The two largest test files (`test_agent_loop.py` 2,462 lines, `test_docket_driver.py` 1,688)
-exist because those functions can only be exercised end to end.
+**The trigger double-counted.** It named `core/agent_loop.py::run_agent_turn` at 789 lines,
+`core/dispatch.py::dispatch_task` at 703 and `::_execute_unit` at 501, as three functions. Measured
+at `7f02c55` by AST, `_execute_unit` is a closure **nested inside** `dispatch_task` (lines
+1284-1784 of 1172-1874), so 501 of those 703 lines are the same lines counted twice. There are two
+oversized functions, in two files, not three. The split follows the files: one branch each, and
+they may run in parallel because they share no module.
 
-**Goal:** per function, extract phases with names (`_prepare_request`, `_run_round`,
-`_apply_stop_conditions`, …) with zero behaviour change, proven by the existing suite and goldens;
-then unit tests per phase in the module's unit file and retirement of end-to-end tests made
-redundant. One function per branch.
+### W31-C8a — split `run_agent_turn` into named phases
+
+**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C4 (done) · parallel with C8b
+(disjoint: different module, different unit file)
+
+**Deterministic trigger:** `core/agent_loop.py::run_agent_turn` is 789 lines (440-1228 at
+`7f02c55`). Its unit file `tests/unit/core/test_agent_loop.py` is 2,462 lines, the largest in the
+suite, because the function can only be exercised end to end.
+
+**Goal:** extract phases with names (`_prepare_request`, `_run_round`, `_apply_stop_conditions`,
+and whatever the code actually shows) with **zero behaviour change**, then add unit tests per phase
+and retire the end-to-end tests each one makes redundant.
+
+**This is the turn loop, so its bounds are the product.** Max iterations, max tool calls, wall
+clock and the measured-token budget are stop conditions, not throughput knobs. An extraction that
+moves a bound's evaluation to a different point in the loop is a behaviour change even if the suite
+stays green. State where each bound is evaluated before and after.
 
 **Non-goals:** no semantic change; no new stop conditions, budgets or trace events; no change to
-the `dispatch_tool` chokepoint (AST guard stays green).
+the `dispatch_tool` chokepoint.
 
-**Owns:** the named function and its unit/integration files. **Forbidden:** other modules.
+**Owns:** `core/agent_loop.py` and its unit/integration files. **Forbidden:** other `src/` modules.
 
-**RED tests / oracles:** the existing suite and goldens are the regression oracle and must be
-byte-identical; new phase-level tests fail on the unextracted code (they import a name that does
-not exist yet) and pass after; `test_tool_registry.py` chokepoint guard green.
+**RED tests / oracles:** the existing suite and the 18-case golden suite are the regression oracle
+and must stay byte-identical; each new phase test fails on the unextracted code because it imports
+a name that does not exist yet, and passes after; `test_tool_registry.py`'s chokepoint guard green.
 
-**Validation:** full gates per branch. **Handoff:** function length before/after, tests retired
-with the phase test that replaces each.
+**Validation:** full gates. **Handoff:** function length before and after, the table of where each
+bound is evaluated before and after, and every retired test paired with the phase test replacing it.
+
+### W31-C8b — split `dispatch_task` and its nested `_execute_unit` into named phases
+
+**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C4 (done) · parallel with C8a
+(disjoint: different module, different unit file)
+
+**Deterministic trigger:** `core/dispatch.py::dispatch_task` is 703 lines (1172-1874 at `7f02c55`),
+of which the nested `_execute_unit` closure is 501 (1284-1784). Nesting is why the outer function
+is unreadable and why the inner one cannot be tested directly.
+
+**Goal:** lift `_execute_unit` to a module-level function taking its captured state explicitly,
+then extract named phases from both. **Enumerate what the closure captures before lifting it** --
+each captured name becomes a parameter or an attribute of a small state object, and a name captured
+and then mutated is the one that can change behaviour silently.
+
+**`dispatch.py` is the contention hotspot.** No other card may own it while this is open.
+
+**Non-goals:** no change to the hop sequence, the `verifyCmd` gate, the Tester PASS/FAIL parse or
+`maxReworkCycles`; no new trace events.
+
+**Owns:** `core/dispatch.py` and its unit/integration files. **Forbidden:** other `src/` modules.
+
+**RED tests / oracles:** the existing suite and the golden suite stay byte-identical; the lifted
+`_execute_unit` gains direct unit tests that could not exist while it was a closure; each new phase
+test fails before extraction and passes after.
+
+**Validation:** full gates. **Handoff:** the captured-name inventory with what each became, function
+lengths before and after, and every retired test paired with its replacement.
 
 ### W31-C9 — `trace.redact` degrades quadratically on a long alphanumeric run
 

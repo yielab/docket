@@ -451,7 +451,8 @@ file per packet.
 | W31-C5 | `CliRunner` in-process; `subprocess` only at process boundaries. Nine files converted, seven kept at the boundary, one shared `repoint_docket_home` helper replacing eight partial copies. **Suite 152-162 s to 117-122 s: the < 90 s target was not met and the card closed anyway**, since what remains is not `subprocess` overhead | After C1; per-file |
 | W31-C6 | `gen_cli_docs.py --check`, `mkdocs build --strict`, deep-dive docs folded, hand-written link tests retired | After C0; docs/scripts only |
 | W31-C7 | `split_board.py` and the `docs/cycles-ended/` archive (shipped); remaining: TODO ≤ 200 after W30/W31 close, ROADMAP ≤ 500, ADRs, README ≤ 150 | Integrator; when no other card is open |
-| W31-C8 | `run_agent_turn`, `dispatch_task`, `_execute_unit` split into named phases | After C4; one function per branch; split into three cards before claiming |
+| W31-C8a | `core/agent_loop.py::run_agent_turn` (789 lines) split into named phases, bounds evaluated at the same points | After C4; parallel with C8b, different module |
+| W31-C8b | `core/dispatch.py::dispatch_task` (703 lines) and the `_execute_unit` closure nested inside it (501 of those lines) lifted and split | After C4; parallel with C8a; exclusive on `dispatch.py` |
 | W31-C9 | `trace.redact` backtracking bounded; 40,000 characters from 10.68 s to 0.03 s, redacted set unchanged | Opened by a defect W31-C2 hit and worked around |
 | W31-C10 | One shared way to repoint `DOCKET_HOME`, guarded. 56 hand-written sites across 51 files, two carrying partial constant lists | After C5; classify the sites before converting any |
 
