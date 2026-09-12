@@ -596,7 +596,12 @@ that was backtracking.
 
 ### W31-C10 — one way to repoint DOCKET_HOME, not fifty-six
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C5 (done)
+**Status:** TODO, queued behind C8b · **Size:** M · **Owner:** — · **Depends on:** C5 (done)
+
+**File contention, measured:** six of the repointing sites live in dispatch and driver test
+files (`test_dispatch.py` in both lanes, `test_docket_driver.py`, `test_approval_gated_dispatch.py`,
+`test_dispatch_run_records.py`, `test_dispatch_heartbeat_and_conversation_sync.py`), which C8b
+owns. This card is disjoint from C8a and may run beside it, but not beside C8b.
 
 **Deterministic trigger:** on the merged tree, 56 sites across 51 test files repoint
 `_cfg.DOCKET_HOME` by hand. C5 converted eight of them to the shared `repoint_docket_home` helper
