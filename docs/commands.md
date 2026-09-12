@@ -1213,7 +1213,7 @@ Inspect the dispatch run registry (list/show) -- one record per dispatch invocat
 One persisted record per pod-dispatch invocation, whatever triggered it
 (the CLI, the `docket serve` webhook, a due schedule, or the sweep loop).
 Answers "is it done, did it fail, or did it never run" for background
-dispatch, which previously discarded every exception silently.
+dispatch, whose failures are otherwise invisible.
 
 Subcommands: `list \[--project <project>\] \[--json\]`; `show <run-id>
 \[--json\]`; `cancel <run-id>` persists one cancellation request and

@@ -1,35 +1,12 @@
-"""mkdocs build hooks for the docket documentation site (W31-C6 / D-36).
+"""mkdocs build hooks: out-of-tree nav pages, and links authored for GitHub.
 
-W31-C6 owns `mkdocs.yml` and `docs/commands.md` only -- it may not add,
-move, or symlink files under `docs/`, and `specs/**`, `README.md`, and every
-other repository doc are someone else's tree entirely. Two problems follow
-from that, and both are solved here without editing anything this card does
-not own:
-
-1. **Three fixed-nav entries live outside `docs_dir`.** The nav this card
-   specifies (ROADMAP D-36) names the spec index (`specs/README.md`), the
-   changelog (`CHANGELOG.md`), and the `docket-runtime` API page
-   (`packages/docket-runtime/docs/api.md`) -- none of them under `docs/`.
-   MkDocs refuses a `docs_dir` that is an ancestor of the config file's own
-   directory, so `docs_dir: ..` (the repository root) is not an option;
-   `on_files` below adds these three as generated `File`s instead, read
-   directly from their real location, at the site path their own relative
-   links expect.
-
-2. **Every existing doc's relative links were authored for a repository
-   browser, not a `docs_dir`-scoped site.** `docs/DOCKET.md` links
-   `../README.md`; `docs/cycles-ended/README.md` links `todo-waves.md`
-   (fine on GitHub, both real repository-relative paths) -- but under
-   `docs_dir: docs`, MkDocs resolves a link relative to the *page's
-   position inside docs_dir*, not its real filesystem position, so
-   `../README.md` from a page sitting directly in `docs/` resolves to
-   nothing MkDocs knows about. `on_page_markdown` below rewrites exactly
-   the links MkDocs cannot resolve into absolute GitHub blob links, but
-   only when the target genuinely exists on disk -- computed from the
-   *real* file location, matching how these links were actually authored.
-   A link to something that does not exist anywhere is left broken, so a
-   genuinely dead link still fails `--strict` (this is what makes planting
-   one in a test still work as a regression check on this file).
+MkDocs refuses a `docs_dir` containing the config file, so the root cannot
+be one, yet three nav entries live outside `docs/`: `on_files` adds them as
+generated pages read from their real location. Relative links in the docs
+were authored against the repository tree, which MkDocs instead resolves
+against a page's position inside `docs_dir`; `on_page_markdown` rewrites
+only the links MkDocs cannot resolve, and only when the target exists on
+disk, so a genuinely dead link still fails `--strict`.
 """
 
 from __future__ import annotations

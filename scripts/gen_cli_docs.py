@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
-"""gen_cli_docs.py — render docs/commands.md from the live Typer registry.
+"""gen_cli_docs.py -- render docs/commands.md from the live Typer registry.
 
-`docs/commands.md` used to be 2,247 hand-written lines with no drift check,
-while `scripts/metrics.py::count_commands` already introspects the Typer app
-live for its own count. This script does the same introspection and renders
-the whole reference document from it: groups, commands, arguments, options,
-and each command's help text (the function docstring in
-`src/docket/cli/__init__.py`, which is also what `docket <command> --help`
-shows). The registry is the source of truth; nothing about a command's
-syntax or behaviour is hand-typed here a second time.
-
-Grouping (which section a command lives in), the "Global Options" block, the
-Exit Codes / Environment Variables tables, and the closing Tips & Tricks /
-Next Steps sections are not part of any single command's help text — they
-are cross-cutting reference material this script owns directly, the same
-way it owns the table of contents.
-
+The registry is the source of truth: groups, commands, arguments, options
+and each command's help text come from introspecting the same app object
+`scripts/metrics.py::count_commands` counts, so no command's syntax is
+typed a second time and `--check` fails when the committed file drifts.
+Grouping, the global-options block and the reference tables belong to no
+single command, so this script owns them directly.
 Usage:
   ./scripts/gen_cli_docs.py            # regenerate docs/commands.md
   ./scripts/gen_cli_docs.py --check    # exit 1 if the file on disk is stale
@@ -47,13 +38,8 @@ def _load_click_group():
 
 
 def _load_aliases_and_removed() -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
-    """Extract `_ALIASES` and `_REMOVED` from `__main__.py` via AST.
-
-    Not imported directly: `__main__.py` calls `main()` unconditionally at
-    module scope (it is the `python -m docket` entry point), so importing it
-    would run the CLI. Parsing it as a syntax tree reads the two dict
-    literals without executing anything.
-    """
+    """Read the `_ALIASES`/`_REMOVED` literals as a syntax tree, because importing
+    `__main__.py` would run the CLI: it calls `main()` at module scope."""
     tree = ast.parse(MAIN_MODULE.read_text(encoding="utf-8"), filename=str(MAIN_MODULE))
     aliases: dict[str, str] = {}
     removed: dict[str, tuple[str, ...]] = {}
@@ -140,10 +126,8 @@ _TOC_SLUG_OVERRIDES = {
 
 
 def _slug(heading: str) -> str:
-    """Match Python-Markdown's `toc` extension default slugify closely enough
-    that this script's own table-of-contents anchors agree with the ones
-    mkdocs actually renders (`Session & Context Management` -> the `&` is
-    punctuation, dropped rather than turned into a second hyphen)."""
+    """Slugify a heading the way Python-Markdown's `toc` extension does, so the
+    anchors this script writes match the ones mkdocs renders."""
     import re as _re
 
     if heading in _TOC_SLUG_OVERRIDES:
@@ -192,18 +176,9 @@ def _param_lines(cmd) -> list[str]:
 
 
 def _render_help_body(help_text: str) -> str:
-    """Dedent/clean a docstring for markdown embedding, preserving blank lines.
-
-    Several docstrings use bracket notation for optional CLI syntax (e.g.
-    ``[--resume] [--timeout <seconds>]``) that read fine as plain help text
-    but, unescaped, look like an empty Markdown reference-style link to
-    mkdocs-autorefs (installed by the `mkdocstrings[python]` extra this
-    site's build always has) -- it then warns "could not find cross-reference
-    target" under `--strict`. The old hand-written file never hit this
-    because the same syntax always sat inside a fenced ```bash block, which
-    Markdown never parses for links; this generator's body text is plain
-    prose, so square brackets are escaped instead.
-    """
+    """Dedent a docstring for markdown embedding, preserving blank lines and
+    escaping square brackets: optional-flag notation in plain prose reads as an
+    empty reference link, which mkdocs-autorefs fails under `--strict`."""
     text = textwrap.dedent(help_text).strip()
     return text.replace("[", "\\[").replace("]", "\\]")
 

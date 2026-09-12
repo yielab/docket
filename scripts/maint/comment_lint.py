@@ -44,6 +44,21 @@ class Finding:
     text: str
 
 
+def _renders_user_help(node: ast.AST) -> bool:
+    """True for a Typer command or callback, whose docstring is printed to the user.
+
+    That docstring is product surface -- `docket <cmd> --help` and the generated
+    reference both render it -- so the internal-commentary budget does not bind it.
+    Archaeology still does: it would be archaeology in the user's terminal.
+    """
+    for dec in getattr(node, "decorator_list", []):
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
+        if name in {"command", "callback"}:
+            return True
+    return False
+
+
 def scan_file(path: Path, module_max: int, def_max: int, strict: bool = False) -> list[Finding]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -73,7 +88,11 @@ def scan_file(path: Path, module_max: int, def_max: int, strict: bool = False) -
                             path, start, "long-module-doc", f"{length} lines (max {module_max})"
                         )
                     )
-                elif not isinstance(node, ast.Module) and length > def_max:
+                elif (
+                    not isinstance(node, ast.Module)
+                    and length > def_max
+                    and not _renders_user_help(node)
+                ):
                     name = getattr(node, "name", "?")
                     out.append(
                         Finding(
