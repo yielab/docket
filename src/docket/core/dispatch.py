@@ -1169,6 +1169,879 @@ class _UnitOutcome:
     pending_approval_index: int | None = None
 
 
+@dataclass
+class _UnitContext:
+    """Per-invocation state a ``PlannedUnit``'s execution needs but does not own.
+
+    ``_execute_unit`` was originally a closure nested inside ``dispatch_task``,
+    reaching these values through lexical scope. Lifting it to a module-level
+    function turns every one of those captured names into either an explicit
+    call argument (``node``, ``prior_snapshot``, ``rework_hop``,
+    ``check_approval``, ``index_for_context`` — these vary per call within one
+    dispatch run) or an attribute here (values fixed for the whole run, or
+    mutated across calls within it).
+
+    Two attributes are mutated across the run, not just read, and are the ones
+    a lift like this can silently break if the mutation is dropped:
+
+    * ``rework_counts`` — a ``dict[str, int]`` mutated in place (a rework
+      cycle increments its own gated step's entry). Passing the same dict
+      object through means every call sees the running total; this would
+      break only if a call site were changed to pass a *copy*.
+    * ``override_index`` — reassigned to ``None`` the first time a run reaches
+      the exact pipeline position a granted approval named (the single-use
+      gate-override handoff — see ``dispatch_task``'s docstring and
+      ``_claim_next_task``). Because it is a plain ``int | None``, not a
+      container, the closure needed ``nonlocal`` to rebind it; as an attribute
+      of this shared, mutable context object, ``ctx.override_index = None``
+      rebinds the same way without special syntax — but it is exactly as easy
+      to break: passing a *copy* of ``ctx`` per call, or reading the value
+      into a local before mutating it, would silently stop the override from
+      ever being consumed.
+    """
+
+    project: str
+    task: dict[str, Any]
+    task_id: str
+    session_id: str
+    cap: float
+    resolved_turn_timeout: int
+    resolved_verify_timeout: int
+    id_to_index: dict[str, int]
+    rework_counts: dict[str, int]
+    override_index: int | None
+    track_pid: bool
+    run: Runner
+    do_sleep: Callable[[float], None]
+    on_hop: Callable[[HopResult], None] | None
+    on_retry: Callable[[], None] | None
+
+
+def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
+    """Budget gate BEFORE the hop. Prefer the pod's recorded spend; fall
+    back to a token-based estimate when nothing was recorded at all
+    (see pod_gating_cost) so a real cap can still
+    trip, and mark the Lead paused so future dispatch attempts are
+    refused at claim time instead of re-running this same check.
+
+    Returns ``None`` when the hop may proceed.
+    """
+    if ctx.cap <= 0.0:
+        return None
+    spent, estimated = pod_gating_cost(ctx.project)
+    if spent < ctx.cap:
+        return None
+    spent_label = f"~${spent:.2f} (estimated — no cost recorded)" if estimated else f"${spent:.2f}"
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "budget_exceeded",
+        _json.dumps(
+            {
+                "spent": round(spent, 6),
+                "cap": round(ctx.cap, 6),
+                "role": role,
+                "estimated": estimated,
+            }
+        ),
+    )
+    return _UnitOutcome(
+        kind="blocked",
+        reason=f"pod budget reached ({spent_label} ≥ ${ctx.cap:.2f}) before {role}",
+    )
+
+
+def _gate_pre_hop_approval(
+    ctx: _UnitContext,
+    role: str,
+    node: _orch.PlannedUnit,
+    *,
+    check_approval: bool,
+    index_for_context: int,
+) -> _UnitOutcome | None:
+    """require_approval gate — pre-hop, after budget (affordability)
+    and before the hop actually runs (permission).
+
+    Mutates ``ctx.override_index``: a granted approval's single-use gate
+    override (see ``_UnitContext``) is consumed the first time a run reaches
+    the exact position it was minted for, so a later hop at the same position
+    (a rework cycle revisiting it) still gates normally. Returns ``None`` when
+    the hop may proceed.
+    """
+    if not check_approval:
+        return None
+    if index_for_context == ctx.override_index:
+        ctx.override_index = None
+        return None
+    if not _hop_requires_approval(ctx.project, role, ctx.task, index_for_context, node.gate):
+        return None
+    action = _approval_action_text(role, ctx.task)
+    token = _ap.approval_create(
+        ctx.project,
+        role,
+        action,
+        context={"taskId": ctx.task_id, "pipelineIndex": index_for_context},
+    )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "approval_required",
+        _json.dumps({"role": role, "token": token, "pipelineIndex": index_for_context}),
+    )
+    return _UnitOutcome(
+        kind="waiting_approval",
+        reason=f"approval required before {role} hop (token={token})",
+        approval_token=token,
+        pending_approval_index=index_for_context,
+    )
+
+
+def _compose_hop(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    prior_snapshot: list[HopResult],
+    rework_hop: HopResult | None,
+) -> tuple[str, dict[str, str] | None]:
+    """Build this hop's prompt and environment, and emit its
+    ``context_composed``/``tool_call`` trace pair.
+
+    A downstream (non-lead, non-implementer) hop's message gets an extra
+    checkout note naming the pipeline's real implementation worktree, when the
+    prior Implementer hop allocated one — inspect and test that checkout, not
+    the origin codebase.
+    """
+    message, composition = _hop_message(ctx.task, role, prior_snapshot, rework_hop)
+    pipeline_worktree = ""
+    if role not in {"lead", "implementer"}:
+        pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
+        if pipeline_worktree:
+            checkout_note = (
+                "\nEffective implementation checkout for this downstream hop: "
+                f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
+                "codebase; keep your role's existing tool permissions."
+            )
+            if isinstance(node.gate, _pipeline.VerdictGate):
+                checkout_note += (
+                    " Your final reply must still contain one distinct recognized "
+                    "verdict marker at the start of a complete line; reasons may "
+                    "come before or after it."
+                )
+            checkout_note += "\n"
+            message += checkout_note
+            composition.total_bytes += len(checkout_note.encode("utf-8"))
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "context_composed",
+        _json.dumps(
+            {
+                "hop": role,
+                "description_bytes": composition.description_bytes,
+                "sections": composition.sections,
+                "total_bytes": composition.total_bytes,
+                "truncated": composition.truncated,
+            }
+        ),
+    )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "tool_call",
+        _json.dumps({"hop": role, "agent": member_id}),
+    )
+    env = _hop_env(member_id, role)
+    if pipeline_worktree:
+        env = dict(env or {})
+        env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
+    return message, env
+
+
+def _run_hop_turn(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    history_session_key: str,
+    message: str,
+    env: dict[str, str] | None,
+) -> tuple[_rd.TurnResult, int]:
+    """Run this hop's agent turn, retrying a retryable failure in place.
+
+    Retry only a retryable failure (a transient hiccup running the turn) —
+    a non-zero exit or a bad verdict is a real answer and stops here.
+    The returned ``attempt`` is the total number of tries made.
+    A step's own ``retries``/``timeout`` override always wins; otherwise the
+    pod's role-based retry budget and the resolved agent-turn timeout.
+    """
+    retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
+    hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
+
+    # Record the production driver's spawned pid as in-flight for
+    # `docket runs cancel` — only while the subprocess is actually
+    # running; removed again the moment this attempt returns, so a long
+    # multi-hop task never accumulates stale pids from finished hops.
+    run_id_for_pids = _runs.current_run_id() if ctx.track_pid else None
+    spawned_pid: list[int] = []
+
+    def _on_spawn(pid: int) -> None:
+        spawned_pid.append(pid)
+        if run_id_for_pids is not None:
+            _runs.add_hop_pid(run_id_for_pids, pid)
+
+    attempt = 1
+    while True:
+        spawned_pid.clear()
+        if ctx.track_pid:
+            # `ctx.run` is typed as the plain 5-arg `Runner` Callable (every
+            # test double's exact shape); calling the concrete production
+            # driver directly here (rather than through `ctx.run`) is what
+            # lets it take the extra `on_spawn` kwarg type-safely.
+            run_res = _dr.default_driver().run_turn(
+                member_id,
+                history_session_key,
+                message,
+                hop_timeout,
+                env,
+                on_spawn=_on_spawn,
+                trace_project=ctx.project,
+                trace_session_key=ctx.session_id,
+            )
+        else:
+            run_res = ctx.run(member_id, history_session_key, message, hop_timeout, env)
+        if run_id_for_pids is not None and spawned_pid:
+            _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
+        if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
+            break
+        if attempt > retry_budget:
+            break
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "hop_retry",
+            _json.dumps(
+                {
+                    "hop": role,
+                    "attempt": attempt,
+                    "retry_budget": retry_budget,
+                    "failure_kind": run_res.failure_kind,
+                    "error": run_res.error,
+                }
+            ),
+        )
+        # A retry means the dispatcher is alive and making forward progress,
+        # not crashed — refresh the claim before the backoff sleep so a
+        # concurrent dispatcher's stale-claim sweep never mistakes it for one
+        # (see the module docstring / _touch_claim).
+        if ctx.on_retry is not None:
+            ctx.on_retry()
+        ctx.do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
+        attempt += 1
+    return run_res, attempt
+
+
+def _apply_output_guardrails(
+    ctx: _UnitContext, role: str, run_res: _rd.TurnResult
+) -> tuple[str, bool, str]:
+    """pre_output guardrail scan — every hop's real output, scanned once,
+    before it is embedded in the carried-forward artifact or persisted hop
+    record. Only `redact`/`block` change what gets carried forward
+    (`warn`/`allow` pass the text through unchanged); `require_approval` is
+    not a pre_output outcome — a hop has
+    already run by the time its output exists, so there is no "before the
+    hop" moment left to gate the way the pre-hop require_approval sources
+    above do; a policy author who wants a human in the loop before this
+    role runs uses `_pod_requires_approval`/enqueue's pre_input gate
+    instead. `pre_tool_call` is evaluated separately, live, inside that
+    hop's own turn (`core/tools.py`'s `dispatch_tool`, via
+    `core/agent_loop.py`) — not by this post-hoc scan.
+
+    Returns the (possibly redacted) output, whether the hop still counts as
+    ok, and its error text.
+    """
+    hop_output = run_res.output
+    hop_ok = run_res.ok
+    hop_error = run_res.error
+    if hop_output:
+        hit = _policy.policy_eval_detail(role, "pre_output", hop_output)
+        # Also classify the hop's real output against the built-in
+        # high-risk action classes (core/security.py's HIGH_RISK_PATTERNS),
+        # independently of the JSON policy engine above. This is a second,
+        # independent check over what the hop *reports* it did, not what a
+        # tool call literally asked to run — it still catches a
+        # money-movement or secret-access command described in the hop's
+        # own summary even when the underlying call never reached
+        # `dispatch_tool`'s live `pre_tool_call` gate (e.g. a runner that
+        # doesn't route through it at all, such as a test double). A match
+        # never downgrades an already-stronger policy_eval_detail verdict —
+        # redact/block/require_approval all outrank a bare "allow" — it only
+        # raises a plain "allow" to "warn". It cannot go further than
+        # "warn": there is no live approver to "ask" post-hoc (the hop
+        # already ran, the same reasoning behind pre_output's
+        # require_approval-behaves-like-warn rule), and HIGH_RISK_PATTERNS
+        # is a built-in Python list, not an installed, operator-authored
+        # JSON policy — so this only ever adds visibility, it never
+        # redacts or blocks on the operator's behalf the way a real
+        # installed policy can.
+        risk_cls = _sec.match_high_risk(hop_output)
+        if risk_cls is not None and hit.action == "allow":
+            hit = _policy.PolicyHit(
+                action="warn",
+                policy_id=f"high-risk:{risk_cls.name}",
+                message=risk_cls.description,
+            )
+        if hit.action != "allow":
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "guardrail_check",
+                _json.dumps({"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}),
+            )
+        if hit.action == "redact":
+            hop_output = _trace.redact(hop_output)
+        elif hit.action == "block":
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "guardrail_block",
+                _json.dumps(
+                    {"hook": "pre_output", "policy": hit.policy_id, "action": hit.policy_id}
+                ),
+            )
+            if hop_ok:
+                hop_ok = False
+                hop_error = f"blocked by guardrail policy '{hit.policy_id}'"
+    return hop_output, hop_ok, hop_error
+
+
+def _build_hop_result(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    run_res: _rd.TurnResult,
+    hop_output: str,
+    hop_ok: bool,
+    hop_error: str,
+    attempt: int,
+) -> HopResult:
+    """Build this hop's persisted record and its structured handoff artifact.
+
+    The verdict is parsed up front (rather than inside the post-hop gate
+    evaluation) so it can be embedded in the hop's own artifact *before*
+    ``on_hop`` persists it — one source of truth, computed once. Guarded on
+    ``hop_ok``: a failed subprocess call (or a pre_output block) never reaches
+    gate evaluation either, so there is no meaningful verdict to report for
+    it.
+
+    Real files_changed/diff_ref for a successful Implementer hop.
+    `_implementer_diff_probe` degrades to ([], None) for
+    every other role, a workdir pod, a non-repo workspace, or a host
+    with no git binary, so this never raises mid-dispatch.
+
+    Gated on `hop_ok`, not `run_res.ok`: the pre_output policy hook can
+    fail an otherwise-successful subprocess call, and a hop the guardrail
+    blocked must not hand a "here is what I changed" artifact downstream.
+    `hop_output`, never `run_res.output`: pre_output's `redact` action
+    rewrites the hop's text, and the artifact is what the next hop reads.
+    Sourcing the raw subprocess output here would silently undo the
+    redaction the policy engine just applied.
+    """
+    verdict: str | None = None
+    if hop_ok and isinstance(node.gate, _pipeline.VerdictGate):
+        verdict = _orch.parse_verdict(node.gate, hop_output)
+    files_changed: list[str] = []
+    diff_ref: str | None = None
+    if hop_ok:
+        files_changed, diff_ref = _implementer_diff_probe(member_id, role)
+    artifact = _handoff.HandoffArtifact(
+        summary=hop_output,
+        verdict=verdict,
+        files_changed=files_changed,
+        diff_ref=diff_ref,
+    )
+    return HopResult(
+        role=role,
+        member_id=member_id,
+        ok=hop_ok,
+        output=hop_output,
+        cost_usd=run_res.cost_usd,
+        error=hop_error,
+        attempts=attempt,
+        step_id=node.step_id,
+        artifact=artifact,
+    )
+
+
+def _persist_hop_and_trace(
+    ctx: _UnitContext,
+    role: str,
+    hop: HopResult,
+    run_res: _rd.TurnResult,
+    hop_ok: bool,
+    hop_error: str,
+) -> _UnitOutcome | None:
+    """Persist this hop and trace its result; short-circuit a failed hop.
+
+    Persisted immediately (not deferred to a parallel group's join) so a
+    crash in a *sibling* child never loses a hop that already completed —
+    the crash-safety guarantee, generalized to a concurrent fan-out.
+
+    Returns the terminal outcome for a failed/cancelled hop, or ``None`` when
+    the hop succeeded and post-hop gate evaluation should proceed.
+    """
+    if ctx.on_hop is not None:
+        ctx.on_hop(hop)
+
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "tool_result" if hop_ok else "error",
+        hop.output or hop_error or "",
+        cost_usd=run_res.cost_usd or None,
+    )
+    if run_res.cost_usd:
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "cost_charged",
+            _json.dumps({"role": role}),
+            cost_usd=run_res.cost_usd,
+        )
+
+    if not hop_ok:
+        if run_res.failure_kind == "run_cancelled":
+            return _UnitOutcome(
+                kind="cancelled",
+                hops=[hop],
+                reason="run cancellation requested",
+            )
+        return _UnitOutcome(
+            kind="failed",
+            hops=[hop],
+            reason=f"{role} hop failed: {hop_error or 'no result'}",
+        )
+    return None
+
+
+def _evaluate_mechanical_gate(
+    ctx: _UnitContext,
+    gate: _pipeline.MechanicalGate,
+    role: str,
+    member_id: str,
+    hop: HopResult,
+) -> _UnitOutcome:
+    """A ``MechanicalGate``: run ``verifyCmd`` (or the gate's own command) and
+    gate on its exit.
+
+    Verify in the member's own worktree when it has one —
+    else the shared codebase root — else its workspace dir. Shared
+    with cli/_pod.py's _regenerate_member_tools via core/pod.py so
+    the two can't disagree about which tree is being checked — this
+    applies to any mechanically-gated step, not just "implementer".
+    """
+    verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
+    if not verify_cmd:
+        # Honesty rule: never silently skip — a missing verifyCmd is
+        # visible via a trace event (parity with the "passed" case
+        # below) and the hop's own `verification_skipped` flag, which
+        # `cli/`'s dispatch renderer prints. `core/` never prints
+        # directly.
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "tool_result",
+            _json.dumps({"verification": "skipped", "member": member_id}),
+        )
+        hop.verification_skipped = True
+        return _UnitOutcome(kind="advance", hops=[hop])
+
+    worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
+    member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
+    cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
+    # The verify command gets its own timeout, decoupled from the agent-turn
+    # timeout above — a 20-minute test suite and a hung LLM turn are no longer
+    # forced to share one budget.
+    mech_timeout = gate.timeout or ctx.resolved_verify_timeout
+    passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
+    redacted = _trace.redact(raw_output)
+    if not passed:
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            "verification_failed",
+            _json.dumps({"cmd": verify_cmd, "output": redacted}),
+        )
+        return _UnitOutcome(
+            kind="failed",
+            hops=[hop],
+            reason=f"verifyCmd failed: {verify_cmd!r}",
+        )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "tool_result",
+        _json.dumps({"verification": "passed", "cmd": verify_cmd}),
+    )
+    return _UnitOutcome(kind="advance", hops=[hop])
+
+
+def _evaluate_verdict_gate(
+    ctx: _UnitContext,
+    gate: _pipeline.VerdictGate,
+    node: _orch.PlannedUnit,
+    role: str,
+    hop: HopResult,
+) -> _UnitOutcome:
+    """A ``VerdictGate``: pass/rework/fail on the hop's already-parsed verdict.
+
+    Reuse the verdict already parsed above (and carried on the
+    hop's own artifact) rather than parsing `run_res.output` a
+    second time — single source of truth.
+    """
+    assert hop.artifact is not None
+    verdict = hop.artifact.verdict
+    hop_output = hop.output
+    pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
+    if verdict is not None and verdict in pass_set:
+        return _UnitOutcome(kind="advance", hops=[hop])
+
+    rework = gate.rework
+    if rework is not None and verdict is not None:
+        when_set = _orch.normalize_values(rework.when, gate.case_sensitive)
+        if verdict in when_set:
+            cycles_so_far = ctx.rework_counts.get(node.step_id, 0)
+            target_index = ctx.id_to_index.get(rework.to)
+            if cycles_so_far < rework.max_cycles and target_index is not None:
+                ctx.rework_counts[node.step_id] = cycles_so_far + 1
+                rework_event, _unused1, _unused2 = _verdict_event_names(role)
+                redacted = _trace.redact(hop_output)
+                _trace_locked(
+                    ctx.project,
+                    ctx.session_id,
+                    role,
+                    rework_event,
+                    _json.dumps({"cycle": ctx.rework_counts[node.step_id], "output": redacted}),
+                )
+                return _UnitOutcome(kind="rework", hops=[hop], rework_target_index=target_index)
+            # Rework budget exhausted (or, defensively, no valid target) —
+            # this verdict is now terminal.
+            _unused3, rejected_event, _unused4 = _verdict_event_names(role)
+            redacted = _trace.redact(hop_output)
+            _trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                rejected_event,
+                _json.dumps({"cycles": cycles_so_far, "output": redacted}),
+            )
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=(
+                    f"{role} rejected after {cycles_so_far} rework cycle(s): {verdict.upper()}"
+                ),
+            )
+
+    # Anything else is either truly unparseable (no match at all) or a
+    # real, parsed marker that's simply neither a pass nor a
+    # rework-trigger — distinct outcomes (though, for the tester role
+    # specifically, they share one event name — see
+    # `_verdict_event_names`).
+    _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
+    redacted = _trace.redact(hop_output)
+    if verdict is None:
+        _trace_locked(
+            ctx.project,
+            ctx.session_id,
+            role,
+            unparseable_event,
+            _json.dumps({"verdict": "unparseable", "output": redacted}),
+        )
+        return _UnitOutcome(
+            kind="failed",
+            hops=[hop],
+            reason=f"{role} output unparseable (expected one unambiguous recognized "
+            "verdict marker at the start of a line)",
+        )
+    _trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        rejected_event2,
+        _json.dumps({"verdict": verdict, "output": redacted}),
+    )
+    return _UnitOutcome(kind="failed", hops=[hop], reason=f"{role} reported {verdict.upper()}")
+
+
+def _evaluate_post_hop_gate(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    role: str,
+    member_id: str,
+    hop: HopResult,
+    *,
+    check_approval: bool,
+) -> _UnitOutcome:
+    """Resolve this step's post-hop gate generically, by the gate's own type.
+
+    An ``ApprovalGate`` was already handled pre-hop (``_gate_pre_hop_approval``)
+    — by the time a hop's turn has actually run, it simply advances (the gate
+    already did its job, or a granted override already let it through),
+    unless it targets a parallel-group child, which an approval gate can never
+    validly do.
+    """
+    gate = node.gate
+    if gate is None:
+        return _UnitOutcome(kind="advance", hops=[hop])
+
+    if isinstance(gate, _pipeline.MechanicalGate):
+        return _evaluate_mechanical_gate(ctx, gate, role, member_id, hop)
+
+    if isinstance(gate, _pipeline.VerdictGate):
+        return _evaluate_verdict_gate(ctx, gate, node, role, hop)
+
+    if isinstance(gate, _pipeline.ApprovalGate):
+        if not check_approval:
+            return _UnitOutcome(
+                kind="failed",
+                hops=[hop],
+                reason=f"{role}: an 'approval' gate is not supported inside a parallel group",
+            )
+        # Pre-hop already handled this (above) — post-hop, nothing further
+        # to check; a granted/override'd approval simply advances.
+        return _UnitOutcome(kind="advance", hops=[hop])
+
+    return _UnitOutcome(kind="advance", hops=[hop])  # pragma: no cover - closed Gate union
+
+
+def _execute_unit(
+    ctx: _UnitContext,
+    node: _orch.PlannedUnit,
+    *,
+    prior_snapshot: list[HopResult],
+    rework_hop: HopResult | None,
+    check_approval: bool,
+    index_for_context: int,
+) -> _UnitOutcome:
+    """Run one PlannedUnit's hop end to end: budget/approval gates, the
+    agent turn (with retries), and its post-hop gate. Shared by both a
+    top-level step and a parallel group's children — *check_approval*
+    is False for a child (an `approval` gate inside a fan-out is treated
+    as a configuration error, not a mid-group human-approval wait; see
+    the module-level parallel-group note in `core.orchestrator`).
+    """
+    role = node.role or node.agent or node.step_id
+    member_id = node.member_id
+    assert member_id is not None  # runnable_nodes() already filtered out skipped units
+    history_session_key = step_session_key(member_id, ctx.project, ctx.task_id, node.step_id)
+
+    if _pod.pod_of(member_id) != ctx.project:
+        raise DispatchError(
+            f"refusing cross-pod dispatch: '{member_id}' is not in pod '{ctx.project}'"
+        )
+
+    budget_outcome = _gate_budget(ctx, role)
+    if budget_outcome is not None:
+        return budget_outcome
+
+    approval_outcome = _gate_pre_hop_approval(
+        ctx, role, node, check_approval=check_approval, index_for_context=index_for_context
+    )
+    if approval_outcome is not None:
+        return approval_outcome
+
+    message, env = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
+    run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
+
+    hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
+
+    hop = _build_hop_result(
+        ctx, node, role, member_id, run_res, hop_output, hop_ok, hop_error, attempt
+    )
+
+    early_outcome = _persist_hop_and_trace(ctx, role, hop, run_res, hop_ok, hop_error)
+    if early_outcome is not None:
+        return early_outcome
+
+    return _evaluate_post_hop_gate(ctx, node, role, member_id, hop, check_approval=check_approval)
+
+
+def _run_group_node(
+    ctx: _UnitContext,
+    node: _orch.PlannedGroup,
+    prior: list[HopResult],
+    index_for_context: int,
+) -> _UnitOutcome:
+    """Run a parallel group's children concurrently; join before advancing.
+
+    Priority when merging children's outcomes: cancelled > blocked > failed > advance
+    (a rework outcome is impossible here — the pipeline format's own
+    validator forbids a rework edge on a step nested inside a `parallel` group).
+    """
+    prior_snapshot = list(prior)
+    child_outcomes = _orch.run_group(
+        node.children,
+        lambda child: _execute_unit(
+            ctx,
+            child,
+            prior_snapshot=prior_snapshot,
+            rework_hop=None,
+            check_approval=False,
+            index_for_context=index_for_context,
+        ),
+    )
+    merged = _UnitOutcome(kind="advance")
+    for oc in child_outcomes:
+        merged.hops.extend(oc.hops)
+    for oc in child_outcomes:
+        if oc.kind == "cancelled":
+            merged.kind, merged.reason = "cancelled", oc.reason
+            break
+    else:
+        for oc in child_outcomes:
+            if oc.kind == "blocked":
+                merged.kind, merged.reason = "blocked", oc.reason
+                break
+        else:
+            for oc in child_outcomes:
+                if oc.kind == "failed":
+                    merged.kind, merged.reason = "failed", oc.reason
+                    break
+    return merged
+
+
+def _resolve_pipeline_steps(
+    project: str, spec: _pipeline.PipelineSpec | None
+) -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int]]:
+    """Resolve *spec* (or this pod's default pipeline) against the pod's live
+    roster into this run's ordered, runnable steps.
+
+    Assumes the caller already validated the pod/Lead exist (``pod_pipeline``,
+    called immediately before this in ``dispatch_task``) — this only builds
+    the plan, it does not itself raise for a missing pod.
+    """
+    effective_spec = effective_pipeline(project, spec)
+    registry = _archetypes.load_registry()
+    roster = pod_full_roster(project)
+    plan = _orch.resolve_plan(effective_spec, roster, registry=registry)
+    runtime_steps = plan.runnable_nodes()
+    id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
+    return runtime_steps, id_to_index
+
+
+def _resolve_resume_state(
+    runtime_steps: tuple[_orch.PlannedNode, ...], resume_from: list[HopResult] | None
+) -> tuple[list[HopResult], int, dict[str, int], dict[int, HopResult]]:
+    """Compute the pipeline position (and rework state) a run should continue from.
+
+    *resume_from* seeds hops that already completed before a crash (role +
+    output preserved) so the steps still to come see the same context an
+    uninterrupted run would have produced. A step can legitimately have
+    completed more than once if the crash happened mid-rework — see
+    ``_replay_pipeline_position``.
+    """
+    prior: list[HopResult] = list(resume_from) if resume_from else []
+    # A step can now legitimately run more than once (a rework cycle re-runs
+    # its gate's declared target, then re-runs the gating step), so "where do
+    # we continue" is a pipeline position + per-gate rework counts, not a set
+    # of already-seen role names — see `_replay_pipeline_position`'s
+    # docstring for why this matters for a task resumed mid-rework.
+    resume_pos = _replay_pipeline_position(runtime_steps, prior)
+    pending_rework_by_index: dict[int, HopResult] = {}
+    if resume_pos.rework_hop is not None:
+        pending_rework_by_index[resume_pos.pipeline_index] = resume_pos.rework_hop
+    return prior, resume_pos.pipeline_index, dict(resume_pos.rework_counts), pending_rework_by_index
+
+
+def _resolve_gate_override(task: dict[str, Any]) -> int | None:
+    """A granted approval hands the exact pipeline position it stopped at
+    back to this one claim as a single-use override (see
+    `_claim_next_task`'s claim-time handoff) — consumed the first time this
+    run reaches that position, so a later hop at the same position (a
+    rework cycle revisiting it) still gates normally.
+    """
+    override_index = task.get("gateOverridePipelineIndex")
+    return override_index if isinstance(override_index, int) else None
+
+
+def _run_pipeline(
+    ctx: _UnitContext,
+    runtime_steps: tuple[_orch.PlannedNode, ...],
+    pipeline_index: int,
+    pending_rework_by_index: dict[int, HopResult],
+    result: TaskResult,
+    prior: list[HopResult],
+) -> None:
+    """Advance one task through its resolved pipeline until a terminal outcome.
+
+    Mutates *result* and *prior* in place as each step completes (a crash-safe
+    caller already observes each hop the moment it happens through *on_hop* —
+    see ``_persist_hop_and_trace`` — so there is nothing left to hand back
+    incrementally here). The only backward move is a bounded rework cycle:
+    a verdict-gated step's rework-triggering marker jumps ``pipeline_index``
+    back to the gate's declared target and re-queues the gating hop's text
+    for when the pipeline reaches it again.
+    """
+    while pipeline_index < len(runtime_steps):
+        node = runtime_steps[pipeline_index]
+
+        if isinstance(node, _orch.PlannedGroup):
+            outcome = _run_group_node(ctx, node, prior, pipeline_index)
+        else:
+            rework_hop = pending_rework_by_index.pop(pipeline_index, None)
+            outcome = _execute_unit(
+                ctx,
+                node,
+                prior_snapshot=prior,
+                rework_hop=rework_hop,
+                check_approval=True,
+                index_for_context=pipeline_index,
+            )
+
+        result.hops.extend(outcome.hops)
+        prior.extend(outcome.hops)
+
+        if outcome.kind == "blocked":
+            result.status = "blocked"
+            result.reason = outcome.reason
+            _pause_lead_for_budget(ctx.project)
+            break
+        if outcome.kind == "waiting_approval":
+            result.status = "waiting_approval"
+            result.reason = outcome.reason
+            result.approval_token = outcome.approval_token
+            result.pending_approval_index = outcome.pending_approval_index
+            break
+        if outcome.kind == "failed":
+            result.status = "failed"
+            result.reason = outcome.reason
+            break
+        if outcome.kind == "cancelled":
+            result.status = "cancelled"
+            result.reason = outcome.reason
+            break
+        if outcome.kind == "rework":
+            assert outcome.rework_target_index is not None
+            pending_rework_by_index[outcome.rework_target_index] = outcome.hops[0]
+            pipeline_index = outcome.rework_target_index
+            continue
+        pipeline_index += 1
+
+
 def dispatch_task(
     project: str,
     task: dict[str, Any],
@@ -1242,34 +2115,35 @@ def dispatch_task(
     resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
     resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
-    effective_spec = effective_pipeline(project, spec)
-    registry = _archetypes.load_registry()
-    roster = pod_full_roster(project)
-    plan = _orch.resolve_plan(effective_spec, roster, registry=registry)
-    runtime_steps = plan.runnable_nodes()
-    id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
-
-    prior: list[HopResult] = list(resume_from) if resume_from else []
-    # A step can now legitimately run more than once (a rework cycle re-runs
-    # its gate's declared target, then re-runs the gating step), so "where do
-    # we continue" is a pipeline position + per-gate rework counts, not a set
-    # of already-seen role names — see `_replay_pipeline_position`'s
-    # docstring for why this matters for a task resumed mid-rework.
-    resume_pos = _replay_pipeline_position(runtime_steps, prior)
-    pipeline_index = resume_pos.pipeline_index
-    rework_counts: dict[str, int] = dict(resume_pos.rework_counts)
-    pending_rework_by_index: dict[int, HopResult] = {}
-    if resume_pos.rework_hop is not None:
-        pending_rework_by_index[pipeline_index] = resume_pos.rework_hop
+    runtime_steps, id_to_index = _resolve_pipeline_steps(project, spec)
+    prior, pipeline_index, rework_counts, pending_rework_by_index = _resolve_resume_state(
+        runtime_steps, resume_from
+    )
 
     # A granted approval hands the exact pipeline position it stopped at
     # back to this one claim as a single-use override (see
     # `_claim_next_task`'s claim-time handoff) — consumed the first time this
     # run reaches that position, so a later hop at the same position (a
     # rework cycle revisiting it) still gates normally.
-    override_index = task.get("gateOverridePipelineIndex")
-    if not isinstance(override_index, int):
-        override_index = None
+    override_index = _resolve_gate_override(task)
+
+    ctx = _UnitContext(
+        project=project,
+        task=task,
+        task_id=task_id,
+        session_id=session_id,
+        cap=cap,
+        resolved_turn_timeout=resolved_turn_timeout,
+        resolved_verify_timeout=resolved_verify_timeout,
+        id_to_index=id_to_index,
+        rework_counts=rework_counts,
+        override_index=override_index,
+        track_pid=track_pid,
+        run=run,
+        do_sleep=do_sleep,
+        on_hop=on_hop,
+        on_retry=on_retry,
+    )
 
     _trace.trace_event(
         project,
@@ -1281,588 +2155,7 @@ def dispatch_task(
 
     result = TaskResult(task_id=task_id, status="done", hops=list(prior))
 
-    def _execute_unit(
-        node: _orch.PlannedUnit,
-        *,
-        prior_snapshot: list[HopResult],
-        rework_hop: HopResult | None,
-        check_approval: bool,
-        index_for_context: int,
-    ) -> _UnitOutcome:
-        """Run one PlannedUnit's hop end to end: budget/approval gates, the
-        agent turn (with retries), and its post-hop gate. Shared by both a
-        top-level step and a parallel group's children — *check_approval*
-        is False for a child (an `approval` gate inside a fan-out is treated
-        as a configuration error, not a mid-group human-approval wait; see
-        the module-level parallel-group note in `core.orchestrator`).
-        """
-        role = node.role or node.agent or node.step_id
-        member_id = node.member_id
-        assert member_id is not None  # runnable_nodes() already filtered out skipped units
-        history_session_key = step_session_key(member_id, project, task_id, node.step_id)
-
-        if _pod.pod_of(member_id) != project:
-            raise DispatchError(
-                f"refusing cross-pod dispatch: '{member_id}' is not in pod '{project}'"
-            )
-
-        # Budget gate BEFORE the hop. Prefer the pod's recorded spend; fall
-        # back to a token-based estimate when nothing was recorded at all
-        # (see pod_gating_cost) so a real cap can still
-        # trip, and mark the Lead paused so future dispatch attempts are
-        # refused at claim time instead of re-running this same check.
-        if cap > 0.0:
-            spent, estimated = pod_gating_cost(project)
-            if spent >= cap:
-                spent_label = (
-                    f"~${spent:.2f} (estimated — no cost recorded)"
-                    if estimated
-                    else f"${spent:.2f}"
-                )
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "budget_exceeded",
-                    _json.dumps(
-                        {
-                            "spent": round(spent, 6),
-                            "cap": round(cap, 6),
-                            "role": role,
-                            "estimated": estimated,
-                        }
-                    ),
-                )
-                return _UnitOutcome(
-                    kind="blocked",
-                    reason=f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}",
-                )
-
-        # require_approval gate — pre-hop, after budget (affordability)
-        # and before the hop actually runs (permission).
-        nonlocal override_index
-        if check_approval:
-            if index_for_context == override_index:
-                override_index = None
-            elif _hop_requires_approval(project, role, task, index_for_context, node.gate):
-                action = _approval_action_text(role, task)
-                token = _ap.approval_create(
-                    project,
-                    role,
-                    action,
-                    context={"taskId": task_id, "pipelineIndex": index_for_context},
-                )
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "approval_required",
-                    _json.dumps({"role": role, "token": token, "pipelineIndex": index_for_context}),
-                )
-                return _UnitOutcome(
-                    kind="waiting_approval",
-                    reason=f"approval required before {role} hop (token={token})",
-                    approval_token=token,
-                    pending_approval_index=index_for_context,
-                )
-
-        message, composition = _hop_message(task, role, prior_snapshot, rework_hop)
-        pipeline_worktree = ""
-        if role not in {"lead", "implementer"}:
-            pipeline_worktree = _prior_implementer_worktree(prior_snapshot)
-            if pipeline_worktree:
-                checkout_note = (
-                    "\nEffective implementation checkout for this downstream hop: "
-                    f"`{pipeline_worktree}`. Inspect and test this checkout, not the origin "
-                    "codebase; keep your role's existing tool permissions."
-                )
-                if isinstance(node.gate, _pipeline.VerdictGate):
-                    checkout_note += (
-                        " Your final reply must still contain one distinct recognized "
-                        "verdict marker at the start of a complete line; reasons may "
-                        "come before or after it."
-                    )
-                checkout_note += "\n"
-                message += checkout_note
-                composition.total_bytes += len(checkout_note.encode("utf-8"))
-        _trace_locked(
-            project,
-            session_id,
-            role,
-            "context_composed",
-            _json.dumps(
-                {
-                    "hop": role,
-                    "description_bytes": composition.description_bytes,
-                    "sections": composition.sections,
-                    "total_bytes": composition.total_bytes,
-                    "truncated": composition.truncated,
-                }
-            ),
-        )
-        _trace_locked(
-            project,
-            session_id,
-            role,
-            "tool_call",
-            _json.dumps({"hop": role, "agent": member_id}),
-        )
-        env = _hop_env(member_id, role)
-        if pipeline_worktree:
-            env = dict(env or {})
-            env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
-
-        # Retry only a retryable failure (a transient hiccup running the turn) —
-        # a non-zero exit or a bad verdict is a real answer and stops here.
-        # `attempt` ends as the total number of tries made.
-        # A step's own `retries`/`timeout` override always wins; otherwise the
-        # pod's role-based retry budget and the resolved agent-turn timeout.
-        retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
-        hop_timeout = node.timeout if node.timeout is not None else resolved_turn_timeout
-
-        # Record the production driver's spawned pid as in-flight for
-        # `docket runs cancel` — only while the subprocess is actually
-        # running; removed again the moment this attempt returns, so a long
-        # multi-hop task never accumulates stale pids from finished hops.
-        run_id_for_pids = _runs.current_run_id() if track_pid else None
-        spawned_pid: list[int] = []
-
-        def _on_spawn(pid: int) -> None:
-            spawned_pid.append(pid)
-            if run_id_for_pids is not None:
-                _runs.add_hop_pid(run_id_for_pids, pid)
-
-        attempt = 1
-        while True:
-            spawned_pid.clear()
-            if track_pid:
-                # `run` is typed as the plain 5-arg `Runner` Callable (every
-                # test double's exact shape); calling the concrete production
-                # driver directly here (rather than through `run`) is what
-                # lets it take the extra `on_spawn` kwarg type-safely.
-                run_res = _dr.default_driver().run_turn(
-                    member_id,
-                    history_session_key,
-                    message,
-                    hop_timeout,
-                    env,
-                    on_spawn=_on_spawn,
-                    trace_project=project,
-                    trace_session_key=session_id,
-                )
-            else:
-                run_res = run(member_id, history_session_key, message, hop_timeout, env)
-            if run_id_for_pids is not None and spawned_pid:
-                _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
-            if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
-                break
-            if attempt > retry_budget:
-                break
-            _trace_locked(
-                project,
-                session_id,
-                role,
-                "hop_retry",
-                _json.dumps(
-                    {
-                        "hop": role,
-                        "attempt": attempt,
-                        "retry_budget": retry_budget,
-                        "failure_kind": run_res.failure_kind,
-                        "error": run_res.error,
-                    }
-                ),
-            )
-            # A retry means the dispatcher is alive and making forward progress,
-            # not crashed — refresh the claim before the backoff sleep so a
-            # concurrent dispatcher's stale-claim sweep never mistakes it for one
-            # (see the module docstring / _touch_claim).
-            if on_retry is not None:
-                on_retry()
-            do_sleep(_cfg.DISPATCH_RETRY_BACKOFF_S * attempt)
-            attempt += 1
-
-        # pre_output guardrail scan — every hop's real output, scanned once,
-        # before it is embedded in the carried-forward artifact or persisted hop
-        # record. Only `redact`/`block` change what gets carried forward
-        # (`warn`/`allow` pass the text through unchanged); `require_approval` is
-        # not a pre_output outcome — a hop has
-        # already run by the time its output exists, so there is no "before the
-        # hop" moment left to gate the way the pre-hop require_approval sources
-        # above do; a policy author who wants a human in the loop before this
-        # role runs uses `_pod_requires_approval`/enqueue's pre_input gate
-        # instead. `pre_tool_call` is evaluated separately, live, inside that
-        # hop's own turn (`core/tools.py`'s `dispatch_tool`, via
-        # `core/agent_loop.py`) — not by this post-hoc scan.
-        hop_output = run_res.output
-        hop_ok = run_res.ok
-        hop_error = run_res.error
-        if hop_output:
-            hit = _policy.policy_eval_detail(role, "pre_output", hop_output)
-            # Also classify the hop's real output against the built-in
-            # high-risk action classes (core/security.py's HIGH_RISK_PATTERNS),
-            # independently of the JSON policy engine above. This is a second,
-            # independent check over what the hop *reports* it did, not what a
-            # tool call literally asked to run — it still catches a
-            # money-movement or secret-access command described in the hop's
-            # own summary even when the underlying call never reached
-            # `dispatch_tool`'s live `pre_tool_call` gate (e.g. a runner that
-            # doesn't route through it at all, such as a test double). A match
-            # never downgrades an already-stronger policy_eval_detail verdict —
-            # redact/block/require_approval all outrank a bare "allow" — it only
-            # raises a plain "allow" to "warn". It cannot go further than
-            # "warn": there is no live approver to "ask" post-hoc (the hop
-            # already ran, the same reasoning behind pre_output's
-            # require_approval-behaves-like-warn rule), and HIGH_RISK_PATTERNS
-            # is a built-in Python list, not an installed, operator-authored
-            # JSON policy — so this only ever adds visibility, it never
-            # redacts or blocks on the operator's behalf the way a real
-            # installed policy can.
-            risk_cls = _sec.match_high_risk(hop_output)
-            if risk_cls is not None and hit.action == "allow":
-                hit = _policy.PolicyHit(
-                    action="warn",
-                    policy_id=f"high-risk:{risk_cls.name}",
-                    message=risk_cls.description,
-                )
-            if hit.action != "allow":
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "guardrail_check",
-                    _json.dumps(
-                        {"hook": "pre_output", "policy": hit.policy_id, "action": hit.action}
-                    ),
-                )
-            if hit.action == "redact":
-                hop_output = _trace.redact(hop_output)
-            elif hit.action == "block":
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "guardrail_block",
-                    _json.dumps(
-                        {"hook": "pre_output", "policy": hit.policy_id, "action": hit.policy_id}
-                    ),
-                )
-                if hop_ok:
-                    hop_ok = False
-                    hop_error = f"blocked by guardrail policy '{hit.policy_id}'"
-
-        # The verdict is parsed up front (rather than inside the
-        # VerdictGate branch below) so it can be embedded
-        # in the hop's own artifact *before* `on_hop` persists it — one
-        # source of truth, computed once. Guarded on `hop_ok`: a failed
-        # subprocess call (or a pre_output block) never reaches gate
-        # evaluation either (see the early return just below), so there is no
-        # meaningful verdict to report for it.
-        verdict: str | None = None
-        if hop_ok and isinstance(node.gate, _pipeline.VerdictGate):
-            verdict = _orch.parse_verdict(node.gate, hop_output)
-        # Real files_changed/diff_ref for a successful Implementer hop.
-        # `_implementer_diff_probe` degrades to ([], None) for
-        # every other role, a workdir pod, a non-repo workspace, or a host
-        # with no git binary, so this never raises mid-dispatch.
-        #
-        # Gated on `hop_ok`, not `run_res.ok`: the pre_output policy hook can
-        # fail an otherwise-successful subprocess call, and a hop the guardrail
-        # blocked must not hand a "here is what I changed" artifact downstream.
-        files_changed: list[str] = []
-        diff_ref: str | None = None
-        if hop_ok:
-            files_changed, diff_ref = _implementer_diff_probe(member_id, role)
-        # `hop_output`, never `run_res.output`: pre_output's `redact` action
-        # rewrites the hop's text, and the artifact is what the next hop reads.
-        # Sourcing the raw subprocess output here would silently undo the
-        # redaction the policy engine just applied.
-        artifact = _handoff.HandoffArtifact(
-            summary=hop_output,
-            verdict=verdict,
-            files_changed=files_changed,
-            diff_ref=diff_ref,
-        )
-
-        hop = HopResult(
-            role=role,
-            member_id=member_id,
-            ok=hop_ok,
-            output=hop_output,
-            cost_usd=run_res.cost_usd,
-            error=hop_error,
-            attempts=attempt,
-            step_id=node.step_id,
-            artifact=artifact,
-        )
-        # Persisted immediately (not deferred to a parallel group's join) so a
-        # crash in a *sibling* child never loses a hop that already completed —
-        # the crash-safety guarantee, generalized to a concurrent fan-out.
-        if on_hop is not None:
-            on_hop(hop)
-
-        _trace_locked(
-            project,
-            session_id,
-            role,
-            "tool_result" if hop_ok else "error",
-            hop_output or hop_error or "",
-            cost_usd=run_res.cost_usd or None,
-        )
-        if run_res.cost_usd:
-            _trace_locked(
-                project,
-                session_id,
-                role,
-                "cost_charged",
-                _json.dumps({"role": role}),
-                cost_usd=run_res.cost_usd,
-            )
-
-        if not hop_ok:
-            if run_res.failure_kind == "run_cancelled":
-                return _UnitOutcome(
-                    kind="cancelled",
-                    hops=[hop],
-                    reason="run cancellation requested",
-                )
-            return _UnitOutcome(
-                kind="failed",
-                hops=[hop],
-                reason=f"{role} hop failed: {hop_error or 'no result'}",
-            )
-
-        gate = node.gate
-        if gate is None:
-            return _UnitOutcome(kind="advance", hops=[hop])
-
-        if isinstance(gate, _pipeline.MechanicalGate):
-            verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
-            if verify_cmd:
-                # Verify in the member's own worktree when it has one —
-                # else the shared codebase root — else its workspace dir. Shared
-                # with cli/_pod.py's _regenerate_member_tools via core/pod.py so
-                # the two can't disagree about which tree is being checked — this
-                # applies to any mechanically-gated step, not just "implementer".
-                worktree_dir = str(_fleet.meta_get(member_id, "worktreeDir", "") or "")
-                member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-                cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
-                # The verify command gets its own timeout, decoupled from the
-                # agent-turn timeout above — a 20-minute test suite and a hung LLM
-                # turn are no longer forced to share one budget.
-                mech_timeout = gate.timeout or resolved_verify_timeout
-                passed, raw_output = _sys.run_verify_cmd(verify_cmd, cwd, mech_timeout)
-                redacted = _trace.redact(raw_output)
-                if not passed:
-                    _trace_locked(
-                        project,
-                        session_id,
-                        role,
-                        "verification_failed",
-                        _json.dumps({"cmd": verify_cmd, "output": redacted}),
-                    )
-                    return _UnitOutcome(
-                        kind="failed",
-                        hops=[hop],
-                        reason=f"verifyCmd failed: {verify_cmd!r}",
-                    )
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "tool_result",
-                    _json.dumps({"verification": "passed", "cmd": verify_cmd}),
-                )
-            else:
-                # Honesty rule: never silently skip — a missing verifyCmd is
-                # visible via a trace event (parity with the "passed" case
-                # above) and the hop's own `verification_skipped` flag, which
-                # `cli/`'s dispatch renderer prints. `core/` never prints
-                # directly.
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    "tool_result",
-                    _json.dumps({"verification": "skipped", "member": member_id}),
-                )
-                hop.verification_skipped = True
-            return _UnitOutcome(kind="advance", hops=[hop])
-
-        if isinstance(gate, _pipeline.VerdictGate):
-            # Reuse the verdict already parsed above (and carried on the
-            # hop's own artifact) rather than parsing `run_res.output` a
-            # second time — single source of truth.
-            verdict = artifact.verdict
-            pass_set = _orch.normalize_values(gate.pass_values, gate.case_sensitive)
-            if verdict is not None and verdict in pass_set:
-                return _UnitOutcome(kind="advance", hops=[hop])
-
-            rework = gate.rework
-            if rework is not None and verdict is not None:
-                when_set = _orch.normalize_values(rework.when, gate.case_sensitive)
-                if verdict in when_set:
-                    cycles_so_far = rework_counts.get(node.step_id, 0)
-                    target_index = id_to_index.get(rework.to)
-                    if cycles_so_far < rework.max_cycles and target_index is not None:
-                        rework_counts[node.step_id] = cycles_so_far + 1
-                        rework_event, _unused1, _unused2 = _verdict_event_names(role)
-                        redacted = _trace.redact(hop_output)
-                        _trace_locked(
-                            project,
-                            session_id,
-                            role,
-                            rework_event,
-                            _json.dumps({"cycle": rework_counts[node.step_id], "output": redacted}),
-                        )
-                        return _UnitOutcome(
-                            kind="rework", hops=[hop], rework_target_index=target_index
-                        )
-                    # Rework budget exhausted (or, defensively, no valid target) —
-                    # this verdict is now terminal.
-                    _unused3, rejected_event, _unused4 = _verdict_event_names(role)
-                    redacted = _trace.redact(hop_output)
-                    _trace_locked(
-                        project,
-                        session_id,
-                        role,
-                        rejected_event,
-                        _json.dumps({"cycles": cycles_so_far, "output": redacted}),
-                    )
-                    return _UnitOutcome(
-                        kind="failed",
-                        hops=[hop],
-                        reason=(
-                            f"{role} rejected after {cycles_so_far} rework "
-                            f"cycle(s): {verdict.upper()}"
-                        ),
-                    )
-
-            # Anything else is either truly unparseable (no match at all) or a
-            # real, parsed marker that's simply neither a pass nor a
-            # rework-trigger — distinct outcomes (though, for the tester role
-            # specifically, they share one event name — see
-            # `_verdict_event_names`).
-            _unused5, rejected_event2, unparseable_event = _verdict_event_names(role)
-            redacted = _trace.redact(hop_output)
-            if verdict is None:
-                _trace_locked(
-                    project,
-                    session_id,
-                    role,
-                    unparseable_event,
-                    _json.dumps({"verdict": "unparseable", "output": redacted}),
-                )
-                return _UnitOutcome(
-                    kind="failed",
-                    hops=[hop],
-                    reason=f"{role} output unparseable (expected one unambiguous recognized "
-                    "verdict marker at the start of a line)",
-                )
-            _trace_locked(
-                project,
-                session_id,
-                role,
-                rejected_event2,
-                _json.dumps({"verdict": verdict, "output": redacted}),
-            )
-            return _UnitOutcome(
-                kind="failed", hops=[hop], reason=f"{role} reported {verdict.upper()}"
-            )
-
-        if isinstance(gate, _pipeline.ApprovalGate):
-            if not check_approval:
-                return _UnitOutcome(
-                    kind="failed",
-                    hops=[hop],
-                    reason=f"{role}: an 'approval' gate is not supported inside a parallel group",
-                )
-            # Pre-hop already handled this (above) — post-hop, nothing further
-            # to check; a granted/override'd approval simply advances.
-            return _UnitOutcome(kind="advance", hops=[hop])
-
-        return _UnitOutcome(kind="advance", hops=[hop])  # pragma: no cover - closed Gate union
-
-    def _run_group_node(node: _orch.PlannedGroup, index_for_context: int) -> _UnitOutcome:
-        """Run a parallel group's children concurrently; join before advancing.
-
-        Priority when merging children's outcomes: cancelled > blocked > failed > advance
-        (a rework outcome is impossible here — the pipeline format's own
-        validator forbids a rework edge on a step nested inside a group).
-        """
-        prior_snapshot = list(prior)
-        child_outcomes = _orch.run_group(
-            node.children,
-            lambda child: _execute_unit(
-                child,
-                prior_snapshot=prior_snapshot,
-                rework_hop=None,
-                check_approval=False,
-                index_for_context=index_for_context,
-            ),
-        )
-        merged = _UnitOutcome(kind="advance")
-        for oc in child_outcomes:
-            merged.hops.extend(oc.hops)
-        for oc in child_outcomes:
-            if oc.kind == "cancelled":
-                merged.kind, merged.reason = "cancelled", oc.reason
-                break
-        else:
-            for oc in child_outcomes:
-                if oc.kind == "blocked":
-                    merged.kind, merged.reason = "blocked", oc.reason
-                    break
-            else:
-                for oc in child_outcomes:
-                    if oc.kind == "failed":
-                        merged.kind, merged.reason = "failed", oc.reason
-                        break
-        return merged
-
-    while pipeline_index < len(runtime_steps):
-        node = runtime_steps[pipeline_index]
-
-        if isinstance(node, _orch.PlannedGroup):
-            outcome = _run_group_node(node, pipeline_index)
-        else:
-            rework_hop = pending_rework_by_index.pop(pipeline_index, None)
-            outcome = _execute_unit(
-                node,
-                prior_snapshot=prior,
-                rework_hop=rework_hop,
-                check_approval=True,
-                index_for_context=pipeline_index,
-            )
-
-        result.hops.extend(outcome.hops)
-        prior.extend(outcome.hops)
-
-        if outcome.kind == "blocked":
-            result.status = "blocked"
-            result.reason = outcome.reason
-            _pause_lead_for_budget(project)
-            break
-        if outcome.kind == "waiting_approval":
-            result.status = "waiting_approval"
-            result.reason = outcome.reason
-            result.approval_token = outcome.approval_token
-            result.pending_approval_index = outcome.pending_approval_index
-            break
-        if outcome.kind == "failed":
-            result.status = "failed"
-            result.reason = outcome.reason
-            break
-        if outcome.kind == "cancelled":
-            result.status = "cancelled"
-            result.reason = outcome.reason
-            break
-        if outcome.kind == "rework":
-            assert outcome.rework_target_index is not None
-            pending_rework_by_index[outcome.rework_target_index] = outcome.hops[0]
-            pipeline_index = outcome.rework_target_index
-            continue
-        pipeline_index += 1
+    _run_pipeline(ctx, runtime_steps, pipeline_index, pending_rework_by_index, result, prior)
 
     _trace.trace_event(
         project,
