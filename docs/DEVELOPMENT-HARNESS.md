@@ -1,5 +1,12 @@
 # Development harness and context policy
 
+> This page is about the *contributor*-side context harness described below — skill routing,
+> hooks, token-efficient validation for people/agents working **on** docket's own codebase. It is
+> unrelated to `docket harness run`, the product's single-agent, non-interactive execution mode
+> for an external caller's own workspace; see
+> [DOCKET.md's Harness mode section](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller)
+> and [ADR 0001](adr/0001-harness-mode.md) for that.
+
 This repository keeps the agent's always-loaded context deliberately small while preserving the
 spec-first quality bar. The harness has four layers, each with a distinct cost and purpose.
 

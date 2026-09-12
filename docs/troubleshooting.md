@@ -407,6 +407,54 @@ metadata instead:
 docket maintain <agent-id> rebuild
 ```
 
+## Harness Mode (`docket harness run`)
+
+Harness mode is a machine-facing entry point for an external caller that owns its own workspace
+and `DOCKET_HOME` — not the interactive CLI most of this guide covers. Its failures show up as an
+exit code and a printed `HarnessResult`, not a human-readable message, so read the result object
+rather than trying to interpret the exit code alone.
+
+### Exit code 2 — refused before any turn started
+
+**Symptom:** `docket harness run` exits `2` and prints exactly one JSON line with
+`"status":"refused"`, and no agent turn ran at all.
+
+**Cause:** `core.harness.preflight` rejected the environment before starting. The common cases:
+`DOCKET_HOME` is unset or resolves to the operator's own default home (harness mode refuses to
+touch a real install's approvals/audit log), `DOCKET_LLM_BASE_URL` is unset, `DOCKET_NO_TRACE=1`
+is set (harness mode refuses to run unobserved), or `--workspace` is not a real directory. A
+missing `--model`, a missing/duplicated `--task`/`--task-file`, or a missing `TOKEN` for `status`
+is refused the same way, before `preflight` even runs.
+
+**Fix:** the caller must supply its own `DOCKET_HOME` (never the operator's `~/.docket`) and a
+`DOCKET_LLM_BASE_URL`, unset `DOCKET_NO_TRACE`, and pass an existing `--workspace` directory. The
+`reason` field on the printed result names which condition failed.
+
+### Exit code 1 with `"status":"blocked"` — a tool call needed approval
+
+**Symptom:** the run exits `1`, and the terminal `HarnessResult` carries `"status":"blocked"` with
+a non-null `blocked` object naming a `tool`, `call_id`, `denial_kind` (`approval_unavailable`),
+`policy_id`, and `reason`.
+
+**Cause:** harness mode always runs with approvals forced to non-interactive refusal
+(`DOCKET_APPROVAL_MODE=refuse`) — there is no human on the other end of a caller-owned subprocess
+to approve a gated tool call, so a verdict of `ask` ends the run immediately instead of waiting.
+This is expected behavior, not a bug: it is the one thing an interactive dispatch would instead
+block on for up to two minutes.
+
+**Fix:** adjust the policy so the task's tool calls don't need approval (see
+[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)), or re-scope the task to avoid the gated action. There
+is no flag to make harness mode wait for a human — see
+[ADR 0001](adr/0001-harness-mode.md) for why that is a separate, unbuilt decision.
+
+### Distinguishing `failed`/`cancelled` from `blocked`/`refused`
+
+`"status":"failed"` and `"status":"cancelled"` (also exit `1`) mean a turn actually ran — check
+`docket harness status TOKEN` and the NDJSON event stream on stdout for what happened during the
+run. `"status":"blocked"` and `"status":"refused"` both mean **no completed turn produced the
+outcome** — one stopped on a specific denied tool call, the other never started. See
+[`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md) for the full result shape.
+
 ## Getting Help
 
 1. **Run diagnostics:**
