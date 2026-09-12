@@ -221,10 +221,13 @@ is fully auditable. Re-check the queue afterward:
 docket pod myapp queue          # status flips to done (or pending if over budget)
 ```
 
-> **Alternative — Telegram:** you can also message the pod's **Lead** directly in
-> Telegram (`What's the status of myapp?` or `Fix bug: login crashes when token is null`)
-> for mobile-first, conversational dispatch. The `delegate`/`dispatch` loop above is the
-> scriptable, traced path; Telegram is the same pipeline driven from your phone.
+> **Alternative — Telegram:** once the Lead is wired (`docket wire`), the same queue is
+> reachable from your phone through four commands — `/status`, `/delegate <task>`,
+> `/approve <token>`, `/deny <token>` — nothing else. Telegram is **inbound-only and is
+> not a chat**: plain prose is refused rather than routed to the Lead, and `/delegate`
+> replies with the queued task's id, not the pipeline's output. Read the result back with
+> `docket pod myapp queue`, `docket trace`, or the HTTP control plane — docket never
+> pushes a status update or completion report to the chat on its own.
 
 **Why the Lead stays cheap:** its dispatch hops carry a bounded per-role token budget
 (2,000 tokens for the Lead — see `docket roles show lead`), and its workspace + session key
@@ -301,7 +304,8 @@ picks the edited file up directly.
 
 ### Q: How do I know it's working?
 **A:** Check token usage:
-1. Message a pod's Lead with a status query
+1. Dispatch a task through the pod (`docket pod <project> dispatch`, or `/delegate <task>`
+   from a wired Telegram chat)
 2. Run `docket cost <lead-id>` for its measured token counts
 3. Run `docket context <lead-id> show` — recent activity, active tasks, and context stats
    (log count, last active) for that one agent, never a cross-project blend

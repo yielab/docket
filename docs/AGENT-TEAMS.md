@@ -126,15 +126,20 @@ docket add my-market-scan --blueprint research
 | `research` | workdir | lead, researcher, analyst, writer, critic | $20 | critic: verdict, rework -> writer |
 | `content` | workdir | lead, writer, critic | $15 | critic: verdict, rework -> writer |
 | `ops` | workdir | lead, operator, monitor | $30 | operator: mechanical; monitor: approval |
+| `agentic-product` | codebase | lead, implementer, reviewer, tester | (none) | implementer: mechanical; reviewer: verdict, rework -> implementer; tester: verdict, hard fail |
 
 Omitting `--blueprint` (or passing `--blueprint software` explicitly) is exactly today's
 `docket add` — same roster, same files, no behavior change. `research`/`content`/`ops` are
 **`workdir`-kind**: no codebase is assumed or auto-detected; the pod gets a shared working
-directory instead (auto-provisioned if you don't name one). `--pod full`/`--with` only apply to
+directory instead (auto-provisioned if you don't name one). `agentic-product` is `codebase`-kind
+like `software`, but its roster is the full Lead+Implementer+Reviewer+Tester set, so both gated
+steps actually reach a hop at dispatch time instead of going unreached behind `software`'s lean
+default roster — the intended shape for a pod that ships its own agent to end users, where the
+review + test gate is warranted by default rather than opt-in. `--pod full`/`--with` only apply to
 the `software` roster — passing them against another blueprint warns and provisions that
 blueprint's own fixed roster instead of trying to combine the two.
 
-There's no `docket blueprints add` yet — the four built-ins above are the whole registry. To
+There's no `docket blueprints add` yet — the five built-ins above are the whole registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
 `docket pod <project> add <role>`.
 
@@ -353,6 +358,7 @@ docket init <project> [path]              # lean pod (Lead + Implementer)
 docket init <project> --pod full          # + Reviewer + Tester
 docket init <project> --with reviewer,tester
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
+                                                   # | agentic-product
 docket pod <project>                     # list members
 docket pod <project> add <role> [--count N]
 docket pod <project> remove <member-id>
