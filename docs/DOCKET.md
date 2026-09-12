@@ -161,6 +161,41 @@ that would be scope creep, not follow-through. One consequence worth stating pla
 never populates a real USD cost — `usage().totals.cost_usd` is always `0.0` — see
 [Cost Optimization](#cost-optimization) and the [README's cost limits](../README.md#cost-reporting-and-its-limits).
 
+### Harness mode: one agent, one turn, for an external caller
+
+`docket harness run` (decision D-35) is a second, narrower entry point beside pod dispatch: it runs **one agent,
+one turn loop, to completion**, in a workspace and `DOCKET_HOME` the *caller* supplies, then exits.
+It is not a pod and not a team — no Lead, no Implementer/Reviewer/Tester rotation — and it
+provisions nothing: the caller has already prepared an isolated checkout at a known revision and
+hands over a `DOCKET_HOME` of its own. It reuses `DocketDriver` unchanged — the same
+[RuntimeDriver port](#the-runtimedriver-port-decision-d-14) above, gaining its second caller ever —
+and the same `core/tools.py` chokepoint, policy hooks, audit and trace: no second execution path.
+
+stdout carries the wire contract only: newline-delimited `HarnessEvent` lines (docket's existing
+`core/trace.py` vocabulary, inside a versioned envelope) followed by exactly one `HarnessResult`
+line; every log goes to stderr. Approvals are forced non-interactive
+(`ToolContext.approval_mode = "refuse"`, wired via `DOCKET_APPROVAL_MODE=refuse`): a verdict that
+would otherwise block the calling thread in `wait_for_approval` for up to `TOOL_APPROVAL_TIMEOUT`
+instead ends the run immediately with `status: blocked` and a `denial_kind` of
+`approval_unavailable`, naming the tool, call id, policy id and reason. Exit codes are the one
+place this CLI departs from its flat 0/1 convention (`specs/api/cli-interface.spec.md`): `0` the
+result is `ok`; `1` it ended `failed`, `blocked`, or `cancelled`; `2` refused before any turn
+began — for example a missing `DOCKET_LLM_BASE_URL`, a `DOCKET_HOME` that resolves to the
+operator's own default home, or `DOCKET_NO_TRACE=1` (harness mode refuses to run unobserved rather
+than run silently).
+
+The contract is versioned (`harness_contract_version`, currently `1.0.0`) and published: its JSON
+Schema is generated from the Pydantic models in `core/harness.py` at
+[`docs/contracts/harness-v1/schema.json`](contracts/harness-v1/schema.json) and pinned
+byte-for-byte by a regenerate-and-diff test, with example transcripts at
+`tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`. Full design reasoning
+is in [ADR 0001](adr/0001-harness-mode.md); the wire-level requirements are in
+[`specs/api/harness-mode.spec.md`](../specs/api/harness-mode.spec.md).
+
+> This is unrelated to [DEVELOPMENT-HARNESS.md](DEVELOPMENT-HARNESS.md), which documents the
+> *contributor*-side context harness — skill routing, hooks, token-efficient validation — for
+> people and agents working on docket's own codebase, not this execution mode.
+
 ### Configuration — one owner, one writer
 
 Every agent's state lives in two docket-owned files, split by who reads them and written **only**
@@ -770,6 +805,9 @@ Manager:     ✓ Org specialist (cross-cutting coordination, transitional)
 - [x] Memory distillation (`docket maintain distill`, and `clean`/`reset --distill-first`)
 - [x] Mechanically-maintained HEARTBEAT.md task ledger + conversation registry auto-population
 - [x] Hash-chained, tamper-evident audit log (`docket audit verify`)
+- [x] Harness mode (`docket harness run`/`docket harness status`) — a versioned, non-interactive
+  single-agent entry point for an external caller-owned workspace and `DOCKET_HOME` (see
+  [Harness mode](#harness-mode-one-agent-one-turn-for-an-external-caller) above)
 
 ### Documentation ✅
 
@@ -1000,11 +1038,13 @@ Inspect the boundary or copy the lazy constructors from
 - [Security Model](SECURITY-SIMPLE.md) - Layered, convention-based security
 - [Commands Reference](commands.md) - All commands
 - [Agent Teams (Pods)](AGENT-TEAMS.md) - The canonical team model reference
+- [Decision records](adr/) - One reasoned architectural decision per file, including harness mode
+  (ADR 0001)
 - [specs/](../specs/) - RFC 2119 functional/API/data specifications; the exact, CI-validated
   behavioral contract for anything summarized in this document
 
 ---
 
-**Last Updated:** 2026-07-31
+**Last Updated:** 2026-09-12
 **Status:** Implemented, automated-test-backed — not yet field-hardened (see the beta warning at
 the top of this document)

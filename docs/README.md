@@ -34,11 +34,12 @@ AI Gateway are built in; other compatible endpoints require explicit registratio
 | [Workflow Guide](WORKFLOW-GUIDE.md) | End-to-end examples: project vs. specialist agents, delegation, cost management |
 | [Command Reference](commands.md) | Every command with syntax, options, and examples |
 | [Models, gateways, and harnesses](MODEL-GATEWAYS.md) | Codex/Claude Code/OpenCode portability; OpenRouter and Vercel AI Gateway setup and limits |
-| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles |
+| [Architecture (DOCKET)](DOCKET.md) | Technical deep dive: the `cli`/`core`/`edges` layering and Anti-Corruption Layer, the RuntimeDriver port, dispatch internals (state machine, gates, retries, run registry), durable state, agent roles, [harness mode](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
 | [Security Model](SECURITY-SIMPLE.md) | The layered, convention-based security model (and what's planned) |
 | [Adoption Evidence](ADOPTION-EVIDENCE.md) | Reproducible exact-artifact governance and recovery results, with limits |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Development Harness](DEVELOPMENT-HARNESS.md) | Contributor/agent context routing, repository skills, hooks, and token-efficient validation |
+| [Contributor Harness](DEVELOPMENT-HARNESS.md) | Repository context policy for people/agents working *on* docket's own codebase: skill routing, hooks, and token-efficient validation. Not to be confused with `docket harness run` — the CLI's single-agent execution mode for an external caller, covered in [Architecture (DOCKET)](DOCKET.md#harness-mode-one-agent-one-turn-for-an-external-caller) |
+| [Decision records (ADRs)](adr/) | One reasoned architectural decision per file (harness mode, the loop-ownership ruling, egress posture, prioritization, the embeddable substrate, and more) |
 | [Cycles ended](cycles-ended/README.md) | The archive: every closed wave and phase section from the board and roadmap, the roadmap changelog, and old coordinator handoffs — verbatim, hash-verified, never a source of work |
 
 For how features are specified before implementation, see the specs under
