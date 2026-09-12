@@ -275,7 +275,26 @@ rationale lines deliberately kept.
 
 ### W31-C4 — one unit file per module: merge history-named and fragmented test files
 
-**Status:** TODO · **Size:** M (split per module before claiming) · **Owner:** — · **Depends on:** C3
+**Status:** DONE (2026-09-12, split in two: `60a7b1d` merged as `7e2ad99`, `af2ad28` merged as
+`d76fb89`) · **Size:** M · **Owner:** @sonnet-c4a, @sonnet-c4b · **Depends on:** C3 (done)
+
+**Shipped:** the trigger below described the wrong work. The aspect suffixes had been assigned by
+filename prefix rather than by subject, so six files claimed a module they never exercised. C4a
+repointed each at the module its assertions actually reach (`test_archetypes__orchestrator` ->
+`test_orchestrator`, `__pod_blueprints` -> `test_blueprints`, `__context_compiler` ->
+`test_context`, `test_llm__mcp_tools_in_a_live_turn` -> `test_mcp_tools`, `__session_history` ->
+`test_session`, `test_tools__fetch_tool` -> `edges/adapters/test_fetch`, `test_memory__doctor` ->
+`cli/test__doctor`) and merged the two genuine memory fragments into one file, all 33 cases
+preserved by name. C4b renamed the four history-named files for their subject and split the serve
+file that mixed sweep wiring with redaction; `test_hop_carryover` was judged and kept, since hop
+carryover is a behaviour rather than a migration.
+
+**Correcting the labels exposed a real gap:** `core/archetypes` and `core/llm` never had unit
+coverage. The layout guard had been satisfied by a filename prefix naming a module the file did
+not test. Both joined `layout_baseline.txt`; six modules left it, so the ratchet fell by four. No
+test was written to paper over it -- a test invented to satisfy a guard is worse than an honest
+baseline entry. Collected count 2398 before and after both halves. The integrator repointed nine
+references in four specs, ROADMAP, CONTRIBUTING, `core/orchestrator.py` and one integration test.
 
 **Deterministic trigger:** at `0d3720a` the inventory shows six unit destinations fed by several
 files (`test_serve.py` ← 8, `core/test_memory.py` ← 3, `core/test_archetypes.py` ← 3,
