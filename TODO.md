@@ -89,7 +89,7 @@ The contract every card here implements is `specs/test-framework.md` §"Lanes an
 | --- | --- | --- | --- |
 | Default suite wall time | `uv run pytest` | 8 min 12 s (2,377 passed, 5 skipped); **3 min 23 s after C1** | < 90 s after C5; < 5 min after C1 alone |
 | Share of wall time in the 15 slowest tests | `--durations=15` | ~257 s, every one a release/evidence/adapter test | those tests out of the default suite |
-| Test files that assert on prose, release artifacts, or the agent's own hook scripts | `scripts/maint/test_inventory.py` | 35 files, 8,313 lines, 227 tests (18% of test lines) | in `tests/agent/`, ≤ 4,000 lines total, guarded |
+| Test files that assert on prose, release artifacts, or the agent's own hook scripts | `scripts/maint/test_inventory.py` | 35 files, 8,313 lines, 227 tests (18% of test lines); **17 files, 5,157 lines after C1-C2 and the harness retirement** | in `tests/agent/`, ratcheted against a shrink-only baseline (D-38) |
 | Test files touching one subject | `rg -l` over `tests/python` | `serve` in 19 files, `runs` in 17, `tools` in 12 | one unit file per `src/` module, guarded |
 | Archaeology in comments/docstrings | `scripts/maint/comment_lint.py src tests` | 20 hits in `src/`, 69 in `tests/` | 0, ratcheted |
 | `subprocess` call sites in tests | `rg -c 'subprocess\.(run\|Popen\|check_output)'` | 91 sites in 40 files | 0 in `unit/`; only process-boundary tests elsewhere |
@@ -442,7 +442,14 @@ with the phase test that replaces each.
 
 ### W31-C9 — `trace.redact` degrades quadratically on a long alphanumeric run
 
-**Status:** TODO · **Size:** S · **Owner:** — · **Depends on:** nothing
+**Status:** DONE (2026-09-12, `a3f03b0` merged as `d698d16`) · **Size:** S · **Owner:** @sonnet-c9
+
+**Shipped:** two secret-shape patterns had an unbounded quantifier followed by a required literal
+from the same character class; both are now capped at the real limits (40 characters for an
+environment-variable name, the RFC lengths for an email). A third instance of the same shape, a
+redundant `\s*` before a class that already matches whitespace, went with them. 20,000 characters
+fall from 2.76 s to 0.02 s and 40,000 from 10.68 s to 0.03 s; the redacted set is unchanged,
+pinned by a table test built from assertions already in the suite.
 
 **Deterministic trigger:** a product defect surfaced by W31-C2, which hit it as a 33-second test
 and worked around it rather than fixing it (`src/` was forbidden to that card). Reproduction, from
