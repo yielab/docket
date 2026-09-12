@@ -18,10 +18,11 @@ task; load only the referenced section or spec.
   `specs/test-framework.md` §"Lanes and placement" and ROADMAP D-36. A test that reads prose or
   builds an artifact belongs to the agent lane with its `LANE`/`REASON`/`RETIRE_WHEN` header, never
   to the default suite. Run `scripts/maint/comment_lint.py --check` on touched files before handoff.
-- A user-facing claim never outranks the shape of the suite (ROADMAP D-37). When a test is retired
-  to keep the agent lane inside its budget and it was the only evidence for a sentence in a
-  document, delete the sentence in the same commit and name it in the body. Never leave a claim
-  standing without its test, and never keep a test only because a document mentions it.
+- `README.md` is descriptive, not a requirements document (ROADMAP D-37). It lists the features
+  that exist; requirements live in `specs/`, and that is what a test answers to. Never keep or
+  shape a test because the README mentions something. When work changes what is true, rewrite the
+  README sentence in the same commit and name it in the body. A `specs/` requirement is different:
+  change it by amending the spec, never by deleting its test.
 - Mechanical steps (moving files, rewriting paths, generating headers or reference docs, archiving
   board sections) are done by a script under `scripts/maint/`, not by reading and rewriting files
   in a model context. Model work is bounded to one module or one file per packet.
