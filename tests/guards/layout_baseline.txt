@@ -21,7 +21,6 @@ docket.cli._runs
 docket.cli._status
 docket.cli._trace
 docket.config
-docket.core.agent_loop
 docket.core.archetypes
 docket.core.audit
 docket.core.conversations
