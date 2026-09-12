@@ -235,7 +235,14 @@ records, the agent-lane line count, and the list of retired agent-lane tests wit
 
 ### W31-C3 — zero archaeology in comments and docstrings, ratcheted
 
-**Status:** TODO · **Size:** S · **Owner:** — · **Depends on:** C2
+**Status:** DONE (2026-09-12, `17dc447` merged as `e6819e8`) · **Size:** S · **Owner:** @sonnet-c3
+
+**Shipped:** archaeology across `src/` and `tests/` from 86 hits to zero, with
+`scripts/maint/comment-baseline.json` and `tests/guards/test_comment_hygiene.py` holding it there;
+the guard was seen red on a planted card id. Rationale was rewritten present-tense, not deleted.
+The nine hits the branch could not reach were fixture text in the development-harness file, which
+has since been retired, so the baseline is zero rather than nine. Docstring-budget counts stay
+ratcheted where they landed; they were never the target.
 
 **Deterministic trigger:** at `0d3720a`, `scripts/maint/comment_lint.py src tests --summary`
 reports `archaeology=20` in `src/` and `69` in `tests/`, plus 45 (`src`) and 68 (`tests`) module
