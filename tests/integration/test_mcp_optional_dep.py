@@ -169,19 +169,15 @@ class TestRealSdkIntegration:
         import asyncio
         import json as _json
 
-        import docket.config as _cfg
+        from tests.conftest import repoint_docket_home
 
         # Isolate from the real ~/.docket — this exercises a real tool call
         # (status → core.fleet → fleet.json), so it must not touch the
         # developer's actual docket home.
         home = tmp_path / ".docket"
         home.mkdir()
-        fleet_file = home / "fleet.json"
-        fleet_file.write_text(_json.dumps({"agents": [], "bindings": []}))
-        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-        monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file, raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
+        (home / "fleet.json").write_text(_json.dumps({"agents": [], "bindings": []}))
+        repoint_docket_home(monkeypatch, home)
 
         server = _mcp._build_server()
 

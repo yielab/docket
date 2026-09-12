@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket import cli
@@ -62,12 +63,7 @@ def _seed_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, aid: str = "dem
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, home)
     return home
 
 
@@ -102,8 +98,7 @@ def audit_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A bare DOCKET_HOME for exercising core/audit.py directly."""
     d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, d)
     return d
 
 
@@ -714,8 +709,7 @@ class TestKeysAudit:
     def keys_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         d = tmp_path / ".docket"
         d.mkdir()
-        monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
+        repoint_docket_home(monkeypatch, d)
         monkeypatch.setattr(
             keys_cli._getpass, "getpass", lambda *a, **k: "sk-ant-testvalue00000000000000"
         )
@@ -815,12 +809,7 @@ class TestAgentAddDeleteAudit:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-        monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-        monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-        monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-        monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-        monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
+        repoint_docket_home(monkeypatch, home)
         spec_file = tmp_path / "spec.json"
         spec_file.write_text(
             json.dumps(

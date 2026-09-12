@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _trace as trace_cli
@@ -24,11 +25,8 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Temp DOCKET_HOME with config paths repointed for trace retention."""
     d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", d / "audit.log", raising=True)
+    repoint_docket_home(monkeypatch, d)
     monkeypatch.setattr(_cfg, "SESSION_TIMEOUT", 3600, raising=True)
-    monkeypatch.setattr(_cfg, "SESSIONS_DIR", d / "sessions", raising=True)
     monkeypatch.setattr(_cfg, "TRACE_RETENTION_DAYS", 30, raising=True)
     monkeypatch.setattr(_cfg, "TRACE_RETENTION_S", 30 * 86400, raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)

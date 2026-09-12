@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _mcp
@@ -88,22 +89,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", home / "approvals", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-    monkeypatch.setattr(_cfg, "RUNS_FILE", home / "docket-runs.json", raising=True)
-
-
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
+    monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
     _pod_cli.build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return home
 
@@ -166,7 +157,7 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         server = _mcp._build_server()
 
@@ -184,7 +175,7 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         server = _mcp._build_server()
 
@@ -198,7 +189,7 @@ class TestRealTransportRoundTrip:
         pytest.importorskip("mcp")
         import asyncio
 
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         server = _mcp._build_server()
 
@@ -243,7 +234,7 @@ class TestNoBypassThroughRealTransport:
         pytest.importorskip("mcp")
         import asyncio
 
-        _point_at(tmp_path / ".docket", monkeypatch)
+        repoint_docket_home(monkeypatch, tmp_path / ".docket")
         (tmp_path / ".docket").mkdir(exist_ok=True)
         token = _approval.approval_create("demo", "implementer", "deploy prod")
         server = _mcp._build_server()

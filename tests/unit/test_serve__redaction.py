@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.core import approval as _ap
@@ -27,10 +28,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     d = tmp_path / ".docket"
     d.mkdir()
     (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", d / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", d / "approvals", raising=True)
+    repoint_docket_home(monkeypatch, d)
     monkeypatch.setattr(_cfg, "APPROVAL_TIMEOUT", 900, raising=True)
     monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
     monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)

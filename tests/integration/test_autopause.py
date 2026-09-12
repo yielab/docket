@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from tests.conftest import repoint_docket_home
 from typer.testing import CliRunner
 
 import docket.config as _cfg
@@ -47,16 +48,6 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", home / "audit.log", raising=True)
-
-
 def _seed_pod(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -66,7 +57,7 @@ def _seed_pod(
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
     return home
 
@@ -184,7 +175,7 @@ class TestInfoDisplaysPausedCorrectly:
         meta = {**self.META, "paused": paused_value, "pausedReason": "budget"}
         (ws / ".docket-meta.json").write_text(json.dumps(meta))
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         return home
 
     def test_real_bool_true_shows_paused_in_json(
@@ -252,7 +243,7 @@ class TestProfileResume:
         ws.mkdir(parents=True)
         (ws / ".docket-meta.json").write_text(json.dumps(self.META))
         (home / "fleet.json").write_text(json.dumps({"agents": [{"id": "myshop"}], "bindings": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         return home
 
     def test_resume_clears_paused_fields(
@@ -288,7 +279,7 @@ class TestProfileResume:
         meta = {**self.META, "paused": False, "pausedReason": ""}
         (ws / ".docket-meta.json").write_text(json.dumps(meta))
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         runner = CliRunner()
         result = runner.invoke(_app, ["profile", "myshop", "--resume"])
         assert result.exit_code == 0, result.output

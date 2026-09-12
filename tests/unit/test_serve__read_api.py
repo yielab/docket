@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 import docket.serve as serve
 
 SUBJECT = "docket.serve"
@@ -51,16 +51,12 @@ def api_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ws.mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
 
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps(FLEET_CONFIG))
+    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", fleet_file)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces")
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects")
+    # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
+    # creating it, so list_pending() still returns [] gracefully.
+    repoint_docket_home(monkeypatch, home)
     monkeypatch.setattr(serve.utils, "gateway_active", lambda: True)
-    # No approvals dir — list_pending() returns [] gracefully
-    monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "approvals")
     return home
 
 

@@ -30,9 +30,9 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
+from tests.conftest import repoint_docket_home
 from tests.fakes import FakeDriver
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import context as _context
 from docket.core import dispatch as _dispatch
@@ -220,22 +220,13 @@ class TestHopRecordRoundTrip:
 # ── End to end: dispatch_task builds and threads real artifacts ─────────────
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-
-
 def _seed_pod(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo", *, full: bool = False
 ) -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
     _pod.build_pod(project, roles, codebase=f"/src/{project}")
     return home

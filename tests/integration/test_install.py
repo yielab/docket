@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _agents, _install
@@ -45,16 +46,12 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Repoint config modules at a temp DOCKET_HOME."""
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
+    repoint_docket_home(monkeypatch, home)
+    # SITES_DIR/LOG_DIR are not DOCKET_HOME-derived (config.py defaults them to
+    # ~/Sites and /tmp/docket independently), so repoint_docket_home does not
+    # cover them -- install still touches both, so they stay isolated here.
     monkeypatch.setattr(_cfg, "SITES_DIR", home / "Sites", raising=True)
     monkeypatch.setattr(_cfg, "LOG_DIR", home / "logs", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "POLICIES_DIR", home / "policies", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
 
 
 def _no_auth() -> None:

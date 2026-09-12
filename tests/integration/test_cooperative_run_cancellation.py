@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _pod
 from docket.core import agent_loop as _agent_loop
 from docket.core import audit as _audit
@@ -27,30 +27,11 @@ from docket.edges.adapters.docket_runtime import DocketDriver
 SUBJECT = "docket.core.llm"
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    for name, relative in (
-        ("FLEET_FILE", "fleet.json"),
-        ("WORKSPACES_DIR", "workspaces"),
-        ("PROJECTS_DIR", "workspaces/projects"),
-        ("PODS_DIR", "workspaces/pods"),
-        ("MODEL_REGISTRY_FILE", "docket-models.json"),
-        ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),
-        ("TRACES_DIR", "traces"),
-        ("SESSIONS_DIR", "sessions"),
-        ("APPROVALS_DIR", "approvals"),
-        ("POLICIES_DIR", "policies"),
-        ("RUNS_FILE", "docket-runs.json"),
-        ("AUDIT_LOG", "audit.log"),
-    ):
-        monkeypatch.setattr(_cfg, name, home / relative, raising=True)
-
-
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
     return home
 
@@ -169,7 +150,7 @@ def test_returned_cancelled_task_terminalizes_the_run(
 ) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     run = _runs.create_run("cli", "demo")
     result = _dispatch.TaskResult("task-cancelled", "cancelled", "run cancellation requested")
 

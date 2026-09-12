@@ -41,6 +41,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 import docket.serve as serve
@@ -50,11 +51,6 @@ from docket.serve import _DocketHandler
 SUBJECT = "docket.serve"
 
 _TEST_TOKEN = "test-serve-token-traces-p22-3"
-
-
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
 
 
 def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]
@@ -72,7 +68,7 @@ def _get(url: str, token: str | None = None) -> tuple[int, dict]:  # type: ignor
 def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     approvals_dir = tmp_path / "approvals"
     approvals_dir.mkdir()
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", approvals_dir, raising=True)
@@ -92,7 +88,7 @@ def live_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignor
 def traces_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     return home
 
 

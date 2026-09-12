@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
 import docket.config as _cfg
 from docket.cli import _doctor, _pod
@@ -30,23 +31,11 @@ def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
 
-def _point_at(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_cfg, "WORKSPACES_DIR", home / "workspaces", raising=True)
-    monkeypatch.setattr(_cfg, "PROJECTS_DIR", home / "workspaces" / "projects", raising=True)
-    monkeypatch.setattr(_cfg, "MODEL_REGISTRY_FILE", home / "docket-models.json", raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", home / "traces", raising=True)
-    monkeypatch.setattr(
-        _cfg, "CONVERSATIONS_FILE", home / "docket-conversations.json", raising=True
-    )
-
-
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, project: str = "demo") -> Path:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    _point_at(home, monkeypatch)
+    repoint_docket_home(monkeypatch, home)
     _pod.build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     return home
 
@@ -72,7 +61,7 @@ class TestNoPods:
         home = tmp_path / ".docket"
         home.mkdir()
         (home / "fleet.json").write_text(json.dumps({"agents": []}))
-        _point_at(home, monkeypatch)
+        repoint_docket_home(monkeypatch, home)
         assert _doctor._check_dispatch_ledger(do_fix=False) == 0
         assert "Dispatch task ledger" not in capsys.readouterr().out
 

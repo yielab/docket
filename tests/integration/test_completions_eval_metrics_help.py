@@ -14,8 +14,8 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.conftest import repoint_docket_home
 
-import docket.config as _cfg
 from docket.cli import _completions, _help, _metrics
 
 SUBJECT = "docket.cli"
@@ -77,8 +77,7 @@ class TestCompletions:
 def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     d = tmp_path / ".docket"
     d.mkdir()
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", d, raising=True)
-    monkeypatch.setattr(_cfg, "TRACES_DIR", d / "traces", raising=True)
+    repoint_docket_home(monkeypatch, d)
     return d
 
 
