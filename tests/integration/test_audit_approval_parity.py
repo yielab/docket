@@ -108,10 +108,10 @@ def _race_pending_transitions(
 ) -> list[BaseException | None]:
     """Start two public decisions together at the old read/write seam.
 
-    The barrier is deliberately around ``_set_state``: before W26-C7 both
-    callers had already read ``pending`` when they reached it.  The repaired
-    implementation keeps that seam but re-checks the state under the store
-    lock, so exactly one caller may return normally.
+    The barrier is deliberately around ``_set_state``: both callers have already read
+    ``pending`` when they reach it, reproducing the race window.  The implementation
+    keeps that seam but re-checks the state under the store lock, so exactly one
+    caller may return normally.
     """
     original = _ap._set_state
     barrier = threading.Barrier(2, timeout=2)

@@ -1,7 +1,7 @@
 """Cron-expression scheduling.
 
-``core/schedule.py`` previously understood only ``@every <N><unit>`` and a
-single daily ``HH:MM`` — this is the missing "real cron spec" support: a
+``core/schedule.py`` also understands ``@every <N><unit>`` and a single daily
+``HH:MM``; this suite covers the "real cron spec" support beyond those: a
 standard 5-field ``minute hour dom month dow`` expression (``*``, a single
 integer, an ``a-b`` range, a ``/step`` on either, and comma lists of any of
 those), evaluated in UTC, numeric fields only (no ``JAN``/``MON`` name
@@ -135,7 +135,6 @@ class TestCronIsDue:
         assert _sched.is_schedule_due("*/15 9-17 * * *", last_run, now)
 
     def test_weekday_field_respected(self) -> None:
-        # 2026-07-30 is a Thursday (cron dow 4).
         now = _dt.datetime(2026, 7, 30, 9, 0, 0, tzinfo=_dt.UTC).timestamp()
         assert _sched.is_schedule_due("0 9 * * 4", 0.0, now)
         assert not _sched.is_schedule_due("0 9 * * 1", 0.0, now)

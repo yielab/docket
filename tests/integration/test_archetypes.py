@@ -7,10 +7,9 @@ pattern (mirrors `docket-models.json`: built-ins + starter library overlaid by
 list/show/add/validate, and that the reviewer/tester
 gate-contract data, translated through `core.orchestrator`'s real
 gate-from-contract resolution, matches `core/pipeline.py`'s own hardcoded
-`default_pipeline()` verdict gates — gate execution is generic now, so this
-is no longer a cross-check against a dispatch-private regex constant (see
-`core/dispatch.py`'s docstring note where `_REVIEWER_VERDICT_RE`/
-`_TESTER_VERDICT_RE` used to live).
+`default_pipeline()` verdict gates — gate execution is generic, so this is not a
+cross-check against a dispatch-private regex constant (see `core/dispatch.py`'s
+docstring note about `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
 """
 
 from __future__ import annotations
@@ -149,10 +148,7 @@ class TestBuiltinAndStarterArchetypes:
             assert found.resolved_policy_role == name
 
     def test_reviewer_gate_matches_pipeline_default_verdict_gate(self) -> None:
-        """This used to byte-match `core/dispatch.py`'s
-        hardcoded verdict regex (`_REVIEWER_VERDICT_RE`,
-        deleted once gate execution went generic — see that module's
-        docstring note where it used to live). Gate execution now reads a
+        """Gate execution reads a
         step's *resolved* gate generically (`core.orchestrator.resolve_gate`/
         `parse_verdict`), so the cross-check that matters now is that
         this archetype's `gateContract`, translated through

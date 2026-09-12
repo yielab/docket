@@ -7,7 +7,7 @@ id ``<project>-<role>`` (``-N`` for duplicates).
 
 Composition logic lives in `core/pod.py`; the actual provisioning I/O
 (workspace + templates + meta + fleet registration, with rollback on a
-partial failure) lives in `core/pod_provisioning.py` (P22-5) so it is
+partial failure) lives in `core/pod_provisioning.py` so it is
 reachable from `serve.py`'s `POST /pods` without that module ever importing
 `docket.cli`. This module renders around that core module's typed results —
 `docket add`'s pod path and `POST /pods` both call the same

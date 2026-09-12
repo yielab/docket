@@ -1,11 +1,9 @@
 """Guard: no `contextlib.suppress(Exception)` wraps a dispatch call.
 
-``serve.py`` used to have four places where a pod-dispatch call was
-wrapped in a bare ``with contextlib.suppress(Exception):`` — the webhook
-handler, the schedule-triggered dispatch, and two blocks in the sweep loop
-(driving every pod's queue, and the schedule check that triggers dispatch in
-turn). Every one of those discarded the exception with no id, no record, no
-trace of what happened.
+A pod-dispatch call wrapped in a bare ``with contextlib.suppress(Exception):`` — in
+the webhook handler, the schedule-triggered dispatch, or either of the sweep loop's
+two blocks (driving every pod's queue, and the schedule check that triggers dispatch
+in turn) — discards the exception with no id, no record, no trace of what happened.
 
 This is a "grep-pinned" regression test (sibling in
 spirit to ``test_no_subprocess_in_core.py``'s AST-based guard): it scans
@@ -82,9 +80,9 @@ def test_webhook_dispatch_call_site_uses_run_registry() -> None:
 
 
 def test_dispatch_all_pods_no_longer_called_unguarded_in_serve() -> None:
-    """The sweep loop used to call dispatch_all_pods() inside a bare suppress,
-    losing per-pod granularity. That is replaced with one run record per pod
-    (dispatchable_pods() + dispatch_pod() through core.runs.execute)."""
+    """Calling dispatch_all_pods() inside a bare suppress loses per-pod granularity;
+    the sweep loop must instead create one run record per pod (dispatchable_pods() +
+    dispatch_pod() through core.runs.execute)."""
     text = _SERVE_PY.read_text(encoding="utf-8")
     assert "dispatch_all_pods" not in text
     assert "dispatchable_pods" in text

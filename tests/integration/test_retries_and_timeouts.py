@@ -402,11 +402,10 @@ class TestRetryDoesNotTripStaleClaimSweep:
     def test_retrying_task_survives_a_concurrent_stale_claim_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The subtle correctness point here: `claimedAt` used to be
-        set once at claim time and never touched again mid-hop. A retry loop
-        adds backoff sleeps + extra agent-turn timeouts on top of whatever
-        earlier hops already took, so a long enough retry run could push the
-        elapsed time since the *original* `claimedAt` past CLAIM_STALE_TIMEOUT
+        """The subtle correctness point here: if `claimedAt` were set once at claim
+        time and never touched again mid-hop, a retry loop's backoff sleeps + extra
+        agent-turn timeouts on top of whatever earlier hops already took could push
+        the elapsed time since the *original* `claimedAt` past CLAIM_STALE_TIMEOUT
         even though the dispatcher is very much alive — and a *second*,
         concurrent `dispatch_pod` call on the same pod (the whole scenario
         claims exist to guard against) would sweep it out from under the first one

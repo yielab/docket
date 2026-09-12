@@ -1,10 +1,9 @@
 """High-risk classes enforced on docket-launched processes.
 
-``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier used to have callers
-only in tests -- a classifier nothing calls is documentation, not
-enforcement, the same defect shape once true of the approval store and the
-policy engine. ``match_high_risk`` is now wired into the two real paths
-docket itself controls. Three sibling helpers that once composed it --
+``core/security.py``'s ``HIGH_RISK_PATTERNS`` classifier, called only from tests,
+would be documentation, not enforcement -- the same defect shape the approval store
+and the policy engine also guard against. ``match_high_risk`` is wired into the two
+real paths docket itself controls. Three sibling helpers that once composed it --
 ``high_risk_bins``, ``is_high_risk`` and ``resolve_command_action`` -- were
 deleted rather than left beside it: none had a production caller, because
 they modelled an ask/allow decision docket does not make for itself. This

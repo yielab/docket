@@ -137,10 +137,10 @@ class TestCheckReadmeUnit:
     def test_readme_stating_no_claims_at_all_is_a_hard_failure(self, tmp_path: Path) -> None:
         """A guard that verified nothing must not report success.
 
-        Regression test for the fail-open hole: `check_readme` used to skip every
-        unmatched claim silently, so a README stating none of them returned "in
-        sync" while checking zero numbers. Combined with the comma bug below,
-        the real gate went fully vacuous.
+        Regression test for the fail-open hole: an unguarded `check_readme` would skip
+        every unmatched claim silently, so a README stating none of them would report
+        "in sync" while checking zero numbers. Combined with the comma bug below, the
+        gate would go fully vacuous.
         """
         metrics = {"tests": 700, "loc": 12000, "commands": 30, "specs": 15}
         readme = tmp_path / "README.md"

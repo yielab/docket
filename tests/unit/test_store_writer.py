@@ -1,12 +1,12 @@
-"""Enforce the store.py single-writer rule (D-12).
+"""Enforce the store.py single-writer rule.
 
 store.py's docstring claims ALL docket-owned JSON writes go through
 ``edges.store.write_json``. This is a machine-checked guard against
 regression: any hand-rolled ``path.write_text(json.dumps(...))`` atomic-write
 dance outside the chokepoint (and its two documented JSONL-append exemptions,
-``core/trace.py`` / ``core/audit.py``) reintroduces the bug D-12 fixed —
-writers that skip the filelock and ``.bak`` rotation and can corrupt a
-docket-owned JSON file under concurrent access.
+``core/trace.py`` / ``core/audit.py``) reintroduces the single-writer bug this
+rule fixes — writers that skip the filelock and ``.bak`` rotation and can
+corrupt a docket-owned JSON file under concurrent access.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def test_no_hand_rolled_json_writes_outside_store() -> None:
 def test_exempt_modules_still_exist() -> None:
     """Sanity check the exclusion list doesn't silently rot: every module in
     _EXEMPT should still be a real file, not a dead entry left behind after
-    the module it named was deleted."""
+    the module it named is removed."""
     always_present = {
         _SRC / "edges" / "store.py",
         _SRC / "core" / "trace.py",

@@ -2,9 +2,9 @@
 
 ``core/pipeline.py`` defines the format only — a Pydantic model for the YAML
 dialect the executor (`core/orchestrator.py`) runs pods through, replacing
-the Lobster dialect docket used to lint but could never fully execute (see
-test_workflow_command_removed.py for its retirement). This suite tests the model
-and its validation only, not dispatch behavior.
+the Lobster dialect docket could lint but never fully execute (see
+tests/guards/test_removed_commands.py for the `workflow` command's retirement).
+This suite tests the model and its validation only, not dispatch behavior.
 
   * TestRoundTrip          — a valid, full-featured pipeline parses and
     round-trips through dump/validate unchanged.

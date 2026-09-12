@@ -566,7 +566,7 @@ def verify_chain() -> VerifyResult:
     """Walk one locked current/backup audit snapshot and verify its chain.
 
     Readers use the same dedicated lock as writers so a rotation cannot split
-    the current file from the backup used to prove its continuation claim.
+    the current file from the backup that proves its continuation claim.
     A lock/read failure remains non-raising and is indistinguishable from an
     unavailable log to this compatibility-preserving API.
     """

@@ -25,8 +25,7 @@ policy applies to. ``pre_output`` is evaluated on every hop's real output,
 before it is embedded in the carried-forward artifact or persisted hop record
 (``core/dispatch.py``'s ``_execute_unit``). ``pre_tool_call`` is evaluated
 in-turn, inside ``core/tools.py``'s ``dispatch_tool`` chokepoint, for every
-tool call docket's own agent loop makes — the one hook that used to have no
-live caller now does.
+tool call docket's own agent loop makes.
 """
 
 from __future__ import annotations

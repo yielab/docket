@@ -3,8 +3,8 @@
 One record per dispatch invocation — CLI (`docket pod <p> dispatch`), the serve
 webhook (`POST /dispatch/<project>`), a due schedule, or the periodic sweep
 loop (`docket serve --dispatch`) — see `core/runs.py`. This is the answer to
-"is it done, did it fail, or did it never run" for background dispatch, which
-used to be answerable only by discarding the exception and returning 200.
+"is it done, did it fail, or did it never run" for background dispatch — a
+question a bare 200 response with the exception discarded cannot answer.
 """
 
 from __future__ import annotations

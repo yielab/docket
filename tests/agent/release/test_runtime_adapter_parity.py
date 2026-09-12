@@ -1,4 +1,4 @@
-"""Merged installed-artifact parity contract for W28-C4."""
+"""Merged installed-artifact parity contract for the runtime adapters."""
 
 from __future__ import annotations
 

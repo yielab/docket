@@ -1,10 +1,10 @@
 """POST /pods — provisioning over HTTP.
 
-Phase 22 (P22-5). Unlike every other Phase 22 route, this one is not a thin
+Unlike most other routes, this one is not a thin
 wrapper over a pre-existing `core/` function: the real provisioning path
-(`cli/_pod.py`/`cli/_agents.py`) used to print through `ui.py` as it worked,
+(`cli/_pod.py`/`cli/_agents.py`) prints through `ui.py` as it works,
 and `serve.py` never imports `docket.cli`. `core.pod_provisioning.provision_pod`
-is the extraction of that path's decisions and effects (P22-5); `docket add`'s
+is the UI-free extraction of that path's decisions and effects; `docket add`'s
 pod path and this route both call it, so the two surfaces cannot drift apart.
 
 Covers:

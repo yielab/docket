@@ -101,7 +101,7 @@ def parse_persona_label(label: str) -> Persona:
 
     A trailing token containing no alphanumerics is taken as the emoji; the rest
     is the name. ``"Orion"`` → name only; ``"Orion 🔭"`` → name + emoji; ``""`` →
-    an empty persona (used to signal "clear").
+    an empty persona, which signals "clear".
     """
     tokens = label.strip().split()
     if not tokens:

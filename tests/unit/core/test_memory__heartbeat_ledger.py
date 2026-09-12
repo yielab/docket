@@ -111,8 +111,7 @@ class TestWriteDispatchTasksCoAuthorship:
         assert "a sub-step I already did" in new_text
         assert "Should we use Postgres or SQLite?" in new_text
         assert "Remember to check the staging env before merging." in new_text
-        # Nothing from the original file was deleted -- only the dispatch
-        # block was inserted.
+        # Nothing from the original file is removed -- only the dispatch block is inserted.
         for line in original.splitlines():
             assert line in new_text
         assert "task-1" in new_text

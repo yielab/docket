@@ -26,7 +26,7 @@ already-documented chars-per-token approximation
 their own context-size guards) rather than inventing a second,
 independently-tunable ratio that could quietly drift from the first. This is
 an honest approximation good enough to bound a prompt deterministically —
-never claimed as an exact count, and never used to bill against.
+never claimed as an exact count, and never a basis for billing.
 
 Per-role budgets live on the role archetype itself
 (``core/archetypes.py``'s ``RoleArchetype.token_budget``), not a second,
@@ -80,7 +80,7 @@ def estimate_tokens(text: str) -> int:
     ``maintain check``/``maintain sessions`` already use for their own
     context-size guards. This is honestly an approximation, not a real count
     from the model's own tokenizer — good enough to bound a prompt
-    deterministically, never used to bill against.
+    deterministically, never a basis for billing.
     """
     return len(text.encode("utf-8")) // cfg.CONTEXT_BYTES_PER_TOKEN
 

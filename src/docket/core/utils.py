@@ -62,9 +62,9 @@ class CostTotals:
 def aggregate_cost(agent_id: str) -> CostTotals:
     """Return aggregated token/cost totals for *agent_id*.
 
-    The session-JSONL parsing this used to do directly now lives behind the
-    RuntimeDriver port -- this is a pure translation from the driver's
-    ``UsageTotals`` to the legacy ``CostTotals`` shape ``cli/_cost.py``,
+    Session-JSONL parsing lives behind the RuntimeDriver port -- this is a pure
+    translation from the driver's ``UsageTotals`` to the legacy ``CostTotals``
+    shape ``cli/_cost.py``,
     ``cli/_doctor.py``, and ``core/dispatch.py`` already depend on. See
     core/runtime_driver.py.
 

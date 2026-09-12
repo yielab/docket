@@ -1,12 +1,11 @@
 """Run registry — one persisted record per dispatch invocation.
 
-Background dispatch used to be unobservable: the serve webhook returned 200
-before any work was attempted, the scheduler and sweeper fired dispatch in
-daemon threads, and every one of those paths wrapped the actual call in
-``contextlib.suppress(Exception)`` — an operator had no run id, no status
-query, and no way to tell "done" from "failed" from "never ran".
+Without a record, background dispatch is unobservable: a serve webhook that returns
+200 before any work is attempted, or a scheduler/sweeper that fires dispatch in a
+daemon thread wrapped in ``contextlib.suppress(Exception)``, leaves an operator with
+no run id, no status query, and no way to tell "done" from "failed" from "never ran".
 
-This module is the fix: every time something asks a pod to dispatch (the CLI,
+This module closes that gap: every time something asks a pod to dispatch (the CLI,
 the serve webhook, a due schedule, the periodic sweep loop, or an MCP tool
 call — ``docket mcp serve``'s ``dispatch`` tool) a run record is
 created *before* the work starts and folded to a terminal state when it

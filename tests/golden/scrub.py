@@ -46,7 +46,6 @@ def build_rules(home: str) -> list[tuple[re.Pattern, str]]:
             "<RELATIVE_TIME>",
         ),
         (re.compile(r"\b\d+[smhd]\s+ago\b"), "<RELATIVE_TIME>"),
-        # Date-only  2026-03-05
         (re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), "<DATE>"),
         # Durations  1m23s  0.42s  3.1ms
         (re.compile(r"\b\d+m\d+s\b|\b\d+(?:\.\d+)?(?:ms|s)\b"), "<DURATION>"),

@@ -6,10 +6,10 @@ GAP 2  docket serve runs the trace/approval sweeps at startup.
 GAP 3  trace.redact strips the VALUE of a stored secret (not just secret-shapes).
 GAP 4  doctor's Brave + Eval-results advisory sections — retired. The Brave
        advisory (`_check_brave_browser`) scanned for daemon-spawned browser
-       processes and was deleted outright (no daemon, no successor). The
-       eval-results advisory (`_check_eval_results`) was deleted with the eval
-       harness itself (CL-J). `docket doctor` prints no advisory sections
-       anymore, so GAP 4 has nothing left to test.
+       processes, which cannot exist without a daemon. The eval-results
+       advisory (`_check_eval_results`) has no eval harness left to report on.
+       `docket doctor` prints no advisory sections, so GAP 4 has nothing left
+       to test.
 
 All subsystems read paths from docket.config at call time, so we repoint the
 already-imported config attributes at a temp seed and drive the public surfaces

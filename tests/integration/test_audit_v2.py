@@ -143,7 +143,7 @@ class TestChainWriting:
 
 
 class TestAtomicAuditTransition:
-    """W26-C6's process-level race and failure/recovery contract."""
+    """Process-level race and failure/recovery contract for audit writes."""
 
     _WRITERS = 32
 
@@ -451,7 +451,7 @@ class TestChainVerify:
     def test_single_rotation_continues_the_chain_and_verifies_clean(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """W18-1: a single rotation no longer restarts the chain at seq=1.
+        """A single rotation continues the chain rather than restarting it at seq=1.
 
         The new current file's first entry carries the rotated generation's
         final seq+1 and its hash as prev_hash -- a continuation claim -- and
@@ -480,7 +480,7 @@ class TestChainVerify:
     ) -> None:
         """Backward compat: a legacy (pre-chain) last line has no seq/prev_hash
         to continue from, so rotating it away is still an honest restart at
-        seq=1/GENESIS_HASH -- unchanged from pre-W18-1 behaviour."""
+        seq=1/GENESIS_HASH."""
         logf = audit_home / "audit.log"
         legacy_line = json.dumps(
             {"ts": "2026-06-01T00:00:00Z", "user": "alice", "pid": 1, "action": "x", "detail": ""}
@@ -500,18 +500,17 @@ class TestChainVerify:
 
 
 class TestRotationErasureDetection:
-    """W18-1: the reproduced bug and its fix.
+    """The reproduced bug and its fix.
 
-    Before this card, flooding a small AUDIT_LOG_MAX_BYTES with enough
-    entries to rotate twice erased the security-relevant entries from BOTH
-    the current file and the single-generation backup, and verify_chain()
-    reported a clean chain restarting at seq=1 -- indistinguishable from a
-    fresh install. The fix doesn't recover the deleted bytes (nothing can,
-    short of keeping unbounded generations), but it makes the fact that
-    history preceded the current file impossible to hide silently: seq no
-    longer resets at a rotation, and if the one backup generation that would
-    substantiate the continuation claim is itself missing or altered,
-    verify_chain() now reports a break instead of "no break".
+    Flooding a small AUDIT_LOG_MAX_BYTES with enough entries to rotate twice can erase
+    security-relevant entries from BOTH the current file and the single-generation
+    backup; without continuation checking, verify_chain() would report a clean chain
+    restarting at seq=1 -- indistinguishable from a fresh install. Recovering the
+    deleted bytes is not possible (nothing can, short of keeping unbounded
+    generations), but the chain design makes the fact that history preceded the
+    current file impossible to hide silently: seq never resets at a rotation, and if
+    the one backup generation that would substantiate the continuation claim is itself
+    missing or altered, verify_chain() reports a break instead of "no break".
     """
 
     def _flood_past_two_rotations(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -548,10 +547,9 @@ class TestRotationErasureDetection:
     def test_deleting_the_backup_after_flooding_is_now_detected(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The concrete guard: erasing the one remaining link (audit.log.1)
-        turns a verifiable continuation into an unverifiable one, and that
-        IS reported as a break -- this is the new, previously-missing
-        detection the card exists to add."""
+        """The concrete guard: erasing the one remaining link (audit.log.1) turns a
+        verifiable continuation into an unverifiable one, which verify_chain() must
+        report as a break rather than a clean chain."""
         self._flood_past_two_rotations(monkeypatch)
         assert _audit.verify_chain().break_at is None  # sanity: clean before erasure
 
@@ -587,16 +585,16 @@ class TestRotationErasureDetection:
 
 
 class TestPreexistingLogBackwardCompat:
-    """W18-1: a log written entirely by the pre-continuation code (or one
-    whose rotation predates this card) must not be reported as tampering
-    just because it now sits next to a backup it never claimed."""
+    """A log written entirely by code that never adopted rotation continuation, or one
+    whose rotation predates that support, must not be reported as tampering just
+    because it now sits next to a backup it never claimed."""
 
     def test_preexisting_current_file_with_unrelated_backup_verifies_clean(
         self, audit_home: Path
     ) -> None:
-        # Simulates: the pre-W18-1 code rotated once, writing a current file
-        # that (as it always did) restarts at seq=1/GENESIS_HASH with no
-        # knowledge of, or claim on, the backup sitting next to it.
+        # Simulates a log written by code that never adopted rotation continuation: a
+        # current file that restarts at seq=1/GENESIS_HASH with no knowledge of, or
+        # claim on, the backup sitting next to it.
         backup = audit_home / "audit.log.1"
         backup.write_text(
             json.dumps(
@@ -704,9 +702,8 @@ class TestAuditVerifyCommand:
     def test_verify_reports_erasure_of_the_rotated_backup_as_a_failure(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # W18-1's headline case: before this card, deleting audit.log.1
-        # after a rotation left `docket audit verify` reporting a clean
-        # chain (exit 0). It must now fail loudly (exit 1).
+        # Deleting audit.log.1 after a rotation must not let `docket audit verify`
+        # report a clean chain (exit 0); it must fail loudly (exit 1).
         monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
         _audit.audit_log("keys.add", "FIRST")
         _audit.audit_log("keys.add", "SECOND")

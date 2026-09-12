@@ -4,8 +4,8 @@
 (`mcp.server.fastmcp.FastMCP`), pinned defensively at `mcp>=1.2.0,<2.0.0`
 because the SDK's 2.0 API could not yet be verified against a real release.
 This migrates to the real `mcp==2.0.0` release and reads the shipped
-package directly: `mcp.server.fastmcp` was removed outright in 2.0 (not
-deprecated in place) and replaced by `mcp.server.MCPServer` — a rename and
+package directly: `mcp.server.fastmcp` does not exist in 2.0 (not
+deprecated in place) and is replaced by `mcp.server.MCPServer` — a rename and
 relocation, not a redesign. `MCPServer` keeps `FastMCP`'s exact registration
 ergonomics (`add_tool(fn, name=...)`, `server.run(transport="stdio")`), so
 `cli/_mcp.py`'s `_build_server()` needed only an import-path/class-name swap;

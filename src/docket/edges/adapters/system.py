@@ -30,9 +30,9 @@ to start, restart, or probe. ``gateway_active`` stays as an honest,
 always-``False`` stub (see its docstring) -- ``docket snapshot`` and the
 ``serve`` read API (``specs/data/serve-read-api.spec.md``) still expose a
 ``gateway`` field to external consumers, and this keeps that field truthful
-without a breaking API change. ``restart_gateway()`` was removed outright
-rather than kept as a matching stub: unlike ``gateway_active``, nothing
-external ever observed its return value, so every call site was pure
+without a breaking API change. ``restart_gateway()`` has no matching stub:
+unlike ``gateway_active``, nothing external ever observed its return value,
+so every call site was pure
 ceremony (call it, render a result that prints nothing for the only status a
 real call could ever produce) -- a no-op that many sites ceremonially call
 is dead code, not a truthful stub worth keeping.

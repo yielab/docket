@@ -7,8 +7,8 @@ producing byte-identical workspace output." Rather than diffing the current
 `cli/_pod.py` output against itself (which would not catch a regression
 introduced by editing both sides together), this file embeds a FROZEN,
 independent compatibility baseline for the hand-written generators. The
-baseline advances only for an intentional role-contract change such as
-W25-C11's verdict-marker placement; ordinary refactors must not edit it. It
+baseline advances only for an intentional role-contract change, such as a
+verdict-marker placement change; ordinary refactors must not edit it. It
 compares `_legacy_member_soul`/`_legacy_member_agents` against
 `cli/_pod.py`'s current archetype-driven `_member_soul`/`_member_agents`
 across a range of inputs, for every legacy role.

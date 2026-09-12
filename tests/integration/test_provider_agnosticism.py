@@ -319,7 +319,7 @@ class TestLocalPresetCli:
 
 class TestAuthProviderGoneHonestly:
     """There is no docket-native replacement for the OAuth-like token
-    exchange `docket auth login/key/setup` used to shell out for. Every
+    exchange `docket auth login/key/setup` once shelled out for. Every
     subcommand must say so plainly (rc=1, a message naming the real working
     path: `docket keys add <PROVIDER>_API_KEY`), never silently no-op or
     report a fake success. See cli/_keys.py's run_auth docstring and

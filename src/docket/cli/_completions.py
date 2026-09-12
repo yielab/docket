@@ -3,11 +3,10 @@
 `run_completions(shell)` prints the bash or zsh completion script to stdout
 and returns the process exit code. Only bash and zsh are supported.
 
-CH-8: the top-level command table used to be a hand-maintained string literal
-and it drifted — it kept advertising `team`/`tier` after they were removed,
-and never learned `auth`/`policies`/`approve`/`deny`/`metrics`. It is now
-derived at *call time* from the live Typer `app` registry (see
-`_top_level_commands`), so it can never disagree with `docket --help` again.
+The top-level command table is derived at *call time* from the live Typer `app`
+registry (see `_top_level_commands`) rather than hand-maintained, because a static
+literal drifts silently — it can go on advertising a removed command and never
+learn a new one. Deriving it live means it can never disagree with `docket --help`.
 
 Every docket command here is a flat Typer command (none are Click sub-groups
 — second-level verbs like `maintain check|clean|reset` are parsed by hand

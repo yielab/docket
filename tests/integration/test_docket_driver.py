@@ -1530,9 +1530,6 @@ class TestSessionIntrospection:
         assert sl.turns == []
 
 
-# ── isolation wiring (W18-3) ──────────────────────────────────────────────────
-
-
 def _probe_registry() -> ToolRegistry:
     """A one-tool registry that reports back the exact `ctx.sandbox` value
     `run_turn` built, so a test can observe it without hand-constructing a

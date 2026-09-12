@@ -463,8 +463,8 @@ def seed_contract(
 #: Subdirectory (under ``memory/``) that archived, already-distilled daily
 #: logs are moved into. A dated subdirectory per ``distill_memory`` call. A
 #: plain non-recursive ``memory/*.md`` glob (what ``maintain clean``/``reset``
-#: used to delete outright) never descends into it, so an already-distilled
-#: log can never be "found" and re-distilled or re-deleted by mistake.
+#: delete outright) never descends into it, so an already-distilled log can
+#: never be "found" and re-distilled or re-deleted by mistake.
 DISTILLED_ARCHIVE_DIRNAME = ".distilled"
 
 #: A daily-log line with this prefix is a compact, operator-authored invariant.
