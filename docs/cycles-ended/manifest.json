@@ -390,5 +390,69 @@
     "heading": "Changelog",
     "bytes": 74031,
     "sha256": "ae6ffeb14ff8cce703bdad82cb914b83961f7da757ce11dc2528925fb6c86c17"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C1 — recover a corrupt Docket JSON primary from its valid backup",
+    "bytes": 3255,
+    "sha256": "ab8831ef718761f7cf1c7246a65cc8b416ac94a8f04027239751893e59c9943e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C2 — ship an extractable, artifact-installed ten-minute starter",
+    "bytes": 3419,
+    "sha256": "02d69699fc4b3815b6e00c8bd65f2f38dd5259f847d6d42e56cbacbe432977d9"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C3 — define the adoption benchmark schema and deterministic runner",
+    "bytes": 3207,
+    "sha256": "c106aa4beb7cad302fd6b22fb8f9317c1746ea9fbcffe2f470816efcf73b89e7"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C4 — add adversarial governance and crash/recovery benchmark scenarios",
+    "bytes": 2976,
+    "sha256": "de35c8b2b6d00434c65221c8c00d899bbc68fed3449f1b6519f5ac2b8dea1cfe"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C5 — publish truthful support, deprecation, governance, and succession policy",
+    "bytes": 2884,
+    "sha256": "265bf664f0e605d220c44f98d242e2121e995b6e9b4c8af4be91bdbb2fdb1c5e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 3,
+    "heading": "W29-C6 — generate and publish the reproducible adoption baseline",
+    "bytes": 5649,
+    "sha256": "481bbe2effafda7a1db071657ad1bb0880823103e3f355068f3e2469d683eab8"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-phases.md",
+    "level": 2,
+    "heading": "Planned program — PHASE 25: human maintainability (D-36)",
+    "bytes": 8260,
+    "sha256": "a1f67ef37083764222fe7ee8fb40a88b86516273fd1aed3d6c639a8ac50d98a4"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ WAVE 31 COMPLETE (2026-09-11 to 2026-09-12) — human maintainability: test lanes, comment budget, generated docs (Phase 25, D-36)",
+    "bytes": 43947,
+    "sha256": "88139f1b6a52edb405fc0e44d6d3b6fca86cc249a66248d4a50135dd4c79eb28"
   }
 ]

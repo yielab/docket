@@ -7,22 +7,17 @@
 
 **docket assembles a small team of role-scoped AI agents — a Lead, an Implementer, and optionally a
 Reviewer and a Tester — and runs them against your codebase as one pipeline.** It owns both halves
-of that job: which agent does what, in what order (the team), and what every one of them is
-actually allowed to do (the gate).
+of that job: which agent does what, in what order, and what every one of them is actually allowed
+to do.
 
-The team half is intentionally fixed rather than a general-purpose graph you wire yourself: Lead
-plans and delegates but never edits code, Implementer makes the change, and an optional Reviewer
-and Tester gate whether it's actually done. The gate half is the part most agentic tooling leaves
-unfinished — whatever owns an agent's turn loop is the only thing positioned to intercept a tool
-call before it executes, so if that owner isn't a dedicated policy layer, enforcement is left to
-the agent's own judgment. **docket owns the turn loop for every role in the pipeline, specifically
-so that doesn't happen:** every action an agent takes — every file edit, every shell command, every
-API call — passes through one policy-and-approval gate first, with no second path around it.
-
-docket does not ship a dashboard, and its pipeline isn't a general-purpose orchestration
-framework — it's an opinionated, governed team topology that other things (a framework, a
-dashboard, your own scripts) can sit on top of. It runs a supervised team, not a solo personal
-assistant, and keeps every action inspectable after the fact.
+The gate half is the part most agentic tooling leaves unfinished. Whatever owns an agent's turn
+loop is the only thing positioned to intercept a tool call before it executes, so if that owner is
+not a dedicated policy layer, enforcement is left to the agent's own judgment. **docket owns the
+turn loop for every role in the pipeline, specifically so that does not happen:** every file edit,
+every shell command and every API call passes one policy-and-approval gate first, with no second
+path around it. docket ships no dashboard and is not a general-purpose orchestration
+framework. It runs a supervised team, not a solo personal assistant, and keeps every action
+inspectable after the fact.
 
 > [!WARNING]
 > docket is beta software (`v0.2.0-beta.2`). Core contracts are spec-first and test-backed, but the
@@ -91,96 +86,67 @@ The guarantees that matter before letting autonomous agents touch a production c
 - **Fail-closed, not fail-open.** An unrouted approval denies itself after 120 seconds; an async
   pod-dispatch approval denies after 15 minutes. If isolation is enabled but no sandbox backend is
   reachable, the turn is **refused outright** — it never falls back to running unsandboxed.
-- **Tamper-evident audit trail.** Every policy verdict, approval decision, and tool execution is
-  written to a hash-chained JSONL log, regardless of which channel (CLI, HTTP, MCP, Telegram) made
-  the decision. `docket audit verify` detects a broken chain.
-- **Deterministic budget control.** Per-agent USD caps (`docket profile <id> --budget`) auto-pause a
-  pod the moment it's reached — new tasks are left `blocked`, never silently retried against a
-  cheaper path.
 - **Structural role boundaries.** A Reviewer has no `write`/`edit`/`bash` tool in its registry at
-  all — not a prompt telling it not to use them. A compromised diff has no tool call to make even if
-  it convinced the model to try.
-
-## Features
-
-The full surface, grouped by the outcome it buys rather than by command name.
-
-### Cost control
-
-- **Per-agent spend caps** that auto-pause a pod instead of degrading silently.
-- **Measured token counts**, not estimates — `core.llm.TokenUsage` records real usage; dollar
-  figures are a clearly labelled estimate from a local pricing snapshot, never conflated with actual
-  spend.
-- **Explicit dispatch only.** No background token spend from a queued task — `docket pod <id>
-  dispatch` or an authenticated `POST /dispatch/<project>` triggers a paid run; nothing else does.
-- **Role-based model routing.** Cheap models for planning roles (Lead), stronger models only where
-  code generation happens (Implementer) — configured once via `docket models`.
-
-### Code security
-
-- **One tool chokepoint, no exceptions.** `dispatch_tool` is AST-tested as the sole path a tool call
-  can take; a second execution path is treated as a defect, not a feature.
-- **Role-scoped tool allowlists.** Tools are removed from a role's registry *before* the model ever
-  sees them — Lead has no `write`/`edit`/`bash`; Reviewer is read-only; Implementer alone can change
-  code.
+  all — not a prompt telling it not to use them. Tools are removed from a role's registry *before*
+  the model ever sees them, so a compromised diff has no tool call to make even if it convinced the
+  model to try.
 - **Argument-aware command classification.** The high-risk classifier reads the full command line,
   including every segment behind `;`, `&&`, `||`, or a pipe, so `git push origin production` is
   caught even though `git status` stays on the allowlist.
-- **Domain-allowlisted network egress.** The `fetch` tool denies by default; nothing reaches an
-  unlisted domain through it.
-- **Opt-in sandboxing.** `docket gates isolate on` runs shell commands inside Docker or bwrap, and
-  fails closed if the backend isn't actually available.
+- **Tamper-evident audit trail.** Every policy verdict, approval decision and tool execution is
+  written to a hash-chained JSONL log, tagged with the channel that decided (CLI, HTTP, MCP or
+  Telegram). `docket audit verify` detects a broken chain.
+- **Deterministic budget control.** Per-agent USD caps (`docket profile <id> --budget`) auto-pause a
+  pod the moment they are reached — new tasks are left `blocked`, never silently retried against a
+  cheaper path. Token counts are measured; the dollar figure is a labelled estimate.
+- **Explicit dispatch only.** No background token spend from a queued task. `docket pod <id>
+  dispatch` or an authenticated `POST /dispatch/<project>` triggers a paid run; nothing else does.
+- **Evidence that outlives the turn.** Task, run, approval and token counts stay queryable
+  afterwards, and each pod's `HEARTBEAT.md` ledger is kept in sync at claim, hop and finalize, so
+  the record survives a context reset even if the agent wrote nothing itself.
+- **A read API to feed your own dashboard.** `/status.json` and `/metrics` expose pod and run
+  health to an external control plane over authenticated HTTP. docket feeds a dashboard; it does
+  not ship one.
 
-### Audit & evidence
+## Features
 
-- **Every decision is queryable afterward** — task, run, approval, and token count, not just the
-  final answer.
-- **Hash-chained audit log** covering CLI, HTTP, MCP, and Telegram approval channels alike, each
-  entry tagged with the channel that decided.
-- **Durable task ledger per pod** (`HEARTBEAT.md`), mechanically kept in sync at claim/hop/finalize,
-  so the record survives a context reset even if the agent wrote nothing itself.
-- **Crash and recovery evidence.** A corrupt docket-owned JSON file recovers from its validated
-  backup without overwriting the good copy — see [Adoption evidence](docs/ADOPTION-EVIDENCE.md) for
-  reproducible benchmark results.
-- **A read API to feed your own dashboard.** `/status.json` and `/metrics` expose pod and run health
-  to an external control plane over authenticated HTTP — docket feeds a dashboard, it does not ship
-  one.
+The guarantees above are the governance surface. Beside them docket ships role-based model routing
+(cheap models for planning roles, stronger ones only where code is generated), domain-allowlisted
+network egress through the `fetch` tool, opt-in Docker or bwrap sandboxing that fails closed when
+the backend is unavailable, pod blueprints for research, content, ops and agentic-product work, and
+crash-recovery evidence: a corrupt docket-owned JSON file recovers from its validated backup
+without overwriting the good copy. Every command and flag is in the generated
+[command reference](docs/commands.md); reproducible benchmark results are in
+[Adoption evidence](docs/ADOPTION-EVIDENCE.md).
 
 ## Two ways to use docket
 
-### As a CLI — for developers working a codebase directly
+**As a CLI**, provision and dispatch the pod above from your own terminal against your own
+repository. That is the fastest path to a governed turn, and the quick start below walks it.
 
-Provision and dispatch the pod described above from your own terminal, against your own
-repository. This is the fastest path to a governed agent turn — see
-[Quick start](#quick-start) below.
-
-### As an embedded engine (**`docket-runtime`**) — for platforms and CI/CD
-
-The standalone **`docket-runtime`** package lets an application register and dispatch tools through
-docket's policy/approval/trace/audit chokepoint directly — without shelling out to the docket CLI.
-It's built for teams embedding governed tool execution inside their own agentic product or CI/CD
-pipeline. Dependencies are deliberately minimal (`pydantic` + `filelock`, nothing else). It is
-**source-built and not published to any package index** today — see
+**As an embedded engine**, the standalone `docket-runtime` package lets an application register and
+dispatch tools through docket's policy, approval, trace and audit chokepoint without shelling out
+to the CLI. Its dependencies are deliberately minimal (`pydantic` and `filelock`, nothing else),
+and it is **source-built, not published to any package index** — see
 [Architecture](docs/DOCKET.md#embedding-docket-runtime).
 
 Two adapter configurations have installed-artifact coverage: **OpenHands SDK**
 (`openhands-sdk==1.44.1`, Python 3.12) and **PydanticAI** (`pydantic-ai==2.37.0`, Python 3.11),
 each running a single, sequential Docket toolset with no other tools attached. The claim holds only
 when the relevant tools are **exclusively Docket-backed** — ACP, native/provider tools, plugins/MCP
-added beside an adapter, and arbitrary framework configurations are outside the proof. This is not framework-neutral compatibility.
+added beside an adapter, and arbitrary framework configurations are outside the proof.
+This is not framework-neutral compatibility.
 See [examples/runtime_adapters.py](examples/runtime_adapters.py) for the lazy constructors, and
 [Compatibility](COMPATIBILITY.md) for the full boundary.
 
 ## Quick start
-
-**1. Install.**
 
 ```bash
 brew tap yielab/docket-cli https://github.com/yielab/docket
 brew install docket-cli
 ```
 
-Or a version-pinned installer with no `sudo` required:
+Or a version-pinned installer that needs no `sudo`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.2/install.sh \
@@ -190,19 +156,13 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Requires Python 3.11+, Git, Bash, and a non-streaming OpenAI-compatible chat-completions endpoint
 with function-tool support — hosted (OpenRouter, Vercel AI Gateway) or local (llama.cpp, vLLM, LM
-Studio).
-
-**2. Point docket at a model.** Every endpoint is registered explicitly — nothing is guessed.
+Studio). Every endpoint is registered explicitly; nothing is guessed.
 
 ```bash
 docket models provider add local http://127.0.0.1:8081/v1 \
   --model local-model --ctx 32768 --max-tokens 4096
 docket models set default local/local-model
-```
 
-**3. Run a governed task.**
-
-```bash
 cd ~/code/myapp
 docket init
 docket pod myapp delegate "Create FIRST_TURN.md containing: governed first turn"
@@ -213,43 +173,31 @@ docket trace myapp      # what it did, step by step
 docket audit verify     # tamper-evident confirmation of the decision chain
 ```
 
-`docket init` provisions a minimum Lead + Implementer pod. Dispatch is always explicit — no paid
-model work starts merely because a task was queued. For the full walkthrough and hosted-provider
-variants, see the [ten-minute quick start](docs/QUICK-START-DOCKET.md).
+`docket init` provisions a minimum Lead + Implementer pod, and `--blueprint <name>` shapes the same
+pipeline for research, content, ops or agentic-product work instead. For the full walkthrough and
+hosted-provider variants, see the [ten-minute quick start](docs/QUICK-START-DOCKET.md).
 
 ## Configuration: roles and policies as data
 
 Nothing that matters is hardcoded to a model's judgment. The rule: **a guarantee is a CLI-managed
 JSON registry under `~/.docket/`, evaluated by code and audited when it fires.** A file the agent
 merely reads for context is advisory, not a guarantee — both are real customization, only one is
-governance.
-
-| Configure | File | Command | Enforced by |
-| --- | --- | --- | --- |
-| Company guardrails (block `prod-db-*`, custom secret patterns, redaction rules) | `~/.docket/policies/*.json` | `docket policies test` / `validate` | `core/policy.py`, at every `pre_input`/`pre_tool_call`/`pre_output` hook |
-| Which tools a role can call | `~/.docket/docket-roles.json` | `docket roles add <file.yaml>` — `denied_tools`, `model_class`, `gate_contract` | `dispatch_tool` narrows the tool registry **before** the model sees a tool list |
-| Approval routing, sandboxing | `~/.docket/fleet.json` | `docket gates enable/disable`, `docket gates isolate on/off` | Approval-routing and sandbox-resolution paths in `core/tools.py` |
-| Per-agent spend caps | `~/.docket/fleet.json` | `docket profile <id> --budget <USD>` | Pod dispatch auto-pause |
-| Role → model routing | `~/.docket/docket-models.json` | `docket models set <role> <provider/model>` | Routing only — pair with the rows above for an actual guarantee |
-
-A role is itself declarative data (`core/archetypes.py`): templates, model class, gate contract,
-token budget, and a tool allowlist — a custom role is defined the same way the built-in ones are.
-Workspace files (`SOUL.md`, `AGENTS.md`, `TOOLS.md`) carry prose context the agent reads once; they
-are not mechanically enforced, and the policy/tool-allowlist layer above is what actually stops a
-turn from doing what they forbid. Full reference: [Agent teams](docs/AGENT-TEAMS.md).
+governance. Company guardrails live in `~/.docket/policies/*.json`, checked with `docket
+policies test` and `docket policies validate`; a role's callable tools live in
+`docket-roles.json`, approval routing and sandboxing in `fleet.json`, and role-to-model routing in
+`docket-models.json`. Workspace files (`SOUL.md`, `AGENTS.md`, `TOOLS.md`) carry prose the agent
+reads once; they are not mechanically enforced. Full reference:
+[Agent teams](docs/AGENT-TEAMS.md).
 
 ## Best practices
 
-1. **Start with the minimum pod.** Lead + Implementer is enough for exploration; add Reviewer,
-   Tester, or custom roles once a concrete quality gate justifies the extra turns.
-2. **Give the Implementer an objective check.** `docket pod <id> set-verify "<command>"` blocks
-   advancement on a nonzero exit code, independent of how confident the model's prose sounds.
-3. **Keep dispatch explicit.** Run `docket pod <id> dispatch` interactively before enabling
-   schedules or `docket serve --dispatch`, and confirm budgets and approval channels first.
-4. **Inspect evidence, not just the final answer.** Check the run, trace, token usage, and audit
-   chain before accepting a consequential change.
-5. **Keep docket behind your own boundary.** `docket serve` binds loopback by default and does not
-   terminate TLS — put a trusted client, SSH tunnel, or your own TLS proxy in front of it.
+Start with the minimum Lead + Implementer pod and add a Reviewer or Tester once a concrete quality
+gate justifies the extra turns. Give the Implementer an objective check with `docket pod <id>
+set-verify "<command>"`, so advancement blocks on a nonzero exit code rather than on how confident
+the model's prose sounds. Keep dispatch explicit before enabling schedules or `docket serve
+--dispatch`, and confirm budgets and approval channels first. Inspect the run, trace, token usage
+and audit chain before accepting a consequential change. Keep docket behind your own boundary:
+`docket serve` binds loopback by default and does not terminate TLS.
 
 ## Known limits
 
@@ -301,16 +249,11 @@ before relying on a model endpoint or MCP server.
 
 ## Contributing
 
-docket uses spec-first, test-first development and a three-layer architecture:
-`cli → core → edges`. Two boundaries are non-negotiable:
-
-- `core/tools.py::dispatch_tool` is the sole tool-execution chokepoint.
-- `edges/store.py` is the sole writer of docket-owned JSON.
-
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup and validation, then use the
-[development harness](docs/DEVELOPMENT-HARNESS.md) for bounded context and agent handoffs. Issues
-and focused pull requests are welcome; new features need a measured trigger, an executable
-acceptance case, and documentation that states limits as clearly as capabilities.
+docket uses spec-first, test-first development and a three-layer architecture, `cli → core →
+edges`. Two boundaries are non-negotiable: `core/tools.py::dispatch_tool` is the sole
+tool-execution chokepoint, and `edges/store.py` is the sole writer of docket-owned JSON. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md). New features need a measured trigger, an executable acceptance
+case, and documentation that states limits as clearly as capabilities.
 
 ## License
 

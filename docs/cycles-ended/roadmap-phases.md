@@ -2014,3 +2014,83 @@ Backlog; every control keeps its one-word label (*docket-enforced / daemon-enfor
 
 ---
 
+## Planned program — PHASE 25: human maintainability (D-36)
+
+**Status:** ☑ COMPLETE (2026-09-12) · **Decision:** D-36 (§6) · **Executable detail:** Wave 31 in
+[TODO.md](TODO.md) · **Contract:** `specs/test-framework.md` §"Lanes and placement" (2.13.0) ·
+**Activation:** the maintainer deferred W29-C7 and Wave 30 behind this wave on 2026-09-11, so the
+repository is made maintainable before it is published further; W29-C7's publication approval
+stands and only its ordering changed. **Ordering rule:** W31-C0–C3 run sequentially, because C1
+moves every test file and C2/C3 rewrite headers and comments across the tree; after C3 merges,
+W31-C4+ fan out and Wave 30 becomes claimable, scheduled by file contention.
+
+### Why this phase is scheduled
+
+The 2026-09-11 maintainability audit (`internal-docs/maintainability-audit-2026-09-11.md`, measured
+on the working tree at `0d3720a`) asked one question: can a person who did not write this repository
+understand and maintain it in ordinary time? The product code can — `src/` carries no archaeology,
+the layer rule holds and is AST-guarded. The envelope around it cannot: per line of product there
+are 2.6 lines of tests, specs, docs and board, and that envelope is shaped for an agent without
+memory, not for a reader. Each row is a measured trigger with its locator:
+
+| Measured gap | Locator | Observed | Threshold |
+| --- | --- | --- | --- |
+| Default suite wall time | `uv run pytest -q --durations=15` | 8 min 12 s; the 15 slowest tests (~257 s) are all release/evidence/adapter tests | < 90 s, with those tests in a separate CI job |
+| Tests that verify prose, release artifacts or the agent's own hook scripts, inside the default suite | `scripts/maint/test_inventory.py` | 35 files, 8,313 lines, 227 tests | a bounded `tests/agent/` lane, ≤ 4,000 lines, header-declared reason and retirement condition, guarded |
+| Test files per subject | `rg -l` | `serve` 19 files, `runs` 17, `tools` 12; 33 duplicate test names; files named for events (`_v2`, `_migration`, `_removed`, `_deferred_gaps`) | one unit file per `src/` module, name = module, guarded |
+| Archaeology in comments/docstrings | `scripts/maint/comment_lint.py src tests` | `src` 20, `tests` 69; §3's rule has no CI reader | 0, ratcheted by a guard with a committed baseline |
+| `subprocess` in tests | `rg -c 'subprocess\.'` | 91 sites in 40 files spawning the whole CLI | 0 in `unit/`; boundary tests only |
+| Board and roadmap volume | `wc -l` | `TODO.md` 4,628 lines, active wave at line 1642 between closed waves; `ROADMAP.md` 3,541 | TODO ≤ 200, ROADMAP ≤ 500, history byte-preserved in `CHANGELOG.md`, long decisions as ADRs |
+| Hand-written reference that can be generated | `docs/commands.md` | 2,247 lines, no drift check, while `metrics.py` already introspects the Typer app | generated, `--check` in CI; `mkdocs build --strict` replaces hand-written link tests |
+| Functions over 500 lines | `core/agent_loop.py::run_agent_turn` 789, `core/dispatch.py::dispatch_task` 703, `::_execute_unit` 501 | 3 (42 over 80) | 0 over 500; tests per extracted phase |
+
+The root cause is recorded so it is not repeated: **every defect an agent produced received a
+test that stops a later agent from reproducing it.** That defends against the agent's lack of
+memory, not the product. The human answer to "docs have lied five times" is less prose that
+claims capabilities, plus generated reference, not tests that read the README.
+
+### Product boundary and exit contract
+
+Phase 25 ships, in this order:
+
+1. **Lanes** (`unit/`, `integration/`, `guards/`, `golden/`, `agent/`), the agent lane out of the
+   default run and into its own CI job, `--import-mode=importlib`, and every path reference moved
+   mechanically by script.
+2. **Structural guards**: unit file ↔ module mapping, lane headers, agent-lane budget, no
+   `subprocess` in `unit/`, per-lane duration ceilings — each seen to fail before it ships; the four
+   removed-command test files collapse into one parametrized guard.
+3. **Comment hygiene** with a ratchet: `scripts/maint/comment_lint.py --check` against a committed
+   baseline; counts only go down.
+4. **One unit file per module** (merges by packet) and **in-process CLI tests** (`CliRunner`),
+   bringing the default suite under 90 s.
+5. **Generated documentation**: CLI reference from Typer with `--check`, `docket-runtime` API from
+   docstrings, `mkdocs build --strict` in CI, duplicated deep-dive docs folded into specs/guides.
+6. **Board and roadmap to size**: closed sections archived verbatim to `docs/cycles-ended/` (shipped 2026-09-11 by `scripts/maint/split_board.py`: 49 sections, hash-verified), decisions
+   longer than a row to `docs/adr/`, README ≤ 150 lines, CONTRIBUTING owns the working rules.
+7. **The three 500-line functions split into named phases**, one per branch, behaviour-identical.
+
+Phase 25 does **not** set a coverage-percentage target, rewrite assertions, change product
+behaviour, add a test framework or plugin dependency, delete history (every archived section is
+byte-preserved), or relax any existing gate. The mechanical steps (moves, path rewrites, header
+skeletons, board archive) are scripts, not model work; model work is bounded to one module or one
+file per packet.
+
+### Wave 31 — human maintainability (planned 2026-09-11)
+
+| Card | Outcome | Dependency / parallel boundary |
+| --- | --- | --- |
+| W31-C0 | Baseline artefacts committed; `scripts/maint/test_inventory.py` and `comment_lint.py` in the tree | Ready |
+| W31-C1 | Suite moved into lanes; agent lane out of `testpaths` and into CI job `agent-lane`; every path reference rewritten by `apply_moves.sh`; CONTRIBUTING count fixed, not the script | After C0; **exclusive** — owns every test path |
+| W31-C2 | Five structural guards seen red then green; lane headers; one removed-commands guard; agent lane ≤ 4,000 lines | After C1; exclusive on `tests/**` headers |
+| W31-C3 | Zero archaeology, docstring budget, committed baseline + ratchet guard | After C2; comment/docstring lines only |
+| W31-C4 | One unit file per module (packets: serve, runs, memory, archetypes, tools, pipeline, history-named files) | After C3; per-module, parallel with C5/W30 on disjoint files |
+| W31-C5 | `CliRunner` in-process; `subprocess` only at process boundaries. Nine files converted, seven kept at the boundary, one shared `repoint_docket_home` helper replacing eight partial copies. **Suite 152-162 s to 117-122 s: the < 90 s target was not met and the card closed anyway**, since what remains is not `subprocess` overhead | After C1; per-file |
+| W31-C6 | `gen_cli_docs.py --check`, `mkdocs build --strict`, deep-dive docs folded, hand-written link tests retired | After C0; docs/scripts only |
+| W31-C7 | `split_board.py` and the `docs/cycles-ended/` archive (shipped); remaining: TODO ≤ 200 after W30/W31 close, ROADMAP ≤ 500, ADRs, README ≤ 150 | Integrator; when no other card is open |
+| W31-C8a | **Done 2026-09-12.** `run_agent_turn`'s own body 328 to 75 lines over eight named phases; every bound evaluated at the same point, verified independently of the card's table. Three phases are pure and module-level with nine new unit tests; five stay nested closures over shared turn state and remain end-to-end covered only. `docket.core.agent_loop` leaves the layout ratchet | After C4; was parallel with C8b |
+| W31-C8b | **Done 2026-09-12.** `dispatch_task` 703 to ~125 lines; the nested `_execute_unit` closure lifted to module level and 501 to 52, over named phases. Captured state inventoried first; the two mutated captures pinned by a test. No behaviour change, goldens byte-identical | After C4; was parallel with C8a |
+| W31-C9 | `trace.redact` backtracking bounded; 40,000 characters from 10.68 s to 0.03 s, redacted set unchanged | Opened by a defect W31-C2 hit and worked around |
+| W31-C10 | **Done 2026-09-12.** Every test repoints through one shared helper; 50 files converted. The partial-copy count was wrong by an order of magnitude: 21 private helpers, not two, and not one covered all sixteen constants. Guarded per function, not per module, and proved by planting drift | After C5; classification was required before conversion and a rate limit forced it afterwards |
+
+---
+

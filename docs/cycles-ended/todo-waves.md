@@ -3851,3 +3851,919 @@ From Phase 14's honest record — these are **still true** until the cards above
 
 ---
 
+### W29-C1 — recover a corrupt Docket JSON primary from its valid backup
+
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c1
+
+**Measured trigger:** at `de08206`, two `edges.store.write_json` calls create a valid
+`state.json.bak`; replacing `state.json` with `{broken` leaves the backup present, but
+`edges.store.read_json` raises `JSONDecodeError`. Threshold: one deterministic, concurrency-safe
+recovery path for a representative Docket-owned registry. Observed: zero.
+
+**Goal:** make the store chokepoint recover a malformed primary from a parseable owned backup under
+the existing per-directory lock, quarantine the malformed bytes for diagnosis, and return the
+recovered document without allowing two readers/writers to perform competing restores.
+
+**Non-goals:** no generic filesystem backup service, JSONL audit/trace recovery, remote backup,
+schema migration, silent reset to `{}`, repair of a missing primary, or change to the persisted JSON
+shape. Do not route around `edges/store.py` or add a second writer.
+
+**Owns:** `src/docket/edges/store.py::{read_json,read_modify_write,_atomic_write}` plus the smallest
+private recovery helpers; new `tests/integration/test_store_recovery.py`; new
+`specs/data/docket-store.spec.md`. `specs/README.md`, public docs, and central rollups are forbidden.
+
+**Acceptance / RED oracle:** start with a temporary registry produced by two real `write_json`
+calls. Corrupt only the primary, retain its valid `.bak`, then read through the public store API and
+through one real CLI consumer such as `docket runs list`. Both must recover the prior complete
+document; the restored primary must be valid JSON with mode `0600`; the malformed bytes must remain
+in one bounded quarantine file; and no invented empty state may appear. A valid primary must win
+without changing any byte even when its backup is stale or malformed. Missing/corrupt backup must
+raise one typed actionable error and preserve every input byte. A barrier race between recovery and
+a writer must serialize, retain one complete generation, leave no `.tmp`, and never replace a valid
+backup with malformed bytes. The pre-change test must fail specifically at the recovery assertion.
+
+**Focused validation:** new recovery tests repeated (`--count=20` when the plugin is available, or
+an explicit in-test barrier loop); neighboring `test_store_writer.py`, `test_run_registry.py`, and
+the selected CLI consumer tests; owning spec validation; Ruff/format and strict mypy. Final gates:
+full pytest, 18 goldens, ShellCheck, metrics, deterministic smoke, diff/privacy/clean checks.
+
+**Handoff:** report the corruption fixture, quarantine naming/retention rule, lock boundary, byte
+identity for no-op/error cases, focused results, and any registry whose caller bypasses the store.
+
+**Shipped evidence:** RED `4b796de` and GREEN `b673645` recover a corrupt primary from a valid
+backup under the directory lock, preserve exact malformed bytes in one bounded `.corrupt`, restore
+mode `0600`, retain valid-primary and unusable-backup byte identity, and preserve existing
+`JSONDecodeError` caller compatibility through typed `StoreRecoveryError`. All 11 focused cases,
+including 20-repetition reader/writer barriers, pass on merged `main`.
+
+### W29-C2 — ship an extractable, artifact-installed ten-minute starter
+
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c2
+
+**Measured trigger:** `examples/` contains configurations, pipelines, and two single Python files,
+but no starter directory, dependency lock, self-contained instructions, or copied-outside-checkout
+journey. `examples/runtime_embed.py` cannot run in the root environment because `docket-runtime` is
+not installed. Threshold: one credential-free starter that a new user can copy, install from exact
+artifacts, run, and inspect within a 600-second test timeout. Observed: zero.
+
+**Goal:** create a small extractable starter that uses the installed `docket` CLI to show one
+governed tool mutation, an approval pause and grant, a persisted typed terminal handoff, paired
+trace identity, run-registry inspection, and audit verification against a deterministic loopback
+model.
+
+**Non-goals:** no hosted provider, subscription, port 8081, runtime-adapter dependency, framework
+template zoo, package-index publication, web UI, Docker requirement, or duplication of the full
+smoke harness. The starter teaches the installed CLI journey; it does not claim that the narrower
+`docket-runtime` facade owns Docket's run registry or arbitrary framework governance.
+
+**Owns:** `examples/starter/**`, new `tests/agent/release/test_starter_journey.py`, and new
+`specs/acceptance/starter-journey.spec.md`. It may import existing fixture utilities only when they
+are part of an installed public package; it must not import `tests/` or the source checkout.
+README/docs indexes and central metrics are forbidden until C6.
+
+**Acceptance / RED oracle:** build the exact root wheel and sdist once, copy only
+`examples/starter/` to a fresh directory outside the checkout, install one exact root artifact into
+a fresh Python 3.11 environment, and invoke one documented starter command with a fresh
+`DOCKET_HOME`. Within 600 seconds it must mutate exactly one declared workspace file after one
+approval, persist a typed terminal handoff, and let the installed public CLI inspect the matching
+run (`docket runs list/show`), paired trace (`docket trace export`), and valid audit chain
+(`docket audit verify`). Pre-approval and denial runs must leave the target bytes unchanged. The
+journey must work with network disabled after artifact installation and with no API key. The
+pre-change test fails because the extractable starter path does not exist.
+
+**Focused validation:** starter contract and artifact journey on Python 3.11/Linux, plus the
+existing release journey, release-artifact, run-registry/CLI, trace, audit, and public link/example
+tests; owning spec; Ruff/format/mypy. Final gates match C1 and include the deterministic smoke.
+
+**Handoff:** report cold/warm elapsed time separately, exact artifacts and Python version, public
+command, resulting state/trace/audit locators, network/credential posture, and cleanup performed.
+
+**Shipped evidence:** RED `b138f25` and GREEN `16ef7bc` add the extractable
+`examples/starter/` journey. Its Python 3.11 test copies outside the checkout, builds and installs
+the exact root artifact, runs without provider credentials or post-install network, proves denial
+and approval/grant mutation boundaries, persists a typed handoff and paired trace, and verifies the
+public run registry and audit chain. The merged artifact journey passes in 18.6 seconds.
+
+### W29-C3 — define the adoption benchmark schema and deterministic runner
+
+**Status:** DONE (2026-09-02) · **Size:** M · **Owner:** @codex-w29-c3
+
+**Measured trigger:** repository search finds zero benchmark/baseline files. `docket metrics` reports
+session success, duration, estimated cost, and guardrail trips independently, but there is no
+versioned scenario result tying completion, provider-reported tokens, estimate basis, prevented
+violations, approval latency, crash/restart recovery, and handoff failure to the same run. Threshold:
+one deterministic machine-readable schema plus runner and invalid-input oracle. Observed: zero.
+
+**Goal:** add a dependency-light benchmark runner that consumes fixed scenarios and durable Docket
+records, emits canonical per-attempt JSONL plus a deterministic aggregate JSON document, and keeps
+measurement provenance explicit enough for review or reproduction.
+
+**Non-goals:** no telemetry backend, hosted benchmark service, leaderboard, competitor ranking,
+price synchronization, model-quality claim, new product metrics subsystem, or claim that fake-model
+completion predicts real-model quality.
+
+**Owns:** `benchmarks/harness.py`, `benchmarks/schema.json`, `benchmarks/README.md`, base scenario
+fixtures under `benchmarks/fixtures/`, new `tests/agent/release/test_adoption_benchmark.py`, and new
+`specs/validation/adoption-benchmark.spec.md`. Product runtime files and public/central docs are
+forbidden. C4 may extend the spec and scenario directory only after C3 merges.
+
+**Acceptance / RED oracle:** a fixed scenario/seed must emit stable identifiers and normalized
+fields for scenario version, source commit/artifact hash, runtime/configuration, deterministic vs
+live measurement class, attempts/completions, provider-reported input/output/total tokens,
+tool-call count, prevented policy violations, approval latency, crash/restart recovery, handoff
+failures, stop reason, and trace/audit locators. Every dollar value must carry `estimate=true` and a
+versioned pricing source/assumption; unknown pricing must be `null`, never fabricated zero. Raw
+prompts, secrets, home paths, approval tokens, and unredacted tool arguments must be absent. Invalid,
+partial, duplicate, or mismatched records fail closed without overwriting a prior result. The
+aggregate must be reproducible from JSONL alone. The pre-change test fails because no schema/runner
+exists.
+
+**Focused validation:** schema unit/property cases, two identical deterministic runs compared after
+normalizing measured elapsed time, malformed/redaction cases, and metrics/trace/run fixture parity;
+owning spec; Ruff/format/mypy. Final gates match C1.
+
+**Handoff:** report schema version, field provenance map, normalization boundary, estimate labeling,
+redaction scan, repeatability result, and exact command needed by C4.
+
+**Shipped evidence:** RED `a556fdc` and GREEN `2bf46a5` add schema version `1.0.0`, a
+dependency-light runner, documentation, and a minimal public-artifact fixture. All 11 focused cases
+prove deterministic identifiers/serialization, strict task/session/trace/audit joins, explicit
+estimate provenance, redaction, failure atomicity, and byte-identical JSONL-only aggregation.
+
+### W29-C4 — add adversarial governance and crash/recovery benchmark scenarios
+
+**Status:** DONE (2026-09-03) · **Size:** M · **Owner:** @codex-w29-c4
+
+**Measured trigger:** 31 focused release, crash-resume, and policy-template tests pass, but zero
+whole-journey scenario emits the Wave 29 benchmark record. Unit behavior exists; adoption evidence
+does not. C4 is deliberately fixture-first and must not reimplement policy, approval, audit, or
+resume logic.
+
+**Goal:** drive the C3 runner through representative allowed, policy-denied, approval-denied,
+approval-granted, malformed-handoff, hard-crash/resume, and corrupt-primary/backup-recovery journeys
+using public actions and durable state, then emit comparable records.
+
+**Non-goals:** no prompt-injection detector claim beyond the configured policy fixture, destructive
+real command, live provider, chaos platform, arbitrary fault injection, new retry semantics, or
+product fix hidden inside a benchmark scenario.
+
+**Owns after dependencies merge:** `benchmarks/scenarios/**`,
+`tests/agent/release/test_adoption_adversarial_recovery.py`, and an additive C4 section/version bump in
+`specs/validation/adoption-benchmark.spec.md`. Product code is forbidden. If a scenario exposes a
+new product defect beyond C1, stop and split a named defect card with its own spec/RED evidence.
+
+**Acceptance / RED oracle:** each scenario starts from a fresh home/workspace and names its intended
+side effect. Policy/approval denial must record one prevented violation and preserve target bytes;
+grant must mutate exactly once; the crash case must persist completed hops, resume only unfinished
+hops, and reach one terminal run; corrupted primary with valid backup must recover through C1 and
+retain the quarantined evidence; malformed handoff must become a counted failure rather than a
+completion. Repeat the table at least three times with unique state/ports and no cross-run leakage.
+Every result must validate under C3 and reference verifiable trace/audit state.
+
+**Focused validation:** C3 harness tests plus all new scenarios, `TestCrashRecovery`, policy-template,
+approval, store-recovery, audit-chain, and handoff tests; owning spec; Ruff/format/mypy. Final gates
+match C1.
+
+**Handoff:** report the scenario table, public action, observable outcome, mutation/no-mutation
+hashes, restart boundary, record locators, repetitions, and any split defect card.
+
+**Shipped evidence:** RED `fcdff9a` and GREEN `0c8dac7` add seven versioned case definitions and a
+credential-free scenario driver. Twenty-one isolated journeys prove allowed/granted/crash
+single-write behavior; policy/approval denial byte identity; counted malformed handoff; retained-hop
+crash resume; public `runs list` recovery with exact quarantine bytes; C3 schema validity; and
+byte-identical normalized output across three repetitions. The merged 184-case C4/C5 focused suite,
+Ruff/format/strict mypy, and all 27 specifications pass; no product defect was split.
+
+### W29-C5 — publish truthful support, deprecation, governance, and succession policy
+
+**Status:** DONE (2026-09-03) · **Size:** S · **Owner:** @codex-w29-c5
+
+**Measured trigger:** `SECURITY.md` supports only `main` and rejects older tags;
+`COMPATIBILITY.md` describes Python/platform support; neither defines a release-support or
+deprecation window. There is no governance document. `.github/CODEOWNERS` names one account and the
+90-day Git history resolves to one underlying human author identity. Threshold: one truthful policy
+for support/deprecation and one maintainership/succession path. Observed: zero complete policies.
+
+**Goal:** state who decides and releases, how contributors become maintainers, how breaking changes
+and deprecations are announced during beta, which versions receive security fixes, and what happens
+if the sole maintainer becomes unavailable—without inventing a committee or promised staffing.
+
+**Non-goals:** no legal entity claim, foundation, CLA, paid support SLA, fake maintainer roster,
+branch-protection mutation, release publication, or claim that beta has LTS support.
+
+**Owns:** new `GOVERNANCE.md`, new `SUPPORT.md`, and new
+`tests/agent/truth/test_project_policy_truth.py`. Existing `SECURITY.md`, `COMPATIBILITY.md`, README,
+CODEOWNERS, and central indexes are read-only inputs; C6 owns their links/summary alignment.
+
+**Acceptance / RED oracle:** public policy must explicitly name current single-maintainer reality,
+decision and release authority, contributor-to-maintainer criteria, conflict/security escalation,
+support matrix, pre-1.0 breaking-change/deprecation notice rule, succession/transfer-or-archive
+procedure, and inactivity trigger. It must link only real channels and files, never promise an
+unverified response time beyond `SECURITY.md`, and never name a successor who has not accepted.
+Repository-relative links must resolve. Counterexample fixtures reject claims of multiple active
+maintainers, LTS branches, guaranteed compatibility, or a governing foundation. Pre-change RED:
+both policy files are absent.
+
+**Focused validation:** new truth/link tests plus existing public-doc, security-boundary, and
+positioning tests; Ruff/format. Final gates match C1.
+
+**Handoff:** report the exact maintainer/support truth, deprecation window, succession trigger,
+rejected overclaims, link test, and any item requiring owner consent rather than code.
+
+**Shipped evidence:** RED `ac05dc3` and GREEN `c480e97` publish the current one-maintainer authority,
+an evidence-based contributor-to-maintainer path, conflict/security escalation, main-only support,
+one-published-beta deprecation notice, and a 90-day transfer-or-archive succession trigger. Eight
+policy cases pass, every repository-relative link resolves, and counterexamples reject invented
+multiple maintainers, LTS, compatibility guarantees, or foundation governance.
+
+### W29-C6 — generate and publish the reproducible adoption baseline
+
+**Status:** DONE (2026-09-03) · **Size:** M · **Owner:** @codex-w29-c6
+
+**Measured trigger:** Phase 23 requires published completion/cost/safety/recovery evidence; C2 and
+C4 produce the first reproducible inputs, while current public prose has no versioned result.
+
+**Goal:** run the starter and scenario matrix from exact artifacts, commit the canonical raw and
+aggregate result with provenance, and publish a compact interpretation that distinguishes measured
+facts, deterministic-fixture evidence, estimates, failures, and unsupported conclusions.
+
+**Non-goals:** no competitor ranking, dollar-savings promise, benchmark cherry-picking, live-model
+requirement, hidden failed trials, regenerated numbers by hand, telemetry/A2A, or feature expansion.
+
+**Owns after dependencies merge:** `benchmarks/results/**`, `docs/ADOPTION-EVIDENCE.md`, relevant
+public links/limits in `README.md`, `COMPATIBILITY.md`, `SECURITY.md`, `docs/README.md`, spec indexes,
+CHANGELOG entry, and metrics synchronization. It does not own VERSION, Formula, tags, or GitHub
+release state.
+
+**Acceptance / oracle:** one command on clean exact artifacts must regenerate byte-identical
+normalized records and aggregate for the native starter plus every C4 scenario; elapsed/approval
+latency may use a separately identified tolerance field and must never be represented as a stable
+byte. The report must include attempts and failures, completion rate, measured tokens, explicitly
+estimated or unavailable dollars, prevented violations, approval latency, crash/restart recovery,
+and handoff failures. Every claim links to raw data/schema/commit and states that deterministic fake
+results are contract evidence, not model-quality evidence. Public truth tests reject rankings,
+unlabeled estimates, savings claims, secrets/private paths, and missing failed attempts.
+
+**Focused validation:** complete C2–C4 matrix with two regenerations; schema/redaction/public-link
+tests; all specs; metrics; Ruff/format/mypy. Closure gates: full pytest, 18 goldens, ShellCheck,
+deterministic smoke, Linux/macOS artifact journeys, diff/privacy/clean checks.
+
+**Handoff:** report artifact/source hashes, scenario/result counts, all failed attempts, normalization
+and tolerance rules, published claims/non-claims, metrics delta, and whether C7 may request release
+approval.
+
+**Integrated closure evidence (2026-09-03):** `main` contains RED `82a3239` and GREEN `033bb4b`.
+The baseline binds source `82a3239980bbda3673fdd8030751f1342bcab132` to wheel SHA-256
+`0fe67120737c4d09da3229c1182d8bf5474e96f7077476f997c98f7c67667fce`: eight scenario groups,
+nine attempts, five completions, and the four retained failures (`starter`, `policy-denied`,
+`approval-denied`, `malformed-handoff`). Only approval-latency and wall-clock fields use the
+manifest's 5,000 ms comparison tolerance. Public prose labels this deterministic contract evidence,
+keeps dollars unavailable, and rejects model-quality, ranking, savings, or production-rate claims.
+The test metric moves 2,522 → 2,536, including the CI-history, floor-harness, and canonical-builder
+regressions. Local commit-level gates at `03693a3` pass: 2,528 tests with five expected
+skips, 18 goldens, 27 specs, Ruff/format, strict mypy, ShellCheck, metrics, reproducible documentation
+assets, deterministic smoke, Linux exact-wheel journey, diff, and privacy. GitHub run `33764191509`
+passed both Linux and macOS release-journey jobs, while its
+three full-suite jobs exposed two distinct CI defects: depth-one checkout cannot resolve pinned
+source `82a3239`, and the floor environment cannot collect the benchmark tests because `jsonschema`
+is absent. Commit `c817955` makes the Python, floor, and macOS jobs fetch complete history and adds a
+passing regression test. Commit `ca45e38` declares the schema oracle as a test-only dependency,
+installs it explicitly in the floor harness without changing runtime floors, and pins that boundary
+with a second regression. GitHub run `33788650508` confirms that both defects are fixed, then exposes
+one shared exact-artifact defect: its Python 3.11 builder produces wheel SHA-256 `9283d326…256b4`
+instead of the published `0fe67120…67fce`, even though the extracted wheel trees are identical.
+Commit `f789bc6` preserves the published baseline and makes raw wheel identity independent of the
+ambient interpreter: it pins uv-managed CPython 3.14.3 and the complete Hatchling closure, then
+recompresses with checksum-verified zlib-ng 2.3.3 at canonical Deflate level 6. Two isolated
+regenerations inheriting different `UV_PYTHON` values now reproduce `0fe67120…67fce`; the full suite
+passes 2,531 tests with five expected skips, and the complete Python 3.11 dependency-floor suite is
+green. Hosted CI run [`33812881329`](https://github.com/yielab/docket/actions/runs/33812881329)
+at `37e91a8` closes the remaining gate: its overall conclusion is success; Python, dependency
+floors, ShellCheck/spec validation, 18 goldens, metrics, and both Ubuntu/macOS artifact-installed
+release journeys pass. The exact-artifact publication oracle therefore reproduces the unchanged
+`0fe67120…67fce` wheel in clean Python and floor environments without accepting drift. The advisory
+macOS full-suite lane completes with 2,514 passes, 14 skips, and eight separate portability failures
+(three Bash-3.2 assumptions, four OpenHands fixture timeouts, and one Linux-only `/proc` path); no
+C6 baseline or artifact-journey check fails there. C6 is closed, and C7 may now request the explicit
+version/tag publication approval required by its own boundary.
+
+## ☑ WAVE 31 COMPLETE (2026-09-11 to 2026-09-12) — human maintainability: test lanes, comment budget, generated docs (Phase 25, D-36)
+
+**Active since 2026-09-11.** W29-C7 was deferred behind this wave by the maintainer so the
+repository is made maintainable before any further publication; Wave 30 waits behind it too.
+**W31-C0–C3 run first and sequentially**: C1 moves every test file, so any card that owns a test
+path while C1 is open would merge against a moved tree. After C3 merges, W31-C4+ fan out and
+W30-C1+ becomes claimable, scheduled by file contention like any other lanes. Decision D-36 and the measured triggers live in ROADMAP
+"Planned program — PHASE 25"; the audit and the phase-by-phase plan are
+`internal-docs/maintainability-audit-2026-09-11.md` and
+`internal-docs/plan-tests-comments-docs-2026-09-11.md` (gitignored; read at `main` `0d3720a`).
+The contract every card here implements is `specs/test-framework.md` §"Lanes and placement"
+(2.13.0). Two analysis scripts already exist uncommitted in `scripts/maint/` and C0 commits them.
+
+**Activation measurement (2026-09-11, working tree at `0d3720a`, `uv run pytest -q --durations=15`):**
+
+| Metric | Locator | Observed | Threshold |
+| --- | --- | --- | --- |
+| Default suite wall time | `uv run pytest` | 8 min 12 s (2,377 passed, 5 skipped); **3 min 23 s after C1** | < 90 s after C5; < 5 min after C1 alone |
+| Share of wall time in the 15 slowest tests | `--durations=15` | ~257 s, every one a release/evidence/adapter test | those tests out of the default suite |
+| Test files that assert on prose, release artifacts, or the agent's own hook scripts | `scripts/maint/test_inventory.py` | 35 files, 8,313 lines, 227 tests (18% of test lines); **17 files, 5,157 lines after C1-C2 and the harness retirement** | in `tests/agent/`, ratcheted against a shrink-only baseline (D-38) |
+| Test files touching one subject | `rg -l` over `tests/python` | `serve` in 19 files, `runs` in 17, `tools` in 12 | one unit file per `src/` module, guarded |
+| Archaeology in comments/docstrings | `scripts/maint/comment_lint.py src tests` | 20 hits in `src/`, 69 in `tests/` | 0, ratcheted |
+| `subprocess` call sites in tests | `rg -c 'subprocess\.(run\|Popen\|check_output)'` | 91 sites in 40 files | 0 in `unit/`; only process-boundary tests elsewhere |
+| Board and roadmap volume | `wc -l TODO.md ROADMAP.md` | 4,628 + 3,541 lines; active wave began at line 1642 between closed waves (archive shipped 2026-09-11: ~1,100 + ~810 remain, all of it active or planned) | TODO ≤ 200 once W30/W31 close, ROADMAP ≤ 500, history in `docs/cycles-ended/` |
+| Hand-written CLI reference | `docs/commands.md` | 2,247 lines, no drift check; **generated since C6** | generated from Typer, `--check` in CI |
+| Functions over 500 lines | `src/docket/core/agent_loop.py::run_agent_turn` 789, `core/dispatch.py::dispatch_task` 703, `::_execute_unit` 501 | 3 | 0 (C8) |
+
+**Execution graph / contention:** C0 → C1 → C2 → C3 strictly sequential (each rewrites paths or
+headers across the whole test tree). C4 and C5 are per-module packets and may run in parallel with
+each other and with W30 when they do not share a test file. C6 and C7 touch only docs/board/scripts
+and are parallel-safe with everything except W30-C5 (central rollups). C8 is one module per branch,
+last. **Every card runs with an isolated `DOCKET_HOME`** and snapshots the real `~/.docket` before
+and after its focused run.
+
+### W31-C0 — commit the baseline and the two analysis scripts
+
+**Status:** DONE (integrator, `4e6caa0`) · **Size:** S · **Owner:** integrator
+
+**Shipped:** `scripts/maint/test_inventory.py`, `comment_lint.py` and `split_board.py` committed;
+`.maint/` gitignored and seeded with `inv/inventory.json`, `inv/moves.tsv`, `comment-baseline.txt`
+and `durations-0.txt`. Baseline recorded in the commit body: suite 8 min 12 s (2,377 passed,
+5 skipped); 15 slowest ~257 s, all release/evidence/adapter; 35 prose/release/harness files at
+8,313 lines and 227 tests; 91 archaeology hits; 91 `subprocess` call sites in 40 files.
+
+**Trigger:** the activation table above is a working-tree measurement; the board contract requires
+a locator a later card can re-run. `scripts/maint/test_inventory.py` and
+`scripts/maint/comment_lint.py` exist uncommitted and pass `ruff`.
+
+**Goal:** commit both scripts unchanged; add `.maint/` (gitignored) and write
+`inventory.json`, `moves.tsv`, `comment-baseline.txt`, and `durations-0.txt` there from the exact
+commands in the plan's Phase 0; record the four numbers in the commit body.
+
+**Non-goals:** no test moves, no fixes, no CI change.
+
+**Owns:** `scripts/maint/`, `.gitignore` (one line). **Forbidden:** everything else.
+
+**Acceptance / oracles:** `uv run python scripts/maint/test_inventory.py` prints six lanes whose
+line totals sum to the `tests/python` total; `comment_lint.py src tests --summary` ends with the
+totals line matching the table; both scripts pass `ruff check`/`ruff format --check`.
+
+**Validation:** ruff; no pytest change expected. **Handoff:** the four artefact paths and numbers.
+
+### W31-C1 — move the suite into lanes and take the agent lane out of the default run
+
+**Status:** DONE (2026-09-11, `351a5f5` merged as `16aa056`) ·
+**Size:** M · **Owner:** @sonnet-c1 · **Depends on:** C0 (done)
+
+**Shipped:** 135 test files moved by `scripts/maint/apply_moves.sh`; `tests/python/` deleted;
+`conftest.py` and `fakes.py` raised to `tests/`; `--import-mode=importlib` added and the
+per-directory `__init__.py` files dropped; default `testpaths` now `unit`, `integration`, `guards`
+with an `agent-lane` CI job for the rest. Default wall time 8 min 12 s -> 3 min 23 s (2,393 tests);
+agent lane 149 tests in its own job. Twenty destinations differed from the script's proposal, all
+recorded in the commit body. The integrator added the docs CI job, fixed ROADMAP's four stale
+`tests/python` references, and merged the two scale claims in CONTRIBUTING.
+
+**Deterministic trigger:** at `0d3720a`, `pyproject.toml` `testpaths = ["tests/python"]` collects
+every file, including the 18 the inventory classifies as `agent/*`; the 15 slowest tests (257 s of
+492 s) are all in that set. Reproduction: `uv run pytest --collect-only -q | tail -1` shows one
+flat directory; `--durations=15` names only release/evidence/adapter tests.
+
+**Goal:** review `.maint/inv/moves.tsv` by hand (correct lane and destination per row; suffix
+`__<aspect>` where several files target one unit module — C4 merges them); write
+`scripts/maint/apply_moves.sh` (git mv per row; `sed` of every old path to its new path across
+`src/ specs/ docs/ *.md .agents/ tests/ scripts/ .github/`; move `conftest.py` and `fakes.py` to
+`tests/`; delete `tests/python/__init__.py`); set `testpaths = ["tests/unit", "tests/integration",
+"tests/guards"]`, `addopts = "-ra -q --import-mode=importlib"`, marker `slow`; add the CI job
+`agent-lane` running `uv run pytest tests/agent` with a path filter; update
+`test_docket_home_isolation.py`'s path to `tests/conftest.py`; update `tests/run-all-tests.sh`.
+`scripts/metrics.py --check` will report the smaller default-suite count: **fix the CONTRIBUTING
+claim, not the script**, and say in the commit body that the count now excludes the agent lane.
+
+**Non-goals:** no test content edits, no merges, no deletions, no new guards (C2), no docstring or
+comment edits (C3).
+
+**Owns:** `tests/**` (moves only), `pyproject.toml` pytest block, `.github/workflows/ci.yml`,
+`scripts/maint/apply_moves.sh`, path strings in `src/` docstrings, `specs/`, `docs/`, `TODO.md`
+(paths only — including the W30 cards), `CONTRIBUTING.md` paths and count. **Forbidden:** test
+bodies; `scripts/metrics.py`; README.
+
+**RED tests / oracles:** (1) before the move, `uv run pytest tests/agent --collect-only` fails
+(no such directory); after, it collects exactly the reviewed `agent/*` rows and the default run
+collects none of them. (2) `uv run pytest -q --durations=0` wall time < 5 min and no `agent/*`
+node in the default durations. (3) `rg -n 'tests/python' --glob '!.maint/**' --glob '!internal-docs/**'`
+returns only `CHANGELOG.md` history lines. (4) `bash tests/golden/run.sh verify-all` byte-identical.
+(5) `~/.docket` snapshot byte-identical before and after the full run.
+
+**Validation:** full default suite, `uv run pytest tests/agent`, goldens, ruff/format, mypy,
+`validate-specs.sh`, `metrics.py --check` after the claim fix. **Handoff:** the wall time before/
+after, the final lane counts, and every TSV row changed from the script's proposal and why.
+
+### W31-C2 — structural guards, lane headers, and one test for removed commands
+
+**Status:** DONE (2026-09-11, `0ed085e` merged as `ab1b488`) · **Size:** M · **Owner:** @sonnet-c2
+
+**Shipped:** four per-removal files replaced by one parametrized `tests/guards/test_removed_commands.py`;
+`test_layout.py` maps every unit file to an existing module and every module over 150 lines to a
+unit file; `test_lane_headers.py` checks the three constants on every agent-lane file and bans
+`subprocess` in `tests/unit/`; `test_agent_lane_budget.py` ratchets the lane against a committed
+baseline; a duration hook in `tests/conftest.py` fails a unit or guard test over 2 s and an
+integration test over 10 s. `scripts/maint/add_test_headers.py` wrote the skeletons. All six guards
+were seen red before green, each pair recorded in the commit body. The lane retirement was left to
+the maintainer and is not in this card.
+
+**Found while doing it:** `trace.redact` backtracks quadratically, now W31-C9.
+
+**Deterministic trigger:** at `0d3720a`, four files (`test_tier_shims_removed.py`,
+`test_eval_command_removed.py`, `test_team_command_removed.py`, `test_workflow_command_removed.py`;
+639 lines, 32 tests) verify that `__main__._REMOVED` entries print a notice — one file per
+removal. Nothing enforces that a unit test file names an existing module, that `tests/agent/` stays
+bounded, or that `unit/` stays subprocess-free.
+
+**Goal:** `tests/guards/test_removed_commands.py`, one parametrized test over `_REMOVED`
+(≤ 60 lines) replacing the four files; `tests/guards/test_layout.py` (every `unit/**/test_X.py`
+maps to an existing `src/docket/**/X.py`, `SUBJECT` matches, every `src/` module > 150 lines has a
+unit file); `test_lane_headers.py` (`LANE`/`REASON`/`RETIRE_WHEN` present in every `tests/agent/**`
+file; no `subprocess` import in `tests/unit/**`, AST); `test_agent_lane_budget.py` (sum of
+`tests/agent/**` lines ≤ 4,000); a duration guard in `tests/conftest.py` failing the session when
+a `unit/`/`guards/` test exceeds 2 s or an `integration/` test exceeds 10 s. Add `SUBJECT` to every
+unit file and the three header constants to every agent-lane file (script writes the skeleton,
+the human fills 18 `REASON` lines). To meet the 4,000-line budget, cut ~1,650 lines from the agent
+lane: `test_workflow_smoke.py` (1,121 lines testing `scripts/smoke_workflow.py`) and
+`test_adoption_benchmark.py` (666) are the named candidates; the human decides which public claims
+keep a test and records each retirement in `RETIRE_WHEN` terms in the commit body.
+
+**Non-goals:** no changes to product behaviour; no golden change; no merges of behavioural files
+(C4); the existing seven AST guards move unchanged.
+
+**Owns:** `tests/guards/**`, `tests/conftest.py` (duration hook only), `tests/agent/**` headers and
+the named cuts, `SUBJECT` lines in `tests/unit/**`, `tests/integration/**` `SUBJECT` lines.
+**Forbidden:** `src/`, `specs/` other than `test-framework.md`'s enforcement status, central files.
+
+**RED tests:** each of the five guards must be **seen to fail** before the commit: plant a unit
+file with a non-existent subject, a `tests/agent` file without headers, a `subprocess` import in
+`unit/`, a 4,001-line total, and a `time.sleep(3)` in a unit test; record each red/green pair in
+the commit body. The removed-commands test must fail when one `_REMOVED` key is deleted.
+
+**Acceptance / oracles:** guard failures reproduce as described; the default suite passes; the
+agent lane passes at ≤ 4,000 lines; `python -m docket tier` and the other removed verbs still
+print their notice (golden or CLI oracle).
+
+**Validation:** full gates plus `uv run pytest tests/agent`. **Handoff:** the five red/green
+records, the agent-lane line count, and the list of retired agent-lane tests with their reasons.
+
+### W31-C3 — zero archaeology in comments and docstrings, ratcheted
+
+**Status:** DONE (2026-09-12, `17dc447` merged as `e6819e8`) · **Size:** S · **Owner:** @sonnet-c3
+
+**Shipped:** archaeology across `src/` and `tests/` from 86 hits to zero, with
+`scripts/maint/comment-baseline.json` and `tests/guards/test_comment_hygiene.py` holding it there;
+the guard was seen red on a planted card id. Rationale was rewritten present-tense, not deleted.
+The nine hits the branch could not reach were fixture text in the development-harness file, which
+has since been retired, so the baseline is zero rather than nine. Docstring-budget counts stay
+ratcheted where they landed; they were never the target.
+
+**Deterministic trigger:** at `0d3720a`, `scripts/maint/comment_lint.py src tests --summary`
+reports `archaeology=20` in `src/` and `69` in `tests/`, plus 45 (`src`) and 68 (`tests`) module
+docstrings over budget; ROADMAP §3 states the rule but nothing in CI reads it. Reproduction: the
+totals line of that command.
+
+**Goal:** run `comment_lint.py src tests --fix` (removes only whole-line comments that carry no
+rationale word — 3 lines in `src/`); process the remaining hits one file per packet, rewriting only
+the flagged lines and keeping every rationale; shorten test module docstrings to ≤ 6 lines and
+test docstrings to one line; commit `scripts/maint/comment-baseline.json` (per-kind counts) and
+`tests/guards/test_comment_hygiene.py`, which runs the linter and fails if any count rises above
+the baseline. `def-max` for `src/` starts at 12; tests at 3.
+
+**Non-goals:** no rewriting of `src/` docstrings that document contracts; no behaviour change; no
+changes to the linter's detection rules beyond documented false positives ("used to <verb>").
+
+**Owns:** comment and docstring lines the linter names in `src/**` and `tests/**`;
+`scripts/maint/comment_lint.py` (baseline support only); `tests/guards/test_comment_hygiene.py`;
+`CONTRIBUTING.md` comment-policy section (already written; verify). **Forbidden:** code lines.
+
+**RED tests:** the hygiene guard fails when a `# W17-1` comment is planted in `src/`; passes after
+removal. `git diff --stat` shows only comment/docstring hunks — reviewer confirms with
+`git diff -w | rg '^[+-]\s*[^#"'"'"' ]'` returning nothing outside docstrings.
+
+**Acceptance / oracles:** linter totals `archaeology=0` for both trees; module-docstring counts
+at or below baseline; full suite unchanged in pass count.
+
+**Validation:** full gates. **Handoff:** the before/after totals and the per-file list of
+rationale lines deliberately kept.
+
+### W31-C4 — one unit file per module: merge history-named and fragmented test files
+
+**Status:** DONE (2026-09-12, split in two: `60a7b1d` merged as `7e2ad99`, `af2ad28` merged as
+`d76fb89`) · **Size:** M · **Owner:** @sonnet-c4a, @sonnet-c4b · **Depends on:** C3 (done)
+
+**Shipped:** the trigger below described the wrong work. The aspect suffixes had been assigned by
+filename prefix rather than by subject, so six files claimed a module they never exercised. C4a
+repointed each at the module its assertions actually reach (`test_archetypes__orchestrator` ->
+`test_orchestrator`, `__pod_blueprints` -> `test_blueprints`, `__context_compiler` ->
+`test_context`, `test_llm__mcp_tools_in_a_live_turn` -> `test_mcp_tools`, `__session_history` ->
+`test_session`, `test_tools__fetch_tool` -> `edges/adapters/test_fetch`, `test_memory__doctor` ->
+`cli/test__doctor`) and merged the two genuine memory fragments into one file, all 33 cases
+preserved by name. C4b renamed the four history-named files for their subject and split the serve
+file that mixed sweep wiring with redaction; `test_hop_carryover` was judged and kept, since hop
+carryover is a behaviour rather than a migration.
+
+**Correcting the labels exposed a real gap:** `core/archetypes` and `core/llm` never had unit
+coverage. The layout guard had been satisfied by a filename prefix naming a module the file did
+not test. Both joined `layout_baseline.txt`; six modules left it, so the ratchet fell by four. No
+test was written to paper over it -- a test invented to satisfy a guard is worse than an honest
+baseline entry. Collected count 2398 before and after both halves. The integrator repointed nine
+references in four specs, ROADMAP, CONTRIBUTING, `core/orchestrator.py` and one integration test.
+
+**Deterministic trigger:** at `0d3720a` the inventory shows six unit destinations fed by several
+files (`test_serve.py` ← 8, `core/test_memory.py` ← 3, `core/test_archetypes.py` ← 3,
+`core/test_tools.py` ← 2, `core/test_llm.py` ← 2, `core/test_pipeline.py` ← 2) and files named for
+events rather than modules (`test_audit_v2`, `test_mcp_sdk_v2_migration`, `test_deferred_gaps`,
+`test_legacy_role_parity`, `test_hop_carryover`); 33 test names are duplicated across files.
+
+**Goal:** one packet per destination module, in this order: `serve` → `core/runs` →
+`core/memory` → `core/archetypes` → `core/tools` → `core/pipeline` → the history-named files.
+Packet input is the module's signatures (`rg -n '^def |^class ' src/docket/<m>.py`) plus the N
+test files; output is one file ≤ 800 lines (or `__<aspect>` files), every test function preserved
+unless its assertions are an exact duplicate, docstrings one line, no archaeology.
+
+**Non-goals:** no assertion changes; no fixture redesign; no `subprocess` conversion (C5).
+
+**Owns:** the listed test files only. **Forbidden:** `src/`, guards, agent lane.
+
+**RED tests / oracles:** per packet, `rg -c 'def test_'` before and after differ only by the
+listed exact duplicates; `uv run pytest tests/unit/<destination>` green; `test_layout.py` green
+(no orphan file remains). Whole-suite pass count at the end equals the start minus documented
+duplicates.
+
+**Validation:** focused per packet; full gates at the end of the card. **Handoff:** per module,
+the function counts before/after and the duplicate list.
+
+### W31-C5 — in-process CLI tests: `subprocess` only where the process boundary is the subject
+
+**Status:** DONE (2026-09-12, `5d2c5e9` + `ec0c319` merged as `dff06b4`; integrator follow-ups
+`c9d6436` and `6915baa`) · **Size:** M · **Owner:** @sonnet-c5 · **Depends on:** C1 (done)
+
+**Shipped:** the card's trigger was re-measured at HEAD first, and had already shrunk -- 38 sites
+in 18 files, not 91 in 40, because C1's lane move had taken most of them out of the default run.
+Nine files spawned `python -m docket` purely to read its output; all nine now invoke the same
+`docket.cli.app` the entry point uses through `typer.testing.CliRunner`. Assertions are untouched:
+same exit codes, same exact stdout and stderr text, same JSON shapes, confirmed by a byte-for-byte
+comparison of in-process against subprocess output for one command. Seven files keep `subprocess`
+because the process boundary is what they test: sandboxed exec, run cancellation and its
+cooperative variant, implementer worktree isolation, the diff probe, the runtime execution
+envelope (a fresh-venv wheel and sdist install) and the live workflow smoke. Two files that looked
+like candidates were neither: `test_high_risk_enforcement.py`'s references are inside monkeypatch
+and assertion strings, and `test_system_adapter.py` had already moved.
+
+**Sent back once, for shipping the drift the wave exists to remove.** The first pass gave each of
+the nine files its own tuple of DOCKET_HOME-derived constants and its own patch helper -- eight
+partial, independently drifting copies of `_DOCKET_HOME_PATHS`. The AST guard proves a new
+`config.py` constant reaches the canonical tuple; it cannot see eight local copies that were not
+updated, so the guard would have been defeated without ever going red. One exported
+`repoint_docket_home` helper in `tests/conftest.py` replaced all eight. It names `DOCKET_HOME`,
+`FLEET_FILE` and `core/secrets.py`'s `SECRETS_FILE`/`SECRETS_META_FILE` explicitly, each for a
+stated reason, then loops the tuple; the secrets pair binds from `DOCKET_HOME` at import rather
+than through config at call time, so a caller that does not know that detail would otherwise split
+its chosen home in two. The guard was proved, not assumed: a throwaway `DRIFT_PROBE_FILE` in
+`config.py` drove `test_the_guard_covers_every_docket_home_derived_constant` red naming exactly
+that constant, and removing it returned the guard suite to green.
+
+**The integrator found one more instance after merging** (`6915baa`): `test_data_layer.py`'s
+`oc_env` fixture repointed four constants by hand and set a `DOCKET_HOME` environment variable for
+the rest. That split worked only while the commands ran as a child process, which re-imported
+config from the environment. The conversion made the environment variable inert, so the conversion
+made this fixture worse rather than better. It now calls the shared helper, which is a strict
+superset of what it set by hand.
+
+**The wall-time oracle was not met, and the card is closed anyway.** Target was under 90 s. The
+suite falls from 152-162 s to 117-122 s, measured across four separate post-conversion runs plus
+one integrator run on the merged tree -- a real 25 to 30 percent cut, and short of the number.
+What remains is not `subprocess` overhead, so no further conversion buys it back; finding where the
+remaining two minutes actually go is a measurement task, not this card.
+
+**Collected count unchanged at 2398** (2393 passed, 5 skipped, 0 failed) before conversion, after
+conversion, after the dedup and after the integrator's fixture fix. Full gates green on the merged
+tree: ruff check and format, mypy, the 18-case golden suite, `validate-specs.sh` 27/27, metrics in
+sync. The real `~/.docket` hashed identically either side of the whole card, and `docket doctor`
+and `docket list` agree on two pods with no fixture residue.
+
+**Follow-up opened:** W31-C10. The same hand-written repointing shape pre-exists across the tree;
+a census found 57 sites setting `DOCKET_HOME` directly, two of them carrying partial constant
+lists of exactly this kind. Not folded into this card, which had already been revised twice, and
+the sites are not uniform.
+
+### W31-C6 — generated CLI reference and strict docs build
+
+**Status:** DONE (2026-09-11, `4cff59f` merged as `af6a090`; integrator hygiene pass `6796e36`) ·
+**Size:** M · **Owner:** @sonnet-c6 · **Depends on:** C0 (done); **ran in parallel with C1**
+(disjoint: C1 owns `tests/**`, `pyproject.toml`, `.github/workflows/ci.yml` and the `tests/python`
+path strings in `src/`, `specs/`, `docs/DEVELOPMENT-HARNESS.md`; this card owns the CLI-reference
+generator and `docs/commands.md`, which carry no such path string)
+
+**Shipped:** `scripts/gen_cli_docs.py` renders the reference from the live Typer registry and
+`--check` fails on drift; `docs/commands.md` 2,247 -> 1,475 lines with the per-command prose moved
+into the docstrings Typer prints; `mkdocs.yml` + `scripts/mkdocs_hooks.py` build the site under
+`--strict` (verified red with a planted dead link); `packages/docket-runtime/docs/api.md` anchors
+mkdocstrings; `completions_zsh.golden` regenerated because it freezes the help strings this card
+rewrote. The integrator exempted rendered command docstrings from the comment-budget check, since
+that text is product surface, and removed the archaeology the moved prose carried in.
+
+**Left for the integrator at C1's merge** (both files belong to C1, which was still in flight):
+the `docs` optional-dependency group (`mkdocs>=1.6`, `mkdocs-material>=9.5`,
+`mkdocstrings[python]>=0.26`) and a CI `docs` job running `gen_cli_docs.py --check` then
+`mkdocs build --strict`. Text is in the C6 handoff.
+
+**Deterministic trigger:** at `0d3720a`, `docs/commands.md` is 2,247 hand-written lines with no
+drift check, while `count_commands()` in `scripts/metrics.py` already introspects the Typer app
+live; `test_public_release_truth.py` checks Markdown links by hand because no docs build does.
+
+**Goal:** `scripts/gen_cli_docs.py` renders `docs/commands.md` from the Typer registry (groups,
+options, help strings, arguments) and supports `--check`, which exits non-zero when the file on
+disk differs from what the registry produces; content present in the old file but absent from a
+help string moves **into the help string**, so nothing is lost and the source of truth is the code.
+`mkdocs.yml` declares a fixed nav: the four guides, the generated CLI reference, the
+`docket-runtime` API via mkdocstrings, the spec index, `docs/adr/`, `docs/cycles-ended/`, and the
+changelog.
+
+**Non-goals:** no published site until the maintainer enables Pages; no README rewrite (C7); **no
+edit to `.github/workflows/ci.yml` or `pyproject.toml`** — C1 owns both this wave, so return the
+exact `docs` extra block and the `docs` CI job as text in the handoff and the integrator applies
+them; no folding or moving of other docs (follow-up C6b); no retirement of agent-lane tests
+(follow-up, after the strict build is wired).
+
+**Owns:** `scripts/gen_cli_docs.py` (new), `docs/commands.md` (regenerated), `mkdocs.yml` (new),
+and help strings in `src/docket/cli/**` **only** where content moves out of the old hand-written
+reference. **Forbidden:** `tests/**`, `pyproject.toml`, `.github/workflows/**`, `README.md`,
+`specs/**`, every other file under `docs/`, and all `core/`/`edges/` code.
+
+**RED tests / oracles:** (1) `uv run python scripts/gen_cli_docs.py --check` exits non-zero
+against the current hand-written `docs/commands.md` **before** regeneration, and zero after;
+(2) after editing one help string in `src/`, `--check` exits non-zero again until regenerated;
+(3) every one of the 37 live commands from `scripts/metrics.py::count_commands` appears in the
+generated file, and no retired command does; (4) `uvx --with mkdocs-material --with
+'mkdocstrings[python]' mkdocs build --strict` succeeds, and fails when a dead link is planted.
+Run (4) with `uvx` so no dependency is added to the tree.
+
+**Validation:** the four oracles above; `uv run ruff check . && uv run ruff format --check .`;
+`uv run mypy src`; `uv run pytest -q tests/agent/release/test_public_release_truth.py
+tests/integration/test_completions_eval_metrics_help.py`; `uv run python scripts/metrics.py --check`;
+`bash tests/golden/run.sh verify-all` (help strings are golden-pinned — if a `help` golden changes
+because content moved into a help string, regenerate it and explain the diff line by line).
+**Handoff:** the dropped-paragraph list with where each went, the nav, and the exact `docs` extra
+and CI job text for the integrator to apply.
+
+### W31-C7 — board and roadmap to size: active wave only, history in CHANGELOG, decisions as ADRs
+
+**Status:** DONE (2026-09-12) · **Size:** M · **Owner:** integrator
+
+**What shipped.** Six long decisions became ADRs with their roadmap rows cut to one sentence and a
+link: D-19, D-20, D-23, D-24, D-33 and D-36. D-35 already had `docs/adr/0001-harness-mode.md` but
+its row had never been shortened, so that was done too. The "Prioritization ruling" section moved
+into ADR 0005, which is D-24's own verdict table and had been referenced from the ADR as "the
+section below" — a link that would have dangled. The six closed Wave 29 cards and the whole of
+Wave 31 were archived byte-for-byte into `docs/cycles-ended/`, and `split_board.py check` verifies
+every archived section is present there and absent from the board.
+
+**CONTRIBUTING.md now carries the rules a contributor cannot otherwise see.** Six working rules and
+the comment policy lived only in a gitignored file, which meant nobody outside this machine could
+read them. The guard-must-be-seen-to-fail rule, the never-edit-the-counting-script rule, the
+prove-pre-existing rule, isolation as part of done, the decaying gap list, and diff scrubbing are
+now in the repository, along with the comment policy and the note that `comment_lint`'s exit code
+covers archaeology only.
+
+**Line counts, measured.**
+
+| file | before | after | target |
+|---|---|---|---|
+| TODO.md | 1,357 | 471 before this wave archived | 200 |
+| ROADMAP.md | 820 | 705 | 500 |
+| README.md | 317 | 260 | 150 |
+
+**Two of the three targets are gated on closures this card cannot perform, which the activation
+measurement above already says.** Its board-volume row reads "TODO ≤ 200 **once W30/W31 close**".
+Wave 30's five planned cards are 322 lines and Wave 29's remaining card about 70; they archive when
+those waves close, not now. The same holds for ROADMAP: the Phase 23 and Phase 24 program sections
+are 167 and 79 lines of measured triggers that Wave 29 and Wave 30 are executed from, and they
+archive on the same closures. Removing either early would delete the evidence those waves rest on.
+
+**The README's floor is set by a test this card may not edit, and finding that out cost two
+rounds.** The first trim reached 231 lines by cutting the "Features" and "Best practices" sections
+as duplication of the guarantees, the configuration table and `docs/AGENT-TEAMS.md`. Two agent-lane
+tests then failed:
+`tests/agent/release/test_public_release_truth.py::test_public_front_door_is_compact_and_visuals_are_reproducible`
+requires six named front-door headings including both of those, and
+`test_readme_and_compatibility_name_only_the_tested_adapter_configurations` pins six exact phrases
+of the adapter-boundary caveat that the rewording had paraphrased away. Two further rounds followed: an earlier trim had broken four `tests/agent/truth` positioning
+assertions, and rewrapping the restored caveat put `not` and `framework-neutral` on separate
+lines, which a line-based check rejects. Every one of them was
+fixed by restoring the README, never by touching a test: this card owns `README.md`, not `tests/`,
+and a prose-truth test is the contract rather than the obstacle. The structural test's own bound is
+500 lines, which 260 meets comfortably; the card's 150 is not reachable while six named sections
+are required, and closing that gap means amending the test under a card that owns it.
+
+**The "Known limits" section was kept whole and untouched.** It is the honest boundary of the
+governance claim, and shrinking the file is not worth shrinking that.
+
+**Non-goals held.** No history was deleted, every archived section is byte-preserved with a SHA-256
+in `docs/cycles-ended/manifest.json`, no decision was re-litigated, and both roadmap scripts still
+work against the smaller files: `context_snapshot.py` still prints the board marker and
+`card_packet.py W30-C1` still resolves.
+
+### W31-C8 — split the three functions over 500 lines into named phases
+
+**Status:** SPLIT (2026-09-12) into C8a and C8b below · **Size:** L · **Depends on:** C4 (done)
+
+**The trigger double-counted.** It named `core/agent_loop.py::run_agent_turn` at 789 lines,
+`core/dispatch.py::dispatch_task` at 703 and `::_execute_unit` at 501, as three functions. Measured
+at `7f02c55` by AST, `_execute_unit` is a closure **nested inside** `dispatch_task` (lines
+1284-1784 of 1172-1874), so 501 of those 703 lines are the same lines counted twice. There are two
+oversized functions, in two files, not three. The split follows the files: one branch each, and
+they may run in parallel because they share no module.
+
+### W31-C8a — split `run_agent_turn` into named phases
+
+**Status:** DONE (2026-09-12, `56bd65a` merged as `13a191f`) · **Size:** M · **Owner:** @sonnet-c8a ·
+**Depends on:** C4 (done) · ran in parallel with C8b (disjoint module and test files)
+
+**Shipped:** `run_agent_turn`'s own body -- the statements sitting directly in it, excluding its
+nested defs -- falls from 328 lines to 75, over eight named phases. Three are pure, module-level
+functions: `_resolve_context_bounds`, `_resolve_trace_coordinates` and
+`_resolve_role_registry_and_prompt`. Five are the per-iteration body: `_check_iteration_bounds`,
+`_prepare_request_or_finalize`, `_call_backend_and_handle_response`, `_dispatch_tool_batch` and
+`_run_iteration`. The nested-inclusive span grows 789 to 893 lines, because each new def carries
+its own signature and docstring; the card never had a total-length target, and the goal was moving
+logic into named units rather than shrinking text.
+
+**The bounds are the product here, so they were checked independently of the card's own table.**
+The ordered sequence of cancellation checks, `max_iterations`, wall clock, token budget,
+`max_tool_calls`, context fit, terminal finalization, the backend call, usage accumulation, every
+response-shaped stop condition, the batch ceiling, `dispatch_tool` and the denial ceiling is
+identical before and after, and the two `_accumulate(total_usage, ...)` points sit at the same
+place in that sequence. `dispatch_tool` keeps its single call site. The one user-facing string
+that was rewrapped across source lines is byte-identical once concatenated, which the 18-case
+golden suite confirms.
+
+**Not delivered, and worth naming: five of the eight phases have no unit test.** The card asked for
+unit tests per phase; only the three pure functions got them, because the other five stay nested
+closures sharing mutable turn state (`total_usage`, `iteration`, `tool_calls_executed`,
+`consecutive_denial_kinds`) and a closure cannot be imported. The agent judged that threading that
+state out explicitly carried more behaviour-change risk than the readability gain was worth. C8b
+shows the opposite choice is available -- it lifted a 501-line closure by inventorying its captures
+into a `_UnitContext` dataclass first -- so if this module needs work again, that is the route.
+
+**Integrator follow-up (`f86a4c7`).** The seven new docstrings pushed the shrink-only comment
+ratchet from 558 to 565 and the suite failed on
+`tests/guards/test_comment_hygiene.py::test_counts_do_not_exceed_baseline`. The card missed it
+because `comment_lint.py --check` reports only archaeology; the docstring budget is enforced by the
+guard test, not by that exit code. Each rationale moved verbatim from its docstring to a comment
+above the def, which the budget does not count -- the idiom `tests/conftest.py` already uses. Suite
+2404 to 2413; `CONTRIBUTING.md` reconciled by the integrator, which is why the card correctly left
+`metrics.py --check` failing.
+
+**Ratchet earned, not asserted.** `docket.core.agent_loop` came out of
+`tests/guards/layout_baseline.txt` now that `tests/unit/core/test_agent_loop.py` exists. The guard
+was seen red with that file hidden and green with it restored.
+
+### W31-C8b — split `dispatch_task` and its nested `_execute_unit` into named phases
+
+**Status:** DONE (2026-09-12, `5a521a5` merged as `1dd9456`) · **Size:** M · **Owner:** @sonnet-c8b ·
+**Depends on:** C4 (done) · ran in parallel with C8a (disjoint module and test files)
+
+**Shipped:** `_execute_unit` is a module-level function. `dispatch_task` falls from 703 lines to
+about 125 and the lifted function from 501 to 52, each a thin orchestrator over named phases:
+`_gate_budget`, `_gate_pre_hop_approval`, `_compose_hop`, `_run_hop_turn`,
+`_apply_output_guardrails`, `_build_hop_result`, `_persist_hop_and_trace`, `_evaluate_post_hop_gate`
+(delegating to `_evaluate_mechanical_gate` and `_evaluate_verdict_gate`), with `_run_group_node`
+lifted alongside, and `_resolve_pipeline_steps`, `_resolve_resume_state`, `_resolve_gate_override`
+and `_run_pipeline` carved out of `dispatch_task` itself.
+
+**The inventory came before the lift, which is why it is safe.** Every name the closure reached
+through lexical scope became either an explicit call argument (`node`, `prior_snapshot`,
+`rework_hop`, `check_approval`, `index_for_context` -- the ones that vary per call) or an attribute
+of a new `_UnitContext` dataclass. Two are mutated rather than read, and those are where a lift
+like this breaks silently: `rework_counts` is a dict mutated in place, so the same object must keep
+flowing through and never a copy; `override_index` was rebound through `nonlocal` to consume a
+granted approval's single-use gate override exactly once, and is now rebound as an attribute of a
+shared mutable context. Both risks are written into the code, and the second is pinned by a test
+asserting the override is consumed at the named pipeline index and survives at any other.
+
+**Six tests exist that could not exist before**, calling the lifted function and two of its gates
+directly. Seen red against the pre-lift file (the context class reported missing) and green after.
+No existing test was retired and the full prior suite passed unchanged throughout, which is the
+evidence a refactor claiming no behaviour change owes.
+
+**Unchanged, deliberately:** the hop sequence, the `verifyCmd` gate, the Tester first-line verdict
+parse, `maxReworkCycles`, the trace event set. The two user-facing strings that moved are
+byte-identical, confirmed by the 18-case golden suite.
+
+**Integrator note:** the agent's worktree had been checked out at a stale base predating the whole
+wave. It detected this itself and reset to `main` before working, so the branch that merged is one
+commit on top of `main` touching two files. Suite 2398 to 2404; `CONTRIBUTING.md` reconciled by the
+integrator, which is why the card correctly left `metrics.py --check` failing.
+
+### W31-C9 — `trace.redact` degrades quadratically on a long alphanumeric run
+
+**Status:** DONE (2026-09-12, `a3f03b0` merged as `d698d16`) · **Size:** S · **Owner:** @sonnet-c9
+
+**Shipped:** two secret-shape patterns had an unbounded quantifier followed by a required literal
+from the same character class; both are now capped at the real limits (40 characters for an
+environment-variable name, the RFC lengths for an email). A third instance of the same shape, a
+redundant `\s*` before a class that already matches whitespace, went with them. 20,000 characters
+fall from 2.76 s to 0.02 s and 40,000 from 10.68 s to 0.03 s; the redacted set is unchanged,
+pinned by a table test built from assertions already in the suite.
+
+**Deterministic trigger:** a product defect surfaced by W31-C2, which hit it as a 33-second test
+and worked around it rather than fixing it (`src/` was forbidden to that card). Reproduction, from
+the repository root:
+
+```python
+import time
+from docket.core import trace
+for n in (20_000, 40_000):
+    s = "Z" * n
+    t = time.perf_counter(); trace.redact(s)
+    print(n, round(time.perf_counter() - t, 2))
+```
+
+Measured on this machine: 20,000 characters take 2.76 s, 40,000 take 10.68 s, and `"A1" * 20_000`
+takes 8.05 s. Doubling the input roughly quadruples the time, so a secret-shaped pattern is
+backtracking. A punctuation-only string of the same length takes 0.006 s.
+
+**Why it matters on the live path:** `redact` runs on trace payloads, and `DOCKET_TOOL_MAX_OUTPUT_CHARS`
+defaults to 30,000. Base64, a hex dump, a long token or a minified bundle in tool output all have
+the shape that triggers it, so a single tool result can add several seconds to a turn, repeatedly,
+with nothing in the trace saying why.
+
+**Goal:** the same redaction outcome in linear time. Bound the secret-shaped patterns so they
+cannot backtrack (possessive or atomic matching, an anchored scan, or a length ceiling past which
+a run cannot be a credential), and keep every currently redacted shape redacted.
+
+**Non-goals:** no change to what counts as a secret; no new trace fields; no truncation of tool
+output; no change to `core/trace.py`'s file format.
+
+**Owns:** `src/docket/core/trace.py` and its unit file. **Forbidden:** the tool chokepoint, the
+output cap, central rollups.
+
+**RED test:** a unit test that calls `redact` on 40,000 repeated alphanumerics and fails on a wall
+clock over 0.5 s; it must be seen to fail on the current implementation. Plus a table test proving
+every pattern still redacts the values it redacts today, taken from the existing tests.
+
+**Acceptance / oracles:** the timing test passes; the existing redaction tests pass unchanged;
+`tests/integration/test_hop_carryover.py`'s `_BigOutputRunner` filler can go back to a repeated
+letter and the suite stays inside the duration guard.
+
+**Validation:** full gates. **Handoff:** the before/after timings at both sizes and the pattern
+that was backtracking.
+
+### W31-C10 — one way to repoint DOCKET_HOME, not fifty-six
+
+**Status:** DONE (2026-09-12, `aa34fdc`, merged) · **Size:** M
+
+**What shipped.** Every test that repoints to a home it chooses now calls
+`tests/conftest.py`'s `repoint_docket_home`. Fifty files converted, 297 lines added against 496
+deleted. The 21 private `_point_at` helpers are gone, and with them 21 tests that ran against a
+home split in two.
+
+**The guard is the deliverable, not the conversion.** `tests/guards/test_docket_home_repointer.py`
+is AST-based and scoped **per function** rather than per module, so one correct test sitting beside
+one drifted test in the same file is still caught. A module-wide "calls the helper somewhere" check
+would have missed that, and was rejected for it.
+
+**Proved by failure, twice by the card and once more by the integrator.** Planting a partial
+repointer in `test_diff_probe.py` turned the guard red and named the exact function and line;
+removing it turned it green. The integrator repeated that independently rather than reading the
+transcript.
+
+**The allowlist is empty, and that is a structural fact rather than an oversight.** The card
+expected a class of test that sets a `DOCKET_HOME` environment variable for a child process and
+must never be converted. That class exists here, but every real instance sets `os.environ` or a
+subprocess `env=` dict, never `_cfg.DOCKET_HOME`, because patching an already-imported module
+cannot reach a separate process's fresh import of `config.py`. None of them can trip the guard, so
+there is nothing legitimate for the allowlist to hold. It stays as a mechanism with a shrink-only
+self-check.
+
+**Two shapes the guard does not catch, both named in its own docstring.** A private helper that
+hand-rolls the raw setattr calls is flagged where it is defined, not at every call site, which is
+enough to fail the suite and name the file. And the condition keys on `_cfg.DOCKET_HOME` itself, so
+a function that repoints only derived constants and never claims a home does not trip it.
+
+**Follow-up observed, not scheduled.** The integrator measured **16 functions across 13 modules**
+that hand-roll two or more tracked constants without ever setting `DOCKET_HOME`. They are not this
+card's drift shape: each overrides a named constant deliberately, which `conftest.py` blesses, and
+the autouse fixture still isolates everything they leave alone, so none can reach the real
+`~/.docket`. The honest rule for them is a threshold rather than a boolean, which needs its own
+baseline and its own card. Do not schedule it without re-measuring first.
+
+**Process deviation, recorded rather than smoothed over.** A session rate limit killed the run
+mid-conversion, leaving `test_docket_driver.py` calling the helper without importing it and 36
+collection errors. The integrator preserved the in-flight diff before reviewing it. The card's
+classification artifact was required **before** any edit and was written afterwards instead; that
+ordering is unrecoverable and the artifact says so.
+
+**Gates, every exit code read directly rather than through a pipe.** pytest 0 with 2,410 passed and
+5 skipped, ruff check 0, ruff format 0, mypy 0 on 74 source files, golden 18/18, specs 27/27.
+Comment hygiene holds at exactly its 558 baseline within the guard's `src` and `tests` scope; the
+one archaeology hit tree-wide is `comment_lint.py`'s own self-describing docstring. The real
+`~/.docket` hashes identically either side of a full run. Test count 2,413 to 2,415;
+`CONTRIBUTING.md` reconciled by the integrator.
+---
+

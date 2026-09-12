@@ -194,6 +194,57 @@ command:
 - Keep comments to rationale only (see [Python Conventions](#python-conventions)); the CLI
   reference becomes generated from Typer help strings in Wave 31, so put command prose there
 
+## Rules that have cost this project time when ignored
+
+Six rules, each written down because breaking it cost real work here.
+
+1. **A guard is not evidence until you have seen it fail.** Plant the drift, watch the check go
+   red, restore it, watch it go green, and put that in the pull request. Guards that verified the
+   wrong set have shipped here more than once, and a guard you only ever saw pass proves nothing.
+2. **Never edit a counting script or regenerate a golden to make a claim agree.** `scripts/
+   metrics.py` and `scripts/validate-specs.sh` are the guards, not the claim. Regenerate a golden
+   only when a change deliberately alters CLI surface, or when the old string was factually false,
+   and explain the diff line by line either way.
+3. **Prove "pre-existing" before claiming it.** Check the base commit out in a clean worktree and
+   run there. A `git stash` restores neither deleted files nor a changed environment, so it is not
+   a baseline. Run `uv sync --all-extras` first: a missing `anyio` produces three phantom mypy
+   errors that are not real.
+4. **Isolation is part of done.** The suite has leaked into a developer's real `~/.docket` three
+   times, once displacing the whole environment with fixture agents. Any new `DOCKET_HOME`-derived
+   constant in `config.py` must reach `_DOCKET_HOME_PATHS` in `tests/conftest.py`, and any test
+   choosing its own home calls `repoint_docket_home` rather than hand-rolling a partial copy. Both
+   are guarded.
+5. **A gap list is a claim about the tree and decays like one.** Re-verify before scheduling work
+   against it. Work has been scheduled here, and kept over better candidates, against a gap that had
+   already been closed the day it was written down.
+6. **Scrub every diff before committing.** Real client names, home-directory paths and usernames do
+   not belong in a public repository. Commit subjects follow `Type: description` with a detailed
+   body, ASCII only.
+
+### Comments and docstrings
+
+A comment answers **why**, never **when** or **from where**. Delete card ids, phase numbers, dates,
+provenance, and narration of what a deleted thing used to do — git history and the roadmap hold all
+of it. Keep any sentence whose loss would let someone introduce a bug: why a constant has its
+value, why something fails closed, why two similar things differ deliberately. When in doubt, keep.
+
+`scripts/maint/comment_lint.py --check <paths>` reports this, and a ratchet test holds the counts
+at a committed baseline that may only fall. Its exit code covers archaeology only; the
+docstring-length budget is reported but enforced separately by
+`tests/guards/test_comment_hygiene.py`, so a green lint run says nothing about the budget. Rationale
+placed in a `#` comment above a `def` is not counted against that budget, which is the idiom to
+reach for when an explanation genuinely needs the room.
+
+**A comment describing a constraint is not code applying it.** `TELEGRAM_REQUEST_TIMEOUT_S`
+documented an invariant, was environment-overridable, and was wired to nothing.
+
+### The README is descriptive, not a specification
+
+It lists the features that exist. Requirements live in `specs/`, and that is what a test answers
+to. Never keep or shape a test because the README mentions something. When work changes what is
+true, rewrite the README sentence in the same commit and name it in the body. A `specs/`
+requirement is different: change it by amending the spec, never by deleting its test.
+
 ## Commit Messages
 
 Use a type-colon prefix followed by a short description, then an optional body with context:
