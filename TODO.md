@@ -179,7 +179,26 @@ byte-identical before and after each focused run (snapshot it — this suite has
 
 ### W30-C1 — make cancellation reach an in-flight bash command
 
-**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** S · **Owner:** —
+**Status:** SENT BACK (2026-09-12) · **Size:** S · **Owner:** —
+
+**Sent back for a regression the card itself surfaced and then shipped anyway.** The new
+cancellation-aware wait polls with `proc.wait()`, which does not drain the child's pipes. A command
+writing past the operating system's pipe buffer blocks on its next write, never exits, and the poll
+loop runs to the deadline. Measured at the card's own commit with one 200 KB command and an
+8 s timeout: the no-callback path returned in 0.01 s with `ok=True` and 30,037 characters; the
+cancellation-aware path returned after the full 8 s with `ok=False`, zero characters and "command
+timed out after 8s". The command had finished instantly in both cases.
+
+This is not narrow. The `bash` handler lambda passes `ctx.cancellation_check` unconditionally, so
+any dispatch that wires one takes the new path for every shell command it runs, and a build, a test
+run or a verbose git command now fails falsely and loses its output. The handoff called it out of
+scope on the grounds that the no-callback path was untouched, which does not follow.
+
+**What is still owed:** drain both streams while polling, keep the cancelled and timed-out branches
+reaching `system.docker_kill` and `_kill_group` as they do now, keep the no-callback path
+byte-identical, and add the regression test that would have caught this — a command printing well
+past a pipe buffer, through the cancellation-aware path with a callback that never fires, returning
+promptly with its output intact and matching the no-callback result. Watch it fail first.
 
 **Deterministic trigger:** at `4032133`, `edges/adapters/toolbox.py::run_bash` starts every command
 with `start_new_session=True` (each child is its own session, outside any caller's group) and blocks
@@ -242,133 +261,71 @@ D-30 sentence that changed and the one that did not, and the `docket runs cancel
 
 ### W30-C2 — give a non-interactive caller a typed, immediate, terminal approval outcome
 
-**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** M · **Owner:** —
+**Status:** DONE (2026-09-12, `988ed93`, merged `55faaa6`) · **Size:** M
 
-**Deterministic trigger:** at `4032133`, `core/tools.py::dispatch_tool`'s `ask` branch creates an
-approval record and blocks in `wait_for_approval` (default `TOOL_APPROVAL_TIMEOUT`=120 s), resolves
-to `approval_timeout`, and hands the model a denial; `core/agent_loop.py` ends the turn only after
-`max_consecutive_tool_denials` (3) with `stop_reason="tool_denials"`, `failure_kind="invalid_output"`
-and an error string that names denial kinds but no policy. `_trace_tool_result` emits `tool`,
-`callId`, `decision`, `ok`, `executed`, `denialKind` — no `policyId`. Reproduction: a
-`require_approval` template (`block-destructive`) plus a recording backend that requests
-`bash rm -rf build` → 120 s per call, up to three calls, and a result that cannot say which rule
-fired. Lowering the denial limit to 1 is not a fix: it would also make a recoverable `invalid_call`
-terminal. D-35 decision 11.
+**What shipped.** `ToolContext.approval_mode` defaults to `"wait"`, so every existing caller is
+untouched. Under `"refuse"` the `ask` branch audits `tool.ask` exactly as before, creates no
+approval record, waits zero seconds, and denies with a new `approval_unavailable` kind carrying the
+policy id and reason. `ToolResult.policy_id` is populated on every non-allow verdict, the
+`tool_result` trace record carries `policyId` and `reason` when present, and the loop returns a
+matching `StopReason` terminally on the first such denial, after the batch's complete unit is
+persisted and independently of `max_consecutive_tool_denials`. Measured refuse-path latency about
+10 ms against the shipped `block-destructive` template, versus 120 s per call before.
 
-**Goal:** `ToolContext.approval_mode: Literal["wait", "refuse"] = "wait"`. Under `"refuse"`, the
-`ask` branch audits `tool.ask` exactly as today, creates **no** approval record, waits **zero**
-seconds, and returns `decision="deny"`, `denial_kind="approval_unavailable"` (new
-`ToolDenialKind`), `reason=<verdict reason>`, `policy_id=<verdict.policy_id>` (new `ToolResult`
-field, populated on every non-allow verdict). `_trace_tool_result` adds `policyId` and `reason`
-when present. After persisting the batch's complete unit, the loop returns
-`_done(ok=False, stop_reason="approval_unavailable", failure_kind="invalid_output", error=...)`
-where the error names tool, call id, policy id and reason; `StopReason` gains the literal.
-`DocketDriver` passes it through unchanged (`invalid_output` is already non-retryable).
+**Verified by falsification, by the integrator, not by reading the handoff.** Neutralising only the
+two behavioural branches while keeping the new dataclass fields made the three new tests fail at
+their assertions — `approval_timeout` where `approval_unavailable` was expected, `ok` true where
+false was expected, and a scripted backend running out of responses because the turn did not stop.
+None failed at setup. Restoring the branches made them pass.
 
-**Non-goals:** no change under `"wait"` (record creation, wait, timeout semantics all
-byte-identical); no new approval channel or record state; no `max_consecutive_tool_denials`
-change; no CLI flag; no policy template change; no `toolbox.py`; no runtime facade API beyond the
-optional field; no attempt to make `gate_denied` or `invalid_call` terminal.
+**The specificity proof is the point and it holds.** `gate_denied` and `invalid_call` still continue
+under `"refuse"` and are still bounded by the existing denial limit. Lowering that limit to 1 would
+have been the cheap version of this card and would have made a recoverable `invalid_call` terminal.
 
-**Owns:** in `core/tools.py`: `ToolContext`, `ToolResult`, `ToolDenialKind`, and the `ask` branch of
-`dispatch_tool` (not the `bash` lambda — C1's); in `core/agent_loop.py`: `StopReason`,
-`_trace_tool_result`, and the post-batch denial accounting; `specs/functional/agent-loop.spec.md`
-(requirement 61's payload list, the `StopReason` enumeration, a new requirement for the refuse
-path) and `specs/functional/security-gates.spec.md` (approval-mode clause), each with version bump
-and changelog; tests in `test_agent_loop.py`, `test_approval_gated_dispatch.py`,
-`test_trace_audit.py`. **Forbidden:** `toolbox.py`, `approval.py`, `runs.py`, `cli/`, docs, central
-files.
+**A defect this card could not see on its own, found at merge and fixed in `c91d596`.** The error
+string was prose, and W30-C3 parses it back into the published contract's blocked payload as quoted
+key=value pairs. Both cards passed their own suites and together produced a payload whose tool, call
+id and policy id were all empty — losing exactly the rule attribution this card exists to carry. The
+renderer is now `approval_unavailable_error`, a named function, and
+`tests/integration/test_harness_contract.py` pins the round trip end to end.
 
-**RED tests:** (1) `dispatch_tool` with the shipped `block-destructive` template loaded into an
-isolated `POLICIES_DIR`, `approval_mode="refuse"`, call `bash rm -rf build`: returns within 100 ms,
-`denial_kind="approval_unavailable"`, `policy_id="block-destructive"`, `APPROVALS_DIR` contains no
-record, the audit log has one `tool.ask` entry. (2) The same call under `"wait"` with a
-monkeypatched clock still creates the record and resolves as `approval_timeout` (unchanged path).
-(3) `run_agent_turn` with a backend that requests that call: `stop_reason="approval_unavailable"`,
-`ok=False`, backend call count 1, the session's last unit is the assistant call plus a tool message
-whose text carries `REFUSED [approval_unavailable]`, and no second request was made. (4) The
-`tool_result` trace record for (3) carries `policyId` and `reason`. (5) Under `"refuse"`, a
-`gate_denied` (deny template) and an `invalid_call` still continue and are still bounded by the
-existing limit — the specificity proof. (1), (3) and (4) must fail at the assertion, not at setup.
-
-**Acceptance / oracles:** elapsed time, approval-store contents, audit entry, `StopReason`, backend
-call count, persisted session bytes, and trace payload fields. `FakeDriver`/`DocketDriver` parity:
-the driver's `TurnResult.error` contains the policy id verbatim.
-
-**Validation:** focused nodes; `test_docket_driver.py`, `test_tool_registry.py`,
-`test_runtime_adapter_fixture_contract.py` (the field must not add a CLI import to the runtime
-closure); Ruff/format, strict mypy, both owning specs; full pytest, goldens, specs, metrics.
-
-**Handoff:** report the new field/literals, the exact spec requirement numbers touched, elapsed
-times, and confirmation that the `"wait"` tests ran unmodified.
+**Known and deliberate:** `DocketDriver.run_turn` does not thread `approval_mode` into the
+`ToolContext` it builds, so a production dispatch cannot reach `approval_unavailable` yet. That is
+this card's non-goal and W30-C4's job. **The integrator must confirm C4 actually wires it** — this
+repository has three recorded instances of machinery built, tested and never reached by the live
+path, and this is precisely that shape until C4 closes it.
 
 ### W30-C3 — add the trace subscriber seam and publish the harness contract before the command
 
-**Status:** IN PROGRESS (claimed 2026-09-12) · **Size:** M · **Owner:** —
+**Status:** DONE (2026-09-12, `0d7f4cc`, merged `deacfc5`) · **Size:** M
 
-**Explicit request / trigger:** Tack ADR 0066 decision 4 (2026-09-08) builds no adapter until docket
-publishes a versioned non-interactive contract; `docs/contracts/` does not exist; `core/trace.py::
-trace_event` has no subscriber, so nothing can stream the redacted event record to a caller without
-tailing docket's own file. D-35 decisions 4 and 5.
+**What shipped.** `core/trace.py::subscribe` is a context manager over a module-level sink list.
+Every sink is called synchronously on the calling thread with the exact record `trace_event` is
+about to append, after redaction and before the write; a raising sink is suppressed and never
+changes the return value; with zero sinks the function is byte-identical. `core/harness.py` is the
+contract itself, pure: the event envelope, the result and its blocked payload, the status enum, and
+`preflight`, `agent_meta_for` and `result_from`. `scripts/harness_schema.py` generates
+`docs/contracts/harness-v1/schema.json`, which a test regenerates in memory and compares byte for
+byte. Four NDJSON fixtures cover ok, blocked, cancelled and refused, validated line by line, and a
+fixture declaring version 0.9.0 fails closed.
 
-**Goal:** (a) `core/trace.py::subscribe(sink) -> ContextManager` backed by a module-level list; every
-sink is called synchronously with the exact record `trace_event` is about to append, after
-redaction and before the write; a raising sink is suppressed (mirrors `_emit_trace`'s best-effort
-rule) and never changes `trace_event`'s return; with zero sinks the function is byte-identical.
-(b) New `core/harness.py`, pure: `HARNESS_CONTRACT_VERSION = "1.0.0"`; Pydantic `HarnessEvent`
-(envelope `v`, `token`, `seq`, `ts`, `event` = the trace record), `HarnessResult` (`v`, `token`,
-`status ∈ {ok, failed, blocked, cancelled, refused}`, `stop_reason`, `error`, `blocked` = `{tool,
-call_id, denial_kind, policy_id, reason} | null`, `model = {requested, served}`, `usage =
-{input_tokens, output_tokens, cached_tokens, turns}`, `cost_usd: None`, `run_state`),
-`HarnessStatus` (`live | finished | unknown`); `preflight(environ, home_default) -> Refusal | None`
-(unset `DOCKET_HOME`; equals the default home after resolution; missing `DOCKET_LLM_BASE_URL`;
-`DOCKET_NO_TRACE=1`; workspace not a directory); `agent_meta_for(agent_id, workspace, model, role)`
-returning an `AgentMeta` (`kind=project`, `codebase=workspace`, `role` default `implementer` — the
-built-in role with `denied_tools=()`; a role whose denials include `write` is a usage error);
-`result_from(turn: TurnResult, usage: UsageReport, run: dict) -> HarnessResult` (ok → `ok`;
-`failure_kind="run_cancelled"` → `cancelled`; error carrying `approval_unavailable` → `blocked`
-with the parsed rule; else `failed`; `served = turn.raw.get("model")`). (c)
-`scripts/harness_schema.py` writes `docs/contracts/harness-v1/schema.json` from
-`model_json_schema()`; a test regenerates into memory and asserts byte equality with the committed
-file. (d) `tests/fixtures/harness-contract/v1/{ok,blocked,cancelled,refused}.ndjson`, hand-authored
-from the models, validated line by line; the last line of each is a `result`; a fixture with
-`v="0.9.0"` must fail closed. (e) New `specs/api/harness-mode.spec.md` v1.0.0 with Status
-"Contract defined and test-pinned; `docket harness` ships in W30-C4" — the honest status, not
-"Implemented".
+**The contract ships before the command, deliberately.** `specs/api/harness-mode.spec.md` carries
+the status that the contract is defined and test-pinned while `docket harness` arrives in W30-C4.
+An external consumer has committed to building nothing until these bytes exist, and this repository
+has shipped five doc claims that ran ahead of the code.
 
-**Non-goals:** no CLI, no stdout writing, no signal handling, no `EVENT_TYPES` change, no
-hand-edited schema, no `jsonschema` dependency (Pydantic validates; the schema is a published
-artifact), no `specs/README.md` row (integrator, C5), no `docket-runtime` packaging change.
+**`core/harness.py` sits outside the runtime closure**, checked against the package-boundary test
+rather than assumed. Changing the closure was a non-goal.
 
-**Owns:** `core/trace.py` (`subscribe` and the sink call inside `trace_event` only), new
-`core/harness.py`, new `scripts/harness_schema.py`, new `docs/contracts/harness-v1/`, new
-`tests/fixtures/harness-contract/`, new `tests/integration/test_harness_contract.py`, new
-`specs/api/harness-mode.spec.md`. **Forbidden:** `tools.py`, `agent_loop.py`, `toolbox.py`, `cli/`,
-`config.py` (no new home-derived constant is needed; if one appears, it goes into
-`_DOCKET_HOME_PATHS` in `conftest.py` in the same commit), central files.
+**The one thing this card got wrong, found at merge and fixed in `c91d596`.** `result_from` parsed
+the driver's error string for quoted key=value pairs while W30-C2 wrote the tool and call id as
+prose, so every structured field in the blocked payload arrived empty. The card flagged the coupling
+as a guess in its own handoff, which is why it was caught, but a guess about another card's wire
+format is not evidence and nothing tested the pair. `tests/integration/test_harness_contract.py`
+now drives the real renderer end to end; reintroducing prose turns it red.
 
-**RED tests:** (1) subscribe: a list sink receives, in order and on the calling thread, records
-equal to what `read_trace` later returns from the file; after the context exits it receives
-nothing; under `DOCKET_NO_TRACE=1` it receives nothing and the return is `"suppressed"`; a sink
-that raises leaves the file write and return value unchanged; a zero-sink `trace_event` produces
-a record byte-identical to a pre-change capture. (2) schema pin, (3) every fixture validates and
-the unknown-version fixture fails closed, (4) preflight table — one case per refusal reason plus
-one acceptance, (5) `result_from` mapping table, (6) `agent_meta_for` round-trips through
-`AgentMeta.model_validate` and rejects a write-denied role. (1) must fail before the seam exists;
-(2)–(6) fail on missing module/files.
-
-**Acceptance / oracles:** sink-versus-file record equality, byte-identity of the committed schema,
-fixture validity, typed refusal reasons, and the mapping table are the oracles. `validate-specs.sh`
-passes with the new spec's Status naming C4 as the shipping card.
-
-**Validation:** focused tests; `test_trace_audit.py`, `test_trace_retention.py`,
-`test_serve_traces_cursor.py` (the read side must not see a shape change); the
-runtime-closure artifact test (the new module must stay CLI-free if included, or be excluded
-deliberately and said so); Ruff/format, strict mypy, `validate-specs.sh`; full pytest, goldens,
-metrics.
-
-**Handoff:** report the schema path and its digest, the fixture list, the exact sink call site,
-and whether `core/harness.py` is inside or outside the runtime closure and why.
+**Pending for the integrator at C5:** the `specs/README.md` row for the new spec, which this card
+correctly left alone.
 
 ### W30-C4 — ship `docket harness run` and `docket harness status`
 
