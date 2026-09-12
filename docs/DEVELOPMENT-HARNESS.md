@@ -73,8 +73,11 @@ python3 -m json.tool .claude/settings.json >/dev/null
 for skill in .agents/skills/docket-*; do
   python3 <skill-creator-dir>/scripts/quick_validate.py "$skill"
 done
-uv run pytest tests/agent/harness/test_development_harness.py
 ```
+
+The hook scripts themselves carry no test. The snapshot hook is exercised every time a session
+starts, and a broken one is visible immediately in the board banner it prints, so the check that
+covered it was retired rather than kept in the budgeted agent lane.
 
 `quick_validate.py` checks skill structure, frontmatter, and unfinished scaffolding; it does not
 prove that an agent makes safe decisions. Behavioral skill changes also use the relevant

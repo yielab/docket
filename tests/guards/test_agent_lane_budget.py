@@ -1,7 +1,8 @@
 """Ratchet: the agent lane's total line count may never exceed its committed baseline.
 
-The long-term target is 4,000 lines; agent_lane_baseline.txt records where the lane stands
-today and may only be lowered, never raised, as later cards trim it toward that target.
+agent_lane_baseline.txt records where the lane stands today and may only be lowered. The lane
+shrinks when a file's RETIRE_WHEN condition fires, so lowering the baseline is part of the commit
+that deletes what it accounted for.
 """
 
 from __future__ import annotations

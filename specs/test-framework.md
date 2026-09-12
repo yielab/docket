@@ -106,9 +106,10 @@ Requirements:
    File names never encode history (`_v2`, `_migration`, `_removed`, `_legacy`).
 3. **A test that reads prose or builds an artifact is agent-lane by definition.** Every file
    under `agent/` declares `LANE`, `REASON` (the recorded defect it prevents) and `RETIRE_WHEN`
-   (the condition, not a date, under which it is deleted). The lane's total is capped at 4,000
-   lines by a guard; raising the cap edits the guard in the same commit with the reason in the
-   message. One test per public claim.
+   (the condition, not a date, under which it is deleted). The lane's total is ratcheted by a
+   guard against a committed baseline that may only fall; the lane shrinks when a file's
+   `RETIRE_WHEN` condition fires, not on a schedule. Lowering the baseline is a commit that also
+   deletes what it accounts for. One test per public claim.
 4. **`subprocess` is forbidden in `unit/`.** CLI behaviour is tested in-process with
    `typer.testing.CliRunner`; exact user-visible text belongs to the golden suite. `integration/`
    spawns a process only when the process boundary (signals, sandbox, cancellation, `PATH` stubs)
@@ -130,8 +131,7 @@ mirror-by-name convention), and separately checks every `src/` module over 150 l
 committed, shrink-only baseline (`tests/guards/layout_baseline.txt`) rather than requiring
 one immediately; `tests/guards/test_lane_headers.py` checks `LANE`/`REASON`/`RETIRE_WHEN` on every
 `agent/` file and the no-`subprocess`-in-`unit/` rule; `tests/guards/test_agent_lane_budget.py`
-ratchets the lane's total against a committed baseline (5,730 lines today) that may only fall, not
-yet the 4,000-line cap rule 3 describes; `tests/conftest.py` fails a test's own report past its
+ratchets the lane's total against a committed baseline (5,157 lines today) that may only fall; `tests/conftest.py` fails a test's own report past its
 lane's duration ceiling; `tests/guards/test_removed_commands.py` replaces four per-removal files
 with one parametrized guard over `__main__._REMOVED`. Rule 7 and the rest of rule 8 (the
 comment-hygiene ratchet) remain contract only until W31-C3 lands. `uv run pytest tests/agent`
