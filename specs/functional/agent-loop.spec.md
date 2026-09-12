@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 1.16.0
+**Version**: 1.17.0
 **Status**: Implemented and **live in production**. `core/agent_loop.py` owns the turn and
 `edges/adapters/docket_runtime.py::default_driver()` is the production `RuntimeDriver` resolution
 point for dispatch, trace ingestion, usage aggregation, and distillation. The loop narrows the tool
@@ -398,8 +398,13 @@ This specification does NOT cover:
     unchanged; only measured usage allowed by requirement 63 may alter the session record.
 65. The loop **MUST** check immediately before each `dispatch_tool` call and immediately after an
     already-running handler returns. Cancellation before a handler begins produces a non-executed
-    `ToolResult` with `denial_kind="run_cancelled"`; cancellation does not attempt to interrupt a
-    Python handler already running.
+    `ToolResult` with `denial_kind="run_cancelled"`; for every handler except `bash`, cancellation
+    does not attempt to interrupt one already running (D-30) — a Python handler runs to
+    completion once dispatched. The `bash` handler is the one amended exception (D-35 decision 9,
+    W30-C1): `edges/adapters/toolbox.py::run_bash` accepts the same callback and, given one, polls
+    it while the command runs, killing the process group and returning a complete cancelled
+    `ToolOutcome` rather than waiting for the handler to return on its own — see
+    `security-gates.spec.md`'s cooperative-cancellation clauses for the mechanism.
 66. Cancellation during a multi-call response **MUST** persist one complete assistant/tool-result
     unit: every call already admitted retains its complete result and every remaining call receives
     `REFUSED [run_cancelled]: run cancellation requested before execution`. No later handler or
@@ -601,6 +606,14 @@ result = agent_loop.run_agent_turn(backend, registry, ctx, session_key, "hello")
   `core.session.load_messages`'s stored history for that session.
 
 ## Changelog
+
+### Version 1.17.0 (2026-09-12)
+
+- W30-C1 narrows requirement 65's "does not attempt to interrupt a running handler" clause to
+  every handler except `bash` (D-35 decision 9 amends D-30 for that one handler): `run_bash` now
+  polls the same cancellation callback while its command runs and kills the process group on a
+  true result, instead of waiting for the handler to return on its own. Every other handler keeps
+  D-30's original "may finish" rule unchanged.
 
 ### Version 1.16.0 (2026-08-31)
 

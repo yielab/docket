@@ -35,7 +35,9 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -55,6 +57,12 @@ SandboxMode = Literal["off", "auto"]
 MAX_OUTPUT_CHARS = _cfg.TOOL_MAX_OUTPUT_CHARS
 MAX_GREP_MATCHES = 200
 MAX_GLOB_RESULTS = 300
+
+# How often `run_bash`'s cancellable wait loop re-checks the callback and the
+# overall deadline. Short enough that a separate process's cancellation
+# request is noticed well inside any caller's patience; long enough that
+# idle polling costs nothing measurable.
+_CANCEL_POLL_INTERVAL_S = 0.1
 
 
 class PathEscapeError(ValueError):
@@ -309,6 +317,7 @@ def run_bash(
     timeout: int = 120,
     env: dict[str, str] | None = None,
     sandbox: SandboxMode = "off",
+    cancelled: Callable[[], bool] | None = None,
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
@@ -329,6 +338,18 @@ def run_bash(
     happened once asked.** A jail that was requested but failed to even start
     is reported as a failure, never silently retried unsandboxed — the one
     failure mode worse than no sandbox is one that is claimed and absent.
+
+    ``cancelled`` is the one seam that lets a separate process interrupt this
+    command mid-run. Every other tool handler simply runs to completion once
+    started, because a Python thread cannot be killed safely — a subprocess
+    can. Left at its default ``None``, this function is unchanged, byte for
+    byte, including the timeout message: a caller that never passes it sees
+    exactly today's behaviour. Given a callback, a short bounded poll (still
+    honouring *timeout*) checks it between waits, and a true result kills the
+    process group exactly as a timeout already does (``system.docker_kill``
+    under the docker backend, then ``_kill_group``), returning a complete
+    cancelled ``ToolOutcome`` rather than leaving the caller to wait out the
+    tool's own timeout.
     """
     if not roots:
         return ToolOutcome(False, error="no working directory configured")
@@ -370,14 +391,28 @@ def run_bash(
             return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
         return ToolOutcome(False, error=f"cannot start command: {ex}")
 
-    try:
-        out, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        if backend == "docker":
-            _system.docker_kill(container_name)
-        _kill_group(proc)
-        message = f"command timed out after {timeout}s"
-        return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+    if cancelled is None:
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if backend == "docker":
+                _system.docker_kill(container_name)
+            _kill_group(proc)
+            message = f"command timed out after {timeout}s"
+            return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+    else:
+        timed_out, was_cancelled = _wait_cancellable(proc, timeout, cancelled)
+        if timed_out or was_cancelled:
+            if backend == "docker":
+                _system.docker_kill(container_name)
+            _kill_group(proc)
+            message = (
+                "cancelled before completion"
+                if was_cancelled
+                else f"command timed out after {timeout}s"
+            )
+            return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
+        out, _ = proc.communicate()
 
     body = _truncate((out or "").strip())
     if proc.returncode != 0:
@@ -389,6 +424,31 @@ def run_bash(
         )
     content = body or "(no output)"
     return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+
+
+# Unlike `communicate()`, this never drains stdout while it waits, so a
+# command that fills the pipe buffer before exiting or being killed could
+# stall here instead -- every real caller on this path is a bounded
+# interactive command (a sleep, a build step, a test run), not a producer
+# of unbounded output.
+def _wait_cancellable(
+    proc: subprocess.Popen[str], timeout: int, cancelled: Callable[[], bool]
+) -> tuple[bool, bool]:
+    """Wait for *proc* to exit, checking *cancelled* between short polls.
+
+    Returns ``(timed_out, was_cancelled)`` — at most one is ever true."""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True, False
+        if cancelled():
+            return False, True
+        try:
+            proc.wait(timeout=min(_CANCEL_POLL_INTERVAL_S, remaining))
+            return False, False
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def _kill_group(proc: subprocess.Popen[str]) -> None:

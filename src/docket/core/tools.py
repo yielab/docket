@@ -682,6 +682,7 @@ def builtin_registry() -> ToolRegistry:
                 _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
                 ctx.env,
                 ctx.sandbox,
+                ctx.cancellation_check,
             ),
             kind="exec",
         )
