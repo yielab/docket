@@ -21,6 +21,12 @@ the HTTP creation path added to close that gap:
     response that pretends the task is ready to run.
   * TestSuccess            — the happy path: task id, project and status
     (``pending``) come back, and the task is really on the pod's queue.
+  * TestExecuteUnitDirectly — ``_execute_unit`` and two of its extracted
+    phases (``_gate_budget``, ``_gate_pre_hop_approval``), called directly
+    with a hand-built ``_UnitContext``/``PlannedUnit`` instead of through a
+    full ``dispatch_task`` run. This coverage could not exist while
+    ``_execute_unit`` was a closure nested inside ``dispatch_task`` — there
+    was no name to import it by.
 """
 
 from __future__ import annotations
@@ -38,6 +44,10 @@ import pytest
 import docket.config as _cfg
 from docket.core import dispatch as _dispatch
 from docket.core import fleet as _fleet
+from docket.core import orchestrator as _orch
+from docket.core import pipeline as _pipeline
+from docket.core import runtime_driver as _rd
+from docket.core import trace as _trace
 from docket.serve import _DocketHandler
 
 SUBJECT = "docket.core.dispatch"
@@ -343,3 +353,159 @@ class TestSuccess:
         )
         tasks = _dispatch.read_tasks("myapp")
         assert tasks[0]["priority"] == "normal"
+
+
+# ── _execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
+
+
+def _unit_context(
+    *,
+    project: str = "myapp",
+    task_id: str = "task-1",
+    cap: float = 0.0,
+    override_index: int | None = None,
+    run: Any = None,
+    on_hop: Any = None,
+) -> _dispatch._UnitContext:
+    return _dispatch._UnitContext(
+        project=project,
+        task={"id": task_id},
+        task_id=task_id,
+        session_id=f"agent:{project}:{task_id}",
+        cap=cap,
+        resolved_turn_timeout=60,
+        resolved_verify_timeout=60,
+        id_to_index={},
+        rework_counts={},
+        override_index=override_index,
+        track_pid=False,
+        run=run or (lambda *a, **k: _rd.TurnResult(True, "", 0.0, {})),
+        do_sleep=lambda seconds: None,
+        on_hop=on_hop,
+        on_retry=None,
+    )
+
+
+def _planned_unit(
+    member_id: str, *, gate: _pipeline.Gate | None = None, step_id: str = "implementer"
+) -> _orch.PlannedUnit:
+    return _orch.PlannedUnit(
+        step_id=step_id,
+        role="implementer",
+        agent=None,
+        archetype=None,
+        member_id=member_id,
+        gate=gate,
+        retries=None,
+        timeout=None,
+    )
+
+
+class TestExecuteUnitDirectly:
+    """Direct unit coverage of the lifted ``_execute_unit`` and two of its
+    extracted phase functions — reachable by name now that they are
+    module-level, not a closure only ``dispatch_task`` could call.
+    """
+
+    def test_gate_budget_blocks_before_any_hop_and_traces_it(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_dispatch, "pod_gating_cost", lambda project: (10.0, False))
+        ctx = _unit_context(cap=5.0)
+
+        outcome = _dispatch._gate_budget(ctx, "implementer")
+
+        assert outcome is not None
+        assert outcome.kind == "blocked"
+        assert "$10.00" in outcome.reason and "$5.00" in outcome.reason
+        tf = _cfg.TRACES_DIR / "myapp" / "agent:myapp:task-1.jsonl"
+        events = _trace.read_trace(tf)
+        assert events[-1]["event_type"] == "budget_exceeded"
+        assert events[-1]["agent_role"] == "implementer"
+
+    def test_gate_budget_allows_when_under_cap(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_dispatch, "pod_gating_cost", lambda project: (1.0, False))
+        ctx = _unit_context(cap=5.0)
+
+        assert _dispatch._gate_budget(ctx, "implementer") is None
+
+    def test_gate_pre_hop_approval_consumes_the_override_exactly_once(self, pod_home: Path) -> None:
+        # The riskiest capture in the pre-lift closure: `override_index` was
+        # rebound with `nonlocal`. As a `_UnitContext` attribute, the same
+        # rebind is `ctx.override_index = None` — this test pins that the
+        # mutation actually lands on the shared context, not a local copy.
+        ctx = _unit_context(override_index=2)
+        node = _planned_unit("myapp-implementer")
+
+        outcome = _dispatch._gate_pre_hop_approval(
+            ctx, "implementer", node, check_approval=True, index_for_context=2
+        )
+
+        assert outcome is None
+        assert ctx.override_index is None
+
+    def test_gate_pre_hop_approval_leaves_a_non_matching_override_untouched(
+        self, pod_home: Path
+    ) -> None:
+        ctx = _unit_context(override_index=7)
+        node = _planned_unit("myapp-implementer")
+
+        outcome = _dispatch._gate_pre_hop_approval(
+            ctx, "implementer", node, check_approval=True, index_for_context=2
+        )
+
+        assert outcome is None
+        assert ctx.override_index == 7
+
+    def test_execute_unit_runs_a_full_hop_and_advances(self, pod_home: Path) -> None:
+        """A mechanical gate with no configured verifyCmd advances and marks
+        the hop ``verification_skipped`` — end to end through the lifted
+        function, with no ``dispatch_task`` loop involved at all.
+        """
+        persisted: list[_dispatch.HopResult] = []
+
+        def _fake_run(
+            member_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None,
+        ) -> _rd.TurnResult:
+            assert member_id == "myapp-implementer"
+            return _rd.TurnResult(True, "did the thing", 0.0, {})
+
+        ctx = _unit_context(run=_fake_run, on_hop=persisted.append)
+        node = _planned_unit("myapp-implementer", gate=_pipeline.MechanicalGate(command=None))
+
+        outcome = _dispatch._execute_unit(
+            ctx,
+            node,
+            prior_snapshot=[],
+            rework_hop=None,
+            check_approval=True,
+            index_for_context=0,
+        )
+
+        assert outcome.kind == "advance"
+        assert len(outcome.hops) == 1
+        hop = outcome.hops[0]
+        assert hop.ok is True
+        assert hop.output == "did the thing"
+        assert hop.verification_skipped is True
+        assert persisted == [hop]
+
+    def test_execute_unit_refuses_cross_pod_dispatch(self, pod_home: Path) -> None:
+        ctx = _unit_context(project="myapp")
+        node = _planned_unit("otherapp-implementer")
+
+        with pytest.raises(_dispatch.DispatchError, match="refusing cross-pod dispatch"):
+            _dispatch._execute_unit(
+                ctx,
+                node,
+                prior_snapshot=[],
+                rework_hop=None,
+                check_approval=True,
+                index_for_context=0,
+            )
