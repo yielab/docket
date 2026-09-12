@@ -106,6 +106,31 @@ class TestRunBashCancellation:
         assert not out.ok
         assert out.error == "command timed out after 1s"
 
+    # A callback that is merely present, and never fires, must not change what
+    # a command returns -- polling for cancellation must not stop this module
+    # from draining output the way `communicate()` always has, or an ordinary
+    # verbose command loses its output to a false timeout the moment a caller
+    # wires up cancellation at all.
+    def test_a_callback_that_never_fires_still_drains_output_over_a_full_pipe(
+        self, workspace: Path
+    ) -> None:
+        """A command writing more than one OS pipe buffer must still complete."""
+        command = "python3 -c \"print('x' * 200000)\""
+        never_cancelled = lambda: False  # noqa: E731
+
+        baseline_started = time.monotonic()
+        baseline = toolbox.run_bash((workspace,), command, timeout=8, cancelled=None)
+        baseline_elapsed = time.monotonic() - baseline_started
+
+        started = time.monotonic()
+        out = toolbox.run_bash((workspace,), command, timeout=8, cancelled=never_cancelled)
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 2, f"took {elapsed:.2f}s (baseline {baseline_elapsed:.2f}s), not promptly"
+        assert out.ok
+        assert out.content == baseline.content
+        assert len(out.content) > 30_000
+
     @needs_bwrap
     def test_bwrap_variant_leaves_no_orphan(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch

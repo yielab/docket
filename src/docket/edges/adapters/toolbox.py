@@ -35,6 +35,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -401,7 +402,7 @@ def run_bash(
             message = f"command timed out after {timeout}s"
             return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
     else:
-        timed_out, was_cancelled = _wait_cancellable(proc, timeout, cancelled)
+        timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
         if timed_out or was_cancelled:
             if backend == "docker":
                 _system.docker_kill(container_name)
@@ -412,7 +413,6 @@ def run_bash(
                 else f"command timed out after {timeout}s"
             )
             return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
-        out, _ = proc.communicate()
 
     body = _truncate((out or "").strip())
     if proc.returncode != 0:
@@ -426,29 +426,44 @@ def run_bash(
     return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
 
 
-# Unlike `communicate()`, this never drains stdout while it waits, so a
-# command that fills the pipe buffer before exiting or being killed could
-# stall here instead -- every real caller on this path is a bounded
-# interactive command (a sleep, a build step, a test run), not a producer
-# of unbounded output.
+# A bare `proc.wait()` never drains stdout, so a command that writes more
+# than the OS pipe buffer (commonly 64KB) blocks on its own next write and
+# never actually exits -- indistinguishable from a hang to a poll loop that
+# only checks exit status. A background reader draining the pipe in parallel
+# is what `communicate()` already does internally; this must keep doing it
+# too, or a real build/test/verbose command loses its output to a false
+# timeout the instant a cancellation callback is merely present, whether or
+# not it ever fires.
 def _wait_cancellable(
     proc: subprocess.Popen[str], timeout: int, cancelled: Callable[[], bool]
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, str]:
     """Wait for *proc* to exit, checking *cancelled* between short polls.
 
-    Returns ``(timed_out, was_cancelled)`` — at most one is ever true."""
+    Returns ``(timed_out, was_cancelled, output)`` — at most one of the first two is true."""
+    assert proc.stdout is not None
+    drained: list[str] = []
+
+    def _drain() -> None:
+        import contextlib
+
+        with contextlib.suppress(OSError, ValueError):
+            drained.append(proc.stdout.read())  # type: ignore[union-attr]
+
+    reader = threading.Thread(target=_drain, daemon=True)
+    reader.start()
+
     deadline = time.monotonic() + timeout
     while True:
+        if not reader.is_alive():
+            reader.join()
+            proc.wait()
+            return False, False, drained[0] if drained else ""
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return True, False
+            return True, False, ""
         if cancelled():
-            return False, True
-        try:
-            proc.wait(timeout=min(_CANCEL_POLL_INTERVAL_S, remaining))
-            return False, False
-        except subprocess.TimeoutExpired:
-            continue
+            return False, True, ""
+        time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))
 
 
 def _kill_group(proc: subprocess.Popen[str]) -> None:
