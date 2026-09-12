@@ -300,11 +300,24 @@ exclusion list with the reason each stays.
 
 ### W31-C6 — generated CLI reference and strict docs build
 
-**Status:** IN-PROGRESS (@sonnet-c6, claimed 2026-09-11, isolated worktree off `e5868ef`) ·
-**Size:** M · **Owner:** — · **Depends on:** C0 (done); **runs in parallel with C1**
+**Status:** DONE (2026-09-11, `4cff59f` merged as `af6a090`; integrator hygiene pass `6796e36`) ·
+**Size:** M · **Owner:** @sonnet-c6 · **Depends on:** C0 (done); **ran in parallel with C1**
 (disjoint: C1 owns `tests/**`, `pyproject.toml`, `.github/workflows/ci.yml` and the `tests/python`
 path strings in `src/`, `specs/`, `docs/DEVELOPMENT-HARNESS.md`; this card owns the CLI-reference
 generator and `docs/commands.md`, which carry no such path string)
+
+**Shipped:** `scripts/gen_cli_docs.py` renders the reference from the live Typer registry and
+`--check` fails on drift; `docs/commands.md` 2,247 -> 1,475 lines with the per-command prose moved
+into the docstrings Typer prints; `mkdocs.yml` + `scripts/mkdocs_hooks.py` build the site under
+`--strict` (verified red with a planted dead link); `packages/docket-runtime/docs/api.md` anchors
+mkdocstrings; `completions_zsh.golden` regenerated because it freezes the help strings this card
+rewrote. The integrator exempted rendered command docstrings from the comment-budget check, since
+that text is product surface, and removed the archaeology the moved prose carried in.
+
+**Left for the integrator at C1's merge** (both files belong to C1, which was still in flight):
+the `docs` optional-dependency group (`mkdocs>=1.6`, `mkdocs-material>=9.5`,
+`mkdocstrings[python]>=0.26`) and a CI `docs` job running `gen_cli_docs.py --check` then
+`mkdocs build --strict`. Text is in the C6 handoff.
 
 **Deterministic trigger:** at `0d3720a`, `docs/commands.md` is 2,247 hand-written lines with no
 drift check, while `count_commands()` in `scripts/metrics.py` already introspects the Typer app
