@@ -1,13 +1,9 @@
 """Pod blueprints — the format itself (`core/blueprints.py`).
 
-Covers the registry (five built-ins), the closed
-`workspace_kind` enum, the structural validation `PodBlueprint.__post_init__`
-enforces, and the cross-check that every gated step in a blueprint's
-`default_pipeline` matches the gated role's own archetype `gateContract.kind`
-exactly (no drift between "the roster" and "the pipeline" — see
-`core/blueprints.py`'s module docstring). Provisioning end-to-end (workspace
-files, `.docket-meta.json`, `--from spec.yaml`, `docket doctor`) is covered
-by test_pod_blueprint_provisioning.py.
+Covers the registry (five built-ins), the closed `workspace_kind` enum,
+`PodBlueprint.__post_init__`'s structural validation, and the cross-check
+that every gated step in a `default_pipeline` matches its role's own
+archetype `gateContract.kind` exactly.
 """
 
 from __future__ import annotations
@@ -21,7 +17,7 @@ from docket.core import blueprints as bp
 from docket.core import pipeline as _pipeline
 from docket.core import pod as _pod
 
-SUBJECT = "docket.core.archetypes"
+SUBJECT = "docket.core.blueprints"
 
 
 class TestRegistry:

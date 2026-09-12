@@ -1,24 +1,9 @@
 """Durable turn history + compaction (`core/session.py`).
 
-Pure `core/` coverage -- no CLI, no subprocess, no live daemon, no foreign
-session-format knowledge. Mirrors `test_memory_distillation.py`'s style (custom
-driver functions matching the `DistillRunner`/`SessionSummaryRunner` 5-arg
-shape) since compaction's summarisation step is the same call pattern.
-
-Covers:
-
-* **Isolation** -- one session's history never bleeds into another's, even
-  for session keys that share characters a naive encoding could collide on.
-* **Round trip** -- `tool_calls`, `tool_call_id` and `name` all survive an
-  append + reload with no loss.
-* **Atomicity, the real trap** -- an assistant `tool_calls` message and the
-  `tool` messages answering it are never split by compaction, including the
-  boundary case where a naive flat-token cut would land in the middle of the
-  group.
-* **Budgeting honesty** -- measured (`TokenUsage`) and estimated
-  (`estimate_tokens`) token counts are recorded and used independently.
-* **Fail-closed summarisation** -- a failing or empty-reply driver call
-  leaves the stored session completely untouched.
+Covers session-key isolation, a round trip preserving `tool_calls`/
+`tool_call_id`/`name`, an assistant `tool_calls` message never split from
+its answering `tool` messages by a compaction cut, measured vs. estimated
+token accounting, and fail-closed summarisation on a failing driver.
 """
 
 from __future__ import annotations
@@ -32,7 +17,7 @@ from docket.core import session as _sess
 from docket.core.llm import ChatMessage, TokenUsage, ToolCall, assistant, system, tool_result, user
 from docket.core.runtime_driver import TurnResult
 
-SUBJECT = "docket.core.llm"
+SUBJECT = "docket.core.session"
 
 # ── driver test doubles (matches SessionSummaryRunner's 5-arg shape) ──────────
 
@@ -130,9 +115,7 @@ class TestStorageIsolation:
     def test_drift_planted_shared_directory_breaks_isolation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Guard evidence: force every session into the *same* file (the bug
-        this design prevents) and confirm the isolation assertion above would
-        actually catch it -- i.e. this test is not vacuous."""
+        """Guard evidence: force every session into the *same* file (the bug this design prevents) and confirm the isolation assertion above would actually catch it -- i.e. this test is not vacuous."""
         shared = tmp_path / "shared-session.json"
         monkeypatch.setattr(_sess, "_session_path", lambda session_key, sessions_dir=None: shared)
 
@@ -216,9 +199,7 @@ class TestMeasuredUsage:
         assert record.usage.turns == 1
 
     def test_measured_usage_is_independent_of_estimated_token_size(self) -> None:
-        """A tiny message can carry a huge *measured* usage figure (e.g. a
-        large cached system prompt) -- the two numbers must never be derived
-        from each other."""
+        """A tiny message can carry a huge *measured* usage figure (e.g. a large cached system prompt) -- the two numbers must never be derived from each other."""
         tiny_content = "hi"
         huge_usage = TokenUsage(input_tokens=200_000, output_tokens=100_000)
         _sess.append_messages("agent:x:default", [user(tiny_content)], usage=huge_usage)
@@ -258,8 +239,7 @@ class TestGroupAtomicUnits:
         assert groups == [[asst, r1, r2]]
 
     def test_group_closes_once_matching_results_are_exhausted(self) -> None:
-        """A later, unrelated message after a fully-answered tool call starts
-        a new unit rather than being swept into the group."""
+        """A later, unrelated message after a fully-answered tool call starts a new unit rather than being swept into the group."""
         turn = _tool_call_turn()
         tail = user("next question")
         groups = _sess.group_atomic_units([*turn, tail])
@@ -294,10 +274,7 @@ class TestOrphanDetection:
         assert _sess.find_unanswered_tool_calls(history) == ["c1"]
 
     def test_drift_planted_a_split_group_is_caught(self) -> None:
-        """Guard evidence: manually split an atomic unit (the exact bug
-        compaction must never introduce) and confirm the checker flags it
-        both ways -- an orphaned result and, on the other half, an unanswered
-        call."""
+        """Guard evidence: manually split an atomic unit (the exact bug compaction must never introduce) and confirm the checker flags it both ways -- an orphaned result and, on the other half, an unanswered call."""
         turn = _tool_call_turn()
         assistant_only = [turn[0]]
         tool_only = [turn[1]]
@@ -461,11 +438,7 @@ class TestCompactSessionFailClosed:
         assert _sess.load_messages("agent:x:default") == before
 
     def test_drift_planted_bare_drop_on_failure_would_lose_history(self) -> None:
-        """Guard evidence: a compactor that drops old units *before* checking
-        the driver result (the regression this contract forbids) would lose
-        data on a failing driver. Simulate that bug directly and show it
-        would indeed produce a shorter history than the fail-closed
-        implementation does."""
+        """Guard evidence: a compactor that drops old units *before* checking the driver result (the regression this contract forbids) would lose data on a failing driver. Simulate that bug directly and show it would indeed produce a shorter history than the fail-closed implementation does."""
         self._seed_over_budget_session()
         messages = _sess.load_messages("agent:x:default")
         plan = _sess.plan_compaction(messages, budget_tokens=1)
@@ -776,8 +749,7 @@ class TestCompactSessionSuccess:
         assert "very important old context" in calls[0]
 
     def test_explicit_budget_overrides_role_resolution(self) -> None:
-        """A role with no archetype entry still works when budget_tokens is given
-        explicitly -- compact_session must not require a real role registry."""
+        """A role with no archetype entry still works when budget_tokens is given explicitly -- compact_session must not require a real role registry."""
         _sess.append_messages("agent:x:default", [user("a" * 4000), user("keep")])
         result = _sess.compact_session(
             "agent:x:default",

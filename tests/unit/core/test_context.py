@@ -1,27 +1,9 @@
 """The context compiler (`core/context.py`).
 
-Pure-function unit tests for the module that supersedes an earlier blind
-byte cap. Covers:
-
-  * TestEstimateTokens  — the chars/token approximation itself (reuses
-    `config.CONTEXT_BYTES_PER_TOKEN`, the same ratio `maintain check`
-    already uses -- not a second, independently-tunable one).
-  * TestBudgetForRole   — resolving a role name against the live archetype
-    registry (`core/archetypes.py`), and the fallback for an unregistered
-    role or a defensively-invalid budget.
-  * TestHopShare        — the recency-weighted per-hop carryover share
-    (same halving series the byte-cap predecessor used, now denominated in
-    tokens).
-  * TestCompileArtifact — the core contract: an artifact that already
-    fits is returned unchanged; `HandoffArtifact.DROP_ORDER` fields are shed
-    one at a time, in order, before `summary` is ever touched; `summary` is
-    never silently dropped, only truncated with a visible marker as the
-    last resort; the result never exceeds its budget (mod the documented
-    zero-budget marker-can't-fit edge case the predecessor already accepted).
-
-`core/dispatch.py`'s `_hop_message` (the one production caller) has its own
-integration coverage in `tests/integration/test_hop_carryover.py` and
-`tests/integration/test_handoff_artifacts.py`.
+Pure-function tests: `estimate_tokens`'s chars/token approximation,
+`budget_for_role`'s archetype-registry resolution, the per-hop carryover
+share, and `compile_artifact`'s `DROP_ORDER` contract (fields shed one at a
+time before `summary`, which is truncated rather than dropped).
 """
 
 from __future__ import annotations
@@ -31,7 +13,7 @@ from docket.core import archetypes as _arch
 from docket.core import context as _ctx
 from docket.core.handoff import HandoffArtifact
 
-SUBJECT = "docket.core.archetypes"
+SUBJECT = "docket.core.context"
 
 # ── estimate_tokens ──────────────────────────────────────────────────────────
 
@@ -47,9 +29,7 @@ class TestEstimateTokens:
         )
 
     def test_reuses_the_existing_config_ratio_not_a_second_one(self) -> None:
-        """The whole point of reusing `config.CONTEXT_BYTES_PER_TOKEN` (rather
-        than inventing a second ratio) is that changing the one config value
-        changes both `maintain check`'s and this module's estimate together."""
+        """The whole point of reusing `config.CONTEXT_BYTES_PER_TOKEN` (rather than inventing a second ratio) is that changing the one config value changes both `maintain check`'s and this module's estimate together."""
         text = "y" * 100
         before = _ctx.estimate_tokens(text)
         try:
@@ -88,11 +68,7 @@ class TestBudgetForRole:
             assert found.token_budget > 0, name
 
     def test_defensively_falls_back_for_a_non_positive_budget(self) -> None:
-        """`RoleArchetype.__post_init__` already rejects a non-positive
-        `tokenBudget` for anything built the normal way (`from_wire`, or a
-        plain constructor call) -- this exercises `budget_for_role`'s own
-        defensive fallback for the one way around that: bypassing the
-        frozen dataclass's `__init__` after construction."""
+        """`RoleArchetype.__post_init__` already rejects a non-positive `tokenBudget` for anything built the normal way (`from_wire`, or a plain constructor call) -- this exercises `budget_for_role`'s own defensive fallback for the one way around that: bypassing the frozen dataclass's `__init__` after construction."""
         arch = _arch.BUILTIN_ARCHETYPES["implementer"]
         object.__setattr__(arch, "token_budget", 0)
         try:
@@ -134,10 +110,7 @@ class TestCompileArtifact:
         assert compiled.original_tokens == compiled.tokens
 
     def test_fields_are_shed_in_declared_drop_order(self) -> None:
-        """notes -> diff_ref -> files_changed -> verdict, one at a time,
-        stopping the moment the render fits -- pinned against
-        `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this
-        test breaks (loudly) if the order is ever changed there."""
+        """notes -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
         assert HandoffArtifact.DROP_ORDER == ("notes", "diff_ref", "files_changed", "verdict")
 
         art = HandoffArtifact(
@@ -173,10 +146,7 @@ class TestCompileArtifact:
         assert compiled.summary_truncated is False
 
     def test_empty_fields_are_skipped_not_reported_as_dropped(self) -> None:
-        """A field that was already empty (the honest state of `notes`/
-        `diff_ref`/`files_changed` today -- dispatch has no producer for them
-        yet, see `core/handoff.py`) is never claimed as "dropped": there was
-        nothing there to shed."""
+        """A field that was already empty (the honest state of `notes`/ `diff_ref`/`files_changed` today -- dispatch has no producer for them yet, see `core/handoff.py`) is never claimed as "dropped": there was nothing there to shed."""
         art = HandoffArtifact(summary="x" * 10_000)  # only summary is set
         compiled = _ctx.compile_artifact(art, budget_tokens=1)
         # Nothing was droppable -- straight to summary truncation.
@@ -201,20 +171,14 @@ class TestCompileArtifact:
         assert marker_n + kept == 500
 
     def test_result_stays_within_budget_for_reasonable_budgets(self) -> None:
-        """For any budget that can actually fit the truncation marker itself,
-        the compiled result's own token estimate never exceeds it."""
+        """For any budget that can actually fit the truncation marker itself, the compiled result's own token estimate never exceeds it."""
         art = HandoffArtifact(summary="C" * 3000, verdict="fail", files_changed=["x.py"], notes="n")
         for budget in (2000, 500, 100, 50):
             compiled = _ctx.compile_artifact(art, budget_tokens=budget)
             assert compiled.tokens <= budget
 
     def test_near_zero_budget_still_bounded_and_deterministic(self) -> None:
-        """A budget too small to even fit the truncation marker (documented,
-        pragmatic compromise already accepted for this same edge case in the
-        predecessor's zero-budget case -- you cannot say "N bytes omitted" in
-        fewer bytes than the sentence itself needs) still produces a real,
-        marked, deterministic result -- never a silent "no truncation
-        happened", and never a crash."""
+        """A budget too small to even fit the truncation marker (documented, pragmatic compromise already accepted for this same edge case in the predecessor's zero-budget case -- you cannot say "N bytes omitted" in fewer bytes than the sentence itself needs) still produces a real, marked, deterministic result -- never a silent "no truncation happened", and never a crash."""
         art = HandoffArtifact(summary="D" * 50)
         for budget in (1, 0):
             compiled = _ctx.compile_artifact(art, budget_tokens=budget)

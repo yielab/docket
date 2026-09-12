@@ -1,14 +1,9 @@
-"""The gated tool registry, its chokepoint, and the built-in tools.
+"""The gated tool registry, its chokepoint, and the built-in tools (`core/tools.py`).
 
-Three things are pinned here, in order of how much they matter:
-
-1. **The command classifier is argument-aware.** `git` is allowlisted and
-   `git push origin production` is a production deploy; a gate that cannot tell
-   those apart lets a destructive command through under a benign-looking name.
-2. **There is exactly one path to tool execution.** A test walks the source
-   tree to prove no module reaches around `dispatch_tool` into the handlers.
-3. **Containment holds at the handler**, not only at the chokepoint, so a
-   future caller cannot escape it by accident.
+Pins the argument-aware command classifier (`git push origin production`
+reads as a deploy, not a benign `git`), that a source-tree walk finds
+exactly one path to tool execution through `dispatch_tool`, and that
+containment holds at the handler as well as at the chokepoint.
 """
 
 from __future__ import annotations
@@ -259,9 +254,7 @@ class TestBuiltinHandlers:
     def test_the_output_ceiling_is_a_live_setting(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A small-context endpoint must be able to lower it -- 30k chars is two
-        results away from overflowing a 16k window, and the turn dies on an
-        HTTP 400 with no partial progress."""
+        """A small-context endpoint must be able to lower it -- 30k chars is two results away from overflowing a 16k window, and the turn dies on an HTTP 400 with no partial progress."""
         body = "x" * 5_000
         (workspace / "mid.txt").write_text(body)
         assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
@@ -298,9 +291,7 @@ class TestDispatchChokepoint:
         assert res.content.startswith("alpha")
 
     def test_gated_command_is_not_executed(self, ctx: ToolContext) -> None:
-        """An `ask` verdict blocks on the real approval store (`_isolate_gates`
-        above pins TOOL_APPROVAL_TIMEOUT to 0), so with nothing ever granting
-        it, it resolves to a fail-closed deny before `dispatch_tool` returns."""
+        """An `ask` verdict blocks on the real approval store (`_isolate_gates` above pins TOOL_APPROVAL_TIMEOUT to 0), so with nothing ever granting it, it resolves to a fail-closed deny before `dispatch_tool` returns."""
         marker = ctx.roots[0] / "should-not-exist"
         res = dispatch_tool(
             _call("bash", '{"command": "rm -rf /tmp/x && touch ' + str(marker) + '"}'),
@@ -328,8 +319,7 @@ class TestDispatchChokepoint:
         assert res.executed and not res.ok and "handler exploded" in res.error
 
     def test_decision_and_outcome_are_distinguishable(self, ctx: ToolContext) -> None:
-        """A refusal and a failed run are different events; the audit log has to
-        be able to tell them apart."""
+        """A refusal and a failed run are different events; the audit log has to be able to tell them apart."""
         refused = dispatch_tool(_call("bash", '{"command": "rm x"}'), ctx, builtin_registry())
         failed = dispatch_tool(_call("read", '{"path": "nope.md"}'), ctx, builtin_registry())
         # An `ask` verdict resolves before dispatch_tool returns (see
@@ -388,10 +378,7 @@ class TestRegistry:
         assert res.denied and not (ctx.roots[0] / "x").exists()
 
     def test_without_kind_narrows_by_capability_not_name(self) -> None:
-        """Sibling of `without()`, keyed on `Tool.kind` -- the mechanism
-        `core.archetypes.registry_for_role` uses to exclude a namespaced
-        (e.g. MCP-adapted) tool no name-based denylist could spell out in
-        advance. See that module's docstring for the full reasoning."""
+        """Sibling of `without()`, keyed on `Tool.kind` -- the mechanism `core.archetypes.registry_for_role` uses to exclude a namespaced (e.g. MCP-adapted) tool no name-based denylist could spell out in advance. See that module's docstring for the full reasoning."""
         no_mutation = builtin_registry().without_kind("write", "exec")
         assert no_mutation.names() == ["fetch", "glob", "grep", "read"]
 
@@ -468,8 +455,7 @@ class TestSinglePathToExecution:
         assert not offenders, f"handlers reachable outside the chokepoint from: {offenders}"
 
     def test_the_gate_is_consulted_by_dispatch_itself(self) -> None:
-        """`evaluate_tool_call` must be called from inside `dispatch_tool` — a
-        gate invoked by callers instead is a gate callers can skip."""
+        """`evaluate_tool_call` must be called from inside `dispatch_tool` — a gate invoked by callers instead is a gate callers can skip."""
         source = Path(core_tools.__file__).read_text()
         tree = ast.parse(source)
         dispatch = next(
@@ -485,14 +471,7 @@ class TestSinglePathToExecution:
         assert "evaluate_tool_call" in called
 
     def test_handlers_hold_no_policy_vocabulary(self) -> None:
-        """toolbox.py must not grow its own gate: two places that can decide
-        means one of them will be forgotten.
-
-        Checks *identifiers*, not raw text — the module docstring legitimately
-        says the words "approval" and "policy" while explaining that it holds
-        neither, and a substring scan would force that explanation out of the
-        file to stay green.
-        """
+        """toolbox.py must not grow its own gate: two places that can decide means one of them will be forgotten. Checks *identifiers*, not raw text — the module docstring legitimately says the words "approval" and "policy" while explaining that it holds neither, and a substring scan would force that explanation out of the file to stay green."""
         tree = ast.parse(Path(toolbox.__file__).read_text())
         identifiers: set[str] = set()
         for node in ast.walk(tree):
