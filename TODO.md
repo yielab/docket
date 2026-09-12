@@ -182,7 +182,18 @@ after, the final lane counts, and every TSV row changed from the script's propos
 
 ### W31-C2 — structural guards, lane headers, and one test for removed commands
 
-**Status:** TODO · **Size:** M · **Owner:** — · **Depends on:** C1
+**Status:** DONE (2026-09-11, `0ed085e` merged as `ab1b488`) · **Size:** M · **Owner:** @sonnet-c2
+
+**Shipped:** four per-removal files replaced by one parametrized `tests/guards/test_removed_commands.py`;
+`test_layout.py` maps every unit file to an existing module and every module over 150 lines to a
+unit file; `test_lane_headers.py` checks the three constants on every agent-lane file and bans
+`subprocess` in `tests/unit/`; `test_agent_lane_budget.py` ratchets the lane against a committed
+baseline; a duration hook in `tests/conftest.py` fails a unit or guard test over 2 s and an
+integration test over 10 s. `scripts/maint/add_test_headers.py` wrote the skeletons. All six guards
+were seen red before green, each pair recorded in the commit body. The lane retirement was left to
+the maintainer and is not in this card.
+
+**Found while doing it:** `trace.redact` backtracks quadratically, now W31-C9.
 
 **Deterministic trigger:** at `0d3720a`, four files (`test_tier_shims_removed.py`,
 `test_eval_command_removed.py`, `test_team_command_removed.py`, `test_workflow_command_removed.py`;
@@ -428,6 +439,53 @@ not exist yet) and pass after; `test_tool_registry.py` chokepoint guard green.
 
 **Validation:** full gates per branch. **Handoff:** function length before/after, tests retired
 with the phase test that replaces each.
+
+### W31-C9 — `trace.redact` degrades quadratically on a long alphanumeric run
+
+**Status:** TODO · **Size:** S · **Owner:** — · **Depends on:** nothing
+
+**Deterministic trigger:** a product defect surfaced by W31-C2, which hit it as a 33-second test
+and worked around it rather than fixing it (`src/` was forbidden to that card). Reproduction, from
+the repository root:
+
+```python
+import time
+from docket.core import trace
+for n in (20_000, 40_000):
+    s = "Z" * n
+    t = time.perf_counter(); trace.redact(s)
+    print(n, round(time.perf_counter() - t, 2))
+```
+
+Measured on this machine: 20,000 characters take 2.76 s, 40,000 take 10.68 s, and `"A1" * 20_000`
+takes 8.05 s. Doubling the input roughly quadruples the time, so a secret-shaped pattern is
+backtracking. A punctuation-only string of the same length takes 0.006 s.
+
+**Why it matters on the live path:** `redact` runs on trace payloads, and `DOCKET_TOOL_MAX_OUTPUT_CHARS`
+defaults to 30,000. Base64, a hex dump, a long token or a minified bundle in tool output all have
+the shape that triggers it, so a single tool result can add several seconds to a turn, repeatedly,
+with nothing in the trace saying why.
+
+**Goal:** the same redaction outcome in linear time. Bound the secret-shaped patterns so they
+cannot backtrack (possessive or atomic matching, an anchored scan, or a length ceiling past which
+a run cannot be a credential), and keep every currently redacted shape redacted.
+
+**Non-goals:** no change to what counts as a secret; no new trace fields; no truncation of tool
+output; no change to `core/trace.py`'s file format.
+
+**Owns:** `src/docket/core/trace.py` and its unit file. **Forbidden:** the tool chokepoint, the
+output cap, central rollups.
+
+**RED test:** a unit test that calls `redact` on 40,000 repeated alphanumerics and fails on a wall
+clock over 0.5 s; it must be seen to fail on the current implementation. Plus a table test proving
+every pattern still redacts the values it redacts today, taken from the existing tests.
+
+**Acceptance / oracles:** the timing test passes; the existing redaction tests pass unchanged;
+`tests/integration/test_hop_carryover.py`'s `_BigOutputRunner` filler can go back to a repeated
+letter and the suite stays inside the duration guard.
+
+**Validation:** full gates. **Handoff:** the before/after timings at both sizes and the pattern
+that was backtracking.
 
 ---
 
