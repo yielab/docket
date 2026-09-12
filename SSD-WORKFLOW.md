@@ -26,18 +26,23 @@ docket/
 │   │   ├── cli-interface.spec.md
 │   │   └── mcp-server.spec.md
 │   ├── data/                     # Data structures
-│   │   └── workspace-structure.spec.md
+│   │   └── docket-store.spec.md
 │   ├── acceptance/               # User stories & criteria
 │   │   └── user-stories.md
 │   └── validation/              # Validation rules
 │       └── input-validation.spec.md
 ├── scripts/                     # SSD automation
-│   ├── validate-specs.sh       # Validate spec format
-│   └── spec-coverage.sh        # Check coverage
+│   └── validate-specs.sh       # Validate spec structure (the real gate; CI-blocking)
 ├── src/docket/                  # Python package (cli/ → core/ → edges/)
 └── tests/                       # Test implementation
-    ├── python/                  # pytest suite (unit + integration)
-    └── golden/                  # Byte-parity golden suite
+    ├── unit/                   # Mirrors src/docket/; each file declares SUBJECT
+    ├── integration/            # Cross-module integration tests
+    ├── guards/                 # AST/layout invariants; shrink-only committed baselines
+    ├── agent/                  # Prose/release checks, outside pytest's default testpaths,
+    │   ├── truth/              # own CI job (see Continuous Integration below)
+    │   └── release/
+    ├── fixtures/               # Shared test fixtures
+    └── golden/                 # Byte-parity golden suite
 ```
 
 ## Workflow Steps
@@ -160,9 +165,6 @@ Ensure everything is aligned:
 ```bash
 # Validate specifications
 ./scripts/validate-specs.sh
-
-# Check coverage
-./scripts/spec-coverage.sh
 
 # Run all tests (pytest + golden parity)
 ./tests/run-all-tests.sh
@@ -298,69 +300,29 @@ docket feature example
 
 ## Continuous Integration
 
-### Pre-commit Hook
+There is no separate "SSD Validation" workflow and no pre-commit hook shipped in this repo.
+Spec validation runs as one step inside the real CI pipeline, `.github/workflows/ci.yml`, which
+has these jobs:
 
-Install the pre-commit hook:
+- **`python`** — the primary gate: `uv sync --all-extras --dev`, then ruff lint, ruff format
+  check, `mypy src`, `uv run pytest`, and the README-number drift guard
+  (`scripts/metrics.py --check`).
+- **`agent-lane`** — runs `uv run pytest tests/agent`: prose, release-artifact and agent
+  hook-script checks that don't belong in the default suite (`specs/test-framework.md`,
+  "Lanes and placement").
+- **`docs`** — checks the generated CLI reference for drift (`scripts/gen_cli_docs.py --check`)
+  and builds the docs site with `mkdocs build --strict`.
+- **`floors`** — resolves the lowest dependency versions `pyproject.toml` permits and runs the
+  suite against them, so a stale floor bound doesn't go unnoticed.
+- **`golden`** — the byte-parity net: `bash tests/golden/run.sh verify-all`.
+- **`shell`** — ShellCheck over the shell surface, and **the real spec gate**:
+  `./scripts/validate-specs.sh` (blocking).
+- **`macos`** — the same Python suite plus a launcher smoke test on macOS (`continue-on-error`).
+- **`release-journey`** — builds and installs the wheel outside the checkout and drives one real
+  governed tool turn through the installed CLI, on both supported OSes.
 
-```bash
-cat > .git/hooks/pre-commit << 'EOF'
-#!/usr/bin/env bash
-
-echo "Running SSD validation..."
-
-# Check specs
-if ! ./scripts/validate-specs.sh; then
-    echo "Specification validation failed!"
-    exit 1
-fi
-
-# Check coverage
-if ! ./scripts/spec-coverage.sh | grep -q "Overall Coverage: [789][0-9]%"; then
-    echo "Warning: Specification coverage is low"
-fi
-
-# Run tests
-if ! ./tests/run-all-tests.sh; then
-    echo "Tests failed!"
-    exit 1
-fi
-
-echo "SSD validation passed ✓"
-EOF
-
-chmod +x .git/hooks/pre-commit
-```
-
-### GitHub Actions Workflow
-
-```yaml
-name: SSD Validation
-
-on: [push, pull_request]
-
-jobs:
-  validate-specs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Validate Specifications
-        run: ./scripts/validate-specs.sh
-
-      - name: Check Coverage
-        run: |
-          ./scripts/spec-coverage.sh --export
-          cat specs/coverage-report.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Run Tests
-        run: ./tests/run-all-tests.sh
-
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: spec-coverage
-          path: specs/coverage-report.md
-```
+If you want spec validation to run locally before you push, run `./scripts/validate-specs.sh`
+yourself — there is no hook that does it for you.
 
 ## Common Patterns
 
@@ -422,18 +384,6 @@ jobs:
 # - Include version and status
 ```
 
-### Coverage Too Low
-
-```bash
-# Identify gaps
-./scripts/spec-coverage.sh
-
-# Focus on:
-# - Undocumented commands
-# - Missing test coverage
-# - Incomplete specifications
-```
-
 ### Tests Don't Match Specs
 
 ```bash
@@ -465,9 +415,10 @@ grep "def test_" tests/integration/test_feature.py
 
 ## Getting Help
 
-- Run `./scripts/validate-specs.sh -h` for validation help
-- Run `./scripts/spec-coverage.sh -h` for coverage options
-- Check `specs/README.md` for specification index
+- Run `./scripts/validate-specs.sh` to check spec structure — it takes no flags; it always runs
+  the full check against every spec under `specs/`
+- Check `specs/README.md` for specification index and `specs/test-framework.md` for test
+  conventions and lane placement
 - Review existing specs in `specs/functional/` for examples
 
 ---
