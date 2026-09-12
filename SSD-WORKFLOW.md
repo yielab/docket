@@ -307,9 +307,9 @@ has these jobs:
 - **`python`** — the primary gate: `uv sync --all-extras --dev`, then ruff lint, ruff format
   check, `mypy src`, `uv run pytest`, and the README-number drift guard
   (`scripts/metrics.py --check`).
-- **`agent-lane`** — runs `uv run pytest tests/agent`: prose, release-artifact and agent
-  hook-script checks that don't belong in the default suite (`specs/test-framework.md`,
-  "Lanes and placement").
+- **`agent-lane`** — runs `uv run pytest tests/agent`: the `truth` lane (prose and policy claims
+  checked against the code) and the `release` lane (artifact and packaging journeys), neither of
+  which belongs in the default suite (`specs/test-framework.md`, "Lanes and placement").
 - **`docs`** — checks the generated CLI reference for drift (`scripts/gen_cli_docs.py --check`)
   and builds the docs site with `mkdocs build --strict`.
 - **`floors`** — resolves the lowest dependency versions `pyproject.toml` permits and runs the
