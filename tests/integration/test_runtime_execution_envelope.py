@@ -1,4 +1,4 @@
-"""Artifact-installed RED contract for W28-C1's execution envelope."""
+"""Artifact-installed RED contract for the runtime execution envelope."""
 
 from __future__ import annotations
 

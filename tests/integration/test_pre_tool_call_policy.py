@@ -1,12 +1,12 @@
 """The `pre_tool_call` policy hook is live.
 
-docket used to ship four `pre_tool_call` policy templates and never evaluate
-any of them -- `core/dispatch.py` said so in three places. `core/policy.py`'s
-`policy_eval_detail` is wired into `core/tools.py`'s single decision point
-(`evaluate_tool_call`), combined with the command classifier
+`core/policy.py`'s `policy_eval_detail` is wired into `core/tools.py`'s single decision
+point (`evaluate_tool_call`), combined with the command classifier
 (most-restrictive-wins), and an `ask` verdict routes to a synchronous waiter
 on the real approval store (`core/approval.py`'s `wait_for_approval`) so an
-in-turn tool call actually blocks on a human instead of being a no-op.
+in-turn tool call actually blocks on a human instead of being a no-op. Without this
+wiring, docket would ship four `pre_tool_call` policy templates and never evaluate any
+of them.
 
 What's pinned here:
 

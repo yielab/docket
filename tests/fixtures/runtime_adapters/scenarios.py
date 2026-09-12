@@ -1,4 +1,4 @@
-"""Framework-neutral governance scenarios shared by both Wave 28 adapters."""
+"""Framework-neutral governance scenarios shared by both runtime adapters."""
 
 from __future__ import annotations
 

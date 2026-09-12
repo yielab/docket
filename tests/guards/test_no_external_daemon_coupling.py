@@ -1,8 +1,9 @@
 """Acceptance guard: product code contains no retired-daemon coupling.
 
-Phase 19 was a clean break, not a compatibility layer. Keeping even prose references under
-``src/docket`` makes later contributors infer that the old runtime still owns a boundary. The
-durable migration history belongs in ROADMAP/CHANGELOG/spec changelogs instead.
+This is a clean break from the retired external daemon, not a compatibility layer. Keeping
+even prose references under ``src/docket`` makes later contributors infer that a daemon still
+owns a boundary. The durable migration history belongs in ROADMAP/CHANGELOG/spec changelogs
+instead.
 """
 
 from __future__ import annotations

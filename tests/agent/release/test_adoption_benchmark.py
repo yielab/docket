@@ -1,8 +1,8 @@
-"""Behavioral contract for W29-C3's adoption benchmark harness.
+"""Behavioral contract for the adoption benchmark harness.
 
 The suite invokes the repository-local harness as a public subprocess and builds only
 documented, durable Docket artifacts under a temporary home.  It deliberately does not import a
-future harness helper: successful parsing without the public command would not prove the card.
+future harness helper: successful parsing without the public command would not prove the claim.
 """
 
 from __future__ import annotations

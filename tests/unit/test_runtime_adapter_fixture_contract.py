@@ -1,4 +1,4 @@
-"""Shared dependency and scenario contract for the Wave 28 adapter lanes."""
+"""Shared dependency and scenario contract for the runtime adapter lanes."""
 
 from __future__ import annotations
 

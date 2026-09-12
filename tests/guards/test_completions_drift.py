@@ -97,7 +97,7 @@ class TestRetiredCommandsNeverAdvertised:
     def test_eval_not_advertised_as_a_command(
         self, shell: str, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`docket eval` was removed (CL-J). Unlike `team`/`tier`, the bare substring
+        """`docket eval` is not a command. Unlike `team`/`tier`, the bare substring
         "eval" legitimately survives in the completion scripts' own `eval "$(docket
         completions bash)"` install instructions, so this checks the *parsed command
         set*, not the raw text."""

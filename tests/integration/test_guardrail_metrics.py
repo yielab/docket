@@ -14,7 +14,7 @@ What's pinned here:
    bucketed by gate decision -- fleet-wide, across projects.
 2. `docket_policy_hits_total{policy_id,hook,action}` merges the structured
    `guardrail_check` trace event (pre_input/pre_output) with the
-   `policy_id=`/`policy_action=` fields P20-2 added to `core/tools.py`'s
+   `policy_id=`/`policy_action=` fields on `core/tools.py`'s
    tool-gate audit entries (pre_tool_call) -- the pre_tool_call half is
    exercised end-to-end through the real `dispatch_tool` chokepoint, not a
    hand-crafted audit line, and a bare command-classifier denial (no policy
@@ -362,9 +362,8 @@ class TestMetricFormatting:
 
     def test_stable_pre_p20_2_metrics_are_unaffected(self) -> None:
         # docket_agent_cost_usd/docket_agent_turns_total only ever emit label
-        # lines when an agent exists (this fixture seeds none, matching
-        # pre-P20-2 behavior) -- check the four metrics with an unconditional
-        # HELP header instead.
+        # lines when an agent exists (this fixture seeds none) -- check the
+        # four metrics with an unconditional HELP header instead.
         text = serve.render_metrics()
         for name in (
             "docket_agents_total",

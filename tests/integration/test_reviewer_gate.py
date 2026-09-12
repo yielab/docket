@@ -108,14 +108,14 @@ def _role_of(agent_id: str) -> str:
 
 
 class TestParseReviewerVerdict:
-    """The reviewer's marker parsing is no longer a
+    """The reviewer's marker parsing is not a
     dispatch-private regex/parser pair (``_parse_reviewer_verdict`` /
-    ``_REVIEWER_VERDICT_RE`` — both removed, see ``core/dispatch.py``'s
-    docstring note where they used to live). Gate execution now reads
+    ``_REVIEWER_VERDICT_RE`` — both removed; see ``core/dispatch.py``'s
+    docstring note). Gate execution reads
     ``core.orchestrator.parse_verdict`` generically against whatever
     ``VerdictGate`` a step resolves to; these tests exercise that generic
     parser directly against the reviewer step's own gate from the built-in
-    default pipeline (``core/pipeline.py``), which is the new single source
+    default pipeline (``core/pipeline.py``), which is the single source
     of truth for the pattern itself.
     """
 

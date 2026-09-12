@@ -1,9 +1,9 @@
 """Approval-gated dispatch — the approval store's missing producer.
 
-``core/approval.py``'s ``approval_create`` used to have zero production
-callers: nothing in ``core/dispatch.py`` ever created, waited on, or
-resolved a docket approval. This suite exercises the pipeline that wires
-it up end to end:
+This suite exercises the pipeline that wires ``core/approval.py``'s
+``approval_create`` into ``core/dispatch.py`` end to end, so it creates,
+waits on, and resolves a docket approval rather than sitting with zero
+production callers:
 
   * TestGateSources              — the pod-level ``requireApprovalRoles`` gate
     source in isolation, and the policy/pipeline gate seams staying inert (always False).
@@ -169,7 +169,7 @@ class _VerdictAwareRunner:
 
 class _OneReworkThenGateAgainRunner:
     """Implementer/Lead succeed; Reviewer REQUEST-CHANGES exactly once, then
-    APPROVE; Tester PASS. Used to prove the gate re-fires on the rework hop."""
+    APPROVE; Tester PASS. Proves the gate re-fires on the rework hop."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -220,11 +220,9 @@ class TestGateSources:
         assert _dispatch._policy_requires_approval("myapp", "implementer", {}) is False
 
     def test_pipeline_step_seam_is_now_wired(self) -> None:
-        """This seam used to ignore its arguments and always
-        return False. It now genuinely reflects the
-        current pipeline position's *resolved* gate — real for any step
-        whose gate is `approval` (declared directly, or via an archetype's
-        gateContract), regardless of role name."""
+        """This seam reflects the current pipeline position's *resolved* gate —
+        real for any step whose gate is `approval` (declared directly, or via an
+        archetype's gateContract), regardless of role name."""
         assert _dispatch._pipeline_step_requires_approval(None) is False
         assert _dispatch._pipeline_step_requires_approval(_pipeline.MechanicalGate()) is False
         assert _dispatch._pipeline_step_requires_approval(_pipeline.ApprovalGate()) is True

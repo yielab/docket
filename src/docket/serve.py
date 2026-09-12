@@ -415,9 +415,9 @@ def render_metrics() -> str:
     #    AUDIT_LOG_MAX_BYTES, and read_audit() reads only the current file --
     #    so a rotation silently drops whatever history was in the backup.
     # 2. Trace-derived (docket_tool_calls_total, the pre_input/pre_output half
-    #    of docket_policy_hits_total, and the turn-duration pair below) used to
-    #    have no such gap, because traces were only ever appended to. They now
-    #    expire: core/trace.py's expire_old_traces() deletes terminated traces
+    #    of docket_policy_hits_total, and the turn-duration pair below) had no
+    #    such gap while traces were only ever appended to. They now expire:
+    #    core/trace.py's expire_old_traces() deletes terminated traces
     #    past TRACE_RETENTION_S. Retention bounds storage growth, which was the
     #    point, but it means these counters drop when a trace file ages out.
     #
@@ -499,7 +499,7 @@ def _check_schedules(now_ts: float) -> None:
     """Trigger dispatch for pods whose schedule spec is due.
 
     Reads the schedule config from ``cfg.SCHEDULE_FILE``; the last-run
-    timestamp used to decide "due" is read from — and, once a project fires,
+    timestamp that decides "due" is read from — and, once a project fires,
     written back into — that same file (``core.schedule.load_last_run`` /
     ``record_last_run``) rather than an in-memory dict, so a ``docket serve``
     restart does not re-fire every schedule on its first sweep.
@@ -1110,12 +1110,12 @@ class _DocketHandler(BaseHTTPRequestHandler):
         """``POST /pods`` — provision a fresh pod from a blueprint.
 
         Body: ``{project, path, blueprint, pod, budget, verifyCmd}`` (all but
-        ``project`` optional). This is the one Phase 22 route that is not a
-        thin wrapper over a pre-existing ``core/`` function: the real
-        provisioning path (``cli/_pod.py``/``cli/_agents.py``) used to print
-        through ``ui.py`` as it worked, which `serve.py` (never importing
-        `docket.cli`) cannot reach. `core.pod_provisioning.provision_pod` is
-        the P22-5 extraction of that path's decisions and effects, UI-free —
+        ``project`` optional). This route is not a thin wrapper over a
+        pre-existing ``core/`` function: the real provisioning path
+        (``cli/_pod.py``/``cli/_agents.py``) prints through ``ui.py`` as it
+        works, which `serve.py` (never importing `docket.cli`) cannot reach.
+        `core.pod_provisioning.provision_pod` is the UI-free extraction of
+        that path's decisions and effects —
         `docket add`'s pod path calls the exact same function (via
         `cli/_pod.py::build_pod_from_blueprint`), so the two surfaces cannot
         drift apart. See that module's docstring for the rollback contract on

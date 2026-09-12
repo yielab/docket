@@ -1,8 +1,8 @@
 """Guard: core/ and edges/ must never import docket.ui.
 
 "core has no knowledge of terminals" — core/edges are pure
-domain + I/O layers; only cli/ renders output. Two modules used to violate
-this (core/provider.py, edges/adapters/system.py); both were split so the
+domain + I/O layers; only cli/ renders output. core/provider.py and
+edges/adapters/system.py once violated this; both were split so the
 Rich console.print calls live in cli/. This test scans the source tree so the
 invariant can never silently regress.
 """

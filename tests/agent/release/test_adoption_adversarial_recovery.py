@@ -1,4 +1,4 @@
-"""Whole-journey RED contract for Wave 29 adversarial benchmark scenarios."""
+"""Whole-journey RED contract for the adversarial benchmark scenarios."""
 
 from __future__ import annotations
 

@@ -1,14 +1,15 @@
 """Pod provisioning — the create-a-pod side effects, UI-free.
 
-Extracted (P22-5) from ``cli/_pod.py``/``cli/_agents.py``, which used to make
-these decisions *and* render around them in the same functions (``ui.success``/
-``ui.warn`` calls interleaved with workspace writes and fleet registration).
-``core/`` may never import ``ui.py`` or print (CLAUDE.md's layer rule), and
-``POST /pods`` needs this same effectful path reachable from ``serve.py`` —
-which never imports ``docket.cli`` — so the decisions and effects had to move
-here first. ``cli/_pod.py`` now renders around this module's typed return
-values; ``docket add`` and ``POST /pods`` both call ``provision_pod`` below,
-so the two surfaces cannot drift apart.
+Split out of ``cli/_pod.py``/``cli/_agents.py``, which cannot both decide these
+outcomes *and* render around them in the same functions (``ui.success``/
+``ui.warn`` calls interleaved with workspace writes and fleet registration)
+once ``core/`` needs the same effectful path: ``core/`` may never import
+``ui.py`` or print (CLAUDE.md's layer rule), and ``POST /pods`` needs this
+same effectful path reachable from ``serve.py`` — which never imports
+``docket.cli`` — so the decisions and effects live here. ``cli/_pod.py``
+renders around this module's typed return values; ``docket add`` and
+``POST /pods`` both call ``provision_pod`` below, so the two surfaces cannot
+drift apart.
 
 This is deliberately its own module rather than an extension of
 ``core/provisioning.py``: that module is documented as small, pure UX helpers
@@ -108,7 +109,7 @@ def validate_verify_cmd(cmd: str) -> str:
     Trust boundary: docket keeps ``run_verify_cmd``'s ``shell=True`` (verify
     commands need `&&`/pipes) because this string is **operator-owned** — it only
     ever reaches docket through an interactive `set-verify`/`--verify` CLI
-    invocation (or, since P22-5, the equivalent `POST /pods` field) the operator
+    invocation (or the equivalent `POST /pods` field) the operator
     supplied directly, never from agent or network-untrusted input, and docket
     executes it as the operator when the pipeline later runs it. This validation
     only rejects control-character injection and bounds length; it does not

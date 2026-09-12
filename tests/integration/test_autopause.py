@@ -190,9 +190,9 @@ class TestInfoDisplaysPausedCorrectly:
     def test_real_bool_true_shows_paused_in_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The exact bug: a writer stores a real JSON boolean `true`; the old
+        # The exact bug: a writer stores a real JSON boolean `true`; a
         # `raw.get("paused", "") == "true"` compare is never true for a bool,
-        # so this used to silently render as not-paused.
+        # so it silently renders as not-paused unless bools are handled too.
         self._setup(tmp_path, monkeypatch, True)
         runner = CliRunner()
         result = runner.invoke(_app, ["info", "myshop", "--json"])

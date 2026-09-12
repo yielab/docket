@@ -1,4 +1,4 @@
-"""Artifact-installed RED contract for W28-C2's OpenHands SDK adapter."""
+"""Artifact-installed RED contract for the OpenHands SDK adapter."""
 
 from __future__ import annotations
 

@@ -1,12 +1,11 @@
 """GET /traces/<project>?since=<cursor> — cursor'd raw trace read over HTTP.
 
-Phase 22 (P22-3): this is P20-3's deferral trigger firing -- "grep over
-JSONL is adequate" was true for a human operator, false for a programmatic
-consumer (Tack) that must resume a poll loop from a cursor without silently
-re-ingesting or silently skipping an event. Built entirely on
-`core.trace.export_lines(project, since)` (owned elsewhere this wave, used
-as-is): raw JSONL lines out, verbatim, one project, one cursor -- no
-fleet-wide query, no filtering by event type/role/session.
+This route exists because "grep over JSONL is adequate" is true for a human
+operator but false for a programmatic consumer (Tack) that must resume a poll
+loop from a cursor without silently re-ingesting or silently skipping an event.
+Built entirely on `core.trace.export_lines(project, since)`: raw JSONL lines
+out, verbatim, one project, one cursor -- no fleet-wide query, no filtering by
+event type/role/session.
 
 `export_lines`' own `since` filter is `ts >= since` -- inclusive -- and `ts`
 is second-granularity (`%Y-%m-%dT%H:%M:%SZ`). A cursor that is just the last
@@ -191,7 +190,7 @@ class TestVerbatimPassthrough:
     def test_no_filtering_by_event_type_role_or_session(
         self, live_server: tuple[str, str], traces_home: Path
     ) -> None:
-        """P22-3 explicitly rejects a fleet-wide query UI with filtering --
+        """This route deliberately rejects a fleet-wide query UI with filtering --
         every event for the project comes back, regardless of type/role/
         session, leaving aggregation to the consumer (Tack)."""
         url, token = live_server

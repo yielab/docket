@@ -4,7 +4,7 @@ These call the public run_* entry points in-process. stdout is captured with
 capsys to assert on the rendered text; the return value is the process exit
 code. Config-dependent modules (metrics) are repointed at a temp DOCKET_HOME.
 
-`docket eval` was removed (CL-J) — see test_eval_command_removed.py for its
+`docket eval` is not a command — see tests/guards/test_removed_commands.py for its
 removed-command-notice coverage.
 """
 

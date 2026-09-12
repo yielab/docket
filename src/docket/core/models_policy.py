@@ -9,8 +9,8 @@ from typing import Any
 import docket.config as cfg
 from docket.edges import store as _store
 
-# Internal rank anchors: per-class defaults (used to seed each role's default
-# model) and the seed values `docket models` displays alongside the policy
+# Internal rank anchors: per-class defaults that seed each role's default
+# model, and the seed values `docket models` displays alongside the policy
 # table. NOT a user-facing vocabulary — "economy"/"standard"/"premium" are no
 # longer accepted as model arguments or registry keys. This table is the sole
 # surviving piece of the old tier system, kept private because role-default

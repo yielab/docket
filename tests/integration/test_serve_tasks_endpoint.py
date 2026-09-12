@@ -1,6 +1,6 @@
 """GET /tasks/<project> — the pod queue as JSON over HTTP.
 
-Phase 22 (P22-2): exposes `core.dispatch.read_tasks` — already the exact
+Exposes `core.dispatch.read_tasks` — already the exact
 normalized shape `docket pod <p> tasks` renders from — behind the same
 Bearer auth as `/runs`. No new behaviour: this route adds no filtering,
 no reshaping, and no 404 that `read_tasks` itself does not express (a

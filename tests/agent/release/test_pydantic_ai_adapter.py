@@ -1,4 +1,4 @@
-"""Artifact-installed RED contract for the W28-C3 PydanticAI toolset adapter."""
+"""Artifact-installed RED contract for the PydanticAI toolset adapter."""
 
 from __future__ import annotations
 

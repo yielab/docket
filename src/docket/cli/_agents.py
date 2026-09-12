@@ -962,10 +962,10 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
     perm_ok = True
     managed_paths = [ws]
     for top_level in ws.iterdir():
-        # A pod Implementer's Git worktree is repository content. Recursing
-        # through it used to turn executables into 0600 files and directories
-        # into 0700, corrupting the checkout while claiming to heal Docket's
-        # workspace. Only Docket-owned prompt/meta/memory paths belong here.
+        # A pod Implementer's Git worktree is repository content. Recursing through it
+        # turns executables into 0600 files and directories into 0700, corrupting the
+        # checkout while claiming to heal Docket's workspace. Only Docket-owned
+        # prompt/meta/memory paths belong here.
         if top_level.name == "worktree" or top_level.is_symlink():
             continue
         managed_paths.append(top_level)

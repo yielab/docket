@@ -1,4 +1,4 @@
-"""W29-C6 RED contract for the exact-artifact published adoption baseline."""
+"""RED contract for the exact-artifact published adoption baseline."""
 
 from __future__ import annotations
 

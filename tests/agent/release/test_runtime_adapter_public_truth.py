@@ -1,4 +1,4 @@
-"""Public support-boundary truth contract for W28-C4."""
+"""Public support-boundary truth contract for the runtime adapters."""
 
 from __future__ import annotations
 

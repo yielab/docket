@@ -1,4 +1,4 @@
-"""W26-C11 public documentation and release-truth contract."""
+"""Public documentation and release-truth contract."""
 
 from __future__ import annotations
 
