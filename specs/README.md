@@ -23,6 +23,7 @@ specs/
 │   ├── mcp-client.spec.md                # MCP client: pluggable tool servers (Phase 19 P19-10)
 │   ├── model-profiles.spec.md            # Role→model policy and pinning
 │   ├── pipeline-format.spec.md           # docket-native pipeline YAML format + executor (W-1/W-2)
+│   ├── pod-blueprints.spec.md            # Built-in pod blueprints (software/research/content/ops/agentic-product)
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── role-archetypes.spec.md           # Declarative role archetypes (registry, overlay, CLI)
 │   ├── security-gates.spec.md            # Tool-approval gates (on by default; docket-enforced)
@@ -117,7 +118,12 @@ Each specification document must include:
 
 > This table mirrors each spec's own `**Version**`/`**Status**` header (the authoritative
 > source). If they disagree, the spec header wins — fix this table.
-> Last synchronized: 2026-08-31 (W26-C5/C7/C9 reconciled runtime packaging, approval atomicity,
+> Last synchronized: 2026-09-12 (added the three rows this table was missing — Starter Journey,
+> Docket Store, Adoption Benchmark — added Pod Blueprints to the file tree, corrected three drifted
+> versions — Agent Loop, Security Gates, CLI Interface — corrected the Harness Mode row's fixtures
+> path, and replaced the stale on-disk spec-file count below; `scripts/maint/check_spec_index.py`
+> now derives this reconciliation instead of a model re-reading the tree).
+> Previously synchronized 2026-08-31 (W26-C5/C7/C9 reconciled runtime packaging, approval atomicity,
 > and conversation mutation contracts/versions; the on-disk index remains authoritative).
 > Previously synchronized 2026-08-26 (W25-C8 made the live startup projection non-contradictory
 > and reconciled the agent-loop contract/version).
@@ -134,15 +140,16 @@ Each specification document must include:
 > L-4, G-4b, W-4, CL-2, W-5 and wave 4's CL-1, L-6, W-3, W-7, W-2+W-8 and wave 3's G-1, G-5, W-1,
 > W-6, L-1, L-3).
 > The `Workflow Integration` row was dropped here, one merge late: W-3 deleted the spec file itself
-> (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 23
-> `.spec.md` files on disk.
+> (D-16) but the row survived the wave-4 index reconciliation. The row count is now exactly the 27
+> `.spec.md` files on disk (`Test Framework` and `User Stories` are separate rows for plain `.md`
+> docs, not counted in that total).
 > Verified row-by-row against every spec's own `**Version**` header, not carried forward — an
 > index table cannot be auto-merged correctly when several branches bump versions in parallel.
 
 | Specification | Version | Status | Notes |
 | ------------- | ------- | ------ | ----- |
 | Agent Lifecycle | 1.12.0 | Complete | `docket init` creates the project pod; `docket add` only extends an existing pod; pod deletion purges runtime/session/trace state but preserves audit; `maintain distill` + exact durable records |
-| Agent Loop | 1.16.0 | Implemented and live | The production turn loop is gated, role-narrowed, composes one runtime-safe startup projection, durably compacts and trace-separates history, preflights every known-window request, reserves one bounded tool-free terminal response, bounds consecutive typed tool denials, and never recompacts the same logical request-fit segment without new tool growth |
+| Agent Loop | 1.18.0 | Implemented and live | The production turn loop is gated, role-narrowed, composes one runtime-safe startup projection, durably compacts and trace-separates history, preflights every known-window request, reserves one bounded tool-free terminal response, bounds consecutive typed tool denials, and never recompacts the same logical request-fit segment without new tool growth |
 | API Keys | 1.3.0 | Complete | Central keys feed resolved endpoints directly; credential presence alone never claims provider readiness |
 | Audit | 2.9.1 | Implemented | Rotation, head lookup, durable append, and coherent readers share one audit lock; approval terminal decisions emit exactly one matching winner event |
 | Cost Tracking | 1.6.0 | Implemented, recorded dollars unavailable | Auto-pause is real; measured tokens are durable, while `DocketDriver` reports no billed dollar amount. Budget gating uses a separately labelled estimate. Daily history remains empty because sessions do not store per-turn timestamps |
@@ -151,21 +158,24 @@ Each specification document must include:
 | Pod Blueprints | 1.3.0 | Implemented | Five built-ins — software/research/content/ops plus `agentic-product`; deliberately data, not scaffolding. `docket init --blueprint`/`--from`; no user-authored blueprints yet |
 | Pod Dispatch | 6.6.0 | Complete | Hop execution/history/handoff behavior is live; conversation hops mutate one validated locked registry and retain concurrent updates |
 | Role Archetypes | 1.6.0 | Implemented | Built-ins, load-bearing `gateContract`, pod-blueprint composition, per-role `tokenBudget`, enforced `deniedTools`, and Docket-owned user overlays |
-| Security Gates | 0.17.0 | Implemented (on by default) | Every tool call Docket dispatches passes through `core/tools.py`; pending approvals resolve through one conditional locked transition, and argument-aware policy, optional isolation, and inspectable allowlisted fetch share that chokepoint. General egress remains open by decision D-23 |
+| Security Gates | 0.19.0 | Implemented (on by default) | Every tool call Docket dispatches passes through `core/tools.py`; pending approvals resolve through one conditional locked transition, and argument-aware policy, optional isolation, and inspectable allowlisted fetch share that chokepoint. General egress remains open by decision D-23 |
 | Session History | 1.4.0 | Implemented and live | `core/session.py`: durable opaque-key history, lossless round-trip, bounded hierarchical atomic/ranged compaction, isolated summarizer key, recursion guard, and whole-operation fail-closed behavior; request fit can preserve the current task while compacting selected history |
 | Session Scoping | 2.0.0 | Complete | Base metadata scope remains `agent:<id>:<project>`; pod dispatch derives isolated step-history keys and keeps a separate task trace without deleting prior sessions (W20-C4) |
 | Telegram Integration | 2.2.0 | Implemented | `docket wire` discovers a group from a one-time Telegram command with manual fallback; Docket owns the bot and approval path, unbound chats fail closed, and delegated text passes through input policy |
 | Workspace Structure | 1.9.0 | Complete | `DOCKET_HOME` is the only state root; specialist and workdir workspace contracts plus role-aware `TOOLS.md` are live |
-| CLI Interface | 1.24.0 | Complete | The root wheel/sdist installs canonical `docket` with artifact-only version/help/init-help and metadata/uninstall contracts |
+| CLI Interface | 1.25.0 | Complete | The root wheel/sdist installs canonical `docket` with artifact-only version/help/init-help and metadata/uninstall contracts |
 | MCP Client | 1.3.0 | Implemented and wired to the live turn path | External tools are namespaced, description-screened, loaded before role narrowing, and dispatched through the same gated chokepoint. Remote results honor the live `DOCKET_TOOL_MAX_OUTPUT_CHARS` context ceiling per call. Remaining limits: stdio only, no listing cache, and fail-closed zero MCP tools for read-only roles without trusted capability metadata. |
 | Runtime Library | 2.2.0 | Implemented (artifact-tested; **not published to any index**) | `docket-runtime` `0.3.0` exclusively owns `docket_runtime/`; its bounded envelope and pinned standard OpenHands SDK/PydanticAI configurations preserve reported usage, sole-chokepoint dispatch, paired identity traces, hash-chained audit, and typed handoff when relevant tools are exclusively Docket-backed; wheel and sdist remain disjoint from `docket` |
-| Harness Mode | 1.1.0 | Implemented | `docket harness run`/`status` — one agent, one turn, to completion, in a caller-owned workspace and home; NDJSON events and one versioned result on stdout, with the published schema and fixtures under `docs/contracts/harness-v1/` |
+| Harness Mode | 1.1.0 | Implemented | `docket harness run`/`status` — one agent, one turn, to completion, in a caller-owned workspace and home; NDJSON events and one versioned result on stdout, with the published schema under `docs/contracts/harness-v1/` and fixtures under `tests/fixtures/harness-contract/v1/` |
 | MCP Server | 1.4.0 | Implemented | `docket mcp serve` — 10 tools, stdio, optional `docket[mcp]` extra, using the `mcp` 2.x SDK |
 | CLI JSON Shapes | 1.6.0 | Complete | Docket-owned doctor/fleet contract and current snapshot channel provenance |
 | docket-meta schema | 3.0.0 | Complete | Pod resource metadata is backed by collision-free allocation and attempt-owned rollback that preserves pre-existing runtime state |
+| Docket Store | 1.0.0 | Implemented | Durability and recovery contract for Docket-owned JSON: a malformed primary never makes a valid backup unusable, and recovery never hides the bytes that explain the incident |
 | Serve Read API | 2.10.0 | Stable | Concurrent pod provisioning serializes one project while different projects share only the short atomic allocation transition |
+| Adoption Benchmark | 1.2.3 | Implemented | Versioned, machine-readable contract for the adoption benchmark: one fixed scenario plus durable Docket records to canonical per-attempt JSONL and a deterministic aggregate; fake-model results are reproducible evidence, not a quality measurement |
 | Input Validation | 1.4.0 | Complete | Docket-owned store and protocol-boundary validation |
 | Test Framework | 2.13.0 | Active | Hermetic `DOCKET_HOME`, lane placement contract (product lanes in the default run, budgeted agent lane for prose/release/harness checks, one unit file per module, comment hygiene), portable development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, byte-exact artifact gates, and public release-truth checks |
+| Starter Journey | 1.0.0 | Implemented | The smallest copied-outside-checkout path from an exact built artifact to an inspectable governed mutation, run against a deterministic loopback model with no source checkout, `docket-runtime`, or hosted credentials |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 
 ## Quick Links
