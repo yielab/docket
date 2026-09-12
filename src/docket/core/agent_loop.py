@@ -437,16 +437,13 @@ def _trace_terminal_finalization(
     )
 
 
+# LoopConfig wins when set explicitly; a backend's own reported window or output
+# ceiling only fills in a value the config leaves unset, so an endpoint can
+# describe its own limits without every caller having to know them ahead of time.
 def _resolve_context_bounds(
     backend: ChatBackend, cfg: LoopConfig
 ) -> tuple[int | None, int, int | None]:
-    """Resolve the request's context window, max output tokens, and reserve.
-
-    ``LoopConfig`` wins when set explicitly; a backend's own reported window or
-    output ceiling only fills in a value the config leaves unset, so an
-    endpoint can describe its own limits without every caller having to know
-    them ahead of time.
-    """
+    """Resolve the request's context window, max output tokens, and reserve."""
     backend_window = getattr(backend, "context_window_tokens", None)
     context_window = cfg.context_window_tokens
     if context_window is None and isinstance(backend_window, int) and backend_window > 0:
@@ -471,14 +468,12 @@ def _resolve_trace_coordinates(
     return project, trace_key
 
 
+# Resolved once per turn, not per iteration -- neither the role's toolset nor
+# this agent's identity files change mid-turn.
 def _resolve_role_registry_and_prompt(
     registry: ToolRegistry, ctx: ToolContext
 ) -> tuple[ToolRegistry, str, list[ToolSpec]]:
-    """Narrow the tool registry to this role and compose today's system prompt.
-
-    Resolved once per turn, not per iteration -- neither the role's toolset
-    nor this agent's identity files change mid-turn.
-    """
+    """Narrow the tool registry to this role and compose today's system prompt."""
     registry = _archetypes.registry_for_role(registry, ctx.role)
     system_prompt = _identity.system_prompt_for_agent(ctx.agent_id, project_roots=ctx.roots)
     return registry, system_prompt, registry.specs()
@@ -1026,12 +1021,10 @@ def run_agent_turn(
     finalization_attempted = False
     consecutive_denial_kinds: list[ToolDenialKind] = []
 
+    # A non-None second element means stop now; otherwise the first element is
+    # this iteration's request timeout.
     def _check_iteration_bounds() -> tuple[int, AgentLoopResult | None]:
-        """Cancellation plus the four per-iteration ceilings, in bound-check order.
-
-        A non-``None`` second element means stop now; otherwise the first
-        element is this iteration's request timeout.
-        """
+        """Cancellation plus the four per-iteration ceilings, in bound-check order."""
         nonlocal iteration
         if _cancellation_requested():
             return 0, _cancelled()
@@ -1070,14 +1063,13 @@ def run_agent_turn(
         remaining = max(1, int(cfg.wall_clock_timeout_s - elapsed))
         return min(cfg.request_timeout_s, remaining), None
 
+    # Falls back to one tool-free terminal attempt when the ordinary
+    # tool-enabled round no longer fits the remaining turn budget. A non-None
+    # last element means stop now.
     def _prepare_request_or_finalize() -> tuple[
         list[ChatMessage], list[ToolSpec], bool, AgentLoopResult | None
     ]:
-        """Fit the task request, falling back to one tool-free terminal attempt
-
-        when the ordinary tool-enabled round no longer fits the remaining
-        turn budget. A non-``None`` last element means stop now.
-        """
+        """Fit the task request, or enter terminal finalization instead."""
         nonlocal finalization_attempted
         (
             messages,
@@ -1175,19 +1167,17 @@ def run_agent_turn(
             )
         return terminal_messages, [], True, None
 
+    # Returns the assistant message to dispatch tools for, or None with a
+    # populated AgentLoopResult when the turn must stop here -- including the
+    # ordinary final_message success exit, which is itself a response shape
+    # (no tool calls requested), not a separate kind of ending.
     def _call_backend_and_handle_response(
         messages: list[ChatMessage],
         request_tools: list[ToolSpec],
         finalizing: bool,
         request_timeout: int,
     ) -> tuple[ChatMessage | None, TokenUsage, AgentLoopResult | None]:
-        """One backend exchange and every response-shaped stop condition.
-
-        Returns the assistant message to dispatch tools for, or ``None`` with
-        a populated ``AgentLoopResult`` when the turn must stop here —
-        including the ordinary ``final_message`` success exit, which is
-        itself a response shape (no tool calls requested).
-        """
+        """One backend exchange and every response-shaped stop condition."""
         nonlocal last_raw, total_usage
         if _cancellation_requested():
             return None, TokenUsage(), _cancelled()
@@ -1282,16 +1272,14 @@ def run_agent_turn(
             )
         return assistant_msg, response.usage, None
 
+    # Persists the assistant message and every tool result as one atomic unit
+    # through dispatch_tool. Returns None to keep looping.
     def _dispatch_tool_batch(
         messages: list[ChatMessage],
         assistant_msg: ChatMessage,
         response_usage: TokenUsage,
     ) -> AgentLoopResult | None:
-        """Gate the batch size, dispatch every call, then apply the denial ceiling.
-
-        Persists the assistant message and every tool result as one atomic
-        unit through ``dispatch_tool``. Returns ``None`` to keep looping.
-        """
+        """Gate the batch size, dispatch every call, then apply the denial ceiling."""
         nonlocal tool_calls_executed
         if tool_calls_executed + len(assistant_msg.tool_calls) > cfg.max_tool_calls:
             return _done(
@@ -1354,11 +1342,9 @@ def run_agent_turn(
             )
         return None
 
+    # Returns None to keep looping.
     def _run_iteration() -> AgentLoopResult | None:
-        """One full round: bounds, fit-or-finalize, model call, tool dispatch.
-
-        ``None`` means keep looping.
-        """
+        """One full round: bounds, fit-or-finalize, model call, tool dispatch."""
         request_timeout, stop = _check_iteration_bounds()
         if stop is not None:
             return stop
