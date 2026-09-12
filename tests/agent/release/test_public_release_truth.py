@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import types
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -36,33 +37,35 @@ PUBLIC_MARKDOWN = (
     ROOT / "examples" / "configs" / "README.md",
 )
 
-INDEXED_SPECS = {
-    "Agent Lifecycle": "functional/agent-lifecycle.spec.md",
-    "Agent Loop": "functional/agent-loop.spec.md",
-    "API Keys": "functional/api-keys.spec.md",
-    "Audit": "functional/audit.spec.md",
-    "Cost Tracking": "functional/cost-tracking.spec.md",
-    "Model Profiles": "functional/model-profiles.spec.md",
-    "Pipeline Format": "functional/pipeline-format.spec.md",
-    "Pod Blueprints": "functional/pod-blueprints.spec.md",
-    "Pod Dispatch": "functional/pod-dispatch.spec.md",
-    "Role Archetypes": "functional/role-archetypes.spec.md",
-    "Security Gates": "functional/security-gates.spec.md",
-    "Session History": "functional/session-history.spec.md",
-    "Session Scoping": "functional/session-scoping.spec.md",
-    "Telegram Integration": "functional/telegram-integration.spec.md",
-    "Workspace Structure": "functional/workspace-structure.spec.md",
-    "CLI Interface": "api/cli-interface.spec.md",
-    "MCP Client": "functional/mcp-client.spec.md",
-    "Runtime Library": "api/runtime-library.spec.md",
-    "MCP Server": "api/mcp-server.spec.md",
-    "CLI JSON Shapes": "data/cli-json-shapes.spec.md",
-    "docket-meta schema": "data/docket-meta.spec.md",
-    "Serve Read API": "data/serve-read-api.spec.md",
-    "Input Validation": "validation/input-validation.spec.md",
-    "Test Framework": "test-framework.md",
-    "User Stories": "acceptance/user-stories.md",
-}
+
+def _load_check_spec_index() -> types.ModuleType:
+    """The maintenance script owns the filename<->table-label naming convention."""
+    spec = importlib.util.spec_from_file_location(
+        "_check_spec_index", ROOT / "scripts" / "maint" / "check_spec_index.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _discover_indexed_specs() -> dict[str, str]:
+    """Every spec the public index must cover, so a new file cannot go unindexed unnoticed."""
+    check_spec_index = _load_check_spec_index()
+    discovered = {
+        check_spec_index.stem_to_display(path.name.removesuffix(".spec.md")): path.relative_to(
+            ROOT / "specs"
+        ).as_posix()
+        for path in sorted((ROOT / "specs").rglob("*.spec.md"))
+    }
+    # These two carry real Version/Status headers but are plain .md, not .spec.md, by design.
+    discovered["Test Framework"] = "test-framework.md"
+    discovered["User Stories"] = "acceptance/user-stories.md"
+    return discovered
+
+
+INDEXED_SPECS = _discover_indexed_specs()
 
 
 def _markdown_destinations(text: str) -> list[str]:
@@ -274,7 +277,7 @@ def test_spec_index_matches_current_headers_and_changelogs() -> None:
         version = version_match.group(1)
         indexed = rows.get(label)
         if indexed is None:
-            problems.append(f"{label}: missing index row")
+            problems.append(f"{relative}: on disk but missing an index row (label {label!r})")
             continue
         indexed_version, indexed_status = indexed
         if indexed_version != version:
@@ -283,7 +286,13 @@ def test_spec_index_matches_current_headers_and_changelogs() -> None:
             problems.append(
                 f"{label}: index status {indexed_status!r}, spec status {status_match.group(1)!r}"
             )
-        if f"### Version {version}" not in text:
+        # Changelog entries use one of the heading/bullet styles already live across specs:
+        # "### Version 1.1.0", "### 1.0.0 -- date", or "- **1.2.3 -- date:**".
+        changelog_entry = re.compile(
+            rf"^(?:[-*]\s*)?(?:#{{2,4}}\s*(?:Version\s+)?|\*\*)\s*{re.escape(version)}\b",
+            flags=re.MULTILINE,
+        )
+        if not changelog_entry.search(text):
             problems.append(f"{label}: current version {version} has no changelog entry")
 
     assert problems == [], "spec index/header/changelog drift:\n" + "\n".join(problems)
