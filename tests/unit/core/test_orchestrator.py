@@ -1,18 +1,9 @@
 """`core/orchestrator.py` — the pipeline executor's planning layer.
 
-Covers: `resolve_plan`'s determinism contract (same spec + roster + registry
-=> a byte-identical `ExecutionPlan`, independent of wall clock, dict
-construction order, or which thread calls it), gate resolution (a step's own
-`gate` always wins; only an omitted one falls back to its archetype's
-`gateContract`), `parse_verdict`'s generic marker matching, `run_group`'s join
-semantics (every child observed before returning, declaration-order results,
-contextvars propagated into worker threads), and `render_plan`'s shape.
-
-dispatch.py-level integration — a real parallel group and a real pipeline
-`approval` step executed through the dispatch state machine, and gate genericity
-for a non-built-in archetype — is covered by `test_generalized_gates.py`,
-not repeated here. Cancellation and the `docket pipeline`/`docket runs
-cancel` CLI surface have their own test files.
+Covers `resolve_plan`'s determinism, gate resolution (a step's own `gate`
+wins over its archetype's `gateContract`), `parse_verdict`'s marker
+matching, `run_group`'s join semantics, and `render_plan`'s shape.
+Dispatch-level integration and the CLI surface have their own test files.
 """
 
 from __future__ import annotations
@@ -27,7 +18,7 @@ from docket.core import archetypes as _archetypes
 from docket.core import orchestrator as _orch
 from docket.core import pipeline as _pipeline
 
-SUBJECT = "docket.core.archetypes"
+SUBJECT = "docket.core.orchestrator"
 
 
 def _sample_spec() -> _pipeline.PipelineSpec:
@@ -168,9 +159,7 @@ class TestResolveGate:
         assert _orch.resolve_gate(step, registry) is None
 
     def test_starter_archetype_gate_contract_resolves(self) -> None:
-        """A step targeting a non-legacy (starter-library) role with no gate
-        of its own still resolves a real gate from that archetype's
-        gateContract — the whole point of generalizing gate resolution."""
+        """A step targeting a non-legacy (starter-library) role with no gate of its own still resolves a real gate from that archetype's gateContract — the whole point of generalizing gate resolution."""
         registry = _archetypes.load_registry()
         step = _pipeline.Step(id="s", role="critic")
         gate = _orch.resolve_gate(step, registry)
@@ -180,9 +169,7 @@ class TestResolveGate:
         assert _orch.parse_verdict(gate, "reject\nno") == "reject"
 
     def test_archetype_gate_contract_never_carries_rework(self) -> None:
-        """An archetype's gateContract is descriptive marker data only — no
-        rework edge. A pipeline step wanting bounded rework must declare its
-        own VerdictGate with an explicit `rework` edge."""
+        """An archetype's gateContract is descriptive marker data only — no rework edge. A pipeline step wanting bounded rework must declare its own VerdictGate with an explicit `rework` edge."""
         registry = _archetypes.load_registry()
         step = _pipeline.Step(id="s", role="reviewer")  # no gate of its own
         gate = _orch.resolve_gate(step, registry)

@@ -1,13 +1,8 @@
-"""doctor — system-wide health checks + JSON health probe.
+"""`docket doctor` — system-wide health checks + JSON health probe.
 
-These call run_doctor() in-process with DOCKET_HOME/FLEET_FILE monkeypatched
-to a temp seed. stdout is captured to assert on the human report; the return
-value is the process exit code.
-
-There is no daemon any more, so this module carries no check that only made
-sense against one: binary presence, gateway status, daemon config validity/
-perms, an exec-approval report, browser/gateway-log scans, or a memory-index
-advisory.
+Calls `run_doctor()` in-process with `DOCKET_HOME`/`FLEET_FILE`
+monkeypatched to a temp seed. stdout is captured to assert on the human
+report; the return value is the process exit code.
 """
 
 from __future__ import annotations
@@ -22,7 +17,7 @@ import docket.config as _cfg
 from docket.cli import _doctor
 from docket.core import secrets as _secrets
 
-SUBJECT = "docket.core.memory"
+SUBJECT = "docket.cli._doctor"
 
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
@@ -201,9 +196,7 @@ class TestChecks:
     def test_pod_lead_missing_tools_md_not_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for
-        an Implementer) — `docket doctor` must not flag that as broken.
-        """
+        """A pod Lead never gets a TOOLS.md (`cli/_pod.py` writes one only for an Implementer) — `docket doctor` must not flag that as broken."""
         home = _seed(tmp_path, monkeypatch, full_workspace=False)
         ws = home / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
@@ -318,9 +311,7 @@ class TestChecks:
     def test_security_gates_always_on_message(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """There is no daemon exec-approval config/audit to check -- the
-        tool-call gate is unconditionally active, and that is what this
-        check reports."""
+        """There is no daemon exec-approval config/audit to check -- the tool-call gate is unconditionally active, and that is what this check reports."""
         _seed(tmp_path, monkeypatch)
         issues = _doctor._check_security_gates()
         out = capsys.readouterr().out
@@ -466,9 +457,7 @@ class TestRuntimeContractSpecialists:
     def test_full_doctor_run_heals_specialist_and_fix_keeps_it_healthy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """End-to-end: `docket doctor` (with --fix) repairs a specialist with a
-        missing WORKFLOW_AUTO.md as part of a normal full run.
-        """
+        """End-to-end: `docket doctor` (with --fix) repairs a specialist with a missing WORKFLOW_AUTO.md as part of a normal full run."""
         from docket.core import memory as _mem
 
         home = _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"})

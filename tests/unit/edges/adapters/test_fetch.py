@@ -1,30 +1,9 @@
-"""The `fetch` tool -- an inspectable, allowlisted egress path.
+"""The `fetch` tool -- an inspectable, allowlisted egress path (`edges/adapters/fetch.py`).
 
-docket's real network-egress gap: `curl`/`wget` correctly ask through the
-`bash` command classifier, but `python3 -c "import urllib..."`, `node`, and
-`git clone <url>` are curated-allowlist escape hatches that reach the network
-unattended. `fetch` closes that gap without a `--network none` lockdown
-(deferred -- it breaks `npm install`/`pip`/`git clone` when on, for no
-measured need). What this file pins, in order of how much it matters:
-
-1. **The domain allowlist is real containment, not decoration.** A host off
-   the allowlist is refused *before* a socket is ever opened -- proven by
-   making `urllib.request.build_opener` raise if called at all -- and a
-   redirect off the allowlist is refused the same way `urllib`'s own
-   extension point (`redirect_request`) is meant to be used for exactly this.
-2. **The response size cap and timeout are enforced**, with truncation
-   always announced in the returned text (same discipline as
-   `toolbox.MAX_OUTPUT_CHARS`).
-3. **`fetch` is gated exactly like every other built-in.** It is registered
-   in `core/tools.py`'s `builtin_registry()`, `kind="read"`, and a
-   `pre_tool_call` policy denies a `fetch` call through the real,
-   unmodified `dispatch_tool` -- proving there is no second execution path
-   around the chokepoint.
-
-A real local HTTP server (stdlib `http.server`) backs every network-shaped
-test here rather than mocking `urlopen` internals, so the redirect-refusal
-behavior in particular is proven against real HTTP semantics, not an
-assumption about what `urllib` would have done.
+Pins the domain allowlist as real containment (redirects included), the
+response size cap and timeout with announced truncation, and that `fetch`
+is gated exactly like any other built-in through the real, unmodified
+`dispatch_tool`. A real local HTTP server backs every network-shaped test.
 """
 
 from __future__ import annotations
@@ -43,7 +22,7 @@ from docket.core.llm import ToolCall
 from docket.core.tools import ToolContext, builtin_registry, dispatch_tool
 from docket.edges.adapters import fetch as _fetch
 
-SUBJECT = "docket.core.tools"
+SUBJECT = "docket.edges.adapters.fetch"
 
 
 @pytest.fixture(autouse=True)
@@ -243,9 +222,7 @@ class TestGatedExactlyLikeABuiltin:
         assert "url" in res.reason
 
     def test_a_pre_tool_call_policy_gates_fetch_exactly_like_a_builtin(self) -> None:
-        """A `pre_tool_call` policy denies a fetch call before the handler
-        ever runs -- proof `fetch` runs through the existing gate
-        (`evaluate_tool_call`) rather than around it."""
+        """A `pre_tool_call` policy denies a fetch call before the handler ever runs -- proof `fetch` runs through the existing gate (`evaluate_tool_call`) rather than around it."""
         _cfg.POLICIES_DIR.mkdir(parents=True, exist_ok=True)
         doc = {
             "id": "no-fetch-test",

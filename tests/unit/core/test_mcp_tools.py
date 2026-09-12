@@ -1,29 +1,9 @@
-"""MCP tools reachable in a live turn -- the wire itself.
+"""MCP tools reachable in a live turn (`core/mcp_tools.py`).
 
-Before this card, `core/mcp_tools.py`'s `load_mcp_tools` had no production
-caller: `edges/adapters/docket_runtime.py`'s `DocketDriver` built every
-turn's registry from `core.tools.builtin_registry()` alone. This file covers
-the two things that change:
-
-1. **`DocketDriver.run_turn` actually calls `load_mcp_tools`** (via its new
-   `mcp_loader` seam), before `core/agent_loop.py`'s per-turn role narrowing
-   runs -- so a configured server's tools are both *reachable* and *subject
-   to the same role narrowing a built-in gets*.
-2. **The security invariant a naive wire would have broken.** Every
-   MCP-adapted tool registers under a namespaced name
-   (`mcp__<server>__<tool>`) that can never equal `"write"`/`"edit"`/
-   `"bash"`, so a denylist keyed on those literal names alone cannot catch
-   it. `core.archetypes.registry_for_role` (see its own docstring) closes
-   this by also excluding by `Tool.kind` -- every adapted tool is
-   `kind="write"` unconditionally, so a role whose denied names imply kind
-   `write` loses every MCP tool too. **`TestReviewerNeverGainsAWriteCapableMcpTool`
-   below is the load-bearing test in this file** -- it is what stands
-   between this card and silently voiding the Reviewer guarantee README
-   documents as "structural, not advisory."
-
-No test here spawns a real subprocess or touches the network: `mcp_loader`
-is DocketDriver's injection seam precisely so a fake `list_tools`/`call_tool`
-(the same port `core/mcp_tools.py` itself defines) is enough.
+Covers `DocketDriver.run_turn` calling `load_mcp_tools` via its
+`mcp_loader` seam before per-turn role narrowing, and every MCP-adapted
+tool registering `kind="write"` unconditionally so `registry_for_role`
+excludes it by capability from a write-denied role. No real subprocess.
 """
 
 from __future__ import annotations
@@ -42,7 +22,7 @@ from docket.edges import store as _store
 from docket.edges.adapters.docket_runtime import DocketDriver, _load_mcp_tools
 from docket.edges.adapters.toolbox import ToolOutcome
 
-SUBJECT = "docket.core.llm"
+SUBJECT = "docket.core.mcp_tools"
 
 
 @pytest.fixture(autouse=True)
@@ -220,8 +200,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         assert "write" not in advertised and "edit" not in advertised and "bash" not in advertised
 
     def test_lead_also_loses_it_coordination_only(self) -> None:
-        """Lead denies write/edit/bash exactly like Reviewer -- same kind set,
-        same outcome, proving this isn't a Reviewer-only special case."""
+        """Lead denies write/edit/bash exactly like Reviewer -- same kind set, same outcome, proving this isn't a Reviewer-only special case."""
         _write_meta("lead-1", role="lead")
         backend = _ScriptedBackend([_final()])
         driver = DocketDriver(
@@ -234,9 +213,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         assert not any(name.startswith("mcp__") for name in advertised)
 
     def test_tester_loses_the_mcp_tool_but_keeps_bash(self) -> None:
-        """Tester denies only write/edit (kind `write`) -- bash (kind `exec`)
-        stays so it can run the suite it reports on, but the MCP tool
-        (kind `write`) is excluded by the same rule as `write`/`edit`."""
+        """Tester denies only write/edit (kind `write`) -- bash (kind `exec`) stays so it can run the suite it reports on, but the MCP tool (kind `write`) is excluded by the same rule as `write`/`edit`."""
         _write_meta("test-1", role="tester")
         backend = _ScriptedBackend([_final()])
         driver = DocketDriver(
@@ -250,9 +227,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         assert "bash" in advertised
 
     def test_implementer_does_get_the_mcp_tool(self) -> None:
-        """Contrast case: the exclusion is role-specific (kind-implied by
-        that role's own denied_tools), not a blanket ban on MCP tools --
-        an Implementer, already trusted with write/edit/bash, keeps it."""
+        """Contrast case: the exclusion is role-specific (kind-implied by that role's own denied_tools), not a blanket ban on MCP tools -- an Implementer, already trusted with write/edit/bash, keeps it."""
         _write_meta("impl-2", role="implementer")
         backend = _ScriptedBackend([_final()])
         driver = DocketDriver(
@@ -265,10 +240,7 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         assert "mcp__fake__danger_write" in advertised
 
     def test_a_stale_client_calling_the_mcp_tool_anyway_is_refused_at_dispatch(self) -> None:
-        """Belt and suspenders: even if a Reviewer's model somehow emitted a
-        call for the excluded tool (a stale client, a hallucination),
-        dispatch_tool must refuse it as unknown -- the same guarantee
-        TestReviewerCannotDispatchAWrite proves for built-ins."""
+        """Belt and suspenders: even if a Reviewer's model somehow emitted a call for the excluded tool (a stale client, a hallucination), dispatch_tool must refuse it as unknown -- the same guarantee TestReviewerCannotDispatchAWrite proves for built-ins."""
         import json
 
         from docket.core.llm import ToolCall
