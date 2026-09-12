@@ -134,7 +134,7 @@ _DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
 # at the autouse fixtures' home instead -- a home split in two with nothing
 # to fail.
 def repoint_docket_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
-    """Point every DOCKET_HOME-derived config constant at *home*."""
+    """Point every DOCKET_HOME-derived constant at *home*."""
     monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
     monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
     monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
