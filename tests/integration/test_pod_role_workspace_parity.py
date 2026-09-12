@@ -1,17 +1,8 @@
-"""The four legacy pod roles must render byte-identical SOUL.md/AGENTS.md
-after core/pod.py's role model moved from a hardcoded 4-tuple to the
-`core/archetypes.py` registry.
+"""The four built-in pod roles render byte-identical SOUL.md/AGENTS.md.
 
-The hard requirement: "Today's four roles ship as built-in archetypes
-producing byte-identical workspace output." Rather than diffing the current
-`cli/_pod.py` output against itself (which would not catch a regression
-introduced by editing both sides together), this file embeds a FROZEN,
-independent compatibility baseline for the hand-written generators. The
-baseline advances only for an intentional role-contract change, such as a
-verdict-marker placement change; ordinary refactors must not edit it. It
-compares `_legacy_member_soul`/`_legacy_member_agents` against
-`cli/_pod.py`'s current archetype-driven `_member_soul`/`_member_agents`
-across a range of inputs, for every legacy role.
+Compares `cli/_pod.py`'s output against a frozen, independently hand-written
+baseline embedded here, across a range of inputs -- self-diffing the current
+output would miss a regression from editing both sides together.
 """
 
 from __future__ import annotations
@@ -178,8 +169,7 @@ class TestLegacyByteParity:
         assert actual == expected
 
     def test_duplicate_index_member_id_unaffected(self) -> None:
-        """A second Implementer (`demo-implementer-2`) renders the same as the first,
-        modulo its own member id/role text — index doesn't leak into prose."""
+        """A second Implementer renders like the first, modulo its own member id."""
         member = pod.PodMember(
             project="demo",
             role="implementer",
