@@ -1,15 +1,12 @@
-"""`docket serve`'s periodic sweep actually runs trace retention.
+"""`docket serve`'s periodic sweep: what it calls, in what order, and its effect.
 
 core/trace.py's expire_old_traces() is tested in isolation by
-test_trace_retention.py. This file pins the *wiring*: that serve.py's
-_run_sweeps calls it at all, and that it calls it AFTER sweep_all.
-
-The ordering is the part worth a test rather than a comment. expire_old_traces
-only ever deletes an already-terminated trace, so a stale-but-open trace must
-first receive sweep_all's synthetic session_end before expiry can consider it.
-Wire them the other way round and nothing fails loudly -- every stale-open
-trace simply waits an extra sweep interval to become eligible, which is the
-kind of silent latency bug that survives for months.
+test_trace_retention.py. This file pins the *wiring* -- that _run_sweeps calls
+sweep_all then approval_sweep_expired, keeps going if one raises, and runs
+once at startup -- and the retention *effect* that ordering exists to protect:
+expire_old_traces only ever deletes an already-terminated trace, so a
+stale-but-open trace must first receive sweep_all's synthetic session_end
+before expiry can consider it eligible.
 """
 
 from __future__ import annotations
@@ -21,6 +18,8 @@ import pytest
 
 import docket.config as _cfg
 from docket import serve
+from docket.core import approval as _ap
+from docket.core import trace as _trace
 
 SUBJECT = "docket.serve"
 
@@ -86,23 +85,16 @@ class TestSweepRunsRetention:
     def test_stale_open_trace_is_terminated_but_not_expired_in_the_same_sweep(
         self, swept_home: Path
     ) -> None:
-        """Retention runs from session END, not from last activity.
-
-        This trace is ancient and has NO session_end, so expiry alone would
-        keep it forever -- that is expire_old_traces' liveness rule and it is
-        correct. sweep_all terminates it, but the synthetic session_end it
-        appends carries a FRESH _now_iso() timestamp, so the trace's age
-        immediately resets and it survives this pass. It becomes eligible one
-        full retention window later.
-
-        Worth pinning because the intuitive reading is the opposite: an
-        operator seeing a year-old abandoned trace would expect it deleted on
-        sight. Deleting it at the moment the sweep first notices it would
-        destroy the evidence of an abandoned session exactly when someone
-        would go looking for it, so the conservative behaviour is deliberate.
-        If this assertion ever flips, retention has started measuring from
-        last activity and abandoned sessions are being deleted on discovery.
-        """
+        """Retention runs from session END, not from last activity."""
+        # This trace is ancient and has NO session_end, so expiry alone would keep it
+        # forever -- that is expire_old_traces' liveness rule and it is correct.
+        # sweep_all terminates it, but the synthetic session_end it appends carries a
+        # FRESH timestamp, so the trace's age resets and it survives this pass; it
+        # becomes eligible one full retention window later. Deleting it the moment the
+        # sweep first notices it would destroy the evidence of an abandoned session
+        # exactly when someone would go looking for it, so this conservative behaviour
+        # is deliberate: if this assertion ever flips, retention has started measuring
+        # from last activity instead of session end.
         pdir = swept_home / "traces" / "myshop"
         tf = _write_trace(
             pdir,
@@ -137,3 +129,42 @@ class TestSweepRunsRetention:
         serve._run_sweeps()
 
         assert audit.read_text(encoding="utf-8") == "seed-entry\n"
+
+
+class TestSweepWiring:
+    """`_run_sweeps` calls both sweeps, in order, and survives either failing."""
+
+    def test_run_sweeps_invokes_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called: list[str] = []
+        monkeypatch.setattr(_trace, "sweep_all", lambda: called.append("trace"))
+        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: called.append("appr") or 0)
+        serve._run_sweeps()
+        assert called == ["trace", "appr"]
+
+    def test_run_sweeps_best_effort(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _boom() -> None:
+            raise RuntimeError("down")
+
+        ok: list[str] = []
+        monkeypatch.setattr(_trace, "sweep_all", _boom)
+        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: ok.append("appr") or 0)
+        serve._run_sweeps()
+        assert ok == ["appr"]
+
+    def test_run_serve_runs_sweeps_at_startup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ran: list[str] = []
+        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: ran.append("startup"))
+
+        class _FakeServer:
+            def __init__(self, *_a: object, **_k: object) -> None:
+                pass
+
+            def serve_forever(self) -> None:
+                raise KeyboardInterrupt
+
+            def server_close(self) -> None:
+                pass
+
+        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
+        serve.run_serve(port=0, interval=30)
+        assert ran == ["startup"]

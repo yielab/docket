@@ -1,19 +1,9 @@
-"""Tests for the deferred Bash→Python migration gaps.
+"""Approval lifecycle trace events, and secret redaction in trace/approval data.
 
-GAP 1  approval emits the right trace events (approval_requested / _granted /
-       _denied) with the Bash payload keys, and redacts the action.
-GAP 2  docket serve runs the trace/approval sweeps at startup.
-GAP 3  trace.redact strips the VALUE of a stored secret (not just secret-shapes).
-GAP 4  doctor's Brave + Eval-results advisory sections — retired. The Brave
-       advisory (`_check_brave_browser`) scanned for daemon-spawned browser
-       processes, which cannot exist without a daemon. The eval-results
-       advisory (`_check_eval_results`) has no eval harness left to report on.
-       `docket doctor` prints no advisory sections, so GAP 4 has nothing left
-       to test.
-
-All subsystems read paths from docket.config at call time, so we repoint the
-already-imported config attributes at a temp seed and drive the public surfaces
-in-process.
+An approval's own action text and any stored secret value found in a trace
+payload must never reach the trace log or the approval record verbatim.
+Fixtures repoint docket.config's already-imported store paths at a temp seed
+and drive core.approval/core.trace directly, in-process.
 """
 
 from __future__ import annotations
@@ -47,7 +37,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return d
 
 
-# ── GAP 1: approval trace + redaction ─────────────────────────────────────────
+# ── approval lifecycle emits trace events, action text redacted ────────────────
 
 
 class TestApprovalTrace:
@@ -109,7 +99,7 @@ class TestApprovalTrace:
         assert _ap.approval_get(token)["state"] == "pending"
 
 
-# ── GAP 3: trace redacts stored secret values ─────────────────────────────────
+# ── trace.redact strips a stored secret's value, not just its shape ────────────
 
 
 class TestStoredSecretRedaction:
@@ -137,50 +127,3 @@ class TestStoredSecretRedaction:
         _trace.trace_event("p", "s", "r", "tool_call", json.dumps({"text": f"x {secret} y"}))
         events = _trace.read_trace(home / "traces" / "p" / "s.jsonl")
         assert secret not in json.dumps(events)
-
-
-# ── GAP 2: serve sweeps ───────────────────────────────────────────────────────
-
-
-class TestServeSweeps:
-    def test_run_sweeps_invokes_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import docket.serve as serve
-
-        called: list[str] = []
-        monkeypatch.setattr(_trace, "sweep_all", lambda: called.append("trace"))
-        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: called.append("appr") or 0)
-        serve._run_sweeps()
-        assert called == ["trace", "appr"]
-
-    def test_run_sweeps_best_effort(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import docket.serve as serve
-
-        def _boom() -> None:
-            raise RuntimeError("down")
-
-        ok: list[str] = []
-        monkeypatch.setattr(_trace, "sweep_all", _boom)
-        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: ok.append("appr") or 0)
-        # Must not raise despite the first sweep blowing up.
-        serve._run_sweeps()
-        assert ok == ["appr"]
-
-    def test_run_serve_runs_sweeps_at_startup(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import docket.serve as serve
-
-        ran: list[str] = []
-        monkeypatch.setattr(serve, "_run_sweeps", lambda *_a: ran.append("startup"))
-
-        class _FakeServer:
-            def __init__(self, *_a: object, **_k: object) -> None:
-                pass
-
-            def serve_forever(self) -> None:
-                raise KeyboardInterrupt
-
-            def server_close(self) -> None:
-                pass
-
-        monkeypatch.setattr(serve, "ThreadingHTTPServer", _FakeServer)
-        serve.run_serve(port=0, interval=30)
-        assert ran == ["startup"]

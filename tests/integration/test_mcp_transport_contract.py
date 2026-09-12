@@ -1,42 +1,9 @@
-"""Migrate `docket mcp serve` to the current (2.x) `mcp` SDK.
+"""`docket mcp serve`'s contract holds against the real, installed `mcp` SDK.
 
-`docket mcp serve` originally shipped against the SDK's 1.x line
-(`mcp.server.fastmcp.FastMCP`), pinned defensively at `mcp>=1.2.0,<2.0.0`
-because the SDK's 2.0 API could not yet be verified against a real release.
-This migrates to the real `mcp==2.0.0` release and reads the shipped
-package directly: `mcp.server.fastmcp` does not exist in 2.0 (not
-deprecated in place) and is replaced by `mcp.server.MCPServer` — a rename and
-relocation, not a redesign. `MCPServer` keeps `FastMCP`'s exact registration
-ergonomics (`add_tool(fn, name=...)`, `server.run(transport="stdio")`), so
-`cli/_mcp.py`'s `_build_server()` needed only an import-path/class-name swap;
-every `tool_*` function (the plain-Python layer with no `mcp` import) is
-untouched.
-
-This file's job is to *prove* — against the real installed SDK, not by
-inspection — that the migration didn't quietly change the contract:
-
-  1. the `docket[mcp]` pin has no upper bound anymore (the whole point of the
-     migration);
-  2. `_build_server()` really is built on `mcp.server.MCPServer`, and
-     `mcp.server.fastmcp` genuinely no longer exists to fall back to — there
-     is exactly one code path, not a version-sniffing shim;
-  3. a full round trip through the real SDK's in-memory transport
-     (`mcp.Client` talking to the `MCPServer` instance, which exercises the
-     same request-dispatch/exception-handling code the stdio transport uses)
-     still round-trips a tool's bare-dict return as `structured_content`,
-     still turns a raised `McpToolError` into an `isError` result, and the
-     audit-before-work guarantee (an `mcp.<tool>` entry written before/
-     regardless of whether the call raises) still holds;
-  4. a mutating tool called through that same real transport still lands in
-     the exact `core/` state the CLI itself would produce — no MCP-side
-     bypass, proven end-to-end through the actual SDK rather than by calling
-     the Python function directly (which is what test_mcp_server.py
-     already covers).
-
-All of this is skipped (`pytest.importorskip("mcp")`) when the optional
-extra isn't installed — this file is real-SDK-only coverage, matching
-test_mcp_optional_dep.py's `TestRealSdkIntegration` precedent. The rest of
-the suite (test_mcp_server.py's tool-layer tests) needs no SDK at all.
+Proves it through the SDK's own in-memory transport rather than by calling
+`tool_*` directly (test_mcp_server.py's job): the dependency pin, the single
+`MCPServer` code path, round-trip result/error/audit shape, and parity with
+the CLI's own core state for a mutating tool.
 """
 
 from __future__ import annotations
@@ -77,10 +44,9 @@ class TestNoUpperBoundPin:
 
 class TestSingleCodePathOnRealSdk:
     def test_fastmcp_module_no_longer_exists(self) -> None:
-        """Documents the actual finding this migration is based on: `mcp` 2.0
-        removed `mcp.server.fastmcp` outright rather than deprecating it in
-        place, so there is nothing left to fall back to and no reason for a
-        version-sniffing shim in `cli/_mcp.py`."""
+        """`mcp.server.fastmcp` is removed outright, not deprecated in place."""
+        # Nothing left to fall back to, and no reason for a version-sniffing
+        # shim in cli/_mcp.py.
         pytest.importorskip("mcp")
         with pytest.raises(ModuleNotFoundError):
             import mcp.server.fastmcp  # noqa: F401
@@ -193,10 +159,10 @@ class TestRealTransportRoundTrip:
     def test_a_raising_tool_becomes_an_iserror_result_not_a_protocol_crash(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`tool_runs` raises `McpToolError` for an unknown run id; through the
-        real SDK transport that MUST surface as `CallToolResult(isError=True)`
-        carrying the message, never an uncaught exception that would kill the
-        stdio session."""
+        """A raised `McpToolError` surfaces as `isError=True`, never a crash."""
+        # tool_runs raises for an unknown run id; over the real SDK transport
+        # that must become an error result carrying the message, not an
+        # uncaught exception that would kill the stdio session.
         pytest.importorskip("mcp")
         import asyncio
 
@@ -212,10 +178,9 @@ class TestRealTransportRoundTrip:
     def test_audit_is_written_before_work_even_when_the_call_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The audit-before-work guarantee re-proved through the real SDK
-        transport: even a call that ends in `isError` still recorded exactly
-        one `mcp.<tool>` entry, because `_audit()` runs before the lookup that
-        goes on to fail."""
+        """A call that ends in `isError` still recorded exactly one audit entry."""
+        # _audit() runs before the lookup that goes on to fail, so the
+        # audit-before-work guarantee holds even over the real SDK transport.
         pytest.importorskip("mcp")
         import asyncio
 
@@ -253,11 +218,10 @@ class TestNoBypassThroughRealTransport:
     def test_delegate_through_the_real_sdk_lands_in_the_same_queue_the_cli_uses(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Calls `delegate` through the real `mcp.Client` transport (not the
-        Python function directly) and confirms the task lands in the exact
-        same on-disk queue `core.dispatch.enqueue_task`/the CLI would write —
-        proving there is no parallel MCP-side write path even when the call
-        arrives through the actual SDK's request/response cycle."""
+        """A `delegate` call over the real transport lands in the CLI's own queue."""
+        # Calls delegate through the real mcp.Client transport, not the Python
+        # function directly, and confirms the task lands in the exact same
+        # on-disk queue the CLI would write -- no parallel MCP-side write path.
         pytest.importorskip("mcp")
         import asyncio
 
@@ -298,10 +262,9 @@ class TestNoBypassThroughRealTransport:
 
 class TestNoUiImportEvenWithTheSdkInstalled:
     def test_mcp_module_source_never_references_ui(self) -> None:
-        """`cli/_mcp.py` must never import or call `docket.ui` (Rich output to
-        stdout would corrupt the stdio JSON-RPC stream) — re-checked here with
-        the real SDK installed, in case adding it changed anything at import
-        time."""
+        """`cli/_mcp.py` never imports or calls `docket.ui`."""
+        # Rich output to stdout would corrupt the stdio JSON-RPC stream;
+        # re-checked here with the real SDK installed.
         pytest.importorskip("mcp")
         import importlib
 

@@ -1,20 +1,12 @@
-"""Audit v2 — coverage expansion, tamper-evidence chain, kill-switch removal.
+"""The audit log's hash chain, `docket audit verify`, and command coverage.
 
-Covers:
-  - New audit_log() call sites (keys.*, profile.*, scope.*, agent.add/delete,
-    persona.*) each write exactly one line with the right dotted-verb action
-    and no secret values (pod.add/pod.remove coverage lives in
-    test_pod_provisioning.py, which already has the pod-daemon fixtures).
-  - The hash chain (seq + prev_hash, GENESIS_HASH): verifies clean on a fresh
-    log, detects a hand-tampered middle line at the point the chain actually
-    breaks, tolerates pre-chain legacy lines and malformed JSON without
-    crashing the viewer or verifier, and documents (rather than bridges) a
-    rotation boundary.
-  - `docket audit verify` (cli/_audit.py's run_audit_verify).
-
-Every fixture repoints ``_cfg.AUDIT_LOG`` explicitly — the conftest-wide
-``_isolate_audit_log`` autouse fixture is a safety net, not a substitute for
-tests that need to actually inspect what got written.
+Pins the hash chain (seq + prev_hash, GENESIS_HASH: clean on a fresh log,
+a tampered middle line detected, tolerant of pre-chain and malformed lines),
+`docket audit verify`, and that keys/profile/scope/agent/persona commands each
+write exactly one correctly-shaped, secret-free entry (pod.add/pod.remove
+coverage lives in test_pod_provisioning.py). Every fixture repoints
+``_cfg.AUDIT_LOG`` explicitly rather than relying on the autouse isolation
+fixture, since these tests inspect what got written.
 """
 
 from __future__ import annotations
@@ -87,9 +79,10 @@ def _concurrent_audit_writer(
     """Write one distinct event after every forked worker is ready."""
     start.wait(timeout=15)
     result = _audit.audit_log(action, action)
-    # Pre-C6 returns None, which is deliberate RED evidence rather than a
-    # worker crash that would hide the concurrent-chain oracle.
-    results.put((action, getattr(result, "status", "legacy-none")))
+    # An implementation that does not yet return a status object here should
+    # surface as a visible mismatch below, never as a worker crash that would
+    # hide the concurrent-chain oracle.
+    results.put((action, getattr(result, "status", "no-status-attr")))
 
 
 def _hold_audit_lock(
@@ -152,7 +145,8 @@ class TestAtomicAuditTransition:
     ) -> list[tuple[str, str]]:
         # ``fork`` retains the monkeypatched config and delayed real head read.
         # The start barrier makes all 32 processes contend; the post-head delay
-        # makes the pre-C6 unlocked implementation derive duplicate heads.
+        # widens the race window an unlocked write path would need to derive
+        # duplicate heads from concurrent writers.
         if "fork" not in multiprocessing.get_all_start_methods():
             pytest.skip("audit inter-process lock test requires POSIX fork")
         context = multiprocessing.get_context("fork")
@@ -451,14 +445,12 @@ class TestChainVerify:
     def test_single_rotation_continues_the_chain_and_verifies_clean(
         self, audit_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A single rotation continues the chain rather than restarting it at seq=1.
-
-        The new current file's first entry carries the rotated generation's
-        final seq+1 and its hash as prev_hash -- a continuation claim -- and
-        `verify_chain` checks that claim against the backup it just wrote,
-        reporting it clean with `continued_from_seq` set rather than a fresh
-        (indistinguishable-from-genesis) restart.
-        """
+        """A single rotation continues the chain rather than restarting it at seq=1."""
+        # The new current file's first entry carries the rotated generation's final
+        # seq+1 and its hash as prev_hash -- a continuation claim -- and verify_chain
+        # checks that claim against the backup it just wrote, reporting it clean with
+        # continued_from_seq set rather than a fresh (indistinguishable-from-genesis)
+        # restart.
         monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 1, raising=True)
         _audit.audit_log("keys.add", "FIRST")
         _audit.audit_log("keys.add", "SECOND")
@@ -500,18 +492,17 @@ class TestChainVerify:
 
 
 class TestRotationErasureDetection:
-    """The reproduced bug and its fix.
+    """Erasure beyond the single retained backup generation is detectable, not silent."""
 
-    Flooding a small AUDIT_LOG_MAX_BYTES with enough entries to rotate twice can erase
-    security-relevant entries from BOTH the current file and the single-generation
-    backup; without continuation checking, verify_chain() would report a clean chain
-    restarting at seq=1 -- indistinguishable from a fresh install. Recovering the
-    deleted bytes is not possible (nothing can, short of keeping unbounded
-    generations), but the chain design makes the fact that history preceded the
-    current file impossible to hide silently: seq never resets at a rotation, and if
-    the one backup generation that would substantiate the continuation claim is itself
-    missing or altered, verify_chain() reports a break instead of "no break".
-    """
+    # Flooding a small AUDIT_LOG_MAX_BYTES with enough entries to rotate twice can erase
+    # security-relevant entries from BOTH the current file and the single-generation
+    # backup; without continuation checking, verify_chain() would report a clean chain
+    # restarting at seq=1 -- indistinguishable from a fresh install. Recovering the
+    # deleted bytes is not possible (nothing can, short of keeping unbounded
+    # generations), but the chain design makes the fact that history preceded the
+    # current file impossible to hide silently: seq never resets at a rotation, and if
+    # the one backup generation that would substantiate the continuation claim is itself
+    # missing or altered, verify_chain() reports a break instead of "no break".
 
     def _flood_past_two_rotations(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_cfg, "AUDIT_LOG_MAX_BYTES", 300, raising=True)

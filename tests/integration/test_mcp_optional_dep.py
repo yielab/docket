@@ -65,7 +65,7 @@ class TestMissingSdkSimulated:
         real_import = builtins.__import__
 
         # `_build_server()` does `from mcp.server import MCPServer` (the mcp>=2.0
-        # SDK's server, see test_mcp_sdk_v2_migration.py) — block that exact import
+        # SDK's server, see test_mcp_transport_contract.py) -- block that exact import
         # target, simulating the SDK being absent regardless of what's actually
         # installed in this test environment.
         def _blocked_import(name: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
@@ -187,8 +187,8 @@ class TestRealSdkIntegration:
 
         # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
         # (`.structured_content`/`.is_error`), not the 1.x line's
-        # `(content, structured_dict)` tuple — see test_mcp_sdk_v2_migration.py for
-        # the full migration write-up.
+        # `(content, structured_dict)` tuple — see test_mcp_transport_contract.py
+        # for the real-transport round-trip coverage.
         async def _call() -> Any:
             return await server.call_tool("status", {})
 
