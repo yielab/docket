@@ -1247,7 +1247,7 @@ def _maintain_sessions(agent_id: str) -> None:
     ui.header(f"Sessions: {agent_id}")
     ui.console.print()
     ui.dim(
-        "  Sessions are not compacted automatically -- history grows until the endpoint refuses it."
+        "  Sessions compact on the turn path once history exceeds the role budget; sizes are on disk."
     )
     ui.console.print()
 
