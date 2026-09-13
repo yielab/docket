@@ -478,5 +478,13 @@
     "heading": "◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups",
     "bytes": 1977,
     "sha256": "9f7be4b4aba5fb7dd08ea526b78e1f90115f6371f178e3ea4b311b80e4fa663f"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 34 CLOSED (2026-09-13) — finish the D-36 function split, two measured fixes, one audit",
+    "bytes": 16893,
+    "sha256": "b69492bc5e99c28e796e155cde55c2846ce43c5c904cec256fda8a7021785cc4"
   }
 ]

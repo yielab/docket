@@ -4996,3 +4996,273 @@ and only re-running the gates on the merge result caught it.
 
 ---
 
+## ◇ WAVE 34 CLOSED (2026-09-13) — finish the D-36 function split, two measured fixes, one audit
+
+All seven cards merged on 2026-09-13; every branch was checked against its declared ownership,
+an AST comparison of public names and signatures, the function-span measurer, and the full gates
+on each merged batch.
+
+| Card | Shipped | Proved by |
+| --- | --- | --- |
+| W34-C1 | `run_agent_turn` 909 lines, twenty closures, into a `_TurnState` class of named phases; `run_agent_turn` is about 35 lines | span measurer empty for the file; public API AST-identical; 76 focused tests and the harness fixtures unchanged |
+| W34-C2 | `compact_session` into `_validate_compaction_range`, `_run_compaction_rounds`, `_plan_and_apply_compaction` | same; fail-closed and atomic-unit tests unchanged |
+| W34-C3 | `do_POST` into `_handle_post_approvals`/`_tasks`/`_dispatch` | same; serve and approval-gated dispatch tests unchanged |
+| W34-C4 | `_doctor_json` into nine per-section helpers | golden 18/18 byte-identical |
+| W34-C5 | bounded poll for the sleeping child before and after SIGTERM | red with a 0.3 s spawn delay, green with the poll, 20 of 20 under load |
+| W34-C6 | `PROVIDER_CREDENTIAL_NAMES` owned by `core/provider.py`, imported by the adapter | new unit test red on base, green after |
+| W34-A1 | read-only audit of ten persisted settings | one cli-only flag with live-path claims found |
+| W34-C7 | spec 0.19.1, help text, generated reference, guide and README say the routing flag is recorded posture only | `rg` for the false claims empty; golden unchanged; agent lane green |
+
+**Function-span baseline:** seven entries at open, one at close (`builtin_registry`, a flat
+registration table kept on purpose).
+
+**Integrator notes for the next wave.** Worker worktrees can be created from a commit older than
+the one the integrator dispatched from; every check must diff from `git merge-base`, and each
+packet now tells the worker to fast-forward to the named base first. A card's "owns" list must
+name the file that actually renders a generated doc (C7 found `docs/commands.md`'s gates section
+comes from `cli/__init__.py`, not `cli/_gates.py`).
+
+
+
+**Measured before scheduling (integrator, 2026-09-13, `633ef91`):** `scripts/maint/measure_function_spans.py`
+reports seven functions over 150 lines, nested closures included: `run_agent_turn` 909 (20 nested
+closures, own body 87 lines), `compact_session` 225 (`_mutate` 172 inside it), `run_agent_turn._fit_task_request`
+184, `builtin_registry` 180, `_DocketHandler.do_POST` 175, `_doctor_json` 168. `builtin_registry` is a
+flat registration table and is left in the baseline on purpose. One W33 agent saw
+`test_sigterm_after_the_tool_call_event_cancels_within_three_seconds` fail once under parallel load
+and pass in isolation and on the base commit. `core/provider.py:35` and `edges/adapters/llm.py:57`
+hold byte-identical five-entry credential tables.
+
+**Shared rules for every card.** One worktree, one branch, base `main` at the wave's opening commit.
+Workers never edit `tests/guards/function_span_baseline.txt`, `TODO.md`, `ROADMAP.md`, `README.md`,
+`CONTRIBUTING.md`, `specs/README.md` or any counting script; the integrator regenerates the baseline
+after each merge. A split card is behaviour-preserving: no public signature changes, no new modules,
+no test edited or deleted (a split that needs a test change has changed behaviour: stop and report).
+Full gates: `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest -q`,
+plus `bash tests/golden/run.sh verify-all` for anything under `src/docket/cli/`. Commit subjects
+`Type: description`, ASCII, no attribution trailer.
+
+**Contention graph.** C1 owns `core/agent_loop.py`; C2 owns `core/session.py` and must keep every
+name `agent_loop.py` imports (`CompactionResult`, `append_messages`, `compact_session`, `load_messages`)
+with the same signature; C3 owns `serve.py`; C4 owns `cli/_doctor.py`; C5 owns
+`tests/integration/test_harness_cli.py`; C6 owns `core/provider.py`, `edges/adapters/llm.py` and one new
+unit test. No two cards share a file. Merge order: C6, C5, C4, C3, C2, C1 (smallest blast radius first).
+
+### W34-C1 — split `run_agent_turn` into module-level phases
+
+**Status:** READY · **Size:** L · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/agent_loop.py::run_agent_turn` spans 909 lines (lines 514 to
+1422) with 20 nested closures; `_fit_task_request` alone is 184. ADR 0007 says this function was split.
+
+**Goal:** hoist the nested closures into module-level private functions (or methods on one private
+turn-state class) so that no function in the file exceeds 150 lines and `run_agent_turn` reads as a
+sequence of named phases. Behaviour identical.
+
+**Non-goals:** no change to `LoopConfig`, `run_agent_turn`'s signature, `approval_unavailable_error`,
+stop reasons, trace events, the harness NDJSON contract or session compaction semantics; no new module.
+
+**Owns:** `src/docket/core/agent_loop.py` only.
+
+**Acceptance / oracle:** `uv run python scripts/maint/measure_function_spans.py src/docket/core/agent_loop.py`
+prints nothing (no function over 150). `uv run pytest -q` passes unchanged, including
+`tests/unit/core/test_agent_loop*.py`, `tests/integration/test_agent_loop.py`,
+`tests/integration/test_harness_cli.py` and the byte-pinned fixtures under
+`tests/fixtures/harness-contract/v1/`. `git diff --stat` touches one file. The integrator additionally
+compares the module's public names and signatures before and after with an AST script.
+
+**RED:** `uv run python scripts/maint/measure_function_spans.py src/docket/core/agent_loop.py` lists
+two entries before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/test_agent_loop.py tests/integration/test_agent_loop.py tests/integration/test_harness_cli.py`.
+
+### W34-C2 — split `compact_session` into named phases
+
+**Status:** READY · **Size:** M · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/session.py::compact_session` spans 225 lines with the 172-line
+`_mutate` closure inside it.
+
+**Goal:** split planning, summarisation, atomic-unit validation and the locked write into
+module-level private functions; no function in the file over 150 lines. Behaviour identical, including
+the fail-closed contract (a failed summarisation leaves the stored history untouched) and the
+atomic tool-call/tool-result unit guarantee.
+
+**Non-goals:** no signature change to `compact_session`, `plan_compaction`, `CompactionResult`,
+`append_messages`, `load_messages`; no new module.
+
+**Owns:** `src/docket/core/session.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/core/session.py` prints nothing;
+`uv run pytest -q` passes unchanged, including `tests/unit/core/test_session*.py` and the compaction
+tests under `tests/integration/test_agent_loop.py`; one file in the diff.
+
+**RED:** the measuring script lists two entries for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/ -k session tests/integration/test_agent_loop.py -k compact`.
+
+### W34-C3 — route `do_POST` through per-route handlers
+
+**Status:** READY · **Size:** M · **Owner:** one worker
+
+**Measured trigger:** `src/docket/serve.py::_DocketHandler.do_POST` spans 175 lines; `_handle_post_pods`
+already shows the per-route shape.
+
+**Goal:** one private handler per POST route, `do_POST` reduced to auth, routing and error framing; no
+function in the file over 150 lines. Byte-identical responses, status codes, audit entries and the
+`docket runs` records each route produces.
+
+**Non-goals:** no route added or removed, no auth change, no change to
+`specs/data/serve-read-api.spec.md`.
+
+**Owns:** `src/docket/serve.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/serve.py` prints nothing;
+`uv run pytest -q` passes unchanged, including `tests/unit/test_serve__*.py`,
+`tests/integration/test_serve_*.py` and `tests/integration/test_approval_gated_dispatch.py`; one file in the diff.
+
+**RED:** the measuring script lists one entry for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit -k serve tests/integration -k serve`.
+
+### W34-C4 — split `_doctor_json`
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** `src/docket/cli/_doctor.py::_doctor_json` spans 168 lines.
+
+**Goal:** split the JSON report assembly into per-section helpers; no function in the file over 150
+lines; `docket doctor --json` output byte-identical.
+
+**Non-goals:** no check added, removed or reordered; no change to the human-readable output.
+
+**Owns:** `src/docket/cli/_doctor.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/cli/_doctor.py` prints nothing;
+`uv run pytest -q` passes unchanged including `tests/unit/cli/test__doctor.py`;
+`bash tests/golden/run.sh verify-all` passes 18/18 without regenerating anything; one file in the diff.
+
+**RED:** the measuring script lists one entry for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/cli/test__doctor.py && bash tests/golden/run.sh verify-all`.
+
+### W34-C5 — make the harness cancellation test deterministic under load
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** on 2026-09-13 a full-suite run alongside twelve other suites saw
+`tests/integration/test_harness_cli.py::TestCancelledRun::test_sigterm_after_the_tool_call_event_cancels_within_three_seconds`
+fail once and pass on re-run, in isolation, and on the base commit. The test looks up the sleeping
+child once, immediately after the `tool_call` event, but that event is emitted before the bash
+handler has spawned the child, so under load the single lookup races the spawn.
+
+**Goal:** wait for the child process to appear (bounded poll, deadline of a few seconds) before
+asserting it exists, without loosening the three-second cancellation bound, which is the contract
+under test.
+
+**Non-goals:** no change under `src/`; no change to the three-second bound; no skip or retry marker.
+
+**Owns:** `tests/integration/test_harness_cli.py` only.
+
+**Acceptance / oracle:** the test passes 20 times in a row locally while `uv run pytest -q -n 0` runs
+in another shell (or under `stress`-like CPU load); one file in the diff; the assertion message still
+names the missing child on a genuine failure.
+
+**RED:** reproduce the race by inserting a `time.sleep(0.3)` before the bash handler spawns (locally,
+not committed) or by running the suite under load; the single lookup fails with
+"the sleeping child process was never found".
+
+**Focused validation:** `for i in $(seq 20); do uv run pytest -q tests/integration/test_harness_cli.py -k cancels_within || break; done`.
+
+### W34-C6 — one owner for the provider credential table
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/provider.py:35` (`_PROVIDER_CREDENTIALS`) and
+`src/docket/edges/adapters/llm.py:57` (`_PROVIDER_CREDENTIAL_NAMES`) are byte-identical five-entry
+dicts with separate readers (`provider.py:129`, `llm.py:447`). A provider added to one and not the
+other makes `docket models`/provider checks and the adapter's request path disagree silently.
+
+**Goal:** a single definition in `core/provider.py` (public name `PROVIDER_CREDENTIAL_NAMES`), imported
+by `edges/adapters/llm.py` (edges may import core), with one unit test asserting the adapter reads the
+same object and an import-cycle check (`python -c "import docket.edges.adapters.llm, docket.core.provider"`).
+
+**Non-goals:** no change to the table's contents or to how either reader resolves a credential.
+
+**Owns:** `src/docket/core/provider.py`, `src/docket/edges/adapters/llm.py`, and one new test in
+`tests/unit/core/test_provider.py` (create it with `SUBJECT = "docket.core.provider"` if absent, or add to it).
+
+**Acceptance / oracle:** `rg -n 'ANTHROPIC_API_KEY' src/` finds exactly one dict literal; the new test
+fails on the base commit (two objects) and passes after; `uv run pytest -q` passes; `mypy src` passes.
+
+**RED:** the new unit test on the base commit.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/test_provider.py tests/unit/edges/adapters/test_llm.py tests/integration/test_provider_agnosticism.py`.
+
+### W34-C7 — make the approval-routing claims true
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger (A1 audit, 2026-09-13, verified by the integrator):** `fleet.json`'s
+`security.approvalRoutingState`/`approvalRoutingMode` are written by `core/fleet.py:329,337` via
+`core/security.py:299,309` (`docket gates enable/disable`, `docket init`) and read only by
+`cli/_gates.py:55` and `cli/_doctor.py:331,678` for display. `rg -n 'approval_routing|approvalRouting' src/`
+finds no reader in `core/tools.py`, `core/approval.py`, `core/telegram.py`, `core/agent_loop.py` or
+`serve.py`. Yet `specs/functional/security-gates.spec.md` requirement 2 says the state controls
+"whether a `require_approval`/`ask` verdict's prompt is routed to a channel-bound agent's session",
+`README.md:58-59` says `gates enable/disable` "changes where an `ask` verdict is routed", and
+`docs/commands.md` (rendered from `cli/_gates.py` help) says `enable` makes a verdict "reach a channel
+instead of just sitting on docket's approval store" and `disable` makes it "time out to denied
+faster". None of that happens: docket never pushes a prompt anywhere (telegram spec requirements
+7-8), approvals always sit in the store, and every channel answers them regardless of this flag.
+This is the fourth unwired-machinery instance, with the same shape as W19-5 (spec and prose
+claiming a path that never existed).
+
+**Goal:** make spec, help text, generated reference and guide say what is true: the routing state is
+a recorded, audited posture flag that `gates status` and `doctor` report, and nothing on the live
+path reads it. Do not invent semantics for it and do not remove the commands (a removal or a real
+wiring is a separate decision for the maintainer; record it in the spec as an open question).
+
+**Non-goals:** no change to `core/`, `edges/`, `serve.py`; no new behaviour; no README edit (integrator
+owns `README.md:58-59` and will change it at merge to match your spec wording).
+
+**Owns:** `src/docket/cli/_gates.py` and `src/docket/cli/_install.py` (help/docstring text only, no
+logic); `docs/commands.md` regenerated with `./scripts/gen_cli_docs.py` (never hand-edited);
+`docs/SECURITY-SIMPLE.md` lines about `--no-gates`/`gates enable` (26-30, 60, 247);
+`specs/functional/security-gates.spec.md` requirement 2, the command block near line 663, version
+bump and changelog entry; the one `Security Gates` row in `specs/README.md` for the version;
+`tests/golden/cases/writers/gates_status.golden` ONLY if `docket gates status` currently prints a
+false sentence, and then explain the golden diff line by line in the commit body.
+
+**Acceptance / oracle:** `rg -n 'routed|reach a channel|times out to denied faster' src/docket/cli/_gates.py docs/commands.md docs/SECURITY-SIMPLE.md specs/functional/security-gates.spec.md`
+finds no remaining claim that the flag changes delivery; `bash scripts/validate-specs.sh` green;
+`./scripts/gen_cli_docs.py --check` (or the repo's equivalent drift check) green;
+`bash tests/golden/run.sh verify-all` green; `uv run pytest -q` and `uv run pytest -q tests/agent` green
+(the agent lane pins README prose and public docs; if a prose test pins one of the false sentences in a
+file you own, correct the test's expected phrase in the same commit and say so).
+
+**RED:** the `rg` above lists the false claims before the change.
+
+**Focused validation:** `bash scripts/validate-specs.sh && bash tests/golden/run.sh verify-all && uv run pytest -q tests/agent`.
+
+### W34-A1 — read-only audit: the fourth unwired-machinery instance
+
+**Status:** READY · **Size:** S · **Owner:** one read-only worker (no commits)
+
+**Measured trigger:** three recorded instances of "implemented, tested, never wired to the default
+path" (W17-1, W18-3, W19-3). The record says to assume a fourth exists; nobody has scanned for it.
+
+**Goal:** for every setting docket persists under `DOCKET_HOME` with a writer in `cli/` (fleet gate and
+isolation flags, model policy, retention, schedules, MCP servers, policies, secrets, budgets), name the
+reader on the live path (`core/agent_loop.py`, `core/tools.py`, `core/dispatch.py`,
+`edges/adapters/docket_runtime.py`, `serve.py` loops). Report every setting whose only reader is in
+`cli/` or tests, with file:line evidence for writer and reader.
+
+**Non-goals:** no code change, no doc change, no card creation; the report is the deliverable.
+
+**Acceptance / oracle:** a table of settings with writer, live-path reader (or "none found"), and the
+`rg` command that proves it; each "none found" row re-checked once by grepping the setting's key
+across `src/`.
+
+---
+
