@@ -1,42 +1,34 @@
 """Agent identity — the persona layer docket renders into SOUL.md.
 
-docket owns an agent's identity as a pure function of its ``.docket-meta.json``
-(see ``internal-docs/agent-structure-analysis.md`` §6). An agent's *role* is its
-real identity; a **persona** (name/emoji/vibe) is an optional operator-assigned
-skin on top. This module holds the pure string logic for rendering that persona
-into ``SOUL.md`` and parsing an operator label — no I/O (the ``cli`` layer does
-the file writes and gateway restart) — plus the one
-I/O entry point that composes a turn's system prompt from this agent's own
-on-disk identity files.
+docket owns an agent's identity as a pure function of its ``.docket-meta.json``. An
+agent's *role* is its real identity; a **persona** (name/emoji/vibe) is an optional
+operator-assigned skin on top. This module holds the pure string logic for rendering
+that persona into ``SOUL.md`` and parsing an operator label — no I/O (the ``cli``
+layer does the file writes and gateway restart) — plus the one I/O entry point that
+composes a turn's system prompt from this agent's own on-disk identity files.
 
 The persona lives in ``SOUL.md`` between HTML markers so it can be upserted
 idempotently without disturbing the rest of the (role-derived) SOUL, and so a
 just-reset agent reading SOUL sees a docket-controlled identity rather than a
 self-authored ``IDENTITY.md``.
 
-## The turn's system prompt
+Without this module, ``core/agent_loop.py`` would compose no system prompt at all —
+``SOUL.md`` (identity, scope, session key), the docket-owned persona, and a
+runtime-safe projection of ``WORKFLOW_AUTO.md``'s resume/durability contract would
+never reach the model. The same is true of the private workspace state that
+contract names: HEARTBEAT/AGENTS/TOOLS/MEMORY are loaded fresh here and appended by
+priority under the static-context budget. That is not decoration: a just-reset
+agent cannot resume from a HEARTBEAT it was told to find under project-tool roots
+that deliberately exclude its private workspace.
 
-Without this module, ``core/agent_loop.py`` would compose no system prompt at all — ``SOUL.md``
-(identity, scope, session key), the docket-owned persona, and
-one runtime-safe projection of ``WORKFLOW_AUTO.md``'s resume/durability contract
-(``core/memory.py``, ``CONTRACT_VERSION``) never reached the model. The same is
-true of the private workspace state that contract names: HEARTBEAT/AGENTS/TOOLS/
-MEMORY are loaded fresh here and appended by priority under the existing
-static-context budget.
-That is not decoration: a just-reset agent cannot resume from a HEARTBEAT it
-was told to find under project-tool roots that deliberately exclude its private
-workspace.
-
-``system_prompt_for_agent`` is the single function ``run_agent_turn`` calls,
-once per turn. It re-reads the persona from ``.docket-meta.json`` rather than
-trusting whatever ``SOUL.md`` already has upserted, because
-``AgentMeta.display_name()`` is the one documented source of truth for a
-display name (see ``core/models.py``) — folding the *live* persona in via
-``upsert_persona_block`` (idempotent: a match is a no-op) means a persona
-change is reflected on the very next turn even if something skipped
-re-rendering the file. Nothing here is persisted back to session history —
-composed fresh every turn, exactly like a live value should be, never stored
-as a stale copy.
+``system_prompt_for_agent`` is the single function ``run_agent_turn`` calls, once
+per turn. It re-reads the persona from ``.docket-meta.json`` rather than trusting
+whatever ``SOUL.md`` already has upserted, because ``AgentMeta.display_name()`` is
+the one documented source of truth for a display name — folding the *live* persona
+in via ``upsert_persona_block`` (idempotent) means a persona change is reflected on
+the very next turn even if something skipped re-rendering the file. Nothing here is
+persisted back to session history — composed fresh every turn, never stored as a
+stale copy.
 """
 
 from __future__ import annotations
@@ -78,13 +70,9 @@ SCAFFOLDING_FILES = ("IDENTITY.md", "BOOTSTRAP.md")
 
 
 def quarantine_scaffolding(ws: Path) -> list[str]:
-    """Move any base-assistant scaffolding in *ws* into ``.docket-archive/``.
-
-    Returns the archived filenames (empty if none). **Reversible** — files are moved,
-    not deleted — so it is safe to run on provisioning and in ``docket doctor``.
-    Idempotent. Mirrors ``core/memory.py``'s ownership of on-disk *memory* layout:
-    this module owns on-disk *identity* layout, so it does its own file I/O here.
-    """
+    """Move any base-assistant scaffolding in *ws* into ``.docket-archive/``. Returns the
+    archived filenames (empty if none); reversible (moved, not deleted) and idempotent.
+    This module owns on-disk identity layout, so it does its own file I/O here."""
     archived: list[str] = []
     for name in SCAFFOLDING_FILES:
         src = ws / name
@@ -97,12 +85,9 @@ def quarantine_scaffolding(ws: Path) -> list[str]:
 
 
 def parse_persona_label(label: str) -> Persona:
-    """Parse an operator label like ``"Orion 🔭"`` into a :class:`Persona`.
-
-    A trailing token containing no alphanumerics is taken as the emoji; the rest
-    is the name. ``"Orion"`` → name only; ``"Orion 🔭"`` → name + emoji; ``""`` →
-    an empty persona, which signals "clear".
-    """
+    """Parse an operator label like ``"Orion 🔭"`` into a :class:`Persona`. A trailing
+    token containing no alphanumerics is taken as the emoji; the rest is the name.
+    ``""`` → an empty persona, which signals "clear"."""
     tokens = label.strip().split()
     if not tokens:
         return Persona()
@@ -114,11 +99,9 @@ def parse_persona_label(label: str) -> Persona:
 
 
 def render_persona_block(persona: Persona | None) -> str:
-    """The marked ``SOUL.md`` snippet for *persona* — ``""`` if no name set.
-
-    Deliberately terse: it names the persona but reasserts that the role is the
-    true identity, so a friendly name never dilutes the pod-role contract.
-    """
+    """The marked ``SOUL.md`` snippet for *persona* — ``""`` if no name set. Deliberately
+    terse: it names the persona but reasserts that the role is the true identity, so a
+    friendly name never dilutes the pod-role contract."""
     if persona is None or not persona.label():
         return ""
     vibe = f" — {persona.vibe}" if persona.vibe else ""
@@ -134,10 +117,8 @@ def render_persona_block(persona: Persona | None) -> str:
 
 def upsert_persona_block(soul_text: str, persona: Persona | None) -> str:
     """Return *soul_text* with the persona block inserted, replaced, or removed.
-
-    Idempotent: an existing block (matched by markers) is replaced or dropped; a
-    new block is appended. Clearing (``persona`` None/empty) removes any block.
-    """
+    Idempotent: an existing block (matched by markers) is replaced or dropped; a new
+    block is appended. Clearing (``persona`` None/empty) removes any block."""
     block = render_persona_block(persona)
     start = soul_text.find(PERSONA_BEGIN)
     if start != -1:
@@ -164,19 +145,12 @@ def compose_system_prompt(
     runtime_context: str = "",
 ) -> str:
     """Fold SOUL.md, the live persona, and a runtime contract into one system prompt.
-
-    Pure — no I/O, matching this module's own convention (``system_prompt_for_agent``
-    below is the I/O entry point that calls this). *soul_text* is passed through
-    ``upsert_persona_block`` so the persona reflects *persona* as given, not
-    whatever ``SOUL.md`` happened to have on disk (see the module docstring);
-    calling it unconditionally is safe even when *soul_text* is empty or already
-    carries a matching block — both are idempotent no-ops.
-
-    Empty inputs degrade gracefully: no ``SOUL.md`` and no runtime contract
-    (an unprovisioned or misconfigured agent) composes to ``""``, which
-    ``core/agent_loop.py`` treats as "no system message this turn" rather than
-    sending the model an empty one.
-    """
+    Pure — no I/O (``system_prompt_for_agent`` below is the I/O entry point). *soul_text*
+    is passed through ``upsert_persona_block`` unconditionally (idempotent no-op if
+    already matching) so the persona reflects *persona* as given, not whatever
+    ``SOUL.md`` had on disk. Empty inputs degrade gracefully: no ``SOUL.md`` and no
+    runtime contract composes to ``""``, which ``core/agent_loop.py`` treats as "no
+    system message this turn" rather than sending the model an empty one."""
     effective_soul = upsert_persona_block(soul_text, persona).strip()
     workflow = runtime_contract_text.strip()
     runtime = runtime_context.strip()
@@ -186,12 +160,10 @@ def compose_system_prompt(
 
 def _runtime_startup_contract(project_roots: tuple[Path, ...]) -> str:
     """Project the generated startup contract for an already-running turn.
-
-    ``WORKFLOW_AUTO.md`` is deliberately not parsed or filtered here. Its raw
-    prose is the manual/reset contract and tells an external agent to open and
-    maintain private files. A live Docket turn has already done those reads, so
-    it gets this small projection keyed to the exact roots the driver resolved.
-    """
+    ``WORKFLOW_AUTO.md`` is deliberately not parsed or filtered here: its raw prose is
+    the manual/reset contract telling an external agent to open and maintain private
+    files, but a live turn has already done those reads, so it gets this small
+    projection keyed to the exact roots the driver resolved."""
     if project_roots:
         rendered_roots = "\n".join(f"- {json.dumps(str(root))}" for root in project_roots)
         roots = f"\n\nProject tools are restricted to these resolved roots:\n{rendered_roots}"
@@ -318,13 +290,9 @@ def _runtime_workspace_context(ws: Path, base_prompt: str) -> str:
 
 
 def load_agent_persona(agent_id: str) -> Persona | None:
-    """Read *agent_id*'s persona straight from ``.docket-meta.json``.
-
-    The single source of truth ``AgentMeta.display_name()`` already reads
-    from (``core/models.py``) — never derived from ``SOUL.md`` text. Never
-    raises: a missing workspace, missing/malformed meta record, or an agent
-    with no persona set all resolve to ``None``.
-    """
+    """Read *agent_id*'s persona straight from ``.docket-meta.json`` — the single
+    source of truth ``AgentMeta.display_name()`` also reads, never derived from
+    ``SOUL.md`` text. Never raises: any missing/malformed input resolves to ``None``."""
     if not agent_id:
         return None
     raw = _store.read_json(_cfg.meta_path(agent_id))
@@ -351,14 +319,9 @@ def system_prompt_for_agent(
     *,
     project_roots: tuple[Path, ...] = (),
 ) -> str:
-    """Read *agent_id*'s identity plus bounded private state and compose a prompt.
-
-    The one I/O entry point ``core/agent_loop.py`` needs for prompt
-    composition — everything else in this module stays pure.
-    ``""`` for an agent with no workspace/identity files (e.g. an id docket has
-    never provisioned) rather than raising: a turn must still be able to run
-    with no identity to compose.
-    """
+    """Read *agent_id*'s identity plus bounded private state and compose a prompt — the
+    one I/O entry point ``core/agent_loop.py`` needs. Returns ``""`` for an unprovisioned
+    agent rather than raising: a turn must still run with no identity to compose."""
     if not agent_id:
         return ""
     ws = _cfg.workspace_dir(agent_id)

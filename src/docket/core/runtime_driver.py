@@ -1,37 +1,29 @@
 """RuntimeDriver port.
 
-Execution-related state — session records, turn results, cost/usage — tends
-to leak its on-disk/wire shape into every caller that reads it. This module
-is the fix: a single typed ``Protocol`` that ``core/`` and ``cli/`` program
-against, so that *no* module outside ``edges/adapters/`` ever needs to know
-what a session record, a driver invocation, or a cost figure actually looks
-like on disk.
+Execution-related state (session records, turn results, cost/usage) tends to leak
+its on-disk/wire shape into every caller that reads it. This module is the fix: a
+single typed ``Protocol`` that ``core/`` and ``cli/`` program against, so no module
+outside ``edges/adapters/`` needs to know what a session record, a driver
+invocation, or a cost figure actually looks like on disk.
 
-ROADMAP §4.5 has a standing ban on an ``AbstractBackend`` — this module
-revises that ban, not repeals it: **one typed port, one shipped driver**
-(``edges.adapters.docket_runtime.DocketDriver``), plus a ``FakeDriver`` test
-double (``tests/fakes.py``). This is containment of coupling, not
-speculative plugin-framework generality. A second real driver still needs a
-§4.5 trigger (upstream stall/breakage) or a paying user — adding driver
-discovery, entry points, or a config-selectable backend here would be scope
-creep.
+ROADMAP §4.5 bans an ``AbstractBackend``; this module revises that ban, not repeals
+it: **one typed port, one shipped driver** (``edges.adapters.docket_runtime.
+DocketDriver``), plus a ``FakeDriver`` test double. This is containment of
+coupling, not speculative plugin-framework generality — a second real driver still
+needs a §4.5 trigger (upstream stall/breakage) or a paying user.
 
-The six required members mirror an agent's whole lifecycle:
+The six required members mirror an agent's whole lifecycle: ``run_turn`` (one
+costed agent turn, the hot path -- ``core/dispatch.py``'s pipeline and docket's own
+self-originated LLM calls go through this); ``provision``/``teardown`` (register/
+unregister with the backing runtime — an honest no-op for ``DocketDriver``, which
+backs onto no external registry); ``list_sessions``/``usage`` (durable-session
+enumeration and token/cost aggregation, keeping on-disk format knowledge out of
+``core/``); ``capabilities`` (what this driver instance can actually promise, e.g.
+whether it reports real USD cost, so callers never hardcode an assumption about the
+shipped driver's quirks).
 
-- ``run_turn``    — one costed agent turn (the hot path; ``core/dispatch.py``'s
-  pipeline and docket's own self-originated LLM calls go through this).
-- ``provision`` / ``teardown`` — register/unregister an agent with whatever
-  runtime the driver backs onto (an honest no-op for ``DocketDriver``, which
-  backs onto no external registry at all).
-- ``list_sessions`` / ``usage`` — durable-session enumeration and token/cost
-  aggregation, reading the driver's own on-disk session format — the format
-  knowledge this Protocol keeps out of ``core/``.
-- ``capabilities`` — what this driver instance can actually promise (e.g.
-  whether it reports real USD cost at all), so callers never have to
-  hardcode an assumption about the one shipped driver's quirks.
-
-Nothing in this module touches a filesystem or a subprocess — it is pure
-typing, describing only the shape a driver's return values must have.
+Nothing in this module touches a filesystem or a subprocess — it is pure typing,
+describing only the shape a driver's return values must have.
 """
 
 from __future__ import annotations
@@ -66,13 +58,10 @@ DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
 
 @dataclass
 class TurnResult:
-    """Outcome of one agent turn, however the driver executed it.
-
-    Field order is load-bearing: dozens of existing tests construct this
-    positionally (``TurnResult(False, "", 0.0, {}, "boom")``) — do not reorder
-    or insert a field before ``failure_kind`` without a matching sweep of
-    those call sites.
-    """
+    """Outcome of one agent turn, however the driver executed it. Field order is
+    load-bearing: dozens of existing tests construct this positionally
+    (``TurnResult(False, "", 0.0, {}, "boom")``) — do not reorder or insert a field
+    before ``failure_kind`` without a matching sweep of those call sites."""
 
     ok: bool
     output: str
@@ -106,12 +95,9 @@ class TeardownResult:
 
 @dataclass
 class SessionSummary:
-    """One durable session the driver knows about for an agent.
-
-    ``session_id`` is the only field callers may treat as stable identity —
-    everything else is best-effort metadata for display/ingestion, not a
-    contract other modules should branch on.
-    """
+    """One durable session the driver knows about for an agent. ``session_id`` is the
+    only field callers may treat as stable identity — everything else is best-effort
+    metadata for display/ingestion, not a contract other modules should branch on."""
 
     session_id: str
     turns: int = 0
@@ -129,16 +115,12 @@ class SessionSummary:
 
 @dataclass
 class SessionTurn:
-    """One decoded session record, translated to docket's vocabulary.
-
-    ``kind`` is ``"tool_call"`` / ``"tool_result"`` / ``"other"`` — only the
-    first two are ever projected into a trace event. ``daemon_type`` is the
-    *original* raw type string from the driver's own on-disk session record
-    (kept for the ingested trace payload's ``daemon_type`` field) — the one
-    place that raw vocabulary is allowed to surface outside the driver, since
-    by that point it is inert string data in docket's own trace payload, not
-    something being parsed.
-    """
+    """One decoded session record, translated to docket's vocabulary. ``kind`` is
+    ``"tool_call"``/``"tool_result"``/``"other"`` — only the first two are ever
+    projected into a trace event. ``daemon_type`` is the *original* raw type string
+    from the driver's on-disk record, kept for the trace payload — the one place raw
+    vocabulary may surface outside the driver, since by then it is inert string data
+    in docket's own trace payload, not something being parsed."""
 
     ts: str
     kind: Literal["tool_call", "tool_result", "other"]
@@ -149,17 +131,12 @@ class SessionTurn:
 @dataclass
 class SessionSlice:
     """New turns available for one on-disk session since a prior offset.
-
-    ``had_new_content`` distinguishes "nothing new" from "new lines that
-    happened to produce zero ingestible turns" (e.g. a batch of only
-    ``message``-type records) — the caller must still advance its stored
-    offset in the latter case. ``session_start_ts`` is only meaningful when
-    the caller's prior offset was 0 (a session it has never ingested before).
-    ``last_ts`` is the timestamp of the last successfully-decoded record in
-    this slice regardless of ``kind`` (used for idle/timeout detection), and
-    may differ from ``turns[-1].ts`` when the tail of the slice was
-    untranslatable content.
-    """
+    ``had_new_content`` distinguishes "nothing new" from "new lines that produced
+    zero ingestible turns" — the caller must still advance its offset in the latter
+    case. ``session_start_ts`` is only meaningful when the caller's prior offset was
+    0. ``last_ts`` is the last successfully-decoded record's timestamp regardless of
+    ``kind`` (used for idle/timeout detection), and may differ from ``turns[-1].ts``
+    when the tail of the slice was untranslatable content."""
 
     session_id: str
     had_new_content: bool
@@ -208,14 +185,11 @@ class UsageReport:
 
 @dataclass(frozen=True)
 class DriverCapabilities:
-    """What one driver instance can actually promise.
-
-    Exists so a caller (including docket's own self-originated LLM calls,
-    e.g. memory distillation) never has to hardcode an assumption about the
-    one shipped driver's quirks — ``DocketDriver`` reports only measured
-    token counts, never a USD cost field, so ``reports_cost_usd`` is False
-    even though ``run_turn`` always returns a (zero) ``cost_usd``.
-    """
+    """What one driver instance can actually promise. Exists so a caller never has to
+    hardcode an assumption about the shipped driver's quirks — ``DocketDriver``
+    reports only measured token counts, never a USD cost field, so
+    ``reports_cost_usd`` is False even though ``run_turn`` always returns a (zero)
+    ``cost_usd``."""
 
     driver_name: str
     reports_cost_usd: bool
@@ -229,13 +203,10 @@ class DriverCapabilities:
 @runtime_checkable
 class RuntimeDriver(Protocol):
     """The typed boundary between docket's domain logic and an agent runtime.
-
-    ``core/`` and ``cli/`` depend on this Protocol, never on a concrete
-    driver's on-disk format knowledge. ``edges.adapters.docket_runtime.DocketDriver``
-    is the one shipped implementation; ``tests/fakes.py``'s
-    ``FakeDriver`` is the one test double — see the module docstring for why
-    there is exactly one of each.
-    """
+    ``core/`` and ``cli/`` depend on this Protocol, never on a concrete driver's
+    on-disk format knowledge. ``DocketDriver`` is the one shipped implementation --
+    one typed port, one driver, not a plugin framework (see module docstring);
+    ``tests/fakes.py``'s ``FakeDriver`` is the one test double."""
 
     def run_turn(
         self,
@@ -250,16 +221,12 @@ class RuntimeDriver(Protocol):
         trace_session_key: str | None = None,
     ) -> TurnResult:
         """Run one real, costed agent turn. Never raises for ordinary failure modes.
-
-        ``on_spawn`` (cancellation support) — if the driver
-        backs onto a real OS process, fires with its pid immediately after
-        it starts, before this call blocks on its result. A driver with no
-        real process to report (or a test double) may simply ignore it —
-        every existing caller omits it, so this is purely additive.
-        ``trace_project``/``trace_session_key`` optionally keep an audit stream
-        separate from the durable ``session_key``; drivers without an internal
-        trace producer may ignore them.
-        """
+        ``on_spawn`` fires with the process pid immediately after it starts, before
+        this call blocks on its result -- a driver with no real process (or a test
+        double) may ignore it, so this is purely additive. ``trace_project``/
+        ``trace_session_key`` optionally keep an audit stream separate from the
+        durable ``session_key``; drivers without an internal trace producer may
+        ignore them."""
         ...
 
     def provision(self, agent_id: str, workspace: str, model: str) -> ProvisionResult:
@@ -275,12 +242,10 @@ class RuntimeDriver(Protocol):
         ...
 
     def read_new_turns(self, agent_id: str, session_id: str, offset: int) -> SessionSlice:
-        """Decode session records past *offset* (a driver-defined cursor unit).
-
-        Feeds ``core/trace.py``'s ingestion sweep — the one extra member
-        beyond the headline six, needed to keep session-record decoding
-        entirely inside the driver rather than in ``trace_ingest`` itself.
-        """
+        """Decode session records past *offset* (a driver-defined cursor unit). Feeds
+        ``core/trace.py``'s ingestion sweep — the one extra member beyond the
+        headline six, keeping session-record decoding inside the driver rather than
+        in ``trace_ingest`` itself."""
         ...
 
     def usage(self, agent_id: str) -> UsageReport:
