@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 0.19.1
+**Version**: 0.19.2
 **Status**: Implemented and on by default. Docket owns the only tool-dispatch path: every
 `DocketDriver` turn routes tool calls through `core/tools.py::dispatch_tool`, which applies the
 argument-aware classifier and `pre_tool_call` policies. The approval store itself has CLI, HTTP,
@@ -1106,6 +1106,18 @@ $ git clone https://anywhere.example/repo.git
   path and no second gate.
 
 ## Changelog
+
+### Version 0.19.2 (2026-09-13)
+
+- **W35-C7 retires `FleetSecurity.gates_enabled` (`gatesEnabled` in `fleet.json`).** The measured
+  trigger (W34-A1): `rg -n 'gates_enabled|gatesEnabled' src/ docs/ specs/ README.md` found the
+  field, `core/fleet.py`'s `get_gates_enabled`/`set_gates_enabled` accessors, and the hidden `_json
+  gates-get`/`gates-set` verbs, with no reader anywhere on the live path and no product command
+  ever writing it — `docket init --no-gates` and `docket gates enable`/`disable` write
+  `approvalRoutingState` instead (Enablement requirement 2). The field, its two accessors, and the
+  two verbs are removed. `FleetSecurity` stays lenient, so a `fleet.json` written before this
+  version that still carries `"gatesEnabled": false` continues to load; the key now survives only
+  as an unrecognized field, the same as any other forward-compatible extra key.
 
 ### Version 0.19.1 (2026-09-13)
 

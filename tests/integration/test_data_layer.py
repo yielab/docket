@@ -168,7 +168,6 @@ class TestFleetConfig:
         assert cfg.defaults.model == "anthropic/claude-sonnet-4-6"
         assert len(cfg.bindings) == 1
         assert cfg.bindings[0].agent_id == "myshop"
-        assert not cfg.security.gates_enabled
 
     def test_extra_fields_survive(self) -> None:
         from docket.core.fleet import FleetConfig
@@ -395,13 +394,6 @@ class TestFleet:
         _fleet.remove_binding("myshop")
         assert _fleet.get_binding("myshop") == ""
 
-    def test_security_gates(self, oc_env: Path) -> None:
-        from docket.core import fleet as _fleet
-
-        assert not _fleet.get_gates_enabled()
-        _fleet.set_gates_enabled(True)
-        assert _fleet.get_gates_enabled()
-
     def test_isolation(self, oc_env: Path) -> None:
         from docket.core import fleet as _fleet
 
@@ -506,16 +498,6 @@ class TestJsonBridge:
     # The retired raw dotted-path lookup verbs have no
     # successor in the _json bridge (fleet.json is read through a validated
     # model, not dotted-path string lookups).
-
-    def test_gates_get_false(self) -> None:
-        rc, out, _ = self._run("gates-get")
-        assert rc == 0
-        assert out == "false"
-
-    def test_gates_set_true(self) -> None:
-        self._run("gates-set", "true")
-        _rc, out, _ = self._run("gates-get")
-        assert out == "true"
 
     def test_unknown_verb_exits_2(self) -> None:
         rc, _, err = self._run("nonexistent-verb")

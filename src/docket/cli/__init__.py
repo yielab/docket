@@ -2633,14 +2633,6 @@ def cmd_json(ctx: typer.Context) -> None:
                 _die("usage: binding-remove <id> [channel]")
             _fleet.remove_binding(a[0], a[1] if len(a) > 1 else None)
 
-        elif verb == "gates-get":
-            print(_json.dumps(_fleet.get_gates_enabled()))
-
-        elif verb == "gates-set":
-            if not a:
-                _die("usage: gates-set <true|false>")
-            _fleet.set_gates_enabled(a[0].lower() in ("1", "true", "yes"))
-
         elif verb == "isolation-get":
             print(_json.dumps(_fleet.get_isolation_enabled()))
 
