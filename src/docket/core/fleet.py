@@ -68,7 +68,6 @@ class FleetSecurity(BaseModel):
 
     model_config = _LENIENT
 
-    gates_enabled: bool = Field(False, alias="gatesEnabled")
     isolation_enabled: bool = Field(False, alias="isolationEnabled")
     # 'unset' | 'off' | a sandbox mode string (e.g. 'non-main').
     isolation_mode: str = Field("unset", alias="isolationMode")
@@ -277,16 +276,6 @@ def channel_names(cfg: FleetConfig | None = None) -> list[str]:
         if b.channel not in seen:
             seen.append(b.channel)
     return seen
-
-
-def get_gates_enabled(cfg: FleetConfig | None = None) -> bool:
-    return (cfg or load_fleet()).security.gates_enabled
-
-
-def set_gates_enabled(enabled: bool) -> None:
-    cfg = load_fleet()
-    cfg.security.gates_enabled = enabled
-    _save_fleet(cfg)
 
 
 def get_isolation_enabled(cfg: FleetConfig | None = None) -> bool:
