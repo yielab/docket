@@ -1,42 +1,13 @@
 """The gated tool registry.
 
-**One chokepoint.** Every tool call an agent makes passes through
-``dispatch_tool`` and nowhere else. That is the entire point of this module:
-docket's governance stack — the policy engine, the approval store, the
-high-risk classifier, the audit log — is only worth anything if there is
-exactly one place a tool can be executed from. A second path is not a
-convenience, it is a hole.
+**One chokepoint.** Every tool call passes through ``dispatch_tool`` and nowhere else -- the
+policy engine, approval store, command classifier and audit log only work if there is exactly one
+place a tool call can run from. A second path is not a convenience, it is a hole.
 
-Layering. This module *decides*; ``edges/adapters/toolbox.py`` *acts*. The
-handlers there consult no policy and know nothing about approvals, so nothing
-can execute without first having come through here. The split also keeps the
-filesystem and subprocess work out of ``core/``.
-
-Order of operations in ``dispatch_tool``, and why each step precedes the next:
-
-1. **Resolve the tool.** An unknown name is refused, not ignored — a model
-   hallucinating a tool must get a refusal it can read, and the attempt is
-   worth recording.
-2. **Parse the arguments.** Unparseable arguments are a *denial*, never an
-   empty dict, because arguments are what the gate inspects.
-3. **Validate required arguments**, so a half-specified call fails before any
-   side effect rather than partway through one.
-4. **Gate.** ``evaluate_tool_call`` is the single decision point: every call
-   is evaluated here, live, against both the command classifier and the
-   ``pre_tool_call`` policy hook, before anything runs.
-5. **Route ``ask``.** A gate verdict of ``ask`` blocks the call on the real
-   approval store (``core/approval.py``'s ``wait_for_approval``) rather than
-   just reporting the requirement — nothing else will ever resolve this call
-   if docket does not wait for it here. A caller with nobody to ask
-   (``ToolContext.approval_mode="refuse"``) skips the record and the wait and
-   is denied immediately, distinctly from a timeout or an explicit denial.
-6. **Execute**, catching everything, so a broken handler returns a result the
-   loop can feed back rather than unwinding the turn.
-
-Every gate/approval decision that is not a bare ``allow`` is audited
-(``core/audit.py``'s ``audit_log``) from this module, not from callers —
-the same "the chokepoint records, so nobody downstream has to remember to"
-reasoning that makes ``dispatch_tool`` the single execution path.
+This module *decides*; ``edges/adapters/toolbox.py`` *acts* and consults no policy, keeping
+filesystem/subprocess work out of ``core/``. Every non-allow decision is audited here, not by
+callers. ``dispatch_tool``'s full order of operations is the pinned contract in
+``specs/functional/security-gates.spec.md``'s "in-turn tool-call gate" section.
 """
 
 from __future__ import annotations
@@ -71,39 +42,10 @@ ToolDenialKind = Literal[
 class ToolContext:
     """Everything a tool call needs to know about who is making it.
 
-    ``roots`` is the containment boundary: every path argument must resolve
-    inside one of these, and the first is the working directory for shell
-    commands. An empty ``roots`` makes every path-taking tool fail — deliberate,
-    since defaulting to the whole filesystem is the failure this guards.
-
-    ``role``/``project`` feed ``policy.policy_eval_detail``'s
-    ``applies_to`` matching and ``approval.approval_create``'s record. Both
-    default to ``""`` rather than being required: every shipped policy
-    template uses ``applies_to: ["*"]``, which matches an empty role, and an
-    approval record with no project still needs to be created and shown
-    somewhere — ``dispatch_tool`` falls back to ``"operator"`` for that case
-    rather than refusing to gate at all.
-
-    ``sandbox`` is a **mechanism** choice, not a gate decision — it is
-    consulted only by the ``bash`` tool's handler, after ``evaluate_tool_call``
-    has already allowed the call, and only changes what an already-permitted
-    command can reach while it runs, never whether it runs. Defaults to
-    ``"off"`` (today's plain, unsandboxed exec, unchanged) rather than
-    ``"auto"``: a docker/bwrap jail is real, opt-in hardening, not something a
-    bare ``ToolContext()`` should silently start relying on — see
-    ``edges.adapters.toolbox.run_bash`` and `specs/functional/security-gates.spec.md`
-    for the on-by-default-vs-opt-in rationale.
-
-    ``approval_mode`` picks what an ``ask`` verdict does when nothing can answer
-    it. ``"wait"`` (the default) is today's behaviour, byte for byte: create a
-    real approval record and block in ``wait_for_approval`` up to
-    ``TOOL_APPROVAL_TIMEOUT``. ``"refuse"`` is for a caller with no one to ask —
-    a synchronous, non-interactive harness invocation — and skips the record
-    and the wait entirely, denying immediately with a denial kind that says
-    *why* this call could not even be offered for approval, distinct from a
-    timed-out or explicitly denied one. See ``docs/adr/0001-harness-mode.md``
-    decision 11 for why this stays a fixed mode rather than growing into an
-    interactive pause: that is a different, larger feature.
+    ``roots`` is the containment boundary for path arguments and the bash cwd; empty ``roots``
+    deliberately fails every path-taking tool instead of defaulting to the whole filesystem.
+    ``role``/``project``, ``sandbox``, and ``approval_mode`` are the gate's inputs -- see
+    ``specs/functional/security-gates.spec.md`` items 4 and 11 and its "Exec sandbox" section.
     """
 
     agent_id: str = ""
@@ -122,18 +64,11 @@ class ToolContext:
 class ToolResult:
     """Outcome of one call: what was decided, and what happened if it ran.
 
-    ``executed`` is separate from ``ok`` on purpose. A denied call and a call
-    that ran and failed are different events — the first is a guardrail doing
-    its job, the second is a task problem — and collapsing them would make the
-    audit log unable to tell them apart.
+    ``executed`` is separate from ``ok``: a denied call and a call that ran and failed are
+    different events (a guardrail working vs. a task problem), and audit needs to tell them apart.
 
-    ``policy_id`` carries the ``pre_tool_call`` policy that (co-)decided a
-    non-``allow`` verdict, if any — the same identifier ``ToolVerdict.policy_id``
-    already carries, copied through so a caller does not have to re-run
-    ``evaluate_tool_call`` just to attribute a denial to the rule that fired.
-    Empty for an ``allow`` decision and for a structural refusal that never
-    reached a verdict at all (unknown tool, undecodable arguments, missing
-    required arguments).
+    ``policy_id`` is the ``pre_tool_call`` policy that (co-)decided a non-``allow`` verdict; see
+    ``specs/functional/security-gates.spec.md`` item 11 for when it is populated vs. empty.
     """
 
     ok: bool
@@ -152,12 +87,8 @@ class ToolResult:
         return self.decision == "deny"
 
     def as_tool_output(self) -> str:
-        """The text fed back to the model as this call's result.
-
-        A refusal is reported *to the model*, in words, rather than being
-        dropped: an agent that receives silence retries the same call, while an
-        agent told "denied, because X" can choose a different approach.
-        """
+        """The text fed back to the model: a refusal is reported in words, not silence, so the
+        model can adapt instead of blindly retrying the same call."""
         if self.decision == "deny":
             kind = self.denial_kind or "invalid_call"
             return f"REFUSED [{kind}]: {self.reason}"
@@ -170,12 +101,8 @@ class ToolResult:
 
 @dataclass(frozen=True)
 class Tool:
-    """One callable tool: its schema for the model, its handler for docket.
-
-    ``kind`` drives gating, not behaviour: ``exec`` tools go through the
-    argument-aware command classifier, ``write`` tools are recorded as
-    mutating, ``read`` tools are the cheap case.
-    """
+    """One callable tool: its schema for the model, its handler for docket. ``kind`` drives gating:
+    ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case."""
 
     name: str
     description: str
@@ -194,12 +121,9 @@ class Tool:
 
 
 class ToolRegistry:
-    """The set of tools one agent may call.
-
-    Per-agent rather than global so a role can be given a narrower set — a
-    Reviewer with no ``write`` tool cannot edit code by accident, which is a
-    stronger guarantee than instructing it not to.
-    """
+    """The set of tools one agent may call, scoped per-agent (not global) so a role can be given a
+    narrower set -- a Reviewer with no ``write`` tool cannot edit code by accident, a stronger
+    guarantee than instructing it not to."""
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
@@ -229,12 +153,9 @@ class ToolRegistry:
     def without_kind(self, *kinds: ToolKind) -> ToolRegistry:
         """A copy with every tool whose ``kind`` is in *kinds* removed.
 
-        Sibling of :meth:`without`, keyed on the tool's declared capability
-        rather than its name. This is what lets a name-agnostic tool (e.g. an
-        MCP-adapted tool, registered under a namespaced name no denylist could
-        ever spell out in advance) still be excluded from a role that denies
-        the capability it represents -- see
-        ``core.archetypes.registry_for_role``, the one caller.
+        Keyed on capability, not name, so a namespaced MCP-adapted tool still gets excluded from a
+        role that denies that capability. See ``specs/functional/role-archetypes.spec.md``
+        (``without_kind``) and the sole caller, ``core.archetypes.registry_for_role``.
         """
         clone = ToolRegistry()
         for tool in self._tools.values():
@@ -255,27 +176,14 @@ class ToolRegistry:
 def render_tool_call(name: str, args: dict[str, Any]) -> str:
     """Render one tool call as the text a ``pre_tool_call`` regex policy matches.
 
-    **Contract — pinned by ``tests/integration/test_pre_tool_call_policy.py`` and load
-    bearing for every shipped policy template, not an implementation detail:**
-
-        "<name> <key>=<json-value> <key>=<json-value> ..."
-
-    Keys appear in ``args``' own iteration order (the order the model's JSON
-    arguments decoded in); each value is rendered via ``json.dumps`` so a
-    string is quoted, a number/bool/``null`` renders as its JSON literal, and
-    a nested object/list renders inline. A call with no arguments renders as
-    just ``name``. No trailing whitespace, no line breaks inserted.
-
-    Why this shape: every shipped policy pattern (``rm\\s+-[rf]``,
-    ``git\\s+push\\s+.*\\bmain\\b``) was written to read like the raw shell
-    command it matches, and a tool's most policy-relevant argument is usually
-    that exact string (``bash``'s ``command``, a path). Putting the tool name
-    first and the arguments after, verbatim and quoted, keeps a command-shaped
-    regex matching a rendered call the same way it would match the bare
-    command. It is *not* symmetric — a pattern written assuming an argument's
-    text appears *before* the verb that acts on it (e.g. a path before the
-    word "write") will not match this render; see block-destructive.json's
-    note on the two patterns fixed for exactly that reason.
+    Pinned contract (``tests/integration/test_pre_tool_call_policy.py``, load-bearing for every
+    shipped policy template): ``"<name> <key>=<json-value> ..."``, keys in ``args``' own order,
+    each value ``json.dumps``-encoded; a no-argument call renders as just ``name``. Putting the
+    name first and arguments after keeps a command-shaped regex (``rm\\s+-[rf]``) matching this
+    render the same way it matches the bare command -- it is *not* symmetric, so a pattern
+    assuming an argument appears *before* its verb will not match. See
+    ``specs/functional/security-gates.spec.md`` item 1 for the full rationale and the verified
+    pattern fixes it drove.
     """
     parts = [name]
     for key, value in args.items():
@@ -306,13 +214,10 @@ _POLICY_ACTION_TO_DECISION: dict[str, Decision] = {
 class ToolVerdict:
     """The gate's answer for one call.
 
-    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit,
-    independent of which check ended up deciding ``decision`` — so a
-    caller can tell a policy actually fired a ``warn``/``redact`` even on a
-    call whose overall decision is ``allow`` (e.g. the command classifier
-    already said allow, but a policy still wants a record). ``policy_action``
-    is ``""`` when no policy file matched at all, and ``"allow"`` when one
-    matched but explicitly allowed.
+    ``policy_action``/``policy_id`` carry the *raw* ``pre_tool_call`` hit, independent of what
+    decided ``decision`` -- so a caller can see a ``warn``/``redact`` fired even when the overall
+    decision is ``allow``. ``policy_action`` is ``""`` when no policy matched, ``"allow"`` when one
+    matched but allowed.
     """
 
     decision: Decision
@@ -324,27 +229,13 @@ class ToolVerdict:
 def evaluate_tool_call(tool: Tool, args: dict[str, Any], ctx: ToolContext) -> ToolVerdict:
     """Decide whether this call may proceed. **The** decision point.
 
-    The exec gate classifies a shell command via
-    ``core/security.classify_command``, which reads the whole command line
-    including every segment behind a ``;``/``&&``/pipe. This argument-aware
-    enforcement is what makes it useful — a binary-path-only allowlist
-    could not do this — ``git`` is allowlisted, ``git push origin production``
-    is a production deploy, and only a classifier that sees the arguments can
-    tell them apart.
-
-    This function also evaluates the ``pre_tool_call`` policy hook, so a
-    deny/require_approval rule from a shipped template applies to every tool,
-    not just ``bash``. Both checks land in this one function rather than at
-    their call sites, so "what gates a tool call" has a single answer. The two
-    gates can disagree — one call is combined via most-restrictive-wins
-    (``_DECISION_RANK``, the same philosophy as ``core/policy.py``'s own
-    ``_RANK``): deny beats ask beats allow.
-
-    Pure decision function — it never audits or traces. That is
-    ``dispatch_tool``'s job (matching ``core/dispatch.py``'s own
-    ``policy_eval_detail`` callers, which decide what to do with a
-    :class:`~docket.core.policy.PolicyHit` themselves rather than having the
-    evaluator emit records).
+    Combines the argument-aware command classifier (``exec`` tools only, via
+    ``core/security.classify_command``) and the ``pre_tool_call`` policy hook, both landing in
+    this one function so "what gates a call" has a single answer. Combined most-restrictive-wins
+    (``_DECISION_RANK``: deny beats ask beats allow) -- see
+    ``specs/functional/security-gates.spec.md`` items 1-3 for the full contract and why
+    argument-awareness matters (``git`` is allowlisted, ``git push origin production`` is not).
+    Pure decision function: it never audits or traces, that is ``dispatch_tool``'s job.
     """
     command_decision: Decision = "allow"
     command_reason = ""
@@ -380,21 +271,13 @@ def _audit_tool_decision(
     policy_id: str = "",
     policy_action: str = "",
 ) -> None:
-    """Write one audit entry for a non-``allow`` (or ``warn``/``redact``) gate
-    decision. Centralized here so every gated tool call is recorded exactly
-    once, regardless of which check (command classifier or policy engine)
-    produced it — the arguments are rendered and passed through
-    ``core.trace.redact`` first, since a tool call's arguments can carry a
-    secret (a token in a ``write`` call, a credential in a ``bash`` command).
+    """Write one audit entry for a non-``allow`` (or ``warn``/``redact``) gate decision.
 
-    ``policy_id``/``policy_action`` are the raw ``pre_tool_call``
-    policy hit that (co-)decided this call, if any — recorded as a fixed,
-    ``repr``-quoted ``policy_id=... policy_action=...`` pair so a reader
-    (``docket serve``'s ``/metrics``, most notably) can attribute a policy hit
-    by id without parsing the free-text ``detail`` that follows. Both are the
-    empty string when no policy fired at all (e.g. a bare command-classifier
-    deny) — this describes the *same* decision ``detail`` already narrates,
-    never a second one.
+    Centralized so every gated call is recorded exactly once regardless of which check decided
+    it; arguments are redacted (``core.trace.redact``) first since they can carry a secret (a
+    token in a ``write`` call, a credential in a ``bash`` command). Records ``policy_id``/
+    ``policy_action`` as a fixed, ``repr``-quoted pair (empty when no policy fired) so a reader
+    (``docket serve``'s ``/metrics``) can attribute a hit without parsing free-text ``detail``.
     """
     audit_log(
         action,
@@ -570,12 +453,10 @@ def _int_arg(args: dict[str, Any], name: str, default: int = 0) -> int:
 
 
 def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash.
+    """The default tool set: read, write, edit, glob, grep, bash, fetch.
 
-    Handlers are imported here rather than at module scope so ``core/tools.py``
-    stays importable without dragging in the filesystem/subprocess layer, and
-    so the dependency direction reads as "core reaches out to edges for I/O"
-    at exactly one point.
+    Handlers are imported here (not at module scope) so this module stays importable without the
+    filesystem/subprocess layer, keeping "core reaches out to edges for I/O" at one point.
     """
     from docket.edges.adapters import fetch as _fetch
     from docket.edges.adapters import toolbox
