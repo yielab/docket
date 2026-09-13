@@ -1,81 +1,15 @@
-"""docket mcp — expose the control plane as an MCP server, or configure the
-external MCP tool servers docket connects to as a *client*.
-
-This module has two, deliberately unrelated halves:
-
-- `docket mcp serve`: docket **as a server** — starts an MCP (Model Context
-  Protocol) stdio server so any MCP client (Claude Code, Codex, ...) can
-  drive docket's control plane *through* the same governance spine a CLI
-  invocation goes through — not around it.
-- `docket mcp servers add/list/remove`: docket **as a client** — the CLI over
-  `core/mcp_tools.py`'s `add_mcp_server`/`load_mcp_servers`/
-  `remove_mcp_server`. This half is pure presentation: it validates flags,
-  builds an `McpServerConfig`, and calls the existing `core/` functions — it
-  does not talk to a remote server itself, and it never touches
-  `core/tools.py` directly. Actually reaching a configured server from a live
-  turn is `core/mcp_tools.py`'s `load_mcp_tools` — see that module's own
-  docstring for exactly what is and isn't wired today.
-
-**The intended payoff: browser support as configuration, not code.** Point
-docket at the Playwright MCP server (`docket mcp servers add playwright --
-npx -y @playwright/mcp@latest`) and, once `load_mcp_tools` feeds a turn's
-registry, the client gates every tool it advertises exactly like a built-in
-— namespaced `mcp__playwright__<tool>`, so a remote server can never shadow
-`bash`, still screened through the `prompt-injection` policy before
-registration, still dispatched through the one chokepoint
-(`core/tools.py`'s `dispatch_tool`, which evaluates the `pre_tool_call`
-policy hook live, in-turn). The same is true of a web-search MCP server.
-This is why hand-rolling browser automation or a search tool is on the
-never-build list — see the recipe in `specs/functional/mcp-client.spec.md`.
-
-The `serve` half:
-
-`docket mcp serve` starts an MCP (Model Context Protocol) stdio server so
-any MCP client (Claude Code, Codex, ...) can drive docket's control plane
-*through* the same governance spine a CLI invocation goes through — not
-around it:
-
-- every tool call writes an audit-log entry (``core/audit.py``, action
-  ``mcp.<tool>``) that participates in the same ``seq``/``prev_hash``
-  tamper-evidence chain as every other audit entry;
-- ``dispatch``/``delegate``/``approvals_grant``/``approvals_deny`` call the
-  *exact same* ``core/`` functions the CLI and ``docket serve``'s HTTP API
-  already call — no parallel approval or dispatch path, no auto-approve, no
-  shortcut around a budget/approval gate;
-- this module is a transport/presentation layer only (the ``cli/`` tier), like
-  ``cli/_pod.py`` or ``serve.py`` — it reuses ``core/`` services directly and
-  never duplicates their business logic; ``core/`` has no idea MCP exists.
-
-**This is a server, never a host — in the ``serve`` direction.** `docket mcp
-serve` exposes docket's own control plane as MCP tools for an external
-client to call; it does not make docket consume another server's tools
-through that same code path. Agent-side MCP *client* config is the separate
-`servers` half described above — see `core/mcp_tools.py`'s module docstring
-for how much of the path to a live turn is actually wired.
-
-**stdio discipline.** An MCP stdio server speaks newline-delimited JSON-RPC on
-stdout — any stray print corrupts the stream. This module's tool functions
-never touch ``docket.ui`` (which prints Rich output to stdout) and return
-plain data; the one startup line ``serve_stdio()`` prints goes to stderr.
-
-**Optional dependency.** The official ``mcp`` Python SDK is not a base
-dependency (kept out of the default install so ``pip install docket`` stays
-light — the SDK pulls in starlette/uvicorn/cryptography/opentelemetry and
-more). It is only imported inside ``serve_stdio()``, lazily, guarded by
-``try/except ImportError`` — the same pattern ``core/pipeline.py`` and
-``cli/_agents.py`` already use for the optional PyYAML dependency. Install
-with ``pip install 'docket[mcp]'`` (or ``uv sync --extra mcp``); a missing SDK
-prints ``MISSING_SDK_HINT`` instead of a bare traceback.
-
-**SDK version.** Targets the SDK's 2.x line (``mcp>=2.0.0``,
-no ceiling) via ``mcp.server.MCPServer`` — the 2.0 rework's direct successor
-to the 1.x line's ``mcp.server.fastmcp.FastMCP`` (``mcp.server.fastmcp`` was
-removed outright in 2.0, not deprecated in place). The migration was a rename,
-not a redesign: ``MCPServer`` keeps the same ergonomics this module already
-used — ``MCPServer(name=..., instructions=...)``, ``add_tool(fn, name=...)``,
-and ``server.run(transport="stdio")`` — confirmed by reading the installed
-2.0.0 package directly (``mcp/server/mcpserver/server.py``), not assumed.
-"""
+"""docket mcp — expose the control plane as an MCP server (`serve`), or configure the external MCP
+servers docket connects to as a client (`servers`); two unrelated halves. `serve` drives docket's
+control plane through the same governance spine a CLI call goes through, never around it: every
+call audit-logs into the same tamper-evident chain, and dispatch/delegate/approvals call the
+exact same `core/` functions the CLI and HTTP API already call — no parallel path, no auto-
+approve, no shortcut. A server, never a host; the reverse (docket consuming another server's
+tools live) is `core/mcp_tools.py`'s `load_mcp_tools` — see its docstring for what is wired.
+`servers add/list/remove` is pure presentation over `core/mcp_tools.py`, never talking to a
+remote server itself — why hand-rolling browser/search tools is on the never-build list, per
+specs/functional/mcp-client.spec.md. stdio discipline: tool functions never touch `docket.ui`;
+stdout is reserved for JSON-RPC once `serve` runs. The `mcp` SDK is optional, imported lazily in
+`serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`."""
 
 from __future__ import annotations
 
@@ -116,26 +50,15 @@ _TOOL_NAMES: tuple[str, ...] = (
 
 
 class McpToolError(RuntimeError):
-    """A tool's domain validation or lookup failed.
-
-    Raised instead of returning an inline ``{"ok": false, ...}`` shape so a
-    successful tool's return value stays the bare data shape documented in
-    ``specs/api/mcp-server.spec.md`` (matching this project's "no envelope
-    wrapper" JSON convention, ``cli-interface.spec.md``). The MCP SDK turns
-    any raised exception from a tool function into an ``isError`` tool result
-    carrying the message — the MCP-native way to signal "this call failed".
-    """
+    """A tool's domain validation or lookup failed. Raised (never an inline
+    ``{"ok": false}``) so success stays the bare shape in specs/api/mcp-server.spec.md;
+    the SDK turns the exception into an ``isError`` result carrying the message."""
 
 
 def _audit(tool: str, detail: str = "") -> None:
-    """Write one audit-log entry for an MCP tool call — unconditional, first thing.
-
-    Every tool wrapper below calls this before doing any work, so a call is
-    recorded even if the underlying operation goes on to fail or raise.
-    ``action`` is ``mcp.<tool>`` (a new, dedicated action family — see
-    audit.spec.md); ``detail`` never carries a secret value, only ids/names,
-    matching every other ``audit_log`` call site in this project.
-    """
+    """Write one audit-log entry for an MCP tool call, unconditionally, first thing —
+    so a call is recorded even if the operation later fails. ``action`` is
+    ``mcp.<tool>``; ``detail`` never carries a secret, only ids/names (audit.spec.md)."""
     audit_log(f"mcp.{tool}", detail)
 
 
@@ -159,12 +82,9 @@ def tool_pods() -> dict[str, Any]:
 
 
 def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]:
-    """Show a pod's task queue (all statuses, not just pending).
-
-    If ``retry_task_id`` is given, first moves that one ``blocked`` task back
-    to ``pending`` (mirrors `docket pod <project> queue --retry <task-id>`) —
-    a no-op-turned-error if the id doesn't exist or isn't currently blocked.
-    """
+    """Show a pod's task queue (all statuses, not just pending). If ``retry_task_id`` is
+    given, first moves that one ``blocked`` task back to ``pending`` (mirrors
+    `docket pod <project> queue --retry`) — an error if it isn't currently blocked."""
     detail = f"project={project}"
     if retry_task_id:
         detail += f" retry={retry_task_id}"
@@ -175,12 +95,9 @@ def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]
 
 
 def tool_delegate(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
-    """Queue a new task for a pod's Lead to work through.
-
-    ``priority`` is ``high``/``normal``/``low`` (default ``normal``);
-    ``description`` is capped at 500 chars — the same limits
-    `docket pod <project> delegate` enforces. Returns the created task record.
-    """
+    """Queue a new task for a pod's Lead. ``priority`` is high/normal/low (default
+    normal); ``description`` is capped at 500 chars — the same limits
+    `docket pod <project> delegate` enforces. Returns the created task record."""
     _audit("delegate", f"project={project}")
     if not description:
         raise McpToolError("description is required")
@@ -195,19 +112,9 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
 
 
 def tool_dispatch(project: str, resume: bool = False, timeout: int | None = None) -> dict[str, Any]:
-    """Trigger a pod's real dispatch pipeline — one real, costed agent turn per hop.
-
-    Gated exactly like the CLI (`docket pod <project> dispatch`) and the
-    `docket serve` webhook (`POST /dispatch/<project>`): this calls the same
-    `core.dispatch.dispatch_pod`, so the budget cap, verifyCmd gate, Reviewer
-    verdict gate, and Tester PASS/FAIL gate all apply unchanged — there is no
-    MCP-specific dispatch path. A run record (source ``"mcp"``) is created
-    *before* any work starts and its id returned immediately; the pipeline
-    itself runs in a background thread (this call must not block on a real
-    agent turn) — poll the ``runs`` tool with the returned id for the outcome.
-    ``resume`` reclaims any task left ``failed`` with a stale claim; ``timeout``
-    overrides both the agent-turn and verifyCmd timeout for this run only.
-    """
+    """Trigger a pod's real dispatch pipeline, gated exactly like the CLI/webhook via the
+    same `core.dispatch.dispatch_pod`. Runs in a background thread; poll `runs` for the
+    outcome. See specs/api/mcp-server.spec.md."""
     _audit("dispatch", f"project={project} resume={resume} timeout={timeout}")
     if timeout is not None and timeout <= 0:
         raise McpToolError("timeout must be a positive integer number of seconds.")
@@ -248,13 +155,9 @@ def tool_approvals_list() -> dict[str, Any]:
 
 
 def tool_approvals_grant(token: str) -> dict[str, Any]:
-    """Grant a pending approval token.
-
-    Identical to `docket approve <token>` / `docket serve`'s
-    `POST /approvals/<token>` (``action: "grant"``) — same
-    `core.approval.approval_grant` call, tagged ``channel="mcp"`` for the
-    audit trail. No MCP-side auto-approve or bypass of any kind.
-    """
+    """Grant a pending approval token. Identical to `docket approve`/`docket serve`'s
+    `POST /approvals/<token>` — same `core.approval.approval_grant` call, tagged
+    ``channel="mcp"``. No MCP-side auto-approve or bypass of any kind."""
     _audit("approvals_grant", f"token={token}")
     try:
         _approval.approval_grant(token, channel="mcp")
@@ -265,12 +168,9 @@ def tool_approvals_grant(token: str) -> dict[str, Any]:
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
-    """Deny a pending approval token.
-
-    Identical to `docket deny <token>` / `docket serve`'s
-    `POST /approvals/<token>` (``action: "deny"``) — same
-    `core.approval.approval_deny` call, tagged ``channel="mcp"``.
-    """
+    """Deny a pending approval token. Identical to `docket deny`/`docket serve`'s
+    `POST /approvals/<token>` — same `core.approval.approval_deny` call, tagged
+    ``channel="mcp"``."""
     _audit("approvals_deny", f"token={token}")
     try:
         _approval.approval_deny(token, channel="mcp")
@@ -281,13 +181,9 @@ def tool_approvals_deny(token: str) -> dict[str, Any]:
 
 
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
-    """**Recorded** USD spend (from the active driver's session data) — one
-    agent (if ``agent_id`` is given) or the whole fleet. Never a claimed
-    dollar *savings* — see cost-tracking.spec.md. ``DocketDriver`` never
-    reports a real dollar figure (see ``edges/adapters/docket_runtime.py``),
-    so this is currently always ``0.0`` per agent; the ``MODEL_PRICING``-based
-    comparative estimate `docket cost`'s human-readable view shows alongside
-    it is not returned by this tool."""
+    """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
+    *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
+    figure); the ``MODEL_PRICING`` estimate `docket cost` shows is not returned here."""
     _audit("cost", f"agent={agent_id or ''}")
     from docket.cli._cost import cost_snapshot
 
@@ -305,12 +201,9 @@ def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
 
 
 def _build_server() -> Any:
-    """Construct the MCPServer instance with every tool registered.
-
-    Only called from ``serve_stdio()`` — importing ``mcp`` at module level
-    would make the optional dependency mandatory just to import
-    ``docket.cli``.
-    """
+    """Construct the MCPServer instance with every tool registered. Only called from
+    ``serve_stdio()`` — importing ``mcp`` at module level would make the optional
+    dependency mandatory just to import ``docket.cli``."""
     from mcp.server import MCPServer
 
     server = MCPServer(
@@ -338,11 +231,8 @@ def _build_server() -> Any:
 
 def serve_stdio() -> int:
     """Run `docket mcp serve` — blocks until the client disconnects (Ctrl-C/EOF).
-
-    Returns 1 with an actionable hint (stderr) if the optional ``mcp`` SDK
-    isn't installed; 0 on a clean shutdown. Never prints to stdout — that
-    stream is the JSON-RPC transport once the server starts.
-    """
+    Returns 1 with an actionable hint (stderr) if the ``mcp`` SDK isn't installed,
+    else 0. Never prints to stdout — that is the JSON-RPC transport once running."""
     try:
         server = _build_server()
     except ImportError:
@@ -550,14 +440,9 @@ def _run_servers(sub2: str | None, rest: list[str]) -> int:
 
 
 def run_mcp(sub: str | None, args: list[str]) -> int:
-    """Dispatch `docket mcp <sub>`. Returns the process exit code.
-
-    Two subcommands: ``serve`` (docket as an MCP server) and ``servers``
-    (manage the external MCP servers docket connects to as a client — see
-    ``_run_servers`` above). Anything else prints usage to stderr (never
-    stdout — see module docstring's stdio-discipline note, which applies once
-    ``serve`` is actually running) and returns 1.
-    """
+    """Dispatch `docket mcp <sub>`; returns the exit code. ``serve`` or ``servers``
+    (see ``_run_servers``); anything else prints usage to stderr (see the module
+    docstring's stdio-discipline note) and returns 1."""
     if sub == "serve":
         del args  # no flags yet for serve
         return serve_stdio()

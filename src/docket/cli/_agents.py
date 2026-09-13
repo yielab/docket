@@ -54,17 +54,11 @@ _ADD_VALUE_FLAGS = frozenset(
 def _parse_add_args(
     all_args: list[str],
 ) -> tuple[str | None, str | None, str | None, str | None]:
-    """Extract (from_file, codebase, name, blueprint) from `docket add` args.
-
-    ``--from <f>`` selects declarative mode. Codebase may be given as
-    ``--codebase``/``--path`` (or the 2nd bare positional; for a `workdir`
-    blueprint this is its working directory instead — see
-    ``core/blueprints.py``); name as ``--name`` (or the 1st bare positional);
-    blueprint as ``--blueprint <name>`` — unset means
-    the caller falls back to the default blueprint (`software`). Any value
-    supplied here is trusted and skips its interactive prompt. Returns
-    ``None`` for anything not supplied.
-    """
+    """Extract (from_file, codebase, name, blueprint) from `docket add` args: ``--from``
+    selects declarative mode; codebase/name/blueprint come from flags or bare
+    positionals (codebase is a `workdir` blueprint's working directory instead — see
+    `core/blueprints.py`). Any value given here is trusted, skipping its interactive
+    prompt; unsupplied values return ``None``."""
     from_file: str | None = None
     codebase: str | None = None
     name: str | None = None
@@ -116,14 +110,9 @@ def _parse_add_args(
 
 
 def run_init(all_args: list[str]) -> int:
-    """Initialize a project pod, deriving ordinary defaults from the cwd.
-
-    The zero-argument path is intentionally non-interactive: current directory
-    becomes the location, its basename becomes the pod id, stack is detected,
-    and the default software blueprint creates Lead + Implementer. Explicit
-    arguments/options override those defaults; ``--from`` retains the
-    declarative multi-project path.
-    """
+    """Initialize a project pod, deriving ordinary defaults from the cwd (intentionally
+    non-interactive with zero args: cwd is the location, its basename the pod id).
+    Explicit args/options override; ``--from`` retains the declarative path."""
     want_gates = "--no-gates" not in all_args
     want_portfolio = "--portfolio" in all_args
     project_args = [arg for arg in all_args if arg not in ("--gates", "--no-gates", "--portfolio")]
@@ -255,12 +244,9 @@ def _parse_existing_pod_add_args(all_args: list[str]) -> tuple[str | None, list[
 
 
 def _pod_for_directory(directory: Path) -> tuple[str | None, list[str]]:
-    """Resolve the most-specific registered pod containing ``directory``.
-
-    Project metadata is the authority: every member of a pod repeats the same
-    codebase/workDir, so results are deduplicated by pod id before ambiguity is
-    evaluated. A nested cwd chooses the longest matching root.
-    """
+    """Resolve the most-specific registered pod containing ``directory``. Metadata is
+    the authority: every member repeats the same codebase/workDir, so results dedup
+    by pod id; a nested cwd chooses the longest matching root."""
     try:
         cwd = directory.expanduser().resolve()
     except OSError:
@@ -327,16 +313,11 @@ def run_add(all_args: list[str]) -> int:
 def _provision_pod_from_spec(
     aid: str, blueprint_name: str, spec: dict[str, Any]
 ) -> list[str] | None:
-    """Provision one pod from a `blueprint`-bearing `--from spec.yaml` entry.
-
-    Returns the created member ids, or ``None`` (already warned) if the pod
-    already exists or the blueprint name is unknown — the caller counts that
-    as a skip, matching the single-agent path's idempotence contract. Goes
-    through `cli._pod.build_pod_from_blueprint` -> `core.pod_provisioning
-    .provision_pod`, the same path the interactive `docket add` flow and
-    `POST /pods` use — see that module for the already-exists/rollback
-    contract this function relies on.
-    """
+    """Provision one pod from a `blueprint`-bearing `--from spec.yaml` entry. Returns
+    the created member ids, or ``None`` (already warned) if the pod exists or the
+    blueprint is unknown — the caller counts that as a skip, matching the single-agent
+    path's idempotence contract. Goes through `cli._pod.build_pod_from_blueprint`,
+    the same path `docket add` and `POST /pods` use."""
     from docket.cli import _pod
 
     try:
@@ -481,12 +462,9 @@ def _cmd_add_declarative(from_file: str) -> int:
 
 
 def _apply_persona_from_meta(ws: Path, soul_text: str) -> str:
-    """Upsert the persona block into *soul_text* from ``ws``'s existing meta.
-
-    A no-op for a brand-new agent (meta not written yet → no persona) and for
-    agents without a persona; on ``maintain rebuild`` it re-renders the
-    docket-owned persona so identity stays a pure function of metadata.
-    """
+    """Upsert the persona block into *soul_text* from ``ws``'s existing meta. A no-op
+    for a brand-new or persona-less agent; on ``maintain rebuild`` it re-renders the
+    docket-owned persona so identity stays a pure function of metadata."""
     from docket.core import identity as _identity
     from docket.core.models import AgentMeta
 
@@ -900,14 +878,9 @@ def run_delete(agent_id: str | None) -> int:
 
 
 def run_maintain(agent_id: str | None, mode: str | None, extra: list[str] | None = None) -> int:
-    """Dispatch `docket maintain`. Returns the process exit code.
-
-    ``extra`` carries flags that follow ``mode`` (currently only
-    ``--no-distill-first``) — ``cmd_maintain``'s Typer registration
-    allows/ignores unknown options so they land here rather
-    than erroring, the same pattern every other ``ctx.args``-based
-    subcommand in this package uses.
-    """
+    """Dispatch `docket maintain`; returns the exit code. ``extra`` carries flags
+    following ``mode`` (currently only ``--no-distill-first``) — Typer allows/ignores
+    unknown options so they land here, the pattern every ``ctx.args`` subcommand uses."""
     if agent_id is None:
         if not sys.stdin.isatty():
             ui.error("An agent id is required.")
@@ -1072,18 +1045,11 @@ def _maintain_check(agent_id: str, ws: Path) -> None:
 
 
 def _run_distillation(agent_id: str, ws: Path) -> _mem.DistillResult:
-    """Run `distill_memory` for *agent_id*, rendering progress/errors via ui.
-
-    The one call site every distillation-driven `maintain` action shares
-    (`distill`, and `clean`/`reset` when `--distill-first` is on). Never
-    deletes or archives anything itself beyond what `distill_memory` already
-    did — callers gate their own destructive step on `.ok` (a fail-closed
-    contract: a failed driver turn must block, not warn and proceed).
-
-    Resolves ``edges.adapters.docket_runtime.default_driver()`` — this
-    self-originated LLM call runs through docket's own gated turn loop, the
-    same as any agent's turn.
-    """
+    """Run `distill_memory` for *agent_id*, rendering progress/errors via ui. The one
+    call site every distillation-driven `maintain` action shares. Callers gate their
+    own destructive step on ``.ok`` (fail-closed) — see
+    specs/functional/agent-lifecycle.spec.md. Runs through docket's own gated turn
+    loop via ``edges.adapters.docket_runtime.default_driver()``, like any agent's turn."""
     raw = store.read_json(_cfg.meta_path(agent_id))
     name = str(raw.get("name", agent_id))
     session_key = str(raw.get("sessionKey", ""))
@@ -1126,13 +1092,9 @@ def _maintain_distill(agent_id: str, ws: Path) -> int:
 
 
 def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
-    """clean: delete memory/*.md log files.
-
-    `--distill-first` (default on): distill pending
-    logs into MEMORY.md and archive the originals before this ever deletes
-    anything. A failed distillation aborts here with no file touched — see
-    `_run_distillation`/`distill_memory`'s fail-closed contract.
-    """
+    """clean: delete memory/*.md log files. `--distill-first` (default on) distills
+    pending logs into MEMORY.md and archives the originals before any deletion; a
+    failed distillation aborts here untouched — see `_run_distillation`'s contract."""
     if not sys.stdin.isatty():
         ui.console.print("Cancelled (non-interactive).")
         return 0
@@ -1175,15 +1137,10 @@ def _maintain_clean(agent_id: str, ws: Path, *, distill_first: bool = True) -> i
 
 def _maintain_reset(agent_id: str, ws: Path, *, distill_first: bool = True) -> int:
     """reset: delete memory logs + clear MEMORY.md + reset HEARTBEAT.md.
-
-    `--distill-first` (default on): distill pending
-    logs into MEMORY.md and archive the originals first. A failed
-    distillation aborts before any deletion (fail closed). When a real
-    distillation just ran (there was something pending and it succeeded),
-    the "clear MEMORY.md" step below is skipped -- MEMORY.md was *just*
-    refreshed with the distilled summary, so wiping it in the same breath
-    would throw away the exact thing `--distill-first` exists to preserve.
-    """
+    `--distill-first` (default on) distills pending logs into MEMORY.md first; a
+    failed distillation aborts before any deletion (fail closed). When a real
+    distillation just ran, the "clear MEMORY.md" step below is skipped — it was
+    *just* refreshed, so wiping it would throw away what `--distill-first` preserves."""
     if not sys.stdin.isatty():
         ui.console.print("Cancelled (non-interactive).")
         return 0
@@ -1280,18 +1237,9 @@ def _maintain_rebuild(agent_id: str, ws: Path) -> None:
 
 
 def _maintain_sessions(agent_id: str) -> None:
-    """sessions: report on this agent's durable session storage.
-
-    ``core/session.py`` stores one JSON document per session key. It ships
-    ``plan_compaction``/``compact_session``, but **nothing on the turn path
-    calls them today** — ``core/agent_loop.py`` imports only
-    ``append_messages``/``load_messages``, so a session grows unbounded until
-    the endpoint rejects the prompt. This command reports current sizes and
-    says so; it does not claim an automatic compaction that does not run, and
-    it does not fabricate a manual trim either — a truncation outside
-    ``compact_session``'s fail-closed summarisation is exactly the durability
-    loss that module exists to prevent.
-    """
+    """sessions: report on this agent's durable session storage. Reports sizes only
+    — no manual trim, since a truncation outside ``compact_session``'s fail-closed
+    summarisation is exactly the durability loss that module prevents."""
     from urllib.parse import unquote as _url_unquote
 
     from docket.core import session as _session

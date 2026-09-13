@@ -1,19 +1,12 @@
 """Internal workstation bootstrap used lazily by the first ``docket init``.
 
-`bootstrap_workstation(want_gates, assume_yes)`
-returns the process exit code (0 on success, 1 when a hard preflight fails); the
-the project initializer returns that code to the CLI.
+`bootstrap_workstation(want_gates, assume_yes)` returns the process exit code (0 on success,
+1 when a hard preflight fails); the project initializer returns that code to the CLI.
 
-There is no external daemon. The workstation foundation bootstrap provisions a purely
-docket-native home: directory structure under `DOCKET_HOME`, the fleet
-registry (`fleet.json`), specialist agents (fleet registration + workspace +
-meta), and the baseline guardrail policy templates. `.docket-meta.json`/
-`fleet.json` reads and writes go through `core/fleet.py` and
-`edges/store.py`; nothing here opens a daemon config file, because none
-exists.
-
-No step here depends on a live external process, so this module is fully
-exercisable in a hermetic unit test.
+There is no external daemon: this provisions a purely docket-native home (directory
+structure under `DOCKET_HOME`, `fleet.json`, specialist agents, baseline policy templates)
+through `core/fleet.py`/`edges/store.py` only, so the module is fully exercisable in a
+hermetic unit test.
 """
 
 from __future__ import annotations
@@ -38,11 +31,8 @@ from docket.edges import store
 
 
 def _check_dependencies() -> list[str]:
-    """Report required (python3/git) + optional (fzf) tools.
-
-    Returns the list of MISSING required dependencies (empty when all present).
-    Docket owns its runtime, so only its direct tools belong in this check.
-    """
+    """Return MISSING required deps (python3/git); also report optional fzf.
+    Docket owns its runtime, so only its direct tools belong in this check."""
     missing: list[str] = []
 
     py = shutil.which("python3") or shutil.which("python")
@@ -97,11 +87,8 @@ def _step_model_readiness(model: str) -> int:
 
 
 def _harden_perms() -> None:
-    """Harden docket-owned secrets/config file permissions to 0600.
-
-    Always runs regardless of --gates/--no-gates -- this is basic file
-    hygiene, not exec-approval policy.
-    """
+    """Harden docket-owned secrets/config file permissions to 0600. Always runs
+    regardless of --gates/--no-gates: file hygiene, not approval policy."""
     hardened: list[str] = []
     for path in (_cfg.FLEET_FILE, _secrets.SECRETS_FILE, _secrets.SECRETS_META_FILE):
         if not path.is_file():
@@ -122,15 +109,9 @@ def _harden_perms() -> None:
 
 
 def _step_security(want_gates: bool) -> None:
-    """Step 6 — harden docket-owned secrets/config perms + approval-routing posture.
-
-    There is no separate daemon exec-approval config to enable/disable:
-    `core/tools.py`'s policy engine + high-risk command classifier are
-    unconditionally active on every tool call docket dispatches, so there is
-    nothing left to "enable". What remains configurable is a recorded,
-    audited approval-routing posture flag that nothing on the live path
-    reads, and that is the one piece --no-gates actually opts out of.
-    """
+    """Step 6 — harden secrets/config perms + approval-routing posture (the one thing
+    --no-gates opts out of; the tool-call gate itself is always active).
+    See specs/functional/security-gates.spec.md."""
     _harden_perms()
 
     ui.success("Tool-call gate: always active (policy engine + high-risk command classifier)")
@@ -149,13 +130,9 @@ def _step_security(want_gates: bool) -> None:
 
 
 def _step_policies() -> None:
-    """Step 7 — install the baseline guardrail policy templates.
-
-    Idempotent (same producer as ``docket policies init``): a repeat install skips files
-    already present rather than overwriting local edits. This is what puts the policy
-    engine on the live path at all — ``pre_input``/``pre_output`` have nothing to evaluate
-    against an empty ``$POLICIES_DIR`` (``policy_eval`` returns ``allow`` unconditionally).
-    """
+    """Step 7 — install the baseline guardrail policy templates (idempotent: never
+    overwrites local edits). See specs/functional/security-gates.spec.md for why
+    this step is what puts the policy engine on the live path at all."""
     result = _policy.install_policies()
     if not result.template_dir.is_dir():
         ui.warn(f"Policy templates not found at {result.template_dir} — skipping")
@@ -191,23 +168,16 @@ _SPECIALIST_IDENTITY: dict[str, str] = {
 
 
 def _specialist_session_key(role: str) -> str:
-    """Session key for an org specialist: `agent:<role>:org`.
-
-    Mirrors project agents' `agent:<id>:<project>` pattern (see
-    ``specs/data/docket-meta.spec.md``), using ``org`` as the project component
-    since a specialist is shared across the whole fleet, not scoped to one.
-    """
+    """Session key for an org specialist: `agent:<role>:org`. Mirrors project agents'
+    `agent:<id>:<project>` pattern, with ``org`` standing in for the project since a
+    specialist is shared fleet-wide. See specs/data/docket-meta.spec.md."""
     return f"agent:{role}:org"
 
 
 def _specialist_agents_md(role: str) -> str:
-    """AGENTS.md for an org specialist — the same session protocol every
-    project agent gets (see ``cli/_agents.py``'s ``_create_workspace``), minus
-    the codebase/stack sections a specialist has neither of.
-
-    Section names matter: the turn loop re-injects the "Session Startup"
-    and "Red Lines" H2 blocks after every compaction — keep them verbatim.
-    """
+    """AGENTS.md for an org specialist: the same protocol as ``_create_workspace``,
+    minus codebase/stack sections. Section names matter: the turn loop re-injects the
+    "Session Startup"/"Red Lines" H2 blocks after every compaction verbatim."""
     return (
         f"# AGENTS.md — {role}\n\n"
         "## Session Startup\n"
@@ -231,12 +201,9 @@ def _specialist_agents_md(role: str) -> str:
 
 
 def _specialist_soul(role: str) -> str:
-    """SOUL.md for an org specialist: identity, scope, and session key.
-
-    Mirrors ``cli/_agents.py``'s ``_create_workspace`` / ``cli/_pod.py``'s
-    ``_member_soul`` — adapted for a role with no codebase and no single
-    project (shared, singleton, cross-pod).
-    """
+    """SOUL.md for an org specialist: identity, scope, and session key. Mirrors
+    ``_create_workspace``/``_member_soul``, adapted for a role with no codebase
+    and no single project (shared, singleton, cross-pod)."""
     identity = _SPECIALIST_IDENTITY.get(role, f"You are the org-level **{role}** specialist.")
     return (
         f"# SOUL.md — {role}\n\n"
@@ -258,22 +225,9 @@ def _specialist_soul(role: str) -> str:
 
 
 def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> None:
-    """Give an org specialist (or the opt-in Portfolio Manager) the same
-    durable workspace contract a project agent gets:
-    ``SOUL.md`` (caller-supplied, role-specific), a generic org-specialist
-    ``AGENTS.md``, ``HEARTBEAT.md`` (the durable task ledger), and the
-    ``WORKFLOW_AUTO.md``/``MEMORY.md``/daily-log set from
-    ``core/memory.py``'s ``seed_contract``. ``TOOLS.md`` is deliberately
-    skipped — a specialist has no fixed codebase or build commands to document.
-
-    Idempotent and backfill-safe: ``SOUL.md``/``AGENTS.md``/``HEARTBEAT.md``
-    are written only when absent, so re-running the workstation foundation bootstrap (or healing
-    an older install via `docket doctor`) never clobbers an agent-written
-    ``HEARTBEAT.md`` or a persona-decorated ``SOUL.md``. ``seed_contract``
-    itself only ever creates ``MEMORY.md``/the daily log when absent —
-    ``WORKFLOW_AUTO.md`` is wholly derived and always refreshed, never
-    hand-edited.
-    """
+    """Give an org specialist (or the opt-in Portfolio Manager) the same durable
+    workspace contract a project agent gets, minus TOOLS.md (no fixed codebase/build
+    commands). Idempotent/backfill-safe: specs/functional/workspace-structure.spec.md."""
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "memory").mkdir(exist_ok=True)
 
@@ -310,17 +264,11 @@ def _write_specialist_contract_files(role: str, ws: Path, soul_text: str) -> Non
 
 
 def _provision_specialists() -> None:
-    """Step 4 — register the shared **org** specialist agents + backfill their
-    meta and full workspace contract.
-
-    Install provisions only the cross-cutting org roles (security, knowledge,
-    manager) as shared singletons. The project roles (programmer, reviewer, tester)
-    are NOT installed globally — they become per-pod workers provisioned by
-    `docket add`, so one programmer never serves two projects.
-
-    Models come from the role→model policy so a provider preset switched before
-    install provisions specialists on that provider.
-    """
+    """Step 4 — register the shared **org** specialists + backfill meta/workspace contract.
+    Only cross-cutting roles (security, knowledge, manager) install as shared singletons;
+    project roles are NOT installed globally — they become per-pod workers via `docket add`,
+    so one programmer never serves two projects. Models follow the role->model policy, so a
+    provider preset switched before install takes effect here."""
     for spec in _cfg.ORG_SPECIALIST_ORDER:
         spec_model = _mp.resolve_role_model(spec)
         spec_dir = _cfg.WORKSPACES_DIR / spec
@@ -384,13 +332,10 @@ health — not project source code, and you are distinct from each pod's Lead.
 
 
 def _provision_portfolio_manager() -> None:
-    """Provision the single opt-in org Portfolio Manager.
-
-    A `scope: org`, `role: portfolio-manager` agent: a cross-pod planning surface
-    over fleet metadata (not project code). Opt-in (`first docket init --portfolio`),
-    never auto-installed, never a pod member. Idempotent. Gets the same full
-    workspace contract as the other org specialists.
-    """
+    """Provision the single opt-in org Portfolio Manager: a `scope: org`,
+    `role: portfolio-manager` agent (cross-pod planning over fleet metadata, never
+    project code). Opt-in, idempotent, never a pod member; see
+    specs/functional/workspace-structure.spec.md."""
     role = _cfg.PORTFOLIO_MANAGER_ROLE
     model = _mp.resolve_role_model(role)
     ws = _cfg.WORKSPACES_DIR / role
@@ -430,15 +375,9 @@ def bootstrap_workstation(
     want_portfolio: bool = False,
     continuing_to_project: bool = False,
 ) -> int:
-    """Bootstrap a docket-native home + specialist agents. Returns the process exit code.
-
-    want_gates:      apply approval routing (on by default; False when the caller
-                     passed --no-gates). The tool-call gate itself (policy engine +
-                     high-risk command classifier) is always active regardless —
-                     see `_step_security`'s docstring.
-    assume_yes:      skip the reconfigure/update confirmation prompt (non-interactive).
-    want_portfolio:  also provision the opt-in org Portfolio Manager.
-    """
+    """Bootstrap a docket-native home + specialist agents; returns the process exit code.
+    want_gates only records approval-routing posture (the tool-call gate itself is always
+    active regardless — see `_step_security`); want_portfolio adds the opt-in Portfolio Manager."""
     ui.header("Preparing Shared Workstation Foundation")
     ui.console.print()
     ui.info("One Docket home with shared org specialists, policies, and security defaults.")
