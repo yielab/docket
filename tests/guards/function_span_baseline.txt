@@ -5,4 +5,3 @@ src/docket/core/agent_loop.py::run_agent_turn._fit_task_request 184
 src/docket/core/session.py::compact_session 225
 src/docket/core/session.py::compact_session._mutate 172
 src/docket/core/tools.py::builtin_registry 180
-src/docket/serve.py::_DocketHandler.do_POST 175
