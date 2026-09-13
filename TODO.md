@@ -258,6 +258,52 @@ fails on the base commit (two objects) and passes after; `uv run pytest -q` pass
 
 **Focused validation:** `uv run pytest -q tests/unit/core/test_provider.py tests/unit/edges/adapters/test_llm.py tests/integration/test_provider_agnosticism.py`.
 
+### W34-C7 — make the approval-routing claims true
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger (A1 audit, 2026-09-13, verified by the integrator):** `fleet.json`'s
+`security.approvalRoutingState`/`approvalRoutingMode` are written by `core/fleet.py:329,337` via
+`core/security.py:299,309` (`docket gates enable/disable`, `docket init`) and read only by
+`cli/_gates.py:55` and `cli/_doctor.py:331,678` for display. `rg -n 'approval_routing|approvalRouting' src/`
+finds no reader in `core/tools.py`, `core/approval.py`, `core/telegram.py`, `core/agent_loop.py` or
+`serve.py`. Yet `specs/functional/security-gates.spec.md` requirement 2 says the state controls
+"whether a `require_approval`/`ask` verdict's prompt is routed to a channel-bound agent's session",
+`README.md:58-59` says `gates enable/disable` "changes where an `ask` verdict is routed", and
+`docs/commands.md` (rendered from `cli/_gates.py` help) says `enable` makes a verdict "reach a channel
+instead of just sitting on docket's approval store" and `disable` makes it "time out to denied
+faster". None of that happens: docket never pushes a prompt anywhere (telegram spec requirements
+7-8), approvals always sit in the store, and every channel answers them regardless of this flag.
+This is the fourth unwired-machinery instance, with the same shape as W19-5 (spec and prose
+claiming a path that never existed).
+
+**Goal:** make spec, help text, generated reference and guide say what is true: the routing state is
+a recorded, audited posture flag that `gates status` and `doctor` report, and nothing on the live
+path reads it. Do not invent semantics for it and do not remove the commands (a removal or a real
+wiring is a separate decision for the maintainer; record it in the spec as an open question).
+
+**Non-goals:** no change to `core/`, `edges/`, `serve.py`; no new behaviour; no README edit (integrator
+owns `README.md:58-59` and will change it at merge to match your spec wording).
+
+**Owns:** `src/docket/cli/_gates.py` and `src/docket/cli/_install.py` (help/docstring text only, no
+logic); `docs/commands.md` regenerated with `./scripts/gen_cli_docs.py` (never hand-edited);
+`docs/SECURITY-SIMPLE.md` lines about `--no-gates`/`gates enable` (26-30, 60, 247);
+`specs/functional/security-gates.spec.md` requirement 2, the command block near line 663, version
+bump and changelog entry; the one `Security Gates` row in `specs/README.md` for the version;
+`tests/golden/cases/writers/gates_status.golden` ONLY if `docket gates status` currently prints a
+false sentence, and then explain the golden diff line by line in the commit body.
+
+**Acceptance / oracle:** `rg -n 'routed|reach a channel|times out to denied faster' src/docket/cli/_gates.py docs/commands.md docs/SECURITY-SIMPLE.md specs/functional/security-gates.spec.md`
+finds no remaining claim that the flag changes delivery; `bash scripts/validate-specs.sh` green;
+`./scripts/gen_cli_docs.py --check` (or the repo's equivalent drift check) green;
+`bash tests/golden/run.sh verify-all` green; `uv run pytest -q` and `uv run pytest -q tests/agent` green
+(the agent lane pins README prose and public docs; if a prose test pins one of the false sentences in a
+file you own, correct the test's expected phrase in the same commit and say so).
+
+**RED:** the `rg` above lists the false claims before the change.
+
+**Focused validation:** `bash scripts/validate-specs.sh && bash tests/golden/run.sh verify-all && uv run pytest -q tests/agent`.
+
 ### W34-A1 — read-only audit: the fourth unwired-machinery instance
 
 **Status:** READY · **Size:** S · **Owner:** one read-only worker (no commits)
