@@ -123,14 +123,9 @@ class InboundMessage:
 
 @dataclass(frozen=True)
 class TelegramActionResult:
-    """Outcome of handling one inbound message.
-
-    ``reply`` (never containing raw untrusted input beyond what a human
-    already typed to the bot themselves) is what the poll loop sends back,
-    if anything. ``action`` buckets the outcome for tests/observability:
-    ``"approve"``/``"deny"``/``"status"``/``"delegate"``/``"wire"``/
-    ``"unauthorized"``/``"unparseable"``.
-    """
+    """Outcome of handling one inbound message. ``reply`` never contains raw
+    untrusted input beyond what the sender already typed; ``action`` buckets
+    it (approve/deny/status/delegate/wire/unauthorized/unparseable)."""
 
     ok: bool
     reply: str
@@ -157,26 +152,17 @@ class WireDiscoveryResult:
 
 
 def _authorize(chat_id: str) -> str | None:
-    """Return the bound agent id for *chat_id*, or ``None`` if unbound.
-
-    The one and only authorization check in this module -- see the module
-    docstring's security model. Deliberately reads ``fleet.json`` fresh on
-    every call (no caching) so a binding removed via ``docket unwire`` takes
-    effect on the very next message, not after some cache TTL.
-    """
+    """Return the bound agent id for *chat_id*, or ``None`` if unbound. The
+    one and only authorization check in this module. Reads ``fleet.json``
+    fresh every call (no caching) so an unwire takes effect immediately."""
     binding = _fleet.find_binding("telegram", chat_id)
     return binding.agent_id if binding is not None else None
 
 
 def _lead_project(agent_id: str) -> str | None:
     """The pod project *agent_id* leads, or ``None`` if it isn't a pod Lead.
-
-    Delegation only makes sense against a pod's task queue
-    (``core.dispatch.enqueue_task`` requires one), and only the pod's Lead
-    has one -- see ``core/pod.py``'s ``member_id``/``parse_member_id``. A
-    binding to an org specialist (security/knowledge/manager) or a non-Lead
-    pod member can still approve/deny/status; it simply cannot delegate.
-    """
+    Only a pod Lead has a task queue to delegate against; an org specialist
+    or non-Lead pod member can still approve/deny/status but not delegate."""
     project = _pod.pod_of(agent_id)
     if project is None:
         return None
@@ -187,22 +173,16 @@ def _lead_project(agent_id: str) -> str | None:
 
 
 def _approval_scope(agent_id: str) -> str:
-    """The ``project`` value to scope a ``/status`` reply's approvals by.
-
-    A pod Lead's binding scopes to its own project (never another pod's
-    pending approvals); anything else scopes to its own agent id -- either
-    way, a chat is never shown another agent's pending approvals just
-    because it is authorized for one.
-    """
+    """The ``project`` value to scope a ``/status`` reply's approvals by. A
+    pod Lead scopes to its own project; anything else scopes to its own
+    agent id -- a chat is never shown another agent's pending approvals."""
     return _lead_project(agent_id) or agent_id
 
 
 def _handle_decision(agent_id: str, token: str, *, grant: bool) -> TelegramActionResult:
-    """Grant or deny *token*, mirroring ``cli/_approve.py``/``cli/_deny.py``
-    exactly -- including the ``resolve_waiting_approval`` follow-up so a
-    dispatch task actually blocked on this token resumes or fails for real,
-    not just the approval record's own state.
-    """
+    """Grant or deny *token*, mirroring ``cli/_approve.py``/``cli/_deny.py``,
+    including the ``resolve_waiting_approval`` follow-up so a dispatch task
+    blocked on this token actually resumes or fails, not just its record."""
     action = "approve" if grant else "deny"
     if not token:
         return TelegramActionResult(False, f"Usage: /{action} <token>", True, action)
@@ -243,10 +223,9 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
 
 
 def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
-    """Queue *text* as a task for *agent_id*'s pod -- see the module
-    docstring's content-screening section for the ``pre_input`` gate this
-    runs before ``core.dispatch.enqueue_task`` is ever called.
-    """
+    """Queue *text* as a task for *agent_id*'s pod. Runs the ``pre_input``
+    content-screening gate (see module docstring) before
+    ``core.dispatch.enqueue_task`` is ever called."""
     if not text:
         return TelegramActionResult(False, "Usage: /delegate <task description>", True, "delegate")
 
@@ -294,9 +273,8 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
 
 def handle_message(msg: InboundMessage) -> TelegramActionResult:
     """Route one inbound message to an action. The one entry point this
-    module exposes to a caller (the poll loop) -- see the module docstring
-    for the security model this function enforces.
-    """
+    module exposes to a caller (the poll loop); enforces the module
+    docstring's security model."""
     agent_id = _authorize(msg.chat_id)
     if agent_id is None:
         audit_log("telegram.unauthorized", f"chat_id={msg.chat_id!r} update_id={msg.update_id}")
@@ -389,14 +367,9 @@ def discover_wire_groups(
     *,
     get_updates: GetUpdatesFn | None = None,
 ) -> WireDiscoveryResult:
-    """Find group messages matching ``/wire <challenge>`` exactly.
-
-    This is deliberately a read-only peek at Telegram updates. It starts at
-    the normal poller's durable offset but never advances that offset, routes
-    a message, or replies, so setup cannot consume unrelated channel work.
-    The one-time challenge prevents stale activity from another chat from
-    becoming a binding accidentally.
-    """
+    """Find group messages matching ``/wire <challenge>`` exactly. Read-only:
+    starts at the poller's durable offset but never advances it, routes, or
+    replies; the one-time challenge stops stale activity becoming a binding."""
 
     token = _load_token()
     if not token:
@@ -433,18 +406,14 @@ _REQUEST_TIMEOUT_MARGIN_S = 10.0
 
 
 def _resolved_request_timeout() -> tuple[float, str]:
-    """This process's own `getUpdates` socket timeout, honouring
-    ``config.TELEGRAM_REQUEST_TIMEOUT_S`` but never letting it violate the
-    invariant documented on that constant: it MUST exceed
-    ``TELEGRAM_POLL_TIMEOUT_S``, or a legitimately empty long-poll reads as a
-    local socket timeout instead of "nothing happened".
+    """This process's own `getUpdates` socket timeout; must exceed
+    ``TELEGRAM_POLL_TIMEOUT_S`` (see config.py) or an empty long-poll misreads
+    as a local timeout.
 
-    Clamped up, not refused: unlike an unconfigured token (nothing this
-    process can do about that), a bad pair of timeouts has an obvious safe
-    correction, and refusing to poll at all would take the whole approval
-    channel down over what is, for the operator, a one-line env var fix.
-    Returns ``(value, warning)`` -- ``warning`` is empty when the configured
-    value already satisfied the invariant and was used as-is.
+    Clamped up, not refused: a bad pair has an obvious safe fix, and refusing
+    would take the whole approval channel down over a one-line env var
+    mistake. Returns ``(value, warning)``; warning is empty when the
+    configured value already satisfied the invariant.
     """
     poll = _cfg.TELEGRAM_POLL_TIMEOUT_S
     configured = _cfg.TELEGRAM_REQUEST_TIMEOUT_S
@@ -467,17 +436,12 @@ def poll_once(
     send_message: SendMessageFn | None = None,
 ) -> PollSummary:
     """Long-poll once, handle every returned message, advance the offset.
-
     ``get_updates``/``send_message`` are injectable (default: the real
-    ``edges/adapters/telegram.py`` functions, resolved lazily) -- the same
-    shape ``core/mcp_tools.py``'s ``load_mcp_tools`` uses, and how this
-    module's own tests avoid any real network call.
+    ``edges/adapters/telegram.py`` functions) so tests avoid any network call.
 
-    Never raises: an unconfigured bot (no stored token) or a network failure
-    both come back as a typed, non-``ok``/non-``configured`` summary for the
-    caller (``serve.py``'s poll loop) to log and back off on, exactly like
-    ``edges/adapters/telegram.py``'s own functions never raise for a
-    transport failure.
+    Never raises: an unconfigured bot or a network failure both come back as
+    a typed, non-``ok``/non-``configured`` summary for the caller to log and
+    back off on, instead of raising.
     """
     token = _load_token()
     if not token:

@@ -205,20 +205,10 @@ def _init_role_overrides_from_tiers(profiles: dict[str, Any]) -> dict[str, str]:
 
 
 def migrate_legacy_profiles() -> str | None:
-    """One-shot migration: legacy ``profiles:`` tier-anchor overrides → ``roles:``.
-
-    Runs at most once per registry: if ``docket-models.json`` has a ``profiles:``
-    key but no ``roles:`` key yet, derive equivalent per-role overrides from the
-    tier-anchor values (mirroring the class-based defaults ``_init_role_models``
-    would have produced) and write them under ``roles:``, then drop ``profiles:``.
-    Idempotent — a no-op once ``profiles:`` is gone or ``roles:`` already exists
-    (in which case ``profiles:`` is left alone as a residual key for
-    ``docket doctor`` to flag; see ``has_residual_profiles_key``).
-
-    Returns a human-readable summary for the caller to print via ``ui.warn``
-    (this module never prints — CLI layer decides), or ``None`` if nothing
-    changed.
-    """
+    """One-shot migration: legacy ``profiles:`` tier overrides -> ``roles:``.
+    Idempotent -- a no-op once ``profiles:`` is gone or ``roles:`` exists
+    (left as residual for ``docket doctor``; see ``has_residual_profiles_key``).
+    Returns a summary to print (this module never prints), or ``None`` if unchanged."""
     path = cfg.MODEL_REGISTRY_FILE
     if not path.exists():
         return None
@@ -243,12 +233,9 @@ def migrate_legacy_profiles() -> str | None:
 
 
 def has_residual_profiles_key() -> bool:
-    """True if docket-models.json still has a (post-migration residual) ``profiles:`` key.
-
-    Used by ``docket doctor``. Residual means the one-shot migration in
-    ``migrate_legacy_profiles`` found ``roles:`` already present and left
-    ``profiles:`` untouched, or the write-back has not happened yet.
-    """
+    """True if docket-models.json still has a residual ``profiles:`` key
+    (used by ``docket doctor``): the one-shot migration found ``roles:``
+    already present and left ``profiles:`` untouched, or hasn't run yet."""
     path = cfg.MODEL_REGISTRY_FILE
     if not path.exists():
         return False
@@ -261,17 +248,13 @@ def has_residual_profiles_key() -> bool:
 
 def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
     """Return (role_models, tiers, default_model) from docket-models.json.
+    Falls back to built-in defaults on any read/parse error; self-migrates a
+    legacy ``profiles:`` key first (see ``migrate_legacy_profiles``).
 
-    Falls back to built-in defaults on any read/parse error. Self-migrates a
-    legacy ``profiles:`` key (see ``migrate_legacy_profiles``) before reading.
-
-    ``tiers`` (the rank anchors) are registry-overridable via a top-level
-    ``rankAnchors`` map — applied *before* role defaults are derived, so an
-    overridden anchor reshapes every cheap/strong-class role default too, and
-    the value `docket models` displays next to it is never stale Claude
-    residue for a fleet on another provider. Malformed entries
-    (unknown anchor name, not a well-formed model id) are silently ignored,
-    matching the tolerance already applied to ``default``/``roles`` below.
+    ``tiers`` are registry-overridable via ``rankAnchors``, applied *before*
+    role defaults are derived so an overridden anchor reshapes every
+    cheap/strong-class role default too. Malformed entries (unknown anchor,
+    bad model id) are silently ignored, like ``default``/``roles`` below.
     """
     migrate_legacy_profiles()  # silent, idempotent — see the CLI layer for the warning
 
@@ -307,18 +290,13 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
 def resolve_role_model(role: str, role_models: dict[str, str] | None = None) -> str:
     """Return the effective model for a role (loads registry if not supplied).
 
-    ``role`` is usually a named policy role (``ALL_ROLES``), but MAY also be a
-    pod *archetype* name that has no row of its own there — a starter-library
-    or user-defined role like ``researcher``, whose ``policy_role`` was left
-    unset. Those fall through to
-    ``_resolve_via_archetype_class``, which resolves the model via the
-    archetype's own declared ``modelClass`` (cheap|strong) against the live
-    rank anchors — this is what lets `modelClass` genuinely *slot into* this
-    policy instead of every unlisted role silently collapsing to
+    ``role`` may be a pod *archetype* name with no row of its own (a
+    starter-library/user-defined role with no ``policy_role`` set); those
+    fall through to ``_resolve_via_archetype_class``, resolving via the
+    archetype's ``modelClass`` against live rank anchors -- this is what lets
+    ``modelClass`` slot into policy instead of collapsing to
     ``cfg.DEFAULT_MODEL``. The four legacy pod roles are unaffected: their
-    archetypes carry a ``policy_role`` override (``manager``/``programmer``/
-    ``reviewer``/``tester``) that already has a row in ``role_models``, so
-    they never reach this fallback.
+    ``policy_role`` override already has a row in ``role_models``.
     """
     if role_models is None:
         role_models, _, _ = load_registry()
@@ -344,12 +322,8 @@ def is_role(role: str) -> bool:
 
 def agent_role(agent_id: str) -> str:
     """Policy role for an agent: specialist id, pod-member role, or ``repo``.
-
-    For pod members the meta carries a pod ``role`` (lead/implementer/…)
-    which maps to a role→model policy key, so model re-resolution targets the
-    right policy. Otherwise: specialist id, or ``repo`` for a plain project
-    agent (every project agent is a repo agent).
-    """
+    Pod members map their meta ``role`` (lead/implementer/...) to a
+    role->model policy key; otherwise specialist id or ``repo``."""
     from docket.core import fleet as _fleet
 
     if cfg.is_specialist(agent_id):
@@ -377,10 +351,8 @@ def agent_model_source(agent_id: str) -> str:
 
 
 def validate_model(model: str) -> tuple[str, list[str]]:
-    """Validate and canonicalise a model name.
-
-    Returns (canonical_model, warnings). Raises ValueError on hard failure.
-    """
+    """Validate and canonicalise a model name. Returns (canonical_model,
+    warnings); raises ValueError on hard failure."""
     warnings: list[str] = []
 
     # 1. Known alias (old/short model id → current canonical id).
@@ -421,12 +393,8 @@ def validate_model(model: str) -> tuple[str, list[str]]:
 
 def pricing_label(model: str) -> str:
     """Return '$inp/$out' (per-M-token), '$0 (local)', or 'n/a' for a model.
-
-    Never returns a fabricated "$0.00" for a model docket has no pricing
-    data for — that path returns 'n/a' (or the marketplace-specific variant)
-    instead. Local providers are the one case where $0 is the *true* cost,
-    not a placeholder for missing data.
-    """
+    Never fabricates "$0.00" for unpriced data -- that returns 'n/a' (or a
+    marketplace variant); local providers are the one true-$0 case."""
     provider = model.split("/", 1)[0] if "/" in model else model
     if provider in LOCAL_PROVIDERS:
         return "$0 (local)"
@@ -451,9 +419,7 @@ def policy_agent_ids() -> list[str]:
 
 def reapply_role_policy() -> int:
     """Re-resolve every policy-following agent against the live role policy.
-
-    Pinned agents are never touched. Returns count of agents updated.
-    """
+    Pinned agents are never touched. Returns count of agents updated."""
     from docket.core import fleet as _fleet
 
     role_models, _, _ = load_registry()
@@ -480,11 +446,9 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     """Update docket-models.json via the store.py single-writer chokepoint.
 
     Key format: 'default', 'role.<name>', 'rank.<economy|standard|premium>'.
-    The 'rank.*' form persists a registry-overridable rank anchor — used by
-    `docket models preset` so a non-Anthropic preset also replaces the
-    anchor values `docket models` displays, not just the roles. reset=True
-    clears all user overrides (deletes the file if empty).
-    """
+    'rank.*' persists a registry-overridable anchor so a non-Anthropic
+    preset also replaces displayed anchors, not just roles. reset=True
+    clears all user overrides."""
     path = cfg.MODEL_REGISTRY_FILE
     try:
         reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
