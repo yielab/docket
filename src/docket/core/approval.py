@@ -1,42 +1,14 @@
-"""Durable pending-approval store for HITL gating.
-
-Records persist to ``$APPROVALS_DIR/<token>.json`` (atomic, 0600) with the
-shape ``{token, project, role, action, state, created, context}``. The CLI
-``approve`` / ``deny`` commands transition pending → granted / denied.
-``context`` is an optional, caller-supplied dict stored verbatim (``{}`` when
-omitted) — the seam that lets a consumer created elsewhere (today:
-``core/dispatch.py``'s require_approval gate) find what a token gated once
-it's resolved; see ``approval_create``.
-
-Approval records are docket-owned artefacts, so writes go through the
-``edges/store.py`` single-writer chokepoint.
-Trace emission and secret redaction are best-effort and isolated behind the thin
-``_emit_trace`` / ``_redact`` hooks so tests can stub them. Grant/deny also write
-an ``audit_log()`` entry (action ``approval.grant``/``approval.deny``) tagged
-with the calling channel so ``docket audit`` has a record of who approved what
-and through which surface. The recognised channel vocabulary is the closed set
-in ``APPROVAL_CHANNELS`` below (``cli``, ``http``, ``mcp``, ``telegram``,
-``timeout``, ``tack``) — core owns this list precisely so a caller (e.g.
-``serve.py``'s ``POST /approvals/<token>``) can reject an arbitrary
-caller-supplied string before it ever reaches the hash-chained audit log,
-rather than trusting free text into a record whose whole value is honest
-provenance.
-
-The expiry sweep (``approval_sweep_expired``) resolves a stale pending record
-to **denied** (fail-closed) rather than a read-by-nobody ``"expired"`` state,
-and best-effort notifies ``core/dispatch.py`` so a task waiting on that token
-is actually failed, not left stranded in ``waiting_approval`` forever.
-
-``wait_for_approval`` is a second, *synchronous* consumer of this store for
-``core/tools.py``'s in-turn gate. Unlike the async producer above —
-which creates a token and returns immediately, leaving the task
-``waiting_approval`` for some later call to resolve — an in-turn tool call has
-nowhere to go while it waits, so this function blocks the calling thread
-instead. It shares the same fail-closed timeout contract as
-``approval_sweep_expired`` (denied, never left pending) via the private
-``_resolve_timeout_as_denied`` helper both now call, and uses its own,
-shorter ``config.TOOL_APPROVAL_TIMEOUT`` — see config.py for why the two
-timeouts differ.
+"""Durable pending-approval store for HITL gating. Records persist to
+``$APPROVALS_DIR/<token>.json`` (atomic, 0600); as docket-owned artefacts, writes go through
+``edges/store.py``. ``context`` is optional caller data stored verbatim, a seam letting a
+later resolver (e.g. ``core/dispatch.py``) find what a token gated. Trace and redaction are
+best-effort behind ``_emit_trace``/``_redact`` so tests can stub them; grant/deny also
+audit-log the calling channel, restricted to the closed ``APPROVAL_CHANNELS`` set so a caller
+(e.g. ``serve.py``) cannot inject an arbitrary string into the record. The expiry sweep
+resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
+``core/dispatch.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
+calling thread instead for ``core/tools.py``'s in-turn gate, sharing the same fail-closed
+resolution via ``_resolve_timeout_as_denied``.
 """
 
 from __future__ import annotations
@@ -78,11 +50,9 @@ class ApprovalNoop(Exception):
 
 
 def _redact(text: str) -> str:
-    """Best-effort secret redaction via the trace/redact port.
-
-    A redaction failure must never break approval, so on any error the original
-    text is returned unchanged. Local import avoids an import cycle with trace.
-    """
+    """Best-effort secret redaction via the trace/redact port. A redaction failure must
+    never break approval, so any error returns the original text unchanged; the local
+    import avoids a cycle with trace."""
     try:
         from docket.core import trace as _trace
 
@@ -98,11 +68,8 @@ def _emit_trace(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    """Best-effort trace hook → docket.core.trace.trace_event.
-
-    Any failure is swallowed so a trace problem never breaks the approval.
-    Local import avoids a cycle.
-    """
+    """Best-effort trace hook to docket.core.trace.trace_event; any failure is swallowed
+    so a trace problem never breaks the approval. Local import avoids a cycle."""
     try:
         from docket.core import trace as _trace
 
@@ -129,13 +96,9 @@ def _read(token: str) -> dict[str, Any]:
 
 
 def _set_state(token: str, new_state: str) -> dict[str, Any]:
-    """Conditionally make one pending record terminal under the store lock.
-
-    The caller must use the returned record for all follow-on side effects.
-    Reading first and then writing later lets two human decisions both observe
-    ``pending`` and both report success; keeping the state check inside
-    ``read_modify_write`` makes one decision the sole transition winner.
-    """
+    """Conditionally make one pending record terminal under the store lock; the caller must
+    use the returned record for side effects. Checking state inside ``read_modify_write``
+    (not before) makes one decision the sole transition winner under concurrent callers."""
     path = _approval_path(token)
 
     def transition(data: dict[str, Any]) -> dict[str, Any]:
@@ -168,16 +131,9 @@ def _set_state(token: str, new_state: str) -> dict[str, Any]:
 def approval_create(
     project: str, role: str, action: str, *, context: dict[str, Any] | None = None
 ) -> str:
-    """Persist a pending approval and return its token.
-
-    *context* is optional, caller-supplied structured data stored on the
-    record verbatim (never redacted — callers must not put secrets in it), so
-    whatever eventually resolves the grant/deny can find what it gated. The
-    only documented consumer today is ``core/dispatch.py``'s require_approval
-    gate, which stores ``{"taskId": ..., "pipelineIndex": ...}`` — see
-    ``core/dispatch.py``'s ``resolve_waiting_approval``. Always persisted
-    (``{}`` when omitted) so every record has the same shape.
-    """
+    """Persist a pending approval and return its token. ``context`` is optional caller
+    data stored verbatim, never redacted (callers must not put secrets in it), so whatever
+    later resolves the grant/deny can find what it gated; always ``{}`` when omitted."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -217,14 +173,9 @@ def approval_get(token: str) -> dict[str, Any]:
 
 
 def approval_grant(token: str, channel: str = "unknown") -> None:
-    """Transition pending → granted.
-
-    ``channel`` identifies the surface the grant came through (``"cli"``,
-    ``"http"``, ``"telegram"``, ...) and is recorded in the audit log alongside
-    the existing trace event.
-
-    Raises ApprovalNoop if already granted, ApprovalError on any other state.
-    """
+    """Transition pending → granted. ``channel`` identifies the surface the grant came
+    through and is recorded in the audit log alongside the trace event. Raises
+    ApprovalNoop if already granted, ApprovalError on any other state."""
     data = _set_state(token, "granted")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
@@ -233,14 +184,9 @@ def approval_grant(token: str, channel: str = "unknown") -> None:
 
 
 def approval_deny(token: str, channel: str = "unknown") -> None:
-    """Transition pending → denied.
-
-    ``channel`` identifies the surface the denial came through (``"cli"``,
-    ``"http"``, ``"telegram"``, ...) and is recorded in the audit log alongside
-    the existing trace event.
-
-    Raises ApprovalNoop if already denied/expired, ApprovalError on any other state.
-    """
+    """Transition pending → denied. ``channel`` identifies the surface the denial came
+    through and is recorded in the audit log alongside the trace event. Raises
+    ApprovalNoop if already denied/expired, ApprovalError on any other state."""
     data = _set_state(token, "denied")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
@@ -249,10 +195,8 @@ def approval_deny(token: str, channel: str = "unknown") -> None:
 
 
 def list_pending() -> list[dict[str, Any]]:
-    """Return every pending approval record in filename order.
-
-    Records that fail to parse are skipped.
-    """
+    """Return every pending approval record in filename order; records that fail to
+    parse are skipped."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return []
     out: list[dict[str, Any]] = []
@@ -268,14 +212,9 @@ def list_pending() -> list[dict[str, Any]]:
 
 
 def _resolve_timeout_as_denied(token: str) -> bool:
-    """Fail-closed timeout resolution shared by the sweep and the in-turn waiter.
-
-    Conditionally transitions a pending record to **denied**. Returns ``True``
-    only for the transition winner, which alone writes the matching
-    ``approval.deny`` / ``channel=timeout`` audit entry and notifies
-    ``core/dispatch.py``. A grant, deny, expiry, or deletion that wins first is
-    a harmless ``False`` outcome rather than a stale timeout overwrite.
-    """
+    """Fail-closed timeout resolution shared by the sweep and the in-turn waiter. Returns ``True``
+    only for the transition winner, which writes the audit entry and notifies ``core/dispatch.py``;
+    a grant, deny, expiry, or deletion winning first is a harmless ``False``, not an overwrite."""
     try:
         data = _set_state(token, "denied")
     except (ApprovalError, ApprovalNoop):
@@ -292,13 +231,9 @@ def _resolve_timeout_as_denied(token: str) -> bool:
 
 
 def approval_sweep_expired() -> int:
-    """Expire pending approvals older than APPROVAL_TIMEOUT — resolved as
-    **denied** (fail-closed), not a read-by-nobody ``"expired"``
-    state. Returns the number of records swept. Called by the serve loop.
-
-    Each swept record is treated exactly like an explicit ``docket deny`` via
-    ``_resolve_timeout_as_denied`` — see that helper for what it writes.
-    """
+    """Expire pending approvals older than APPROVAL_TIMEOUT, resolved as **denied**
+    (fail-closed) rather than a read-by-nobody ``"expired"`` state; each swept record is
+    treated exactly like an explicit ``docket deny`` via ``_resolve_timeout_as_denied``."""
     if not _cfg.APPROVALS_DIR.is_dir():
         return 0
     now = _dt.datetime.now(_dt.UTC).timestamp()
@@ -330,13 +265,9 @@ def approval_sweep_expired() -> int:
 
 @dataclass(frozen=True)
 class ApprovalWaitResult:
-    """Outcome of blocking on one token until it resolves or times out.
-
-    ``state`` is always a final state (never ``"pending"`` — by the time this
-    returns, the wait is over). ``timed_out`` distinguishes an explicit deny
-    from a fail-closed expiry, which is useful for the message handed back to
-    the model and for a human reading ``docket audit`` afterwards.
-    """
+    """Outcome of blocking on one token until it resolves or times out. ``state`` is always
+    final (never ``"pending"``); ``timed_out`` distinguishes an explicit deny from a
+    fail-closed expiry, useful both for the message handed to the model and for audit review."""
 
     state: Literal["granted", "denied"]
     token: str
@@ -355,31 +286,23 @@ def wait_for_approval(
 ) -> ApprovalWaitResult:
     """Block the calling thread on *token* until it resolves, then fail closed.
 
-    Unlike ``core/dispatch.py``'s require_approval gate — which creates a
-    token and leaves the task ``waiting_approval`` for some *later* call to
-    resolve — an in-turn tool call (``core/tools.py``'s ``dispatch_tool``) has
-    nowhere else to go while it waits: the model is blocked on this exact
-    answer. So this function blocks instead of returning early, polling the
-    record every *poll_interval* seconds (default
-    ``config.TOOL_APPROVAL_POLL_INTERVAL_S`` — never busy-spins) until either
-    it resolves or *timeout* seconds elapse (default
-    ``config.TOOL_APPROVAL_TIMEOUT``; deliberately much shorter than the async
-    ``APPROVAL_TIMEOUT`` — see config.py for why).
+    Unlike ``core/dispatch.py``'s require_approval gate — which creates a token and leaves
+    the task ``waiting_approval`` for a later call to resolve — an in-turn tool call
+    (``core/tools.py``'s ``dispatch_tool``) has nowhere else to go while it waits: the model
+    is blocked on this exact answer. So this function polls the record every
+    *poll_interval* seconds (default ``config.TOOL_APPROVAL_POLL_INTERVAL_S``; never
+    busy-spins) until it resolves or *timeout* seconds elapse (default
+    ``config.TOOL_APPROVAL_TIMEOUT``, deliberately much shorter than the async
+    ``APPROVAL_TIMEOUT`` — see config.py for why). A timeout resolves the record to
+    **denied** via the same ``_resolve_timeout_as_denied`` helper the expiry sweep uses —
+    never left dangling in ``pending``.
 
-    A timeout resolves the record to **denied** via the same
-    ``_resolve_timeout_as_denied`` helper the expiry sweep uses — never left
-    dangling in ``pending``.
-
-    ``sleep``/``clock`` are injectable two ways, both real, both exercised by
-    the test suite: pass them explicitly (a direct unit test of this
-    function), or leave them ``None`` and monkeypatch the module's ``_time``
-    reference (``docket.core.approval._time``) — the callers this function
-    exists for (``core/tools.py``'s ``dispatch_tool``) call this with no
-    override, so an end-to-end test of *that* path fakes time the second way.
-    This is why the fallback is resolved in the body rather than as an
-    ordinary default-argument value: a default bound at function-definition
-    time would capture the real ``time.sleep`` once and never see a later
-    monkeypatch of the module attribute.
+    ``sleep``/``clock`` are injectable two ways, both exercised by the suite: pass them
+    explicitly for a direct unit test, or leave them ``None`` and monkeypatch the module's
+    ``_time`` reference (the real callers pass no override, so an end-to-end test fakes time
+    this second way). The fallback is resolved in the body rather than as a default-argument
+    value because a default bound at definition time would capture the real ``time.sleep``
+    once and never see a later monkeypatch of the module attribute.
     """
     effective_timeout = _cfg.TOOL_APPROVAL_TIMEOUT if timeout is None else timeout
     effective_poll = _cfg.TOOL_APPROVAL_POLL_INTERVAL_S if poll_interval is None else poll_interval

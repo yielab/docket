@@ -1,87 +1,16 @@
-"""Memory domain — the single owner of an agent's on-disk memory layout.
-
-Every fact about *where* memory lives, *what* it is named, *which clock* names
-it, and *what durability contract the turn loop relies on* lives here. The CLI
-surfaces (``cli/_context.py``, the ``docket maintain`` checks in ``cli/_agents.py``,
-``cli/_doctor.py``) and the provisioning flow (``core/provisioning.py``) are thin
-callers over this module — none of them re-derive paths or dates.
-
-## The artifacts
-
-- ``MEMORY.md``            — long-term curated project facts (repo, stack,
-                             architecture, status). Written by the agent; seeded
-                             with a stub so the runtime's memory backend has a
-                             root document from turn one.
-- ``memory/YYYY-MM-DD.md`` — daily logs, one file per day.
-- ``WORKFLOW_AUTO.md``     — the startup protocol. See "The runtime contract".
-- ``HEARTBEAT.md``         — the durable in-flight task ledger (body from
-                             ``heartbeat_seed`` here; rendered by _pod.py /
-                             _agents.py). Written before starting multi-step work
-                             and resumed on reset, per the WORKFLOW_AUTO contract.
-                             Its ``## Active Tasks`` section also carries a
-                             delimited, docket-owned region a pod dispatch
-                             mechanically keeps in sync with the pod's
-                             ``TASK_LIST.json`` — see "The dispatch task
-                             ledger" below.
-- ``memory/.distilled/``    — archive of daily logs a ``distill_memory`` call
-                             has already summarized into ``MEMORY.md``, one
-                             dated subdirectory per run. Never read by the
-                             runtime contract; exists purely so ``maintain
-                             clean``/``reset --distill-first`` can *move* a
-                             log out of the way instead of deleting it
-                             outright (see "Memory distillation" below).
-
-## The dispatch task ledger
-
-The resume/durability contract above tells the agent to hand-maintain
-``HEARTBEAT.md``'s ``## Active Tasks`` list — which, left on its own, is only
-ever as honest as an LLM's compliance, while ``TASK_LIST.json``
-(``core/dispatch.py``) is the *actual* machine-read/written queue. The two would
-otherwise never be reconciled, so dispatch writes its own record of in-flight work
-mechanically: ``write_dispatch_tasks``/``sync_dispatch_tasks`` upsert a
-delimited region (``DISPATCH_BLOCK_BEGIN``/``_END``) inside ``## Active
-Tasks``, containing exactly the tasks ``TASK_LIST.json`` currently has
-``status: "running"`` — true whether or not the agent ever wrote anything
-there itself. Everything outside those two HTML-comment delimiters (an
-agent's own prose anywhere in the file, including its own entries under the
-same heading) is preserved byte-for-byte — see ``write_dispatch_tasks``'s own
-docstring for the co-authorship mechanics. ``core/dispatch.py``'s
-``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
-call ``sync_dispatch_tasks`` at each of those lifecycle points; ``docket
-doctor`` calls ``read_dispatch_task_ids`` to detect drift against
-``TASK_LIST.json`` and the same ``sync_dispatch_tasks`` to fix it.
-
-## Memory distillation
-
-``distill_memory`` is docket's first *self-originated* LLM call: docket asks
-an agent to summarize its own daily logs into ``MEMORY.md`` before
-``maintain clean``/``reset`` would otherwise delete them outright. The call
-goes **through the driver** (``RuntimeDriver.run_turn``, the same
-port every pod dispatch hop already uses) — never a hand-rolled provider
-SDK/HTTP client. The driver is injected as a plain callable (mirroring
-``core/dispatch.py``'s own ``Runner`` alias, for the same reason:
-``tests/fakes.py``'s ``FakeDriver`` is directly callable with that
-signature, so this module is fully unit-testable with no real driver call).
-``distill_memory`` fails **closed**: any driver failure or empty reply leaves
-every file on disk untouched, so a caller gating a delete on
-``DistillResult.ok`` never bare-deletes memory it could not verify was
-captured somewhere durable first.
-
-## The runtime contract
-
-``core/agent_loop.py``'s own turn loop (via ``core.identity.system_prompt_for_agent``)
-composes ``SOUL.md``, the live persona, and a runtime-safe projection of the
-generated startup contract into the system message on **every** turn. The raw
-``WORKFLOW_AUTO.md`` remains the manual/reset contract on disk; a live turn
-already performed its private reads, so it receives the driver's resolved
-project roots and bounded current state without the file's read/write
-imperatives. docket is still the provisioner, so these files must *exist* and
-stay current even though the live projection is the model-visible contract.
-
-One clock: all day math is **UTC**, matching ``.docket-meta.json`` ``created``
-and the trace/audit timestamps, so docket never disagrees with itself about
-which daily file is "today" across a local-midnight boundary.
-"""
+"""Memory domain — the single owner of an agent's on-disk memory layout (paths, names, the
+clock, the durability contract the turn loop relies on); CLI and provisioning callers never
+re-derive paths or dates. See specs/functional/workspace-structure.spec.md for the artifact
+layout and specs/functional/pod-dispatch.spec.md for the HEARTBEAT.md dispatch-ledger
+reconciliation (``write_dispatch_tasks``/``sync_dispatch_tasks``,
+``DISPATCH_BLOCK_BEGIN``/``_END``), and specs/functional/agent-loop.spec.md for how the turn
+loop composes SOUL.md, persona, and a runtime-safe ``WORKFLOW_AUTO.md`` projection into the
+system message every turn. ``distill_memory`` is docket's first self-originated LLM call,
+made through the injected ``RuntimeDriver`` port (never a hand-rolled client) so this module
+stays unit-testable with ``tests/fakes.py``'s ``FakeDriver``; it fails **closed** — any driver
+failure or empty reply leaves every file untouched, so a caller gating a delete on
+``DistillResult.ok`` never bare-deletes unverified memory. One clock: all day math is **UTC**,
+matching ``.docket-meta.json``'s ``created`` and the trace/audit timestamps."""
 
 from __future__ import annotations
 
@@ -225,13 +154,9 @@ def _workflow_auto_text(
 
 
 def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, origin: str) -> str:
-    """The `workdir`-flavored WORKFLOW_AUTO.md body.
-
-    Mirrors ``_workflow_auto_text`` section-for-section (same contract
-    marker, same resume/durability rules, same read order) but never implies
-    a git-tracked codebase — a `workdir`-kind pod blueprint (research,
-    content, ops) has none.
-    """
+    """The `workdir`-flavored WORKFLOW_AUTO.md body: mirrors ``_workflow_auto_text``
+    section-for-section (same contract marker, resume/durability rules, read order) but
+    never implies a git-tracked codebase, since a `workdir`-kind pod blueprint has none."""
     wd = work_dir.strip() or "(none configured yet — ask the human for a working directory)"
     origin_line = f"- origin: `{origin}`\n" if origin.strip() else ""
     stack_line = f"- stack: {stack}\n" if stack.strip() else ""
@@ -287,15 +212,10 @@ def _workflow_auto_text_workdir(*, project: str, work_dir: str, stack: str, orig
 
 
 def heartbeat_seed(name: str) -> str:
-    """The durable task-ledger body for a fresh (or reset) ``HEARTBEAT.md``.
-
-    Single source for every workspace's ledger — the CLI create/reset paths
-    (``cli/_agents.py``) and pod provisioning (``cli/_pod.py``) all render this,
-    so the resume/durability contract in ``WORKFLOW_AUTO.md`` always has a ledger
-    shaped the way it describes. The embedded HTML comment is a fill-in template:
-    invisible to a human reader, but it shows a weak model the exact task format
-    so an accepted task gets written down consistently instead of held in context.
-    """
+    """The durable task-ledger body for a fresh (or reset) ``HEARTBEAT.md``: the single source
+    every render path (CLI create/reset, pod provisioning) uses, so ``WORKFLOW_AUTO.md``'s
+    resume/durability contract always finds a ledger shaped as described. The embedded HTML
+    comment is a human-invisible fill-in template that shows a weak model the task format."""
     return (
         f"# {HEARTBEAT_FILE} — {name}\n\n"
         "_Your durable task ledger. It survives context resets; your working "
@@ -382,12 +302,9 @@ def _daily_seed(
 
 
 def contract_ok(ws: Path) -> bool:
-    """True if *ws* satisfies the current runtime contract.
-
-    Requires ``WORKFLOW_AUTO.md`` to exist **and** carry the current contract
-    marker — so ``docket doctor`` re-seeds workspaces whose file is missing *or*
-    stale/legacy, not just missing.
-    """
+    """True if *ws* satisfies the current runtime contract: ``WORKFLOW_AUTO.md`` must exist
+    **and** carry the current contract marker, so ``docket doctor`` re-seeds a workspace whose
+    file is missing *or* stale, not just missing."""
     wf = ws / REQUIRED_STARTUP_FILE
     if not wf.is_file():
         return False
@@ -407,20 +324,12 @@ def seed_contract(
     day: _dt.date | None = None,
     work_dir: str = "",
 ) -> None:
-    """Create/refresh the files the turn loop's system-prompt composition requires.
-
-    Rewrites ``WORKFLOW_AUTO.md`` (derived — always refreshed). Creates
-    ``MEMORY.md`` and today's ``memory/YYYY-MM-DD.md`` only if absent, so
-    re-seeding never clobbers a real day's log or curated memory. Idempotent.
-    Every file this function touches is normalized to ``0600`` (workspace files
-    are owner-only, per the permissions invariant) whether freshly written or
-    already present — so a doctor-driven heal also fixes stale permissions.
-
-    ``work_dir``: set for a `workdir`-kind pod
-    blueprint (research/content/ops) instead of ``codebase`` — mutually
-    exclusive with it. Leaving it unset (the default) reproduces the
-    codebase-flavored output unchanged.
-    """
+    """Create/refresh the files the turn loop's system-prompt composition requires. Rewrites
+    ``WORKFLOW_AUTO.md`` (derived, always refreshed); creates ``MEMORY.md`` and today's daily
+    log only if absent, so re-seeding never clobbers a real log or curated memory. Idempotent;
+    every touched file is normalized to ``0600`` even when already present, so a doctor-driven
+    heal also fixes stale permissions. ``work_dir`` (mutually exclusive with ``codebase``) is
+    set for a `workdir`-kind pod blueprint; unset reproduces the codebase-flavored output."""
     d = day or today()
     memory_dir(ws).mkdir(parents=True, exist_ok=True)
 
@@ -486,16 +395,10 @@ DistillRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult
 
 @dataclass
 class DistillResult:
-    """Outcome of one ``distill_memory`` call.
-
-    ``ok=False`` means memory was left **completely untouched** — no archive
-    directory created, no ``MEMORY.md`` write, no daily log moved. That is
-    the fail-closed contract ``maintain clean``/``reset --distill-first``
-    depends on: a caller MUST NOT proceed to its own destructive step unless
-    ``ok`` is True. ``skipped`` (only ever True alongside ``ok=True``) means
-    there was nothing to distill — no pending daily logs — which is also a
-    green light to proceed, since there is no undistilled memory to lose.
-    """
+    """Outcome of one ``distill_memory`` call. ``ok=False`` means memory was left completely
+    untouched (fail-closed) — the contract ``maintain clean``/``reset --distill-first`` depends
+    on: a caller MUST NOT proceed to its destructive step unless ``ok`` is True. ``skipped``
+    (only ever True with ``ok=True``) means there was nothing to distill, also a green light."""
 
     ok: bool
     skipped: bool = False
@@ -507,12 +410,9 @@ class DistillResult:
 
 
 def pending_daily_logs(ws: Path) -> list[Path]:
-    """Daily ``memory/*.md`` logs not yet archived, oldest filename first.
-
-    A plain (non-recursive) glob already excludes anything under
-    ``memory/.distilled/`` — worth stating explicitly: a second ``distill``
-    call the same day only ever sees genuinely new logs.
-    """
+    """Daily ``memory/*.md`` logs not yet archived, oldest filename first. The non-recursive
+    glob already excludes ``memory/.distilled/``, so a second same-day ``distill`` call only
+    ever sees genuinely new logs."""
     mem = memory_dir(ws)
     if not mem.is_dir():
         return []
@@ -520,16 +420,11 @@ def pending_daily_logs(ws: Path) -> list[Path]:
 
 
 def _distillation_message(label: str, logs: list[Path]) -> str:
-    """Build the one-turn distillation prompt from *logs*' own content.
-
-    Each log's text is inlined directly into the prompt (rather than relying
-    on the target agent to re-read files from its own workspace), so the
-    driver call is self-contained and deterministic — a fake driver in a
-    test can assert on exactly what was asked without touching a filesystem
-    itself. Bounded by ``config.DISTILL_MAX_INPUT_BYTES``: logs are added
-    oldest-first until the budget is spent, then truncated with an explicit
-    marker rather than silently cut off.
-    """
+    """Build the one-turn distillation prompt from *logs*' own content, inlined directly
+    (rather than relying on the target agent to re-read its own workspace) so the driver call
+    is self-contained and deterministic, letting a fake driver assert on exactly what was
+    asked with no filesystem touch. Bounded by ``config.DISTILL_MAX_INPUT_BYTES``: logs are
+    added oldest-first until the budget is spent, then truncated with an explicit marker."""
     header = (
         f"You are distilling durable memory for '{label}'. Below are daily "
         "working logs (memory/YYYY-MM-DD.md), oldest first. Read them and "
@@ -648,28 +543,12 @@ def distill_memory(
     timeout: int | None = None,
     day: _dt.date | None = None,
 ) -> DistillResult:
-    """Summarize pending ``memory/*.md`` logs into ``MEMORY.md`` via one driver turn.
-
-    This is docket's first self-originated LLM call: the summarization turn
-    runs through the injected driver exactly like a pod dispatch hop, never
-    a hand-rolled provider client.
-    *agent_id*/*session_key* identify whose session runs the turn —
-    in practice the workspace's own agent, already either a pod's Lead or an
-    org-specialist utility agent, both of which already own their own
-    memory (see the module docstring).
-
-    Fails closed: any driver failure (timeout, daemon error, non-zero exit)
-    or an empty/unusable reply leaves **every file on disk untouched** — no
-    archive directory, no ``MEMORY.md`` write — and returns ``ok=False``.
-    This is the whole point of ``--distill-first``: a caller must never
-    delete the daily logs this call was supposed to capture if the capture
-    itself failed.
-
-    Nothing to distill (no pending daily logs) short-circuits to
-    ``ok=True, skipped=True`` *before* any driver call is made — there is
-    nothing undistilled to lose, so a caller may proceed with whatever
-    destructive step it was about to take.
-    """
+    """Summarize pending ``memory/*.md`` logs into ``MEMORY.md`` via one driver turn — docket's
+    first self-originated LLM call, run through the injected driver like a pod dispatch hop,
+    never a hand-rolled provider client. Fails closed: any driver failure or empty/unusable
+    reply leaves every file on disk untouched and returns ``ok=False``, since a caller must
+    never delete daily logs this call was meant to capture if the capture itself failed.
+    Nothing to distill short-circuits to ``ok=True, skipped=True`` before any driver call."""
     logs = pending_daily_logs(ws)
     if not logs:
         return DistillResult(ok=True, skipped=True)
@@ -758,22 +637,12 @@ def render_dispatch_block(tasks: Sequence[DispatchHeartbeatTask]) -> str:
 
 
 def write_dispatch_tasks(ws: Path, tasks: Sequence[DispatchHeartbeatTask]) -> None:
-    """Mechanically upsert dispatch's docket-owned block into *ws*'s HEARTBEAT.md.
-
-    Co-authorship contract: only the text between ``DISPATCH_BLOCK_BEGIN`` and
-    ``DISPATCH_BLOCK_END`` is ever replaced. The first time this runs against a
-    file with no such block yet, one is inserted immediately after the
-    ``## Active Tasks`` heading (falling back to appending a fresh heading +
-    block at end-of-file if that heading is missing entirely — a heavily
-    hand-edited HEARTBEAT.md). Every other byte — an agent's own entries under
-    that same heading, ``## Pending Decisions``, ``## Notes``, anything else in
-    the file — is preserved exactly. Creates HEARTBEAT.md from
-    :func:`heartbeat_seed` first if the workspace doesn't have one yet (e.g. a
-    task claimed before provisioning finished writing it). Idempotent: calling
-    twice with the same *tasks* leaves the file byte-identical the second
-    time. Normalized to 0600, matching every other workspace file this module
-    writes.
-    """
+    """Mechanically upsert dispatch's docket-owned block into *ws*'s HEARTBEAT.md. Only text
+    between ``DISPATCH_BLOCK_BEGIN``/``_END`` is ever replaced; every other byte (an agent's own
+    entries, other sections) is preserved exactly — see specs/functional/pod-dispatch.spec.md for
+    the co-authorship contract. A missing block is inserted after ``## Active Tasks`` (or a fresh
+    heading appended if even that is missing); a missing HEARTBEAT.md is seeded first via
+    :func:`heartbeat_seed`. Idempotent (byte-identical on repeat calls) and normalized to 0600."""
     ws.mkdir(parents=True, exist_ok=True)
     path = ws / HEARTBEAT_FILE
     text = path.read_text(encoding="utf-8") if path.is_file() else heartbeat_seed(ws.name)
@@ -802,15 +671,9 @@ def write_dispatch_tasks(ws: Path, tasks: Sequence[DispatchHeartbeatTask]) -> No
 
 
 def read_dispatch_task_ids(ws: Path) -> list[str]:
-    """Task ids currently recorded in *ws*'s HEARTBEAT.md dispatch region.
-
-    ``[]`` when the file is absent, unreadable, or has no dispatch region yet
-    (a workspace predating the dispatch ledger, or one dispatch has never
-    claimed a task in) — the
-    shape ``docket doctor`` diffs against ``TASK_LIST.json``'s own ``running``
-    task ids to detect ledger drift (see ``cli/_doctor.py``'s
-    ``_check_dispatch_ledger``).
-    """
+    """Task ids currently recorded in *ws*'s HEARTBEAT.md dispatch region. ``[]`` when the file
+    is absent, unreadable, or has no dispatch region yet; ``docket doctor`` diffs this against
+    ``TASK_LIST.json``'s ``running`` ids to detect ledger drift (``_check_dispatch_ledger``)."""
     path = ws / HEARTBEAT_FILE
     if not path.is_file():
         return []
@@ -835,19 +698,12 @@ def read_dispatch_task_ids(ws: Path) -> list[str]:
 
 
 def sync_dispatch_tasks(ws: Path, task_records: Iterable[Mapping[str, Any]]) -> None:
-    """Regenerate *ws*'s dispatch ledger from a pod's TASK_LIST.json task dicts.
-
-    Filters to ``status == "running"`` — the only state where a hop is
-    genuinely in flight; every other status (``pending``/``done``/``failed``/
-    ``blocked``/``waiting_approval``) means no hop is currently executing for
-    that task, so there is nothing to hold open in the ledger for it. This is
-    the one function both dispatch and doctor call: ``core/dispatch.py``'s
-    ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
-    call it at each task-state-persistence point, and ``docket doctor``'s
-    ``--fix`` calls it to re-sync a workspace whose ledger has drifted —
-    always safe, since ``TASK_LIST.json`` is dispatch's own source of truth
-    and the ledger's dispatch region is entirely docket-owned.
-    """
+    """Regenerate *ws*'s dispatch ledger from a pod's TASK_LIST.json task dicts. Filters to
+    ``status == "running"``, the only state where a hop is genuinely in flight; every other
+    status means nothing to hold open. Called by both ``core/dispatch.py`` (at each
+    task-state-persistence point) and ``docket doctor --fix`` to re-sync a drifted ledger —
+    always safe since ``TASK_LIST.json`` is dispatch's source of truth and the ledger's
+    dispatch region is entirely docket-owned."""
     tasks = sorted(
         (
             DispatchHeartbeatTask(
