@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "models audit"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

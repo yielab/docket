@@ -18,7 +18,7 @@ from tests.fakes import FakeDriver
 
 from docket.core import runtime_driver as _rd
 
-SUBJECT = "docket.core.llm"
+SUBJECT = "docket.core.runtime_driver"
 
 # ── protocol conformance ──────────────────────────────────────────────────────
 

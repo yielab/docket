@@ -18,7 +18,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "auth context maintain keys add"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 

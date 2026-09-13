@@ -4,16 +4,21 @@ Every tests/unit/**/test_X.py declares SUBJECT naming the src/docket module it e
 a small allowlist predates that convention (cross-cutting checks, not module mirrors) and
 declares a real SUBJECT anyway. Coverage of every src/ module over 150 lines is checked
 against a committed baseline that may only shrink -- see layout_baseline.txt.
+Every tests/integration/** file also declares SUBJECT, but only importability is checked
+there -- a mismatch with the file name is not an error for a cross-module or process-boundary
+test.
 """
 
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src" / "docket"
 UNIT = REPO / "tests" / "unit"
+INTEGRATION = REPO / "tests" / "integration"
 LARGE_MODULE_LINES = 150
 
 # Predate the filename-mirrors-module convention: each checks an invariant that spans
@@ -76,6 +81,28 @@ def test_every_unit_file_declares_a_matching_subject() -> None:
                 problems.append(f"{path}: SUBJECT {subject!r} != expected {expected!r}")
         if subject.startswith("docket.") and _resolve_module(subject) is None:
             problems.append(f"{path}: SUBJECT {subject!r} names a module that does not exist")
+    assert not problems, "\n".join(problems)
+
+
+def _integration_files() -> list[Path]:
+    return sorted(INTEGRATION.rglob("test_*.py"))
+
+
+def test_every_integration_file_declares_an_importable_subject() -> None:
+    problems = []
+    for path in _integration_files():
+        subject = _read_subject(path)
+        if subject is None:
+            problems.append(f"{path}: no SUBJECT constant declared")
+            continue
+        try:
+            spec = importlib.util.find_spec(subject)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is None:
+            problems.append(
+                f"{path}: SUBJECT {subject!r} does not name an importable docket module or package"
+            )
     assert not problems, "\n".join(problems)
 
 

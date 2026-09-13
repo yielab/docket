@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 
 from docket.cli import app as _app
 
-SUBJECT = "edit snapshot"
+SUBJECT = "docket.cli"
 
 _runner = CliRunner()
 
