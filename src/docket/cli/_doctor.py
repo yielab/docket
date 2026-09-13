@@ -1,15 +1,12 @@
 """docket doctor — system-wide health checks + auto-fixes.
 
-`run_doctor(json_out)` returns the process exit
-code: 0 when healthy, 1 when the report flags issues. The coordinator wraps
-this in a Typer command and raises typer.Exit(code).
+`run_doctor(json_out)` returns the process exit code: 0 healthy, 1 when
+issues are flagged. Each check is its own function, testable in isolation.
 
-Each health check is its own small function so it can be tested in isolation.
 All fleet/agent state is read through `core/fleet.py` and `store`; this
 module never opens a daemon config file — there is no daemon to have one.
-Where a check has no daemon-era equivalent left to run, its function's own
-docstring says so and why (see `_check_dependencies`, `_check_security_gates`,
-`_doctor_json`).
+Where a check has no daemon-era equivalent, its own docstring says so and
+why (see `_check_dependencies`, `_check_security_gates`, `_doctor_json`).
 """
 
 from __future__ import annotations
@@ -56,14 +53,9 @@ _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
     """Workspace files ``aid`` must have — role-aware for pod members.
 
-    ``core/pod_provisioning.py``'s ``_write_member_workspace`` only ever writes ``TOOLS.md``
-    for an Implementer (and only when it has allocated resources or a verify
-    command) — a pod's Lead/Reviewer/Tester/other role never gets one, by
-    design: there is nothing role-specific to document for them (no allocated
-    ports/scratch dir/verify command). A standalone (non-pod) project agent
-    always gets a TOOLS.md (``cli/_agents.py``'s ``_create_workspace``), so the
-    full set still applies there. Without this, every pod's non-Implementer
-    member is permanently flagged "missing TOOLS.md" by `docket doctor`.
+    Only an Implementer with allocated resources or a verify command gets
+    TOOLS.md — see specs/functional/workspace-structure.spec.md requirement 1;
+    other pod roles must never be flagged for lacking it.
     """
     from docket.core import pod as _pod
 
@@ -73,10 +65,7 @@ def _required_workspace_files(aid: str) -> tuple[str, ...]:
 
 
 def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
-    """Return {agent_id: (budgetUsd_str, cost_float, turns_int)} for all agents.
-
-    Budget comes from .docket-meta.json, cost+turns from the aggregated session index.
-    """
+    """Return {agent_id: (budgetUsd_str, cost_float, turns_int)} for all agents."""
     out: dict[str, tuple[str, float, int]] = {}
     for aid in agent_ids:
         raw = store.read_json(_cfg.meta_path(aid))
@@ -87,10 +76,8 @@ def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
 
 
 def _check_dependencies() -> int:
-    """python3 (required) and fzf (optional).
-
-    Docket owns its runtime, so only its direct dependencies are probed.
-    """
+    """python3 (required) and fzf (optional): docket owns its runtime, so only its
+    direct dependencies are probed."""
     issues = 0
 
     py = shutil.which("python3")
@@ -168,11 +155,9 @@ def _check_models() -> int:
 def _check_legacy_model_registry() -> int:
     """One-shot ``profiles:`` → ``roles:`` migration report + residual-key warning.
 
-    Advisory — never affects the issue count. Migrating is an automatic fix
-    (same pattern as the metadata backfill above); a residual ``profiles:``
-    key left behind (because ``roles:`` already existed, so the one-shot
-    migration in ``migrate_legacy_profiles`` declined to touch it) is
-    something to clean up manually, not a health defect.
+    Advisory — never affects the issue count. Migration/residual-key rules:
+    see specs/functional/model-profiles.spec.md. A residual key is a manual
+    cleanup, not a health defect.
     """
     ui.console.print()
     ui.console.print("[bold]Model registry (docket-models.json):[/bold]")
@@ -188,23 +173,16 @@ def _check_legacy_model_registry() -> int:
 
 
 def _check_dispatch_ledger(do_fix: bool) -> int:
-    """TASK_LIST.json (``status: "running"``) vs. the pod Lead's
-    HEARTBEAT.md dispatch ledger (``core/memory.py``'s docket-owned region)
-    must agree.
+    """TASK_LIST.json (``status: "running"``) vs. the pod Lead's HEARTBEAT.md
+    dispatch ledger — must agree.
 
-    ``core/dispatch.py`` keeps the ledger honest mechanically as it
-    claims/persists/finalizes each task; this check
-    catches whatever slips through anyway — an older docket version that
-    predates this mechanism, a hand-edited HEARTBEAT.md, a crash between the
-    queue write and the ledger sync. A task ``running`` in the queue with no matching
-    ledger entry, or a ledger entry for a task that isn't (or is no longer)
-    ``running``, is drift either way.
-
-    ``--fix`` re-syncs the ledger to exactly what TASK_LIST.json says right
-    now (``core.memory.sync_dispatch_tasks``) — always safe, since
-    TASK_LIST.json is dispatch's own source of truth and the ledger's
-    dispatch region is entirely docket-owned (an agent's own prose elsewhere
-    in HEARTBEAT.md is untouched by that resync).
+    ``core/dispatch.py`` keeps the ledger synced mechanically; this check
+    catches whatever slips through anyway (an old docket version, a hand-edited
+    file, a crash mid-write). See specs/functional/pod-dispatch.spec.md,
+    "Mechanical HEARTBEAT ledger". ``--fix`` re-syncs the ledger to exactly what
+    TASK_LIST.json says now — always safe, since the ledger's dispatch region
+    is entirely docket-owned and TASK_LIST.json is dispatch's own source of
+    truth.
     """
     from docket.core import dispatch as _dispatch
     from docket.core import pod as _pod
@@ -340,12 +318,10 @@ def _check_provider_coverage(ids: list[str]) -> int:
 def _check_security_gates() -> int:
     """Approval-routing/isolation posture + the always-on tool-call gate.
 
-    There is no daemon exec-approval config to report on here: `core/tools.py`'s
-    `pre_tool_call` policy hook and `core/security.py`'s argument-aware
-    command classifier are unconditionally active on every tool call docket
-    dispatches — there is no "is it enabled" question left to ask about the
-    gate itself, only about where an approval prompt is routed and whether
-    execution is sandboxed.
+    The gate itself is unconditionally active on every tool call docket
+    dispatches (see specs/functional/security-gates.spec.md) — there is no "is
+    it enabled" question left to ask, only where an approval prompt routes and
+    whether execution is sandboxed.
     """
     ui.console.print()
     ui.console.print("[bold]Security gates:[/bold]")
@@ -454,17 +430,14 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
 
 def _check_runtime_contract(ids: list[str]) -> int:
-    """Ensure each managed workspace — project agents **and** org specialists —
-    satisfies the turn-loop's durability contract (``WORKFLOW_AUTO.md``,
-    composed into the system prompt on every turn by ``core/agent_loop.py``).
+    """Ensure each managed workspace has a current durability contract
+    (``WORKFLOW_AUTO.md``, composed into the system prompt every turn).
 
-    Heals agents whose contract file is missing *or* stale/legacy (detected via
-    the embedded contract-version marker): without a current file the loop
-    composes a stale or absent resume contract, and a weak model loops
-    offering to create it instead of working. Re-seeds (idempotent) from the
-    agent's stored codebase/stack — a specialist has neither, so those fields
-    are simply absent from its re-seeded ``WORKFLOW_AUTO.md``. Advisory —
-    never fails the run.
+    Heals a missing or stale/legacy contract (version-marker detected):
+    otherwise the loop composes a stale/absent resume contract and a weak
+    model loops offering to create it instead of working. Idempotent re-seed
+    from the agent's stored codebase/stack (absent for a specialist).
+    Advisory — never fails the run.
     """
     from docket.core import memory as _mem
 
@@ -492,12 +465,9 @@ def _check_runtime_contract(ids: list[str]) -> int:
 
 
 def _managed_workspace_ids(ids: list[str]) -> list[str]:
-    """Project pod members plus any provisioned org specialists — all docket-managed.
-
-    Includes the opt-in Portfolio Manager when it has been provisioned
-    (``first docket init --portfolio``) — it is docket-managed too, just never
-    auto-installed.
-    """
+    """Project pod members plus any provisioned org specialists — all docket-managed,
+    including the opt-in Portfolio Manager (``docket init --portfolio``), never
+    auto-installed."""
     specialists = [r for r in _cfg.SPECIALIST_ORDER if _cfg.workspace_dir(r).is_dir()]
     if _cfg.workspace_dir(_cfg.PORTFOLIO_MANAGER_ROLE).is_dir():
         specialists.append(_cfg.PORTFOLIO_MANAGER_ROLE)
@@ -505,11 +475,11 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
 
 
 def _check_scaffolding(ids: list[str]) -> int:
-    """Quarantine self-authoring base-assistant scaffolding leaking into managed workspaces.
+    """Quarantine self-authoring scaffolding leaking into managed workspaces.
 
-    ``IDENTITY.md``/``BOOTSTRAP.md`` self-author a drifting identity that fights
-    docket's role-derived ``SOUL.md`` (agent-structure-analysis.md §6). Moves them to
-    ``.docket-archive/`` (reversible). Advisory — never fails the run.
+    See specs/functional/workspace-structure.spec.md requirement 5:
+    IDENTITY.md/BOOTSTRAP.md fight docket's role-derived SOUL.md, so this
+    moves them to .docket-archive/ (reversible). Advisory — never fails.
     """
     from docket.core import identity as _identity
 
@@ -549,10 +519,8 @@ def _secrets_backend() -> str:
 
 
 def _keys_age_report() -> list[tuple[str, str, str]]:
-    """Return [(state, name, detail)] for each stored secret key.
-
-    state: OK | STALE | UNKNOWN.
-    """
+    """Return [(state, name, detail)] for each stored secret key; state is OK,
+    STALE, or UNKNOWN."""
     import datetime as _dt
 
     keys = _secrets.secrets_keys()
@@ -584,11 +552,9 @@ def _keys_age_report() -> list[tuple[str, str, str]]:
 
 
 def _doctor_json() -> dict[str, Any]:
-    """Assemble the machine-readable health report.
-
-    Legacy daemon/gateway keys are absent. Channel-binding presence is already
-    covered per agent below. This is the Docket-owned health contract.
-    """
+    """Assemble the machine-readable health report — the docket-owned schema (no
+    legacy daemon/gateway keys); channel-binding presence is covered per agent
+    below."""
     issues = 0
     ids = project_ids()
 
@@ -756,11 +722,9 @@ def _doctor_json() -> dict[str, Any]:
 
 
 def run_doctor(json_out: bool = False, do_fix: bool = False) -> int:
-    """Run all health checks. Return 0 when healthy, 1 when issues are flagged.
-
-    json_out: emit the machine-readable report and use it as a health probe.
-    do_fix:   auto-fix the dispatch task ledger (re-sync from TASK_LIST.json).
-    """
+    """Run all health checks; return 0 when healthy, 1 when issues are flagged.
+    json_out emits the machine-readable report (health probe); do_fix re-syncs
+    the dispatch ledger from TASK_LIST.json."""
     if json_out:
         report = _doctor_json()
         print(_json.dumps(report, indent=2))
