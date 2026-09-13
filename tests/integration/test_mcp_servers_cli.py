@@ -1,30 +1,14 @@
 """`docket mcp servers add/list/remove` -- a CLI over the MCP client config.
-
-`add_mcp_server`/`load_mcp_servers`/`remove_mcp_server` (`core/mcp_tools.py`) are tested library
-functions; `cli/_mcp.py`'s `_servers_list`/`_servers_add`/`_servers_remove`, dispatched from
-`run_mcp`, give them a CLI. This module is pure presentation: it validates flags and calls the
-existing `core/mcp_tools.py` functions unchanged. It never talks to a remote server and never
-touches `core/tools.py` or any built-in tool registration -- see
-`TestServersCliNeverReachesTheToolboxOrCoreTools` below, which guards "stay inside your
-ownership row".
-
-What's pinned here:
-
-1. `list`/`add`/`remove` round-trip against the real `core/mcp_tools.py` functions (no
-   reimplemented persistence logic).
-2. `add`'s `--`-separator parsing: everything after a literal `--` is the server's launch command
-   verbatim, so a command carrying its own flags (`npx -y ...`) is never misparsed as docket's own
-   flags. Missing `--`, malformed `--env`, and an unknown flag before `--` are all rejected with an
-   actionable error and exit 1 -- never a traceback.
-3. `add_mcp_server`'s `ValueError` (bad/duplicate name) surfaces as a CLI error (exit 1), not a
-   stack trace.
-4. `add`/`remove` write an audit entry (`mcp_servers.add`/`mcp_servers.remove`) naming the server
-   and (for `add`) its launch command -- and, security-load-bearing, an `--env` *value* is never
-   written to the audit log or printed by `list` (masked as `KEY=****`), mirroring `keys.add`'s
-   "name the secret, never its value" convention.
-5. The CLI never imports a handler function from `edges/adapters/toolbox.py`, nor anything from
-   `core/tools.py` -- the ownership-row guard for this card ("you may NOT touch core/tools.py at
-   all... work through the public Tool/ToolRegistry.register API").
+Pure presentation over the tested `core/mcp_tools.py` functions (`add_mcp_server`/
+`load_mcp_servers`/`remove_mcp_server`): validates flags, calls them unchanged, never talks to a
+remote server, and never touches `core/tools.py` or built-in tool registration (the ownership-row
+guard checked by `TestServersCliNeverReachesTheToolboxOrCoreTools` below).
+Pins: `add`'s `--`-separator parsing (everything after a literal `--` is the launch command
+verbatim; missing `--`, malformed `--env`, or an unknown flag before it all reject with exit 1,
+never a traceback); a bad/duplicate name's `ValueError` surfacing the same way; `add`/`remove`
+writing an audit entry that never carries an `--env` *value* in the clear (masked `KEY=****` in
+both the audit log and `list`, mirroring `keys.add`). See specs/functional/mcp-client.spec.md
+Requirements 21-24.
 """
 
 from __future__ import annotations
@@ -295,17 +279,9 @@ class TestRunMcpServersDispatch:
 
 
 class TestServersCliNeverReachesTheToolboxOrCoreTools:
-    """The ownership row: you may NOT touch core/tools.py at all, nor any
-    built-in tool registration -- work through the public Tool/
-    ToolRegistry.register API, exactly as the MCP client itself does.
-    `docket mcp servers` doesn't even need the public API -- it never builds
-    a Tool at all, only configuration -- so the bar here is stricter:
-    cli/_mcp.py's servers commands must not import core.tools or a toolbox
-    handler function at all.
-
-    This mirrors test_mcp_client.py's TestOnlyTheInertResultTypeIsImported
-    for this card's own file.
-    """
+    """The ownership row: `cli/_mcp.py`'s servers commands never build a Tool, so they must not
+    import `core.tools` or any toolbox handler function -- a stricter bar than the public
+    Tool/ToolRegistry.register API the MCP client itself uses."""
 
     FILE = "src/docket/cli/_mcp.py"
 

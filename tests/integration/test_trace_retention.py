@@ -75,10 +75,8 @@ class TestExpireOldTraces:
         assert report.kept_recent == 1
 
     def test_open_session_survives_regardless_of_age(self, oc_dir: Path) -> None:
-        """No session_end at all -- a live session could still be appending to
-        this file -- so it must be kept no matter how old the last event is,
-        independent of the retention window.
-        """
+        """No session_end at all means a live session could still be appending to this file, so
+        it must be kept regardless of age, independent of the retention window."""
         pdir = oc_dir / "traces" / "myshop"
         tf = _write_trace(
             pdir,

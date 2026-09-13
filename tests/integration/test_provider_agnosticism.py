@@ -1,24 +1,15 @@
 """Provider agnosticism.
 
-Covers:
-  - the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from
-    the user's docket-models.json, and a non-Anthropic preset leaves no
-    Claude residue in `docket models`'s display
-  - the "fallback" label was a false claim (nothing degrades to a cheaper
-    model on failure) — it is now "rank anchors", with an honest caption
-  - `docket auth login/key/setup` has no docket-native replacement and says
-    so plainly (rc=1, naming the real working path) rather than faking success
-  - a `local` preset exists and prices as "$0 (local)", never a fabricated
-    dollar figure
-  - unpriced models (including OpenRouter's non-curated routes) render an
-    informative "n/a" variant, never "$0.00"
-  - the two dead-end guidance strings in cli/_provider.py now name commands
-    that actually exist
+Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
+docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket models`'s
+display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
+now "rank anchors" with an honest caption; `docket auth login/key/setup` names the real working
+path at rc=1 rather than faking success; a `local` preset prices as "$0 (local)", never a
+fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the dead-end
+guidance strings in cli/_provider.py name commands that actually exist.
 
-Unit-level tests import `docket.core.models_policy` directly; CLI-surface tests
-invoke the CLI in-process via CliRunner, with every DOCKET_HOME-derived config
-constant patched to a temp directory.
-"""
+Unit tests import `docket.core.models_policy` directly; CLI-surface tests use CliRunner with
+every DOCKET_HOME-derived config constant patched to a temp directory."""
 
 from __future__ import annotations
 
@@ -309,13 +300,9 @@ class TestLocalPresetCli:
 
 
 class TestAuthProviderGoneHonestly:
-    """There is no docket-native replacement for the OAuth-like token
-    exchange `docket auth login/key/setup` once shelled out for. Every
-    subcommand must say so plainly (rc=1, a message naming the real working
-    path: `docket keys add <PROVIDER>_API_KEY`), never silently no-op or
-    report a fake success. See cli/_keys.py's run_auth docstring and
-    _AUTH_GONE_MESSAGE.
-    """
+    """`docket auth login/key/setup` has no docket-native replacement; every subcommand must say
+    so plainly (rc=1, naming `docket keys add <PROVIDER>_API_KEY`), never silently no-op or
+    report a fake success. See cli/_keys.py's `_AUTH_GONE_MESSAGE`."""
 
     def test_login_reports_gone_not_fake_success(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)

@@ -1,28 +1,14 @@
 """Sandboxed execution for bash-class tools.
 
-The tool-call gate decides whether a command may run at all. This decides
-what it can reach once it does — the gate is not a sandbox, and
-`toolbox.run_bash`'s own docstring says so. Four things are pinned here, in
-order of how much they matter:
-
-1. **Detection is real, not assumed.** `system.sandbox_availability()` probes
-   both backends and never claims one that is not actually usable — a docker
-   binary with no reachable daemon, a bwrap binary a hardened kernel refuses
-   to let build a namespace — is still "unavailable". Pure unit tests, no
-   real docker/bwrap needed.
-2. **`sandbox="off"` (the default) is the original function, unchanged.**
-   `run_bash` never sandboxes unless asked, and never behaves differently —
-   not even by a stray byte in its output — when nobody asked.
-3. **Reporting is honest.** Asking for a jail (`sandbox="auto"`) always says
-   what actually happened, including "none, because X" — a caller (or
-   `docket doctor`, later) can always tell "sandboxing is configured" apart
-   from "this specific command ran in one".
-4. **When a real backend is present, the jail is real** — containment holds
-   in *addition* to `resolve_within` (never instead of it), and a timed-out
-   sandboxed command leaves no orphan: a process under bwrap, a container
-   under docker. These tests are skipped, with an explicit reason, on a host
-   with neither — the skip is the "detected, not assumed" contract in action,
-   not a coverage gap.
+The tool-call gate decides whether a command may run at all; this decides what it can reach once
+it does -- the gate is not a sandbox. Pins, in order of importance: detection is real, not assumed
+(`system.sandbox_availability()` never claims a backend that is not actually usable); `sandbox="off"`
+(the default) is the original, unchanged `run_bash`; reporting is honest, always saying what
+actually happened including "none, because X"; and when a real backend is present the jail is
+real -- additive to `resolve_within`, never a replacement, and a timed-out sandboxed command
+leaves no orphan. Tests needing a real backend skip with an explicit reason on a host with
+neither -- the skip is the contract in action, not a coverage gap. See
+specs/functional/security-gates.spec.md Requirements 1-6.
 """
 
 from __future__ import annotations
@@ -55,12 +41,9 @@ needs_bwrap = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Same isolation test_tool_registry.py uses: tests here call
-    `dispatch_tool` directly, which consults `core/policy.py` and
-    `core/approval.py` — point both at an ephemeral, empty directory so this
-    file never reads a developer's real ``~/.docket/policies`` and never
-    blocks for real on an approval nothing will ever grant.
-    """
+    """Tests here call `dispatch_tool` directly, which consults `core/policy.py` and
+    `core/approval.py` -- point both at an ephemeral, empty directory so this file never reads a
+    developer's real ``~/.docket/policies`` or blocks on an approval nothing will grant."""
     monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
@@ -74,11 +57,9 @@ def workspace(tmp_path: Path) -> Path:
 
 
 def _pgrep_count(marker: str) -> int:
-    """Count host processes whose command line contains *marker* — the
-    orphan check for the bwrap timeout tests. Not used for docker: a
-    container's processes are not visible to a host-level `pgrep` at all,
-    which is exactly why docker needs its own `docker ps`-based check.
-    """
+    """Count host processes whose command line contains *marker* -- the orphan check for bwrap
+    timeout tests. Not used for docker: its processes aren't visible to a host-level `pgrep`,
+    hence docker's own `docker ps`-based check."""
     result = subprocess.run(["pgrep", "-fc", marker], capture_output=True, text=True)
     return int((result.stdout or "0").strip() or "0")
 
@@ -253,10 +234,9 @@ class TestHonestReportingIsDeterministic:
     def test_a_jail_that_fails_to_start_is_a_reported_failure_not_a_silent_fallback(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """If `sandbox="auto"` resolves to a real backend but the actual
-        subprocess launch fails, the command MUST NOT run unsandboxed
-        instead — that silent substitution is the specific failure mode
-        this card exists to prevent."""
+        """If `sandbox="auto"` resolves to a real backend but the subprocess launch fails, the
+        command MUST NOT run unsandboxed instead -- that silent substitution is the failure mode
+        this test guards against."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
 
         def _raise(*_args: object, **_kwargs: object) -> subprocess.Popen[str]:
@@ -327,13 +307,9 @@ class TestRealBwrapJail:
     def test_blocks_writes_outside_the_allowed_roots(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The guard this card exists to add: resolve_within never inspects
-        a bash command's shell text at all, so nothing stopped this before.
-        Planted and verified red by temporarily swapping bwrap_argv's
-        `--ro-bind` for `--bind` (making the whole host writable) — the
-        canary file landed on the real host filesystem; reverted, it does
-        not.
-        """
+        """`resolve_within` never inspects a bash command's shell text, so only the jail stops
+        this. Verified red by temporarily swapping bwrap_argv's `--ro-bind` for `--bind`: the
+        canary then landed on the real host filesystem; reverted, it does not."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "bwrap")
         canary = Path(f"/tmp/p19-9-canary-{uuid.uuid4().hex[:8]}")
         try:
@@ -424,15 +400,9 @@ class TestRealDockerJail:
     def test_timeout_kills_the_container_not_just_the_cli_wrapper(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The orphan risk unique to this backend: `docker run`'s own CLI
-        process is a thin client the daemon runs the real container under,
-        so killing only its process group does not stop the container
-        (verified empirically while building this card — see
-        `system.docker_kill`'s docstring). Planted and verified red by
-        temporarily removing the `docker_kill` call from run_bash's timeout
-        handler — the container was still running after the call returned;
-        reverted, it is not.
-        """
+        """`docker run`'s CLI process is a thin client the daemon runs the real container under,
+        so killing only its process group does not stop the container (`system.docker_kill`).
+        Verified red by removing the `docker_kill` call: the container stayed up; reverted, not."""
         monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
         out = toolbox.run_bash((workspace,), "sleep 20", timeout=1, sandbox="auto")
         assert not out.ok and "timed out" in out.error

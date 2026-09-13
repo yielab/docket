@@ -1,35 +1,14 @@
 """POST /pods — provisioning over HTTP.
 
-Unlike most other routes, this one is not a thin
-wrapper over a pre-existing `core/` function: the real provisioning path
-(`cli/_pod.py`/`cli/_agents.py`) prints through `ui.py` as it works,
-and `serve.py` never imports `docket.cli`. `core.pod_provisioning.provision_pod`
-is the UI-free extraction of that path's decisions and effects; `docket add`'s
-pod path and this route both call it, so the two surfaces cannot drift apart.
-
-Covers:
-  * TestAuth              — 401 with no/wrong token, nothing created.
-  * TestBadRequests        — malformed JSON, non-object body, missing/invalid
-    `project`, unknown blueprint, an invalid `pod`/`budget` value: all 400,
-    nothing touched.
-  * TestSuccess            — the happy path: the created roster comes back,
-    and the workspaces really exist on disk (files + fleet registration).
-  * TestIdempotence        — an already-provisioned project is not silently
-    re-provisioned: 409, the existing pod is untouched.
-  * TestRollback           — a REAL induced mid-provisioning failure (a
-    monkeypatched write raises on the second member) leaves no workspace, no
-    fleet registration and no orphaned port/scratch allocation behind —
-    proven by inspecting actual on-disk/fleet state, not by asserting a
-    cleanup function was called. Both at the `core.pod_provisioning` level
-    directly and through the HTTP route (which must report 500, not crash).
-  * TestSharedProvisioningPath — `docket add`'s pod path
-    (`cli._pod.build_pod_from_blueprint`) and `POST /pods` both resolve to
-    the exact same `core.pod_provisioning.provision_pod` call — pinned by
-    intercepting that one function and observing both surfaces route through
-    it, so the two cannot silently diverge.
-  * TestOverridesThreaded  — `pod: "full"`, `budget`, `verifyCmd` all thread
-    through to the same place the CLI's own `--pod full` / `set-verify`
-    already write.
+Unlike most routes, not a thin wrapper over a pre-existing `core/` function: the real
+provisioning path prints through `ui.py`, and `serve.py` never imports `docket.cli`.
+`core.pod_provisioning.provision_pod` is the UI-free extraction of that path's decisions and
+effects; `docket add`'s pod path and this route both call it, so the two cannot drift apart.
+Covers auth (401), bad requests (400, nothing touched), the happy path (workspaces really exist on
+disk), idempotence (409, existing pod untouched), rollback (a real induced mid-provisioning
+failure leaves no workspace/fleet-registration/orphaned allocation, proven by on-disk/fleet
+state), the shared-path pin, and override threading (`pod`/`budget`/`verifyCmd`). See
+specs/data/serve-read-api.spec.md "POST /pods".
 """
 
 from __future__ import annotations
@@ -262,14 +241,9 @@ class TestIdempotence:
     def test_concurrent_same_project_loser_cannot_rollback_winner(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A loser that would fail after allocation must not undo the winner.
-
-        The first attempt pauses immediately before creating its Lead. Without
-        a project critical section, the second attempt passes the empty-pod
-        check, allocates the same project resources, then fails on its
-        Implementer and rolls those shared resources back. With serialization,
-        the second attempt waits and receives ``PodAlreadyExistsError``.
-        """
+        """A loser that fails after allocation must not undo the winner: without a critical
+        section it could allocate the same resources then fail and roll them back; with
+        serialization it instead waits and gets ``PodAlreadyExistsError``."""
         winner_at_first_member = threading.Event()
         loser_at_first_member = threading.Event()
         winner_paused = False
@@ -359,10 +333,8 @@ class TestRollback:
     def test_core_level_rollback_leaves_nothing_behind(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Force the SECOND member's real workspace write to fail (the Lead
-        is genuinely created first) and prove nothing survives: no workspace
-        dir, no fleet registration, no port/scratch allocation.
-        """
+        """Force the SECOND member's real workspace write to fail (the Lead is created first) and
+        prove nothing survives: no workspace dir, no fleet registration, no allocation."""
         calls = {"n": 0}
         real_write = _pp._write_member_workspace
 
@@ -420,12 +392,9 @@ class TestSharedProvisioningPath:
     def test_cli_and_http_both_call_the_same_core_function(
         self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Intercept core.pod_provisioning.provision_pod itself (still
-        delegating to the real implementation) and observe that BOTH the
-        CLI's pod-provisioning entry point and the HTTP route resolve to it —
-        proof the two surfaces cannot silently diverge, because there is only
-        one function to diverge from.
-        """
+        """Intercept `provision_pod` itself (still delegating to the real implementation) and
+        observe both the CLI's pod-provisioning entry point and the HTTP route resolve to it --
+        proof the two surfaces cannot silently diverge, since there is only one function."""
         url, token = live_server
         real_provision_pod = _pp.provision_pod
         seen: list[dict[str, Any]] = []

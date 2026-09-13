@@ -1,28 +1,14 @@
 """The `pre_tool_call` policy hook is live.
-
-`core/policy.py`'s `policy_eval_detail` is wired into `core/tools.py`'s single decision
-point (`evaluate_tool_call`), combined with the command classifier
-(most-restrictive-wins), and an `ask` verdict routes to a synchronous waiter
-on the real approval store (`core/approval.py`'s `wait_for_approval`) so an
-in-turn tool call actually blocks on a human instead of being a no-op. Without this
-wiring, docket would ship four `pre_tool_call` policy templates and never evaluate any
-of them.
-
-What's pinned here:
-
-1. `render_tool_call`'s exact shape -- every shipped policy pattern depends
-   on it, so it is a contract, not an implementation detail.
-2. A `block-destructive` policy actually gates an `rm -rf` tool call through
-   `dispatch_tool`, with the handler proven not to have run.
-3. `high-risk-deploy` catches `git push origin main` by argument, while
-   `git push origin feature/x` stays allowed.
-4. `block` denies; `require_approval` asks and then executes iff granted; an
-   unanswered approval times out to denied; every gated decision is audited.
-
-No test in this file ever sleeps for real: `wait_for_approval`'s `sleep`/
-`clock` are exercised either by explicit injection or by monkeypatching
-`docket.core.approval._time` -- see `TestWaitForApprovalUnit` and
-`TestDispatchToolApprovalRouting` respectively.
+`core/policy.py`'s `policy_eval_detail` is wired into `core/tools.py`'s single decision point
+(`evaluate_tool_call`), combined with the command classifier (most-restrictive-wins); an `ask`
+verdict routes to a synchronous waiter on the real approval store (`wait_for_approval`) so a
+tool call actually blocks on a human, not a no-op -- without this, docket ships four
+`pre_tool_call` templates and evaluates none.
+Pins: `render_tool_call`'s exact shape (every shipped pattern depends on it); `block-destructive`
+gating `rm -rf` through `dispatch_tool` with the handler proven not to run; `high-risk-deploy`
+catching `git push origin main` by argument while `.../feature/x` stays allowed; `block` denies,
+`require_approval` asks then executes iff granted, an unanswered approval times out to denied,
+every decision is audited. No test sleeps for real: the clock is injected or monkeypatched.
 """
 
 from __future__ import annotations
@@ -57,11 +43,9 @@ SUBJECT = "docket.core.tools"
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate every docket-owned store this module touches, and default the
-    in-turn approval timeout to 0 so an unresolved `ask` fails closed
-    immediately (no real sleep) unless a test overrides it to exercise the
-    waiting/granting path deliberately.
-    """
+    """Isolate every docket-owned store, and default the in-turn approval timeout to 0 so an
+    unresolved `ask` fails closed immediately (no real sleep) unless a test overrides it to
+    exercise the waiting/granting path."""
     repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
 
@@ -176,15 +160,9 @@ class TestBlockDestructiveShippedTemplate:
     def test_policy_gates_a_write_call_the_command_classifier_never_inspects(
         self, ctx: ToolContext
     ) -> None:
-        """Proves the *policy engine*, not just the exec classifier, is
-        what fires: `write` is a non-exec tool, so `classify_command` never
-        runs on it -- only the block-destructive `.env` clause can gate this.
-        This is also the regression test for the pattern fix: the template's
-        original `\\.env\\b.*write` clause required the path to appear
-        *before* the literal word "write", which no render of a `write` tool
-        call produces (verified empirically, not assumed -- a natural render
-        is `write path=".env" ...`, verb first). Fixed to match either order.
-        """
+        """Proves the *policy engine*, not the exec classifier, fires: `write` is non-exec, so
+        `classify_command` never runs on it and only the block-destructive `.env` clause can gate
+        this -- and that clause must match a verb-first render like `write path=".env" ...`."""
         install_policies()
         verdict = evaluate_tool_call(
             _recording_tool("write", "write", {"handler": False}),
@@ -385,10 +363,9 @@ class TestWaitForApprovalUnit:
 
 
 class TestDispatchToolApprovalRouting:
-    """End-to-end through the real dispatch_tool chokepoint: an `ask`
-    verdict blocks on the real approval store and either executes (granted)
-    or stays refused (denied/timeout) -- with the module-level `_time`
-    monkeypatched, so this still never sleeps for real."""
+    """End-to-end through the real dispatch_tool chokepoint: an `ask` verdict blocks on the real
+    approval store and either executes (granted) or stays refused (denied/timeout), with `_time`
+    monkeypatched so this never sleeps for real."""
 
     def test_require_approval_call_executes_once_granted(
         self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
@@ -448,10 +425,8 @@ class TestDispatchToolApprovalRouting:
     def test_an_unanswered_approval_times_out_to_denied_and_does_not_execute(
         self, ctx: ToolContext
     ) -> None:
-        """Acceptance: approval timeout denies and does not execute. The
-        module default TOOL_APPROVAL_TIMEOUT=0 from `_hermetic` above makes
-        this resolve on the very first deadline check -- no sleep, real or
-        fake, is ever needed."""
+        """Approval timeout denies and does not execute; `_hermetic`'s TOOL_APPROVAL_TIMEOUT=0
+        makes this resolve on the first deadline check, so no sleep is ever needed."""
         _write_policy("custom-approve-write-3", r"launch-codes", "require_approval")
         ran = {"handler": False}
         registry = ToolRegistry()

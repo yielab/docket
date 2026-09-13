@@ -1,22 +1,11 @@
 """docket.edges.adapters.system — docker/git wrappers, gateway stub.
 
-These tests fake `subprocess.run` with monkeypatch so no real docker/git is
-ever invoked. They cover:
-  * gateway_active's honest always-inactive stub
-  * docker availability + ps
-  * git branch lookup
-  * git changed-files probe
-
-There is no daemon gateway to start/restart/probe any more, and no
-service_manager/service_hint/systemctl_* helper left that tried to (see
-edges/adapters/system.py's module docstring). gateway_active survives as a
-stable, always-honest stub because `docket snapshot` and the `serve` read API
-still expose a `gateway` field to external consumers
-(specs/data/serve-read-api.spec.md) -- covered below. restart_gateway()/
-RestartResult were deleted outright rather than kept as a stub: unlike
-gateway_active, nothing external ever observed restart_gateway's return
-value, so every call site was pure ceremony -- there is accordingly no test
-for it here.
+Fakes `subprocess.run` with monkeypatch so no real docker/git is ever invoked. Covers
+gateway_active's honest always-inactive stub, docker availability + ps, git branch lookup, and
+git changed-files probe. There is no daemon gateway to start/restart/probe. gateway_active
+survives as a stable, always-honest stub because `docket snapshot` and the `serve` read API still
+expose a `gateway` field to external consumers (specs/data/serve-read-api.spec.md); restart_gateway
+has no equivalent external observer, so it has no stub and no test here.
 """
 
 from __future__ import annotations

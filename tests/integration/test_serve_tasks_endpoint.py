@@ -1,16 +1,10 @@
 """GET /tasks/<project> — the pod queue as JSON over HTTP.
 
-Exposes `core.dispatch.read_tasks` — already the exact
-normalized shape `docket pod <p> tasks` renders from — behind the same
-Bearer auth as `/runs`. No new behaviour: this route adds no filtering,
-no reshaping, and no 404 that `read_tasks` itself does not express (a
-project with no pod is `[]`, not an error).
-
-Covers:
-  - auth rejection (401, no token / wrong token)
-  - missing project segment -> 400 (both "/tasks" and "/tasks/")
-  - a project with no pod -> 200, {"tasks": []} (read_tasks' own contract)
-  - a seeded pod's queue comes back with the same fields `read_tasks` returns
+Exposes `core.dispatch.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
+from -- behind the same Bearer auth as `/runs`. No new behaviour: adds no filtering, no reshaping,
+no 404 that `read_tasks` itself does not express (a project with no pod is `[]`, not an error).
+Covers auth rejection, a missing project segment (400), a project with no pod (200, `{"tasks":
+[]}`), and a seeded pod's queue coming back with the same fields `read_tasks` returns.
 """
 
 from __future__ import annotations

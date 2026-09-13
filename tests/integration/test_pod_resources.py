@@ -104,12 +104,9 @@ class TestPortAllocation:
     def test_concurrent_projects_allocate_distinct_ranges_and_keep_registry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Two fresh projects begin together from one empty registry.
-
-        The write gate makes the former read/compute/write implementation
-        deterministically choose the same range. The real allocation path
-        must instead commit each project through one registry transition.
-        """
+        """Two fresh projects start together from one empty registry; the write gate would make a
+        read/compute/write implementation deterministically collide on the same range, so
+        allocation must commit each project through one atomic registry transition instead."""
         _seed(tmp_path, monkeypatch)
         start = threading.Barrier(2)
         old_write_gate = threading.Barrier(2)

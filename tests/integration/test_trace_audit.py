@@ -65,11 +65,8 @@ class TestAudit:
     def test_no_audit_env_no_longer_disables(
         self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """DOCKET_NO_AUDIT was an unauthenticated kill switch — removed.
-
-        Setting it now has no effect; recording is best-effort but can no
-        longer be silently switched off.
-        """
+        """DOCKET_NO_AUDIT has no effect: audit recording is best-effort but can never be
+        silently switched off by an unauthenticated env var."""
         monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
         audit_core.audit_log("keys.add", "X")
         assert (oc_dir / "audit.log").exists()
@@ -78,13 +75,9 @@ class TestAudit:
         assert entries[0]["action"] == "keys.add"
 
     def test_missing_dir_is_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A missing AUDIT_LOG parent means "first-ever docket write", not
-        "docket isn't installed" -- nothing external bootstraps DOCKET_HOME,
-        so audit_log must create its own parent directory itself, matching
-        every other DOCKET_HOME-derived writer (core/trace.py, core/session.py).
-        Without this the log would silently lose its very first entry on a
-        fresh ~/.docket.
-        """
+        """A missing AUDIT_LOG parent means "first-ever docket write", not "docket isn't
+        installed": nothing external bootstraps DOCKET_HOME, so audit_log must create its own
+        parent directory, or the log would silently lose its first entry on a fresh ~/.docket."""
         monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "fresh" / "audit.log", raising=True)
         audit_core.audit_log("keys.add", "X")  # must not raise
         logf = tmp_path / "fresh" / "audit.log"
@@ -224,26 +217,18 @@ class TestTraceRecord:
 
 
 def _seed_docket_session(session_key: str, lines: list[ChatMessage]) -> None:
-    """Seed a docket-owned session (core/session.py), the one live format
-    `trace_ingest` reads today (see `TestTraceIngestThroughDocketDriver` in
-    test_runtime_driver.py for docket_runtime.default_driver()'s own
-    happy-path coverage; this class exercises trace_ingest's own
-    idempotent-offset / timeout-session_end mechanics, which are agnostic to
-    which driver produced the session).
-    """
+    """Seed a docket-owned session (core/session.py), the live format `trace_ingest` reads;
+    exercises its idempotent-offset / timeout-session_end mechanics, which are agnostic to which
+    driver produced the session."""
     from docket.core import session as _session
 
     _session.append_messages(session_key, lines)
 
 
 class TestTraceIngest:
-    """`trace_ingest`'s idempotent-offset / timeout-session_end mechanics.
-
-    `trace_ingest` only ever sees a driver's neutral `SessionSummary`/
-    `SessionSlice` shapes (see `core/trace.py`'s module docstring), so these
-    tests seed a real docket-owned session (`core/session.py`) and drive
-    ingestion through the real production `DocketDriver`.
-    """
+    """`trace_ingest` only ever sees a driver's neutral `SessionSummary`/`SessionSlice` shapes, so
+    these tests seed a real docket-owned session and drive ingestion through the real production
+    `DocketDriver`."""
 
     def test_ingest_projects_turns(self, oc_dir: Path) -> None:
         from docket.core.llm import ToolCall, assistant, tool_result, user

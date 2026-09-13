@@ -140,13 +140,9 @@ class TestRunsCancelCli:
 
 
 class TestRunsCancelAuditEntry:
-    """`docket runs cancel` was the one carried-forward gap in an
-    otherwise-audited surface -- every other privileged action writes an
-    audit entry (see ``core/audit.py``); cancellation shipped without one.
-    ``_isolate_audit_log`` (conftest.py, autouse) already repoints
-    ``_cfg.AUDIT_LOG`` at a per-test tmp file, so ``_audit.read_audit()``
-    here reads exactly (and only) what this test wrote.
-    """
+    """`docket runs cancel` writes an audit entry like every other privileged action (see
+    ``core/audit.py``). ``_isolate_audit_log`` (conftest.py, autouse) repoints ``_cfg.AUDIT_LOG``
+    at a per-test tmp file, so ``_audit.read_audit()`` reads exactly what this test wrote."""
 
     def test_successful_cancel_writes_a_runs_cancel_entry(self, runs_file: Path) -> None:
         rec = _runs.create_run("cli", "demo-project")

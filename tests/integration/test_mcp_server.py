@@ -1,17 +1,12 @@
 """Docket as an MCP server — the tool layer (`cli/_mcp.py`).
 
-These tests exercise the ``tool_*`` functions directly — plain Python
-functions with no dependency on the ``mcp`` SDK — so the suite never needs
-the optional dependency installed to cover the actual control-plane logic:
-every tool's happy path, that every call writes an audit entry, and that the
-mutating tools (``dispatch``, ``delegate``, ``approvals_grant``/``deny``) call
-straight through to the exact same ``core/`` functions the CLI and
-``docket serve`` webhook already use — no parallel/duplicated logic, no
+Exercises the ``tool_*`` functions directly — plain Python with no dependency on the ``mcp``
+SDK — covering every tool's happy path, that every call writes an audit entry, and that the
+mutating tools (``dispatch``, ``delegate``, ``approvals_grant``/``deny``) call straight through
+to the same ``core/`` functions the CLI and ``docket serve`` webhook use: no parallel logic, no
 MCP-side bypass of an approval or budget gate.
 
-SDK-presence-dependent coverage (the optional-dependency degrade path, and a
-real end-to-end call through the actual ``mcp`` SDK when installed) lives in
-``test_mcp_optional_dep.py``.
+SDK-presence-dependent coverage lives in ``test_mcp_optional_dep.py``.
 """
 
 from __future__ import annotations

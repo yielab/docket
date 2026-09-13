@@ -1,25 +1,15 @@
-"""Cancellation — `docket runs cancel <id>` actually kills the in-flight
-hop's process group.
+"""Cancellation — `docket runs cancel <id>` actually kills the in-flight hop's process group.
 
-Layers covered:
-  * ``edges.adapters.system.kill_process_group`` — the raw OS mechanics: a
-    real process group (leader + a child it spawned) both die, and an
-    already-dead pid is a harmless no-op.
-  * ``core/runs.py``'s registry additions — ``current_run_id()``/
-    ``add_hop_pid``/``remove_hop_pid`` (the pid-tracking side channel
-    ``execute()`` and a parallel group's worker threads share via
-    contextvars), ``cancel_run`` (unknown run, already-terminal run, a real
-    kill), and that a concurrent cancel is never clobbered back to
-    "succeeded" by the run's own normal completion.
+Covers ``edges.adapters.system.kill_process_group`` (a real process group leader + child both
+die; an already-dead pid is a harmless no-op) and ``core/runs.py``'s registry additions:
+``current_run_id()``/``add_hop_pid``/``remove_hop_pid`` (the pid-tracking side channel shared via
+contextvars) and ``cancel_run`` (unknown run, already-terminal run, a real kill, and a concurrent
+cancel never clobbered back to "succeeded" by normal completion).
 
-The production ``DocketDriver`` makes in-process HTTP calls and never fires
-``on_spawn`` (see its own docstring), so cooperative checkpoints stop its turn
-at safe boundaries while already-running backend computation returns. A
-running record therefore persists a request and stays nonterminal until its
-owning executor returns; PID signalling alone is not a truthful full-stop
-oracle. The whole driver/dispatch path is covered in
-``test_cooperative_run_cancellation.py``.
-"""
+The production ``DocketDriver`` never fires ``on_spawn``, so cooperative checkpoints stop its turn
+at safe boundaries while already-running backend computation returns; PID signalling alone is not
+a truthful full-stop oracle. Full driver/dispatch coverage is in
+``test_cooperative_run_cancellation.py``."""
 
 from __future__ import annotations
 

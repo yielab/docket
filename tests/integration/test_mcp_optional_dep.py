@@ -1,25 +1,13 @@
 """The optional `mcp` SDK dependency degrade path + real-SDK smoke test.
 
-`docket mcp serve` needs the official MCP Python SDK (`mcp`), which is an
-*optional* extra (`docket[mcp]`) — kept out of the base install so
-`pip install docket` stays dependency-light (the SDK pulls in starlette,
-uvicorn, cryptography, jsonschema, opentelemetry, ...). This file covers both
-sides of that split:
-
-  1. A real absence check (mirrors the existing PyYAML precedent in
-     ``test_auth_context_maintain_keys_add.py::test_from_yaml_without_pyyaml_gives_error`` — skip if
-     the SDK happens to be installed in this environment, since then there is
-     nothing to observe).
-  2. A deterministic, environment-independent version of the same check that
-     *simulates* the SDK being absent by making the import fail regardless of
-     whether it is actually installed — so this file's coverage of the degrade
-     path does not depend on luck about what happens to be in the test venv
-     (this repo's own CI installs every extra via `uv sync --all-extras`).
-  3. A real end-to-end smoke test through the actual SDK — skipped when the
-     SDK is not installed (`pytest.importorskip`).
-
-Either way the suite stays green: nothing here requires the SDK to be
-installed to pass.
+`docket mcp serve` needs the official MCP Python SDK (`mcp`), an *optional* extra
+(`docket[mcp]`) kept out of the base install so `pip install docket` stays
+dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema,
+opentelemetry, ...). Covers three cases: a real absence check (skipped if the SDK
+happens to be installed), a deterministic version that simulates absence by
+forcing the import to fail regardless of what is actually installed (so this
+coverage does not depend on luck about the test venv), and a real end-to-end
+smoke test that skips when the SDK is absent. Either way the suite stays green.
 """
 
 from __future__ import annotations
@@ -109,14 +97,9 @@ class TestUsage:
         assert rc == 1
 
     def test_mcp_command_is_wired_on_the_typer_app(self) -> None:
-        """Smoke-test only — never invokes `serve` (which would block on stdio
-        or, if the SDK isn't installed, still just print+exit; either way this
-        test proves wiring only, mirroring test_runs_cli.py's pattern).
-
-        The supported all-extras lock is part of this public optional surface.
-        Keep its transitive crypto package outside CVE-2026-69247 /
-        GHSA-g6cj-pr64-35w5's affected ``>=44,<50`` range.
-        """
+        """Smoke-test only: never invokes `serve` (would block on stdio, or just print+exit if
+        the SDK is absent). Also asserts the mcp-extra lock's transitive cryptography package
+        stays outside CVE-2026-69247's affected ``>=44,<50`` range."""
         from typer.testing import CliRunner
 
         from docket.cli import app
