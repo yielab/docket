@@ -45,7 +45,7 @@ __all__ = [
 # Every adapted tool name starts with this. No built-in tool name does (they
 # are bare words: "read", "write", "edit", "glob", "grep", "bash"), so this
 # prefix alone makes a collision with a built-in structurally impossible --
-# see the module docstring's "Namespacing" section.
+# see specs/functional/mcp-client.spec.md (namespacing).
 NAMESPACE_PREFIX = "mcp__"
 
 # A configured server's *local* name is docket-owned config, not remote input,

@@ -364,8 +364,8 @@ def seed_contract(
 
 # --- distillation ---------------------------------------------------------
 #
-# See the module docstring's "Memory distillation" section for the design
-# rationale. Everything below is pure I/O over one workspace plus one
+# Design rationale: the module docstring and specs/functional/agent-lifecycle.spec.md.
+# Everything below is pure I/O over one workspace plus one
 # injected driver call — no ui/print (this is
 # core/, per the standing layer rule), no import of edges/adapters/ at all.
 
@@ -588,8 +588,8 @@ def distill_memory(
 
 # --- dispatch task ledger --------------------------------------------------
 #
-# See the module docstring's "The dispatch task ledger" section for the design
-# rationale. Everything below is pure text/file manipulation over one
+# Design rationale: specs/functional/pod-dispatch.spec.md (dispatch ledger).
+# Everything below is pure text/file manipulation over one
 # workspace's HEARTBEAT.md -- docket-owned workspace state throughout,
 # no ui/print (core/
 # never prints), no knowledge of dispatch.py's TASK_LIST.json schema beyond
