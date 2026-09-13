@@ -11,47 +11,27 @@
 >
 > ---
 >
-> ## ◉ NO ACTIVE WAVE — one card remains claimable
+> ## ◉ ACTIVE BOARD — WAVE 34 (2026-09-13): finish the D-36 function split, two measured fixes, one audit
 >
-> **Wave 32 closed on 2026-09-12.** Seven cards swept the documentation drift Phases 24 and 25
-> left behind. It removed a script, a CI workflow and a pre-commit hook that the contributor guide
-> documented and that have never existed; a Telegram "conversational dispatch" claim that was found
-> in README.md on 2026-08-05, corrected there, and never swept from the quick start one directory
-> away; and a paragraph telling readers a shipped isolation control was inert.
+> **Wave 33 closed on 2026-09-13** and is archived in
+> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). It audited the Wave 32
+> closure (it held), retired stale worktrees, branches, a spent script and two never-running
+> skips, and merged thirteen docstring-only packets that cut the comment ratchet from 558/112 to
+> 372/40 with every file proved code-identical.
 >
-> **Its most useful finding was one anti-pattern in three places.** The spec index, the generated
-> command reference's environment table, and a pod-blueprint list were each checked against
-> reference data that was *retyped rather than derived*, so each reported green while being blind
-> to anything nobody had remembered to add. All three now derive their reference set, and each was
-> proved by planting something the old version could not have seen.
->
-> **Two corrections to the record.** The agent lane is not part of `uv run pytest`; it has its own
-> CI job, so "all gates green" from the default suite said nothing about it, and it was red on
-> `main` from before this wave. And `DOCKET_APPROVAL_MODE` is not an environment variable despite
-> the name — it is a key of the dict `run_turn` receives as `env`, so exporting it does nothing.
->
-> **Wave 30 closed on 2026-09-12**, completing Phase 24, and is archived in
-> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). `docket harness run` and
-> `status` ship with a published, versioned, test-pinned contract, and the three seams they needed
-> are wired and proved reached by a real subprocess rather than by a unit test.
+> **Wave 34 opens from one measurement.** ADR 0007 records the three 500-line functions as split
+> into named phases. Measured with nested closures included (`scripts/maint/measure_function_spans.py`
+> at `633ef91`), `run_agent_turn` still spans 909 lines through twenty closures, `compact_session`
+> 225, `do_POST` 175 and `_doctor_json` 168. A new shrink-only ratchet
+> (`tests/guards/test_function_span.py`, ceiling 150) lists seven functions; cards C1 to C4 split
+> the four worst and the integrator lowers the file after each merge. C5 fixes a test that failed
+> once under parallel load, C6 gives two identical credential tables one owner, and A1 is a
+> read-only audit for the fourth unwired-machinery instance the record says to assume exists.
 >
 > **W29-C7 is the only card left on this board.** It publishes the provenance-complete beta and
 > closes Phase 23. Its publication approval from 2026-09-07 still stands and only its ordering ever
 > changed. It publishes a public release, which cannot be undone, so it waits on an explicit
 > go-ahead rather than on a board gate. Claiming it means marking its section active.
->
-> **Wave 31 closed on 2026-09-12** and is archived in
-> [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md). Thirteen cards shipped:
-> test lanes with a budgeted agent lane, structural guards, a ratcheted comment budget, one unit
-> file per module, in-process CLI tests, a generated command reference, the board archive and
-> decision ADRs, the three functions over 500 lines split into named phases, and two cards opened
-> by defects the work itself surfaced.
->
-> **Both things that were waiting on it are now claimable, and nothing chooses between them
-> automatically.** W29-C7 publishes the provenance-complete beta and closes Phase 23; its
-> publication approval from 2026-09-07 still stands and only its ordering had changed. All of
-> Wave 30 (Phase 24, harness mode, D-35) is also unblocked. Whichever is claimed first, mark its
-> section active so the board has one marker again.
 >
 > **Two of this file's size targets are still gated.** `TODO.md` reaches 200 lines and `ROADMAP.md`
 > reaches 500 once Waves 29 and 30 close and their sections archive. Their planned cards and
@@ -101,32 +81,201 @@ release source.
 
 ---
 
-## ◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups
+## ◉ WAVE 34 ACTIVE (2026-09-13) — finish the D-36 function split, two measured fixes, one audit
 
-All seven cards merged. Four parallel read-only audits measured the drift before anything was
-scheduled; the full per-finding record is in the integrator's plan file.
+**Measured before scheduling (integrator, 2026-09-13, `633ef91`):** `scripts/maint/measure_function_spans.py`
+reports seven functions over 150 lines, nested closures included: `run_agent_turn` 909 (20 nested
+closures, own body 87 lines), `compact_session` 225 (`_mutate` 172 inside it), `run_agent_turn._fit_task_request`
+184, `builtin_registry` 180, `_DocketHandler.do_POST` 175, `_doctor_json` 168. `builtin_registry` is a
+flat registration table and is left in the baseline on purpose. One W33 agent saw
+`test_sigterm_after_the_tool_call_event_cancels_within_three_seconds` fail once under parallel load
+and pass in isolation and on the base commit. `core/provider.py:35` and `edges/adapters/llm.py:57`
+hold byte-identical five-entry credential tables.
 
-| Card | Shipped | Proved by |
-| --- | --- | --- |
-| W32-C1 | `SSD-WORKFLOW.md`: removed a script, a CI workflow and a hook that never existed | eight real `ci.yml` job names checked individually |
-| W32-C2 | the public spec index derives from disk; three versions, three missing rows corrected | a planted spec file failing the guard by name |
-| W32-C3 | the harness contract paths an external consumer reads first | `ls` on both directories |
-| W32-C4 | partial-repointer ratchet at 14; six worst converted; dead scaffolding deleted | a planted partial repointer going red |
-| W32-C5 | three false capability claims removed from the guides | `isolation.refused` traced to the live adapter |
-| W32-C6 | harness mode and the ADRs made discoverable; name collision cross-linked | anchors resolved; harness commands run |
-| W32-C7 | env-var table derived: 10 hardcoded rows replaced by 55 scanned; exit codes corrected | a planted env var failing `--check` |
+**Shared rules for every card.** One worktree, one branch, base `main` at the wave's opening commit.
+Workers never edit `tests/guards/function_span_baseline.txt`, `TODO.md`, `ROADMAP.md`, `README.md`,
+`CONTRIBUTING.md`, `specs/README.md` or any counting script; the integrator regenerates the baseline
+after each merge. A split card is behaviour-preserving: no public signature changes, no new modules,
+no test edited or deleted (a split that needs a test change has changed behaviour: stop and report).
+Full gates: `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest -q`,
+plus `bash tests/golden/run.sh verify-all` for anything under `src/docket/cli/`. Commit subjects
+`Type: description`, ASCII, no attribution trailer.
 
-**Three cards corrected their own briefs and were right every time** — on which agent lanes
-exist, on `DOCKET_APPROVAL_MODE` not being an environment variable, and on a guard already
-existing where the brief said none did. Each correction came from measuring rather than from
-reasoning about the instruction.
+**Contention graph.** C1 owns `core/agent_loop.py`; C2 owns `core/session.py` and must keep every
+name `agent_loop.py` imports (`CompactionResult`, `append_messages`, `compact_session`, `load_messages`)
+with the same signature; C3 owns `serve.py`; C4 owns `cli/_doctor.py`; C5 owns
+`tests/integration/test_harness_cli.py`; C6 owns `core/provider.py`, `edges/adapters/llm.py` and one new
+unit test. No two cards share a file. Merge order: C6, C5, C4, C3, C2, C1 (smallest blast radius first).
 
-**The re-measured follow-up had grown** from 16 functions across 13 modules to 20 across 15,
-which is why the board rule says a gap list decays and must be re-measured before scheduling.
+### W34-C1 — split `run_agent_turn` into module-level phases
 
-**Integrator note for the next wave:** a card's gates pass on the card's branch, which proves
-nothing about the merge. Merging C2 broke the agent-lane ratchet its own handoff reported green,
-and only re-running the gates on the merge result caught it.
+**Status:** READY · **Size:** L · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/agent_loop.py::run_agent_turn` spans 909 lines (lines 514 to
+1422) with 20 nested closures; `_fit_task_request` alone is 184. ADR 0007 says this function was split.
+
+**Goal:** hoist the nested closures into module-level private functions (or methods on one private
+turn-state class) so that no function in the file exceeds 150 lines and `run_agent_turn` reads as a
+sequence of named phases. Behaviour identical.
+
+**Non-goals:** no change to `LoopConfig`, `run_agent_turn`'s signature, `approval_unavailable_error`,
+stop reasons, trace events, the harness NDJSON contract or session compaction semantics; no new module.
+
+**Owns:** `src/docket/core/agent_loop.py` only.
+
+**Acceptance / oracle:** `uv run python scripts/maint/measure_function_spans.py src/docket/core/agent_loop.py`
+prints nothing (no function over 150). `uv run pytest -q` passes unchanged, including
+`tests/unit/core/test_agent_loop*.py`, `tests/integration/test_agent_loop.py`,
+`tests/integration/test_harness_cli.py` and the byte-pinned fixtures under
+`tests/fixtures/harness-contract/v1/`. `git diff --stat` touches one file. The integrator additionally
+compares the module's public names and signatures before and after with an AST script.
+
+**RED:** `uv run python scripts/maint/measure_function_spans.py src/docket/core/agent_loop.py` lists
+two entries before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/test_agent_loop.py tests/integration/test_agent_loop.py tests/integration/test_harness_cli.py`.
+
+### W34-C2 — split `compact_session` into named phases
+
+**Status:** READY · **Size:** M · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/session.py::compact_session` spans 225 lines with the 172-line
+`_mutate` closure inside it.
+
+**Goal:** split planning, summarisation, atomic-unit validation and the locked write into
+module-level private functions; no function in the file over 150 lines. Behaviour identical, including
+the fail-closed contract (a failed summarisation leaves the stored history untouched) and the
+atomic tool-call/tool-result unit guarantee.
+
+**Non-goals:** no signature change to `compact_session`, `plan_compaction`, `CompactionResult`,
+`append_messages`, `load_messages`; no new module.
+
+**Owns:** `src/docket/core/session.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/core/session.py` prints nothing;
+`uv run pytest -q` passes unchanged, including `tests/unit/core/test_session*.py` and the compaction
+tests under `tests/integration/test_agent_loop.py`; one file in the diff.
+
+**RED:** the measuring script lists two entries for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/ -k session tests/integration/test_agent_loop.py -k compact`.
+
+### W34-C3 — route `do_POST` through per-route handlers
+
+**Status:** READY · **Size:** M · **Owner:** one worker
+
+**Measured trigger:** `src/docket/serve.py::_DocketHandler.do_POST` spans 175 lines; `_handle_post_pods`
+already shows the per-route shape.
+
+**Goal:** one private handler per POST route, `do_POST` reduced to auth, routing and error framing; no
+function in the file over 150 lines. Byte-identical responses, status codes, audit entries and the
+`docket runs` records each route produces.
+
+**Non-goals:** no route added or removed, no auth change, no change to
+`specs/data/serve-read-api.spec.md`.
+
+**Owns:** `src/docket/serve.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/serve.py` prints nothing;
+`uv run pytest -q` passes unchanged, including `tests/unit/test_serve__*.py`,
+`tests/integration/test_serve_*.py` and `tests/integration/test_approval_gated_dispatch.py`; one file in the diff.
+
+**RED:** the measuring script lists one entry for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit -k serve tests/integration -k serve`.
+
+### W34-C4 — split `_doctor_json`
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** `src/docket/cli/_doctor.py::_doctor_json` spans 168 lines.
+
+**Goal:** split the JSON report assembly into per-section helpers; no function in the file over 150
+lines; `docket doctor --json` output byte-identical.
+
+**Non-goals:** no check added, removed or reordered; no change to the human-readable output.
+
+**Owns:** `src/docket/cli/_doctor.py` only.
+
+**Acceptance / oracle:** `measure_function_spans.py src/docket/cli/_doctor.py` prints nothing;
+`uv run pytest -q` passes unchanged including `tests/unit/cli/test__doctor.py`;
+`bash tests/golden/run.sh verify-all` passes 18/18 without regenerating anything; one file in the diff.
+
+**RED:** the measuring script lists one entry for the file before the split.
+
+**Focused validation:** `uv run pytest -q tests/unit/cli/test__doctor.py && bash tests/golden/run.sh verify-all`.
+
+### W34-C5 — make the harness cancellation test deterministic under load
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** on 2026-09-13 a full-suite run alongside twelve other suites saw
+`tests/integration/test_harness_cli.py::TestCancelledRun::test_sigterm_after_the_tool_call_event_cancels_within_three_seconds`
+fail once and pass on re-run, in isolation, and on the base commit. The test looks up the sleeping
+child once, immediately after the `tool_call` event, but that event is emitted before the bash
+handler has spawned the child, so under load the single lookup races the spawn.
+
+**Goal:** wait for the child process to appear (bounded poll, deadline of a few seconds) before
+asserting it exists, without loosening the three-second cancellation bound, which is the contract
+under test.
+
+**Non-goals:** no change under `src/`; no change to the three-second bound; no skip or retry marker.
+
+**Owns:** `tests/integration/test_harness_cli.py` only.
+
+**Acceptance / oracle:** the test passes 20 times in a row locally while `uv run pytest -q -n 0` runs
+in another shell (or under `stress`-like CPU load); one file in the diff; the assertion message still
+names the missing child on a genuine failure.
+
+**RED:** reproduce the race by inserting a `time.sleep(0.3)` before the bash handler spawns (locally,
+not committed) or by running the suite under load; the single lookup fails with
+"the sleeping child process was never found".
+
+**Focused validation:** `for i in $(seq 20); do uv run pytest -q tests/integration/test_harness_cli.py -k cancels_within || break; done`.
+
+### W34-C6 — one owner for the provider credential table
+
+**Status:** READY · **Size:** S · **Owner:** one worker
+
+**Measured trigger:** `src/docket/core/provider.py:35` (`_PROVIDER_CREDENTIALS`) and
+`src/docket/edges/adapters/llm.py:57` (`_PROVIDER_CREDENTIAL_NAMES`) are byte-identical five-entry
+dicts with separate readers (`provider.py:129`, `llm.py:447`). A provider added to one and not the
+other makes `docket models`/provider checks and the adapter's request path disagree silently.
+
+**Goal:** a single definition in `core/provider.py` (public name `PROVIDER_CREDENTIAL_NAMES`), imported
+by `edges/adapters/llm.py` (edges may import core), with one unit test asserting the adapter reads the
+same object and an import-cycle check (`python -c "import docket.edges.adapters.llm, docket.core.provider"`).
+
+**Non-goals:** no change to the table's contents or to how either reader resolves a credential.
+
+**Owns:** `src/docket/core/provider.py`, `src/docket/edges/adapters/llm.py`, and one new test in
+`tests/unit/core/test_provider.py` (create it with `SUBJECT = "docket.core.provider"` if absent, or add to it).
+
+**Acceptance / oracle:** `rg -n 'ANTHROPIC_API_KEY' src/` finds exactly one dict literal; the new test
+fails on the base commit (two objects) and passes after; `uv run pytest -q` passes; `mypy src` passes.
+
+**RED:** the new unit test on the base commit.
+
+**Focused validation:** `uv run pytest -q tests/unit/core/test_provider.py tests/unit/edges/adapters/test_llm.py tests/integration/test_provider_agnosticism.py`.
+
+### W34-A1 — read-only audit: the fourth unwired-machinery instance
+
+**Status:** READY · **Size:** S · **Owner:** one read-only worker (no commits)
+
+**Measured trigger:** three recorded instances of "implemented, tested, never wired to the default
+path" (W17-1, W18-3, W19-3). The record says to assume a fourth exists; nobody has scanned for it.
+
+**Goal:** for every setting docket persists under `DOCKET_HOME` with a writer in `cli/` (fleet gate and
+isolation flags, model policy, retention, schedules, MCP servers, policies, secrets, budgets), name the
+reader on the live path (`core/agent_loop.py`, `core/tools.py`, `core/dispatch.py`,
+`edges/adapters/docket_runtime.py`, `serve.py` loops). Report every setting whose only reader is in
+`cli/` or tests, with file:line evidence for writer and reader.
+
+**Non-goals:** no code change, no doc change, no card creation; the report is the deliverable.
+
+**Acceptance / oracle:** a table of settings with writer, live-path reader (or "none found"), and the
+`rg` command that proves it; each "none found" row re-checked once by grepping the setting's key
+across `src/`.
 
 ---
 

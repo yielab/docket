@@ -470,5 +470,13 @@
     "heading": "☑ WAVE 30 COMPLETE (2026-09-11 to 2026-09-12) — harness mode seams and contract (Phase 24, D-35)",
     "bytes": 14956,
     "sha256": "4cae5914789561828e5912a6bd9ff2b0dc10cd3bedf3c5e65c93af1ae2cf4f24"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups",
+    "bytes": 1977,
+    "sha256": "9f7be4b4aba5fb7dd08ea526b78e1f90115f6371f178e3ea4b311b80e4fa663f"
   }
 ]

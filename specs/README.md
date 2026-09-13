@@ -174,7 +174,7 @@ Each specification document must include:
 | Serve Read API | 2.10.0 | Stable | Concurrent pod provisioning serializes one project while different projects share only the short atomic allocation transition |
 | Adoption Benchmark | 1.2.3 | Implemented | Versioned, machine-readable contract for the adoption benchmark: one fixed scenario plus durable Docket records to canonical per-attempt JSONL and a deterministic aggregate; fake-model results are reproducible evidence, not a quality measurement |
 | Input Validation | 1.4.0 | Complete | Docket-owned store and protocol-boundary validation |
-| Test Framework | 2.15.0 | Active | Hermetic `DOCKET_HOME`, lane placement contract (product lanes in the default run, budgeted agent lane for prose/release/harness checks, one unit file per module, comment hygiene), portable development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, byte-exact artifact gates, and public release-truth checks |
+| Test Framework | 2.16.0 | Active | Hermetic `DOCKET_HOME`, lane placement contract (product lanes in the default run, budgeted agent lane for prose/release/harness checks, one unit file per module, comment hygiene), portable development harnesses, golden fixtures, proportional validation, deterministic CLI→HTTP→runtime smoke, opt-in real-model canaries, byte-exact artifact gates, and public release-truth checks |
 | Starter Journey | 1.0.0 | Implemented | The smallest copied-outside-checkout path from an exact built artifact to an inspectable governed mutation, run against a deterministic loopback model with no source checkout, `docket-runtime`, or hosted credentials |
 | User Stories | 1.4.0 | Active | Acceptance criteria (not a `.spec.md`) |
 

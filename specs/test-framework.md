@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 2.15.0
+**Version**: 2.16.0
 **Status**: Active
-**Last Updated**: 2026-09-12
+**Last Updated**: 2026-09-13
 
 ## Overview
 
@@ -140,7 +140,10 @@ nothing about the length budget. `tests/guards/test_partial_repointers.py` (W32-
 ratchets the number of test functions that hand-roll two or more `DOCKET_HOME`-derived constants
 without claiming a home. `uv run pytest tests/agent`
 becomes a required gate for changes under `README.md`, `docs/`, `specs/`, `examples/`,
-`benchmarks/`, `.agents/` and `tests/agent/` now that the job exists.
+`benchmarks/`, `.agents/` and `tests/agent/` now that the job exists. `tests/guards/test_function_span.py` (W34) ratchets every function under `src/docket` against a
+150-line span ceiling, nested closures included, measured by `scripts/maint/measure_function_spans.py`
+against `tests/guards/function_span_baseline.txt`; a listed function may not grow, an unlisted one may
+not appear, and only the integrator's `--write` after a split lands lowers the file.
 
 ### Full-workflow smoke
 
@@ -402,6 +405,14 @@ Environment-dependent skips are acceptable only when the owning contract labels 
 the skip reason names the missing capability.
 
 ## Changelog
+
+### Version 2.16.0 (2026-09-13)
+
+- Added the function-span ratchet to the enforcement status: `tests/guards/test_function_span.py`
+  over `scripts/maint/measure_function_spans.py` and `function_span_baseline.txt` (seven entries at
+  open, the largest `run_agent_turn` at 909 lines). Motivation: ADR 0007 records the three
+  500-line functions as split, but measured spans with nested closures included show the turn
+  loop still reads as one 909-line unit. The ratchet makes the Wave 34 split cards falsifiable.
 
 ### Version 2.15.0 (2026-09-12)
 

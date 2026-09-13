@@ -4967,3 +4967,32 @@ and no guarantee beyond what W30-C1 actually timed.
 
 
 ---
+## ◇ WAVE 32 CLOSED (2026-09-12) — documentation truth pass and two deferred follow-ups
+
+All seven cards merged. Four parallel read-only audits measured the drift before anything was
+scheduled; the full per-finding record is in the integrator's plan file.
+
+| Card | Shipped | Proved by |
+| --- | --- | --- |
+| W32-C1 | `SSD-WORKFLOW.md`: removed a script, a CI workflow and a hook that never existed | eight real `ci.yml` job names checked individually |
+| W32-C2 | the public spec index derives from disk; three versions, three missing rows corrected | a planted spec file failing the guard by name |
+| W32-C3 | the harness contract paths an external consumer reads first | `ls` on both directories |
+| W32-C4 | partial-repointer ratchet at 14; six worst converted; dead scaffolding deleted | a planted partial repointer going red |
+| W32-C5 | three false capability claims removed from the guides | `isolation.refused` traced to the live adapter |
+| W32-C6 | harness mode and the ADRs made discoverable; name collision cross-linked | anchors resolved; harness commands run |
+| W32-C7 | env-var table derived: 10 hardcoded rows replaced by 55 scanned; exit codes corrected | a planted env var failing `--check` |
+
+**Three cards corrected their own briefs and were right every time** — on which agent lanes
+exist, on `DOCKET_APPROVAL_MODE` not being an environment variable, and on a guard already
+existing where the brief said none did. Each correction came from measuring rather than from
+reasoning about the instruction.
+
+**The re-measured follow-up had grown** from 16 functions across 13 modules to 20 across 15,
+which is why the board rule says a gap list decays and must be re-measured before scheduling.
+
+**Integrator note for the next wave:** a card's gates pass on the card's branch, which proves
+nothing about the merge. Merging C2 broke the agent-lane ratchet its own handoff reported green,
+and only re-running the gates on the merge result caught it.
+
+---
+
