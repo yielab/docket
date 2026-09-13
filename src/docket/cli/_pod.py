@@ -1,17 +1,14 @@
 """docket pod — provision and manage project pods.
 
-A *pod* is the set of project-scoped agents for one project: a Lead plus one or
-more workers (Implementer, Reviewer, Tester), each with its own workspace
-(no worker serves two projects). Pod members are ordinary project agents with
-id ``<project>-<role>`` (``-N`` for duplicates).
-
-Composition logic lives in `core/pod.py`; the actual provisioning I/O
-(workspace + templates + meta + fleet registration, with rollback on a
-partial failure) lives in `core/pod_provisioning.py` so it is
-reachable from `serve.py`'s `POST /pods` without that module ever importing
-`docket.cli`. This module renders around that core module's typed results —
-`docket add`'s pod path and `POST /pods` both call the same
-`core.pod_provisioning.provision_pod`, so the two surfaces cannot drift apart.
+A *pod* is the set of project-scoped agents for one project: a Lead plus one or more
+workers (Implementer, Reviewer, Tester), each with its own workspace (no worker serves
+two projects); member ids are ``<project>-<role>`` (``-N`` for duplicates). Composition
+logic lives in `core/pod.py`; provisioning I/O (workspace + templates + meta + fleet
+registration, with rollback on partial failure) lives in `core/pod_provisioning.py` so
+it is reachable from `serve.py`'s `POST /pods` without that module importing
+`docket.cli`. This module renders around that core module's typed results — `docket
+add`'s pod path and `POST /pods` both call `core.pod_provisioning.provision_pod`, so
+the two surfaces cannot drift apart.
 """
 
 from __future__ import annotations
@@ -49,12 +46,9 @@ pod_member_ids = _pp.pod_member_ids
 
 
 def _role_purpose(role: str) -> str:
-    """One-line purpose for a pod role (shown in `docket pod <project>`).
-
-    Sourced from the role's archetype (`RoleArchetype.description`) — built-in,
-    starter-library, or user-defined — rather than a second hardcoded map that
-    would drift from `core/archetypes.py`'s own descriptions.
-    """
+    """One-line purpose for a pod role (shown in `docket pod <project>`). Sourced from
+    the role's archetype (`RoleArchetype.description`) rather than a second hardcoded
+    map that would drift from `core/archetypes.py`'s own descriptions."""
     arch = _arch.load_registry().get(role)
     return arch.description if arch is not None else ""
 
@@ -76,11 +70,8 @@ def provision_member(
     budget_usd: float | None = None,
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
-
-    Thin rendering wrapper over `core.pod_provisioning.provision_member` —
-    prints the worktree-fallback notice (if any) via `ui.dim` and returns the
-    legacy `(ok, message)` shape; see the core function for the real docstring.
-    """
+    Thin rendering wrapper over `core.pod_provisioning.provision_member` — prints the
+    worktree-fallback notice (if any) and returns the legacy `(ok, message)` shape."""
     ok, msg, fallback_reason = _pp.provision_member(
         member,
         codebase=codebase,
@@ -102,12 +93,9 @@ def provision_member(
 
 
 def parse_pod_roles(args: list[str]) -> tuple[str, ...]:
-    """Pod composition from `docket add` flags.
-
-    Default = lean pod (lead + implementer). ``--pod full`` = the four-role pod.
-    ``--with reviewer,tester`` = lean pod plus the named roles. Unknown role names
-    are ignored (the lean default still applies).
-    """
+    """Pod composition from `docket add` flags. Default = lean pod (lead + implementer);
+    ``--pod full`` = the four-role pod; ``--with reviewer,tester`` = lean plus the named
+    roles. Unknown role names are ignored (the lean default still applies)."""
     if "--pod" in args:
         i = args.index("--pod")
         if i + 1 < len(args) and args[i + 1].lower() == "full":
@@ -151,23 +139,11 @@ def build_pod(
     blueprint_name: str = "",
     budget_usd: float | None = None,
 ) -> list[str]:
-    """Provision a fresh pod's members. Returns the created member ids.
-
-    Thin rendering wrapper over `core.pod_provisioning.provision_members` —
-    used by `docket add` (via `build_pod_from_blueprint`) and directly by
-    every test that needs a pod fixture with no blueprint involved.
-    Allocates pod-level runtime resources (port range + scratch dir) once for
-    the whole pod and injects them into each Implementer's workspace —
-    skipped entirely when the roster has no Implementer (e.g. a
-    research/content/ops blueprint pod). A partial failure (a member after
-    the first fails to provision) rolls back every member and any pod-level
-    resources this call created, then reports the failure — the same
-    all-or-nothing contract `POST /pods` needs, applied here too since the
-    two surfaces share one code path.
-
-    ``work_dir``/``blueprint_name``/``budget_usd`` are passed straight
-    through to every member — see ``core.pod_provisioning.provision_member``.
-    """
+    """Provision a fresh pod's members; returns the created member ids. Allocates
+    pod-level runtime resources (port range + scratch dir) once, injected into each
+    Implementer's workspace (skipped with no Implementer). A partial failure rolls
+    back every member and any pod-level resources created — the same all-or-nothing
+    contract `POST /pods` needs, since both surfaces share this one code path."""
     try:
         created = _pp.provision_members(
             project,
@@ -199,35 +175,16 @@ def build_pod_from_blueprint(
     verify_cmd: str = "",
     source: str = "declarative",
 ) -> list[str]:
-    """Provision a fresh pod from a named blueprint. Returns the created member ids.
-
-    Thin rendering wrapper over `core.pod_provisioning.provision_pod` — the
-    one path `docket add` (interactive, via `cli/_agents.py::run_add`, and
-    declarative, via `_provision_pod_from_spec`) and `POST /pods` all share.
-
-    ``location`` is interpreted per the blueprint's ``workspace_kind``: a
-    `codebase` blueprint (e.g. `software`) treats it as the pod's codebase
-    path — this is the path ``docket add`` with no ``--blueprint`` has always
-    passed, so `software` provisions identically to the original
-    Lead+Implementer default. A `workdir` blueprint treats it as the pod's
-    shared working directory, auto-provisioning one under
-    ``config.pod_work_dir(project)`` (0700) when ``location`` is left empty.
-
-    ``roles``, when given, overrides the blueprint's own roster (e.g.
-    `docket add`'s ``--pod full``/``--with`` flags extending `software`'s
-    lean default) while still applying the blueprint's workspace kind,
-    default budget, and name stamp — the blueprint is a starting roster, not
-    a hard ceiling. ``budget_usd``/``verify_cmd`` override the blueprint's own
-    default budget / apply a verify command to Implementer member(s) at
-    creation time — see `core.pod_provisioning.provision_pod`.
-
-    Raises ``core.blueprints.BlueprintError`` for an unknown blueprint name,
-    and ``core.pod_provisioning.VerifyCmdError`` for an invalid ``verify_cmd``
-    — both render as a clean CLI error upstream, not a traceback. An
-    already-existing pod and a genuine mid-provisioning failure both warn and
-    return ``[]`` (this function's long-standing "no members" failure
-    contract) rather than raising, since every current caller already treats
-    an empty return as the failure signal.
+    """Provision a fresh pod from a named blueprint; returns the created member ids.
+    Thin rendering wrapper over `core.pod_provisioning.provision_pod` — the one path
+    `docket add` and `POST /pods` both share. ``location`` is interpreted per the
+    blueprint's `workspaceKind` (codebase path vs. shared working directory);
+    ``roles`` overrides the blueprint's roster (a starting point, not a ceiling) while
+    still applying its workspace kind/budget/name stamp. See
+    specs/functional/pod-blueprints.spec.md. ``BlueprintError``/``VerifyCmdError``
+    render as a clean CLI error, not a traceback; an already-existing pod or a
+    mid-provisioning failure both warn and return ``[]`` rather than raising, since
+    every caller already treats an empty return as the failure signal.
     """
     try:
         result = _pp.provision_pod(
@@ -413,11 +370,9 @@ def _pod_remove(project: str, extra: list[str]) -> None:
 
 
 def _regenerate_member_tools(member_id: str, project: str) -> None:
-    """Rewrite TOOLS.md for an existing Implementer after a meta change (e.g. set-verify).
-
-    No-op for non-implementers and for members with no allocated resources and no
-    verify command (nothing to render).
-    """
+    """Rewrite TOOLS.md for an existing Implementer after a meta change (e.g.
+    set-verify). No-op for non-implementers, and for members with no allocated
+    resources and no verify command (nothing to render)."""
     role = _fleet.meta_get(member_id, "role", "")
     if role != "implementer":
         return
@@ -444,13 +399,9 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
 
 
 def _pod_set_verify(project: str, extra: list[str]) -> None:
-    """Set the verify command on an existing Implementer.
-
-    Usage: ``docket pod <project> set-verify <member-id> "<cmd>"``. Rewrites
-    TOOLS.md so the Implementer sees the updated gate. The command is validated
-    (no NUL/newline, length-capped — see ``_validate_verify_cmd``) and the change
-    is audit-logged: docket still runs it with ``shell=True`` once stored.
-    """
+    """Set the verify command on an existing Implementer and rewrite TOOLS.md. The
+    command is validated (no NUL/newline, length-capped — ``_validate_verify_cmd``)
+    and audit-logged; docket still runs it with ``shell=True`` once stored."""
     if len(extra) < 2:
         ui.error('Usage: docket pod <project> set-verify <member-id> "<cmd>"')
         raise typer.Exit(1)
@@ -512,12 +463,8 @@ def _pod_delegate(project: str, extra: list[str]) -> None:
 
 def _pod_queue(project: str, extra: list[str]) -> None:
     """Show the pod's task queue, or ``queue --retry <task-id>`` to un-block one task.
-
-    A ``blocked`` task (budget cap reached) never retries on its own —
-    ``--retry`` is the explicit, single-task way back to ``pending``; a pod-wide
-    budget change (``docket profile <lead-id> --budget ...``) un-blocks the
-    whole pod's queue instead.
-    """
+    A ``blocked`` task never retries on its own — ``--retry`` is the explicit,
+    single-task way back to ``pending``; a budget change un-blocks the whole queue."""
     if "--retry" in extra:
         i = extra.index("--retry")
         task_id = extra[i + 1] if i + 1 < len(extra) else ""
@@ -554,14 +501,9 @@ def _pod_queue(project: str, extra: list[str]) -> None:
 
 
 def _parse_dispatch_args(extra: list[str]) -> tuple[bool, int | None]:
-    """Parse ``[--resume] [--timeout SECONDS]`` for ``docket pod <p> dispatch``.
-
-    ``--timeout`` overrides *both* the agent-turn and the verifyCmd
-    timeout for this one invocation — a blanket ad hoc override, independent of
-    (and taking precedence over) the pod's own persisted Lead-meta
-    ``turnTimeoutS``/``verifyTimeoutS``. Raises ValueError on a non-positive or
-    non-integer value so the caller can render one consistent error message.
-    """
+    """Parse ``[--resume] [--timeout SECONDS]``. ``--timeout`` overrides both the
+    agent-turn and verifyCmd timeout, taking precedence over the pod's persisted
+    Lead-meta values. Raises ValueError on a non-positive/non-integer value."""
     resume = "--resume" in extra
     timeout: int | None = None
     if "--timeout" in extra:
@@ -577,25 +519,12 @@ def _pod_dispatch(
     project: str, extra: list[str], *, spec: _pipeline.PipelineSpec | None = None
 ) -> None:
     """Drive the pod's pending tasks through the pipeline (one real turn per hop).
-
-    ``--resume`` also reclaims tasks a prior dispatcher left ``failed`` with a
-    stale claim (it crashed mid-task) and continues each one from its last
-    persisted hop instead of restarting at hop 0 (crash recovery).
-    ``--timeout SECONDS`` overrides both the agent-turn and verifyCmd
-    timeout for this run only; unset, each falls back to the pod's own
-    Lead-meta ``turnTimeoutS``/``verifyTimeoutS``, then ``DEFAULT_TIMEOUT``.
-
-    This invocation is recorded in the run registry (source ``"cli"``)
-    like every other dispatch path — an exception here is no longer just a
-    traceback, it is also visible afterwards via ``docket runs show``.
-
-    *spec* — when given (by ``docket pipeline run``, the only other
-    caller) — is forwarded to ``dispatch_pod`` unchanged; ``None`` (every
-    ``docket pod <project> dispatch`` call) resolves the pod's default
-    Lead→Implementer→Reviewer→Tester pipeline. This is the one shared
-    implementation both CLI surfaces drive, so there is no second,
-    drift-prone copy of this rendering logic.
-    """
+    ``--resume``/``--timeout`` crash-recovery and override semantics: see
+    specs/functional/pod-dispatch.spec.md. Recorded in the run registry (source
+    ``"cli"``), so a failure is visible afterwards via ``docket runs show``. *spec*,
+    when given (by ``docket pipeline run``), is forwarded unchanged; ``None`` resolves
+    the pod's default pipeline — the one shared implementation both CLI surfaces
+    drive, so there is no second, drift-prone copy of this rendering logic."""
     from docket.core import runs as _runs
 
     try:
@@ -668,10 +597,8 @@ def _pod_dispatch(
 
 def _parse_add_args(extra: list[str]) -> tuple[str | None, int, str]:
     """Parse ``<role> [--count N | -n N] [--verify "<cmd>"]`` (or a trailing integer).
-
-    ``--verify`` (Implementer only; ignored with a warning for other roles) sets the
-    mechanical verification gate `dispatch.py` runs after the new member's hop.
-    """
+    ``--verify`` (Implementer only; warned-and-ignored otherwise) sets the mechanical
+    verification gate `dispatch.py` runs after the new member's hop."""
     role: str | None = None
     count = 1
     verify_cmd = ""
