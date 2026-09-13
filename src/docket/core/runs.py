@@ -102,11 +102,8 @@ class CancellationLifecycle:
 @dataclass(frozen=True, slots=True)
 class RunCancellationSignal:
     """Cross-process cancellation handle whose identity is the persisted run id.
-
-    Each call reads the authoritative run record; the object contains no local
-    event or cached cancellation state. Malformed lifecycle data fails closed:
-    readers stop, but no observation/stopped timestamp is fabricated.
-    """
+    Each call reads the authoritative run record -- no local/cached state.
+    Malformed lifecycle data fails closed: no timestamp is ever fabricated."""
 
     run_id: str
 
@@ -257,21 +254,14 @@ def create_run(
 ) -> dict[str, Any]:
     """Persist a new run record in ``queued`` state and return it.
 
-    *source* identifies what triggered the dispatch attempt
-    (``cli|webhook|schedule|sweep|mcp``); *project* is the pod being dispatched.
-    Called **before** any dispatch work starts, so a caller like the serve
-    webhook can hand the run id back to its own caller before the outcome is
-    known.
+    *source* is ``cli|webhook|schedule|sweep|mcp``; *project* is the pod
+    dispatched. Called before dispatch starts, so a caller (e.g. the serve
+    webhook) can hand back the run id before the outcome is known.
 
-    *variables* is the pipeline variable namespace this run was
-    resolved against — today, only the serve webhook populates it (a
-    payload's params, run through ``core.pipeline.resolve_variables`` against
-    the pod's effective pipeline before this run is even created); every
-    other source passes ``None`` and gets an empty ``{}``, so this field is
-    purely additive to the schema. Recording it here — not
-    just accepting it as a dispatch argument — is what lets ``docket runs
-    show <id>``/``GET /runs/<id>`` answer "what variables did this dispatch
-    actually see", since nothing else in the run's lifecycle persists them.
+    *variables* is the pipeline namespace this run resolved against (only
+    the serve webhook populates it; others get ``{}``). Recording it here,
+    not just accepting it, is what lets ``docket runs show``/``GET /runs``
+    answer what variables a dispatch actually saw.
     """
     if source not in _SOURCES:
         raise RunError(f"unknown run source: {source!r}")
@@ -402,11 +392,8 @@ def finish_run(
     error: str = "",
 ) -> None:
     """Mark a run terminal (including ``cancelled``). No-op if unknown.
-
-    *task_ids* — when given — replaces the record's task-id list (the tasks
-    this dispatch invocation actually touched); *error* is the exception text
-    for a ``failed`` run (empty for ``succeeded``).
-    """
+    *task_ids*, when given, replaces the record's task-id list; *error* is
+    the exception text for a ``failed`` run (empty for ``succeeded``)."""
     _finish_run_transition(run_id, state=state, task_ids=task_ids, error=error)
 
 
@@ -430,12 +417,8 @@ def list_runs(project: str | None = None) -> list[dict[str, Any]]:
 
 def current_run_id() -> str | None:
     """The run id this thread's :func:`execute` call is currently inside, if any.
-
-    Set only while ``execute()``'s *fn* is running, and propagated into a
-    parallel group's worker threads via ``contextvars.copy_context()`` (see
-    ``core.orchestrator.run_group``). ``None`` outside any run — e.g. a test
-    that calls ``dispatch_task`` directly, never through ``execute()``.
-    """
+    Set only while ``execute()``'s *fn* runs, propagated into a parallel
+    group's worker threads via ``contextvars.copy_context()``."""
     return _CURRENT_RUN_ID.get()
 
 
@@ -448,16 +431,10 @@ def current_cancellation_signal() -> RunCancellationSignal | None:
 def add_hop_pid(run_id: str, pid: int) -> None:
     """Record a newly-spawned hop subprocess's pid as in-flight for *run_id*.
 
-    A run's ``pids`` field is a *list*, not a scalar — a ``parallel``
-    pipeline step can have more than one hop genuinely in flight at once.
-    Called from a driver's ``run_turn``'s ``on_spawn`` hook via
-    ``core/dispatch.py``'s production-driver hop call site (never for an
-    injected test runner — see that module's ``dispatch_task``); the
-    production ``DocketDriver`` ignores ``on_spawn`` since
-    it backs onto no OS process for this to ever fire against, so this stays
-    reachable only through a driver that does spawn one. No-op if *run_id*
-    is unknown (e.g. a stale/racing caller).
-    """
+    ``pids`` is a *list*, not a scalar -- a ``parallel`` pipeline step can
+    have more than one hop in flight at once. Reached only through a driver
+    that spawns an OS process; the production ``DocketDriver`` ignores
+    ``on_spawn`` since it backs onto none. No-op if *run_id* is unknown."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         runs = _runs_list(doc)
@@ -476,11 +453,9 @@ def add_hop_pid(run_id: str, pid: int) -> None:
 
 
 def remove_hop_pid(run_id: str, pid: int) -> None:
-    """Clear a completed hop's pid from *run_id*'s in-flight list.
-
-    No-op if the pid (or the run) is already gone — a hop that finished
-    normally, or a run already cancelled, is a harmless race, not an error.
-    """
+    """Clear a completed hop's pid from *run_id*'s in-flight list. No-op if
+    the pid (or run) is already gone -- a finished hop or cancelled run is
+    a harmless race, not an error."""
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         runs = _runs_list(doc)
@@ -497,14 +472,12 @@ def remove_hop_pid(run_id: str, pid: int) -> None:
 
 
 def cancel_run(run_id: str) -> CancelOutcome:
-    """Cancel an in-flight dispatch run (``docket runs cancel <id>``).
-
-    One locked registry transition chooses request-versus-terminal winner,
-    captures and clears every in-flight pid, and persists the request before
-    any signalling. Queued work is fully stopped in that transition. Running
-    in-process work stays nonterminal until :func:`execute` returns. Repeated,
-    terminal, unknown, and malformed requests are stable no-ops.
-    """
+    """Cancel an in-flight dispatch run (``docket runs cancel <id>``). One
+    locked transition picks request-vs-terminal winner, captures and clears
+    every in-flight pid, and persists the request before signalling. Queued
+    work stops in that transition; running work stays nonterminal until
+    :func:`execute` returns. Repeated/terminal/unknown/malformed requests
+    are stable no-ops."""
     decision = "unknown"
     prior_state = ""
     project = ""
@@ -590,10 +563,8 @@ def cancel_run(run_id: str) -> CancelOutcome:
 
 def _emit_error_trace(project: str, run_id: str, source: str, error_text: str) -> None:
     """Best-effort ``error`` trace event for a failed dispatch invocation.
-
     Local import avoids a cycle with ``core/trace.py``; a trace failure must
-    never break run recording (mirrors ``core/approval.py``'s ``_emit_trace``).
-    """
+    never break run recording (mirrors ``core/approval.py``'s ``_emit_trace``)."""
     try:
         import json as _json
 
@@ -661,29 +632,21 @@ def _returned_failure_summary(failures: list[Any]) -> str:
 def execute(run_id: str, fn: Callable[[], list[Any]]) -> list[Any] | None:
     """Run *fn* (a zero-arg dispatch call) under an already-created run record.
 
-    Marks the record ``running``, invokes *fn*, and folds the outcome back in:
-    ``succeeded`` plus the task ids *fn*'s results expose (a duck-typed
-    ``task_id`` attribute — this is ``dispatch.TaskResult`` shaped, without
-    this module importing ``core/dispatch.py``), or ``failed`` plus a bounded
-    summary when any returned result exposes ``status="failed"``. A returned
-    ``status="cancelled"`` has higher precedence and terminalizes the run as
-    cancelled. Exceptions retain their exception text. Both failure paths emit
-    the same ``error`` trace event.
+    Marks ``running``, invokes *fn*, folds the outcome back: ``succeeded``
+    plus task ids from *fn*'s duck-typed ``task_id`` results, or ``failed``
+    plus a bounded summary when any result is ``status="failed"``; a
+    ``status="cancelled"`` result takes precedence and terminalizes as
+    cancelled. Exceptions keep their text. Both failure paths emit the same
+    ``error`` trace event.
 
-    Returns *fn*'s result list whenever *fn* returns normally, including when
-    that list makes the run outcome ``failed``. It returns ``None`` when the
-    run cannot be claimed or *fn* raises; this function itself never raises.
-    That is what lets every dispatch call site
-    (the webhook thread, the schedule thread, the sweep loop, the CLI) replace
-    a bare ``contextlib.suppress(Exception)`` with a real, queryable outcome
-    instead of one silently discarded.
+    Returns *fn*'s result list on normal return (even a ``failed`` one), or
+    ``None`` if the run cannot be claimed or *fn* raises -- this function
+    itself never raises, so every dispatch call site gets a real, queryable
+    outcome instead of a silently discarded exception.
 
-    Publishes ``run_id`` via ``current_run_id()`` for the duration of
-    *fn* (a ``contextvars.ContextVar``, so it is thread-local and safely
-    propagated into a parallel group's worker threads — see
-    ``core.orchestrator.run_group``), and never lets a normal completion
-    clobber a run with a concurrent persisted cancellation request back to
-    ``"succeeded"``/``"failed"``.
+    Publishes ``run_id`` via ``current_run_id()`` for *fn*'s duration
+    (thread-local, propagated into parallel worker threads), and never lets
+    a normal completion clobber a concurrent persisted cancellation request.
     """
     if not mark_running(run_id):
         return None

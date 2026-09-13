@@ -123,10 +123,8 @@ def _now_iso() -> str:
 
 def _stored_secret_values() -> list[str]:
     """Stored secret values longer than 8 chars (redact.sh's >8 filter).
-
     Best-effort: reads docket's own secrets store (``core/secrets.py``) and
-    returns [] on any error, so redaction never fails a trace write.
-    """
+    returns [] on any error, so redaction never fails a trace write."""
     try:
         from docket.core import secrets as _secrets
 
@@ -136,11 +134,9 @@ def _stored_secret_values() -> list[str]:
 
 
 def redact(text: str) -> str:
-    """Strip secret-shaped substrings from *text*.
-
-    Applies the always-on regex patterns, then redacts the exact VALUES
-    of any stored secrets (replaced after the regex pass).
-    """
+    """Strip secret-shaped substrings from *text*. Applies the always-on
+    regex patterns, then redacts the exact VALUES of any stored secrets
+    (replaced after the regex pass)."""
     if not text:
         return text
     for pat in _REDACT_PATTERNS:
@@ -207,14 +203,11 @@ def trace_event(
     cost_usd: float | str | None = None,
     duration_ms: int | str | None = None,
 ) -> TraceStatus:
-    """Validate, redact and append one trace event.
-
-    Returns ``"written"`` on a real append, ``"rejected"`` for an unknown
-    ``event_type``, or ``"suppressed"`` when DOCKET_NO_TRACE=1 no-ops the
-    write — three distinct outcomes a caller can tell apart, so a suppressed
-    write can never be mistaken for a real one. payload is parsed as JSON
-    when possible, else wrapped as ``{"text": payload}``.
-    """
+    """Validate, redact and append one trace event. Returns ``"written"`` on
+    a real append, ``"rejected"`` for an unknown ``event_type``, or
+    ``"suppressed"`` under DOCKET_NO_TRACE=1 -- three outcomes a caller can
+    tell apart, so a suppressed write is never mistaken for a real one.
+    payload is parsed as JSON when possible, else wrapped as ``{"text": ...}``."""
     if _cfg.no_trace():
         return "suppressed"
     if event_type not in EVENT_TYPES:
@@ -252,23 +245,16 @@ def trace_event(
 
 
 def trace_ingest(project: str) -> None:
-    """Idempotently project the active driver's session logs into the trace store.
-
-    Projects each turn into tool_call/tool_result events, offset-tracked
-    (.ingest-index.json) to avoid double-emit. Synthesises a session_end for
-    timed-out open sessions. No-ops when DOCKET_NO_TRACE=1 or the driver has no
-    sessions for *project*.
+    """Idempotently project the active driver's session logs into the trace
+    store: tool_call/tool_result events, offset-tracked
+    (.ingest-index.json) to avoid double-emit; synthesises a session_end for
+    timed-out open sessions. No-ops under DOCKET_NO_TRACE=1 or no sessions.
 
     All knowledge of the on-disk session-log format lives behind the
-    RuntimeDriver port, not here -- this function only ever sees the
-    driver's neutral ``SessionSummary``/``SessionSlice`` shapes and applies
-    docket's own trace-event policy (redaction elsewhere, timeout handling,
-    event vocabulary) on top. See core/runtime_driver.py.
-
-    Resolves ``edges.adapters.docket_runtime.default_driver()``
-    (``DocketDriver``, reading ``core/session.py``'s own storage) -- the same
-    driver ``core/dispatch.py``'s hop execution writes turns through, so
-    ingestion and hop execution always agree on where a session's turns live.
+    RuntimeDriver port, not here (see core/runtime_driver.py). Resolves
+    the same driver ``core/dispatch.py``'s hop execution writes turns
+    through, so ingestion and hop execution always agree on where a
+    session's turns live.
     """
     if _cfg.no_trace():
         return
@@ -391,10 +377,8 @@ def _write_index(index_file: Path, index: dict[str, int]) -> None:
 
 def sweep_all() -> None:
     """Coerce stale open traces to 'aborted' (called by docket serve).
-
-    Appends a synthetic session_end to any trace whose last event is older than
-    SESSION_TIMEOUT and has no session_end yet.
-    """
+    Appends a synthetic session_end to any trace whose last event is older
+    than SESSION_TIMEOUT and has no session_end yet."""
     traces_root = _cfg.TRACES_DIR
     if not traces_root.is_dir():
         return
@@ -446,10 +430,8 @@ class ExpiredTrace:
 
 @dataclass
 class TraceExpiryReport:
-    """Result of one ``expire_old_traces`` run -- always returned, never printed.
-
-    ``core/`` never prints; ``cli/_trace.py`` renders this.
-    """
+    """Result of one ``expire_old_traces`` run -- always returned, never
+    printed; ``core/`` never prints, ``cli/_trace.py`` renders this."""
 
     dry_run: bool
     retention_s: int
@@ -465,13 +447,9 @@ class TraceExpiryReport:
 
 
 def _prune_index(project_dir: Path, removed_session_ids: set[str]) -> None:
-    """Drop *removed_session_ids* from a project's ``.ingest-index.json``, if present.
-
-    Keeps the ingest offset index consistent with what expiry deleted -- an
-    index entry pointing at a deleted trace file is a bug, not a no-op: a
-    future ``trace_ingest`` would read a stale offset for a session_id that
-    can never be re-created (session_ids are not reused).
-    """
+    """Drop *removed_session_ids* from a project's ``.ingest-index.json``. A
+    stale entry is a bug, not a no-op -- session_ids are never reused, so a
+    future ``trace_ingest`` would read a wrong offset for one that can't recur."""
     index_file = project_dir / ".ingest-index.json"
     if not index_file.is_file():
         return
@@ -492,26 +470,19 @@ def expire_old_traces(
     dry_run: bool = False,
     project: str | None = None,
 ) -> TraceExpiryReport:
-    """Delete TERMINATED trace files whose last event is older than the retention window.
-
-    Reuses the same liveness reasoning as ``sweep_all``/``_has_session_end``:
-    a trace file is eligible for deletion only when it already has a
-    ``session_end`` event -- real, or the synthetic ``"aborted"`` one
-    ``sweep_all`` appends once a session has been idle past
-    ``SESSION_TIMEOUT``. A trace with **no** ``session_end`` is presumed to
-    belong to a session that may still be appending to it right now, and is
+    """Delete TERMINATED trace files whose last event is older than the
+    retention window. Eligible only when a trace already has a
+    ``session_end`` (real, or the synthetic ``"aborted"`` one ``sweep_all``
+    appends past ``SESSION_TIMEOUT``); a trace with no ``session_end`` is
     always kept regardless of age -- deleting a file a live turn is writing
-    to is the one failure mode this function must never produce. Callers
-    that want stale-but-open traces to become eligible should run
-    ``sweep_all()`` first (``docket serve``'s periodic sweep already does,
-    independently of this function).
+    to is the one failure mode this function must never produce. Run
+    ``sweep_all()`` first to make stale-but-open traces eligible (``docket
+    serve``'s periodic sweep already does).
 
-    *retention_s* defaults to ``config.TRACE_RETENTION_S``. *dry_run* reports
-    what would be deleted without deleting anything or touching any index.
-    *project* restricts the sweep to one project's trace directory.
-
-    Never touches ``audit.log`` -- audit is out of scope by design (see
-    ``core/audit.py``); this function only ever globs ``TRACES_DIR``.
+    *retention_s* defaults to ``config.TRACE_RETENTION_S``; *dry_run*
+    reports without deleting or touching any index; *project* restricts the
+    sweep to one project. Never touches ``audit.log`` -- out of scope by
+    design (see ``core/audit.py``); only ever globs ``TRACES_DIR``.
     """
     window = _cfg.TRACE_RETENTION_S if retention_s is None else retention_s
     traces_root = _cfg.TRACES_DIR
@@ -633,11 +604,9 @@ def latest_trace_file(project: str) -> Path | None:
 
 
 def export_lines(project: str, since: str = "") -> list[str]:
-    """Return raw JSONL lines for *project*, optionally filtered to ts >= *since*.
-
-    Lines are concatenated across session files in sorted filename order;
-    a line with an unparseable ts is kept when a since filter is set.
-    """
+    """Return raw JSONL lines for *project*, optionally filtered to ts >=
+    *since*. Lines are concatenated across session files in sorted filename
+    order; a line with an unparseable ts is kept when a since filter is set."""
     pdir = _cfg.TRACES_DIR / project
     out: list[str] = []
     for tf in sorted(pdir.glob("*.jsonl")):
