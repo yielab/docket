@@ -1,32 +1,13 @@
-"""Pod provisioning — the create-a-pod side effects, UI-free.
+"""Pod provisioning: the create-a-pod side effects, UI-free.
 
-Split out of ``cli/_pod.py``/``cli/_agents.py``, which cannot both decide these
-outcomes *and* render around them in the same functions (``ui.success``/
-``ui.warn`` calls interleaved with workspace writes and fleet registration)
-once ``core/`` needs the same effectful path: ``core/`` may never import
-``ui.py`` or print (CLAUDE.md's layer rule), and ``POST /pods`` needs this
-same effectful path reachable from ``serve.py`` — which never imports
-``docket.cli`` — so the decisions and effects live here. ``cli/_pod.py``
-renders around this module's typed return values; ``docket add`` and
-``POST /pods`` both call ``provision_pod`` below, so the two surfaces cannot
-drift apart.
+Split out of ``cli/_pod.py``/``cli/_agents.py``: ``core/`` must never import
+``ui.py`` or print, and ``POST /pods`` (``serve.py``) needs the same effectful
+path ``docket add`` uses, so both callers of ``provision_pod`` share this file.
+Kept separate from ``core/provisioning.py``, whose docstring promises pure,
+I/O-free UX helpers -- nearly everything here writes files and shells to git.
 
-This is deliberately its own module rather than an extension of
-``core/provisioning.py``: that module is documented as small, pure UX helpers
-(slug/name/stack suggestions, no I/O) for the interactive prompt flow. Nearly
-everything here is the opposite — it creates directories, writes files,
-registers fleet entries and shells out to git — so folding it into a "pure
-helpers" module would make that file's own docstring false the moment this
-one landed.
-
-**Rollback.** ``provision_pod``/``provision_members`` provision a pod
-member-by-member (Lead first). If any member after the first fails, every
-member already created during *this* call — its workspace directory and its
-fleet registration — is torn down, and any pod-level resources (port range,
-scratch dir) allocated for this attempt are freed, before ``PodProvisionError``
-is raised. A half-created pod is worse than no pod: the HTTP caller (Tack)
-rolls back its own project record on a non-2xx response and has no way to roll
-back a half-created pod on docket's side for us.
+Rollback contract: see specs/data/serve-read-api.spec.md (POST /pods) and
+specs/data/docket-meta.spec.md (attempt-owned resources).
 """
 
 from __future__ import annotations
@@ -70,18 +51,13 @@ class VerifyCmdError(ValueError):
 class PodAlreadyExistsError(Exception):
     """``project`` already has at least one registered pod member.
 
-    Matches the declarative ``--from`` path's long-standing idempotence
-    contract: skip, don't clobber. Raised before anything is touched.
-    """
+    Idempotence contract: skip, don't clobber. Raised before anything is touched."""
 
 
 class PodProvisionError(Exception):
     """A fresh pod failed to fully provision.
 
-    Raised only *after* rollback has already run — no member workspace,
-    fleet registration, or pod-level resource (port range / scratch dir)
-    created during the failing call survives.
-    """
+    Raised only after rollback removes every member/resource the failing call created."""
 
 
 @dataclass(frozen=True)
@@ -106,16 +82,13 @@ class PodProvisionResult:
 def validate_verify_cmd(cmd: str) -> str:
     """Validate a verify command before it is persisted to ``.docket-meta.json``.
 
-    Trust boundary: docket keeps ``run_verify_cmd``'s ``shell=True`` (verify
-    commands need `&&`/pipes) because this string is **operator-owned** — it only
-    ever reaches docket through an interactive `set-verify`/`--verify` CLI
-    invocation (or the equivalent `POST /pods` field) the operator
-    supplied directly, never from agent or network-untrusted input, and docket
-    executes it as the operator when the pipeline later runs it. This validation
-    only rejects control-character injection and bounds length; it does not
-    sandbox, parse, or otherwise interpret the command (that's the Docker
-    isolation lane, out of scope here).
-    """
+    Trust boundary: ``run_verify_cmd`` keeps ``shell=True`` (a real verify
+    pipeline needs ``&&``/pipes) because this string is operator-owned -- it
+    only reaches docket via an interactive `set-verify`/`--verify` call (or the
+    equivalent `POST /pods` field) and runs as the operator, never as agent or
+    network-untrusted input. This only rejects control-character injection and
+    bounds length; it does not sandbox, parse, or interpret the command (that's
+    the Docker isolation lane)."""
     if "\x00" in cmd:
         raise VerifyCmdError("verify command must not contain a NUL byte")
     if "\n" in cmd or "\r" in cmd:
@@ -130,12 +103,7 @@ def validate_verify_cmd(cmd: str) -> str:
 def parse_budget_usd(raw: object) -> float | None:
     """Parse a ``budgetUsd``/``budget`` override from spec or HTTP input.
 
-    Accepts a number or a numeric string. ``None``, ``""``, ``"0"``, a
-    non-numeric string, or a value <= 0 all mean "no override" (fall back to
-    the blueprint's own default) — matching the declarative ``--from`` path's
-    long-standing ``if budget and budget != "0"`` guard, generalized to also
-    accept a bare JSON number the way an HTTP body naturally carries one.
-    """
+    Non-positive, ``None``, empty, or non-numeric input all mean "no override"."""
     if raw is None or isinstance(raw, bool):
         return None
     if isinstance(raw, (int, float)):
@@ -165,10 +133,7 @@ def worktree_branch(project: str, member_id: str) -> str:
 def provision_worktree(member: pod.PodMember, project: str, codebase: str) -> tuple[str, str]:
     """Try to provision a git worktree for a repo Implementer.
 
-    Returns ``(worktree_dir, fallback_reason)``. On success ``worktree_dir``
-    is set and ``fallback_reason`` is ''. On failure ``worktree_dir`` is ''
-    and ``fallback_reason`` explains why the flat-dir fallback was used.
-    """
+    Empty ``fallback_reason`` means success; on failure ``worktree_dir`` is empty too."""
     if not codebase:
         return "", ""  # no codebase — worktrees do not apply
     if member.role != "implementer":
@@ -196,18 +161,7 @@ def _render_context(
 ) -> dict[str, str]:
     """Template variables for a pod member's SOUL.md/AGENTS.md archetype.
 
-    Guaranteed, cross-archetype variables: ``project``, ``objective``,
-    ``codebase``, ``workDir`` (always populated, safe for a user-authored
-    archetype to reference). The rest
-    (``memberId``/``sessionKey``/``role``/``stack``/``codebaseOrConfigured``/
-    ``codebaseOrIt``/``requiredStartupFile``) are additional context docket's
-    own built-in/starter archetypes rely on for exact legacy prose parity.
-
-    ``work_dir``: the shared working directory for a `workdir`-kind pod
-    blueprint (research/content/ops) — mutually exclusive with ``codebase``.
-    Empty for every `codebase`-kind (including `software`) pod, so ``workDir``
-    falls back to ``codebase`` (or the workspace dir) as usual.
-    """
+    Guaranteed set: role-archetypes.spec.md; work_dir excludes codebase (pod-blueprints.spec.md)."""
     return {
         "project": project,
         "role": member.role,
@@ -234,11 +188,7 @@ def _member_soul(
 ) -> str:
     """Render a pod member's SOUL.md from its archetype's `soulTemplate`.
 
-    Byte-identical to the legacy hand-written per-role generator for the four
-    built-in roles (lead/implementer/reviewer/tester) — see
-    `tests/integration/test_archetypes.py`. No role-specific branching lives
-    here; the prose is data in `core/archetypes.py`.
-    """
+    Byte-identical to legacy output (role-archetypes.spec.md); no role-specific branching."""
     arch = _arch.load_registry().get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
@@ -255,12 +205,9 @@ def _member_tools(
     scratch_dir: str,
     verify_cmd: str = "",
 ) -> str:
-    """TOOLS.md for an Implementer — includes allocated runtime resources.
+    """TOOLS.md for an Implementer -- includes allocated runtime resources.
 
-    ``verify_cmd``, when set, is the mechanical gate ``dispatch.py`` runs after this
-    Implementer's hop — surfaced here so the agent can see what its work
-    must pass before signaling done.
-    """
+    ``verify_cmd`` (set) is dispatch.py's post-hop gate the agent must pass."""
     port_end = port_range_start + port_range_count - 1
     lines = [
         f"# TOOLS.md — {project} · {role}",
@@ -300,12 +247,7 @@ def _member_tools(
 def _member_agents(member: pod.PodMember, project: str) -> str:
     """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`.
 
-    Byte-identical to the legacy hand-written generator for the four built-in
-    roles. Section names matter to the live prompt projection: ``Session
-    Startup`` belongs only to the manual/reset file and is omitted after the
-    runtime has loaded private state, while ``Red Lines`` and custom H2 blocks
-    remain model-visible (see `core.identity.system_prompt_for_agent`).
-    """
+    Byte-identical (role-archetypes.spec.md); section-projection rule: agent-loop.spec.md req 30."""
     arch = _arch.load_registry().get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
@@ -451,22 +393,14 @@ def provision_member(
 ) -> tuple[bool, str, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
 
-    Returns ``(ok, message, worktree_fallback_reason)`` — the caller renders
-    ``worktree_fallback_reason`` (never empty except on the happy path with no
-    fallback) rather than this module printing it directly.
+    Returns ``(ok, message, worktree_fallback_reason)``; the caller renders the
+    fallback reason (empty except on the happy path) instead of this module
+    printing it. Does not restart the gateway -- the caller batches one restart
+    per command. Implementers get a git worktree on a dedicated branch, falling
+    back to the flat workspace when git is unavailable.
 
-    Does NOT restart the gateway — the caller batches one restart per command.
-    For repo pods, Implementers get a git worktree on a dedicated branch.
-    Falls back to the flat docket workspace if git is unavailable or the
-    codebase is not a git repo. ``verify_cmd`` (Implementer only) is the
-    mechanical gate `dispatch.py` runs after this member's hop.
-
-    ``work_dir``/``blueprint_name``/``budget_usd``: a `workdir`-kind pod
-    blueprint's shared working directory, the name of the blueprint that
-    provisioned this member, and a default per-pod budget cap applied to the
-    Lead only — all no-ops (and no new meta keys) when unset, which is every
-    non-blueprint caller.
-    """
+    ``work_dir``/``blueprint_name``/``budget_usd`` are all no-ops (no new meta
+    keys) when unset, which is every non-blueprint caller."""
     worktree_dir, fallback_reason = provision_worktree(member, project, codebase)
     _write_member_workspace(
         member,
@@ -494,10 +428,7 @@ def provision_member(
 def _project_provision_lock(project: str) -> Iterator[None]:
     """Serialize one project's provisioning lifecycle without coupling projects.
 
-    This lock deliberately lives outside ``PODS_DIR / project``: rollback
-    removes that runtime directory, and deleting a held lock file would allow
-    another process to create a new lock and enter concurrently.
-    """
+    Lives outside ``PODS_DIR / project`` since rollback deletes it; an inside lock would relock."""
     lock_dir = _cfg.WORKSPACES_DIR / ".pod-provision-locks" / project.encode().hex()
     lock_dir.mkdir(parents=True, exist_ok=True)
     with _store.with_lock(lock_dir / ".provision"):
@@ -528,12 +459,7 @@ def _allocate_pod_resources(project: str) -> tuple[int, int, str, bool, bool]:
 def allocate_pod_resources(project: str) -> tuple[int, int, str]:
     """Allocate (or return existing) port range + scratch dir for *project*.
 
-    Returns ``(portRangeStart, portRangeCount, scratchDirPath)``.
-    Writes the updated port-allocation table atomically via store.py.
-    Creates the scratch dir (0700) if it does not exist.
-
-    Idempotent: re-calling for the same project returns the same values.
-    """
+    Returns (start, count, scratchDirPath); idempotent (specs/data/docket-meta.spec.md)."""
     start, count, scratch, _allocation_created, _scratch_created = _allocate_pod_resources(project)
     return start, count, str(scratch)
 
@@ -575,10 +501,7 @@ def _free_pod_resources(project: str) -> None:
 def free_pod_resources(project: str) -> None:
     """Release the port range and remove the scratch dir for *project*.
 
-    Called by explicit pod teardown paths (docket delete / docket pod remove
-    last-implementer). Idempotent: safe to call even if no resources were
-    allocated. Failed provisioning uses attempt-owned cleanup instead.
-    """
+    Idempotent; explicit teardown only -- failed provisioning self-cleans (module docstring)."""
     with _project_provision_lock(project):
         _free_pod_resources(project)
 
@@ -586,11 +509,7 @@ def free_pod_resources(project: str) -> None:
 def purge_pod_history(project: str, member_ids: list[str]) -> None:
     """Remove durable sessions and traces owned by a deleted pod.
 
-    Session directory names are percent-encoded opaque keys. A pod can own
-    project-wide keys (``agent:<project>:...``) and step-scoped member keys
-    (``agent:<member>:<project>:...``), so both exact prefixes are removed.
-    The audit log is deliberately untouched: deletion must leave evidence.
-    """
+    Removes project-wide and member-scoped key prefixes; audit log stays untouched (evidence)."""
     prefixes = (f"agent:{project}:", *(f"agent:{member_id}:" for member_id in member_ids))
     if _cfg.SESSIONS_DIR.is_dir():
         for entry in _cfg.SESSIONS_DIR.iterdir():
@@ -607,10 +526,7 @@ def purge_pod_history(project: str, member_ids: list[str]) -> None:
 def teardown_member(member_id: str) -> tuple[bool, str]:
     """Remove one pod member: fleet registration + workspace.
 
-    Does NOT free pod resources — the caller is responsible for that when it
-    knows the full pod is being torn down or the last implementer is leaving.
-    If the member has a git worktree, it is removed before the workspace dir.
-    """
+    Does not free pod resources (caller's job); worktree removed before workspace dir."""
     # Remove the git worktree first (before the workspace dir disappears).
     ws = _cfg.PROJECTS_DIR / member_id
     try:
@@ -647,16 +563,11 @@ def provision_members(
 ) -> list[ProvisionedMember]:
     """Provision a fresh pod's members from an already-resolved role list.
 
-    The blueprint-agnostic primitive: given a roster, allocate pod-level
-    runtime resources (port range + scratch dir, only when the roster
-    contains an Implementer) and provision each member in order (Lead
-    first). ``verify_cmd`` (validated by the caller), when set, is applied to
-    Implementer members only.
-
-    Raises ``PodProvisionError`` if any member fails to provision — with
-    every member already created during *this* call, and any pod-level
-    resources allocated for it, rolled back first (see module docstring).
-    """
+    Blueprint-agnostic primitive: allocates pod-level resources (port range +
+    scratch dir, only when the roster has an Implementer), provisions each
+    member in order (Lead first), and applies ``verify_cmd`` to Implementers
+    only. Raises ``PodProvisionError`` with full rollback on failure -- see
+    module docstring."""
     role_models, _, _ = _mp.load_registry()
     members = pod.plan_pod(project, roles, project_key=project_key, role_models=role_models)
 
@@ -736,31 +647,13 @@ def provision_pod(
 ) -> PodProvisionResult:
     """Provision a fresh pod from a blueprint.
 
-    The one code path both ``docket add`` (interactive and ``--from``) and
-    ``POST /pods`` call — see module docstring. ``location`` is interpreted
-    per the blueprint's ``workspace_kind``: a `codebase` blueprint (e.g.
-    `software`) treats it as the pod's codebase path; a `workdir` blueprint
-    treats it as the pod's shared working directory, auto-provisioning one
-    under ``config.pod_work_dir(project)`` (0700) when ``location`` is empty.
-
-    ``roles``, when given, overrides the blueprint's own roster (e.g.
-    `docket add`'s ``--pod full``/``--with`` flags, or `POST /pods`'s ``pod``
-    field, extending `software`'s lean default) while still applying the
-    blueprint's workspace kind, default budget, and name stamp.
-
-    ``budget_usd``, when given, overrides the blueprint's own default budget
-    cap (applied to the Lead only). ``verify_cmd``, when given, is validated
-    (``VerifyCmdError``) and applied to Implementer member(s) at creation time
-    — the same ``provision_member``/``_write_member_workspace`` parameter
-    ``docket pod <p> add --verify``/``set-verify`` already use post-hoc,
-    threaded through initial provisioning instead. ``source`` is the
-    ``agent.add`` audit entry's ``source=`` field (``"interactive"``,
-    ``"declarative"``, or ``"http"``).
+    The one code path `docket add` and `POST /pods` both call. See
+    specs/data/serve-read-api.spec.md (POST /pods) for the full
+    ``location``/``roles``/``budget_usd``/``verify_cmd``/``source`` contract.
 
     Raises:
-      ``PodAlreadyExistsError`` -- ``project`` already has a registered pod
-        member. Checked first, before anything (including the blueprint name)
-        is resolved.
+      ``PodAlreadyExistsError`` -- pod already exists; checked before anything
+        else is resolved.
       ``core.blueprints.BlueprintError`` -- unknown blueprint name.
       ``VerifyCmdError`` -- ``verify_cmd`` fails validation.
       ``PodProvisionError`` -- a member failed to provision after rollback.
