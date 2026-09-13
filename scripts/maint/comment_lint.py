@@ -2,7 +2,7 @@
 """Report (and optionally remove) archaeology in comments and docstrings.
 
 Archaeology is text that describes *when* or *from where* code arrived rather than *why* it is
-shaped the way it is: card ids, phase numbers, dates, "previously", "renamed from", and so on.
+shaped the way it is: card ids, phase numbers, dates, and retrospective phrasing.
 Rationale words ("because", "so that", "otherwise", "must", "never") mark a comment as
 load-bearing; those lines are only ever reported, never removed.
 

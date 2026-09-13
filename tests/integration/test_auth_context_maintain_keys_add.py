@@ -8,6 +8,7 @@ fleet.json.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -522,18 +523,13 @@ class TestCmdAdd:
         assert "docket init" in (out + err)
         assert "--all" in (out + err)
 
-    def test_from_yaml_without_pyyaml_gives_error(self, tmp_path: Path) -> None:
+    def test_from_yaml_without_pyyaml_gives_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         home = _setup_bare(tmp_path)
         spec = tmp_path / "spec.yaml"
         spec.write_text("id: myagent\nname: My Agent\n")
-
-        # Try importing yaml — if PyYAML is installed this test won't test the error path
-        try:
-            import yaml  # noqa: F401
-
-            pytest.skip("PyYAML installed; cannot test missing-pyyaml error path")
-        except ImportError:
-            pass
+        monkeypatch.setitem(sys.modules, "yaml", None)
 
         rc, out, err = _run(["init", "--from", str(spec)], home)
         assert rc == 1

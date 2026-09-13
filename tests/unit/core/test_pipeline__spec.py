@@ -36,6 +36,8 @@ This suite tests the model and its validation only, not dispatch behavior.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from pydantic import ValidationError
 
@@ -705,12 +707,7 @@ class TestLoadPipeline:
         assert not result.ok
 
     def test_missing_pyyaml_gives_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        try:
-            import yaml  # noqa: F401
-
-            pytest.skip("PyYAML installed; cannot exercise the missing-PyYAML error path")
-        except ImportError:
-            pass
+        monkeypatch.setitem(sys.modules, "yaml", None)
         result = load_pipeline("name: p\nsteps:\n  - id: s1\n    role: lead\n")
         assert not result.ok
         assert any("pyyaml" in e.lower() for e in result.errors)
