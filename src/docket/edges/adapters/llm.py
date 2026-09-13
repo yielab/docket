@@ -38,6 +38,7 @@ from docket.core.llm import (
     ToolCall,
     ToolSpec,
 )
+from docket.core.provider import PROVIDER_CREDENTIAL_NAMES as _PROVIDER_CREDENTIAL_NAMES
 from docket.core.runtime_driver import FailureKind
 
 # Endpoints that return one of these are worth trying again: an overloaded or
@@ -52,14 +53,6 @@ _PROTOCOL_OVERHEAD_TOKENS = 16
 _HOSTED_GATEWAY_BASE_URLS: dict[str, str] = {
     "openrouter": "https://openrouter.ai/api/v1",
     "ai-gateway": "https://ai-gateway.vercel.sh/v1",
-}
-
-_PROVIDER_CREDENTIAL_NAMES: dict[str, tuple[str, ...]] = {
-    "anthropic": ("ANTHROPIC_API_KEY",),
-    "openai": ("OPENAI_API_KEY",),
-    "google": ("GOOGLE_AI_API_KEY",),
-    "openrouter": ("OPENROUTER_API_KEY",),
-    "ai-gateway": ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"),
 }
 
 
