@@ -132,9 +132,8 @@ class TestValidation:
 
 class TestPipelineGateFidelity:
     """Every gated step in a blueprint's default_pipeline matches its role's
-    own archetype gateContract.kind exactly — no separate 'default gates'
-    field to drift from the pipeline (see core/blueprints.py's docstring).
-    """
+    own archetype gateContract.kind exactly -- no separate 'default gates'
+    field to drift from the pipeline (see core/blueprints.py's docstring)."""
 
     _GATE_TYPE_FOR_KIND: ClassVar[dict[str, str]] = {
         "mechanical": "mechanical",
@@ -182,13 +181,9 @@ class TestPipelineGateFidelity:
 
 
 class TestAgenticProduct:
-    """`agentic-product` is a fifth row of data, not new machinery — same
-    `default_pipeline()` object `software` attaches, a
-    `codebase` workspace kind, and the one deliberate difference from
-    `software`: a full (Lead, Implementer, Reviewer, Tester) roster so the
-    Reviewer/Tester gates already present in `default_pipeline()` actually
-    engage at dispatch time instead of going unreached.
-    """
+    """`agentic-product` is a fifth row of data, not new machinery: same
+    `default_pipeline()` as `software`, a `codebase` workspace kind, and one
+    difference -- a full pod roster so the pipeline's Reviewer/Tester gates engage."""
 
     def test_roster_is_full_pod_roles(self) -> None:
         assert bp.get_blueprint("agentic-product").roles == _pod.FULL_POD_ROLES

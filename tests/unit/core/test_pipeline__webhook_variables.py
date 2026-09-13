@@ -1,19 +1,13 @@
 """Webhook params bound into pipeline variables.
 
-Two layers:
-
-  * ``core.pipeline.resolve_variables`` — the pure resolution function (unit
-    tests only, no server involved): caller-supplied values win over a
-    variable's ``default``, an undeclared key passes through unchanged, and a
-    ``required`` variable missing from both the caller and (by definition,
-    per ``Variable._check``) the spec's own default is a single
-    :class:`~docket.core.pipeline.VariableError` naming every missing name.
-  * ``POST /dispatch/<project>``'s JSON body is resolved against the pod's
-    effective pipeline via that same function before any run record is
-    created — a well-formed payload's values land on the run record's new
-    ``variables`` field (queryable via ``docket runs show``/``GET
-    /runs/<id>``); a malformed body or a missing required variable is
-    rejected with 400 *before* a run record is ever created.
+See specs/data/serve-read-api.spec.md for the ``variables`` field contract.
+Two layers: ``core.pipeline.resolve_variables`` (pure resolution: caller
+values win over a variable's ``default``, an undeclared key passes through,
+a missing ``required`` variable raises :class:`~docket.core.pipeline.
+VariableError` naming every missing name), and ``POST /dispatch/<project>``,
+whose JSON body is resolved against the pod's effective pipeline via that
+function before any run record is created -- a malformed body or missing
+required variable is rejected 400 before the run record exists.
 """
 
 from __future__ import annotations

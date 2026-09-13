@@ -1,17 +1,13 @@
 """Guard: no `contextlib.suppress(Exception)` wraps a dispatch call.
 
-A pod-dispatch call wrapped in a bare ``with contextlib.suppress(Exception):`` — in
-the webhook handler, the schedule-triggered dispatch, or either of the sweep loop's
-two blocks (driving every pod's queue, and the schedule check that triggers dispatch
-in turn) — discards the exception with no id, no record, no trace of what happened.
+A pod-dispatch call wrapped in a bare
+``with contextlib.suppress(Exception):`` discards the exception with no
+id, no record, no trace of what happened.
 
-This is a "grep-pinned" regression test (sibling in
-spirit to ``test_no_subprocess_in_core.py``'s AST-based guard): it scans
-``serve.py`` for every ``with contextlib.suppress(Exception):`` block and
-fails if any of them still mentions dispatch in its body. ``trace.sweep_all()``
-and ``approval.approval_sweep_expired()`` are unrelated sweeps and are
-intentionally left alone — this guard is scoped to banning suppression
-around dispatch specifically.
+Grep-pinned regression test: scans ``serve.py`` for every such block and
+fails if any still mentions dispatch in its body. ``trace.sweep_all()``
+and ``approval.approval_sweep_expired()`` are unrelated sweeps left alone
+on purpose -- this guard is scoped to dispatch specifically.
 """
 
 from __future__ import annotations

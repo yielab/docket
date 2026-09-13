@@ -1,20 +1,14 @@
 """Guard: no hardcoded Telegram chat IDs in tracked files (they stay dynamic).
 
-Telegram group/chat IDs are runtime data — they live only in docket's own
-``fleet.json`` bindings (``core/fleet.py``). A real ID once slipped into a
-test fixture and was published to the public repo; this scan makes that
-impossible to repeat silently.
+Telegram group/chat IDs are runtime data -- they live only in docket's own
+``fleet.json`` bindings (``core/fleet.py``); a real ID leaking into a
+tracked file must fail CI, not slip into the public repo silently.
 
-Rules:
-- ``src/`` must contain **no** Telegram-ID-shaped literal at all (the code reads
-  IDs dynamically — nothing is hardcoded).
-- Any other tracked file may use only a small allowlist of **obviously-synthetic**
-  placeholders (:data:`SANCTIONED_FAKE_IDS`). A new placeholder must be added here
-  consciously, so a *real* ID — which will never match the allowlist — fails CI.
-
-Scans **tracked** files only (``git ls-files``), so gitignored analysis notes that
-legitimately reference real IDs are out of scope. Sibling of
-``test_no_ui_in_core_edges.py`` / ``test_no_subprocess_in_core.py``.
+Rules: ``src/`` must contain **no** Telegram-ID-shaped literal at all
+(IDs are read dynamically); any other tracked file may use only a small
+allowlist of **obviously-synthetic** placeholders
+(:data:`SANCTIONED_FAKE_IDS`), added consciously, so a *real* ID never
+matches and always fails CI. Scans **tracked** files only.
 """
 
 from __future__ import annotations

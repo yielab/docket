@@ -1,18 +1,13 @@
 """Guard: core/ and edges/ must never call print() directly.
 
-``core/dispatch.py`` once had ``print(f"[dispatch] verification skipped...")``
-— a layering violation of the standing rule (CLAUDE.md, ROADMAP §4.5) that
-``core/``/``edges/`` never print or import ``docket.ui``; only ``cli/``
-renders output. That call is now a typed ``HopResult.verification_skipped``
-flag plus a trace event, rendered by ``cli/_pod.py``. This is an AST-based
-guard (sibling of ``test_no_ui_in_core_edges.py``'s no-``ui``-import
-check and ``test_no_subprocess_in_core.py``'s no-shell-out check) so a
-bare ``print()`` can never quietly regress back into either layer.
+``core/``/``edges/`` must never print or import ``docket.ui``; only
+``cli/`` renders output, so a bare ``print()`` can never quietly regress
+back into either layer.
 
 AST-based rather than a plain text grep: a naive substring search for
-``"print("`` false-positives on identifiers merely ending in those letters
-(e.g. ``PodBlueprint(...)`` in ``core/blueprints.py`` contains the literal
-substring ``"eprint("``) — this walks real ``ast.Call`` nodes instead.
+``"print("`` false-positives on identifiers merely ending in those
+letters (e.g. ``PodBlueprint(...)`` contains ``"eprint("``) -- this walks
+real ``ast.Call`` nodes instead.
 """
 
 from __future__ import annotations

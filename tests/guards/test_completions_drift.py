@@ -2,14 +2,11 @@
 Typer command set.
 
 `_completions.py` generates the top-level command table from the Typer
-`app` registry at call time (see its module docstring): the old hand-written
-literal had drifted — it still advertised the retired `team`/`tier` commands
-after they were removed, and never learned `auth`/`policies`/`approve`/
-`deny`/`metrics`. These tests independently re-derive the "true" command set
-straight from the registry (not by importing `_completions`'s own helper) so
-this is a real regression check, not a tautology: any future drift between
-the CLI surface and the emitted completion scripts fails the suite instead
-of shipping silently.
+`app` registry at call time (see its module docstring). These tests
+independently re-derive the "true" command set straight from the registry
+(not by importing `_completions`'s own helper), so this is a real
+regression check, not a tautology: any future drift between the CLI
+surface and the emitted completion scripts fails the suite.
 """
 
 from __future__ import annotations
@@ -97,10 +94,9 @@ class TestRetiredCommandsNeverAdvertised:
     def test_eval_not_advertised_as_a_command(
         self, shell: str, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`docket eval` is not a command. Unlike `team`/`tier`, the bare substring
-        "eval" legitimately survives in the completion scripts' own `eval "$(docket
-        completions bash)"` install instructions, so this checks the *parsed command
-        set*, not the raw text."""
+        """`docket eval` is not a command. The bare substring "eval"
+        legitimately survives in the completion scripts' own install
+        instructions, so this checks the *parsed command set*, not raw text."""
         _completions.run_completions(shell)
         out = capsys.readouterr().out
         names = _parse_bash_commands(out) if shell == "bash" else _parse_zsh_commands(out)
@@ -136,20 +132,9 @@ class TestCommandsPresent:
 
 
 class TestSubcommandListsMatchTheImplementation:
-    """The *second-level* lists are hand-written, and nothing guarded them.
-
-    The tests above derive the top-level command table from the Typer registry,
-    which is why it stayed correct. The per-command subcommand cases in
-    `_completions.py` are literal strings maintained by hand, and they drifted
-    exactly as the top-level list once did: `pipeline`, `runs`, `conversations`,
-    `persona` and `audit` all shipped with subcommands and no case entry, so
-    they silently fell through to offering nothing.
-
-    This derives the truth from the *implementations* — the ``sub == "..."``
-    comparisons in each command module — and asserts the emitted scripts offer
-    them. Reading the implementation rather than a second hand-written list is
-    what makes this a regression check instead of a restatement.
-    """
+    """`_completions.py`'s hand-written subcommand lists are unguarded
+    unlike the top-level table; this derives truth from each command
+    module's own ``sub == "..."`` comparisons, so it is a regression check."""
 
     # Only modules whose file name maps 1:1 onto a command; `__init__.py` hosts
     # several commands at once, so its `sub ==` literals cannot be attributed.

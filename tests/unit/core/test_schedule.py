@@ -1,17 +1,12 @@
 """Cron-expression scheduling.
 
-``core/schedule.py`` also understands ``@every <N><unit>`` and a single daily
-``HH:MM``; this suite covers the "real cron spec" support beyond those: a
-standard 5-field ``minute hour dom month dow`` expression (``*``, a single
-integer, an ``a-b`` range, a ``/step`` on either, and comma lists of any of
-those), evaluated in UTC, numeric fields only (no ``JAN``/``MON`` name
-aliases — see ``core/schedule.py``'s module docstring for the deliberate
-scope cut). Stdlib-only, per ROADMAP §4.5's dependency ban.
-
-Covers ``parse_cron`` (the field parser + malformed-spec rejection) and
-``is_schedule_due``'s cron branch (fires once per matching minute, never
-twice for the same minute, and does not collide with the pre-existing
-``@every``/``HH:MM`` recognizers).
+Covers the standard 5-field ``minute hour dom month dow`` cron support
+beyond ``core/schedule.py``'s ``@every``/``HH:MM`` forms: ``*``, integers,
+``a-b`` ranges, ``/step``, and comma lists, evaluated in UTC, numeric
+fields only (no ``JAN``/``MON`` aliases -- see that module's docstring for
+the scope cut). Stdlib-only, per ROADMAP §4.5's dependency ban. Exercises
+``parse_cron`` and ``is_schedule_due``'s cron branch (fires once per
+matching minute, doesn't collide with ``@every``/``HH:MM``).
 """
 
 from __future__ import annotations

@@ -87,10 +87,9 @@ def _fake_mcp_loader(
     *,
     server_name: str = "fake",
 ) -> Any:
-    """A `DocketDriver.mcp_loader`-shaped fake: registers *tools* from one
-    fake server into whatever registry it's handed, exactly like the real
-    `load_mcp_tools` would for a server that answered instantly -- no
-    subprocess, no `mcp` SDK involved."""
+    """A `DocketDriver.mcp_loader`-shaped fake: registers *tools* into
+    whatever registry it's handed, like `load_mcp_tools` for a server that
+    answered instantly -- no subprocess, no `mcp` SDK involved."""
 
     def _loader(registry: ToolRegistry, role: str) -> list[_mt.McpServerLoadResult]:
         config = _mt.McpServerConfig(name=server_name, command="stub")
@@ -120,10 +119,9 @@ def _unreachable_mcp_loader() -> Any:
 
 
 def _malformed_mcp_loader() -> Any:
-    """Simulates a listing that decodes into garbage -- the raw SDK boundary
-    (`edges/adapters/mcp_client.py`) already catches this class of failure
-    broadly; this proves `load_mcp_tools` (and therefore the wired driver)
-    degrades the same way when the injected `list_tools` itself misbehaves."""
+    """Simulates a listing that decodes into garbage, proving `load_mcp_tools`
+    (and therefore the wired driver) degrades the same way the raw SDK
+    boundary does when the injected `list_tools` itself misbehaves."""
 
     def _loader(registry: ToolRegistry, role: str) -> list[_mt.McpServerLoadResult]:
         def _boom(_c: _mt.McpServerConfig, _t: float) -> _mt.McpListResult:
@@ -168,11 +166,9 @@ class TestDocketDriverCallsLoadMcpTools:
 
 
 class TestReviewerNeverGainsAWriteCapableMcpTool:
-    """The security invariant this whole card exists to protect. Every
-    adapted MCP tool is `kind="write"` (see `core/mcp_tools.py::_build_tool`),
-    so a naive wire that adds MCP tools without also excluding by kind would
-    hand a Reviewer a write-capable tool no name-based denylist could ever
-    catch (its name is `mcp__fake__danger_write`, not `write`)."""
+    """Every adapted MCP tool is `kind="write"` (`core/mcp_tools.py::_build_tool`),
+    so excluding by kind, not name, is required: a name-based denylist could
+    never catch `mcp__fake__danger_write` and would hand a Reviewer a write tool."""
 
     def test_reviewer_is_never_advertised_the_mcp_tool(self) -> None:
         _write_meta("rev-1", role="reviewer")

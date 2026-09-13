@@ -1,33 +1,12 @@
 """GET /traces/<project>?since=<cursor> — cursor'd raw trace read over HTTP.
 
-This route exists because "grep over JSONL is adequate" is true for a human
-operator but false for a programmatic consumer (Tack) that must resume a poll
-loop from a cursor without silently re-ingesting or silently skipping an event.
-Built entirely on `core.trace.export_lines(project, since)`: raw JSONL lines
-out, verbatim, one project, one cursor -- no fleet-wide query, no filtering by
-event type/role/session.
-
-`export_lines`' own `since` filter is `ts >= since` -- inclusive -- and `ts`
-is second-granularity (`%Y-%m-%dT%H:%M:%SZ`). A cursor that is just the last
-delivered line's raw ts would therefore either redeliver everything from
-that exact second (if reused verbatim) or silently drop later same-second
-events (if naively treated as exclusive). `serve._traces_page` compensates
-with a compound cursor -- see its docstring and the module-level comment
-above it in `src/docket/serve.py` -- and this file's `TestPollLoopBoundary`
-class is the test that actually proves it: N events (all but guaranteed to
-land in the same wall-clock second in a tight test loop) followed by M more,
-read via two polls, asserting the second poll yields exactly M with zero
-overlap.
-
-Covers:
-  - auth rejection (401)
-  - missing project segment -> 400 (both "/traces" and "/traces/")
-  - a project with no trace files -> 200, {"events": [], "next": ""}
-  - verbatim passthrough (the HTTP response's event strings round-trip
-    byte-for-byte through json.loads to the same dict export_lines produced)
-  - the poll-loop boundary: exactly-once delivery across a since cursor,
-    including the same-second collision case
-  - the cursor decoder accepting a bare caller-supplied timestamp too
+See specs/data/serve-read-api.spec.md ("GET /traces/<project>") for the
+cursor-semantics contract this suite pins -- why `serve._traces_page`
+uses a compound `"<ts>:<n>"` cursor, not a bare timestamp.
+`TestPollLoopBoundary` proves exactly-once delivery across a same-second
+boundary. Also covers: auth rejection, missing project segment -> 400, a
+project with no trace files -> 200 empty, verbatim passthrough, and the
+cursor decoder accepting a bare timestamp too.
 """
 
 from __future__ import annotations
@@ -248,11 +227,9 @@ class TestPollLoopBoundary:
     def test_boundary_holds_when_every_event_shares_one_second(
         self, live_server: tuple[str, str], traces_home: Path
     ) -> None:
-        """Directly targets export_lines' second-granularity ts: writes two
-        batches back to back with no delay, which routinely land in the same
-        wall-clock second, and proves the compound cursor still separates
-        them instead of collapsing to duplicate-everything or skip-everything.
-        """
+        """Two batches written back to back routinely land in the same
+        wall-clock second; the compound cursor must still separate them
+        instead of duplicating or skipping the second batch."""
         url, token = live_server
         for i in range(5):
             _trace.trace_event("demo", "sess-1", "lead", "tool_call", json.dumps({"i": i}))
@@ -309,16 +286,12 @@ class TestCursorDecoding:
         assert n == 0
 
     def test_bare_timestamp_without_the_trailing_z_keeps_its_seconds(self) -> None:
-        """A timestamp CONTAINS colons, so ":<digits>" alone cannot mean "count".
-
-        Without requiring the ts half to end in `Z`, `"...T00:00:42"` splits as
-        ts=`"...T00:00"` / n=42: the seconds are eaten as a skip count and the
-        cursor silently rewinds to the start of the minute, re-delivering
-        everything in it. Over-delivery rather than loss, but it breaks the
-        hand-supplied form `_decode_trace_cursor` documents as supported.
-        `core/trace.py`'s `_now_iso()` always writes the trailing `Z`, which is
-        what makes the two forms distinguishable at all.
-        """
+        """A timestamp CONTAINS colons, so ":<digits>" alone can't mean
+        "count": without requiring the ts half to end in `Z`,
+        `"...T00:00:42"` would split as ts=`"...T00:00"`/n=42, eating the
+        seconds as a skip count and over-delivering the whole minute.
+        `_now_iso()` always writes the trailing `Z`, which is what makes
+        the hand-supplied bare-timestamp form distinguishable at all."""
         ts, n = serve._decode_trace_cursor("2026-08-04T00:00:42")
         assert ts == "2026-08-04T00:00:42"
         assert n == 0
@@ -351,15 +324,12 @@ class TestTracesPageDirect:
 
 
 class TestMultipleSessionFiles:
-    """A real pod writes one trace file per dispatched task, so any project
-    with history has several.
-
-    ``export_lines`` concatenates them in **sorted filename order**, and a
-    session id is a uuid — so the concatenated stream is not chronological.
-    The cursor scheme anchors on the newest event in the page and counts the
-    events sharing that second; both are properties of the page's *contents*,
-    not of the order the files happened to be globbed in.
-    """
+    """A real pod writes one trace file per task, so a project with history
+    has several; ``export_lines`` concatenates them in sorted filename
+    order (a session id is a uuid), so the stream is not chronological.
+    The cursor scheme must anchor on the newest event in the page and
+    count events sharing that second -- properties of the page's
+    contents, not of file glob order."""
 
     def _write(self, session: str, i: int) -> None:
         _trace.trace_event("demo", session, "lead", "tool_call", json.dumps({"i": i}))

@@ -366,8 +366,7 @@ class TestChecks:
 
 def _seed_bare_specialist(home: Path, role: str = "security") -> Path:
     """A specialist workspace with only `.docket-meta.json` -- provisioning
-    must fill in the rest of the runtime contract, not just leave a bare
-    metadata file.
+    must fill in the rest of the runtime contract, not leave a bare file.
     """
     ws = home / "workspaces" / role
     ws.mkdir(parents=True)

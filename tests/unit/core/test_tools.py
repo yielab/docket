@@ -36,13 +36,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 @pytest.fixture(autouse=True)
 def _isolate_gates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`dispatch_tool` also consults `core/policy.py` and, on an `ask`
-    verdict, blocks on `core/approval.py`'s real store. Isolate both so this
-    file's tests (which don't care about the policy hook) never read a
-    developer's real ``~/.docket/policies``, and set the in-turn timeout to 0
-    so a gated call nothing ever grants resolves immediately (fail-closed to
-    denied) instead of really waiting.
-    """
+    """Isolate `core/policy.py` and `core/approval.py`'s real stores from a
+    developer's ``~/.docket``, and set the approval timeout to 0 so a gated
+    call nothing grants resolves immediately (fail-closed to denied)."""
     monkeypatch.setattr(_cfg, "POLICIES_DIR", tmp_path / "_policies", raising=True)
     monkeypatch.setattr(_cfg, "APPROVALS_DIR", tmp_path / "_approvals", raising=True)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)

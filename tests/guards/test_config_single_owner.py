@@ -1,24 +1,14 @@
 """Guard: config.py is the ONLY declaration site for an owned config constant.
 
-CLAUDE.md claims ``config.py`` holds "every path/constant" -- that was false
-in two ways before this card: ``METRICS_WINDOW`` was independently declared
-(with its own ``os.environ.get`` call and default literal) in both
-``config.py`` and ``cli/_metrics.py`` -- and ``config.py``'s copy had no
-reader, a knob advertised but dead. ``RUNAWAY_TURNS_THRESHOLD``,
-``RUNAWAY_COST_THRESHOLD`` and ``DOCKET_KEY_MAX_AGE_DAYS`` never reached
-``config.py`` at all: each was read straight from the environment, with its
-default literal repeated, at up to three separate use sites across
-``cli/_doctor.py`` and ``cli/_cost.py``. Changing a default correctly meant
-finding every copy by hand -- easy to miss one and ship two commands that
-silently disagree.
+A constant independently redeclared (its own ``os.environ.get``/default)
+at a second site means a changed default requires finding every copy by
+hand -- easy to miss one and ship two commands that silently disagree.
 
-This is an AST-based guard (sibling of ``test_no_print_in_core_edges.py``'s
-no-``print()`` check): it walks every module under ``src/docket/`` other
-than ``config.py`` itself and fails if any of them calls
-``os.environ.get``/``os.getenv`` with one of the env var names this file
-promises to own. AST-based rather than a text grep because a naive substring
-search on the env var name would also match it inside an unrelated string
-(a docstring, an error message) that is not a second declaration site.
+AST-based guard: walks every module under ``src/docket/`` other than
+``config.py`` and fails if any calls ``os.environ.get``/``os.getenv``
+with an env var name this file promises to own. AST-based rather than a
+text grep, since a substring search would also match the name inside an
+unrelated string (a docstring, an error message).
 """
 
 from __future__ import annotations
@@ -110,9 +100,7 @@ def test_no_module_outside_config_redeclares_an_owned_constant() -> None:
 
 def test_the_owned_set_matches_what_config_py_actually_declares() -> None:
     """The guard is only as good as its list -- pin it against config.py's
-    own source so a future rename of one of these constants cannot silently
-    stop being covered without a test noticing (same reasoning as
-    ``test_docket_home_isolation.py``'s equivalent check)."""
+    own source so a renamed constant cannot silently stop being covered."""
     tree = ast.parse(_CONFIG_FILE.read_text())
     declared: set[str] = set()
     for node in ast.walk(tree):

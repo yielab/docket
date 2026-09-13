@@ -28,10 +28,8 @@ SUBJECT = "docket.edges.adapters.fetch"
 
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate every docket-owned store this module touches, matching the
-    convention `test_pre_tool_call_policy.py` set for gate tests, and default
-    the fetch allowlist closed so each test opts a host in explicitly.
-    """
+    """Isolate every docket-owned store this module touches and default the
+    fetch allowlist closed so each test opts a host in explicitly."""
     repoint_docket_home(monkeypatch, tmp_path)
     monkeypatch.setattr(_cfg, "TOOL_APPROVAL_TIMEOUT", 0, raising=True)
     monkeypatch.setattr(_cfg, "FETCH_ALLOWED_DOMAINS", (), raising=True)

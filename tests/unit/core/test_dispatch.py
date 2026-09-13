@@ -1,32 +1,14 @@
 """POST /tasks/<project> — enqueue a task over HTTP.
 
-Before this, task creation was only reachable from the CLI
-(``docket pod <p> delegate``) and the MCP ``delegate`` tool; ``POST
-/dispatch/<project>`` only runs an *already-populated* queue. This suite pins
-the HTTP creation path added to close that gap:
-
-  * TestAuth               — Bearer-gated exactly like ``/dispatch/`` and
-    ``/runs``: 401 with no/wrong token, state never touched.
-  * TestBadRequests        — malformed JSON body, a non-object body, and a
-    missing/empty ``description`` are all 400 before ``enqueue_task`` is ever
-    called.
-  * TestMissingPod         — a project with no pod is 404, not 500 — the
-    ``DispatchError`` ``core.dispatch.enqueue_task`` raises for "no pod" is
-    distinguished from the policy-block ``DispatchError`` below by message.
-  * TestPolicyGates        — the ``pre_input`` gate behaves exactly as the
-    CLI path does, because this route calls the same ``enqueue_task``: a
-    ``block`` verdict is a 4xx naming the policy id and nothing is queued; a
-    ``require_approval`` verdict is a 200 that honestly reports
-    ``status: "waiting_approval"`` plus the real approval token, not a
-    response that pretends the task is ready to run.
-  * TestSuccess            — the happy path: task id, project and status
-    (``pending``) come back, and the task is really on the pod's queue.
-  * TestExecuteUnitDirectly — ``_execute_unit`` and two of its extracted
-    phases (``_gate_budget``, ``_gate_pre_hop_approval``), called directly
-    with a hand-built ``_UnitContext``/``PlannedUnit`` instead of through a
-    full ``dispatch_task`` run. This coverage could not exist while
-    ``_execute_unit`` was a closure nested inside ``dispatch_task`` — there
-    was no name to import it by.
+See specs/data/serve-read-api.spec.md ("POST /tasks/<project>") for the
+endpoint contract this suite pins. Test classes: TestAuth (Bearer-gated
+like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
+bodies are 400 before ``enqueue_task`` runs), TestMissingPod (no pod is
+404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
+path does, since this route calls the same ``enqueue_task``),
+TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+and two extracted phases, called directly with a hand-built
+``_UnitContext``/``PlannedUnit``).
 """
 
 from __future__ import annotations
@@ -285,10 +267,8 @@ class TestPolicyGates:
 
 class TestTrustedFlag:
     """core.policy._INJECTION_IDS ("prompt-injection") is skipped exactly when
-    trusted=True -- the same behaviour docket pod <p> delegate / the MCP
-    delegate tool already get, since enqueue_task's default (no `trusted` in
-    the request body) preserves trusted=True unchanged.
-    """
+    trusted=True -- matching the CLI/MCP callers, since enqueue_task's
+    default (no `trusted` in the request body) preserves trusted=True."""
 
     def test_omitted_trusted_defaults_to_the_cli_behaviour(
         self, live_server: tuple[str, str]
@@ -395,10 +375,9 @@ def _planned_unit(
 
 
 class TestExecuteUnitDirectly:
-    """Direct unit coverage of the lifted ``_execute_unit`` and two of its
-    extracted phase functions — reachable by name now that they are
-    module-level, not a closure only ``dispatch_task`` could call.
-    """
+    """Direct unit coverage of ``_execute_unit`` and two extracted phase
+    functions -- reachable by name since they are module-level, not a
+    closure only ``dispatch_task`` could call."""
 
     def test_gate_budget_blocks_before_any_hop_and_traces_it(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -454,9 +433,8 @@ class TestExecuteUnitDirectly:
 
     def test_execute_unit_runs_a_full_hop_and_advances(self, pod_home: Path) -> None:
         """A mechanical gate with no configured verifyCmd advances and marks
-        the hop ``verification_skipped`` — end to end through the lifted
-        function, with no ``dispatch_task`` loop involved at all.
-        """
+        the hop ``verification_skipped``, end to end, with no
+        ``dispatch_task`` loop involved."""
         persisted: list[_dispatch.HopResult] = []
 
         def _fake_run(

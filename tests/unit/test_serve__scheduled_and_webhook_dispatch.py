@@ -1,18 +1,14 @@
 """Scheduled & webhook-triggered dispatch.
 
-Acceptance criteria:
-  - A scheduled time fires a dispatch
-  - A webhook POST triggers a dispatch
-  - Unauthorized requests are rejected
-  - suite green
+Acceptance criteria: a scheduled time fires a dispatch, a webhook POST
+triggers a dispatch, unauthorized requests are rejected.
 
-The last-run bookkeeping ``TestCheckSchedules`` exercises is durable state
-persisted in the schedules file itself
-(``core.schedule.load_last_run``/``record_last_run``), not an in-memory
-``_serve._schedule_state`` dict — an in-memory dict resets on every ``docket
-serve`` restart, which was a real bug that made every schedule re-fire
-immediately after one. The dedicated restart-survival test lives here too;
-per-dispatch run-record coverage lives in ``test_dispatch_run_records.py``.
+The last-run bookkeeping ``TestCheckSchedules`` exercises must be durable
+state in the schedules file (``core.schedule.load_last_run``/
+``record_last_run``), never an in-memory ``_serve._schedule_state`` dict --
+an in-memory dict resets on restart and re-fires every schedule
+immediately. The restart-survival test lives here; per-dispatch run-record
+coverage lives in ``test_dispatch_run_records.py``.
 """
 
 from __future__ import annotations
@@ -260,10 +256,9 @@ class TestCheckSchedules:
     def test_last_run_recorded_durably_after_dispatch(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The last-run timestamp is written into the schedules FILE
-        (not an in-memory dict), so it is readable by a fresh
-        `load_last_run` call — the same read path a restarted `docket serve`
-        process would use."""
+        """The last-run timestamp is written into the schedules FILE, not an
+        in-memory dict, so a fresh `load_last_run` call reads it -- the
+        same path a restarted `docket serve` process uses."""
         schedule_file.write_text(
             json.dumps({"schedules": {"projC": "@every 1s"}}),
             encoding="utf-8",
@@ -293,12 +288,9 @@ class TestCheckSchedules:
     def test_restart_does_not_immediately_refire_a_recently_run_schedule(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The bug this closes: before durable state, every `docket serve`
-        restart reset last-run to 0.0 in memory, so every schedule looked
-        newly-due on the very first post-restart sweep. Simulate a restart by
-        calling `_check_schedules` again with nothing but the FILE as state
-        (no shared process memory) and confirm a just-run schedule stays
-        quiet."""
+        """A restart MUST NOT reset last-run to 0.0 and make every schedule
+        look newly-due. Simulates a restart via `_check_schedules` with
+        only the FILE as state (no shared process memory)."""
         schedule_file.write_text(
             json.dumps({"schedules": {"projD": "@every 3600s"}}),
             encoding="utf-8",
