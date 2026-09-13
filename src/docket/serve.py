@@ -1,23 +1,15 @@
 """Command: serve — local HTTP endpoints for dashboards / monitoring.
 
-Endpoint list, JSON/Prometheus schemas, and the auth model per endpoint:
-specs/data/serve-read-api.spec.md.
-
-Binds to 127.0.0.1 (loopback-only) by default; ``run_serve``'s ``bind`` can
-widen that, but nothing here recommends or automates it — treat any
-non-loopback bind as an explicit, on-you decision (there is no network ACL
-here, only the bearer token). A random Bearer token (``DOCKET_SERVE_TOKEN``
-pins a fixed one) gates every /approvals, /runs, /tasks, /traces, /pods and
-/dispatch request, checked with ``secrets.compare_digest`` (never ``==``);
-printed at startup or written to a 0600 file via ``--token-file``/
-``token_file=`` when stdout is not a safe place for it (e.g. a systemd
-journal).
-
-Every dispatch this module triggers is recorded in ``core.runs`` before it
-starts and folded to a terminal state when it finishes, so "done", "failed"
-and "never ran" stay distinguishable; no call site here swallows a dispatch
-exception silently.
-"""
+Endpoint list, JSON/Prometheus schemas, and the auth model per endpoint: see
+specs/data/serve-read-api.spec.md. Binds to 127.0.0.1 by default; ``run_serve``'s ``bind`` can
+widen that, but nothing here recommends or automates it -- treat any non-loopback bind as an
+explicit, on-you decision (no network ACL here, only the bearer token). A random Bearer token
+(``DOCKET_SERVE_TOKEN`` pins a fixed one) gates every /approvals, /runs, /tasks, /traces, /pods
+and /dispatch request, checked with ``secrets.compare_digest`` (never ``==``); printed at startup
+or written to a 0600 file via ``--token-file``/``token_file=`` when stdout is unsafe (e.g. a
+systemd journal).
+Every dispatch is recorded in ``core.runs`` before it starts and folded to a terminal state when it
+finishes, so "done"/"failed"/"never ran" stay distinguishable; no call site swallows it silently."""
 
 from __future__ import annotations
 
@@ -197,18 +189,15 @@ _APPROVAL_AUDIT_ACTIONS: dict[str, str] = {"approval.grant": "granted", "approva
 
 @dataclass
 class LoopMetrics:
-    """Guardrail + loop counters, aggregated fresh on every scrape -- never a
-    precomputed/cached value to keep in sync. Field-by-field Prometheus
-    mapping: specs/data/serve-read-api.spec.md (GET /metrics).
+    """Guardrail + loop counters, aggregated fresh on every scrape -- never a precomputed/cached
+    value to keep in sync. Field-by-field Prometheus mapping: specs/data/serve-read-api.spec.md
+    (GET /metrics).
 
-    ``tool_calls``/``policy_hits``/``approvals`` key on small, code-controlled
-    vocabularies (gate decision, hook+action pair, channel+outcome), so
-    merging multiple sources into one dict never grows unbounded.
-    ``turn_duration_seconds_sum``/``_count`` is a bare Prometheus summary pair
-    -- deliberately no invented percentiles; an operator gets the mean from
-    sum/count, the same per-project concept ``cli/_metrics.py`` computes,
-    just fleet-wide and unwindowed.
-    """
+    ``tool_calls``/``policy_hits``/``approvals`` key on small, code-controlled vocabularies (gate
+    decision, hook+action pair, channel+outcome), so merging multiple sources into one dict never
+    grows unbounded. ``turn_duration_seconds_sum``/``_count`` is a bare Prometheus summary pair --
+    deliberately no invented percentiles; an operator gets the mean from sum/count, the same
+    per-project concept ``cli/_metrics.py`` computes, just fleet-wide and unwindowed."""
 
     tool_calls: dict[str, int] = field(default_factory=dict)
     policy_hits: dict[tuple[str, str, str], int] = field(default_factory=dict)
@@ -426,15 +415,12 @@ def render_status() -> str:
 
 
 def _check_schedules(now_ts: float) -> None:
-    """Trigger dispatch for pods whose schedule spec is due (also recognizes a
-    standard 5-field cron expression, not just ``@every``/``HH:MM`` -- see
-    ``core/schedule.py``). The last-run timestamp that decides "due" is read
-    from, and written back into, ``cfg.SCHEDULE_FILE`` itself rather than an
-    in-memory dict, so a ``docket serve`` restart does not re-fire every
-    schedule on its first sweep. Each due project's run record is created
-    before its daemon-thread dispatch starts, so the sweep loop is never
-    blocked and no outcome is silently discarded.
-    """
+    """Trigger dispatch for pods whose schedule spec is due (also recognizes a standard 5-field
+    cron expression, not just ``@every``/``HH:MM`` -- see ``core/schedule.py``). The last-run
+    timestamp is read from, and written back into, ``cfg.SCHEDULE_FILE`` itself rather than an
+    in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
+    project's run record is created before its daemon-thread dispatch starts, so the sweep loop
+    is never blocked and no outcome is silently discarded."""
     from docket.core import dispatch as _dispatch
     from docket.core import runs as _runs
     from docket.core import schedule as _sched
@@ -467,22 +453,20 @@ def _check_schedules(now_ts: float) -> None:
 
 
 def _run_sweeps(dispatch: bool = False) -> None:
-    """Run the periodic sweeps once, each best-effort and independently
-    guarded so one failure never aborts the others or the server.
+    """Run the periodic sweeps once, each best-effort and independently guarded so one failure
+    never aborts the others or the server.
 
-    Coerces stale-open traces to aborted, deletes terminated traces past
-    TRACE_RETENTION_S, and expires pending approvals past APPROVAL_TIMEOUT.
-    Retention is measured from when a session ENDED, not last active: an
-    abandoned trace is terminated first and only then starts its retention
-    clock, so it survives a full window after the sweep notices it -- the
-    alternative would delete evidence of an abandoned session at the exact
-    moment an operator would go looking for it. ``audit.log`` is never swept:
-    telemetry is lossy by design, an audit log must not be.
+    Coerces stale-open traces to aborted, deletes terminated traces past TRACE_RETENTION_S, and
+    expires pending approvals past APPROVAL_TIMEOUT. Retention is measured from when a session
+    ENDED, not last active: an abandoned trace is terminated first and only then starts its
+    retention clock, so it survives a full window after the sweep notices it -- the alternative
+    would delete evidence of an abandoned session at the exact moment an operator would go
+    looking for it. ``audit.log`` is never swept: telemetry is lossy by design, an audit log must
+    not be.
 
-    When *dispatch* is set (opt-in, real budget-gated agent turns, never part
-    of the read-only monitor), also drains every dispatchable pod's queue
-    (one run record per pod, source ``"sweep"``) and checks due schedules.
-    """
+    When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
+    monitor), also drains every dispatchable pod's queue (one run record per pod, source
+    ``"sweep"``) and checks due schedules."""
     import time
 
     from docket.core import approval, trace
@@ -540,15 +524,12 @@ _TELEGRAM_ERROR_BACKOFF_S = 5
 def _telegram_poll_loop(stop: threading.Event) -> None:
     """Long-poll Telegram (one batch per call) until *stop* is set.
 
-    Paced by Telegram's own blocking `getUpdates` wait when a bot token is
-    configured and the previous call succeeded, so no extra sleep is needed
-    on the happy path. Backs off on an unconfigured bot (re-checked
-    periodically, in case a token is added while `docket serve` is up) or a
-    transport failure, so neither case busy-loops. A resolved-timeout
-    misconfiguration warning (`core.telegram._resolved_request_timeout`)
-    prints once, not every poll -- the underlying env var cannot change
-    without a restart.
-    """
+    Paced by Telegram's own blocking `getUpdates` wait when a bot token is configured and the
+    previous call succeeded, so no extra sleep is needed on the happy path. Backs off on an
+    unconfigured bot (re-checked periodically, in case a token is added while `docket serve` is
+    up) or a transport failure, so neither case busy-loops. A resolved-timeout misconfiguration
+    warning prints once, not every poll -- the underlying env var cannot change without a
+    restart."""
     from docket.core import telegram as _telegram
 
     printed_unconfigured = False
@@ -624,13 +605,11 @@ def _trace_line_ts(line: str) -> str:
 def _decode_trace_cursor(raw: str) -> tuple[str, int]:
     """Decode a `since` value into (ts, lines already delivered at ts).
 
-    Accepts both a minted `"<ts>:<n>"` cursor and a bare ISO timestamp a
-    caller supplies by hand (n=0). Requires the ts half to end in `Z` to tell
-    them apart: a timestamp CONTAINS colons, so a bare `"...T12:34:56"`'s own
-    trailing seconds would otherwise misparse as the digit count, silently
-    rewinding the cursor and re-delivering that minute. See
-    specs/data/serve-read-api.spec.md (cursor semantics).
-    """
+    Accepts both a minted `"<ts>:<n>"` cursor and a bare ISO timestamp a caller supplies by hand
+    (n=0). Requires the ts half to end in `Z` to tell them apart: a timestamp CONTAINS colons, so
+    a bare `"...T12:34:56"`'s own trailing seconds would otherwise misparse as the digit count,
+    silently rewinding the cursor and re-delivering that minute. See
+    specs/data/serve-read-api.spec.md (cursor semantics)."""
     if not raw:
         return "", 0
     ts, sep, tail = raw.rpartition(":")
@@ -640,17 +619,14 @@ def _decode_trace_cursor(raw: str) -> tuple[str, int]:
 
 
 def _traces_page(project: str, since: str) -> tuple[list[str], str]:
-    """One cursor'd page of *project*'s raw trace JSONL, delivered exactly
-    once (sorted by ts across session files, verbatim, unfiltered). Returns
-    (lines, next_cursor); cursor contract: specs/data/serve-read-api.spec.md
-    (GET /traces/<project>).
+    """One cursor'd page of *project*'s raw trace JSONL, delivered exactly once (sorted by ts
+    across session files, verbatim, unfiltered). Returns (lines, next_cursor); cursor contract:
+    specs/data/serve-read-api.spec.md (GET /traces/<project>).
 
-    A trailing line this module cannot key on (`_trace_line_ts` returns "")
-    is a pre-existing `export_lines` limitation, not fixed here: it is always
-    returned (nothing already-fetched is silently dropped), but the next
-    cursor anchors on the last line this function CAN key on, never on "" --
-    which would collapse the filter and replay the whole project's trace.
-    """
+    A trailing line this module cannot key on (`_trace_line_ts` returns "") is a pre-existing
+    `export_lines` limitation, not fixed here: it is always returned (nothing already-fetched is
+    silently dropped), but the next cursor anchors on the last line this function CAN key on,
+    never on "" -- which would collapse the filter and replay the whole project's trace."""
     cursor_ts, already = _decode_trace_cursor(since)
     # `export_lines` concatenates session files in sorted FILENAME order, and a
     # session id is a uuid -- so with more than one session (any project with
@@ -1145,15 +1121,12 @@ def run_serve(
 ) -> None:
     """Start the docket HTTP server (blocking) — public CLI entry point.
 
-    Binds to *bind* (default 127.0.0.1) on *port* (default 7331); runs
-    sweeps once at startup and then every *interval* seconds in a daemon
-    thread, until interrupted. ``telegram``, opt-in like ``dispatch``, starts
-    docket's own Telegram long-poll loop in a daemon thread, degrading to an
-    idle, periodically-retried wait rather than failing to start if no bot
-    token is configured (see ``core/telegram.py``). ``token_file`` writes the
-    bearer token to that path (0600) instead of stdout, for a context less
-    private than a terminal (e.g. a systemd journal).
-    """
+    Binds to *bind* (default 127.0.0.1) on *port* (default 7331); runs sweeps once at startup and
+    then every *interval* seconds in a daemon thread, until interrupted. ``telegram``, opt-in
+    like ``dispatch``, starts docket's own Telegram long-poll loop in a daemon thread, degrading
+    to an idle, periodically-retried wait rather than failing to start if no bot token is
+    configured. ``token_file`` writes the bearer token to that path (0600) instead of stdout, for
+    a context less private than a terminal (e.g. a systemd journal)."""
     actual_port = DEFAULT_PORT if port is None else port
 
     _token = os.environ.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)

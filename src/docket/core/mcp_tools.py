@@ -1,90 +1,15 @@
-"""MCP client: pluggable external tool servers, gated like a built-in.
-
-docket owns the loop, the tool registry, tool dispatch and every gate; MCP is
-only a tool *transport*, so it is the one thing rented -- docket stays the
-dispatcher, which is the entire point. This module adapts whatever tools a
-configured external MCP server advertises into ordinary ``core.tools.Tool``
-objects and registers them into a ``core.tools.ToolRegistry`` via its
-existing public API (``ToolRegistry.register``). Nothing here creates a
-second execution path: an adapted tool's handler is exactly the kind of
-``Callable[[dict, ToolContext], ToolOutcome]`` a built-in tool already has, so
-every call still passes through ``core.tools.dispatch_tool`` -- resolve, parse
-arguments, gate (command classifier + ``pre_tool_call`` policy), route ``ask``
-to the real approval store, execute, audit. There is no fast path: this module
-literally cannot bypass the chokepoint, because it never calls a handler
-itself.
-
-**Wired to the live turn path.** ``edges/adapters/docket_runtime.py``'s
-``DocketDriver.run_turn`` builds a registry from ``core.tools.
-builtin_registry()`` (via its ``registry_factory`` seam) and then calls
-:func:`load_mcp_tools` against it (via its ``mcp_loader`` seam) before
-handing the registry to ``core/agent_loop.py``'s ``run_agent_turn`` -- which
-still narrows by role exactly once, after MCP tools are folded in, so a
-role that denies ``write`` never sees a write-capable MCP tool either. See
-``core.archetypes.registry_for_role``'s docstring for the kind-based rule
-that makes that safe without a per-role branch: every adapted tool here
-registers ``kind="write"`` unconditionally (see :func:`_build_tool` below),
-so a role whose ``denied_tools`` implies kind ``write`` is denied loses every
-MCP tool along with ``write``/``edit`` -- not because of anything MCP-aware
-in the narrowing function, but because ``kind`` is the same data both paths
-already share. On an install with zero configured servers (the default),
-this whole path costs one cheap JSON read and changes nothing observable.
-
-## Namespacing (the collision rule)
-
-Every adapted tool is registered under ``mcp__<server>__<remote-tool-name>``
-(``NAMESPACE_PREFIX`` + the server's *locally configured* name -- never a name
-the remote server reports about itself, which would let a malicious server
-pick its own namespace). No built-in name (``read``/``write``/``edit``/``glob``/
-``grep``/``bash``) starts with ``mcp__``, so an adapted tool can **never**
-equal, and therefore never silently overwrite, a built-in registration --
-regardless of what a remote server calls its own tools. Two different
-configured servers can each expose a tool literally named e.g. ``search``
-without colliding either, because the server name is embedded in the
-namespace. The one remaining collision case -- the same namespaced name
-already present in the target registry (e.g. the same server config handed to
-:func:`load_mcp_tools` twice against one registry) -- is treated as a skip,
-not an overwrite: see the ``name in registry`` check in :func:`load_mcp_tools`.
-
-## Failure isolation
-
-:func:`load_mcp_tools` never raises. A server that cannot be reached, times
-out, or returns a malformed tool listing is skipped with its failure recorded
-in the returned report; it can never prevent another configured server's
-tools, or docket's own built-ins (already in the registry before this runs),
-from being available. Per-call bounding lives one layer down, in
-``edges/adapters/mcp_client.py`` (:data:`docket.config.MCP_CLIENT_TIMEOUT_S` /
-``MCP_CLIENT_MAX_TIMEOUT_S``) -- every connect/list/call is wrapped in a hard
-wall-clock timeout there, so a hung server degrades to "unavailable" instead of
-blocking a turn indefinitely.
-
-## Untrusted tool descriptions (a real decision, not a detail)
-
-A remote tool's name and description are attacker-controlled text that would
-otherwise land verbatim in a model's context on every turn the tool is
-advertised -- the same threat class docket's ``prompt-injection`` policy
-(``pre_input`` hook) already exists to catch for task text. :func:`load_mcp_tools`
-screens every remote tool's ``"<name>: <description>"`` through
-``core.policy.policy_eval_detail(role, "pre_input", text, trusted=False)``
-*before* it is ever registered:
-
-- ``block`` / ``require_approval`` -- refuse to register the tool at all, and
-  audit it. There is no per-tool human-approval channel comparable to
-  ``core.approval``'s token flow for a static piece of catalog text (unlike a
-  discrete tool *call*, nothing is "pending" here for a human to answer), so
-  the safe default folds ``require_approval`` into the same fail-closed
-  outcome as ``block`` -- the same choice ``dispatch_tool`` makes for
-  arguments it cannot parse: an unevaluated (or unapprovable) admission must
-  not happen.
-- ``warn`` / ``redact`` -- register the tool, but leave an audit trail, so a
-  merely-awkward description doesn't lose a legitimate tool while an operator
-  still sees it was flagged.
-- ``allow`` / no hit -- registers silently, matching ``dispatch_tool``'s own
-  "only a non-allow decision is worth a record" rule.
-
-This reuses the *evaluator* only; it does not touch ``core/policy.py`` or
-``core/tools.py``, and adds no new hook.
-"""
+"""MCP client: pluggable external tool servers, gated like a built-in. docket owns the loop, the tool
+registry, tool dispatch and every gate; MCP is only a tool *transport*, rented -- docket stays the
+dispatcher. This module adapts a configured server's tools into ordinary ``core.tools.Tool``
+objects, registered into a ``ToolRegistry`` so every call still passes through
+``core.tools.dispatch_tool``. **Wired to the live turn path**: ``DocketDriver.run_turn`` loads MCP
+tools before ``core/agent_loop.py``'s role-narrowing step; every adapted tool registers
+``kind="write"`` unconditionally (:func:`_build_tool`), so a role denied ``write`` loses every MCP
+tool too, since ``kind`` is shared narrowing data. See specs/functional/mcp-client.spec.md for the
+namespacing rule that makes a built-in collision structurally impossible, failure isolation
+(:func:`load_mcp_tools` never raises; a bad server is skipped and recorded, bounded by
+``MCP_CLIENT_TIMEOUT_S``), and untrusted-description screening through
+``core.policy.policy_eval_detail(role, "pre_input", ..., trusted=False)`` before registration."""
 
 from __future__ import annotations
 
@@ -136,11 +61,9 @@ _NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
 class McpServerConfig(BaseModel):
     """One configured external MCP tool server (stdio transport only, today).
 
-    ``name`` is chosen by the local operator at ``add_mcp_server`` time -- it
-    is what :func:`namespaced_tool_name` uses, never anything the remote
-    server itself reports (a remote server has no way to influence its own
-    namespace).
-    """
+    ``name`` is chosen by the local operator at ``add_mcp_server`` time -- it is what
+    :func:`namespaced_tool_name` uses, never anything the remote server itself reports (it has no
+    way to influence its own namespace)."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -157,9 +80,8 @@ class McpServerConfig(BaseModel):
         """The actual per-call bound this server's calls will honor.
 
         Never trusts a configured ``timeout`` outright: it is clamped to
-        :data:`docket.config.MCP_CLIENT_MAX_TIMEOUT_S` so one server's config
-        (careless or hostile) cannot buy itself an effectively unbounded wait.
-        """
+        :data:`docket.config.MCP_CLIENT_MAX_TIMEOUT_S` so one server's config (careless or
+        hostile) cannot buy itself an effectively unbounded wait."""
         requested = self.timeout if self.timeout > 0 else _cfg.MCP_CLIENT_TIMEOUT_S
         return min(requested, _cfg.MCP_CLIENT_MAX_TIMEOUT_S)
 
@@ -181,9 +103,8 @@ def load_mcp_servers() -> list[McpServerConfig]:
 def add_mcp_server(config: McpServerConfig) -> None:
     """Add one server config. Raises ``ValueError`` on a bad/duplicate name.
 
-    Lock-safe: uses ``edges/store.py``'s ``read_modify_write`` so two
-    concurrent ``add`` calls cannot race each other into losing an entry.
-    """
+    Lock-safe: uses ``edges/store.py``'s ``read_modify_write`` so two concurrent ``add`` calls
+    cannot race each other into losing an entry."""
     if not config.name:
         raise ValueError("MCP server name is required")
     if not _NAME_RE.fullmatch(config.name):
@@ -219,7 +140,8 @@ def remove_mcp_server(name: str) -> bool:
 
 
 def namespaced_tool_name(server_name: str, remote_tool_name: str) -> str:
-    """The name an adapted tool is registered under -- see "Namespacing" above."""
+    """The name an adapted tool is registered under -- see specs/functional/mcp-client.spec.md's
+    "Namespacing" section."""
     return f"{NAMESPACE_PREFIX}{server_name}__{remote_tool_name}"
 
 
@@ -269,11 +191,9 @@ def _default_call_tool() -> CallToolFn:
 
 
 def _screen_description(role: str, server_name: str, remote: McpRemoteTool) -> str | None:
-    """Run one remote tool's name+description through the `pre_input` policy
-    hook. Returns a skip reason if the tool must not be registered, else
-    ``None``. See the module docstring's "Untrusted tool descriptions" section
-    for the reasoning behind each action's handling.
-    """
+    """Run one remote tool's name+description through the `pre_input` policy hook. Returns a
+    skip reason if the tool must not be registered, else ``None``. See
+    specs/functional/mcp-client.spec.md's "Untrusted tool descriptions" section."""
     text = f"{remote.name}: {remote.description}"
     hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False)
     if hit.action in ("block", "require_approval"):
@@ -301,13 +221,10 @@ def _build_tool(
 ) -> Tool:
     """Adapt one remote tool into an ordinary ``core.tools.Tool``.
 
-    ``kind="write"`` always -- never ``"exec"``: `evaluate_tool_call` routes
-    ``exec``-kind tools through the shell-command classifier, which reads
-    ``args["command"]`` and would not find one here. `write` still passes
-    through the full `pre_tool_call` policy gate (`evaluate_tool_call` gates
-    every kind); it is simply not additionally classified as a shell command,
-    which is correct -- an MCP tool call is not a shell command.
-    """
+    ``kind="write"`` always -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
+    through the shell-command classifier, which reads ``args["command"]`` and would not find one
+    here. `write` still passes through the full `pre_tool_call` policy gate; it is simply not
+    additionally classified as a shell command, which is correct -- an MCP tool call is not one."""
     parameters = remote.parameters
     if not isinstance(parameters, dict) or parameters.get("type") != "object":
         parameters = {"type": "object", "properties": {}, "required": []}
@@ -355,23 +272,18 @@ def load_mcp_tools(
     call_tool: CallToolFn | None = None,
     role: str = "",
 ) -> list[McpServerLoadResult]:
-    """Connect to every configured MCP server, enumerate its tools, and
-    register each as a namespaced :class:`~docket.core.tools.Tool` into
-    *registry* via its public :meth:`~docket.core.tools.ToolRegistry.register`.
+    """Connect to every configured MCP server, enumerate its tools, and register each as a
+    namespaced :class:`~docket.core.tools.Tool` into *registry* via its public
+    :meth:`~docket.core.tools.ToolRegistry.register`.
 
     Intended to be called once against a freshly built registry (typically
-    ``core.tools.builtin_registry()``) -- built-ins should already be present,
-    since a namespaced MCP name can never collide with one (see "Namespacing"
-    above), but a name already present in *registry* for any other reason
-    (including a previous ``load_mcp_tools`` call against the same object) is
-    skipped, never overwritten: this function only ever adds.
-
-    Never raises. *servers* defaults to :func:`load_mcp_servers`; *list_tools*/
-    *call_tool* default to the real ``edges/adapters/mcp_client.py``
-    implementations, resolved lazily so importing this module never requires
-    the optional ``mcp`` SDK to be installed. Tests inject fakes here instead
-    of touching the SDK or a subprocess.
-    """
+    ``core.tools.builtin_registry()``) -- built-ins should already be present, since a namespaced
+    MCP name can never collide with one (see specs/functional/mcp-client.spec.md's "Namespacing"
+    section), but a name already present in *registry* for any other reason is skipped, never
+    overwritten: this function only ever adds. Never raises. *servers* defaults to
+    :func:`load_mcp_servers`; *list_tools*/*call_tool* default to the real
+    ``edges/adapters/mcp_client.py`` implementations, resolved lazily so importing this module
+    never requires the optional ``mcp`` SDK to be installed; tests inject fakes here instead."""
     if servers is None:
         servers = load_mcp_servers()
     if list_tools is None:

@@ -1,32 +1,15 @@
-"""Declarative guardrail policy engine.
-
-Policies live at ``$POLICIES_DIR/*.json``. Each policy is::
+"""Declarative guardrail policy engine. Policies live at ``$POLICIES_DIR/*.json``::
 
     { "id": str, "applies_to": ["role"|"*"], "hook": str,
       "match": {"type":"regex","pattern":str}, "action": str, "message": str }
-
-Hooks:    pre_input | pre_tool_call | pre_output
-Actions:  allow | warn | redact | require_approval | block
-
-``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail``
-returns the full :class:`PolicyHit` (action + which policy id/message won), used by callers
-that need to attribute a trip to a specific policy (``core/dispatch.py``'s live-path producer).
-The CLI's ``policies test`` path calls ``policy_test`` which is a
-dry-run with no trace side-effects, so this module itself never emits traces (matching
-DOCKET_NO_TRACE=1) — callers that need a trace record emit it themselves.
-
-Policy files are docket-owned artefacts, so this module reads them directly
-through ``edges/store.py``.
-
-Live-path wiring: ``pre_input`` is evaluated once, at task enqueue
-(``core/dispatch.py``'s ``enqueue_task``) — not re-evaluated before every
-hop, which would re-gate the same task text at every role a "*"-scoped
-policy applies to. ``pre_output`` is evaluated on every hop's real output,
-before it is embedded in the carried-forward artifact or persisted hop record
-(``core/dispatch.py``'s ``_execute_unit``). ``pre_tool_call`` is evaluated
-in-turn, inside ``core/tools.py``'s ``dispatch_tool`` chokepoint, for every
-tool call docket's own agent loop makes.
-"""
+``policy_eval`` returns the winning action (most restrictive wins); ``policy_eval_detail`` returns
+the full :class:`PolicyHit`, used by callers that must attribute a trip to a specific policy. This
+module itself never emits traces (``policy_test`` is a side-effect-free dry run); callers that need
+a trace record emit it themselves. Reads policy files directly through ``edges/store.py``.
+Live-path wiring: ``pre_input`` runs once at task enqueue, not re-evaluated per hop (which would
+re-gate the same task text at every role a ``"*"``-scoped policy applies to); ``pre_output`` runs
+on every hop's real output before it is carried forward or persisted; ``pre_tool_call`` runs
+in-turn inside ``core/tools.py``'s ``dispatch_tool`` chokepoint, for every tool call."""
 
 from __future__ import annotations
 
@@ -59,15 +42,11 @@ _INJECTION_IDS: frozenset[str] = frozenset({"prompt-injection"})
 def validate_policy(path: Path) -> str:
     """Validate one policy file. Return '' if valid, else an error message.
 
-    The CLI doesn't call this yet — `cli/_policies.py`'s `_list()`/`_show()` do their own
-    generic JSON parse, they don't schema-check. Kept rather than removed because it is not
-    actually unexercised: `tests/unit/core/test_policy.py` and `test_gates_policies_approve_deny.py`
-    call it directly as the schema-validity guard over the shipped `high-risk-*.json`
-    templates — real regression coverage a plain JSON parse doesn't give. Wiring a
-    `docket policies validate` command (mirroring `docket roles validate`) is the natural
-    next step, but that is new CLI surface, so it is left as tested-but-unwired rather than
-    added here.
-    """
+    The CLI doesn't call this yet -- `cli/_policies.py`'s `_list()`/`_show()` do their own
+    generic JSON parse, no schema-check. Kept rather than removed: `tests/unit/core/test_policy.py`
+    and `test_gates_policies_approve_deny.py` call it directly as the schema-validity guard over
+    the shipped `high-risk-*.json` templates, real regression coverage a plain JSON parse doesn't
+    give. Left tested-but-unwired rather than adding new CLI surface here."""
     try:
         with path.open(encoding="utf-8") as f:
             p: dict[str, Any] = json.load(f)
@@ -103,9 +82,8 @@ def policy_files() -> list[Path]:
 class PolicyHit:
     """The winning policy for one ``policy_eval_detail`` call.
 
-    ``policy_id``/``message`` are ``""`` for the no-match default (``action="allow"``) so a
-    caller can always safely bucket/attribute a trip by ``policy_id`` without a None-check.
-    """
+    ``policy_id``/``message`` are ``""`` for the no-match default (``action="allow"``) so a caller
+    can always safely bucket/attribute a trip by ``policy_id`` without a None-check."""
 
     action: str = "allow"
     policy_id: str = ""
@@ -115,11 +93,9 @@ class PolicyHit:
 def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False) -> PolicyHit:
     """Return the winning :class:`PolicyHit` for (role, hook, text); most restrictive wins.
 
-    trusted: skip injection/untrusted-input policies (source=operator).
-    Trace side-effects are intentionally omitted here — this is the pure evaluator; a live-path
-    caller (``core/dispatch.py``) or the CLI's dry-run (``policy_test``) decides what to do with
-    the result.
-    """
+    trusted: skip injection/untrusted-input policies (source=operator). Trace side-effects are
+    intentionally omitted here -- this is the pure evaluator; a live-path caller or the CLI's
+    dry-run (``policy_test``) decides what to do with the result."""
     if not _cfg.POLICIES_DIR.is_dir():
         return PolicyHit()
 
@@ -162,9 +138,8 @@ def policy_eval_detail(role: str, hook: str, text: str, *, trusted: bool = False
 def policy_eval(role: str, hook: str, text: str, *, trusted: bool = False) -> str:
     """Return the winning action for (role, hook, text); most restrictive wins.
 
-    Thin wrapper over :func:`policy_eval_detail` for callers that only need the action
-    (e.g. the CLI's dry-run path) — kept so every existing caller/test is unaffected.
-    """
+    Thin wrapper over :func:`policy_eval_detail` for callers that only need the action, kept so
+    every existing caller/test is unaffected."""
     return policy_eval_detail(role, hook, text, trusted=trusted).action
 
 
@@ -177,11 +152,9 @@ def policy_test(hook: str, role: str, text: str) -> str:
 class PolicyInstallResult:
     """Outcome of :func:`install_policies` — one entry per shipped template, in template order.
 
-    ``entries`` preserves the exact iteration order the caller renders in (a file either
-    installed this call or skipped because it already existed) so a UI layer can render an
-    interleaved "installed: x / skip (exists): y" list matching that order, rather than two
-    separately-sorted groups.
-    """
+    ``entries`` preserves the exact iteration order the caller renders in, so a UI layer can
+    render an interleaved "installed: x / skip (exists): y" list matching that order, rather than
+    two separately-sorted groups."""
 
     template_dir: Path
     policies_dir: Path
@@ -203,12 +176,9 @@ def install_policies() -> PolicyInstallResult:
     "install once, edit locally after that" contract ``docket policies init`` has always had.
     Directory created 0700, each copied file 0600. Returns an empty ``entries`` list (not an
     error) when the template directory itself is missing; check ``template_dir.is_dir()`` first
-    if that distinction matters to the caller.
-
-    Pure logic, no UI: this is the shared producer behind both ``docket policies init`` and
-    `the workstation foundation bootstrap`'s own policy-provisioning step — one implementation, two callers, so
-    the two can never drift on what "installed" means.
-    """
+    if that distinction matters to the caller. Pure logic, no UI: this is the shared producer
+    behind both ``docket policies init`` and `the workstation foundation bootstrap`'s own
+    policy-provisioning step, so the two can never drift on what "installed" means."""
     template_dir = _cfg.policy_templates_dir()
     result = PolicyInstallResult(template_dir=template_dir, policies_dir=_cfg.POLICIES_DIR)
     if not template_dir.is_dir():

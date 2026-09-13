@@ -1,34 +1,15 @@
 """Built-in tool implementations.
 
-The side-effecting half of docket's tool set: the code that actually reads a
-file, writes one, or runs a command. It is deliberately dumb — every one of
-these functions assumes the decision to run it has already been made and
-recorded by ``core/tools.py``'s chokepoint. **Nothing here consults a policy,
-an allowlist or an approval store**, because a second module that could decide
-to execute something is a second place a gate can be forgotten.
-
-The one exception, and it is containment rather than policy: every path is
-resolved against a set of allowed roots before it is touched, and a path that
-escapes them raises. That check lives here because it needs the real
-filesystem (symlinks resolve, ``..`` collapses) and because it must hold no
-matter which caller arrives — a containment rule enforced only at the
-chokepoint would be one refactor away from being bypassed.
-
-Layering: this module imports nothing from ``core/``. It reports what happened
-via a local ``ToolOutcome``; ``core/tools.py`` wraps that with what was
-*decided*.
-
-``run_bash``'s ``sandbox`` parameter is the one
-addition to that contract, and it is still mechanism, not policy -- it does
-not decide *whether* a command may run (that is ``core/tools.py``'s gate,
-already applied by the time this function is ever called); it decides, once
-a command is already cleared to run, *what it can reach while it does*. The
-gate is not a sandbox, and this module's containment story was never a
-substitute for one either -- ``resolve_within`` only ever checked path
-*arguments* the file tools were given; a `bash` command's shell text was
-never checked against it at all, and still is not -- sandboxing constrains
-the running process instead, additively, never in place of that check.
-"""
+The side-effecting half of docket's tool set: deliberately dumb, since every function assumes
+the decision to run it was already made by ``core/tools.py``'s chokepoint. **Nothing here
+consults a policy, an allowlist or an approval store** -- a second module that could decide to
+execute is a second place a gate can be forgotten. The one exception is containment, not policy:
+every path resolves against allowed roots and an escaping path raises, because this must hold no
+matter which caller arrives and needs the real filesystem (symlinks resolve, ``..`` collapses).
+Imports nothing from ``core/``; reports via ``ToolOutcome`` that ``core/tools.py`` wraps with
+what was *decided*. ``run_bash``'s ``sandbox`` is additive mechanism, never a substitute for
+``resolve_within``'s path-argument containment, which never inspects ``bash`` shell text -- see
+specs/functional/security-gates.spec.md."""
 
 from __future__ import annotations
 
@@ -92,14 +73,10 @@ def _truncate(text: str, limit: int | None = None) -> str:
 def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
     """Resolve *candidate* and confirm it lives under one of *roots*.
 
-    Relative paths resolve against the first root (the agent's workspace).
-    ``resolve()`` is called on both sides, so ``..`` traversal and symlinks out
-    of the tree are caught rather than merely discouraged.
-
-    Raises ``PathEscapeError`` when the path is outside every root, and when
-    *roots* is empty — an unrooted call is a caller bug, and defaulting to
-    "anywhere" would turn it into a security hole.
-    """
+    Relative paths resolve against the first root. ``resolve()`` is called on both sides, so
+    ``..`` traversal and symlinks out of the tree are caught. Raises ``PathEscapeError`` when
+    outside every root, and when *roots* is empty -- defaulting an unrooted call to "anywhere"
+    would be a security hole."""
     if not roots:
         raise PathEscapeError("no allowed roots configured for this tool call")
     raw = Path(candidate).expanduser()
@@ -160,10 +137,8 @@ def edit_file(
 ) -> ToolOutcome:
     """Replace *old_string* with *new_string* in a file.
 
-    A non-unique match fails rather than guessing which occurrence was meant —
-    the same contract docket's own editing tools use, and for the same reason:
-    an edit applied to the wrong occurrence is worse than an edit refused.
-    """
+    A non-unique match fails rather than guessing which occurrence was meant: an edit applied to
+    the wrong occurrence is worse than one refused."""
     try:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
@@ -226,11 +201,9 @@ def grep_files(
 ) -> ToolOutcome:
     """Search file contents for a regex, returning ``path:line:text`` hits.
 
-    Implemented in Python rather than shelling out to ``rg``/``grep`` on
-    purpose: a tool that quietly degrades when a binary is missing would give
-    different answers on different machines, and routing it through the shell
-    would put a second exec path next to the gated one.
-    """
+    Implemented in Python rather than shelling out to ``rg``/``grep``: a tool that degrades when
+    a binary is missing would answer differently per machine, and routing through the shell would
+    add a second exec path beside the gated one."""
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
@@ -268,14 +241,10 @@ def grep_files(
 
 
 def _jailed_env(env: dict[str, str] | None) -> dict[str, str]:
-    """Minimal environment for a real (non-``"none"``) sandboxed run: PATH
-    plus whatever the caller explicitly asked to inject (e.g.
-    ``DOCKET_SCRATCH_DIR``). Deliberately **not** the full host environment
-    ``run_bash``'s unsandboxed path uses -- forwarding it wholesale into a
-    jail would hand a "sandboxed" command every credential the unsandboxed
-    path has anyway, which is precisely the reach this backend exists to
-    cut down, not preserve.
-    """
+    """Minimal environment for a real sandboxed run: PATH plus whatever the caller explicitly
+    asked to inject. Deliberately **not** the full host environment ``run_bash``'s unsandboxed
+    path uses -- forwarding it wholesale into a jail would hand a "sandboxed" command every
+    credential the unsandboxed path has, the exact reach this backend exists to cut down."""
     minimal = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
     if env:
         minimal.update(env)
@@ -283,15 +252,11 @@ def _jailed_env(env: dict[str, str] | None) -> dict[str, str]:
 
 
 def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
-    """The honest, per-call answer to "was this actually sandboxed, and by
-    what" -- ``""`` when nobody asked (``sandbox="off"``, the default;
-    ``run_bash``'s original, unsandboxed behaviour is untouched, byte for
-    byte, in that case). When asked (``sandbox="auto"``), always says what
-    really happened, including ``"none (...)"`` when neither backend panned
-    out. A jailed-looking result that was not actually jailed is precisely
-    the failure this card exists to prevent, so this never stays silent
-    once asked.
-    """
+    """The honest, per-call answer to "was this actually sandboxed, and by what": ``""`` when
+    nobody asked (default ``sandbox="off"``, behaviour untouched byte for byte). When asked
+    (``"auto"``), always says what really happened, including ``"none (...)"`` when neither
+    backend panned out -- a jailed-looking result that was not actually jailed must never stay
+    silent."""
     if sandbox != "auto" or availability is None:
         return ""
     if availability.backend != "none":
@@ -322,36 +287,23 @@ def run_bash(
 ) -> ToolOutcome:
     """Run *command* in a shell, rooted at the first allowed root.
 
-    **This function performs no gating.** It is reached only after
-    ``core/tools.py`` has classified the command and, where required, obtained
-    approval. Started in its own session so a timeout can kill the whole
-    process group — a shell command that spawns children and then hangs is the
-    normal case, not the exotic one, and killing only the shell orphans them.
+    **Performs no gating.** Reached only after ``core/tools.py`` has classified the command and,
+    where required, obtained approval. Runs in its own session so a timeout can kill the whole
+    process group -- a spawned child that hangs is the normal case, and killing only the shell
+    orphans it.
 
-    ``sandbox`` is opt-in and defaults to ``"off"`` — with it, this function
-    behaves exactly as it always has, byte for byte. ``"auto"`` asks for the
-    strongest exec jail this host actually has *right now*
-    (``edges.adapters.system.sandbox_availability``, resolved fresh on every
-    call rather than cached from install time) and reports which one it got —
-    including ``"none"``, when neither docker nor bwrap panned out — as a
-    trailing ``[sandbox: ...]`` marker on the result. **This function never
-    decides whether to ask for a jail; it only reports, honestly, what
-    happened once asked.** A jail that was requested but failed to even start
-    is reported as a failure, never silently retried unsandboxed — the one
-    failure mode worse than no sandbox is one that is claimed and absent.
+    ``sandbox`` defaults to ``"off"`` (behaviour unchanged, byte for byte); ``"auto"`` asks for
+    the strongest exec jail available right now (resolved fresh per call) and reports what it
+    got, including ``"none"``, as a trailing marker. **Never decides whether to jail, only
+    reports what happened once asked**, and a jail that fails to start is reported as a failure,
+    never silently retried unsandboxed. See specs/functional/security-gates.spec.md.
 
-    ``cancelled`` is the one seam that lets a separate process interrupt this
-    command mid-run. Every other tool handler simply runs to completion once
-    started, because a Python thread cannot be killed safely — a subprocess
-    can. Left at its default ``None``, this function is unchanged, byte for
-    byte, including the timeout message: a caller that never passes it sees
-    exactly today's behaviour. Given a callback, a short bounded poll (still
-    honouring *timeout*) checks it between waits, and a true result kills the
-    process group exactly as a timeout already does (``system.docker_kill``
-    under the docker backend, then ``_kill_group``), returning a complete
-    cancelled ``ToolOutcome`` rather than leaving the caller to wait out the
-    tool's own timeout.
-    """
+    ``cancelled`` lets a separate process interrupt this command mid-run -- the one handler
+    amended for it, since every other handler runs to completion once started (a Python thread
+    cannot be killed safely, a subprocess can). Left ``None``, behaviour is unchanged, byte for
+    byte. Given a callback, a bounded poll checks it between waits and kills the process group
+    exactly as a timeout does, returning a complete cancelled ``ToolOutcome``. See
+    specs/functional/agent-loop.spec.md item 65."""
     if not roots:
         return ToolOutcome(False, error="no working directory configured")
     cwd = roots[0].resolve()
@@ -469,20 +421,13 @@ def _wait_cancellable(
 def _kill_group(proc: subprocess.Popen[str]) -> None:
     """Kill a timed-out command's whole process group, then reap it.
 
-    Holds under every sandbox backend this module supports, not just the
-    unsandboxed path: bwrap's own process (started with
-    ``start_new_session=True`` here, same as the plain case) stays in that
-    process group, so this reaches it and everything it forked, and Linux
-    additionally tears down bwrap's entire pid namespace the moment its
-    first process dies — a command inside it cannot escape by detaching
-    (verified: test_sandboxed_exec.py's bwrap orphan test). Docker is
-    the one shape this does *not* cover on its own: ``docker run``'s CLI
-    process is a thin client the daemon runs the real container under, so
-    killing its process group alone leaves the container running (verified
-    the same way) — ``run_bash``'s timeout handler calls
-    ``system.docker_kill`` first, specifically because this function cannot
-    reach a docker-jailed command by process group at all.
-    """
+    Holds under every sandbox backend: bwrap's own process stays in the same process group
+    (``start_new_session=True``), so this reaches it and everything it forked, and Linux tears
+    down bwrap's pid namespace when its first process dies, so nothing inside can escape by
+    detaching. Docker is the one shape not covered on its own -- ``docker run``'s CLI is a thin
+    client the daemon runs the container under, so killing its process group alone leaves the
+    container running; ``run_bash``'s timeout handler calls ``system.docker_kill`` first for
+    that reason."""
     import contextlib
     import signal
 

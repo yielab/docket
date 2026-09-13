@@ -53,10 +53,8 @@ _WORKSPACE_FILES = ("SOUL.md", "AGENTS.md", "TOOLS.md", _mem.HEARTBEAT_FILE)
 def _required_workspace_files(aid: str) -> tuple[str, ...]:
     """Workspace files ``aid`` must have — role-aware for pod members.
 
-    Only an Implementer with allocated resources or a verify command gets
-    TOOLS.md — see specs/functional/workspace-structure.spec.md requirement 1;
-    other pod roles must never be flagged for lacking it.
-    """
+    Only an Implementer gets TOOLS.md (specs/functional/workspace-structure.spec.md
+    requirement 1); other pod roles must never be flagged for lacking it."""
     from docket.core import pod as _pod
 
     if _pod.pod_of(aid) is not None and _fleet.meta_get(aid, "role", "") != "implementer":
@@ -155,10 +153,9 @@ def _check_models() -> int:
 def _check_legacy_model_registry() -> int:
     """One-shot ``profiles:`` → ``roles:`` migration report + residual-key warning.
 
-    Advisory — never affects the issue count. Migration/residual-key rules:
-    see specs/functional/model-profiles.spec.md. A residual key is a manual
-    cleanup, not a health defect.
-    """
+    Advisory — never affects the issue count. Migration/residual-key rules: see
+    specs/functional/model-profiles.spec.md. A residual key is a manual cleanup, not a health
+    defect."""
     ui.console.print()
     ui.console.print("[bold]Model registry (docket-models.json):[/bold]")
     note = _mp.migrate_legacy_profiles()
@@ -173,17 +170,14 @@ def _check_legacy_model_registry() -> int:
 
 
 def _check_dispatch_ledger(do_fix: bool) -> int:
-    """TASK_LIST.json (``status: "running"``) vs. the pod Lead's HEARTBEAT.md
-    dispatch ledger — must agree.
+    """TASK_LIST.json (``status: "running"``) vs. the pod Lead's HEARTBEAT.md dispatch ledger —
+    must agree.
 
-    ``core/dispatch.py`` keeps the ledger synced mechanically; this check
-    catches whatever slips through anyway (an old docket version, a hand-edited
-    file, a crash mid-write). See specs/functional/pod-dispatch.spec.md,
-    "Mechanical HEARTBEAT ledger". ``--fix`` re-syncs the ledger to exactly what
-    TASK_LIST.json says now — always safe, since the ledger's dispatch region
-    is entirely docket-owned and TASK_LIST.json is dispatch's own source of
-    truth.
-    """
+    ``core/dispatch.py`` keeps the ledger synced mechanically; this check catches whatever slips
+    through anyway (an old docket version, a hand-edited file, a crash mid-write). See
+    specs/functional/pod-dispatch.spec.md, "Mechanical HEARTBEAT ledger". ``--fix`` re-syncs the
+    ledger to exactly what TASK_LIST.json says now — always safe, since the ledger's dispatch
+    region is entirely docket-owned and TASK_LIST.json is dispatch's own source of truth."""
     from docket.core import dispatch as _dispatch
     from docket.core import pod as _pod
 
@@ -318,11 +312,9 @@ def _check_provider_coverage(ids: list[str]) -> int:
 def _check_security_gates() -> int:
     """Approval-routing/isolation posture + the always-on tool-call gate.
 
-    The gate itself is unconditionally active on every tool call docket
-    dispatches (see specs/functional/security-gates.spec.md) — there is no "is
-    it enabled" question left to ask, only where an approval prompt routes and
-    whether execution is sandboxed.
-    """
+    The gate itself is unconditionally active on every tool call docket dispatches (see
+    specs/functional/security-gates.spec.md) — there is no "is it enabled" question left to ask,
+    only where an approval prompt routes and whether execution is sandboxed."""
     ui.console.print()
     ui.console.print("[bold]Security gates:[/bold]")
 
@@ -430,15 +422,13 @@ def _check_metadata_backfill(ids: list[str]) -> int:
 
 
 def _check_runtime_contract(ids: list[str]) -> int:
-    """Ensure each managed workspace has a current durability contract
-    (``WORKFLOW_AUTO.md``, composed into the system prompt every turn).
+    """Ensure each managed workspace has a current durability contract (``WORKFLOW_AUTO.md``,
+    composed into the system prompt every turn).
 
-    Heals a missing or stale/legacy contract (version-marker detected):
-    otherwise the loop composes a stale/absent resume contract and a weak
-    model loops offering to create it instead of working. Idempotent re-seed
-    from the agent's stored codebase/stack (absent for a specialist).
-    Advisory — never fails the run.
-    """
+    Heals a missing or stale/legacy contract (version-marker detected): otherwise the loop
+    composes a stale/absent resume contract and a weak model loops offering to create it instead
+    of working. Idempotent re-seed from the agent's stored codebase/stack. Advisory — never fails
+    the run."""
     from docket.core import memory as _mem
 
     ui.console.print()
@@ -477,10 +467,9 @@ def _managed_workspace_ids(ids: list[str]) -> list[str]:
 def _check_scaffolding(ids: list[str]) -> int:
     """Quarantine self-authoring scaffolding leaking into managed workspaces.
 
-    See specs/functional/workspace-structure.spec.md requirement 5:
-    IDENTITY.md/BOOTSTRAP.md fight docket's role-derived SOUL.md, so this
-    moves them to .docket-archive/ (reversible). Advisory — never fails.
-    """
+    See specs/functional/workspace-structure.spec.md requirement 5: IDENTITY.md/BOOTSTRAP.md
+    fight docket's role-derived SOUL.md, so this moves them to .docket-archive/ (reversible).
+    Advisory — never fails."""
     from docket.core import identity as _identity
 
     ui.console.print()
