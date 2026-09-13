@@ -1,12 +1,14 @@
-"""docket gates — docket's own tool-call gate + approval routing/isolation.
+"""docket gates — docket's own tool-call gate + approval-routing/isolation posture.
 
 ``core/tools.py``'s ``pre_tool_call`` policy hook and ``core/security.py``'s
 argument-aware command classifier are unconditionally live on every tool call
 docket dispatches — there is no "enable the gate" step; the gate is always
-on. What ``docket gates`` manages is strictly narrower: where an approval
-prompt is routed (``enable``/``disable``) and whether tool execution runs
-sandboxed (``isolate``). ``run_gates(sub, *, want, force)`` returns the
-process exit code; the coordinator wraps it in a Typer command.
+on. What ``docket gates`` manages is strictly narrower: a recorded, audited
+approval-routing posture flag (``enable``/``disable``) that nothing on the
+live path reads -- an ``ask`` verdict answers identically via CLI/HTTP/MCP/
+Telegram regardless -- and whether tool execution runs sandboxed
+(``isolate``). ``run_gates(sub, *, want, force)`` returns the process exit
+code; the coordinator wraps it in a Typer command.
 """
 
 from __future__ import annotations
@@ -27,9 +29,11 @@ def _usage() -> None:
         "  [green]status[/green]            Show approval-routing and isolation posture"
     )
     ui.console.print(
-        "  [green]enable[/green] [--force]  Turn on approval routing (prompts follow a channel)"
+        "  [green]enable[/green] [--force]  Record approval-routing posture as on (display only)"
     )
-    ui.console.print("  [green]disable[/green]           Turn approval routing off")
+    ui.console.print(
+        "  [green]disable[/green]           Record approval-routing posture as off (display only)"
+    )
     ui.console.print(
         "  [green]isolate[/green] [on|off]  "
         "Confine tool execution to a per-agent Docker sandbox (needs Docker)"
@@ -54,9 +58,12 @@ def _status() -> int:
 
     r_state, r_mode = _fleet.get_approval_routing()
     if r_state == "on":
-        ui.success(f"Approval routing: on (mode={r_mode or '?'})")
+        ui.success(
+            f"Approval routing: on (mode={r_mode or '?'})"
+            " — recorded posture only, nothing on the live path reads it"
+        )
     elif r_state == "off":
-        ui.warn("Approval routing: off — prompts won't reach a channel")
+        ui.warn("Approval routing: off — recorded posture only, nothing on the live path reads it")
     else:
         ui.dim("Approval routing: not configured")
 
@@ -133,20 +140,27 @@ def _enable(force: bool) -> int:
     ui.header("Approval routing")
     ui.console.print()
     ui.dim(
-        "  docket's own tool-call gate is always active; this only controls where a"
-        " require_approval prompt is routed once one fires."
+        "  docket's own tool-call gate is always active; this only records approval-routing"
+        " posture — nothing on the live path reads it."
     )
     ui.console.print()
 
     tg_count = _sec.apply_approval_routing()
     ui.success("Approval routing on (mode=session)")
     if tg_count > 0:
-        ui.console.print(f"  {tg_count} channel-bound agent(s) configured (see 'docket wire').")
+        ui.console.print(
+            f"  {tg_count} channel-bound agent(s) configured (see 'docket wire'); a wired Telegram"
+            " chat answers a request it receives, it never gets pushed one."
+        )
     else:
-        ui.warn("No channel-bound agents yet — wire one (docket wire <id>) so a human can answer.")
+        ui.warn(
+            "No channel-bound agents yet — wire one (docket wire <id>) if you want a Telegram"
+            " chat able to answer /approve or /deny."
+        )
     ui.dim(
-        "  A wired Telegram bot receives a live prompt for a bound agent; CLI/HTTP approval"
-        " (docket approve/deny, POST /approvals) always work regardless of channel."
+        "  This flag changes nothing about who can answer: CLI (docket approve/deny), HTTP"
+        " (POST /approvals), MCP, and a wired Telegram chat all answer an ask verdict the same"
+        " way regardless of it."
     )
 
     audit_log("gates.enable", f"routing=on force={force}")

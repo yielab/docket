@@ -122,14 +122,14 @@ def _harden_perms() -> None:
 
 
 def _step_security(want_gates: bool) -> None:
-    """Step 6 — harden docket-owned secrets/config perms + approval routing.
+    """Step 6 — harden docket-owned secrets/config perms + approval-routing posture.
 
     There is no separate daemon exec-approval config to enable/disable:
     `core/tools.py`'s policy engine + high-risk command classifier are
     unconditionally active on every tool call docket dispatches, so there is
-    nothing left to "enable". What remains configurable is where an approval
-    prompt is routed, and that is the one piece --no-gates actually opts out
-    of.
+    nothing left to "enable". What remains configurable is a recorded,
+    audited approval-routing posture flag that nothing on the live path
+    reads, and that is the one piece --no-gates actually opts out of.
     """
     _harden_perms()
 
@@ -137,12 +137,14 @@ def _step_security(want_gates: bool) -> None:
     ui.dim("  Nothing to enable/disable there — see: docket gates status")
 
     if not want_gates:
-        ui.dim("Approval routing disabled for this workstation (--no-gates).")
-        ui.console.print("  Enable later: 'docket gates enable'.")
+        ui.dim("Approval-routing posture recorded as off for this workstation (--no-gates).")
+        ui.console.print("  Record it as on later: 'docket gates enable'.")
         return
 
     tg = apply_approval_routing()
-    ui.success(f"Approval routing on (mode=session); {tg} channel-bound agent(s)")
+    ui.success(
+        f"Approval-routing posture recorded as on (mode=session); {tg} channel-bound agent(s)"
+    )
     ui.dim("  Verify posture anytime with: docket doctor  (Security gates section)")
 
 
