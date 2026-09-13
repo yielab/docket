@@ -32,7 +32,10 @@ DEFAULT_MODEL_NAME = "Qwen3 30B-A3B (local)"
 DEFAULT_CTX = 16384
 DEFAULT_MAX_TOKENS = 8192
 
-_PROVIDER_CREDENTIALS: dict[str, tuple[str, ...]] = {
+# Single owner of this table -- edges/adapters/llm.py imports it rather than
+# keeping its own copy, so a provider added here is never silently missing
+# from the request path (or vice versa).
+PROVIDER_CREDENTIAL_NAMES: dict[str, tuple[str, ...]] = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "google": ("GOOGLE_AI_API_KEY",),
@@ -126,7 +129,7 @@ def model_readiness(model: str) -> ModelReadiness:
     from docket.edges.adapters import llm as _llm
 
     provider, _, _model_id = model.partition("/")
-    credential_names = _PROVIDER_CREDENTIALS.get(provider, ())
+    credential_names = PROVIDER_CREDENTIAL_NAMES.get(provider, ())
     credential_name = credential_names[0] if credential_names else ""
     credential_present = any(
         bool(os.environ.get(name, "").strip()) or bool(_secrets.secret_value(name))
